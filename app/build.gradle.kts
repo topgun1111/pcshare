@@ -13,6 +13,9 @@ fun git(vararg a: String): String = try {
 val commitCount = System.getenv("VERSION_CODE")?.toIntOrNull() ?: git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
 val baseVersion = File(rootDir, "VERSION").takeIf { it.exists() }?.readText()?.trim().takeUnless { it.isNullOrEmpty() } ?: "1.0"
 val shortSha = git("rev-parse", "--short", "HEAD")
+// versionCode = minutes since 2026-01-01 (UTC): ALWAYS increases with every build, even if git history is shallow/reset.
+// Never switch this scheme back to a smaller number, or Android refuses to update.
+val buildCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: ((System.currentTimeMillis() / 1000 - 1767225600L) / 60).toInt()
 
 android {
     namespace = "com.lanshare.app"
@@ -21,7 +24,7 @@ android {
         applicationId = "com.lanshare.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = commitCount
+        versionCode = buildCode
         versionName = "$baseVersion.$commitCount" + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }

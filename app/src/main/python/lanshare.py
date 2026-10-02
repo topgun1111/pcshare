@@ -1329,6 +1329,13 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #clip .ibtn{width:36px;height:36px}
 /* snackbar */
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));background:#2e3133;color:#f0f0f0;border-radius:12px;padding:14px 16px;z-index:12;font-size:14px;box-shadow:var(--sh)}
+#dlw{position:fixed;left:16px;right:16px;bottom:calc(var(--dockh,0px) + 84px + env(safe-area-inset-bottom));z-index:12;display:flex;flex-direction:column;gap:8px}
+.dlc{background:#2e3133;color:#f0f0f0;border-radius:12px;padding:12px 14px;font-size:13px;box-shadow:var(--sh)}
+.dlc .dh{display:flex;align-items:center;gap:10px}.dlc b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:14px}
+.dlc button{background:none;border:0;color:#a8c7fa;font-size:13px;padding:4px 8px}
+.dlc .bar{height:4px;border-radius:2px;background:#ffffff33;margin:8px 0 6px;overflow:hidden}.dlc .bar i{display:block;height:100%;width:0;background:#a8c7fa;transition:width .3s}
+.dlc.ind .bar i{width:35%;animation:dli 1.1s linear infinite}@keyframes dli{from{margin-left:-35%}to{margin-left:100%}}
+.dlc small{opacity:.8;font-size:12px}
 #tp{display:none;height:4px;border-radius:2px;background:#ffffff33;margin-top:10px;overflow:hidden}#tp i{display:block;height:100%;width:0;background:#a8c7fa;transition:width .3s}
 /* bottom sheet + dialog */
 #sheet,#dlg{display:none;position:fixed;inset:0;background:#0000006b;z-index:10;animation:fade .2s}
@@ -1364,7 +1371,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
-<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
+<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -1592,7 +1599,7 @@ function render(){
     if(S.view==='compact')sub.append(E('span','',S.sort==='date'&&dt?dt:sz));else sub.append(E('span','',sz),E('span','',dt));
     nm.append(E('b','',i.name),sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(S.path,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else window.open('/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),'_blank')};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(S.path,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
     holdMenu(r,i);
     l.append(r)});
   S.rg++;THQ.length=0;
@@ -1614,6 +1621,9 @@ function render(){
     l.append(g)}
   renderBar()}
 
+/* Tap on a file: in the Android app fetch it and open it with an installed app (text editor for source files); in a browser let it handle the URL */
+function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+  if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
 function viewImg(i){
   const pth=jn(S.path,i.name),u='/api/dl?dev='+enc(S.dev)+'&path='+enc(pth);
   const o=$('#pv');o.textContent='';o.style.display='flex';
@@ -1651,15 +1661,39 @@ function thMake(url,kd){return new Promise((res,rej)=>{
       const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
     im.onerror=()=>{if(!done){done=true;clearTimeout(tm);rej(new Error('thumb'))}};im.decoding='async';im.src=url;return}
-  const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='metadata';v.crossOrigin='anonymous';
-  let fin=false,tm;const end=(ok,t)=>{if(fin)return;fin=true;clearTimeout(tm);try{v.removeAttribute('src');v.load()}catch(e){}ok?res(t):rej(new Error('thumb'))};
-  tm=setTimeout(()=>end(false),15000);
-  v.onerror=()=>end(false);
-  v.onloadedmetadata=()=>{const d=v.duration||0;try{v.currentTime=d>2?Math.min(d*0.1,10):0.1}catch(e){end(false)}};
-  v.onseeked=()=>{try{const w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(false);
+  /* Video element must live in the DOM and use preload=auto: detached/metadata-only <video> in Android WebView never decodes a frame. */
+  const v=document.createElement('video');v.muted=true;v.defaultMuted=true;v.playsInline=true;v.preload='auto';
+  v.setAttribute('playsinline','');v.setAttribute('muted','');
+  v.style.cssText='position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none';document.body.append(v);
+  let fin=false,tm,seeked=false;
+  const end=(ok,t)=>{if(fin)return;fin=true;clearTimeout(tm);try{v.pause();v.removeAttribute('src');v.load()}catch(e){}v.remove();ok?res(t):rej(new Error('thumb'))};
+  tm=setTimeout(()=>end(false),40000);
+  const grab=()=>{try{const w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(false);
     const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
     c.getContext('2d').drawImage(v,0,0,c.width,c.height);end(true,{u:c.toDataURL('image/jpeg',0.6),d:v.duration||0})}catch(e){end(false)}};
-  v.src=url})}
+  v.onerror=()=>end(false);
+  v.onloadedmetadata=()=>{const d=v.duration||0;try{v.currentTime=(isFinite(d)&&d>2)?Math.min(d*0.1,10):0.1}catch(e){end(false)}};
+  v.onseeked=()=>{if(seeked)return;seeked=true;
+    // wait until a frame is actually presented, then draw
+    if(v.requestVideoFrameCallback){v.requestVideoFrameCallback(()=>grab());v.play().then(()=>{}).catch(()=>setTimeout(grab,150))}
+    else setTimeout(grab,150)};
+  v.src=url;v.load()})}
+/* ---- native download progress (called from MainActivity) ---- */
+const DLS={};
+function lsDl(id,name,done,total,speed,st,msg){
+  let c=DLS[id];
+  if(!c){const el=E('div','dlc'),hd=E('div','dh'),nm=E('b'),cx=E('button','','Cancel'),bar=E('div','bar'),fill=E('i'),info=E('small');
+    cx.onclick=()=>{try{LSAndroid.cancel(id)}catch(e){}cx.disabled=true};
+    bar.append(fill);hd.append(nm,cx);el.append(hd,bar,info);$('#dlw').append(el);c=DLS[id]={el,nm,cx,fill,info}}
+  c.nm.textContent=name;
+  const fin=t=>setTimeout(()=>{c.el.remove();delete DLS[id]},t);
+  if(st==='done'){c.el.classList.remove('ind');c.fill.style.width='100%';c.info.textContent=msg||('✅ Saved to Downloads · '+fmt(done));c.cx.style.display='none';fin(5000);return}
+  if(st==='err'){c.el.classList.remove('ind');c.info.textContent='⚠ Download failed: '+msg;c.cx.style.display='none';fin(7000);return}
+  if(st==='cancel'){c.el.classList.remove('ind');c.info.textContent='Cancelled';c.cx.style.display='none';fin(2500);return}
+  if(total>0){c.el.classList.remove('ind');const pct=Math.min(100,done*100/total);c.fill.style.width=pct.toFixed(1)+'%';
+    const eta=speed>0?Math.ceil((total-done)/speed):0,em=eta?(eta>=3600?Math.floor(eta/3600)+'h ':'')+(eta>=60?Math.floor(eta%3600/60)+'m ':'')+(eta<3600?eta%60+'s':''):'';
+    c.info.textContent=Math.floor(pct)+'% · '+fmt(done)+' / '+fmt(total)+' · '+(speed>0?fmt(speed)+'/s':'…')+(em?' · '+em+' left':'')}
+  else{c.el.classList.add('ind');c.info.textContent=done?fmt(done)+' · '+(speed>0?fmt(speed)+'/s':'…'):'Connecting…'}}
 function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
   S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
 function openSettings(){
@@ -1720,7 +1754,8 @@ function doDownload(){
   f.forEach((i,k)=>setTimeout(()=>{const a=document.createElement('a');a.href='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))+'&dl=1';a.download=i.name;document.body.append(a);a.click();a.remove()},k*600))}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
-async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
+async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});
+  if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
 function pickDevice(){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Send to…'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
@@ -1742,14 +1777,15 @@ async function doMkdir(){
   const n=await dlg({title:'New folder',input:{label:'Folder name'},ok:'Create'});if(!n)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
 async function track(id){
+  let ok=false;
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id)}catch(e){toast('⚠ '+e.message,5000);break}
     if(j.state==='error'){toast('⚠ '+j.error,7000);break}
-    if(j.state==='done'){toast('✅ Done',2500);break}
+    if(j.state==='done'){toast('✅ Done',2500);ok=true;break}
     const pct=Math.floor(j.done*100/j.total);
     toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0,pct);
     await new Promise(r=>setTimeout(r,400))}
-  await refreshClip();load()}
+  await refreshClip();load();return ok}
 
 // ---- pull down to refresh
 (()=>{const box=$('#ptr'),lab=box.firstChild,TH=70;let y0=0,dy=0,on=false,busy=false;

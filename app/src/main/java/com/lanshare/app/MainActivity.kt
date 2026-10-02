@@ -3,6 +3,7 @@ package com.lanshare.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -13,16 +14,27 @@ import android.provider.Settings
 import android.webkit.*
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.chaquo.python.Python
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
 import java.net.URLDecoder
+import java.util.concurrent.atomic.AtomicInteger
+import org.json.JSONObject
 
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
+    private val dlSeq = AtomicInteger()
+    private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+    inner class Bridge {
+        @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
+        /** Tap on a file: fetch it to cache, then hand it to an app that can open it. */
+        @JavascriptInterface fun open(url: String) { saveToDownloads(url, null, true) }
+    }
     private var pendingShare: List<String>? = null
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -32,6 +44,7 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
+            addJavascriptInterface(Bridge(), "LSAndroid")
             webViewClient = object : WebViewClient() {
                 // window.open('/api/dl?...') and <a download> navigations -> save to Downloads
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
@@ -124,27 +137,79 @@ class MainActivity : Activity() {
         chooser?.onReceiveValue(out); chooser = null
     }
 
-    /** Stream a LANShare URL into /Download using the server's own filename. */
-    private fun saveToDownloads(url: String, name0: String?) {
+    /** Push download progress to the page: state = run | done | err | cancel */
+    private fun dlUi(id: Int, name: String, done: Long, total: Long, speed: Double, st: String, msg: String = "") =
+        runOnUiThread {
+            web.evaluateJavascript("window.lsDl&&lsDl($id,${JSONObject.quote(name)},$done,$total,$speed,'$st',${JSONObject.quote(msg)})", null)
+        }
+
+    /** Stream a LANShare URL into /Download using the server's own filename, reporting progress. */
+    private fun saveToDownloads(url: String, name0: String?, openAfter: Boolean = false) {
+        val id = dlSeq.incrementAndGet()
         Thread {
+            var name = name0 ?: "download"
+            var f: File? = null
             try {
-                val c = URL(url).openConnection()
-                var name = name0
+                dlUi(id, name, 0, 0, 0.0, "run")
+                val c = URL(url).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
                 c.getHeaderField("Content-Disposition")?.let {
                     Regex("filename\\*=UTF-8''([^;]+)").find(it)?.let { m ->
                         name = URLDecoder.decode(m.groupValues[1], "UTF-8") }
                 }
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                dir.mkdirs()
-                var f = File(dir, (name ?: "download").replace("/", "_"))
+                val total = c.contentLengthLong.coerceAtLeast(0)
+                val dir = if (openAfter) File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }
+                          else Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).apply { mkdirs() }
+                var t = File(dir, name.replace("/", "_"))
                 var n = 1
-                while (f.exists()) { f = File(dir, "${f.nameWithoutExtension} ($n)${if (f.extension.isEmpty()) "" else "." + f.extension}"); n++ }
-                c.getInputStream().use { i -> f.outputStream().use { o -> i.copyTo(o) } }
-                runOnUiThread { Toast.makeText(this, "Saved to Downloads: ${f.name}", Toast.LENGTH_LONG).show() }
+                while (t.exists()) { t = File(dir, "${t.nameWithoutExtension} ($n)${if (t.extension.isEmpty()) "" else "." + t.extension}"); n++ }
+                f = t
+                var done = 0L; var speed = 0.0
+                var lastT = System.nanoTime(); var lastD = 0L
+                dlUi(id, t.name, 0, total, 0.0, "run")
+                c.getInputStream().use { i -> t.outputStream().use { o ->
+                    val buf = ByteArray(1 shl 16)
+                    while (true) {
+                        if (dlCancel.remove(id)) throw InterruptedException()
+                        val r = i.read(buf); if (r < 0) break
+                        o.write(buf, 0, r); done += r
+                        val now = System.nanoTime()
+                        if (now - lastT >= 500_000_000L) {
+                            val inst = (done - lastD) * 1e9 / (now - lastT)
+                            speed = if (speed == 0.0) inst else speed * 0.6 + inst * 0.4 // smoothed
+                            lastT = now; lastD = done
+                            dlUi(id, t.name, done, total, speed, "run")
+                        }
+                    }
+                } }
+                if (openAfter) {
+                    dlUi(id, t.name, done, done, speed, "done", "Opening\u2026")
+                    runOnUiThread { openWithApp(t) }
+                } else dlUi(id, t.name, done, done, speed, "done")
+            } catch (e: InterruptedException) {
+                f?.delete(); dlUi(id, name, 0, 0, 0.0, "cancel")
             } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Download failed: ${e.message}", Toast.LENGTH_LONG).show() }
+                f?.delete(); dlUi(id, name, 0, 0, 0.0, "err", e.message ?: e.javaClass.simpleName)
             }
         }.start()
+    }
+
+    private val TEXT_EXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",
+        "ini", "cfg", "conf", "env", "md", "log", "sql", "py", "kt", "kts", "java", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb",
+        "sh", "bat", "ps1", "gradle", "properties", "htaccess", "gitignore", "csv", "tsv", "srt", "vtt", "tex", "txt", "html", "htm", "svg")
+
+    /** Open a fetched file with an installed app; source/text files go to a text editor. */
+    private fun openWithApp(f: File) {
+        val ext = f.extension.lowercase()
+        val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
+                   else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+        fun go(m: String) = startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, m)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        try { go(mime) }
+        catch (e: ActivityNotFoundException) {
+            try { if (mime != "*/*") go("*/*") else throw e }
+            catch (e2: Exception) { Toast.makeText(this, "No app can open .${ext}. Long-press the file to download it instead.", Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) { Toast.makeText(this, "Cannot open: ${e.message}", Toast.LENGTH_LONG).show() }
     }
 
     @SuppressLint("BatteryLife")

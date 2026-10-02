@@ -4,45 +4,59 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # commit sayısı için tam geçmiş şart
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      # ubuntu-latest içinde Android SDK hazır; setup-android sdkmanager sürümünde hata veriyordu
+        with: { python-version: '3.11' }
       - name: Android lisansları
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
 
-      # Release signing: secret KEYSTORE_FILE holds the .jks/.keystore as base64.
-      # Without it the release build is signed with a throwaway debug key.
-      - name: Prepare signing
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_FILE }}
+      - name: Sürüm
+        id: ver
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          BASE=$(tr -d '[:space:]' < VERSION 2>/dev/null || echo 1.0)
+          N=$(git rev-list --count HEAD)
+          echo "tag=v$BASE.$N" >> "$GITHUB_OUTPUT"
+          echo "apk=LANShare-v$BASE.$N.apk" >> "$GITHUB_OUTPUT"
+
+      - name: İmza hazırlığı
+        env:
+          KS: ${{ secrets.KEYSTORE_B64 || secrets.KEYSTORE_FILE }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          else
-            mkdir -p ~/.android
-            [ -f ~/.android/debug.keystore ] || keytool -genkeypair -v -keystore ~/.android/debug.keystore \
-              -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 \
-              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build release APK
+      - name: Release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - uses: actions/upload-artifact@v4
+      - name: APK adlandır
+        run: cp app/build/outputs/apk/release/*.apk "${{ steps.ver.outputs.apk }}"
+
+      # Release kalıcıdır (artifact 90 günde silinir)
+      - uses: softprops/action-gh-release@v2
         with:
-          name: LANShare-apk
-          path: app/build/outputs/apk/release/*.apk
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: LANShare ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.ver.outputs.apk }}
