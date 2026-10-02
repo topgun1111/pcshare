@@ -25,6 +25,8 @@ android {
         versionName = "$baseVersion.$commitCount" + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
+    // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.
+    // CI secret'ları (KEYSTORE_FILE...) verilirse onlar, yoksa depodaki app/lanshare.jks kullanılır.
     signingConfigs {
         create("release") {
             val ks = System.getenv("KEYSTORE_FILE")
@@ -33,14 +35,21 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
+            } else {
+                storeFile = file("lanshare.jks")
+                storePassword = "lanshare123"
+                keyAlias = "lanshare"
+                keyPassword = "lanshare123"
             }
         }
     }
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Keystore yoksa debug anahtarıyla imzala (imzasız APK yüklenmez)
-            signingConfig = if (System.getenv("KEYSTORE_FILE") != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
