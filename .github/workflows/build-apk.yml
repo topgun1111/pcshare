@@ -34,13 +34,18 @@ jobs:
           echo "tag=v$BASE.$N" >> "$GITHUB_OUTPUT"
           echo "apk=LANShare-v$BASE.$N.apk" >> "$GITHUB_OUTPUT"
 
+      # Secret keystore only when ALL four secrets exist; otherwise the build signs with app/lanshare.jks
       - name: İmza hazırlığı
         env:
           KS: ${{ secrets.KEYSTORE_B64 || secrets.KEYSTORE_FILE }}
+          KP: ${{ secrets.KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.KEY_ALIAS }}
+          KKP: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
+          if [ -n "$KS" ] && [ -n "$KP" ] && [ -n "$KA" ] && [ -n "$KKP" ] && echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks" 2>/dev/null; then
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Keystore secrets incomplete/invalid - signing with app/lanshare.jks"
           fi
 
       - name: Release APK
@@ -52,6 +57,11 @@ jobs:
 
       - name: APK adlandır
         run: cp app/build/outputs/apk/release/*.apk "${{ steps.ver.outputs.apk }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LANShare-apk
+          path: ${{ steps.ver.outputs.apk }}
 
       # Release kalıcıdır (artifact 90 günde silinir)
       - uses: softprops/action-gh-release@v2
