@@ -204,6 +204,7 @@ class MainActivity : Activity() {
                     when (j.optString("state")) {
                         "error" -> { notifyProgress(nid, label, "Failed: " + (if (j.isNull("error")) "" else j.optString("error")), 0, 0, "err"); break }
                         "done" -> { notifyProgress(nid, label, "Done", 0, 0, "done"); break }
+                        "cancel" -> { notifyProgress(nid, label, "Cancelled", 0, 0, "cancel"); break }
                     }
                     val now = System.nanoTime()
                     if (now > lastT) {

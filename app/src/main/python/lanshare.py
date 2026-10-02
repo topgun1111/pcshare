@@ -861,6 +861,68 @@ class Discovery:
         return False
 
 
+# ----------------------------------------------------------------- thumbnails (Pillow; optional)
+THUMB_DIR = os.path.join(os.path.dirname(os.path.abspath(CFG_FILE)), "thumbcache")
+_thumb_n = [0]
+
+
+def make_thumb(real_path):
+    """Return JPEG bytes (<=240px) for an image, cached on disk by path+mtime+size. Raises if Pillow is missing."""
+    from PIL import Image, ImageOps  # noqa
+    import hashlib
+    st = os.stat(real_path)
+    key = hashlib.sha1(("%s|%d|%d" % (real_path, st.st_mtime_ns, st.st_size)).encode("utf-8", "replace")).hexdigest()
+    cp = os.path.join(THUMB_DIR, key[:2], key + ".jpg")
+    try:
+        with open(cp, "rb") as f:
+            return f.read()
+    except OSError:
+        pass
+    with Image.open(real_path) as im:
+        try:
+            im.draft("RGB", (480, 480))  # JPEG: decode at reduced size, far faster and lighter
+        except Exception:
+            pass
+        im = ImageOps.exif_transpose(im)
+        if im.mode not in ("RGB", "L"):
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            im = im.convert("RGBA")
+            bg.paste(im, mask=im.split()[3])
+            im = bg
+        else:
+            im = im.convert("RGB")
+        im.thumbnail((240, 240))
+        import io
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=70)
+    data = buf.getvalue()
+    try:
+        os.makedirs(os.path.dirname(cp), exist_ok=True)
+        tmp = cp + ".tmp%d" % threading.get_ident()
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, cp)
+        _thumb_n[0] += 1
+        if _thumb_n[0] % 500 == 0:
+            prune_thumbs()
+    except OSError:
+        pass
+    return data
+
+
+def prune_thumbs(limit=30000, drop=10000):
+    try:
+        files = []
+        for d, _, fns in os.walk(THUMB_DIR):
+            files += [os.path.join(d, n) for n in fns]
+        if len(files) > limit:
+            files.sort(key=lambda f: os.path.getmtime(f))
+            for f in files[:drop]:
+                os.remove(f)
+    except OSError:
+        pass
+
+
 # ----------------------------------------------------------------- jobs / clipboard
 JOBS = {}
 CLIP = {}
@@ -874,10 +936,16 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
         del JOBS[k]
     job = JOBS[jid] = {"state": "run", "done": 0, "total": 1, "bytes": True, "error": None, "label": label}
 
+    class Cancelled(Exception):
+        pass
+
     def bump(n):
+        if job.get("cancel"):
+            raise Cancelled()
         job["done"] += n
 
     def work():
+        dest = None
         try:
             ddir_n = vnorm(ddir)
             same = src.id == dst.id
@@ -907,6 +975,8 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
                     job["done"] += 1
                     continue
                 for it in walked:
+                    if job.get("cancel"):
+                        raise Cancelled()
                     target = dest if not it["rel"] else dest + "/" + it["rel"]
                     if it["dir"]:
                         dst.mkdir(target)
@@ -916,6 +986,8 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
                         sent = [0]
 
                         def bump2(n, sent=sent):
+                            if job.get("cancel"):
+                                raise Cancelled()
                             sent[0] += n
                             job["done"] += n
 
@@ -926,7 +998,7 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
                             finally:
                                 f.close()
                             break
-                        except (PermissionError, FileNotFoundError, FileExistsError, ValueError):
+                        except (PermissionError, FileNotFoundError, FileExistsError, ValueError, Cancelled):
                             raise
                         except (OSError, http.client.HTTPException) as e:
                             job["done"] -= sent[0]
@@ -939,6 +1011,13 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
             job["state"] = "done"
             if cut and CLIP.get("paths") and CLIP.get("dev") == src_id:
                 CLIP.clear()
+        except Cancelled:
+            job["state"] = "cancel"
+            if dest and not (same and cut):
+                try:
+                    dst.remove(dest)  # drop the half-copied item; fully copied ones stay
+                except Exception:
+                    pass
         except Exception as e:
             job["error"] = (e.strerror if isinstance(e, OSError) and e.strerror else str(e)) or e.__class__.__name__
             job["state"] = "error"
@@ -1156,6 +1235,23 @@ class H(BaseHTTPRequestHandler):
         if route == "dl":
             e = ep(q["dev"])
             return self.send_file(e.open_read(vnorm(q["path"])), posixpath.basename(vnorm(q["path"])), q.get("dl") != "1")
+        if route == "thumb":
+            e = ep(q["dev"])
+            if not hasattr(e, "real"):
+                raise ValueError("thumbnails only for this device's own files")
+            data = make_thumb(e.real(vnorm(q["path"])))
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if route == "jobcancel":
+            if q["id"] not in JOBS:
+                raise FileNotFoundError("unknown job")
+            JOBS[q["id"]]["cancel"] = True
+            return self.json({"ok": True})
         if route == "job":
             if q["id"] not in JOBS:
                 raise FileNotFoundError("unknown job")
@@ -1393,6 +1489,7 @@ body.dual #dual{display:flex}
 .dlc .bar{height:4px;border-radius:2px;background:#ffffff33;margin:8px 0 6px;overflow:hidden}.dlc .bar i{display:block;height:100%;width:0;background:#a8c7fa;transition:width .3s}
 .dlc.ind .bar i{width:35%;animation:dli 1.1s linear infinite}@keyframes dli{from{margin-left:-35%}to{margin-left:100%}}
 .dlc small{opacity:.8;font-size:12px}
+#tc{display:none;float:right;margin:-4px -6px 0 12px;padding:6px 12px;border-radius:8px;background:transparent;color:#a8c7fa;font:inherit;font-weight:500}
 #tp{display:none;height:4px;border-radius:2px;background:#ffffff33;margin-top:10px;overflow:hidden}#tp i{display:block;height:100%;width:0;background:#a8c7fa;transition:width .3s}
 /* bottom sheet + dialog */
 #sheet,#dlg{display:none;position:fixed;inset:0;background:#0000006b;z-index:10;animation:fade .2s}
@@ -1424,6 +1521,8 @@ body.dual #dual{display:flex}
 .selb h2{font-size:18px}
 .ib{font-size:12px}
 #fab{font-size:14px}
+body.kid #fab{height:40px;padding:0 12px 0 10px;gap:8px;border-radius:10px;font-size:13px;right:12px;bottom:calc(var(--dockh,0px) + 12px + env(safe-area-inset-bottom))}
+body.kid #fab svg{width:20px;height:20px}
 .vrow .vt,.sd .opt .t b{font-size:16px}
 #sheet h3,.dcard h3{font-size:20px}
 .sh{font-size:14px}
@@ -1444,7 +1543,7 @@ body.dual #dual{display:flex}
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
-<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
+<div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -1530,7 +1629,7 @@ async function api(m,u,b,ms){
   if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
 let tt;
 function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textContent=msg;
-  b.style.display=pct==null?'none':'block';if(pct!=null)b.firstChild.style.width=pct+'%';
+  b.style.display=pct==null?'none':'block';$('#tc').style.display=pct==null?'none':'inline-block';if(pct!=null)b.firstChild.style.width=pct+'%';
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
@@ -1627,7 +1726,7 @@ window.addEventListener('pageshow',resume);window.addEventListener('online',resu
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
-  S.dev=id;S.path='/';S.sel.clear();S.sig='';clearQ();renderPeers();load()}
+  S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();load()}
 async function addIp(){
   const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
@@ -1659,8 +1758,8 @@ function render(){
   if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
-  V.forEach(i=>{
-    if(GV.indexOf(i)>=0)return;
+  const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
+  const mk=i=>{
     const k=kind(i),r=E('div','row'+(S.sel.has(i.name)?' sel':''));
     const lead=E('div','lead k-'+k);
     if(i.dir){lead.append(raw(FOLD,'fold'));const bd=BADGE[i.name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
@@ -1677,7 +1776,19 @@ function render(){
     r.onclick=()=>{if(r._lp){r._lp=false;return}
       if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
     holdMenu(r,i);
-    l.append(r)});
+    return r};
+  // big folders: draw rows in chunks as the user scrolls (a 100k-file folder would otherwise freeze the WebView)
+  const CH=300;let nShown=0,sent=null;
+  if(window._rIO){window._rIO.disconnect();window._rIO=null}
+  const more=()=>{const end=Math.min(LIST.length,nShown+CH),fr=document.createDocumentFragment();
+    for(;nShown<end;nShown++)fr.append(mk(LIST[nShown]));
+    S.lim=nShown;sent?l.insertBefore(fr,sent):l.append(fr);
+    if(nShown>=LIST.length&&sent){if(window._rIO)window._rIO.disconnect();sent.remove();sent=null}};
+  if(LIST.length>CH&&window.IntersectionObserver){
+    sent=E('div');sent.style.cssText='height:1px;width:100%;grid-column:1/-1';l.append(sent);
+    const want=Math.max(CH,S.lim||0);while(nShown<want&&nShown<LIST.length)more();
+    if(sent){window._rIO=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))more()},{rootMargin:'1500px'});window._rIO.observe(sent)}}
+  else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
   renderSR(l);
   if(GV.length){const g=E('div','gal');
@@ -1825,7 +1936,10 @@ function thMake(url,kd){return new Promise((res,rej)=>{
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
       const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
-    im.onerror=()=>{if(!done){done=true;clearTimeout(tm);rej(new Error('thumb'))}};im.decoding='async';im.src=url;return}
+    // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
+    let tryFull=false;
+    im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
+    im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8):url;return}
   /* Video element must live in the DOM and use preload=auto: detached/metadata-only <video> in Android WebView never decodes a frame. */
   const v=document.createElement('video');v.muted=true;v.defaultMuted=true;v.playsInline=true;v.preload='auto';
   v.setAttribute('playsinline','');v.setAttribute('muted','');
@@ -1890,7 +2004,7 @@ function holdMenu(r,i){  // press and hold (or right-click) selects the item; ac
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
-function go(p){S.path=p;S.sel.clear();clearQ();load()}
+function go(p){S.path=p;S.lim=0;S.sel.clear();clearQ();load()}
 /* ---- search in subfolders (server walks the tree below the current folder) ---- */
 let sT=0;
 function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
@@ -1979,11 +2093,14 @@ async function doMkdir(){
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
 /* mirror a copy/move/send job in the Android notification shade (no-op in a browser) */
 function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(location.origin,id)}catch(e){}}
+let curJob='';
+$('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 async function track(id){
-  let ok=false;
+  let ok=false;curJob=id;
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id)}catch(e){toast('⚠ '+e.message,5000);break}
     if(j.state==='error'){toast('⚠ '+j.error,7000);break}
+    if(j.state==='cancel'){toast('Cancelled',2500);break}
     if(j.state==='done'){toast('✅ Done',2500);ok=true;break}
     const pct=Math.floor(j.done*100/j.total);
     toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0,pct);
@@ -2022,6 +2139,7 @@ function lsBack(){
   if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
   if(document.body.classList.contains('srch')){clearQ();render();return true}
   if(S.sel.size){S.sel.clear();render();return true}
+  if(S.path&&S.path!=='/'){go(S.path.slice(0,S.path.lastIndexOf('/'))||'/');return true}
   return false}
 $('#cog').onclick=openSettings;
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
