@@ -9,10 +9,10 @@ How it works
   * Every device runs this same file: a small HTTP server + the web UI.
   * Discovery: UDP beacons (broadcast + unicast sweep of the subnet). Devices see each
     other within ~1s, and a hotspot host sees its clients too.
-  * Security: each device shows a 6-digit PIN. You enter the other device's PIN once to
-    pair. Only the shared root folder is reachable; the UI itself is local-only.
+  * Güvenlik: PIN / eşleştirme yok. Aynı ağdaki cihazlar doğrudan bağlanır.
+    Yalnızca paylaşılan kök klasöre erişilir; arayüzün kendisi sadece yerel cihaza açıktır.
 """
-import os, sys, re, json, time, uuid, hmac, random, socket, shutil, struct, mimetypes
+import os, sys, re, json, time, uuid, socket, shutil, struct, mimetypes
 import posixpath, threading, subprocess, ipaddress, webbrowser
 import urllib.parse, http.client
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -44,8 +44,6 @@ def load_cfg():
     except Exception:
         pass
     CFG.setdefault("id", uuid.uuid4().hex[:8])
-    CFG.setdefault("pin", "%06d" % random.SystemRandom().randrange(1000000))
-    CFG.setdefault("paired", {})
     host = os.environ.get("LANSHARE_NAME") or socket.gethostname()
     CFG.setdefault("name", host if host not in ("", "localhost") else "Phone-" + CFG["id"][:4])
     save_cfg()
@@ -239,12 +237,12 @@ class Counter:
 class Remote:
     """Another LANShare device, same interface as Local."""
 
-    def __init__(self, peer, pin):
-        self.id, self.name, self.ip, self.port, self.pin = peer["id"], peer["name"], peer["ip"], peer["port"], pin
+    def __init__(self, peer):
+        self.id, self.name, self.ip, self.port = peer["id"], peer["name"], peer["ip"], peer["port"]
 
     def _call(self, method, route, params=None, body=None, size=None, stream=False, headers=None):
         c = http.client.HTTPConnection(self.ip, self.port, timeout=30, blocksize=1 << 16)
-        h = {"X-Pin": self.pin}
+        h = {}
         if headers:
             h.update(headers)
         if body is not None:
@@ -264,10 +262,6 @@ class Remote:
                 pass
             if r.status == 404:
                 raise FileNotFoundError(txt)
-            if r.status == 401:  # only a wrong PIN un-pairs the device
-                CFG["paired"].pop(self.id, None)
-                save_cfg()
-                raise PermissionError("PIN rejected by %s - pair again" % self.name)
             if r.status == 403:
                 raise PermissionError(txt)
             raise IOError("%s: %s" % (self.name, txt))
@@ -322,10 +316,7 @@ def ep(dev):
     p = DISC.get(dev)
     if not p:
         raise IOError("that device is offline")
-    pin = CFG["paired"].get(dev)
-    if not pin:
-        raise PermissionError("not paired - enter its PIN first")
-    return Remote(p, pin)
+    return Remote(p)
 
 
 # ----------------------------------------------------------------- discovery
@@ -540,19 +531,6 @@ class Discovery:
 # ----------------------------------------------------------------- jobs / clipboard
 JOBS = {}
 CLIP = {}
-FAILS = {}
-
-
-def check_pin(ip, pin):
-    now = time.time()
-    n, t = FAILS.get(ip, (0, 0))
-    if n >= 5 and now - t < 60:
-        return False
-    if hmac.compare_digest(str(pin), CFG["pin"]):
-        FAILS.pop(ip, None)
-        return True
-    FAILS[ip] = (n + 1 if now - t < 60 else 1, now)
-    return False
 
 
 def start_job(src_id, paths, dst_id, ddir, cut, label):
@@ -751,10 +729,8 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.fail(500, e)
 
-    # ---- what other devices call (PIN protected)
+    # ---- diğer cihazların çağırdığı rotalar (doğrulama yok, hız için)
     def peer(self, route, q):
-        if not self.trusted() and not check_pin(self.ip(), self.headers.get("X-Pin", "")):
-            return self.fail(401, "bad pin")
         L = LOCAL
         if route == "ping":
             self.json({"ok": True})
@@ -785,10 +761,10 @@ class H(BaseHTTPRequestHandler):
     # ---- what the local UI calls
     def api(self, route, q):
         if route == "info":
-            return self.json({"id": CFG["id"], "name": CFG["name"], "pin": CFG["pin"], "ips": sorted(DISC.own_ips),
+            return self.json({"id": CFG["id"], "name": CFG["name"], "ips": sorted(DISC.own_ips),
                               "port": DISC.port, "root": LOCAL.root})
         if route == "peers":
-            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "paired": p["id"] in CFG["paired"]}
+            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "paired": True}
                               for p in DISC.list()])
         if route == "scan":
             DISC.announce()
@@ -821,14 +797,7 @@ class H(BaseHTTPRequestHandler):
         if route == "send":
             return self.json({"job": start_job(b["dev"], b["paths"], b["to"], INBOX, False, "Sending")})
         if route == "pair":
-            p = DISC.get(b["id"])
-            if not p:
-                raise IOError("that device is offline")
-            pin = str(b["pin"]).strip()
-            Remote(p, pin).ping()
-            CFG["paired"][b["id"]] = pin
-            save_cfg()
-            return self.json({"ok": True})
+            return self.json({"ok": True})  # eşleştirme kaldırıldı, uyumluluk için boş
         if route == "addip":
             if not DISC.add_ip(str(b["ip"]).strip()):
                 raise IOError("no LANShare device found at that address")
@@ -889,7 +858,7 @@ header h1{font-size:18px;margin:0;flex:1}
 #sheet .card{background:var(--card);width:100%;padding:16px;border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:8px}
 #sheet h3{margin:0 0 4px}.big{padding:14px;text-align:left}
 </style></head><body>
-<header><h1>LANShare</h1><button class=tag id=nm></button><button class=tag id=pin></button><button class=tag id=scan>⟳</button></header>
+<header><h1>LANShare</h1><button class=tag id=nm></button><button class=tag id=scan>⟳</button></header>
 <div id=peers></div><div id=hint></div><div id=crumbs></div><div id=list></div>
 <div id=dock><div id=clip></div><div id=bar></div></div>
 <div id=toast></div><div id=sheet></div>
@@ -924,9 +893,7 @@ async function pollPeers(){
     renderPeers()}catch(e){}
   setTimeout(pollPeers,1200)}
 async function ensurePaired(p){
-  if(p.id==='local'||p.paired)return true;
-  const pin=prompt('Enter the PIN shown on '+p.name+' (top bar of its screen):');if(!pin)return false;
-  try{await api('POST','/api/pair',{id:p.id,pin});p.paired=true;S.sig='';await pollOnce();return true}catch(e){toast('⚠ '+e.message,4000);return false}}
+  return true}
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
   if(id!=='local'){const p=S.peers.find(x=>x.id===id);if(!p||!await ensurePaired(p))return}
@@ -1004,7 +971,7 @@ $('#scan').onclick=async()=>{await api('POST','/api/scan',{});toast('Scanning…
 $('#nm').onclick=async()=>{const n=prompt('Name of this device',$('#nm').dataset.n);if(!n)return;const r=await api('POST','/api/name',{name:n});$('#nm').textContent='📱 '+r.name;$('#nm').dataset.n=r.name};
 (async()=>{
   const i=await api('GET','/api/info');
-  $('#nm').textContent='📱 '+i.name;$('#nm').dataset.n=i.name;$('#pin').textContent='PIN '+i.pin;
+  $('#nm').textContent='📱 '+i.name;$('#nm').dataset.n=i.name;
   document.title='LANShare - '+i.name;
   await pollOnce();renderPeers();load();refreshClip();pollPeers()})();
 </script></body></html>
@@ -1032,7 +999,7 @@ def serve(root, block=True, open_browser=True):
     url = "http://127.0.0.1:%d" % port
     print("LANShare running")
     print("  Open:   ", url)
-    print("  Device: ", CFG["name"], "   PIN:", CFG["pin"])
+    print("  Device: ", CFG["name"])
     print("  Sharing:", LOCAL.root)
     print("  Network:", ", ".join(sorted(DISC.own_ips)) or "(no network found)")
     if open_browser:

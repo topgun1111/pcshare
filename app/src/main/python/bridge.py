@@ -24,7 +24,7 @@ def start(root, cfg_path, device_name, ifaces=""):
 
 def info():
     import lanshare
-    return {"pin": lanshare.CFG.get("pin"), "name": lanshare.CFG.get("name")}
+    return {"name": lanshare.CFG.get("name")}
 
 
 def stop():
