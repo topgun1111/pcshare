@@ -181,6 +181,28 @@ class Local:
             raise PermissionError(STORAGE_MSG)
         return out
 
+    def search(self, v, q, limit=300, secs=15):
+        """Recursive name search below folder v (case-insensitive substring). Capped by count and time."""
+        q, base, out, end = q.lower(), self.real(v), [], time.time() + secs
+        for dp, dns, fns in os.walk(base):
+            rel = os.path.relpath(dp, self.root).replace(os.sep, "/")
+            vdir = "/" if rel == "." else "/" + rel
+            for n, d in [(x, True) for x in dns] + [(x, False) for x in fns]:
+                if q not in n.lower():
+                    continue
+                try:
+                    st = os.stat(os.path.join(dp, n))
+                    size, mt = (0 if d else st.st_size), int(st.st_mtime)
+                except OSError:
+                    size, mt = 0, 0
+                out.append({"name": n, "dir": d, "size": size, "mtime": mt, "path": vjoin(vdir, n)})
+                if len(out) >= limit:
+                    return {"items": out, "partial": True}
+            if time.time() > end:
+                return {"items": out, "partial": True}
+        out.sort(key=lambda i: (not i["dir"], i["name"].lower()))
+        return {"items": out, "partial": False}
+
     def names(self, v):
         try:
             return {i["name"] for i in self.ls(v)}
@@ -411,6 +433,9 @@ class Remote:
 
     def ls(self, v):
         return json.loads(self._call("GET", "ls", {"path": v}))
+
+    def search(self, v, q):
+        return json.loads(self._call("GET", "search", {"path": v, "q": q}))
 
     def names(self, v):
         try:
@@ -1080,6 +1105,8 @@ class H(BaseHTTPRequestHandler):
             self.json(L.ls(q["path"]))
         elif route == "walk":
             self.json(L.walk(q["path"]))
+        elif route == "search":
+            self.json(L.search(q["path"], q["q"]))
         elif route == "file":
             self.send_file(L.open_read(q["path"]), posixpath.basename(q["path"]), False)
         elif route == "put":
@@ -1124,6 +1151,8 @@ class H(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             return self.json({"path": vnorm(q.get("path", "/")), "items": items, "used": used})
+        if route == "search":
+            return self.json(ep(q["dev"]).search(vnorm(q.get("path", "/")), q["q"]))
         if route == "dl":
             e = ep(q["dev"])
             return self.send_file(e.open_read(vnorm(q["path"])), posixpath.basename(vnorm(q["path"])), q.get("dl") != "1")
@@ -1392,7 +1421,7 @@ cut:'M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.
 paste:'M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z',
 download:'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
 edit:'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
-send:'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z',
+send:'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z',openw:'M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
 del:'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
 close:'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
 play:'M8 5v14l11-7z',
@@ -1582,6 +1611,7 @@ function render(){
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   const V=shown();renderTools(V);
   if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
+  const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   V.forEach(i=>{
     if(GV.indexOf(i)>=0)return;
@@ -1599,10 +1629,11 @@ function render(){
     if(S.view==='compact')sub.append(E('span','',S.sort==='date'&&dt?dt:sz));else sub.append(E('span','',sz),E('span','',dt));
     nm.append(E('b','',i.name),sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(S.path,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
     holdMenu(r,i);
     l.append(r)});
   S.rg++;THQ.length=0;
+  renderSR(l);
   if(GV.length){const g=E('div','gal');
     GV.forEach(i=>{
       const c=E('div','vc'+(S.sel.has(i.name)?' sel':'')),pth=jn(S.path,i.name),key=thKey(i);
@@ -1680,14 +1711,17 @@ function thMake(url,kd){return new Promise((res,rej)=>{
   v.src=url;v.load()})}
 /* ---- native download progress (called from MainActivity) ---- */
 const DLS={};
+/* WebView timers are throttled while another app is in front (text editor etc.), so also sweep when we come back */
+function lsDlSweep(){Object.keys(DLS).forEach(k=>{const c=DLS[k];if(c.exp&&Date.now()>=c.exp){c.el.remove();delete DLS[k]}})}
+document.addEventListener('visibilitychange',lsDlSweep);window.addEventListener('focus',lsDlSweep);
 function lsDl(id,name,done,total,speed,st,msg){
   let c=DLS[id];
   if(!c){const el=E('div','dlc'),hd=E('div','dh'),nm=E('b'),cx=E('button','','Cancel'),bar=E('div','bar'),fill=E('i'),info=E('small');
     cx.onclick=()=>{try{LSAndroid.cancel(id)}catch(e){}cx.disabled=true};
     bar.append(fill);hd.append(nm,cx);el.append(hd,bar,info);$('#dlw').append(el);c=DLS[id]={el,nm,cx,fill,info}}
   c.nm.textContent=name;
-  const fin=t=>setTimeout(()=>{c.el.remove();delete DLS[id]},t);
-  if(st==='done'){c.el.classList.remove('ind');c.fill.style.width='100%';c.info.textContent=msg||('✅ Saved to Downloads · '+fmt(done));c.cx.style.display='none';fin(5000);return}
+  const fin=t=>{c.exp=Date.now()+t;setTimeout(lsDlSweep,t+30)};
+  if(st==='done'){c.el.classList.remove('ind');c.fill.style.width='100%';c.info.textContent=msg||('✅ Saved to Downloads · '+fmt(done));c.cx.style.display='none';fin(msg?700:5000);return}
   if(st==='err'){c.el.classList.remove('ind');c.info.textContent='⚠ Download failed: '+msg;c.cx.style.display='none';fin(7000);return}
   if(st==='cancel'){c.el.classList.remove('ind');c.info.textContent='Cancelled';c.cx.style.display='none';fin(2500);return}
   if(total>0){c.el.classList.remove('ind');const pct=Math.min(100,done*100/total);c.fill.style.width=pct.toFixed(1)+'%';
@@ -1723,6 +1757,32 @@ function holdMenu(r,i){  // press and hold (or right-click) selects the item; ac
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
 function go(p){S.path=p;S.sel.clear();clearQ();load()}
+/* ---- search in subfolders (server walks the tree below the current folder) ---- */
+let sT=0;
+function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
+function renderSR(l){
+  if(!S.q||S.q.length<2||!srOK())return;
+  const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+  if(!items.length&&S.sr.items&&!S.sr.err)return;
+  const h=E('div');h.style.cssText='padding:14px 16px 6px;font-size:13px;color:var(--mut);grid-column:1/-1';
+  h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
+  l.append(h);
+  items.forEach(i=>{
+    const k=kind(i),r=E('div','row'),lead=E('div','lead k-'+k);
+    if(i.dir)lead.append(raw(FOLD,'fold'));else lead.append(ic(k,'kd'));
+    const nm=E('div','nm'),sub=E('small');sub.append(E('span','',par(i.path)));
+    nm.append(E('b','',i.name),sub);r.append(lead,nm);
+    r.onclick=()=>i.dir?go(i.path):goFind(par(i.path),i.name);
+    l.append(r)})}
+async function goFind(dir,name){S.path=dir;S.sel.clear();clearQ();await load();
+  document.body.classList.add('srch');$('#sq').value=name;S.q=name.toLowerCase();render()}
+function doSearch(){
+  const q=S.q;if(!q||q.length<2)return;const dev=S.dev,path=S.path;
+  S.sr={q,dev,path,items:null};render();
+  api('GET','/api/search?dev='+enc(dev)+'&path='+enc(path)+'&q='+enc(q),null,45000)
+    .then(r=>{if(S.sr&&S.sr.q===q){S.sr.items=r.items;S.sr.partial=r.partial;render()}})
+    .catch(e=>{if(S.sr&&S.sr.q===q){S.sr.items=[];S.sr.err=e.message;render()}})}
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
@@ -1739,7 +1799,8 @@ function renderBar(){
     if(has)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
     if(S.sel.size===1)btn('edit','Rename',doRename);
-    btn('send','Send',doSend);btn('del','Delete',doDelete,'dng')
+    if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
+    btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
   if(has){c.style.display='flex';c.textContent='';
@@ -1755,7 +1816,7 @@ function doDownload(){
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});
-  if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
+  watchJob(r.job);if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
 function pickDevice(){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Send to…'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
@@ -1763,9 +1824,14 @@ function pickDevice(){return new Promise(res=>{
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
   opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead');ld.append(ic('phone'));b.append(ld,E('span','',p.name));b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
+/* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
+function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
+  const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+  if(window.LSAndroid&&LSAndroid.openWith){LSAndroid.openWith(location.origin+u);S.sel.clear();render()}
+  else window.open(u,'_blank')}
 async function doSend(){
   const p=await pickDevice();if(!p)return;
-  try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
+  try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
 async function doDelete(){
   const n=S.sel.size;
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
@@ -1776,6 +1842,8 @@ async function doRename(){
 async function doMkdir(){
   const n=await dlg({title:'New folder',input:{label:'Folder name'},ok:'Create'});if(!n)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
+/* mirror a copy/move/send job in the Android notification shade (no-op in a browser) */
+function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(location.origin,id)}catch(e){}}
 async function track(id){
   let ok=false;
   for(;;){
@@ -1825,7 +1893,7 @@ const sOpen=v=>{if(v){document.body.classList.add('srch');setTimeout(()=>$('#sq'
 $('#srch').onclick=()=>sOpen(!document.body.classList.contains('srch'));
 $('#sback').onclick=()=>sOpen(false);
 $('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
-$('#sq').oninput=e=>{S.q=e.target.value.trim().toLowerCase();render()};
+$('#sq').oninput=e=>{S.q=e.target.value.trim().toLowerCase();render();clearTimeout(sT);sT=setTimeout(doSearch,500)};
 $('#fab').onclick=doMkdir;
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{S.sel=new Set(shown().map(i=>i.name));render()};

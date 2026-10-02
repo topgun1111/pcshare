@@ -3,6 +3,9 @@ package com.lanshare.app
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -13,6 +16,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.*
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.chaquo.python.Python
@@ -32,8 +36,12 @@ class MainActivity : Activity() {
 
     inner class Bridge {
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
+        /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
+        @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
         /** Tap on a file: fetch it to cache, then hand it to an app that can open it. */
         @JavascriptInterface fun open(url: String) { saveToDownloads(url, null, true) }
+        /** Same, but always shows the system "Open with" app chooser. */
+        @JavascriptInterface fun openWith(url: String) { saveToDownloads(url, null, true, true) }
     }
     private var pendingShare: List<String>? = null
 
@@ -81,6 +89,11 @@ class MainActivity : Activity() {
         handleShare(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
+    }
+
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleShare(i) }
 
     /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
@@ -124,7 +137,7 @@ class MainActivity : Activity() {
             web.evaluateJavascript(
                 "(async()=>{try{const p=await pickDevice();if(!p)return;" +
                 "const r=await api('POST','/api/send',{dev:'local',paths:" + arr +
-                ".map(n=>'/LANShare Shared/'+n),to:p.id});track(r.job)}catch(e){toast('\\u26a0 '+e.message,5000)}})()", null)
+                ".map(n=>'/LANShare Shared/'+n),to:p.id});watchJob(r.job);track(r.job)}catch(e){toast('\\u26a0 '+e.message,5000)}})()", null)
         }, 1200)
     }
 
@@ -138,13 +151,77 @@ class MainActivity : Activity() {
     }
 
     /** Push download progress to the page: state = run | done | err | cancel */
-    private fun dlUi(id: Int, name: String, done: Long, total: Long, speed: Double, st: String, msg: String = "") =
+    private fun dlUi(id: Int, name: String, done: Long, total: Long, speed: Double, st: String, msg: String = "") {
+        val nid = 1000 + id
+        when {
+            st == "cancel" || (st == "done" && msg.isNotEmpty()) -> getSystemService(NotificationManager::class.java).cancel(nid)
+            st == "done" -> notifyProgress(nid, name, "Saved to Downloads \u00b7 " + sz(done), 0, 0, "done")
+            st == "err" -> notifyProgress(nid, name, "Download failed: $msg", 0, 0, "err")
+            else -> notifyProgress(nid, name, progressText(done, total, speed), done, total, "run")
+        }
         runOnUiThread {
             web.evaluateJavascript("window.lsDl&&lsDl($id,${JSONObject.quote(name)},$done,$total,$speed,'$st',${JSONObject.quote(msg)})", null)
         }
+    }
+
+    private fun sz(n: Long) = android.text.format.Formatter.formatFileSize(this, n)
+    private fun progressText(done: Long, total: Long, speed: Double): String {
+        val sp = if (speed > 0) " \u00b7 ${sz(speed.toLong())}/s" else ""
+        return if (total > 0) "${(done * 100 / total).coerceIn(0, 100)}% \u00b7 ${sz(done)} / ${sz(total)}$sp" else "${sz(done)}$sp"
+    }
+
+    /** One progress notification per operation (determinate bar; indeterminate if the size is unknown). */
+    private fun notifyProgress(nid: Int, title: String, text: String, done: Long, total: Long, st: String) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26)
+                nm.createNotificationChannel(NotificationChannel("lanshare_transfers", "Transfers", NotificationManager.IMPORTANCE_LOW))
+            val open = PendingIntent.getActivity(this, 0,
+                Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            val b = NotificationCompat.Builder(this, "lanshare_transfers")
+                .setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(text)
+                .setContentIntent(open).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            if (st == "run") b.setOngoing(true).setProgress(100, if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0, total <= 0)
+            else b.setOngoing(false).setAutoCancel(true).setProgress(0, 0, false)
+            nm.notify(nid, b.build())
+        } catch (_: Exception) {}
+    }
+
+    private fun watchJob(origin: String, job: String) {
+        val nid = 5000 + (job.hashCode() and 0xFFFF)
+        Thread {
+            var lastD = 0L; var lastT = System.nanoTime(); var speed = 0.0
+            try {
+                while (true) {
+                    val body = URL("$origin/api/job?id=$job").openConnection()
+                        .apply { connectTimeout = 5_000; readTimeout = 10_000 }
+                        .getInputStream().bufferedReader().use { it.readText() }
+                    val j = JSONObject(body)
+                    val label = j.optString("label", "Working")
+                    val done = j.optLong("done"); val total = j.optLong("total", 1).coerceAtLeast(1)
+                    when (j.optString("state")) {
+                        "error" -> { notifyProgress(nid, label, "Failed: " + (if (j.isNull("error")) "" else j.optString("error")), 0, 0, "err"); break }
+                        "done" -> { notifyProgress(nid, label, "Done", 0, 0, "done"); break }
+                    }
+                    val now = System.nanoTime()
+                    if (now > lastT) {
+                        val inst = (done - lastD) * 1e9 / (now - lastT)
+                        speed = if (speed == 0.0) inst else speed * 0.6 + inst * 0.4
+                        lastT = now; lastD = done
+                    }
+                    val text = if (j.optBoolean("bytes", true)) progressText(done, total, speed) else "$done / $total items"
+                    notifyProgress(nid, label, text, done, total, "run")
+                    Thread.sleep(700)
+                }
+            } catch (_: Exception) {
+                getSystemService(NotificationManager::class.java).cancel(nid)
+            }
+        }.start()
+    }
 
     /** Stream a LANShare URL into /Download using the server's own filename, reporting progress. */
-    private fun saveToDownloads(url: String, name0: String?, openAfter: Boolean = false) {
+    private fun saveToDownloads(url: String, name0: String?, openAfter: Boolean = false, pick: Boolean = false) {
         val id = dlSeq.incrementAndGet()
         Thread {
             var name = name0 ?: "download"
@@ -183,7 +260,7 @@ class MainActivity : Activity() {
                 } }
                 if (openAfter) {
                     dlUi(id, t.name, done, done, speed, "done", "Opening\u2026")
-                    runOnUiThread { openWithApp(t) }
+                    runOnUiThread { openWithApp(t, pick) }
                 } else dlUi(id, t.name, done, done, speed, "done")
             } catch (e: InterruptedException) {
                 f?.delete(); dlUi(id, name, 0, 0, 0.0, "cancel")
@@ -198,13 +275,15 @@ class MainActivity : Activity() {
         "sh", "bat", "ps1", "gradle", "properties", "htaccess", "gitignore", "csv", "tsv", "srt", "vtt", "tex", "txt", "html", "htm", "svg")
 
     /** Open a fetched file with an installed app; source/text files go to a text editor. */
-    private fun openWithApp(f: File) {
+    private fun openWithApp(f: File, pick: Boolean = false) {
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
-        fun go(m: String) = startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, m)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        fun go(m: String) {
+            val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(if (pick) Intent.createChooser(v, "Open with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) else v)
+        }
         try { go(mime) }
         catch (e: ActivityNotFoundException) {
             try { if (mime != "*/*") go("*/*") else throw e }
