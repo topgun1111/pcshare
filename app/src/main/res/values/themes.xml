@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.LANShare" parent="Theme.AppCompat.DayNight.NoActionBar" />
+</resources>
