@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- share-network glyph, kept inside the 66dp adaptive safe zone -->
+    <path android:fillColor="#FFFFFF" android:pathData="M54,34m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M38,66m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M70,66m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3.5" android:pathData="M54,34L38,66M54,34L70,66M38,66L70,66"/>
+</vector>

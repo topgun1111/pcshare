@@ -9,12 +9,15 @@ How it works
   * Every device runs this same file: a small HTTP server + the web UI.
   * Discovery: UDP beacons (broadcast + unicast sweep of the subnet). Devices see each
     other within ~1s, and a hotspot host sees its clients too.
-  * Güvenlik: PIN / eşleştirme yok. Aynı ağdaki cihazlar doğrudan bağlanır.
-    Yalnızca paylaşılan kök klasöre erişilir; arayüzün kendisi sadece yerel cihaza açıktır.
+  * Also a TCP scan of the subnet + a live check of known devices, so devices show up
+    and stay listed even when the router/hotspot drops UDP broadcasts.
+  * No PIN, no pairing: every LANShare device on the network can be opened directly.
+    Only use it on networks you trust.
 """
-import os, sys, re, json, time, uuid, socket, shutil, struct, mimetypes
+import os, sys, re, json, time, uuid, errno, socket, shutil, struct, mimetypes
 import posixpath, threading, subprocess, ipaddress, webbrowser
 import urllib.parse, http.client
+from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 BEACON_PORT = 48555
@@ -37,6 +40,24 @@ CFG_FILE = _cfg_path()
 CFG = {}
 
 
+def phone_model():
+    """Phone model (e.g. 'Pixel 7', 'SM-S918B') on Android; '' if it can't be read."""
+    for prop in ("ro.product.marketname", "ro.product.model", "ro.product.device"):
+        try:
+            v = subprocess.check_output(["getprop", prop], stderr=subprocess.DEVNULL,
+                                        timeout=3).decode("utf-8", "ignore").strip()
+        except Exception:
+            v = ""
+        if v:
+            return v[:40]
+    try:  # Pydroid / Chaquopy-style fallback
+        from jnius import autoclass
+        b = autoclass("android.os.Build")
+        return str(b.MODEL).strip()[:40]
+    except Exception:
+        return ""
+
+
 def load_cfg():
     try:
         with open(CFG_FILE) as f:
@@ -44,8 +65,14 @@ def load_cfg():
     except Exception:
         pass
     CFG.setdefault("id", uuid.uuid4().hex[:8])
-    host = os.environ.get("LANSHARE_NAME") or socket.gethostname()
-    CFG.setdefault("name", host if host not in ("", "localhost") else "Phone-" + CFG["id"][:4])
+    CFG.pop("pin", None)
+    CFG.pop("paired", None)
+    host = socket.gethostname()
+    fallback = host if host not in ("", "localhost") else "Phone-" + CFG["id"][:4]
+    cur = CFG.get("name")
+    # use the phone model unless the user picked a name themselves (an old auto name is replaced)
+    if not CFG.get("name_custom") and (not cur or cur == fallback or cur.startswith("Phone-")):
+        CFG["name"] = phone_model() or cur or fallback
     save_cfg()
 
 
@@ -84,6 +111,37 @@ def default_root():
 
 
 # ----------------------------------------------------------------- endpoints
+def fsize(p):
+    try:
+        return os.path.getsize(p)
+    except OSError:
+        pass
+    try:
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            return f.tell()
+    except OSError:
+        return 0
+
+
+def storage_ok():
+    """False when Android 11+ 'All files access' is NOT granted (apps then only see folders and their
+    own/media files - other files look missing). None = unknown / not Android."""
+    try:
+        from jnius import autoclass
+        sdk = autoclass("android.os.Build$VERSION").SDK_INT
+        if sdk < 30:
+            return True
+        return bool(autoclass("android.os.Environment").isExternalStorageManager())
+    except Exception:
+        return None
+
+
+STORAGE_MSG = ("This phone hides files from LANShare: open Android Settings > Apps > LANShare > "
+               "Permissions > Files and media (or 'All files access') and allow management of all files, "
+               "then restart the app")
+
+
 class Local:
     """Files on this device, exposed as virtual paths rooted at '/'."""
     id = "local"
@@ -103,11 +161,24 @@ class Local:
         with os.scandir(self.real(v)) as it:
             for e in it:
                 try:
-                    st = e.stat()
                     d = e.is_dir()
                 except OSError:
-                    continue
-                out.append({"name": e.name, "dir": d, "size": 0 if d else st.st_size, "mtime": int(st.st_mtime)})
+                    d = False
+                try:  # never hide an entry just because stat() is refused (Android storage quirks)
+                    st = e.stat()
+                    size, mt = (0 if d else st.st_size), int(st.st_mtime)
+                except OSError:
+                    size, mt = 0, 0
+                it = {"name": e.name, "dir": d, "size": size, "mtime": mt}
+                if d:  # number of entries, shown as "4 items" under a folder
+                    try:
+                        with os.scandir(e.path) as sub:
+                            it["n"] = sum(1 for _ in sub)
+                    except OSError:
+                        pass
+                out.append(it)
+        if not out and STORAGE.get("ok") is False:
+            raise PermissionError(STORAGE_MSG)
         return out
 
     def names(self, v):
@@ -119,7 +190,7 @@ class Local:
     def walk(self, v):
         base = self.real(v)
         if os.path.isfile(base):
-            return [{"rel": "", "dir": False, "size": os.path.getsize(base)}]
+            return [{"rel": "", "dir": False, "size": fsize(base)}]
         res = [{"rel": "", "dir": True, "size": 0}]
         for dp, dns, fns in os.walk(base):
             for n in dns:
@@ -129,16 +200,12 @@ class Local:
                 fp = os.path.join(dp, n)
                 if os.path.islink(fp):
                     continue
-                try:
-                    sz = os.path.getsize(fp)
-                except OSError:
-                    continue
-                res.append({"rel": os.path.relpath(fp, base).replace(os.sep, "/"), "dir": False, "size": sz})
+                res.append({"rel": os.path.relpath(fp, base).replace(os.sep, "/"), "dir": False, "size": fsize(fp)})
         return res
 
     def open_read(self, v):
         p = self.real(v)
-        return open(p, "rb"), os.path.getsize(p)
+        return open(p, "rb"), fsize(p)
 
     def write(self, v, fobj, size, cb=None):
         p = self.real(v)
@@ -182,6 +249,29 @@ class Local:
         shutil.move(self.real(v), self.real(to_v))
 
 
+def src_for(ip):
+    """Our own address on the same subnet as `ip` (None if unknown). Binding outgoing sockets to it
+    makes Android send the traffic over Wi-Fi/hotspot instead of through a VPN."""
+    try:
+        a = ipaddress.ip_address(ip)
+        for mine, net in (DISC.ifaces if DISC else []):
+            if a in net:
+                return mine
+    except Exception:
+        pass
+    return None
+
+
+def conn_to(ip, port, timeout):
+    src = src_for(ip)
+    try:
+        if src:
+            return http.client.HTTPConnection(ip, port, timeout=timeout, blocksize=1 << 16, source_address=(src, 0))
+    except TypeError:
+        pass
+    return http.client.HTTPConnection(ip, port, timeout=timeout, blocksize=1 << 16)
+
+
 class Stream:
     def __init__(self, c, r):
         self.c, self.r = c, r
@@ -197,7 +287,8 @@ class Stream:
 
 
 class RemoteFile:
-    """Read-only, seekable view of a file on another device (re-opens with a Range header on seek)."""
+    """Read-only, seekable view of a file on another device.
+    Re-opens with a Range header on seek and after a dropped connection."""
 
     def __init__(self, remote, v):
         self.rm, self.v, self.pos, self.s = remote, v, 0, None
@@ -209,17 +300,38 @@ class RemoteFile:
             self.s = None
         self.pos = n
 
+    def _reopen(self):
+        hdr = {"Range": "bytes=%d-" % self.pos} if self.pos else None
+        self.s, _ = self.rm._call("GET", "file", {"path": self.v}, stream=True, headers=hdr)
+
     def read(self, n=-1):
-        if self.s is None:
-            hdr = {"Range": "bytes=%d-" % self.pos} if self.pos else None
-            self.s, _ = self.rm._call("GET", "file", {"path": self.v}, stream=True, headers=hdr)
-        b = self.s.read(n)
-        self.pos += len(b)
-        return b
+        last = None
+        for attempt in range(5):
+            try:
+                if self.s is None:
+                    self._reopen()
+                b = self.s.read(n)
+                self.pos += len(b)
+                return b
+            except (PermissionError, FileNotFoundError):
+                raise
+            except Exception as e:
+                last = e
+                if self.s:
+                    try:
+                        self.s.close()
+                    except Exception:
+                        pass
+                    self.s = None
+                time.sleep(0.5 * (attempt + 1))
+        raise IOError("connection lost (%s)" % last)
 
     def close(self):
         if self.s:
-            self.s.close()
+            try:
+                self.s.close()
+            except Exception:
+                pass
             self.s = None
 
 
@@ -239,20 +351,43 @@ class Remote:
 
     def __init__(self, peer):
         self.id, self.name, self.ip, self.port = peer["id"], peer["name"], peer["ip"], peer["port"]
+        self.ips = [peer["ip"]] + [i for i in peer.get("ips", []) if i != peer["ip"]]
 
     def _call(self, method, route, params=None, body=None, size=None, stream=False, headers=None):
-        c = http.client.HTTPConnection(self.ip, self.port, timeout=30, blocksize=1 << 16)
         h = {}
         if headers:
             h.update(headers)
         if body is not None:
             h["Content-Length"] = str(size)
-        try:
-            c.request(method, "/p/%s?%s" % (route, urllib.parse.urlencode(params or {})), body=body, headers=h)
-            r = c.getresponse()
-        except Exception as e:
-            c.close()
-            raise IOError("%s unreachable (%s)" % (self.name, e))
+        retry = (method == "GET" or route == "mkdir") and body is None
+        r = c = None
+        err = None
+        order = list(self.ips)
+        for rnd in range(3 if retry else 1):
+            for ip in order:
+                c = conn_to(ip, self.port, 30)
+                try:
+                    c.request(method, "/p/%s?%s" % (route, urllib.parse.urlencode(params or {})), body=body, headers=h)
+                    r = c.getresponse()
+                    err = None
+                    if ip != self.ip:  # remember the address that works
+                        self.ip = ip
+                        if DISC:
+                            with DISC.lock:
+                                if self.id in DISC.peers:
+                                    DISC.peers[self.id]["ip"] = ip
+                    break
+                except Exception as e:
+                    err = e
+                    c.close()
+                    if body is not None:
+                        break  # an upload body cannot be replayed
+            if err is None:
+                break
+            time.sleep(0.4)
+        if err is not None:
+            hint = " - LANShare is not running there (Android may have paused it); open it on that phone" if isinstance(err, ConnectionRefusedError) else ""
+            raise IOError("%s unreachable at %s (%s)%s" % (self.name, ", ".join(order), err, hint))
         if r.status not in (200, 206):
             txt = r.read(800).decode("utf8", "ignore")
             c.close()
@@ -308,6 +443,7 @@ class Remote:
 
 LOCAL = None
 DISC = None
+STORAGE = {}
 
 
 def ep(dev):
@@ -320,20 +456,7 @@ def ep(dev):
 
 
 # ----------------------------------------------------------------- discovery
-EXTRA_IFACES = {}  # ip -> netmask; injected by the Android wrapper (LinkProperties) when ioctl is restricted
-
-
-def set_extra_ifaces(spec):
-    """spec: 'ip/prefix,ip/prefix' (from Android ConnectivityManager)."""
-    out = {}
-    for part in (spec or "").split(","):
-        try:
-            ip, bits = part.strip().split("/")
-            out[ip] = str(ipaddress.ip_network("0.0.0.0/" + bits).netmask)
-        except ValueError:
-            pass
-    EXTRA_IFACES.clear()
-    EXTRA_IFACES.update(out)
+SKIP_IF = ("lo", "rmnet", "ccmni", "tun", "ppp", "dummy", "v4-", "clat", "docker", "veth")
 
 
 def get_ifaces():
@@ -342,6 +465,8 @@ def get_ifaces():
         import fcntl
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         for _, name in socket.if_nameindex():
+            if name.startswith(SKIP_IF):
+                continue
             b = struct.pack("256s", name[:15].encode())
             try:
                 ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, b)[20:24])
@@ -351,13 +476,13 @@ def get_ifaces():
         s.close()
     except Exception:
         pass
-    for ip, mask in list(EXTRA_IFACES.items()):
-        found.setdefault(ip, mask)
     if not found:
         try:
             out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=3).stdout
-            for ip, bits in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)/(\d+)", out):
-                found[ip] = str(ipaddress.ip_network("0.0.0.0/" + bits).netmask)
+            for line in out.splitlines():
+                m = re.search(r"^\d+:\s+(\S+).*?inet (\d+\.\d+\.\d+\.\d+)/(\d+)", line)
+                if m and not m.group(1).startswith(SKIP_IF):
+                    found[m.group(2)] = str(ipaddress.ip_network("0.0.0.0/" + m.group(3)).netmask)
         except Exception:
             pass
     if not found:
@@ -382,7 +507,7 @@ def get_ifaces():
             net = ipaddress.ip_network("%s/%s" % (ip, mask), strict=False)
         except ValueError:
             continue
-        if net.prefixlen < 22:
+        if net.prefixlen < 22 or net.prefixlen > 30:
             net = ipaddress.ip_network(ip + "/24", strict=False)
         res.append((ip, net))
     return res
@@ -400,35 +525,66 @@ def arp_neighbors():
     return ips
 
 
+def hello_url(ip, port, timeout=2.5):
+    c = conn_to(ip, port, timeout)
+    try:
+        c.request("GET", "/p/hello")
+        return json.loads(c.getresponse().read())
+    finally:
+        c.close()
+
+
 class Discovery:
+    PEER_TTL = 60
+
     def __init__(self, port):
         self.port = port
         self.peers = {}
         self.lock = threading.Lock()
         self.ifaces = get_ifaces()
         self.own_ips = {ip for ip, _ in self.ifaces}
-        self.alive = True
         self.out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.out.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        self.wake = threading.Event()
+        self.sweep_lock = threading.Lock()
+        self.replied = {}
+        self.pool = ThreadPoolExecutor(max_workers=48)
+        self.probe_pool = ThreadPoolExecutor(max_workers=8)  # own pool: live checks must never queue behind a subnet scan
+        self.gen = 0            # bump -> listen() re-creates its UDP socket
+        self.tick = time.time()  # last beacon-loop heartbeat (detects phone sleep / unlock)
 
     def msg(self):
-        return json.dumps({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port}).encode()
+        return json.dumps({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port,
+                           "ips": sorted(self.own_ips)}).encode()
+
+    def hello(self):
+        return {"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port,
+                "ips": sorted(self.own_ips)}
 
     def start(self):
-        threading.Thread(target=self.listen, daemon=True).start()
-        threading.Thread(target=self.beacon, daemon=True).start()
+        for fn in (self.listen, self.beacon, self.tcp_loop, self.live_loop):
+            threading.Thread(target=fn, daemon=True).start()
 
-    def stop(self):
-        self.alive = False
-        try:
-            self.out.close()
-        except OSError:
-            pass
-
-    def add(self, pid, ip, port, name):
+    # ---- peer table
+    def add(self, pid, ip, port, name, ips=None):
+        now = time.time()
         with self.lock:
-            new = pid not in self.peers or self.peers[pid]["ip"] != ip
-            self.peers[pid] = {"id": pid, "ip": ip, "port": int(port), "name": str(name)[:40], "seen": time.time()}
+            p = self.peers.get(pid)
+            new = p is None
+            if new:
+                p = self.peers[pid] = {"id": pid, "ip": ip, "port": int(port), "name": str(name)[:40],
+                                       "seen": now, "ips": [], "ok": True}
+            elif not p.get("ok", True):
+                p["ip"] = ip  # last address failed - try the newest one
+            p["port"], p["name"], p["seen"] = int(port), str(name)[:40], now
+            allips = set(p["ips"]) | {ip}
+            for i in (ips or []):
+                try:
+                    ipaddress.ip_address(i)
+                    allips.add(i)
+                except ValueError:
+                    pass
+            p["ips"] = sorted(allips - self.own_ips)[:8]
         return new
 
     def get(self, pid):
@@ -438,7 +594,7 @@ class Discovery:
     def list(self):
         now = time.time()
         with self.lock:
-            for k in [k for k, v in self.peers.items() if now - v["seen"] > 9]:
+            for k in [k for k, v in self.peers.items() if now - v["seen"] > self.PEER_TTL]:
                 del self.peers[k]
             return sorted((dict(v) for v in self.peers.values()), key=lambda v: v["name"].lower())
 
@@ -448,79 +604,231 @@ class Discovery:
         except OSError:
             pass
 
+    # ---- UDP
     def listen(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
+        while True:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except OSError:
+                    pass
+            s.settimeout(3)
+            gen = self.gen
             try:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            except OSError:
-                pass
-        try:
-            s.bind(("", BEACON_PORT))
-        except OSError as e:
-            print("! cannot listen for beacons:", e)
-            return
-        s.settimeout(1.0)
-        while self.alive:
-            try:
-                data, (ip, _) = s.recvfrom(2048)
-                m = json.loads(data)
-                if m.get("app") != "lanshare" or m["id"] == CFG["id"]:
+                s.bind(("", BEACON_PORT))
+            except OSError as e:
+                print("! cannot listen for beacons (TCP scan still works):", e)
+                s.close()
+                time.sleep(10)
+                continue
+            while gen == self.gen:
+                try:
+                    data, (ip, _) = s.recvfrom(4096)
+                except socket.timeout:
                     continue
-                if self.add(m["id"], ip, m["port"], m["name"]):
-                    self.unicast(ip)  # instant two-way discovery
-            except Exception:
-                pass
-        s.close()
+                except OSError:
+                    break
+                try:
+                    m = json.loads(data)
+                    if m.get("app") != "lanshare" or m["id"] == CFG["id"] or ip in self.own_ips:
+                        continue
+                    new = self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
+                    now = time.time()
+                    if new or now - self.replied.get(ip, 0) > 6:
+                        self.replied[ip] = now
+                        self.unicast(ip)  # instant two-way discovery
+                except Exception:
+                    pass
+            s.close()
+            time.sleep(1)
 
     def beacon(self):
         n = 0
-        while self.alive:
-            if n % 8 == 0:
-                self.ifaces = get_ifaces()
-                self.own_ips = {ip for ip, _ in self.ifaces}
-            self.announce()
-            if n < 3 or n % 15 == 0:
-                self.sweep()
+        while True:
+            try:
+                now = time.time()
+                if now - self.tick > 8:  # we were frozen (screen lock / doze) -> network state is stale
+                    self.resumed()
+                self.tick = now
+                if n % 5 == 0:
+                    self.ifaces = get_ifaces()
+                    self.own_ips = {ip for ip, _ in self.ifaces}
+                self.announce()
+                if n < 4 or n % 5 == 0:
+                    self.sweep()
+            except Exception:
+                pass
             n += 1
             time.sleep(2)
 
-    def announce(self):
-        for t in {"255.255.255.255"} | {str(net.broadcast_address) for _, net in self.ifaces}:
-            try:
-                self.out.sendto(self.msg(), (t, BEACON_PORT))
-            except OSError:
-                pass
+    def resumed(self):
+        """Called after the process was suspended: rebuild sockets/addresses and rescan a few times,
+        because Wi-Fi often needs several seconds to come back after unlock."""
+        self.gen += 1
+        self.ifaces = get_ifaces()
+        self.own_ips = {ip for ip, _ in self.ifaces}
+        now = time.time()
+        with self.lock:
+            for p in self.peers.values():  # give live_loop a chance to re-verify instead of expiring them
+                p["seen"] = now
+                p["ok"] = False
 
-    def sweep(self):
-        """Unicast to every host - works even when the router/hotspot drops broadcasts."""
+        def rescan():
+            for _ in range(6):
+                try:
+                    self.ifaces = get_ifaces()
+                    self.own_ips = {ip for ip, _ in self.ifaces}
+                    self.scan_now()
+                except Exception:
+                    pass
+                time.sleep(3)
+        threading.Thread(target=rescan, daemon=True).start()
+
+    def announce(self):
+        data = self.msg()
+        sent = False
+        for ip, net in self.ifaces:  # one socket per interface so the packet leaves on that interface
+            for t in (str(net.broadcast_address), "255.255.255.255"):
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    try:
+                        s.bind((ip, 0))
+                    except OSError:
+                        pass
+                    s.sendto(data, (t, BEACON_PORT))
+                    s.close()
+                    sent = True
+                except OSError:
+                    pass
+        if not sent:
+            for t in {"255.255.255.255"} | {str(net.broadcast_address) for _, net in self.ifaces}:
+                try:
+                    self.out.sendto(data, (t, BEACON_PORT))
+                except OSError:
+                    pass
+
+    def candidates(self):
         nets = [net for _, net in self.ifaces]
+        hosts, seen = [], set(self.own_ips)
+
+        def put(h):
+            if h not in seen:
+                seen.add(h)
+                hosts.append(h)
+
         for ip in arp_neighbors():
+            put(ip)
             try:
                 n = ipaddress.ip_network(ip + "/24", strict=False)
                 if n not in nets:
                     nets.append(n)
             except ValueError:
                 pass
-        sent = 0
         for net in nets:
             for h in net.hosts():
-                h = str(h)
-                if h not in self.own_ips and sent < 1024:
-                    self.unicast(h)
-                    sent += 1
+                put(str(h))
+        return hosts[:1100]
+
+    def sweep(self):
+        """UDP unicast to every host - works even when the router/hotspot drops broadcasts."""
+        for h in self.candidates():
+            self.unicast(h)
+
+    # ---- TCP scan (most reliable path: plain HTTP hello on each host)
+    def tcp_probe(self, ip):
+        for port in range(BASE_PORT, BASE_PORT + 5):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.7)
+            try:
+                src = src_for(ip)
+                if src:
+                    s.bind((src, 0))
+                r = s.connect_ex((ip, port))
+            except OSError:
+                r = -1
+            finally:
+                s.close()
+            if r == 0:
+                try:
+                    m = hello_url(ip, port, 2.5)
+                    if m.get("app") == "lanshare" and m["id"] != CFG["id"]:
+                        self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
+                        return True
+                except Exception:
+                    pass
+            elif r not in (errno.ECONNREFUSED, 10061):
+                return False  # timeout / unreachable: nobody home
+        return False
+
+    def tcp_sweep(self):
+        if not self.sweep_lock.acquire(False):
+            return
+        try:
+            known = {p["ip"] for p in self.list()}
+            hosts = [h for h in self.candidates() if h not in known]
+            list(self.pool.map(self.tcp_probe, hosts))
+        finally:
+            self.sweep_lock.release()
+
+    def tcp_loop(self):
+        k = 0
+        while True:
+            try:
+                self.tcp_sweep()
+            except Exception:
+                pass
+            k += 1
+            wait = 3 if k < 6 else (8 if not self.peers else 30)
+            self.wake.wait(wait)
+            self.wake.clear()
+
+    def scan_now(self):
+        self.announce()
+        threading.Thread(target=self.sweep, daemon=True).start()
+        self.wake.set()
+
+    # ---- keep known peers alive / fix their address
+    def probe(self, peer):
+        cands = [peer["ip"]] + [i for i in peer.get("ips", []) if i != peer["ip"]]
+        for ip in cands[:4]:
+            try:
+                m = hello_url(ip, peer["port"], 2.5)
+                if m.get("id") == peer["id"]:
+                    self.add(peer["id"], ip, m["port"], m["name"], m.get("ips"))
+                    with self.lock:
+                        p = self.peers.get(peer["id"])
+                        if p:
+                            p["ip"], p["ok"] = ip, True
+                    return
+            except Exception:
+                continue
+        with self.lock:
+            p = self.peers.get(peer["id"])
+            if p:
+                p["ok"] = False
+
+    def live_loop(self):
+        while True:
+            time.sleep(3)
+            try:
+                list(self.probe_pool.map(self.probe, self.list()))
+            except Exception:
+                pass
 
     def add_ip(self, ip):
+        port0 = None
+        if ip.count(":") == 1:
+            ip, _, ps = ip.partition(":")
+            port0 = int(ps)
         ipaddress.ip_address(ip)
-        for port in range(BASE_PORT, BASE_PORT + 20):
+        for port in ([port0] if port0 else range(BASE_PORT, BASE_PORT + 20)):
             try:
-                c = http.client.HTTPConnection(ip, port, timeout=1.0)
-                c.request("GET", "/p/hello")
-                m = json.loads(c.getresponse().read())
-                c.close()
+                m = hello_url(ip, port, 2.0)
                 if m.get("app") == "lanshare" and m["id"] != CFG["id"]:
-                    self.add(m["id"], ip, m["port"], m["name"])
+                    self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
                     self.unicast(ip)
                     return True
             except Exception:
@@ -578,11 +886,28 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
                     if it["dir"]:
                         dst.mkdir(target)
                         continue
-                    f, size = src.open_read(p if not it["rel"] else p + "/" + it["rel"])
-                    try:
-                        dst.write(target, f, size, bump)
-                    finally:
-                        f.close()
+                    sp = p if not it["rel"] else p + "/" + it["rel"]
+                    for attempt in range(4):
+                        sent = [0]
+
+                        def bump2(n, sent=sent):
+                            sent[0] += n
+                            job["done"] += n
+
+                        try:
+                            f, size = src.open_read(sp)
+                            try:
+                                dst.write(target, f, size, bump2)
+                            finally:
+                                f.close()
+                            break
+                        except (PermissionError, FileNotFoundError, FileExistsError, ValueError):
+                            raise
+                        except (OSError, http.client.HTTPException) as e:
+                            job["done"] -= sent[0]
+                            if attempt == 3:
+                                raise IOError(str(e))
+                            time.sleep(1.5 * (attempt + 1))
                 if cut:
                     src.remove(p)
             job["done"] = job["total"]
@@ -600,8 +925,15 @@ def start_job(src_id, paths, dst_id, ddir, cut, label):
 
 
 # ----------------------------------------------------------------- http handler
+MIME_FIX = {".3gp": "video/3gpp", ".3g2": "video/3gpp2", ".mkv": "video/x-matroska", ".mov": "video/quicktime",
+            ".m4v": "video/mp4", ".mp4": "video/mp4", ".webm": "video/webm", ".ts": "video/mp2t",
+            ".heic": "image/heic", ".heif": "image/heif", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif", ".m4a": "audio/mp4"}
+
+
 def mime_for(name):
-    return mimetypes.guess_type(name)[0] or "application/octet-stream"
+    ext = posixpath.splitext(name)[1].lower()
+    return MIME_FIX.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream"
 
 
 def safe_inline(mt):
@@ -611,6 +943,15 @@ def safe_inline(mt):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "LANShare"
+    timeout = 120
+
+    def setup(self):
+        BaseHTTPRequestHandler.setup(self)
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        except OSError:
+            pass
 
     def log_message(self, *a):
         pass
@@ -618,9 +959,6 @@ class H(BaseHTTPRequestHandler):
     # helpers
     def ip(self):
         return self.client_address[0]
-
-    def trusted(self):
-        return self.ip() in ("127.0.0.1", "::1") or self.ip() in DISC.own_ips
 
     def reply(self, code, data, ctype):
         self.send_response(code)
@@ -642,8 +980,9 @@ class H(BaseHTTPRequestHandler):
             pass
 
     def body_json(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}")
+        raw = self._body if self._body is not None else self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self._body = b""
+        return json.loads(raw or b"{}")
 
     def send_file(self, opened, name, inline):
         f, size = opened
@@ -670,7 +1009,8 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Type", mt)
             self.send_header("Content-Length", str(length))
             self.send_header("Content-Disposition", "%s; filename*=UTF-8''%s" % (disp, urllib.parse.quote(name)))
-            self.send_header("Content-Security-Policy", "sandbox")
+            if not mt.startswith(("video/", "audio/")):
+                self.send_header("Content-Security-Policy", "sandbox")
             self.send_header("X-Content-Type-Options", "nosniff")
             if hasattr(f, "seek"):
                 self.send_header("Accept-Ranges", "bytes")
@@ -700,22 +1040,24 @@ class H(BaseHTTPRequestHandler):
 
     def route(self, method):
         u = urllib.parse.urlparse(self.path)
+        # Always consume the request body for local UI calls, otherwise unread bytes
+        # (e.g. the "{}" of POST /api/scan) get glued onto the next keep-alive request.
+        self._body = None
+        if not u.path.startswith("/p/"):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            self._body = self.rfile.read(n) if n > 0 else b""
         q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
         try:
             if u.path == "/p/hello":
-                return self.json({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": DISC.port})
+                return self.json(DISC.hello())
             if u.path.startswith("/p/"):
                 return self.peer(u.path[3:], q)
-            if not self.trusted():
-                return self.reply(403, ("LANShare - " + CFG["name"]).encode(), "text/plain")
-            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-            if host not in ("127.0.0.1", "localhost") and host not in DISC.own_ips:
-                return self.reply(403, b"bad host", "text/plain")
             if u.path == "/":
                 return self.reply(200, PAGE.encode(), "text/html; charset=utf-8")
             if u.path.startswith("/api/"):
-                if method == "POST" and self.headers.get("X-LS") != "1":
-                    return self.reply(403, b"missing header", "text/plain")
                 return self.api(u.path[5:], q)
             self.reply(404, b"not found", "text/plain")
         except FileNotFoundError as e:
@@ -729,7 +1071,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.fail(500, e)
 
-    # ---- diğer cihazların çağırdığı rotalar (doğrulama yok, hız için)
+    # ---- what other devices call
     def peer(self, route, q):
         L = LOCAL
         if route == "ping":
@@ -762,18 +1104,26 @@ class H(BaseHTTPRequestHandler):
     def api(self, route, q):
         if route == "info":
             return self.json({"id": CFG["id"], "name": CFG["name"], "ips": sorted(DISC.own_ips),
-                              "port": DISC.port, "root": LOCAL.root})
+                              "port": DISC.port, "root": LOCAL.root, "storage_ok": STORAGE.get("ok")})
         if route == "peers":
-            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "paired": True}
-                              for p in DISC.list()])
+            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "ok": p.get("ok", True)} for p in DISC.list()])
+        if route == "diag":
+            return self.json({"me": CFG["name"], "id": CFG["id"], "port": DISC.port, "ifaces": [[i, str(n)] for i, n in DISC.ifaces],
+                              "peers": DISC.list()})
         if route == "scan":
-            DISC.announce()
-            threading.Thread(target=DISC.sweep, daemon=True).start()
+            DISC.scan_now()
             return self.json({"ok": True})
         if route == "ls":
             items = ep(q["dev"]).ls(vnorm(q.get("path", "/")))
             items.sort(key=lambda i: (not i["dir"], i["name"].lower()))
-            return self.json({"path": vnorm(q.get("path", "/")), "items": items})
+            used = None
+            if q["dev"] == "local":  # share of main storage in use, for the "70% USED" pill
+                try:
+                    du = shutil.disk_usage(LOCAL.root)
+                    used = round((du.total - du.free) * 100 / du.total) if du.total else None
+                except Exception:
+                    pass
+            return self.json({"path": vnorm(q.get("path", "/")), "items": items, "used": used})
         if route == "dl":
             e = ep(q["dev"])
             return self.send_file(e.open_read(vnorm(q["path"])), posixpath.basename(vnorm(q["path"])), q.get("dl") != "1")
@@ -796,14 +1146,13 @@ class H(BaseHTTPRequestHandler):
             return self.json({"job": start_job(CLIP["dev"], CLIP["paths"], b["dev"], b["dir"], cut, "Moving" if cut else "Copying")})
         if route == "send":
             return self.json({"job": start_job(b["dev"], b["paths"], b["to"], INBOX, False, "Sending")})
-        if route == "pair":
-            return self.json({"ok": True})  # eşleştirme kaldırıldı, uyumluluk için boş
         if route == "addip":
             if not DISC.add_ip(str(b["ip"]).strip()):
                 raise IOError("no LANShare device found at that address")
             return self.json({"ok": True})
         if route == "name":
             CFG["name"] = str(b["name"]).strip()[:40] or CFG["name"]
+            CFG["name_custom"] = True
             save_cfg()
             DISC.announce()
             return self.json({"name": CFG["name"]})
@@ -825,137 +1174,526 @@ class H(BaseHTTPRequestHandler):
 # ----------------------------------------------------------------- UI
 PAGE = r"""<!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name=theme-color content="#1c1c1e">
 <title>LANShare</title>
 <style>
-:root{--bg:#f4f5f7;--fg:#1c1e21;--card:#fff;--ac:#1a73e8;--mut:#6b7280;--bd:#e5e7eb;--sel:#e8f0fe}
-@media(prefers-color-scheme:dark){:root{--bg:#111215;--fg:#e8eaed;--card:#1b1d21;--mut:#9aa0a6;--bd:#2b2e33;--sel:#1f2a3d}}
+:root{--bg:#f4f4f4;--fg:#1b1b1b;--card:#f9f9f9;--cont:#ececec;--ac:#1a6fd1;--onac:#fff;--mut:#6b6b6b;--bd:#d3d3d3;--sel:#cfe0f7;--onsel:#0a2a55;--hov:#0000000f;--errc:#f9dedc;--onerr:#410e0b;--err:#b3261e;--ok:#1e8e3e;--warn:#f9ab00;--sh:0 1px 3px #0000004d,0 4px 8px 3px #00000026;--bar:#1c1c1e;--onbar:#fff;--barmut:#b4b4b8;
+--k-folder-c:#8c5d00;--k-folder-b:#ffdf9e;--k-img-c:#146c2e;--k-img-b:#c4eed0;--k-vid-c:#7627a8;--k-vid-b:#f0dbff;--k-aud-c:#b3126b;--k-aud-b:#ffd8ea;--k-pdf-c:#b3261e;--k-pdf-b:#f9dedc;--k-zip-c:#5d4037;--k-zip-b:#ebdbd0;--k-apk-c:#00695c;--k-apk-b:#c2f0e8;--k-doc-c:#0b57d0;--k-doc-b:#d3e3fd;--k-file-c:#444746;--k-file-b:#e1e3e1}
+--k-folder-c:#8c5d00;--k-folder-b:#ffdf9e;--k-img-c:#146c2e;--k-img-b:#c4eed0;--k-vid-c:#7627a8;--k-vid-b:#f0dbff;--k-aud-c:#b3126b;--k-aud-b:#ffd8ea;--k-pdf-c:#b3261e;--k-pdf-b:#f9dedc;--k-zip-c:#5d4037;--k-zip-b:#ebdbd0;--k-apk-c:#00695c;--k-apk-b:#c2f0e8;--k-doc-c:#0b57d0;--k-doc-b:#d3e3fd;--k-file-c:#444746;--k-file-b:#e1e3e1}
+@media(prefers-color-scheme:dark){:root{--bg:#121212;--fg:#e6e6e6;--card:#1a1a1a;--cont:#242424;--ac:#8ab4f8;--onac:#0b2a5b;--mut:#9a9a9a;--bd:#333;--sel:#233b5e;--onsel:#d6e4fb;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;
+--k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746}}
+--k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg);padding-bottom:150px}
-header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px}
-header h1{font-size:18px;margin:0;flex:1}
-.tag{background:var(--sel);color:var(--ac);border-radius:12px;padding:4px 10px;font-size:13px;border:0;font-weight:600}
-#peers{display:flex;gap:8px;overflow-x:auto;padding:10px 12px}
-.chip{flex:none;border:1px solid var(--bd);background:var(--card);color:var(--fg);border-radius:20px;padding:8px 14px;font-size:14px}
-.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
-#hint{padding:0 14px;color:var(--mut);font-size:13px}
-#crumbs{padding:4px 12px;display:flex;flex-wrap:wrap;gap:2px;align-items:center;color:var(--mut)}
-#crumbs button{background:none;border:0;color:var(--ac);font-size:14px;padding:6px 4px}
-.row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--bd);background:var(--card)}
-.row.sel{background:var(--sel)}
-.dot{width:24px;height:24px;border-radius:50%;border:2px solid var(--mut);flex:none;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff}
-.sel .dot{background:var(--ac);border-color:var(--ac)}
-.ico{font-size:24px;flex:none}
-.nm{flex:1;min-width:0}.nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nm small{color:var(--mut)}
-#empty{padding:30px;text-align:center;color:var(--mut)}
-#dock{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding:8px 10px calc(8px + env(safe-area-inset-bottom));z-index:6}
-#bar{display:flex;gap:6px;overflow-x:auto}
-#clip{display:none;align-items:center;gap:8px;padding:0 2px 8px;font-size:13px}#clip span{flex:1}
-.act{flex:none;border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 12px;font-size:14px}
-.act.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
-#toast{display:none;position:fixed;left:12px;right:12px;bottom:calc(120px + env(safe-area-inset-bottom));background:#222;color:#fff;border-radius:10px;padding:12px;z-index:9;font-size:14px}
-#sheet{display:none;position:fixed;inset:0;background:#0008;z-index:10;align-items:flex-end}
-#sheet .card{background:var(--card);width:100%;padding:16px;border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:8px}
-#sheet h3{margin:0 0 4px}.big{padding:14px;text-align:left}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
+svg{width:24px;height:24px;fill:currentColor;flex:none;display:block}
+body{margin:0;font:15px/1.4 Roboto,system-ui,sans-serif;background:var(--bg);color:var(--fg);padding-bottom:calc(var(--dockh,0px) + 110px);overscroll-behavior-y:contain}
+/* pull to refresh */
+#ptr{position:fixed;left:0;right:0;top:0;height:0;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;z-index:4;font-size:13px;pointer-events:none}
+#ptr div{margin:0 0 8px;padding:6px 14px;border-radius:16px;background:var(--cont);color:var(--mut);box-shadow:var(--sh)}#ptr.go div{color:var(--ac);font-weight:600}
+/* top app bar */
+#top{position:sticky;top:0;z-index:5;background:var(--bg);transition:box-shadow .2s}
+#top:before{content:"";display:block;height:env(safe-area-inset-top);background:var(--bar)}
+#top.el{box-shadow:0 2px 6px #0004}
+#pathrow{display:flex;align-items:center;gap:8px;padding:2px 8px 2px 4px;background:var(--card);border-bottom:1px solid var(--bd)}
+.pill{display:none;align-items:center;gap:6px;flex:none;height:28px;padding:0 9px;border:1px solid var(--mut);border-radius:6px;font-weight:600;font-size:12px;letter-spacing:.2px;text-transform:uppercase}
+.pill i{width:14px;height:14px;border-radius:50%;background:conic-gradient(var(--fg) var(--p,0%),var(--bd) 0)}
+.bar{display:flex;align-items:center;gap:0;height:44px;padding:0 2px 0 14px;background:var(--bar);color:var(--onbar)}
+.selb{display:none;padding-left:4px;background:#243a5e}
+body.selm .mainb{display:none}body.selm .selb{display:flex}
+.ttl{flex:1;min-width:0;display:flex;align-items:center;gap:10px}.bar .ibtn{width:40px;height:40px}
+.ttl h1{flex:0 1 auto;min-width:0;font-size:18px;line-height:24px;font-weight:500;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#nm{display:flex;align-items:center;gap:4px;color:var(--barmut);font-size:12px;line-height:16px;flex:0 1 auto;min-width:0;max-width:50%}
+#nm svg{width:12px;height:12px}#nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ibtn{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex:none;transition:background .15s}
+.ibtn:active,.ibtn.spin:active{background:var(--hov)}
+.ibtn.spin svg{animation:rot .8s linear}
+@keyframes rot{to{transform:rotate(360deg)}}
+.selb h2{flex:1;font-size:20px;font-weight:500;margin:0 0 0 4px}
+/* device chips */
+#peers{display:flex;gap:8px;overflow-x:auto;padding:5px 10px;scrollbar-width:none;background:var(--bg);border-bottom:1px solid var(--bd)}#peers::-webkit-scrollbar{display:none}
+.chip{flex:none;height:28px;display:flex;align-items:center;gap:8px;border:1px solid var(--bd);background:var(--card);border-radius:4px;padding:0 10px 0 8px;font-size:13px;font-weight:500;transition:background .15s}
+.chip:active{background:var(--hov)}
+.chip svg{width:18px;height:18px}
+.chip.on{background:var(--sel);color:var(--onsel);border-color:transparent}
+.chip.add{color:var(--ac);border-style:dashed}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:var(--warn)}
+#hint{padding:3px 14px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
+/* breadcrumbs */
+#crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;color:var(--mut)}#crumbs::-webkit-scrollbar{display:none}
+.crumb{flex:none;display:flex;align-items:center;gap:6px;height:34px;padding:0 5px;border-radius:6px;font-size:14px;color:var(--mut);transition:background .15s}
+.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:24px;height:24px}
+.crumb.cur{color:var(--fg);font-weight:600}
+#crumbs>svg{width:18px;height:18px;opacity:.6}
+/* sort / view toolbar */
+#toolrow{display:flex;align-items:center;gap:4px;min-height:36px;padding:0 2px 0 14px;background:var(--card);border-bottom:1px solid var(--bd)}
+#sum{flex:1;min-width:0;line-height:1.25;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sum b{font-size:13px;font-weight:500;color:var(--fg)}
+#sum small{font-size:12px}#sum small:before{content:' \u00b7 '}
+#sortb{display:flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 8px;border-radius:16px;font-size:13px;font-weight:500;color:var(--ac)}#sortb:active{background:var(--hov)}
+#sortb svg{width:18px;height:18px}#sortb svg.ar{width:14px;height:14px}
+#viewb{width:36px;height:36px}
+.opt{display:flex;align-items:center;gap:16px;min-height:52px;padding:8px;width:100%;border-radius:12px;text-align:left}.opt:active{background:var(--hov)}
+.opt .rd{width:20px;height:20px;border-radius:50%;border:2px solid var(--mut);flex:none;display:grid;place-items:center}
+.opt.on .rd{border-color:var(--ac)}.opt.on .rd:after{content:'';width:10px;height:10px;border-radius:50%;background:var(--ac)}
+.opt .t{flex:1}.opt .t b{display:block;font-weight:400;font-size:16px}.opt .t small{color:var(--mut);font-size:13px}.opt.on .t b{color:var(--ac);font-weight:500}
+#sheet hr{border:0;border-top:1px solid var(--bd);margin:8px 0;width:100%}
+/* view: compact */
+#list.v-compact .row{min-height:44px;padding:2px 14px 2px 8px;gap:10px}
+#list.v-compact .lead{width:36px;height:36px}
+#list.v-compact .fold svg{width:34px;height:29px}
+#list.v-compact .row .lead .kd,#list.v-compact .lead .ck{width:30px;height:30px;padding:5px}
+#list.v-compact .bdg{width:15px;height:15px;border-radius:4px;bottom:-2px}#list.v-compact .bdg svg{width:11px;height:11px}
+#list.v-compact .nm{display:flex;align-items:center;gap:10px}
+#list.v-compact .nm b{flex:1;min-width:0;font-size:15px}
+#list.v-compact .nm small{flex:none;font-size:12px}
+/* view: grid */
+#list.v-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px;align-items:start}
+@media(min-width:600px){#list.v-grid{grid-template-columns:repeat(5,1fr)}}
+#list.v-grid #empty,#list.v-grid .gal{grid-column:1/-1}
+#list.v-grid .row{flex-direction:column;justify-content:flex-start;gap:6px;min-height:0;padding:12px 6px 8px;border:1px solid var(--bd);border-radius:12px;background:var(--bg);text-align:center}
+#list.v-grid .row.sel{background:var(--sel);color:var(--onsel)}
+#list.v-grid .lead{width:64px;height:56px}
+#list.v-grid .fold svg{width:64px;height:55px}
+#list.v-grid .row .lead .kd{width:48px;height:48px;padding:10px}
+#list.v-grid .nm{width:100%;flex:none}
+#list.v-grid .nm b{font-size:13px;line-height:1.25;white-space:normal;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#list.v-grid .nm small{flex-direction:column;align-items:center;gap:0;margin-top:2px;font-size:12px}
+/* banner */
+#banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
+/* list */
+#list{padding:0;background:var(--card)}
+.row{display:flex;align-items:center;gap:14px;min-height:66px;padding:6px 14px 6px 10px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;transition:background .15s}
+.row:active{background:var(--hov)}
+.row.sel{background:var(--sel);color:var(--onsel)}
+.lead{position:relative;width:56px;height:50px;display:grid;place-items:center;flex:none}
+.row .lead .kd{width:40px;height:40px;padding:8px;border-radius:8px;background:var(--b);color:var(--c)}
+.fold svg{width:56px;height:48px;fill:none}
+.bdg{position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);width:24px;height:24px;border-radius:5px;background:#fff;display:grid;place-items:center;box-shadow:0 0 0 1px #0003}.bdg svg{width:16px;height:16px}
+.lead .ck{display:none;width:40px;height:40px;padding:8px;border-radius:50%;background:var(--ac);color:var(--onac)}
+.row.sel .lead .ck{display:block}.row.sel .lead .kd,.row.sel .lead .fold,.row.sel .lead .bdg{display:none}
+.k-folder{--c:var(--k-folder-c);--b:var(--k-folder-b)}.k-img{--c:var(--k-img-c);--b:var(--k-img-b)}.k-vid{--c:var(--k-vid-c);--b:var(--k-vid-b)}.k-aud{--c:var(--k-aud-c);--b:var(--k-aud-b)}.k-pdf{--c:var(--k-pdf-c);--b:var(--k-pdf-b)}.k-zip{--c:var(--k-zip-c);--b:var(--k-zip-b)}.k-apk{--c:var(--k-apk-c);--b:var(--k-apk-b)}.k-doc{--c:var(--k-doc-c);--b:var(--k-doc-b)}.k-file{--c:var(--k-file-c);--b:var(--k-file-b)}
+.nm{flex:1;min-width:0}.nm b{display:block;font-size:18px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm small{display:flex;justify-content:space-between;gap:12px;color:var(--mut);font-size:14px}.row.sel .nm small{color:inherit;opacity:.8}
+#empty{padding:56px 24px;text-align:center;color:var(--mut)}
+#empty svg{width:72px;height:72px;margin:0 auto 12px;padding:18px;border-radius:50%;background:var(--cont)}#empty p{margin:0}
+/* video gallery */
+.gal{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-bottom:1px solid var(--bd)}
+@media(min-width:600px){.gal{grid-template-columns:repeat(5,1fr)}}
+.vc{position:relative;aspect-ratio:1/1;border-radius:8px;overflow:hidden;background:var(--k-vid-b);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.vc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.vc .ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--k-vid-c)}.vc .ph svg{width:36px;height:36px;opacity:.7}
+.vc .pl{position:absolute;left:6px;bottom:6px;width:22px;height:22px;border-radius:50%;background:#0009;color:#fff;display:grid;place-items:center}.vc .pl svg{width:16px;height:16px}
+.vc .du{position:absolute;right:6px;bottom:6px;padding:1px 6px;border-radius:10px;background:#0009;color:#fff;font-size:11px;font-weight:500}
+.vc .vn{position:absolute;left:0;right:0;top:0;padding:14px 6px 4px;background:linear-gradient(#0009,#0000);color:#fff;font-size:11px;line-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vc .ck{display:none;position:absolute;top:6px;right:6px;width:26px;height:26px;padding:4px;border-radius:50%;background:var(--ac);color:var(--onac)}
+.vc.sel{outline:3px solid var(--ac);outline-offset:-3px}.vc.sel .ck{display:block}.vc.sel img{opacity:.75}
+.vc:active{filter:brightness(.85)}
+/* player */
+#pv{display:none;position:fixed;inset:0;z-index:20;background:#000;flex-direction:column}
+#pv .ph2{display:flex;align-items:center;gap:4px;padding:calc(6px + env(safe-area-inset-top)) 4px 6px;color:#fff;background:#000c}
+#pv .ph2 b{flex:1;min-width:0;font-weight:400;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pv video{flex:1;min-height:0;width:100%;background:#000}
+#pv .pimg{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+.lead .thi{position:absolute;inset:0;margin:auto;width:calc(100% - 8px);height:calc(100% - 6px);object-fit:cover;border-radius:8px}
+.row.sel .lead .thi{display:none}
+#pv .pe{display:none;position:absolute;left:16px;right:16px;bottom:calc(24px + env(safe-area-inset-bottom));padding:14px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:14px}
+#pv .pe .tbtn{margin-top:8px;color:inherit;border:1px solid currentColor}
+/* FAB */
+#fab{position:fixed;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));z-index:7;height:56px;padding:0 20px 0 16px;border-radius:12px;display:flex;align-items:center;gap:12px;background:#e2ac5f;color:#3a2600;font-weight:500;font-size:15px;box-shadow:var(--sh);transition:transform .15s,opacity .15s}
+#fab:active{transform:scale(.96)}body.selm #fab{display:none}
+/* bottom bar */
+#dock{touch-action:manipulation;position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--cont);border-top:1px solid var(--bd);box-shadow:0 -2px 8px #0002;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
+#bar{display:flex;gap:0;overflow-x:auto;scrollbar-width:none}#bar::-webkit-scrollbar{display:none}#bar:empty{display:none}
+.ib{touch-action:manipulation;flex:1 0 50px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0;font-size:11px;font-weight:500}
+.ib .ii{width:48px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .15s}
+.ib:active .ii{background:var(--hov)}
+.ib.pri .ii{background:var(--ac);color:var(--onac)}.ib.dng{color:var(--err)}
+#clip{display:none;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#clip span{flex:1;min-width:0}
+.tbtn{height:36px;padding:0 16px;border-radius:18px;font-weight:500;font-size:14px;color:var(--ac)}.tbtn:active{background:var(--hov)}
+.tbtn.fill{background:var(--ac);color:var(--onac)}.tbtn.dng{color:var(--err)}
+#clip .ibtn{width:36px;height:36px}
+/* snackbar */
+#toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));background:#2e3133;color:#f0f0f0;border-radius:12px;padding:14px 16px;z-index:12;font-size:14px;box-shadow:var(--sh)}
+#tp{display:none;height:4px;border-radius:2px;background:#ffffff33;margin-top:10px;overflow:hidden}#tp i{display:block;height:100%;width:0;background:#a8c7fa;transition:width .3s}
+/* bottom sheet + dialog */
+#sheet,#dlg{display:none;position:fixed;inset:0;background:#0000006b;z-index:10;animation:fade .2s}
+#sheet{align-items:flex-end}#dlg{align-items:center;justify-content:center;padding:24px;z-index:11}
+@keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
+#sheet .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
+.handle{width:32px;height:4px;border-radius:2px;background:var(--mut);opacity:.5;margin:4px auto 12px}
+#sheet h3,.dcard h3{margin:0 0 8px;font-size:22px;font-weight:400}
+.li{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px;border-radius:16px;text-align:left;width:100%}.li:active{background:var(--hov)}
+.li .lead{width:40px;height:40px;border-radius:50%;background:var(--sel);color:var(--onsel)}
+.set{display:flex;align-items:center;gap:16px;padding:12px 8px;min-height:64px}
+.set .t{flex:1}.set .t b{display:block;font-weight:400;font-size:16px}.set .t small{color:var(--mut);font-size:13px}
+.sw{position:relative;width:52px;height:32px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;width:100%;height:100%;z-index:1}
+.sw i{position:absolute;inset:0;border-radius:16px;border:2px solid var(--mut);background:var(--cont);transition:.2s}
+.sw i:after{content:'';position:absolute;left:4px;top:6px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:.2s}
+.sw input:checked+i{background:var(--ac);border-color:var(--ac)}
+.sw input:checked+i:after{left:20px;top:2px;width:24px;height:24px;background:var(--onac)}
+.dcard{background:var(--cont);width:100%;max-width:420px;border-radius:12px;padding:24px 24px 16px;animation:up .2s ease-out}
+.dcard p{margin:0 0 16px;color:var(--mut)}
+.tf{width:100%;height:56px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);font:inherit;font-size:16px;padding:0 16px;margin-bottom:16px;outline:0}.tf:focus{border:2px solid var(--ac);padding:0 15px}
+.dact{display:flex;justify-content:flex-end;gap:8px}
 </style></head><body>
-<header><h1>LANShare</h1><button class=tag id=nm></button><button class=tag id=scan>⟳</button></header>
-<div id=peers></div><div id=hint></div><div id=crumbs></div><div id=list></div>
+<header id=top>
+  <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
+    <button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
+  <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
+  <div id=peers></div><div id=hint></div>
+  <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
+  <div id=toolrow><div id=sum></div><button id=sortb aria-label="Sort"></button><button class=ibtn id=viewb aria-label="Change view"></button></div>
+</header>
+<div id=banner></div><div id=list></div>
+<button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
-<div id=toast></div><div id=sheet></div>
+<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
-const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:''};
+const IC={
+folder:'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
+file:'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z',
+doc:'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+img:'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
+vid:'M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z',
+aud:'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
+pdf:'M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z',
+zip:'M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z',
+apk:'M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24c-2.86-1.21-6.08-1.21-8.94 0L5.65 5.67c-.19-.29-.58-.38-.87-.2-.28.18-.37.54-.22.83L6.4 9.48C3.3 11.25 1.28 14.44 1 18h22c-.28-3.56-2.3-6.75-5.4-8.52zM7 15.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25zm10 0c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z',
+refresh:'M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
+settings:'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+copy:'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
+cut:'M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z',
+paste:'M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z',
+download:'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
+edit:'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+send:'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z',
+del:'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+close:'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+play:'M8 5v14l11-7z',
+check:'M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z',
+phone:'M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zM17 19H7V5h10v14z',
+newfolder:'M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.1.89 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z',
+add:'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+chev:'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
+wifi:'M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z',
+camera:'M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z',
+selall:'M3 5h2V3c-1.1 0-2 .9-2 2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2c0-1.1-.9-2-2-2zM5 21v-2H3c0 1.1.9 2 2 2zm-2-4h2v-2H3v2zM9 3H7v2h2V3zm2 18h2v-2h-2v2zm8-8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2zm0-12h2V7h-2v2zm0 8h2v-2h-2v2zm-4 4h2v-2h-2v2zm0-16h2V3h-2v2zM7 17h10V7H7v10zm2-8h6v6H9V9z',
+sort:'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
+up:'M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z',
+down:'M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z',
+vlist:'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
+vcomp:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',
+vgrid:'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'};
+const FOLD='<svg viewBox="0 0 56 48"><path d="M2 8a4 4 0 014-4h14l4 4h26a4 4 0 014 4v28a4 4 0 01-4 4H6a4 4 0 01-4-4z" fill="#d49b45"/><rect x="6" y="9" width="44" height="5" rx="1" fill="#f7f2ea"/><rect x="6" y="13" width="44" height="3" fill="#dcd3c3"/><path d="M2 21a4 4 0 014-4h44a4 4 0 014 4v19a4 4 0 01-4 4H6a4 4 0 01-4-4z" fill="#e2ac5f"/></svg>';
+const HOME='<svg viewBox="0 0 32 32" class="cico"><path d="M6 17l10-8.5L26 17v11H6z" fill="#f5f5f5" stroke="#b5b5b5"/><path d="M2 16L16 4l14 12-2 2.2L16 8 4 18.2z" fill="#e53935"/><path d="M13 20h6v8h-6z" fill="#3d8fd6"/></svg>';
+const DRIVE='<svg viewBox="0 0 32 32" class="cico"><path d="M9 4h14l4 15v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7z" fill="#c9c9c9"/><path d="M5 19h22v7a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="#b2b2b2"/><circle cx="9.5" cy="24" r="1.4" fill="#4caf50"/></svg>';
+const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.innerHTML=h;return e.firstChild.nodeType===1&&!c?e.firstChild:e};
+const BADGE={dcim:['camera','#333'],download:['download','#2f9bd8'],downloads:['download','#2f9bd8'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#1a6fd1']};
+const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
+  s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
+document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
+const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
+const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:(()=>{try{return localStorage.getItem('ls_gal')!=='0'}catch(e){return true}})(),rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
+const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
+const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
+if(!SORTS[S.sort])S.sort='name';if(!VIEWS[S.view])S.view='list';
 const enc=encodeURIComponent;
 const jn=(a,b)=>(a==='/'?'':a)+'/'+b;
-async function api(m,u,b){
-  const r=await fetch(u,{method:m,headers:{'X-LS':'1','Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
-  const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
+async function api(m,u,b,ms){
+  const ac=ms?new AbortController():null,tm=ms?setTimeout(()=>ac.abort(),ms):0;let r,t;
+  try{for(let k=0;;k++){
+    try{r=await fetch(u,{method:m,headers:{'X-LS':'1','Content-Type':'application/json'},body:b?JSON.stringify(b):undefined,signal:ac?ac.signal:undefined});
+      t=await r.text();S.down=false;if(S.lost){S.lost=false;S.back=true;S.fails=0;banner('')}break}  // any answer proves the local server is alive
+    catch(e){if(e&&e.name==='AbortError')throw new Error('timed out');
+      if(e instanceof TypeError){if(m==='GET'&&k<2){await new Promise(x=>setTimeout(x,300));continue}  // one-off network blip: retry quietly
+        S.down=true;throw new Error('LANShare on this phone is paused - open Pydroid, then come back')}throw e}}}
+  finally{clearTimeout(tm)}
+  let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
   if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
 let tt;
-function toast(msg,ms=2800){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
+function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textContent=msg;
+  b.style.display=pct==null?'none':'block';if(pct!=null)b.firstChild.style.width=pct+'%';
+  t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
+function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const ICONS={jpg:'🖼',jpeg:'🖼',png:'🖼',gif:'🖼',webp:'🖼',mp4:'🎬',mkv:'🎬',mov:'🎬',mp3:'🎵',wav:'🎵',m4a:'🎵',pdf:'📕',zip:'🗜',rar:'🗜',apk:'📦',txt:'📝',doc:'📝',docx:'📝'};
-function icon(i){return i.dir?'📁':(ICONS[i.name.split('.').pop().toLowerCase()]||'📄')}
+const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.');
+const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
+function shown(){  // visible items in the chosen order; folders always come first
+  const d=S.asc?1:-1,k=S.sort;
+  const num=i=>k==='date'?(i.mtime||0):(i.dir?(i.n||0):(i.size||0));
+  return vis().slice().sort((a,b)=>{
+    if(a.dir!==b.dir)return a.dir?-1:1;
+    let c=0;
+    if(k==='name')c=COL.compare(a.name,b.name);
+    else if(k==='type')c=a.dir?0:COL.compare(extOf(a.name),extOf(b.name));
+    else c=num(a)-num(b);
+    if(c)return c*d;
+    return COL.compare(a.name,b.name)*(k==='name'?d:1)})}
+function renderTools(V){
+  let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
+  const n=V.length,sm=$('#sum');sm.textContent='';
+  sm.append(E('b','',n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):'')));
+  if(fo&&fi)sm.append(E('small','',fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files')));
+  const sb=$('#sortb');sb.textContent='';sb.append(ic('sort'),E('span','',SORTS[S.sort].t),ic(S.asc?'up':'down','ar'));
+  const vb=$('#viewb');vb.textContent='';vb.append(ic(VIEWS[VIEWS[S.view].n].i));
+  vb.setAttribute('aria-label',VIEWS[S.view].t+' view - tap to change')}
+function setSort(k){if(k!==S.sort){S.sort=k;S.asc=(k==='name'||k==='type')}  // date / size start with newest / largest
+  SV('ls_sort',S.sort);SV('ls_asc',S.asc?'1':'0');render()}
+function setAsc(a){S.asc=a;SV('ls_asc',a?'1':'0');render()}
+function cycleView(){S.view=VIEWS[S.view].n;SV('ls_view',S.view);render();toast(VIEWS[S.view].t+' view',1200)}
+function openSort(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');o.append(card);
+  const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Sort by'));
+    const opt=(on,label,sub,f)=>{const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',label));if(sub)t.append(E('small','',sub));b.append(E('span','rd'),t);b.onclick=()=>{f();draw()};card.append(b)};
+    Object.keys(SORTS).forEach(k=>opt(S.sort===k,SORTS[k].l,k==='size'?'Folders are ordered by number of items':'',()=>setSort(k)));
+    card.append(E('hr'));
+    opt(S.asc,SORTS[S.sort].a,'',()=>setAsc(true));opt(!S.asc,SORTS[S.sort].d,'',()=>setAsc(false));
+    const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.style.marginTop='8px';d.onclick=close;card.append(d)};
+  draw()}
+function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
+function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
+// themed dialog: returns true / the typed text, or null when cancelled
+function dlg(o){return new Promise(res=>{
+  const d=$('#dlg');d.textContent='';d.style.display='flex';
+  const card=E('div','dcard');card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
+  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=o.input.label||'';inp.autocomplete='off';card.append(inp)}
+  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':''),o.ok||'OK');
+  const done=v=>{d.style.display='none';d.onclick=null;res(v)};
+  c.onclick=()=>done(null);k.onclick=()=>done(inp?inp.value:true);
+  d.onclick=e=>{if(e.target===d)done(null)};
+  if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
+  row.append(c,k);card.append(row);d.append(card);
+  if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
 
 function renderPeers(){
   const sig=JSON.stringify([S.peers,S.dev]);if(sig===S.sig)return;S.sig=sig;
   const box=$('#peers');box.textContent='';
-  const mk=(label,id)=>{const c=E('button','chip'+(S.dev===id?' on':''),label);c.onclick=()=>openDev(id);box.append(c)};
-  mk('📱 This device','local');
-  S.peers.forEach(p=>mk((p.paired?'🟢 ':'🔒 ')+p.name,p.id));
-  const add=E('button','chip','＋ IP');add.onclick=addIp;box.append(add);
-  $('#hint').textContent=S.peers.length?'':'Searching for devices running LANShare on this network…'}
+  const mk=(label,id,warn)=>{const c=E('button','chip'+(S.dev===id?' on':''));
+    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));c.onclick=()=>openDev(id);box.append(c)};
+  mk('This device','local');
+  S.peers.forEach(p=>mk(p.name,p.id,p.ok===false));
+  if(S.dev!=='local'&&!S.peers.find(p=>p.id===S.dev))mk(S.known[S.dev]||'device',S.dev,true);
+  const add=E('button','chip add');add.append(ic('add'),E('span','','IP'));add.onclick=addIp;box.append(add);
+  $('#hint').textContent=S.peers.length?'':'Searching for devices… tap refresh or + IP'+(S.ips?' · This device: '+S.ips:'')}
+let pollGen=0,pollTimer;
 async function pollPeers(){
-  try{S.peers=await api('GET','/api/peers');
-    if(S.dev!=='local'&&!S.peers.find(p=>p.id===S.dev)){toast('Device went offline');S.dev='local';S.path='/';S.sel.clear();load()}
-    renderPeers()}catch(e){}
-  setTimeout(pollPeers,1200)}
-async function ensurePaired(p){
-  return true}
+  const g=++pollGen;clearTimeout(pollTimer);
+  try{S.peers=await api('GET','/api/peers',null,5000);
+    S.peers.forEach(p=>S.known[p.id]=p.name);
+    S.fails=0;if(S.back){S.back=false;load()}
+    renderPeers()}
+  catch(e){if(S.down&&++S.fails>=3&&!S.lost){S.lost=true;banner('⏸ LANShare on this phone stopped responding (Android paused it). Reconnecting…')}}
+  if(g===pollGen)pollTimer=setTimeout(pollPeers,S.lost?2500:1200)}
+let lastResume=0;
+function resume(){  // screen unlocked / tab restored / network back
+  const n=Date.now();if(n-lastResume<3000)return;lastResume=n;
+  api('POST','/api/scan',{},4000).catch(()=>{});
+  pollPeers();S.sig='';if(S.dev!=='local')load()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume()});
+window.addEventListener('pageshow',resume);window.addEventListener('online',resume);window.addEventListener('focus',resume);
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
-  if(id!=='local'){const p=S.peers.find(x=>x.id===id);if(!p||!await ensurePaired(p))return}
+  if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
   S.dev=id;S.path='/';S.sel.clear();S.sig='';renderPeers();load()}
 async function addIp(){
-  const ip=prompt('IP address of the other device (e.g. 192.168.43.1):');if(!ip)return;
+  const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
 
+let loadT;
 async function load(){
-  try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));S.path=r.path;S.items=r.items;
-    S.sel=new Set([...S.sel].filter(n=>S.items.find(i=>i.name===n)));render()}
-  catch(e){toast('⚠ '+e.message,4500);S.items=[];render()}}
+  clearTimeout(loadT);const dev=S.dev,path=S.path;
+  try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
+    if(dev!==S.dev||path!==S.path)return;
+    S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(!S.lost)banner('');
+    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
+  catch(e){
+    if(dev!==S.dev||path!==S.path)return;
+    if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
+      S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
+    else{S.err='';toast('⚠ '+e.message,4500);S.items=[];render()}}}
 function render(){
   const cr=$('#crumbs');cr.textContent='';
-  const home=E('button','',devName(S.dev)==='this device'?'📱 Storage':'📂 '+devName(S.dev));home.onclick=()=>go('/');cr.append(home);
-  let acc='';S.path.split('/').filter(Boolean).forEach(seg=>{acc+='/'+seg;const p=acc;cr.append(E('span','','›'));const b=E('button','',seg);b.onclick=()=>go(p);cr.append(b)});
-  const l=$('#list');l.textContent='';
-  if(!S.items.length){const e=E('div','','This folder is empty');e.id='empty';l.append(e)}
-  S.items.forEach(i=>{
-    const r=E('div','row'+(S.sel.has(i.name)?' sel':''));
-    const d=E('div','dot',S.sel.has(i.name)?'✓':'');d.onclick=e=>{e.stopPropagation();S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()};
-    const nm=E('div','nm');nm.append(E('b','',i.name),E('small','',(i.dir?'Folder':fmt(i.size))+' · '+new Date(i.mtime*1000).toLocaleDateString()));
-    r.append(d,E('div','ico',icon(i)),nm);
-    nm.onclick=()=>{if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(S.path,i.name));else window.open('/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),'_blank')};
+  const segs=S.path.split('/').filter(Boolean);
+  const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
+  const dr=E('button','crumb'+(segs.length?'':' cur'));dr.append(raw(DRIVE));if(S.dev!=='local')dr.append(E('span','',devName(S.dev)));dr.onclick=()=>go('/');cr.append(dr);
+  let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),seg);b.onclick=()=>go(p);cr.append(b)});
+  $('#ht').textContent=S.dev==='local'?'Main storage':devName(S.dev);
+  const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used'}else pl.style.display='none';
+  cr.scrollLeft=cr.scrollWidth;
+  const l=$('#list');l.textContent='';l.className='v-'+S.view;
+  const V=shown();renderTools(V);
+  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
+  const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
+  V.forEach(i=>{
+    if(GV.indexOf(i)>=0)return;
+    const k=kind(i),r=E('div','row'+(S.sel.has(i.name)?' sel':''));
+    const lead=E('div','lead k-'+k);
+    if(i.dir){lead.append(raw(FOLD,'fold'));const bd=BADGE[i.name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
+    else{lead.append(ic(k,'kd'));
+      if((k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){
+        const key=thKey(i),pth0=jn(S.path,i.name);
+        const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none'};
+        const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth0),done:showR}))}}
+    lead.append(ic('check','ck'));
+    const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'';
+    const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
+    if(S.view==='compact')sub.append(E('span','',S.sort==='date'&&dt?dt:sz));else sub.append(E('span','',sz),E('span','',dt));
+    nm.append(E('b','',i.name),sub);r.append(lead,nm);
+    r.onclick=()=>{if(r._lp){r._lp=false;return}
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(S.path,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else window.open('/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),'_blank')};
+    holdMenu(r,i);
     l.append(r)});
+  S.rg++;THQ.length=0;
+  if(GV.length){const g=E('div','gal');
+    GV.forEach(i=>{
+      const c=E('div','vc'+(S.sel.has(i.name)?' sel':'')),pth=jn(S.path,i.name),key=thKey(i);
+      const ph=E('div','ph');ph.append(ic('vid'));c.append(ph);
+      c.append(E('div','vn',i.name));
+      const pl=E('span','pl');pl.append(ic('play'));c.append(pl);
+      const du=E('span','du');du.style.display='none';c.append(du);
+      const ck=ic('check','ck');c.append(ck);
+      const show=t=>{if(!t)return;if(t.u){const im=E('img');im.src=t.u;im.alt='';c.insertBefore(im,ph);ph.style.display='none'}
+        if(t.d){du.textContent=fmtDur(t.d);du.style.display=''}};
+      const hit=thGet(key);if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'vid',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth),done:show}));
+      c.onclick=()=>{if(c._lp){c._lp=false;return}
+        if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else playVid(i)};
+      holdMenu(c,i);
+      g.append(c)});
+    l.append(g)}
   renderBar()}
+
+function viewImg(i){
+  const pth=jn(S.path,i.name),u='/api/dl?dev='+enc(S.dev)+'&path='+enc(pth);
+  const o=$('#pv');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.textContent=''};
+  const hd=E('div','ph2'),x=E('button','ibtn');x.append(ic('close'));x.onclick=close;x.style.color='#fff';hd.append(x,E('b','',i.name));
+  const im=E('img','pimg');im.src=u;
+  const er=E('div','pe');im.onerror=()=>{er.textContent='Cannot show this picture here.';const a=E('button','tbtn','Download');a.onclick=()=>window.open(u+'&dl=1','_blank');er.append(document.createElement('br'),a);er.style.display='block'};
+  o.append(hd,im,er)}
+function playVid(i){
+  const pth=jn(S.path,i.name),u='/api/dl?dev='+enc(S.dev)+'&path='+enc(pth);
+  const o=$('#pv');o.textContent='';o.style.display='flex';
+  const close=()=>{try{v.pause();v.removeAttribute('src');v.load()}catch(e){}o.style.display='none';o.textContent=''};
+  const hd=E('div','ph2'),x=E('button','ibtn');x.append(ic('close'));x.onclick=close;x.style.color='#fff';hd.append(x,E('b','',i.name));
+  const v=E('video');v.controls=true;v.autoplay=true;v.playsInline=true;v.preload='auto';
+  const er=E('div','pe');
+  v.onerror=()=>{const c=v.error?v.error.code:0,m={1:'aborted',2:'network error',3:'cannot decode (codec not supported by this browser)',4:'format not supported'}[c]||'unknown';
+    er.textContent='Cannot play here: '+m+'.';const a=E('button','tbtn','Download');a.onclick=()=>window.open(u+'&dl=1','_blank');er.append(document.createElement('br'),a);er.style.display='block'};
+  v.src=u;o.append(hd,v,er)}
+/* ---- video thumbnails: made in the browser from the video itself, cached ---- */
+const THQ=[];let thBusy=0;const thMem={};
+const thKey=i=>S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
+const fmtDur=d=>{d=Math.round(d);const h=Math.floor(d/3600),m=Math.floor(d%3600/60),x=d%60,z=n=>(n<10?'0':'')+n;return h?h+':'+z(m)+':'+z(x):m+':'+z(x)};
+function thGet(k){if(thMem[k])return thMem[k];try{const v=localStorage.getItem('ls_th:'+k);if(v){thMem[k]=JSON.parse(v);return thMem[k]}}catch(e){}return null}
+function thPut(k,t){thMem[k]=t;if(!t.u)return;
+  try{localStorage.setItem('ls_th:'+k,JSON.stringify(t))}
+  catch(e){try{Object.keys(localStorage).filter(x=>x.indexOf('ls_th:')===0).forEach(x=>localStorage.removeItem(x));localStorage.setItem('ls_th:'+k,JSON.stringify(t))}catch(e2){}}}
+const thIO=('IntersectionObserver' in window)?new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){thIO.unobserve(e.target);const f=e.target._th;if(f){e.target._th=null;THQ.push(f());thPump()}}}),{rootMargin:'300px'}):null;
+function thWatch(el,f){if(thIO){el._th=f;thIO.observe(el)}else{THQ.push(f());thPump()}}
+function thPump(){
+  while(thBusy<2&&THQ.length){const j=THQ.shift();if(j.gen!==S.rg)continue;thBusy++;
+    thMake(j.url,j.k).then(t=>{thPut(j.key,t);if(j.gen===S.rg)j.done(t)}).catch(()=>{thMem[j.key]={u:null,d:0}}).then(()=>{thBusy--;thPump()})}}
+function thMake(url,kd){return new Promise((res,rej)=>{
+  if(kd==='img'){const im=new Image();let done=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
+    im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
+      const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
+    im.onerror=()=>{if(!done){done=true;clearTimeout(tm);rej(new Error('thumb'))}};im.decoding='async';im.src=url;return}
+  const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='metadata';v.crossOrigin='anonymous';
+  let fin=false,tm;const end=(ok,t)=>{if(fin)return;fin=true;clearTimeout(tm);try{v.removeAttribute('src');v.load()}catch(e){}ok?res(t):rej(new Error('thumb'))};
+  tm=setTimeout(()=>end(false),15000);
+  v.onerror=()=>end(false);
+  v.onloadedmetadata=()=>{const d=v.duration||0;try{v.currentTime=d>2?Math.min(d*0.1,10):0.1}catch(e){end(false)}};
+  v.onseeked=()=>{try{const w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(false);
+    const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+    c.getContext('2d').drawImage(v,0,0,c.width,c.height);end(true,{u:c.toDataURL('image/jpeg',0.6),d:v.duration||0})}catch(e){end(false)}};
+  v.src=url})}
+function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
+  S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
+function openSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Settings'));
+  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
+  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
+  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
+  sw.append(cb,E('i'));row.append(t,sw);card.append(row);
+  const rowg=E('label','set'),tg=E('div','t'),swg=E('span','sw'),cbg=E('input');cbg.type='checkbox';cbg.checked=S.gal;
+  tg.append(E('b','','Video gallery'),E('small','','Show videos as a grid with thumbnails'));
+  cbg.onchange=()=>{S.gal=cbg.checked;try{localStorage.setItem('ls_gal',S.gal?'1':'0')}catch(e){}render()};
+  swg.append(cbg,E('i'));rowg.append(tg,swg);card.append(rowg);
+  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
+  let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
+  const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
+    S.sel.add(i.name);r.classList.add('sel');renderBar()};  // no re-render, so the release tap is still swallowed by _lp
+  r.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;r._lp=false;x0=e.touches[0].clientX;y0=e.touches[0].clientY;
+    stop();t=setTimeout(()=>{t=0;pick()},450)},{passive:true});
+  r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
+  r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
+  r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
 function go(p){S.path=p;S.sel.clear();load()}
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
+const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
 function renderBar(){
   const b=$('#bar');b.textContent='';
-  const btn=(t,f,c)=>{const x=E('button','act'+(c?' '+c:''),t);x.onclick=f;b.append(x)};
+  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;b.append(x)};
+  const has=S.clip&&S.clip.paths.length;
+  document.body.classList.toggle('selm',S.sel.size>0);
+  const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
+  $('#selcount').textContent=S.sel.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
   if(S.sel.size){
-    btn('📋 Copy',()=>setClip('copy'));btn('✂️ Cut',()=>setClip('cut'));btn('📤 Send',doSend);
-    if(S.sel.size===1)btn('✏️ Rename',doRename);btn('🗑 Delete',doDelete);btn('✖',()=>{S.sel.clear();render()})
-  }else{btn('📁 New folder',doMkdir);btn('☑ Select all',()=>{S.items.forEach(i=>S.sel.add(i.name));render()})}
+    const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
+    btn('copy','Copy',()=>setClip('copy'));btn('cut','Cut',()=>setClip('cut'));
+    if(has)btn('paste','Paste',doPaste,'pri');
+    if(files)btn('download','Download',doDownload);
+    if(S.sel.size===1)btn('edit','Rename',doRename);
+    btn('send','Send',doSend);btn('del','Delete',doDelete,'dng')
+  }
   const c=$('#clip');
-  if(S.clip&&S.clip.paths.length){c.style.display='flex';c.textContent='';
-    c.append(E('span','',(S.clip.op==='cut'?'✂️ ':'📋 ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
-    const pb=E('button','act pri','⬇ Paste here');pb.onclick=doPaste;
-    const xb=E('button','act','✕');xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(pb,xb)}
-  else c.style.display='none'}
+  if(has){c.style.display='flex';c.textContent='';
+    c.append(E('span','',(S.clip.op==='cut'?'Cut ':'Copied ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
+    if(!S.sel.size){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
+    const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
+  else c.style.display='none';
+  const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
+  document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px')}
+function doDownload(){
+  const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
+  f.forEach((i,k)=>setTimeout(()=>{const a=document.createElement('a');a.href='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))+'&dl=1';a.download=i.name;document.body.append(a);a.click();a.remove()},k*600))}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
 function pickDevice(){return new Promise(res=>{
-  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('h3','','Send to…'));
-  const opts=[];if(S.dev!=='local')opts.push({id:'local',name:'This device',paired:true});S.peers.filter(p=>p.id!==S.dev).forEach(p=>opts.push(p));
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Send to…'));
+  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  const opts=[];if(S.dev!=='local')opts.push({id:'local',name:'This device'});S.peers.filter(p=>p.id!==S.dev).forEach(p=>opts.push(p));
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
-  opts.forEach(p=>{const b=E('button','act big',(p.paired?'🟢 ':'🔒 ')+p.name);b.onclick=()=>{o.style.display='none';res(p)};card.append(b)});
-  const c=E('button','act','Cancel');c.onclick=()=>{o.style.display='none';res(null)};card.append(c);o.append(card)})}
+  opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead');ld.append(ic('phone'));b.append(ld,E('span','',p.name));b.onclick=()=>fin(p);card.append(b)});
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 async function doSend(){
-  const p=await pickDevice();if(!p||!await ensurePaired(p))return;
+  const p=await pickDevice();if(!p)return;
   try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
 async function doDelete(){
-  if(!confirm('Delete '+S.sel.size+' item(s) from '+devName(S.dev)+'?'))return;
+  const n=S.sel.size;
+  if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
   try{await api('POST','/api/op',{dev:S.dev,op:'rm',paths:selPaths()});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doRename(){
-  const old=[...S.sel][0];const n=prompt('New name',old);if(!n||n===old)return;
+  const old=[...S.sel][0];const n=await dlg({title:'Rename',input:{value:old,label:'New name'},ok:'Rename'});if(!n||n===old)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'rename',path:jn(S.path,old),name:n});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doMkdir(){
-  const n=prompt('Folder name');if(!n)return;
+  const n=await dlg({title:'New folder',input:{label:'Folder name'},ok:'Create'});if(!n)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
 async function track(id){
   for(;;){
@@ -963,36 +1701,107 @@ async function track(id){
     if(j.state==='error'){toast('⚠ '+j.error,7000);break}
     if(j.state==='done'){toast('✅ Done',2500);break}
     const pct=Math.floor(j.done*100/j.total);
-    toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0);
+    toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0,pct);
     await new Promise(r=>setTimeout(r,400))}
   await refreshClip();load()}
 
-$('#scan').onclick=async()=>{await api('POST','/api/scan',{});toast('Scanning…',1500)};
-$('#nm').onclick=async()=>{const n=prompt('Name of this device',$('#nm').dataset.n);if(!n)return;const r=await api('POST','/api/name',{name:n});$('#nm').textContent='📱 '+r.name;$('#nm').dataset.n=r.name};
+// ---- pull down to refresh
+(()=>{const box=$('#ptr'),lab=box.firstChild,TH=70;let y0=0,dy=0,on=false,busy=false;
+  const atTop=()=>(window.scrollY||document.documentElement.scrollTop||0)<=0;
+  const setH=h=>{box.style.height=h+'px'};
+  const reset=()=>{box.style.transition='height .2s';setH(0);box.classList.remove('go');setTimeout(()=>box.style.transition='',220)};
+  const modal=()=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex';
+  window.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1||!atTop()||modal())return;
+    if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#sheet,#dlg,#top,button'))return;
+    y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
+  window.addEventListener('touchmove',e=>{if(!on)return;dy=e.touches[0].clientY-y0;
+    if(dy<=0||!atTop()){if(dy<=0){on=false;setH(0)}return}
+    if(dy<16)return;
+    if(e.cancelable)e.preventDefault();
+    const h=Math.min(dy*0.5,TH+20);setH(h);const ready=h>=TH;box.classList.toggle('go',ready);
+    lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
+  const end=async()=>{if(!on)return;on=false;
+    if(dy>=16&&dy*0.5>=TH&&!busy){busy=true;box.classList.add('go');lab.textContent='Refreshing…';setH(46);
+      try{api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}
+      await new Promise(r=>setTimeout(r,400));busy=false}
+    reset()};
+  window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
+
+window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scrollY||0)>4),{passive:true});
+(()=>{const dk=$('#dock');const upd=()=>document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
+  if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
+$('#cog').onclick=openSettings;
+$('#sortb').onclick=openSort;$('#viewb').onclick=cycleView;
+$('#fab').onclick=doMkdir;
+$('#xsel').onclick=()=>{S.sel.clear();render()};
+$('#allsel').onclick=()=>{S.sel=new Set(vis().map(i=>i.name));render()};
+$('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');
+  try{await api('POST','/api/scan',{});toast('Scanning…',1500)}catch(e){toast('⚠ '+e.message,3000)}};
+$('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this device appears to others',input:{value:$('#nm').dataset.n||'',label:'Name'},ok:'Save'});if(!n)return;
+  try{const r=await api('POST','/api/name',{name:n});setName(r.name)}catch(e){toast('⚠ '+e.message,3000)}};
 (async()=>{
   const i=await api('GET','/api/info');
-  $('#nm').textContent='📱 '+i.name;$('#nm').dataset.n=i.name;
-  document.title='LANShare - '+i.name;
+  setName(i.name);S.ips=(i.ips||[]).join(', ');
+  document.title='LANShare - '+i.name;if(i.storage_ok===false)toast('⚠ Files are hidden by Android - allow "All files access" for Pydroid 3',9000);
   await pollOnce();renderPeers();load();refreshClip();pollPeers()})();
 </script></body></html>
 """
 
 
+# ----------------------------------------------------------------- keep-awake
+_HELD = []
+
+
+def hold_awake():
+    """Best effort on Android/Pydroid: keep CPU + Wi-Fi awake and let UDP broadcasts through while the
+    screen is off or the browser is in front. Silently does nothing where pyjnius is unavailable."""
+    got = []
+    try:
+        from jnius import autoclass
+        ctx = autoclass("android.app.ActivityThread").currentApplication().getApplicationContext()
+    except Exception:
+        print("  Keep-awake: not available (pyjnius missing) - disable battery optimisation for Pydroid instead")
+        return
+    for label, make in (
+        ("cpu", lambda: ctx.getSystemService("power").newWakeLock(1, "LANShare:cpu")),
+        ("wifi", lambda: ctx.getSystemService("wifi").createWifiLock(3, "LANShare:wifi")),
+        ("multicast", lambda: ctx.getSystemService("wifi").createMulticastLock("LANShare:mc")),
+    ):
+        try:
+            lk = make()
+            lk.setReferenceCounted(False)
+            lk.acquire()
+            _HELD.append(lk)
+            got.append(label)
+        except Exception:
+            pass
+    print("  Keep-awake:", ", ".join(got) if got else "not granted")
+
+
 # ----------------------------------------------------------------- main
-def serve(root, block=True, open_browser=True):
-    """Start server + discovery. block=False returns (port, server) immediately (Android embed)."""
+class Server(ThreadingHTTPServer):
+    request_queue_size = 128
+    daemon_threads = True
+
+
+def main():
     global LOCAL, DISC
     load_cfg()
+    hold_awake()
+    root = sys.argv[1] if len(sys.argv) > 1 else default_root()
     LOCAL = Local(root)
+    STORAGE["ok"] = storage_ok()
+    if STORAGE["ok"] is False:
+        print("  WARNING:", STORAGE_MSG)
     srv = None
     for port in range(BASE_PORT, BASE_PORT + 20):
         try:
-            srv = ThreadingHTTPServer(("", port), H)
+            srv = Server(("", port), H)
             break
         except OSError:
             continue
     if not srv:
-        raise RuntimeError("No free port found")
+        sys.exit("No free port found")
     srv.daemon_threads = True
     DISC = Discovery(port)
     DISC.start()
@@ -1002,22 +1811,14 @@ def serve(root, block=True, open_browser=True):
     print("  Device: ", CFG["name"])
     print("  Sharing:", LOCAL.root)
     print("  Network:", ", ".join(sorted(DISC.own_ips)) or "(no network found)")
-    if open_browser:
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-    if not block:
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        return port, srv
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
-
-
-def main():
-    serve(sys.argv[1] if len(sys.argv) > 1 else default_root())
 
 
 if __name__ == "__main__":
