@@ -1387,6 +1387,22 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 .dcard p{margin:0 0 16px;color:var(--mut)}
 .tf{width:100%;height:56px;border:1px solid var(--mut);border-radius:6px;background:transparent;color:var(--fg);font:inherit;font-size:16px;padding:0 16px;margin-bottom:16px;outline:0}.tf:focus{border:2px solid var(--ac);padding:0 15px}
 .dact{display:flex;justify-content:flex-end;gap:8px}
+/* ---- one size scale: text 16 / 13 / 12, file icons 40, folder icons same visual weight ---- */
+.row{gap:12px;min-height:60px}
+.lead{width:48px;height:44px}
+.fold svg{width:40px;height:34px}
+.row .lead .kd,.lead .ck{width:40px;height:40px;padding:8px}
+.nm b{font-size:16px}.nm small{font-size:13px}
+.selb h2{font-size:18px}
+.ib{font-size:12px}
+#fab{font-size:14px}
+.vrow .vt,.sd .opt .t b{font-size:16px}
+#sheet h3,.dcard h3{font-size:20px}
+.sh{font-size:14px}
+#list.v-grid .lead{width:56px;height:52px}
+#list.v-grid .fold svg{width:48px;height:41px}
+#list.v-grid .row .lead .kd{width:44px;height:44px;padding:9px}
+#list.v-grid .nm b{font-size:13px}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
