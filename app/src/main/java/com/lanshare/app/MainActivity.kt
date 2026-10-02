@@ -188,5 +188,10 @@ class MainActivity : Activity() {
     }
 
     @Deprecated("ok")
-    override fun onBackPressed() { if (web.canGoBack()) web.goBack() else super.onBackPressed() }
+    override fun onBackPressed() {
+        // Never web.goBack(): history still holds the "Starting..." page. Let the UI close its own
+        // overlays / selection first; otherwise leave the app (the server keeps running in the service).
+        if (!pageReady) { finish(); return }
+        web.evaluateJavascript("(window.lsBack?lsBack():false)") { if (it != "true") finish() }
+    }
 }

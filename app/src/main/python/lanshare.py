@@ -1776,6 +1776,13 @@ async function track(id){
 window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scrollY||0)>4),{passive:true});
 (()=>{const dk=$('#dock');const upd=()=>document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
+// Android back: close the top-most overlay / search / selection; returns true when it handled the press
+function lsBack(){
+  const pv=$('#pv');if(pv.style.display==='flex'){const x=pv.querySelector('.ibtn');if(x)x.click();else{pv.style.display='none';pv.textContent=''}return true}
+  for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
+  if(document.body.classList.contains('srch')){clearQ();render();return true}
+  if(S.sel.size){S.sel.clear();render();return true}
+  return false}
 $('#cog').onclick=openSettings;
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};
