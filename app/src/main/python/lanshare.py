@@ -23,7 +23,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 BEACON_PORT = 48555
 BASE_PORT = int(os.environ.get("LANSHARE_PORT", 8765))
 CHUNK = 1 << 20
-INBOX = "/LANShare Received"
+INBOX = "/"  # Send puts files/folders in the target device's main storage root
 
 
 # ----------------------------------------------------------------- config
