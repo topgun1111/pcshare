@@ -867,11 +867,11 @@ _thumb_n = [0]
 
 
 def make_thumb(real_path):
-    """Return JPEG bytes (<=240px) for an image, cached on disk by path+mtime+size. Raises if Pillow is missing."""
+    """Return JPEG bytes (<=400px) for an image, cached on disk by path+mtime+size. Raises if Pillow is missing."""
     from PIL import Image, ImageOps  # noqa
     import hashlib
     st = os.stat(real_path)
-    key = hashlib.sha1(("%s|%d|%d" % (real_path, st.st_mtime_ns, st.st_size)).encode("utf-8", "replace")).hexdigest()
+    key = hashlib.sha1(("400|%s|%d|%d" % (real_path, st.st_mtime_ns, st.st_size)).encode("utf-8", "replace")).hexdigest()
     cp = os.path.join(THUMB_DIR, key[:2], key + ".jpg")
     try:
         with open(cp, "rb") as f:
@@ -880,7 +880,7 @@ def make_thumb(real_path):
         pass
     with Image.open(real_path) as im:
         try:
-            im.draft("RGB", (480, 480))  # JPEG: decode at reduced size, far faster and lighter
+            im.draft("RGB", (800, 800))  # JPEG: decode at reduced size, far faster and lighter
         except Exception:
             pass
         im = ImageOps.exif_transpose(im)
@@ -891,7 +891,7 @@ def make_thumb(real_path):
             im = bg
         else:
             im = im.convert("RGB")
-        im.thumbnail((240, 240))
+        im.thumbnail((400, 400))
         import io
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=70)
@@ -1387,15 +1387,16 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #list.v-compact .nm b{flex:1;min-width:0;font-size:15px}
 #list.v-compact .nm small{flex:none;font-size:12px}
 /* view: grid */
-#list.v-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px;align-items:start}
-@media(min-width:600px){#list.v-grid{grid-template-columns:repeat(5,1fr)}}
+#list.v-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px;align-items:start}
+@media(min-width:600px){#list.v-grid{grid-template-columns:repeat(4,1fr)}}
 #list.v-grid #empty,#list.v-grid .gal{grid-column:1/-1}
-#list.v-grid .row{flex-direction:column;justify-content:flex-start;gap:6px;min-height:0;padding:12px 6px 8px;border:1px solid var(--bd);border-radius:12px;background:var(--bg);text-align:center}
+#list.v-grid .row{flex-direction:column;justify-content:flex-start;gap:6px;min-height:0;padding:6px 6px 8px;border:1px solid var(--bd);border-radius:12px;background:var(--bg);text-align:center}
 #list.v-grid .row.sel{background:var(--sel);color:var(--onsel)}
-#list.v-grid .lead{width:64px;height:56px}
-#list.v-grid .fold svg{width:64px;height:55px}
-#list.v-grid .row .lead .kd{width:48px;height:48px;padding:10px}
+#list.v-grid .lead{width:100%;height:auto;aspect-ratio:1/1}
+#list.v-grid .fold svg{width:40%;height:auto}
+#list.v-grid .row .lead .kd{width:40%;height:40%;padding:0}
 #list.v-grid .nm{width:100%;flex:none}
+#list.v-grid .lead .thi{width:100%;height:100%;border-radius:8px}
 #list.v-grid .nm b{font-size:13px;line-height:1.25;white-space:normal;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 #list.v-grid .nm small{flex-direction:column;align-items:center;gap:0;margin-top:2px;font-size:12px}
 /* banner */
@@ -1526,9 +1527,9 @@ body.kid #fab svg{width:20px;height:20px}
 .vrow .vt,.sd .opt .t b{font-size:16px}
 #sheet h3,.dcard h3{font-size:20px}
 .sh{font-size:14px}
-#list.v-grid .lead{width:56px;height:52px}
-#list.v-grid .fold svg{width:48px;height:41px}
-#list.v-grid .row .lead .kd{width:44px;height:44px;padding:9px}
+#list.v-grid .lead{width:100%;height:auto;aspect-ratio:1/1}
+#list.v-grid .fold svg{width:40%;height:auto}
+#list.v-grid .row .lead .kd{width:40%;height:40%;padding:0}
 #list.v-grid .nm b{font-size:13px}
 </style></head><body>
 <header id=top>
@@ -1920,7 +1921,7 @@ function openMedia(first){
   load(0)}
 /* ---- video thumbnails: made in the browser from the video itself, cached ---- */
 const THQ=[];let thBusy=0;const thMem={};
-const thKey=i=>S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
+const thKey=i=>'v2|'+S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
 const fmtDur=d=>{d=Math.round(d);const h=Math.floor(d/3600),m=Math.floor(d%3600/60),x=d%60,z=n=>(n<10?'0':'')+n;return h?h+':'+z(m)+':'+z(x):m+':'+z(x)};
 function thGet(k){if(thMem[k])return thMem[k];try{const v=localStorage.getItem('ls_th:'+k);if(v){thMem[k]=JSON.parse(v);return thMem[k]}}catch(e){}return null}
 function thPut(k,t){thMem[k]=t;if(!t.u)return;
@@ -1934,7 +1935,7 @@ function thPump(){
 function thMake(url,kd){return new Promise((res,rej)=>{
   if(kd==='img'){const im=new Image();let done=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
-      const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+      const sc=Math.min(1,400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
     // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
     let tryFull=false;
@@ -1948,7 +1949,7 @@ function thMake(url,kd){return new Promise((res,rej)=>{
   const end=(ok,t)=>{if(fin)return;fin=true;clearTimeout(tm);try{v.pause();v.removeAttribute('src');v.load()}catch(e){}v.remove();ok?res(t):rej(new Error('thumb'))};
   tm=setTimeout(()=>end(false),40000);
   const grab=()=>{try{const w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(false);
-    const sc=Math.min(1,240/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+    const sc=Math.min(1,400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
     c.getContext('2d').drawImage(v,0,0,c.width,c.height);end(true,{u:c.toDataURL('image/jpeg',0.6),d:v.duration||0})}catch(e){end(false)}};
   v.onerror=()=>end(false);
   v.onloadedmetadata=()=>{const d=v.duration||0;try{v.currentTime=(isFinite(d)&&d>2)?Math.min(d*0.1,10):0.1}catch(e){end(false)}};
