@@ -1178,11 +1178,11 @@ PAGE = r"""<!doctype html><html><head><meta charset=utf-8>
 <title>LANShare</title>
 <style>
 :root{--bg:#f4f4f4;--fg:#1b1b1b;--card:#f9f9f9;--cont:#ececec;--ac:#1a6fd1;--onac:#fff;--mut:#6b6b6b;--bd:#d3d3d3;--sel:#cfe0f7;--onsel:#0a2a55;--hov:#0000000f;--errc:#f9dedc;--onerr:#410e0b;--err:#b3261e;--ok:#1e8e3e;--warn:#f9ab00;--sh:0 1px 3px #0000004d,0 4px 8px 3px #00000026;--bar:#1c1c1e;--onbar:#fff;--barmut:#b4b4b8;
---k-folder-c:#8c5d00;--k-folder-b:#ffdf9e;--k-img-c:#146c2e;--k-img-b:#c4eed0;--k-vid-c:#7627a8;--k-vid-b:#f0dbff;--k-aud-c:#b3126b;--k-aud-b:#ffd8ea;--k-pdf-c:#b3261e;--k-pdf-b:#f9dedc;--k-zip-c:#5d4037;--k-zip-b:#ebdbd0;--k-apk-c:#00695c;--k-apk-b:#c2f0e8;--k-doc-c:#0b57d0;--k-doc-b:#d3e3fd;--k-file-c:#444746;--k-file-b:#e1e3e1}
---k-folder-c:#8c5d00;--k-folder-b:#ffdf9e;--k-img-c:#146c2e;--k-img-b:#c4eed0;--k-vid-c:#7627a8;--k-vid-b:#f0dbff;--k-aud-c:#b3126b;--k-aud-b:#ffd8ea;--k-pdf-c:#b3261e;--k-pdf-b:#f9dedc;--k-zip-c:#5d4037;--k-zip-b:#ebdbd0;--k-apk-c:#00695c;--k-apk-b:#c2f0e8;--k-doc-c:#0b57d0;--k-doc-b:#d3e3fd;--k-file-c:#444746;--k-file-b:#e1e3e1}
-@media(prefers-color-scheme:dark){:root{--bg:#121212;--fg:#e6e6e6;--card:#1a1a1a;--cont:#242424;--ac:#8ab4f8;--onac:#0b2a5b;--mut:#9a9a9a;--bd:#333;--sel:#233b5e;--onsel:#d6e4fb;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;
---k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746}}
---k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746}}
+--k-folder-c:#8c5d00;--k-folder-b:#ffdf9e;--k-img-c:#146c2e;--k-img-b:#c4eed0;--k-vid-c:#7627a8;--k-vid-b:#f0dbff;--k-aud-c:#b3126b;--k-aud-b:#ffd8ea;--k-pdf-c:#b3261e;--k-pdf-b:#f9dedc;--k-zip-c:#5d4037;--k-zip-b:#ebdbd0;--k-apk-c:#00695c;--k-apk-b:#c2f0e8;--k-doc-c:#0b57d0;--k-doc-b:#d3e3fd;--k-file-c:#444746;--k-file-b:#e1e3e1;--tl:#00897b}
+:root[data-theme=dark]{--bg:#121212;--fg:#e6e6e6;--card:#1a1a1a;--cont:#242424;--ac:#8ab4f8;--onac:#0b2a5b;--mut:#9a9a9a;--bd:#333;--sel:#233b5e;--onsel:#d6e4fb;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;
+--k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746;--tl:#4db6ac;color-scheme:dark}
+@media(prefers-color-scheme:dark){:root[data-theme=auto]{--bg:#121212;--fg:#e6e6e6;--card:#1a1a1a;--cont:#242424;--ac:#8ab4f8;--onac:#0b2a5b;--mut:#9a9a9a;--bd:#333;--sel:#233b5e;--onsel:#d6e4fb;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;
+--k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746;--tl:#4db6ac;color-scheme:dark}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
 svg{width:24px;height:24px;fill:currentColor;flex:none;display:block}
@@ -1228,10 +1228,25 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #toolrow{display:flex;align-items:center;gap:4px;min-height:36px;padding:0 2px 0 14px;background:var(--card);border-bottom:1px solid var(--bd)}
 #sum{flex:1;min-width:0;line-height:1.25;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #sum b{font-size:13px;font-weight:500;color:var(--fg)}
-#sum small{font-size:12px}#sum small:before{content:' \u00b7 '}
+#sum small{font-size:12px}#sum small:before{content:' \00b7  '}
 #sortb{display:flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 8px;border-radius:16px;font-size:13px;font-weight:500;color:var(--ac)}#sortb:active{background:var(--hov)}
 #sortb svg{width:18px;height:18px}#sortb svg.ar{width:14px;height:14px}
-#viewb{width:36px;height:36px}
+#srow{display:none;align-items:center;height:48px;padding:0 4px;background:var(--card);border-bottom:1px solid var(--bd)}body.srch #srow{display:flex}
+#srow .ibtn{width:40px;height:40px}#sq{flex:1;min-width:0;height:40px;border:0;outline:0;background:transparent;color:var(--fg);font:inherit;font-size:16px}
+.sh{color:var(--tl);font-weight:500;font-size:16px;padding:14px 4px 6px}
+#sheet .card.vs{--ac:var(--tl);border-radius:0;padding:0 12px calc(8px + env(safe-area-inset-bottom));gap:0;background:var(--card);max-height:90vh}
+.vrow{display:flex;align-items:center;gap:16px;min-height:56px;padding:6px 4px;width:100%;text-align:left}.vrow .vt{flex:1;font-size:18px}
+.cbx{width:24px;height:24px;margin:0;accent-color:var(--tl);flex:none}
+.vrad{display:flex;padding:6px 0}.rdo{flex:1;display:flex;align-items:center;gap:14px;height:56px;padding:0 4px}
+.rdo .rd{width:22px;height:22px;border-radius:50%;border:2px solid var(--mut);display:grid;place-items:center;flex:none}
+.rdo.on .rd{border-color:var(--tl)}.rdo.on .rd:after{content:'';width:12px;height:12px;border-radius:50%;background:var(--tl)}
+#dlg .dcard.sd{--ac:var(--tl);max-width:360px;padding:24px 0 8px}.sd h3{padding:0 24px;font-weight:500}
+.sd .opt{border-radius:0;padding:6px 24px;min-height:54px}.sd .opt .t b{font-size:20px}.sd .opt.on .t b{color:inherit;font-weight:400}
+.sd .tbtn{color:var(--tl);text-transform:uppercase;letter-spacing:1px;margin:8px 16px 0 0}
+#list.t-lg:not(.v-grid):not(.v-compact) .row{min-height:84px}
+#list.t-lg:not(.v-grid):not(.v-compact) .lead{width:76px;height:68px}
+#list.t-lg:not(.v-grid):not(.v-compact) .row .lead .kd{width:64px;height:64px;padding:14px}
+#list.t-lg:not(.v-grid):not(.v-compact) .fold svg{width:68px;height:58px}
 .opt{display:flex;align-items:center;gap:16px;min-height:52px;padding:8px;width:100%;border-radius:12px;text-align:left}.opt:active{background:var(--hov)}
 .opt .rd{width:20px;height:20px;border-radius:50%;border:2px solid var(--mut);flex:none;display:grid;place-items:center}
 .opt.on .rd{border-color:var(--ac)}.opt.on .rd:after{content:'';width:10px;height:10px;border-radius:50%;background:var(--ac)}
@@ -1339,11 +1354,12 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
-    <button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
+    <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
+  <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
-  <div id=toolrow><div id=sum></div><button id=sortb aria-label="Sort"></button><button class=ibtn id=viewb aria-label="Change view"></button></div>
+  <div id=toolrow><div id=sum></div><button id=sortb aria-label="Sort"></button></div>
 </header>
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
@@ -1381,6 +1397,9 @@ chev:'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
 wifi:'M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z',
 camera:'M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z',
 selall:'M3 5h2V3c-1.1 0-2 .9-2 2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2c0-1.1-.9-2-2-2zM5 21v-2H3c0 1.1.9 2 2 2zm-2-4h2v-2H3v2zM9 3H7v2h2V3zm2 18h2v-2h-2v2zm8-8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2zm0-12h2V7h-2v2zm0 8h2v-2h-2v2zm-4 4h2v-2h-2v2zm0-16h2V3h-2v2zM7 17h10V7H7v10zm2-8h6v6H9V9z',
+search:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+tune:'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z',
+back:'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
 sort:'M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z',
 up:'M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z',
 down:'M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z',
@@ -1400,7 +1419,20 @@ const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:(()=>{try{return localStorage.getItem('ls_gal')!=='0'}catch(e){return true}})(),rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
 const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
+SORTS.none={t:'No Sort',l:'No Sort',a:'',d:''};
 if(!SORTS[S.sort])S.sort='name';if(!VIEWS[S.view])S.view='list';
+S.q='';S.aa=false;S.thumb='s';S.theme=LD('ls_theme','light');if(['light','dark','auto'].indexOf(S.theme)<0)S.theme='light';document.documentElement.dataset.theme=S.theme;
+// view/sort preferences: global default + per-folder overrides ("Apply to all folders" promotes to global)
+let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s'};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
+let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
+const pfKey=()=>S.dev+'|'+S.path;
+function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s'}
+function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
+  if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
+  try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}
+  render()}
+function clearQ(){S.q='';$('#sq').value='';document.body.classList.remove('srch')}
 const enc=encodeURIComponent;
 const jn=(a,b)=>(a==='/'?'':a)+'/'+b;
 async function api(m,u,b,ms){
@@ -1428,7 +1460,9 @@ const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase()
 function shown(){  // visible items in the chosen order; folders always come first
   const d=S.asc?1:-1,k=S.sort;
   const num=i=>k==='date'?(i.mtime||0):(i.dir?(i.n||0):(i.size||0));
-  return vis().slice().sort((a,b)=>{
+  const base=vis().filter(i=>!S.q||i.name.toLowerCase().indexOf(S.q)>=0);
+  if(k==='none')return base;
+  return base.slice().sort((a,b)=>{
     if(a.dir!==b.dir)return a.dir?-1:1;
     let c=0;
     if(k==='name')c=COL.compare(a.name,b.name);
@@ -1441,23 +1475,31 @@ function renderTools(V){
   const n=V.length,sm=$('#sum');sm.textContent='';
   sm.append(E('b','',n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):'')));
   if(fo&&fi)sm.append(E('small','',fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files')));
-  const sb=$('#sortb');sb.textContent='';sb.append(ic('sort'),E('span','',SORTS[S.sort].t),ic(S.asc?'up':'down','ar'));
-  const vb=$('#viewb');vb.textContent='';vb.append(ic(VIEWS[VIEWS[S.view].n].i));
-  vb.setAttribute('aria-label',VIEWS[S.view].t+' view - tap to change')}
-function setSort(k){if(k!==S.sort){S.sort=k;S.asc=(k==='name'||k==='type')}  // date / size start with newest / largest
-  SV('ls_sort',S.sort);SV('ls_asc',S.asc?'1':'0');render()}
-function setAsc(a){S.asc=a;SV('ls_asc',a?'1':'0');render()}
-function cycleView(){S.view=VIEWS[S.view].n;SV('ls_view',S.view);render();toast(VIEWS[S.view].t+' view',1200)}
+  const sb=$('#sortb');sb.textContent='';sb.append(ic('sort'),E('span','',SORTS[S.sort].t));if(S.sort!=='none')sb.append(ic(S.asc?'up':'down','ar'))}
 function openSort(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const d=$('#dlg');d.textContent='';d.style.display='flex';
+  const done=()=>{d.style.display='none';d.onclick=null};d.onclick=e=>{if(e.target===d)done()};
+  const card=E('div','dcard sd');card.append(E('h3','','Sort By'));
+  const opt=(k,asc)=>{const on=S.sort===k&&(k==='none'||S.asc===asc);
+    const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',SORTS[k].t+(k==='none'?'':(asc?' \u25B2':' \u25BC'))));
+    b.append(E('span','rd'),t);b.onclick=()=>{done();setPref({sort:k,asc:asc})};card.append(b)};
+  opt('none',true);['name','size','date','type'].forEach(k=>{opt(k,true);opt(k,false)});
+  const row=E('div','dact'),c=E('button','tbtn','Cancel');c.onclick=done;row.append(c);card.append(row);d.append(card)}
+function openView(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';S.aa=false;
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');o.append(card);
-  const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Sort by'));
-    const opt=(on,label,sub,f)=>{const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',label));if(sub)t.append(E('small','',sub));b.append(E('span','rd'),t);b.onclick=()=>{f();draw()};card.append(b)};
-    Object.keys(SORTS).forEach(k=>opt(S.sort===k,SORTS[k].l,k==='size'?'Folders are ordered by number of items':'',()=>setSort(k)));
-    card.append(E('hr'));
-    opt(S.asc,SORTS[S.sort].a,'',()=>setAsc(true));opt(!S.asc,SORTS[S.sort].d,'',()=>setAsc(false));
-    const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.style.marginTop='8px';d.onclick=close;card.append(d)};
+  const card=E('div','card vs');o.append(card);
+  const draw=()=>{card.textContent='';
+    const cbrow=(label,on,f)=>{const r=E('label','vrow'),c=E('input','cbx');c.type='checkbox';c.checked=on;c.onchange=()=>f(c.checked);r.append(E('span','vt',label),c);return r};
+    card.append(cbrow('Apply to all folders',S.aa,v=>{S.aa=v;if(v)setPref({});draw()}));
+    card.append(E('hr'),E('div','sh','View'));
+    const r1=E('div','vrad');
+    ['list','grid','compact'].forEach(k=>{const b=E('button','rdo'+(S.view===k?' on':''));b.append(E('span','rd'),ic(VIEWS[k].i));b.setAttribute('aria-label',VIEWS[k].t);b.onclick=()=>{setPref({view:k});draw()};r1.append(b)});card.append(r1);
+    const r2=E('div','vrad');
+    [['s','Small thumbnails',22],['l','Large thumbnails',32]].forEach(a=>{const b=E('button','rdo'+(S.thumb===a[0]?' on':'')),g=ic('img');g.style.width=g.style.height=a[2]+'px';b.append(E('span','rd'),g);b.setAttribute('aria-label',a[1]);b.onclick=()=>{setPref({thumb:a[0]});draw()};r2.append(b)});card.append(r2);
+    card.append(E('hr'),E('div','sh','Sort'));
+    const sb=E('button','vrow');sb.append(E('span','vt',SORTS[S.sort].t+(S.sort==='none'?'':(S.asc?' \u25B2':' \u25BC'))));sb.onclick=()=>{close();openSort()};card.append(sb);
+    card.append(E('hr'),E('div','sh','Others'),cbrow('Show hidden files',S.hid,()=>{toggleHidden(true);draw()}))};
   draw()}
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
@@ -1503,7 +1545,7 @@ window.addEventListener('pageshow',resume);window.addEventListener('online',resu
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
-  S.dev=id;S.path='/';S.sel.clear();S.sig='';renderPeers();load()}
+  S.dev=id;S.path='/';S.sel.clear();S.sig='';clearQ();renderPeers();load()}
 async function addIp(){
   const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
@@ -1521,6 +1563,7 @@ async function load(){
       S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
     else{S.err='';toast('⚠ '+e.message,4500);S.items=[];render()}}}
 function render(){
+  applyPrefs();
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
@@ -1529,9 +1572,9 @@ function render(){
   $('#ht').textContent=S.dev==='local'?'Main storage':devName(S.dev);
   const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used'}else pl.style.display='none';
   cr.scrollLeft=cr.scrollWidth;
-  const l=$('#list');l.textContent='';l.className='v-'+S.view;
+  const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   const V=shown();renderTools(V);
-  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
+  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
   const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   V.forEach(i=>{
     if(GV.indexOf(i)>=0)return;
@@ -1631,6 +1674,9 @@ function openSettings(){
   tg.append(E('b','','Video gallery'),E('small','','Show videos as a grid with thumbnails'));
   cbg.onchange=()=>{S.gal=cbg.checked;try{localStorage.setItem('ls_gal',S.gal?'1':'0')}catch(e){}render()};
   swg.append(cbg,E('i'));rowg.append(tg,swg);card.append(rowg);
+  const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
+  const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
+  rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sm.textContent=THN[S.theme]};card.append(rt);
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
@@ -1642,7 +1688,7 @@ function holdMenu(r,i){  // press and hold (or right-click) selects the item; ac
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
-function go(p){S.path=p;S.sel.clear();load()}
+function go(p){S.path=p;S.sel.clear();clearQ();load()}
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
@@ -1731,10 +1777,15 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
 (()=>{const dk=$('#dock');const upd=()=>document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 $('#cog').onclick=openSettings;
-$('#sortb').onclick=openSort;$('#viewb').onclick=cycleView;
+$('#sortb').onclick=openSort;$('#tune').onclick=openView;
+const sOpen=v=>{if(v){document.body.classList.add('srch');setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};
+$('#srch').onclick=()=>sOpen(!document.body.classList.contains('srch'));
+$('#sback').onclick=()=>sOpen(false);
+$('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
+$('#sq').oninput=e=>{S.q=e.target.value.trim().toLowerCase();render()};
 $('#fab').onclick=doMkdir;
 $('#xsel').onclick=()=>{S.sel.clear();render()};
-$('#allsel').onclick=()=>{S.sel=new Set(vis().map(i=>i.name));render()};
+$('#allsel').onclick=()=>{S.sel=new Set(shown().map(i=>i.name));render()};
 $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');
   try{await api('POST','/api/scan',{});toast('Scanning…',1500)}catch(e){toast('⚠ '+e.message,3000)}};
 $('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this device appears to others',input:{value:$('#nm').dataset.n||'',label:'Name'},ok:'Save'});if(!n)return;
