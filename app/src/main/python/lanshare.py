@@ -1332,6 +1332,17 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 .vc .ck{display:none;position:absolute;top:6px;right:6px;width:26px;height:26px;padding:4px;border-radius:50%;background:var(--ac);color:var(--onac)}
 .vc.sel{outline:3px solid var(--ac);outline-offset:-3px}.vc.sel .ck{display:block}.vc.sel img{opacity:.75}
 .vc:active{filter:brightness(.85)}
+/* split screen (foldables / tablets) */
+#dualb{display:none}
+@media (min-width:600px) and (min-height:480px){#dualb{display:grid}}
+body.kid #dualb{display:grid}
+#dual{display:none;position:fixed;inset:0;z-index:8;background:var(--bd);gap:2px}
+body.dual{overflow:hidden}
+body.dual>#top,body.dual>#banner,body.dual>#list,body.dual>#fab,body.dual>#dock{display:none!important}
+body.dual #dual{display:flex}
+#dual .dw{flex:1 1 0;min-width:0;display:flex;border-top:3px solid transparent;background:var(--bg);transition:border-color .15s}
+#dual .dw.act{border-top-color:var(--ac)}
+#dual iframe{flex:1;min-width:0;width:100%;height:100%;border:0;background:var(--bg)}
 /* player */
 #pv{display:none;position:fixed;inset:0;z-index:20;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 #pv .pst,#pv .ppane{position:absolute;inset:0}
@@ -1423,7 +1434,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
-    <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
+    <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div>
@@ -1433,7 +1444,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
-<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
+<div id=ptr><div></div></div><div id=toast><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -1482,9 +1493,11 @@ const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.inn
 const BADGE={dcim:['camera','#333'],download:['download','#2f9bd8'],downloads:['download','#2f9bd8'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#1a6fd1']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
+Object.assign(IC,{vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const PN=+((location.search.match(/[?&]pane=(\d)/)||[])[1]||0),KID=window.parent!==window&&PN>0;let DU=null;
 const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:(()=>{try{return localStorage.getItem('ls_gal')!=='0'}catch(e){return true}})(),rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
 const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
@@ -1916,6 +1929,7 @@ function renderBar(){
   $('#selcount').textContent=S.sel.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
   if(S.sel.size){
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
+    if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
     btn('copy','Copy',()=>setClip('copy'));btn('cut','Cut',()=>setClip('cut'));
     if(has)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
@@ -2005,6 +2019,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
 function lsBack(){
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
   for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
+  if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
   if(document.body.classList.contains('srch')){clearQ();render();return true}
   if(S.sel.size){S.sel.clear();render();return true}
   return false}
@@ -2022,6 +2037,39 @@ $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void 
   try{await api('POST','/api/scan',{});toast('Scanning…',1500)}catch(e){toast('⚠ '+e.message,3000)}};
 $('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this device appears to others',input:{value:$('#nm').dataset.n||'',label:'Name'},ok:'Save'});if(!n)return;
   try{const r=await api('POST','/api/name',{name:n});setName(r.name)}catch(e){toast('⚠ '+e.message,3000)}};
+/* ---- split screen: two full, independent panes (each can show this phone or another device); copy/move between them ---- */
+window.lsPane={get dev(){return S.dev},get path(){return S.path},paths:()=>selPaths(),
+  clearSel(){S.sel.clear();render()},api,toast,watchJob,track,load,refreshClip,
+  dropClip(){S.clip=null;renderBar()}};
+if(KID){document.body.classList.add('kid');$('#dualb').textContent='';$('#dualb').append(ic('single'));
+  document.addEventListener('pointerdown',()=>{try{parent.lsFocus(PN)}catch(e){}},true);
+  $('#dualb').onclick=()=>{try{parent.lsDualSet(false)}catch(e){}}}
+else $('#dualb').onclick=()=>lsDualSet(true);
+function lsDualSet(on){SV('ls_dual',on?'1':'0');duApply()}
+function lsFocus(n){if(!DU||DU.act===n)return;DU.act=n;DU.wa.classList.toggle('act',n===1);DU.wb.classList.toggle('act',n===2);
+  try{(n===1?DU.a:DU.b).contentWindow.lsPane.refreshClip()}catch(e){}}  // clipboard is shared on the server: the pane you tap shows "Paste here"
+function duApply(){
+  if(KID)return;
+  const pref=LD('ls_dual','auto'),want=pref==='1'||(pref==='auto'&&innerWidth>=600&&innerHeight>=480);
+  const w=$('#dual');
+  if(want&&!DU){w.textContent='';
+    const mk=n=>{const d=E('div','dw'+(n===1?' act':'')),f=document.createElement('iframe');f.src='/?pane='+n;f.title='Pane '+n;d.append(f);w.append(d);return[d,f]};
+    const[wa,a]=mk(1),[wb,b]=mk(2);DU={a,b,wa,wb,act:1};document.body.classList.add('dual');window.lsDual=true}
+  else if(!want&&DU){DU=null;window.lsDual=false;w.textContent='';document.body.classList.remove('dual')}}
+async function lsXfer(from,op){
+  if(!DU)return;
+  const A=(from===1?DU.a:DU.b).contentWindow.lsPane,B=(from===1?DU.b:DU.a).contentWindow.lsPane;
+  try{
+    const paths=A.paths();if(!paths.length)return;
+    if(A.dev===B.dev&&A.path===B.path){A.toast('Both panes show the same folder',3000);return}
+    await A.api('POST','/api/clip',{op,dev:A.dev,paths});
+    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:B.path});
+    A.clearSel();A.watchJob(r.job);
+    if(await A.track(r.job)){await A.api('POST','/api/clip',{op:'clear'});A.dropClip()}
+    A.load();B.load();B.refreshClip()}
+  catch(e){A.toast('\u26a0 '+e.message,5000)}}
+let duT=0;window.addEventListener('resize',()=>{clearTimeout(duT);duT=setTimeout(duApply,200)});
+duApply();
 (async()=>{
   const i=await api('GET','/api/info');
   setName(i.name);S.ips=(i.ips||[]).join(', ');
