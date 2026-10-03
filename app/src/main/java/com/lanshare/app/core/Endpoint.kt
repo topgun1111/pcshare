@@ -40,4 +40,8 @@ interface Endpoint {
     fun remove(v: String, progress: ((String) -> Unit)? = null)
     fun rename(v: String, newName: String)
     fun move(v: String, toV: String)
+    /** Details of one file/folder: times, flags, folder totals, media info where available. */
+    fun stat(v: String): JSONObject
+    /** (free, total) bytes of the drive/share that holds [v], or null when unknown. */
+    fun space(v: String): Pair<Long, Long>?
 }

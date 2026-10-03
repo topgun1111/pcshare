@@ -74,6 +74,17 @@ fun safeInline(mt: String) =
     ((mt.startsWith("image/") || mt.startsWith("video/") || mt.startsWith("audio/")) && !mt.contains("svg")) ||
         mt == "application/pdf" || mt == "text/plain"
 
+/** How a device is reached: Tailscale addresses live in 100.64.0.0/10, everything else is treated as the local network. */
+fun viaOf(ip: String): String {
+    val p = ip.split('.')
+    if (p.size == 4) {
+        val a = p[0].toIntOrNull()
+        val b = p[1].toIntOrNull()
+        if (a == 100 && b != null && b in 64..127) return "Tailscale"
+    }
+    return "LAN"
+}
+
 // ---- json helpers (org.json drops a key when you put(key, null): use JSONObject.NULL for real nulls)
 fun jarr(items: Collection<JSONObject>) = JSONArray(items)
 

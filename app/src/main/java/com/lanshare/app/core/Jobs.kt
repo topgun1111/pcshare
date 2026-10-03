@@ -29,11 +29,38 @@ class Job(@Volatile var label: String) {
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
 
+    private val startedAt = System.currentTimeMillis()
+    private var sampleT = startedAt
+    private var sampleDone = 0L
+    private var rate = 0.0   // smoothed units (bytes or items) per second
+
+    /** Smoothed progress rate, sampled at most every 0.7 s however often the UI polls. Retries can move [done] backwards: never negative. */
+    @Synchronized private fun rateNow(): Double {
+        val now = System.currentTimeMillis()
+        val dt = now - sampleT
+        val d = done
+        if (dt >= 700) {
+            val inst = maxOf(d - sampleDone, 0L) * 1000.0 / dt
+            rate = if (rate == 0.0) inst else rate * 0.7 + inst * 0.3
+            sampleT = now; sampleDone = d
+        }
+        return rate
+    }
+
     fun toJson(): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
         .put("error", error ?: JSONObject.NULL).put("label", label).also {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
             note?.let { n -> it.put("note", n) }
+            if (state == "run") {
+                val r = rateNow()
+                val warm = System.currentTimeMillis() - startedAt >= 2000   // a few seconds of data before promising anything
+                if (r > 0 && warm) {
+                    if (bytes) it.put("speed", Math.round(r))
+                    val left = maxOf(total - done, 0L)
+                    if (left > 0) it.put("eta", Math.ceil(left / r).toLong())
+                }
+            }
         }
 }
 
@@ -53,6 +80,21 @@ object Jobs {
             Smb.split(c.getString("host")).first to c.optString("name").ifEmpty { c.getString("host") }
         }
         else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).let { it.ip to it.name }
+    }
+
+    /** What the print service on that PC reports right now: {ok, printer?, problem?}. ok=false = nothing answered on the print port. */
+    fun printerStatus(dev: String): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 3000)
+            try {
+                if (r.status != 200) return JSONObject().put("ok", false)
+                val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                JSONObject().put("ok", true)
+                    .put("printer", if (o.isNull("printer")) JSONObject.NULL else o.optString("printer"))
+                    .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
+            } finally { r.close() }
+        } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */

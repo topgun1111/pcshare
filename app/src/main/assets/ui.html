@@ -232,15 +232,23 @@ body.kid #fab svg{width:20px;height:20px}
 #list.v-grid .fold svg{width:40%;height:auto}
 #list.v-grid .row .lead .kd{width:40%;height:40%;padding:0}
 #list.v-grid .nm b{font-size:13px}
+#free{padding:2px 14px 3px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#free:empty{display:none}#free.lo{color:var(--err);font-weight:600}
+.chip small{font-size:11px;color:var(--mut);font-weight:400;white-space:nowrap}.chip.on small{color:inherit;opacity:.75}
+.det{display:flex;flex-direction:column;padding:4px 0 8px}.dr{display:flex;gap:12px;padding:7px 4px;border-bottom:1px solid var(--bd)}.dr:last-child{border:0}
+.dk{flex:none;width:96px;color:var(--mut);font-size:13px}.dv{flex:1;min-width:0;word-break:break-word;font-size:14px}.dnote{margin:8px 4px 0;padding:8px 10px;border-radius:8px;background:var(--bg);font-size:13px}.dnote.w{color:var(--err)}
+.li .lt{display:flex;flex-direction:column;min-width:0;text-align:left}.li .lt small{font-size:12px;color:var(--mut)}.li .lt small.bad{color:var(--err)}.li .lt small.good{color:var(--ok)}
+.lead .dub{position:absolute;right:3px;bottom:3px;padding:0 4px;border-radius:8px;background:#0009;color:#fff;font-size:10px;font-weight:500;line-height:14px}
+.dupb{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--warn);color:#3b2a00;font-size:11px;font-weight:600;vertical-align:middle}
+#newb{flex:none;height:28px;padding:0 10px;border:1px solid var(--bd);border-radius:14px;font-size:12px;margin-right:6px}#newb.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
-  <div id=peers></div><div id=hint></div>
+  <div id=peers></div><div id=hint></div><div id=free></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
-  <div id=toolrow><div id=sum></div><button id=sortb aria-label="Sort"></button></div>
+  <div id=toolrow><div id=sum></div><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
 </header>
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
@@ -294,7 +302,7 @@ const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.inn
 const BADGE={dcim:['camera','#333'],download:['download','#2f9bd8'],downloads:['download','#2f9bd8'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#1a6fd1']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
-Object.assign(IC,{vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
+Object.assign(IC,{info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -344,6 +352,7 @@ const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.');
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
 function shown(){  // visible items in the chosen order; folders always come first
+  if(S.newest){return vis().filter(i=>!i.dir&&(!S.q||i.name.toLowerCase().indexOf(S.q)>=0)).sort((a,b)=>(b.mtime||0)-(a.mtime||0)||COL.compare(a.name,b.name))}
   const d=S.asc?1:-1,k=S.sort;
   const num=i=>k==='date'?(i.mtime||0):(i.dir?(i.n||0):(i.size||0));
   const base=vis().filter(i=>!S.q||i.name.toLowerCase().indexOf(S.q)>=0);
@@ -356,11 +365,18 @@ function shown(){  // visible items in the chosen order; folders always come fir
     else c=num(a)-num(b);
     if(c)return c*d;
     return COL.compare(a.name,b.name)*(k==='name'?d:1)})}
+let DUPS=new Set();
+/* Candidates only: same size (>0) and the same name once a copy suffix like \" (1)\", \" - Copy\" or \"_1\" is removed. Nothing is compared byte by byte. */
+function findDups(items){const g={};
+  items.forEach(i=>{if(i.dir||!(i.size>0))return;const e=extOf(i.name),b=(e?i.name.slice(0,-e.length-1):i.name).replace(/(\s*\(\d+\)|\s*-\s*copy(\s*\(\d+\))?|\s+copy(\s*\d+)?|_\d+)$/i,'').toLowerCase();
+    const k=i.size+'|'+e+'|'+b;(g[k]=g[k]||[]).push(i.name)});
+  const out=new Set();Object.keys(g).forEach(k=>{if(g[k].length>1)g[k].forEach(n=>out.add(n))});return out}
 function renderTools(V){
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
   const n=V.length,sm=$('#sum');sm.textContent='';
   sm.append(E('b','',n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):'')));
   if(fo&&fi)sm.append(E('small','',fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files')));
+  const nb=$('#newb');nb.classList.toggle('on',!!S.newest);nb.title='Files in this folder, newest first';
   const sb=$('#sortb');sb.textContent='';sb.append(ic('sort'),E('span','',SORTS[S.sort].t));if(S.sort!=='none')sb.append(ic(S.asc?'up':'down','ar'))}
 function openSort(){
   const d=$('#dlg');d.textContent='';d.style.display='flex';
@@ -402,16 +418,23 @@ function dlg(o){return new Promise(res=>{
   row.append(c,k);card.append(row);d.append(card);
   if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
 
+function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
+  if(d<3600)return Math.max(1,Math.round(d/60))+' min ago';if(d<86400)return Math.round(d/3600)+' h ago';return Math.round(d/86400)+' d ago'}
+function peerSub(p){const via=p.via||'',ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
+  return {via:via,t:[via,ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
 function renderPeers(){
-  const sig=JSON.stringify([S.peers,S.dev]);if(sig===S.sig)return;S.sig=sig;
+  const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;
   const box=$('#peers');box.textContent='';
-  const mk=(label,id,warn)=>{const c=E('button','chip'+(S.dev===id?' on':''));
-    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));c.onclick=()=>openDev(id);box.append(c)};
+  const mk=(label,id,warn,p)=>{const c=E('button','chip'+(S.dev===id?' on':''));
+    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));
+    if(p){const sb=peerSub(p);if(sb.t)c.append(E('small','',sb.t));
+      c.title=label+(sb.via?' \u00b7 '+sb.via:'')+(p.ok===false?' \u00b7 not answering'+(p.seen&&!p.smb?', last seen '+(agoTxt(p.seen)||'just now'):''):' \u00b7 online')}
+    c.onclick=()=>openDev(id);box.append(c)};
   mk('This device','local');
-  S.peers.forEach(p=>mk(p.name,p.id,p.ok===false));
+  S.peers.forEach(p=>mk(p.name,p.id,p.ok===false,p));
   if(S.dev!=='local'&&!S.peers.find(p=>p.id===S.dev))mk(S.known[S.dev]||'device',S.dev,true);
   const add=E('button','chip add');add.append(ic('add'),E('span','','IP'));add.onclick=addIp;box.append(add);
-  $('#hint').textContent=S.peers.length?'':'Searching for devices… tap refresh or + IP'+(S.ips?' · This device: '+S.ips:'')}
+  $('#hint').textContent=S.peers.length?'':'Searching for devices\u2026 tap refresh or + IP'+(S.ips?' \u00b7 This device: '+S.ips:'')}
 let pollGen=0,pollTimer;
 async function pollPeers(){
   const g=++pollGen;clearTimeout(pollTimer);
@@ -431,18 +454,27 @@ window.addEventListener('pageshow',resume);window.addEventListener('online',resu
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
-  S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
+  S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
 async function addIp(){
   const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
 
+const SP={};
+function spKey(){const smb=S.dev.indexOf('smb:')===0,seg=smb?'/'+(S.path.split('/')[1]||''):'/';return smb&&seg==='/'?null:{k:S.dev+'|'+seg,seg:seg}}
+function showFree(){const el=$('#free'),k=spKey(),c=k&&SP[k.k],v=c&&c.v;
+  if(!v||v.free==null||!v.total){el.textContent='';el.classList.remove('lo');return}
+  el.textContent=fmt(v.free)+' free of '+fmt(v.total);el.classList.toggle('lo',v.free/v.total<0.05)}
+async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
+  const c=SP[k.k];if(c&&Date.now()-c.t<30000){showFree();return}
+  try{const r=await api('GET','/api/space?dev='+enc(dev)+'&path='+enc(k.seg),null,8000);SP[k.k]={t:Date.now(),v:r}}catch(e){SP[k.k]={t:Date.now()-20000,v:null}}
+  if(S.dev===dev)showFree()}
 let loadT;
 async function load(){
   clearTimeout(loadT);const dev=S.dev,path=S.path;
   try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
     if(dev!==S.dev||path!==S.path)return;
     S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(!S.lost)banner('');
-    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
+    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace()}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
     if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
@@ -459,8 +491,10 @@ function render(){
   const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used'}else pl.style.display='none';
   cr.scrollLeft=cr.scrollWidth;
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
+  showFree();
   const V=shown();renderTools(V);
   if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
+  DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
@@ -471,13 +505,15 @@ function render(){
     else{lead.append(ic(k,'kd'));
       if((k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){
         const key=thKey(i),pth0=jn(S.path,i.name);
-        const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none'};
+        const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
+          if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
         const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth0),done:showR}))}}
     lead.append(ic('check','ck'));
-    const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'';
+    const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(S.view==='compact'?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
     if(S.view==='compact')sub.append(E('span','',S.sort==='date'&&dt?dt:sz));else sub.append(E('span','',sz),E('span','',dt));
-    nm.append(E('b','',i.name),sub);r.append(lead,nm);
+    const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
+    nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
       if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
     holdMenu(r,i);
@@ -514,6 +550,7 @@ function render(){
     l.append(g)}
   renderBar()}
 
+$('#newb').onclick=()=>{S.newest=!S.newest;S.sel.clear();render()};
 /* Tap on a file: in the Android app fetch it and open it with an installed app (text editor for source files); in a browser let it handle the URL */
 function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
@@ -742,7 +779,7 @@ function holdMenu(r,i){  // press and hold (or right-click) selects the item; ac
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
-function go(p){S.path=p;S.lim=0;S.sel.clear();clearQ();load()}
+function go(p){S.newest=false;S.path=p;S.lim=0;S.sel.clear();clearQ();load()}
 /* ---- search in subfolders (server walks the tree below the current folder) ---- */
 let sT=0;
 function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
@@ -787,6 +824,7 @@ function renderBar(){
     if(files)btn('download','Download',doDownload);
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',doPrint);
     if(S.sel.size===1)btn('edit','Rename',doRename);
+    if(S.sel.size===1)btn('info','Details',doDetails);
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     btn('del','Delete',doDelete,'dng')
   }
@@ -805,12 +843,14 @@ async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}r
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});
   watchJob(r.job);if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
-function pickDevice(f,t,extra){return new Promise(res=>{
+function pickDevice(f,t,extra,after){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',t||'Send to…'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});(extra||[]).forEach(x=>opts.push(x));S.peers.filter(p=>p.id!==S.dev||f).forEach(p=>opts.push(p));
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
-  opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead');ld.append(ic('phone'));b.append(ld,E('span','',p.name));b.onclick=()=>fin(p);card.append(b)});
+  opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('phone'));lt.append(E('span','',p.name));
+    if(after&&p.id!=='__here'){const sm=E('small','','Checking printer\u2026');lt.append(sm);after(p,sm)}
+    b.append(ld,lt);b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
@@ -823,12 +863,18 @@ async function doSend(){
 /* Print: either on this phone itself (Android print system: any printer the phone knows) or on a PC running pcprint.py.
    The files can come from any connected device (this phone, another phone, a PC / SMB share). */
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
+/* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
+function printInfo(p,el){api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
+  if(!r.ok){el.textContent='Print service not reachable';el.className='bad';return}
+  if(!r.printer){el.textContent='No default printer set on the PC';el.className='bad';return}
+  if(r.problem){el.textContent=r.printer+' \u00b7 '+r.problem;el.className='bad';return}
+  el.textContent=r.printer+' \u00b7 ready';el.className='good'}).catch(()=>{el.textContent='Printer status unavailable';el.className=''})}
 async function doPrint(){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
   const all=here.concat(pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here);
+  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here,printInfo);
   if(!to)return;
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
@@ -842,6 +888,37 @@ async function doDelete(){
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
   try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
+const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+async function doDetails(){
+  const i=selItems()[0];if(!i)return;const dev=S.dev,pth=jn(S.path,i.name);
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),box=E('div','det');card.append(E('div','handle'),E('h3','',i.name),box);
+  const cb=E('button','tbtn','Close');cb.style.alignSelf='flex-end';cb.onclick=close;card.append(cb);o.append(card);
+  box.append(E('div','dnote','Reading details\u2026'));
+  let st,root='';
+  try{if(dev==='local'){if(S.rootPath==null){try{S.rootPath=(await api('GET','/api/info')).root||''}catch(e){S.rootPath=''}}root=S.rootPath}
+    st=await api('GET','/api/stat?dev='+enc(dev)+'&path='+enc(pth),null,120000)}
+  catch(e){box.textContent='';box.append(E('div','dnote w','\u26a0 '+e.message));return}
+  if(o.style.display!=='flex')return;
+  box.textContent='';
+  const row=(k,v)=>{if(v==null||v==='')return;const r=E('div','dr');r.append(E('span','dk',k),E('span','dv',v));box.append(r)};
+  row('Location',(dev==='local'?root:devName(dev)+': ')+st.path);
+  row('Type',st.dir?'Folder':(extOf(st.name)?extOf(st.name).toUpperCase()+' file':'File'));
+  if(st.dir){
+    if(st.files!=null)row('Contents',fmt(st.total||0)+' \u00b7 '+st.files.toLocaleString()+(st.files===1?' file':' files')+(st.folders?' \u00b7 '+st.folders.toLocaleString()+(st.folders===1?' folder':' folders'):'')+(st.partial?' (counted so far - the folder is very large)':''));
+    row('Exact size',st.total!=null?(st.total).toLocaleString()+' bytes':'')}
+  else row('Size',fmt(st.size)+' ('+st.size.toLocaleString()+' bytes)');
+  if(st.w&&st.h)row('Dimensions',st.w+' \u00d7 '+st.h+(st.w*st.h>=1e6?' ('+(st.w*st.h/1e6).toFixed(1)+' MP)':''));
+  if(st.dur>0)row('Duration',fmtDur(st.dur));
+  if(st.taken)row('Date taken',st.taken);
+  if(st.ctime>0&&st.ctime!==st.mtime)row('Created',fmtDT(st.ctime));
+  if(st.mtime>0)row('Modified',fmtDT(st.mtime));
+  if(st.atime>0)row('Accessed',fmtDT(st.atime));
+  const fl=[];if(st.readonly)fl.push('Read-only');if(st.hidden)fl.push('Hidden');if(st.system)fl.push('System');if(st.link)fl.push('Link / junction');
+  row('Attributes',fl.length?fl.join(' \u00b7 '):'None');
+  if(st.readonly)box.append(E('div','dnote w','Read-only: renaming, deleting or overwriting this item may be refused ("access denied").'));
+  if(st.link)box.append(E('div','dnote','Links and junctions are not followed, so they are skipped when copying and are not counted in folder totals.'))}
 async function doRename(){
   const old=[...S.sel][0];const n=await dlg({title:'Rename',input:{value:old,label:'New name'},ok:'Rename'});if(!n||n===old)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'rename',path:jn(S.path,old),name:n});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}
@@ -850,6 +927,9 @@ async function doMkdir(){
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
 /* mirror a copy/move/send job in the Android notification shade (no-op in a browser) */
 function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(location.origin,id)}catch(e){}}
+function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return Math.round(s/5)*5+' s';
+  if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
+  const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h+' h'+(m?' '+m+' min':'')}
 let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 async function track(id){
@@ -860,8 +940,10 @@ async function track(id){
     if(j.state==='cancel'){toast('Cancelled',2500);break}
     if(j.state==='done'){toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
     const pct=Math.floor(j.done*100/j.total);
-    toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0,pct);
+    const sp=[];if(j.speed>0)sp.push(fmt(j.speed)+'/s');if(j.eta>0)sp.push('about '+etaTxt(j.eta)+' left');
+    toast((j.label||'Working')+'\u2026 '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total)+(sp.length?'  \u00b7 '+sp.join(' \u00b7 '):''),0,pct);
     await new Promise(r=>setTimeout(r,400))}
+  Object.keys(SP).forEach(k=>delete SP[k]);
   await refreshClip();load();return ok}
 
 // ---- pull down to refresh

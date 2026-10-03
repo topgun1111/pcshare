@@ -420,6 +420,64 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         res
     }
 
+    /** Files / folders / bytes below [rv], stopping after [secs] seconds or [cap] entries. Junctions and links are not followed. */
+    private fun treeIn(s: DiskShare, rv: String, secs: Int = 20, cap: Int = 300_000): Pair<LongArray, Boolean> {
+        val tot = LongArray(3)
+        val end = System.currentTimeMillis() + secs * 1000L
+        val stack = ArrayDeque<String>()
+        stack.addLast(rv)
+        var seen = 0
+        while (stack.isNotEmpty()) {
+            val d = stack.removeLast()
+            val kids = try { s.list(rel(d)) } catch (e: SMBApiException) { if (stale(e)) throw e; continue }
+            for (c in kids) {
+                val n = c.fileName
+                if (n == "." || n == "..") continue
+                val a = c.fileAttributes
+                when {
+                    isReparse(a) -> {}
+                    isDir(a) -> { tot[1]++; stack.addLast(vjoin(d, n)) }
+                    else -> { tot[0]++; tot[2] += c.endOfFile }
+                }
+                if (++seen >= cap) return tot to true
+            }
+            if (System.currentTimeMillis() > end) return tot to true
+        }
+        return tot to false
+    }
+
+    override fun stat(v: String): JSONObject {
+        val n = vnorm(v)
+        if (isRoot(n)) return JSONObject().put("name", name).put("path", "/").put("dir", true).put("size", 0L).put("mtime", 0L)
+        return op(n) { s, rv ->
+            val p = rel(rv)
+            val info = s.getFileInformation(p)
+            val b = info.basicInformation
+            val dir = info.standardInformation.isDirectory
+            val a = b.fileAttributes
+            fun secs(t: FileTime?): Long = try { (t?.toEpochMillis() ?: 0L) / 1000 } catch (_: Exception) { 0L }
+            val o = JSONObject().put("name", if (rv == "/") vbase(n).ifEmpty { name } else vbase(rv)).put("path", n).put("dir", dir)
+                .put("size", if (dir) 0L else info.standardInformation.endOfFile).put("mtime", secs(b.lastWriteTime))
+                .put("ctime", secs(b.creationTime)).put("atime", secs(b.lastAccessTime))
+                .put("readonly", EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_READONLY))
+                .put("hidden", EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_HIDDEN))
+                .put("system", EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_SYSTEM))
+                .put("link", isReparse(a))
+            if (dir) {
+                val (t, partial) = treeIn(s, rv)
+                o.put("files", t[0]).put("folders", t[1]).put("total", t[2]).put("partial", partial)
+            }
+            o
+        }
+    }
+
+    override fun space(v: String): Pair<Long, Long>? {
+        if (isRoot(v)) return null
+        return try {
+            op(v) { s, _ -> val i = s.shareInformation; i.freeSpace to i.totalSpace }.let { if (it.second > 0) it else null }
+        } catch (_: Exception) { null }
+    }
+
     override fun open(v: String): Source = op(v) { s, rv ->
         val p = rel(rv)
         val st = s.getFileInformation(p).standardInformation

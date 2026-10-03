@@ -7,6 +7,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
+import org.json.JSONObject
 
 class LocalSource(private val f: RandomAccessFile, override val size: Long) : Source() {
     override val seekable: Boolean get() = true
@@ -101,6 +103,54 @@ class LocalFs(rootPath: String) : Endpoint {
         }
         return res
     }
+
+    /** Files / folders / bytes below [base] (links are not followed). Stops after [secs] seconds or [cap] entries; [partial] says so. */
+    private fun tree(base: File, secs: Int = 12, cap: Int = 400_000): Triple<LongArray, Boolean, Unit> {
+        val tot = LongArray(3)   // files, folders, bytes
+        val end = System.currentTimeMillis() + secs * 1000L
+        val stack = ArrayDeque<File>()
+        stack.addLast(base)
+        var seen = 0
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeLast()
+            val kids = dir.listFiles() ?: continue
+            for (k in kids) {
+                if (isLink(k)) continue
+                if (k.isDirectory) { tot[1]++; stack.addLast(k) } else { tot[0]++; tot[2] += fsize(k) }
+                if (++seen >= cap) return Triple(tot, true, Unit)
+            }
+            if (System.currentTimeMillis() > end) return Triple(tot, true, Unit)
+        }
+        return Triple(tot, false, Unit)
+    }
+
+    override fun stat(v: String): JSONObject {
+        val f = real(v)
+        val link = isLink(f)
+        if (!f.exists() && !link) throw NotFound("No such file or directory")
+        val dir = f.isDirectory
+        val o = JSONObject().put("name", if (f == root) "/" else f.name).put("path", vnorm(v)).put("dir", dir)
+            .put("size", if (dir) 0L else fsize(f)).put("mtime", f.lastModified() / 1000)
+        if (Build.VERSION.SDK_INT >= 26) try {
+            val a = Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
+            o.put("ctime", a.creationTime().toMillis() / 1000).put("atime", a.lastAccessTime().toMillis() / 1000)
+        } catch (_: Exception) {}
+        o.put("readonly", !f.canWrite()).put("hidden", f.name.startsWith(".")).put("link", link)
+        if (dir) {
+            val (t, partial, _) = tree(f)
+            o.put("files", t[0]).put("folders", t[1]).put("total", t[2]).put("partial", partial)
+        } else {
+            val m = Media.info(f, f.name)
+            for (k in m.keys()) o.put(k, m.get(k))
+        }
+        return o
+    }
+
+    override fun space(v: String): Pair<Long, Long>? = try {
+        val f = real(v).let { if (it.exists()) it else root }
+        val total = f.totalSpace
+        if (total > 0) f.usableSpace to total else null
+    } catch (_: Exception) { null }
 
     override fun open(v: String): Source {
         val p = real(v)

@@ -140,6 +140,30 @@ class RemoteFs(peer: Peer) : Endpoint {
         callRaw("POST", "put", mapOf("path" to v), body = input, size = size, onSent = cb).close()
     }
 
+    override fun stat(v: String): JSONObject = try {
+        JSONObject(String(bytes("GET", "stat", mapOf("path" to v)), Charsets.UTF_8))
+    } catch (e: NotFound) {
+        if ((e.message ?: "").contains("unknown route", true)) basicStat(v) else throw e   // an older LANShare build on the other side
+    }
+
+    /** Fallback for devices without the stat route: what the folder listing and a walk can tell. */
+    private fun basicStat(v: String): JSONObject {
+        val n = vnorm(v)
+        val me = if (n == "/") Item("/", true, 0L, 0L) else ls(vdir(n)).firstOrNull { x -> x.name == vbase(n) } ?: throw NotFound("No such file or directory")
+        val o = JSONObject().put("name", me.name).put("path", n).put("dir", me.dir).put("size", me.size).put("mtime", me.mtime)
+        if (me.dir) {
+            val w = walk(n)
+            o.put("files", w.count { x -> !x.dir && !x.skip }.toLong()).put("folders", w.count { x -> x.dir && x.rel.isNotEmpty() }.toLong())
+                .put("total", w.sumOf { x -> x.size }).put("partial", false)
+        }
+        return o
+    }
+
+    override fun space(v: String): Pair<Long, Long>? = try {
+        val o = JSONObject(String(bytes("GET", "space", mapOf("path" to v)), Charsets.UTF_8))
+        if (o.isNull("free") || o.isNull("total")) null else o.getLong("free") to o.getLong("total")
+    } catch (_: NotFound) { null }
+
     override fun mkdir(v: String) { bytes("POST", "mkdir", mapOf("path" to v)) }
     override fun remove(v: String, progress: ((String) -> Unit)?) { bytes("POST", "rm", mapOf("path" to v)); progress?.invoke(vbase(v)) }
     override fun rename(v: String, newName: String) { bytes("POST", "rename", mapOf("path" to v, "name" to newName)) }
