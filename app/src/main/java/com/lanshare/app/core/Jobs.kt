@@ -69,11 +69,16 @@ object Jobs {
     private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>) {
         try {
             var printer = ""
+            var problem = ""   // what the printer already reports before we send (paper jam, out of paper, ...)
             try {
                 val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 4000)
                 try {
                     if (r.status != 200) throw IOException("HTTP ${r.status}")
-                    printer = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)).optString("printer") } catch (_: Exception) { "" }
+                    try {
+                        val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                        if (!o.isNull("printer")) printer = o.optString("printer")
+                        if (!o.isNull("problem")) problem = o.optString("problem")
+                    } catch (_: Exception) {}
                 } finally { r.close() }
             } catch (e: IOException) {
                 throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
@@ -90,7 +95,7 @@ object Jobs {
             for ((i, f0) in files.withIndex()) {
                 val (sp, size) = f0
                 if (job.cancel) throw Cancelled()
-                job.label = "Printing ${i + 1}/${files.size} on $dest"
+                job.label = "Printing ${i + 1}/${files.size} on $dest" + (if (problem.isNotEmpty()) " (printer reports: $problem)" else "")
                 val name = vbase(sp)
                 var sent = 0L
                 val f = src.open(sp)
@@ -98,10 +103,11 @@ object Jobs {
                     val r = Http.request(ip, PRINT_PORT, "POST", "/print?name=" + URLEncoder.encode(name, "UTF-8"), emptyMap(),
                         120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
                     try {
-                        if (r.status != 200) {
-                            val t = String(r.readUpTo(500), Charsets.UTF_8)
-                            throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
-                        }
+                        val t = String(r.readUpTo(500), Charsets.UTF_8)
+                        if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
+                        // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
+                        val w = try { JSONObject(t).let { o -> if (o.isNull("warning")) "" else o.optString("warning") } } catch (_: Exception) { "" }
+                        if (w.isNotEmpty()) { failed.add("$name: sent, but the printer reports $w"); job.done += maxOf(size - sent, 0L) }
                     } finally { r.close() }
                 } catch (e: PrintFail) {
                     failed.add("$name: ${errText(e)}")
@@ -116,7 +122,7 @@ object Jobs {
                 job.state = "done"
             } else {
                 job.label = "Print problem on $dest"
-                job.error = "Printed $ok of ${files.size} on $dest. Failed - " + failed.joinToString("; ")
+                job.error = "Problem on $dest ($ok of ${files.size} OK) - " + failed.joinToString("; ")
                 job.state = "error"
             }
         } catch (e: Cancelled) {
