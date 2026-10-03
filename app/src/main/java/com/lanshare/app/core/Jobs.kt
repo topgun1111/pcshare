@@ -3,6 +3,7 @@ package com.lanshare.app.core
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -71,6 +72,147 @@ object Jobs {
     private fun prune() {
         val now = System.currentTimeMillis()
         all.entries.removeAll { it.value.state != "run" && it.value.end > 0 && now - it.value.end > 600_000 }
+    }
+
+    // ---------------------------------------------------------------- printing on a PC (pcprint.py, port 8799)
+    const val PRINT_PORT = 8799   // pcprint.py on the PC listens here
+
+    private class PrintFail(msg: String) : IOException(msg)   // the PC answered and refused / failed to print this file
+
+    /** (address, display name) of the PC to print on. */
+    private fun printTarget(dev: String): Pair<String, String> = when {
+        dev == "local" -> throw BadReq("choose the PC to print on")
+        dev.startsWith("smb:") -> {
+            val c = Smb.cfg(dev) ?: throw IOException("that SMB share was removed")
+            Smb.split(c.getString("host")).first to c.optString("name").ifEmpty { c.getString("host") }
+        }
+        else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).let { it.ip to it.name }
+    }
+
+    /** What the print service on that PC reports right now: {ok, printer?, problem?}. ok=false = nothing answered on the print port. */
+    fun printerStatus(dev: String, printer: String? = null): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val pq = if (printer.isNullOrEmpty()) "" else "?printer=" + URLEncoder.encode(printer, "UTF-8")
+            val r = Http.request(ip, PRINT_PORT, "GET", "/ping$pq", emptyMap(), if (pq.isEmpty()) 3000 else 9000)
+            try {
+                if (r.status != 200) return JSONObject().put("ok", false)
+                val o = JSONObject(String(r.readUpTo(32768), Charsets.UTF_8))
+                JSONObject().put("ok", true)
+                    .put("printer", if (o.isNull("printer")) JSONObject.NULL else o.optString("printer"))
+                    .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
+                    .put("default", if (o.isNull("default")) JSONObject.NULL else o.optString("default"))
+                    .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
+                    .put("pypdf", o.optBoolean("pypdf", false))
+                    .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
+            } finally { r.close() }
+        } catch (_: Exception) { JSONObject().put("ok", false) }
+    }
+
+    /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
+    private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
+        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto")
+
+    /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
+    private fun printQuery(name: String, opts: JSONObject?, extra: String = ""): String {
+        val sb = StringBuilder("/print?name=").append(URLEncoder.encode(name, "UTF-8")).append(extra)
+        if (opts != null) for (k in PRINT_KEYS) {
+            if (!opts.has(k) || opts.isNull(k)) continue
+            val v = opts.get(k).toString().trim()
+            if (v.isNotEmpty() && v != "false") sb.append('&').append(k).append('=').append(URLEncoder.encode(if (v == "true") "1" else v, "UTF-8"))
+        }
+        return sb.toString()
+    }
+
+    fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
+        val src = ep(srcId)
+        val (ip, pcName) = printTarget(dstId)
+        val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        prune()
+        val job = Job("Printing on $pcName")
+        all[jid] = job
+        Thread({ printWork(job, src, ip, pcName, paths, opts) }, "print-$jid").also { it.isDaemon = true }.start()
+        return jid
+    }
+
+    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?) {
+        try {
+            val chosen = opts?.optString("printer").orEmpty()
+            val notes = LinkedHashSet<String>()   // things the PC could not honour (e.g. layout options on a .docx)
+            var printer = ""
+            var problem = ""   // what the printer already reports before we send (paper jam, out of paper, ...)
+            try {
+                val r = Http.request(ip, PRINT_PORT, "GET", if (chosen.isEmpty()) "/ping" else "/ping?printer=" + URLEncoder.encode(chosen, "UTF-8"), emptyMap(), if (chosen.isEmpty()) 4000 else 9000)
+                try {
+                    if (r.status != 200) throw IOException("HTTP ${r.status}")
+                    try {
+                        val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                        if (!o.isNull("printer")) printer = o.optString("printer")
+                        if (!o.isNull("problem")) problem = o.optString("problem")
+                    } catch (_: Exception) {}
+                } finally { r.close() }
+            } catch (e: IOException) {
+                throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
+            }
+            val dest = if (printer.isNotEmpty()) "$pcName ($printer)" else pcName
+            val files = ArrayList<Pair<String, Long>>()
+            for (p0 in paths) {
+                val p = vnorm(p0)
+                for (w in src.walk(p)) if (!w.dir) files.add((if (w.rel.isEmpty()) p else p + "/" + w.rel) to w.size)
+            }
+            if (files.isEmpty()) throw BadReq("nothing to print")
+            job.total = maxOf(files.sumOf { it.second }, 1L)
+            val failed = ArrayList<String>()
+            // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
+            val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") }
+            val bid = java.lang.Long.toString(System.nanoTime(), 36)
+            val rots = opts?.optJSONArray("rots")
+            for ((i, f0) in files.withIndex()) {
+                val (sp, size) = f0
+                if (job.cancel) throw Cancelled()
+                job.label = "Printing ${i + 1}/${files.size} on $dest" + (if (problem.isNotEmpty()) " (printer reports: $problem)" else "")
+                val name = vbase(sp)
+                var sent = 0L
+                val f = src.open(sp)
+                try {
+                    val extra = if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
+                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(name, opts, extra), emptyMap(),
+                        120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
+                    try {
+                        val t = String(r.readUpTo(2000), Charsets.UTF_8)
+                        if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
+                        // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
+                        val w = try { JSONObject(t).let { o -> if (o.isNull("warning")) "" else o.optString("warning") } } catch (_: Exception) { "" }
+                        val nt = try { JSONObject(t).let { o -> if (o.isNull("note")) "" else o.optString("note") } } catch (_: Exception) { "" }
+                        if (nt.isNotEmpty()) notes.add("$name: $nt")
+                        if (w.isNotEmpty()) { failed.add("$name: sent, but the printer reports $w"); job.done += maxOf(size - sent, 0L) }
+                    } finally { r.close() }
+                } catch (e: PrintFail) {
+                    failed.add("$name: ${errText(e)}")
+                    job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
+                    if (sheet) break   // an incomplete set of sheets must not be printed
+                } finally { f.close() }
+            }
+            job.done = job.total
+            val ok = files.size - failed.size
+            if (failed.isEmpty()) {
+                job.label = "Printed ${files.size} file${if (files.size > 1) "s" else ""} on $dest"
+                job.note = job.label + (if (notes.isNotEmpty()) " (" + notes.joinToString("; ") + ")" else "")
+                job.state = "done"
+            } else {
+                job.label = "Print problem on $dest"
+                job.error = "Problem on $dest ($ok of ${files.size} OK) - " + failed.joinToString("; ")
+                job.state = "error"
+            }
+        } catch (e: Cancelled) {
+            job.state = "cancel"
+        } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
+            job.error = errText(e)
+            job.state = "error"
+        } finally {
+            if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
+            job.end = System.currentTimeMillis()
+        }
     }
 
 

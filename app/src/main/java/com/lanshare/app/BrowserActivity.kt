@@ -55,7 +55,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [Jobs] / [Clip] in-process. Videos and audio open in [PlayerActivity], pictures (incl. animated GIF) in [ImageViewerActivity], PDFs in
  * [PdfViewerActivity], text / source files in [TextViewerActivity]; everything else goes to an installed app.
  * Archives (.zip/.rar/.cbz/.cbr, virtual paths "a.zip!/dir") open like folders (read-only) and can be extracted; Zip packs a selection;
- * Settings is [SettingsActivity]. Printing is not part of the app.
+ * Settings is [SettingsActivity]. Print… (selection menu): on a PC running pcprint.py via [PrintSheet] + [Jobs.startPrint], or on this
+ * phone through the Android print system ([PhonePrint]).
  */
 class BrowserActivity : Activity() {
 
@@ -122,6 +123,8 @@ class BrowserActivity : Activity() {
     private lateinit var pasteBar: LinearLayout
     private lateinit var pasteText: TextView
     private val ad = Adapter()
+    private val phonePrint by lazy { PhonePrint(this) }
+    private val printSheet by lazy { PrintSheet(this, PrintPal(cBg, cCard, cFg, cMut, cDiv, cAccent)) }
 
     private var dev = "local"
     private var cur = "/"
@@ -786,6 +789,7 @@ class BrowserActivity : Activity() {
         if (picked.any { canOpenAsArchive(it) } || ro) m.menu.add(0, 8, 7, "Extract")
         if (one != null) m.menu.add(0, 9, 8, "Details")
         if (dev != "local" && picked.isNotEmpty()) m.menu.add(0, 10, 9, "Save to phone (Download)")
+        if (picked.isNotEmpty() && (picked.any { !it.dir } || devs.size > 1)) m.menu.add(0, 11, 5, "Print…")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> { items.forEach { i -> sel.add(pathOf(i)) }; ad.notifyDataSetChanged(); updateChrome() }
@@ -797,6 +801,7 @@ class BrowserActivity : Activity() {
                 8 -> extractSelected()
                 9 -> one?.let { i -> showDetails(i) }
                 10 -> saveToPhone()
+                11 -> printSelected()
             }
             true
         }
@@ -1070,6 +1075,83 @@ class BrowserActivity : Activity() {
                     ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot send") }
                 }
             }.setNegativeButton("Cancel", null).show()
+    }
+
+    // --- printing: this phone (Android print system) or a PC running pcprint.py (this phone's files, other devices' files, SMB shares)
+
+    private class PTarget(val id: String, val name: String, val phone: Boolean)
+
+    private fun printSelected() {
+        val picked = selectedItems()
+        if (picked.isEmpty()) return
+        val last = prefs.getString("printTo", null)
+        val all = ArrayList<PTarget>()
+        all.add(PTarget("__here", "This phone (any printer)", true))
+        devs.filter { it.id != "local" }.sortedBy { if (it.kind == "smb") 0 else 1 }.forEach { all.add(PTarget(it.id, it.name, false)) }
+        val targets = all.sortedBy { if (it.id == last) 0 else 1 }
+        if (targets.size == 1) { printTo(targets[0], picked); return }
+        pickPrintTarget(targets) { printTo(it, picked) }
+    }
+
+    /** "Print on…" list: every PC / share with its printer status ("Office HP · ready", "out of paper", "Print service not reachable"). */
+    private fun pickPrintTarget(targets: List<PTarget>, chosen: (PTarget) -> Unit) {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), dp(4)) }
+        var dlg: AlertDialog? = null
+        val subs = ArrayList<Pair<PTarget, TextView>>()
+        for (t in targets) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = ripple() }
+            row.addView(TextView(this).apply { text = t.name; textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+            val sub = TextView(this).apply {
+                textSize = 12f; setTextColor(cMut)
+                text = if (t.phone) "Android print system - Wi-Fi printers, Mopria, vendor plugins, Save as PDF" else "Checking printer…"
+            }
+            row.addView(sub)
+            row.setOnClickListener { dlg?.dismiss(); chosen(t) }
+            col.addView(row)
+            if (!t.phone) subs.add(t to sub)
+        }
+        dlg = AlertDialog.Builder(this).setTitle("Print on…").setView(ScrollView(this).apply { addView(col) })
+            .setNegativeButton("Cancel", null).show()
+        for ((t, sub) in subs) io.execute {
+            val r: JSONObject? = try { Jobs.printerStatus(t.id) } catch (_: Exception) { null }
+            ui.post {
+                if (dlg?.isShowing != true) return@post
+                if (r == null) { sub.text = "Printer status unavailable"; return@post }
+                val pr = if (r.isNull("printer")) "" else r.optString("printer")
+                val prob = if (r.isNull("problem")) "" else r.optString("problem")
+                when {
+                    !r.optBoolean("ok", false) -> { sub.text = "Print service not reachable"; sub.setTextColor(0xFFD9534F.toInt()) }
+                    pr.isEmpty() -> { sub.text = "No default printer set on the PC"; sub.setTextColor(0xFFD9534F.toInt()) }
+                    prob.isNotEmpty() -> { sub.text = "$pr · $prob"; sub.setTextColor(0xFFD9534F.toInt()) }
+                    else -> { sub.text = "$pr · ready"; sub.setTextColor(0xFF2E9E6B.toInt()) }
+                }
+            }
+        }
+    }
+
+    private fun printTo(t: PTarget, picked: List<Item>) {
+        prefs.edit().putString("printTo", t.id).apply()
+        val files = picked.filter { !it.dir }
+        if (t.phone) {
+            if (files.isEmpty()) { toast("Select files to print"); return }
+            val arr = JSONArray()
+            files.forEach { arr.put(JSONObject().put("name", it.name).put("url", url(vnorm(pathOf(it))))) }
+            sel.clear(); ad.notifyDataSetChanged(); updateChrome()
+            phonePrint.start(JSONObject().put("items", arr).toString())
+            return
+        }
+        val srcDev = dev
+        val pfiles = files.map { PrintFile(it.name, vnorm(pathOf(it)), url(vnorm(pathOf(it)))) }
+        val allPaths = picked.map { vnorm(pathOf(it)) }
+        printSheet.show(PrintSheet.Target(t.id, t.name), pfiles, pfiles.size == picked.size) { opts ->
+            if (opts == null) return@show
+            val paths = if (opts.optInt("sheet", 0) == 1) pfiles.map { it.path } else allPaths
+            sel.clear(); ad.notifyDataSetChanged(); updateChrome()
+            io.execute {
+                val r: Result<String> = try { Result.success(Jobs.startPrint(srcDev, paths, t.id, opts)) } catch (e: Exception) { Result.failure(e) }
+                ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot print") }
+            }
+        }
     }
 
     private val jobTick = object : Runnable {
