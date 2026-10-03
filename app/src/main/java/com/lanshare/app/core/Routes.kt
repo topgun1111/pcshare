@@ -119,6 +119,7 @@ object Routes {
             }
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
+            "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"))))
             "smb" -> smbUpdate(ex, b)
             "addip" -> {

@@ -140,26 +140,27 @@ class LocalFs(rootPath: String) : Endpoint {
         if (!d.mkdirs() && !d.isDirectory) throw IOException("could not create the folder")
     }
 
-    override fun remove(v: String) {
+    override fun remove(v: String, progress: ((String) -> Unit)?) {
         val p = real(v)
         if (p == root) throw Denied("cannot delete the shared root")
         if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
         val fails = ArrayList<String>()
-        delRec(p, fails)
+        delRec(p, fails, progress)
         if (fails.isNotEmpty())
             throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
     }
 
     /** Best-effort recursive delete: links are removed themselves (never followed), failures are collected and the rest carries on. */
-    private fun delRec(f: File, fails: MutableList<String>) {
+    private fun delRec(f: File, fails: MutableList<String>, progress: ((String) -> Unit)? = null) {
         if (!isLink(f) && f.isDirectory) {
             val kids = f.listFiles()
             if (kids == null) { fails.add(f.name + ": cannot read folder"); return }
             val before = fails.size
-            for (k in kids) delRec(k, fails)
+            for (k in kids) delRec(k, fails, progress)
             if (fails.size > before) return   // something inside stayed, so the folder cannot go either
         }
         if (!f.delete() && (f.exists() || isLink(f))) fails.add(f.name + ": " + (if (f.canWrite()) "in use" else "not allowed"))
+        else progress?.invoke(f.name)
     }
 
     override fun rename(v: String, newName: String) {

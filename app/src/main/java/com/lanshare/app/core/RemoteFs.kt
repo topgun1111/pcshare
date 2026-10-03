@@ -141,7 +141,7 @@ class RemoteFs(peer: Peer) : Endpoint {
     }
 
     override fun mkdir(v: String) { bytes("POST", "mkdir", mapOf("path" to v)) }
-    override fun remove(v: String) { bytes("POST", "rm", mapOf("path" to v)) }
+    override fun remove(v: String, progress: ((String) -> Unit)?) { bytes("POST", "rm", mapOf("path" to v)); progress?.invoke(vbase(v)) }
     override fun rename(v: String, newName: String) { bytes("POST", "rename", mapOf("path" to v, "name" to newName)) }
     override fun move(v: String, toV: String) { bytes("POST", "mv", mapOf("path" to v, "to" to toV)) }
 }

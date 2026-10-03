@@ -36,7 +36,8 @@ interface Endpoint {
     fun open(v: String): Source
     fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)? = null)
     fun mkdir(v: String)
-    fun remove(v: String)
+    /** [progress] is called with the name of every entry that was deleted; it may throw [Cancelled] to stop. */
+    fun remove(v: String, progress: ((String) -> Unit)? = null)
     fun rename(v: String, newName: String)
     fun move(v: String, toV: String)
 }

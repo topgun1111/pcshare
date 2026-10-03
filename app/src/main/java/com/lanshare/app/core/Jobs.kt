@@ -66,6 +66,59 @@ object Jobs {
         return jid
     }
 
+    /** Deletes the paths in the background with a live label ("Deleting x - 128 items removed") and a Cancel button. */
+    fun startDelete(devId: String, paths: List<String>): String {
+        val e = ep(devId)
+        val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        val job = Job("Deleting")
+        job.bytes = false
+        job.total = maxOf(paths.size, 1).toLong()
+        all[jid] = job
+        Thread({ deleteWork(job, e, paths) }, "del-$jid").also { it.isDaemon = true }.start()
+        return jid
+    }
+
+    private fun deleteWork(job: Job, e: Endpoint, paths: List<String>) {
+        val fails = ArrayList<String>()
+        var failCount = 0
+        var removed = 0
+        try {
+            for ((i, p0) in paths.withIndex()) {
+                if (job.cancel) throw Cancelled()
+                val p = vnorm(p0)
+                val top = vbase(p)
+                job.label = "Deleting ${i + 1}/${paths.size}: $top" + (if (removed > 0) " ($removed items removed)" else "")
+                try {
+                    e.remove(p) { n ->
+                        if (job.cancel) throw Cancelled()
+                        removed++
+                        job.label = "Deleting ${i + 1}/${paths.size}: $top - $removed items removed" + (if (n != top) " (now: $n)" else "")
+                    }
+                } catch (x: Cancelled) { throw x
+                } catch (x: Exception) { failCount++; if (fails.size < 50) fails.add("$top: ${errText(x)}") }
+                job.done = (i + 1).toLong()
+            }
+            job.done = job.total
+            if (failCount == 0) {
+                job.label = "Deleted $removed item${if (removed == 1) "" else "s"}"
+                job.note = job.label
+                job.state = "done"
+            } else {
+                job.error = "Deleted $removed item${if (removed == 1) "" else "s"}, but " +
+                    (if (failCount == 1) fails[0] else "$failCount things stayed - " + fails.take(3).joinToString("; ") + (if (failCount > 3) "; ..." else ""))
+                job.state = "error"
+            }
+        } catch (x: Cancelled) {
+            job.label = "Stopped after $removed items"
+            job.state = "cancel"
+        } catch (x: Exception) {
+            job.error = errText(x)
+            job.state = "error"
+        } finally {
+            job.end = System.currentTimeMillis()
+        }
+    }
+
     private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>) {
         try {
             var printer = ""

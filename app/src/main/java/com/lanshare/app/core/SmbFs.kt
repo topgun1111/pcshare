@@ -511,7 +511,7 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
     }
 
     /** Empties folder [p] item by item; whatever cannot be deleted is collected in [fails] and the rest carries on. */
-    private fun delTree(s: DiskShare, p: String, fails: MutableList<String>) {
+    private fun delTree(s: DiskShare, p: String, fails: MutableList<String>, progress: ((String) -> Unit)?) {
         val kids = try { s.list(p) } catch (e: Exception) { fails.add("${p.substringAfterLast('\\')}: ${why(e)}"); return }
         for (c in kids) {
             val n = c.fileName
@@ -521,15 +521,17 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
             try {
                 if (isDir(c.fileAttributes) && !link) {
                     val before = fails.size
-                    delTree(s, cp, fails)
+                    delTree(s, cp, fails, progress)
                     if (fails.size > before) continue   // something inside stayed, so the folder cannot go either
                 }
                 delEntry(s, cp, link)
+                progress?.invoke(n)
+            } catch (e: Cancelled) { throw e
             } catch (e: Exception) { fails.add("$n: ${why(e)}") }
         }
     }
 
-    override fun remove(v: String) {
+    override fun remove(v: String, progress: ((String) -> Unit)?) {
         op(v) { s, rv ->
             if (rv == "/") throw Denied("cannot delete the " + (if (multi) "drive" else "share") + " root")
             val p = rel(rv)
@@ -539,9 +541,9 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
             val me = s.list(parent).firstOrNull { it.fileName.equals(name, ignoreCase = true) } ?: return@op
             val link = isReparse(me.fileAttributes)
             val fails = ArrayList<String>()
-            if (isDir(me.fileAttributes) && !link) delTree(s, p, fails)
+            if (isDir(me.fileAttributes) && !link) delTree(s, p, fails, progress)
             if (fails.isEmpty()) {
-                try { delEntry(s, p, link) } catch (e: Exception) { fails.add("$name: ${why(e)}") }
+                try { delEntry(s, p, link); progress?.invoke(name) } catch (e: Cancelled) { throw e } catch (e: Exception) { fails.add("$name: ${why(e)}") }
             }
             if (fails.isNotEmpty())
                 throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
