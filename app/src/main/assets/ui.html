@@ -756,6 +756,10 @@ function thMake(url,kd){return new Promise((res,rej)=>{
     let tryFull=false;
     im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
     im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8):url;return}
+  /* Android app: the phone grabs the frame natively (MKV/AVI/HEVC ... that the WebView cannot decode); on failure the in-browser method below runs */
+  if(kd==='vid'&&window.LSAndroid&&url.indexOf('/api/dl?')===0){
+    fetch('/api/vthumb?'+url.slice(8)).then(r=>{if(!r.ok)throw new Error('vthumb');const d=parseInt(r.headers.get('X-Duration')||'0',10)/1000;return r.blob().then(b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok({u:fr.result,d:d});fr.onerror=no;fr.readAsDataURL(b)}))})
+      .then(res,()=>thMake(url,'vid-browser').then(res,rej));return}
   /* Video element must live in the DOM and use preload=auto: detached/metadata-only <video> in Android WebView never decodes a frame. */
   const v=document.createElement('video');v.muted=true;v.defaultMuted=true;v.playsInline=true;v.preload='auto';
   v.setAttribute('playsinline','');v.setAttribute('muted','');
@@ -877,7 +881,7 @@ async function goFind(dir,name){S.path=dir;S.sel.clear();clearQ();await load();
 function doSearch(){
   const q=S.q;if(!q||q.length<2)return;const dev=S.dev,path=S.path;
   S.sr={q,dev,path,items:null};render();
-  api('GET','/api/search?dev='+enc(dev)+'&path='+enc(path)+'&q='+enc(q),null,45000)
+  api('GET','/api/search?dev='+enc(dev)+'&path='+enc(path)+'&q='+enc(q),null,path==='/'?120000:45000)
     .then(r=>{if(S.sr&&S.sr.q===q){S.sr.items=r.items;S.sr.partial=r.partial;render()}})
     .catch(e=>{if(S.sr&&S.sr.q===q){S.sr.items=[];S.sr.err=e.message;render()}})}
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
@@ -957,7 +961,9 @@ async function doPrint(){
   if(to.id==='__here'){
     const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
     if(!f.length)return toast('Select files to print');
-    f.forEach(i=>LSAndroid.printHere(location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),i.name));
+    const urlOf=i=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
+    else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 async function doDelete(){

@@ -105,6 +105,11 @@ object Routes {
                 val data = Thumbs.make(e.real(vnorm(ex.q("path"))))
                 return ex.reply(200, data, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
             }
+            "vthumb" -> {
+                val p = vnorm(ex.q("path"))
+                val (data, dur) = VideoThumbs.make(Jobs.ep(ex.q("dev")).open(p))
+                return ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
+            }
             "arcjob" -> return ex.json(ArcProg.current())   // what a slow folder listing is busy with (fetching an archive ...): {} when nothing
             "jobcancel" -> {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true

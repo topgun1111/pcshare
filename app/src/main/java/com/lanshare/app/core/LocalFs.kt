@@ -79,7 +79,9 @@ class LocalFs(rootPath: String) : Endpoint {
         return SearchResult(out, false)
     }
 
-    override fun search(v: String, q: String) = search(v, q, 300, 15)
+    /** Started at the storage root = "search everything": far higher result and time limits than a search inside one folder. */
+    override fun search(v: String, q: String) =
+        if (vnorm(v) == "/") search(v, q, 20_000, 80) else search(v, q, 300, 15)
 
     override fun names(v: String): MutableSet<String> =
         try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }

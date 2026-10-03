@@ -67,14 +67,14 @@ class RemoteFs(peer: Peer) : Endpoint {
 
     /** Sends the request and returns the open response (status 200/206). Caller closes it. */
     fun callRaw(method: String, route: String, params: Map<String, String> = emptyMap(), body: InputStream? = null,
-                size: Long = 0, headers: Map<String, String> = emptyMap(), onSent: ((Int) -> Unit)? = null): HttpResp {
+                size: Long = 0, headers: Map<String, String> = emptyMap(), onSent: ((Int) -> Unit)? = null, timeoutMs: Int = 30_000): HttpResp {
         val retry = (method == "GET" || route == "mkdir") && body == null
         var r: HttpResp? = null
         var err: Exception? = null
         for (rnd in 0 until (if (retry) 3 else 1)) {
             for (cand in ips) {
                 try {
-                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, 30_000, body, size, onSent)
+                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, timeoutMs, body, size, onSent)
                     err = null
                     if (cand != ip) {   // remember the address that works
                         ip = cand
@@ -109,8 +109,8 @@ class RemoteFs(peer: Peer) : Endpoint {
         return r
     }
 
-    private fun bytes(method: String, route: String, params: Map<String, String> = emptyMap()): ByteArray {
-        val r = callRaw(method, route, params)
+    private fun bytes(method: String, route: String, params: Map<String, String> = emptyMap(), timeoutMs: Int = 30_000): ByteArray {
+        val r = callRaw(method, route, params, timeoutMs = timeoutMs)
         try { return r.readUpTo(64 shl 20) } finally { r.close() }
     }
 
@@ -122,7 +122,7 @@ class RemoteFs(peer: Peer) : Endpoint {
     }
 
     override fun search(v: String, q: String): SearchResult {
-        val o = JSONObject(String(bytes("GET", "search", mapOf("path" to v, "q" to q)), Charsets.UTF_8))
+        val o = JSONObject(String(bytes("GET", "search", mapOf("path" to v, "q" to q), 110_000), Charsets.UTF_8))
         val a = o.getJSONArray("items")
         return SearchResult((0 until a.length()).map { Item.fromJson(a.getJSONObject(it)) }, o.optBoolean("partial"))
     }
