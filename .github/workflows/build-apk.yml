@@ -51,7 +51,16 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle --no-daemon --stacktrace :app:assembleRelease
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            # Surface the real error in the Annotations list (readable on a phone)
+            grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -8 | while IFS= read -r l; do echo "::error::$l"; done
+            grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $rc
 
       - name: APK adlandır
         run: cp app/build/outputs/apk/release/*.apk "${{ steps.ver.outputs.apk }}"
