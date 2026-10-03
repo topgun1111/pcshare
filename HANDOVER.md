@@ -67,4 +67,5 @@ service; a thin Kotlin WebView loads its UI. Python stdlib only → no pip deps.
 - Backend: `Smb` class in `lanshare.py` (same interface as `Local`/`Remote`) on top of `smbclient` from the `smbprotocol` package (SMB2/3, signing/encryption). Added to Chaquopy pip in `app/build.gradle.kts`. Config: `CFG["smb"]` = list of `{id, host, share, user, password, name}` in `lanshare.json` (password stored in plain text in the app's private storage).
 - API: `GET /api/smb` (list), `POST /api/smb` `{host, share, user, password, name}` to add, `{remove: id}` to delete. `/api/peers` also returns the shares (`smb: true`).
 - Notes: use the PC's IP address (Android usually can't resolve Windows/NetBIOS names); SMB1-only servers are not supported; no thumbnails for SMB files.
+- RC4 fix: Android's OpenSSL has RC4 disabled, which broke NTLM login ("cipher RC4 ... not supported"); `_patch_rc4()` swaps in a pure-Python RC4 in pyspnego.
 - **Not tested on a real device/server yet** (tested against a fake `smbclient`): first thing to check is that the Actions build can resolve `smbprotocol` (needs the `cryptography` wheel from Chaquopy's repo).

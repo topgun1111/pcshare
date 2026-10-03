@@ -472,12 +472,59 @@ class Remote:
 SMB_STATE = {}  # share id -> True / False (did the last operation work?), shown as the dot in the device bar
 
 
+class _RC4:
+    """Pure-Python RC4 (NTLM needs it for the session key; Android's OpenSSL build has RC4 disabled)."""
+
+    def __init__(self, key):
+        S, j, key = list(range(256)), 0, bytes(key)
+        for i in range(256):
+            j = (j + S[i] + key[i % len(key)]) & 255
+            S[i], S[j] = S[j], S[i]
+        self.S, self.i, self.j = S, 0, 0
+
+    def update(self, data):
+        S, i, j, out = self.S, self.i, self.j, bytearray()
+        for b in bytes(data):
+            i = (i + 1) & 255
+            j = (j + S[i]) & 255
+            S[i], S[j] = S[j], S[i]
+            out.append(b ^ S[(S[i] + S[j]) & 255])
+        self.i, self.j = i, j
+        return bytes(out)
+
+
+def _patch_rc4():
+    """If the platform's crypto backend has no RC4, point pyspnego's NTLM code at _RC4 instead."""
+    try:
+        from spnego._ntlm_raw import crypto
+        crypto.rc4k(b"0123456789abcdef", b"test")  # works -> nothing to do
+        return
+    except ImportError:
+        return
+    except Exception:
+        pass
+    def rc4init(k):
+        return _RC4(k)
+
+    def rc4(handle, data):
+        return handle.update(data)
+
+    def rc4k(k, d):
+        return _RC4(k).update(d)
+    for name, mod in list(sys.modules.items()):
+        if mod is not None and name.startswith("spnego"):
+            for attr, fn in (("rc4init", rc4init), ("rc4", rc4), ("rc4k", rc4k)):
+                if hasattr(mod, attr):
+                    setattr(mod, attr, fn)
+
+
 def smb_lib():
     try:
         import smbclient
-        return smbclient
     except ImportError:
         raise IOError("SMB support is not installed (needs the 'smbprotocol' package)")
+    _patch_rc4()
+    return smbclient
 
 
 def smb_err(e):
