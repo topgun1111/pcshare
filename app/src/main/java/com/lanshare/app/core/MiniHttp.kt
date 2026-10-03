@@ -76,7 +76,7 @@ class Exchange(
 
     private fun reason(c: Int) = when (c) {
         200 -> "OK"; 206 -> "Partial Content"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
-        409 -> "Conflict"; 500 -> "Internal Server Error"; 507 -> "Insufficient Storage"; else -> "Status"
+        409 -> "Conflict"; 499 -> "Cancelled"; 500 -> "Internal Server Error"; 507 -> "Insufficient Storage"; else -> "Status"
     }
 }
 

@@ -1,6 +1,7 @@
 package com.lanshare.app.core
 
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.UUID
@@ -20,6 +21,7 @@ object Clip {
 }
 
 class Job(@Volatile var label: String) {
+    @Volatile var id = ""            // set for jobs that are registered in [Jobs.all] by someone else than [Jobs.start]
     @Volatile var state = "run"      // run | done | cancel | error
     @Volatile var done = 0L
     @Volatile var total = 1L
@@ -239,6 +241,162 @@ object Jobs {
         }
     }
 
+    /**
+     * Many files out of a ZIP that lives on another device: one sequential download of the archive (shown on the job's bar) is much faster
+     * than one request per file. Best effort - if it fails, the files are simply read one by one.
+     */
+    private fun pinArchives(job: Job, src: Endpoint, plan: List<Pair<String, List<WalkItem>?>>) {
+        val e = src as? ArcEp ?: return
+        val arcs = LinkedHashSet<String>()
+        var files = 0
+        for ((p, w) in plan) {
+            val a = arcSplit(p) ?: continue
+            arcs.add(a.first)
+            files += w?.count { !it.dir } ?: 0
+        }
+        if (files < 8) return
+        val keepLabel = job.label
+        val keepTotal = job.total
+        for (a in arcs) {
+            val size = e.archiveSize(a)
+            if (size <= 0L) continue
+            job.label = "Downloading " + vbase(a)
+            job.total = size
+            job.done = 0
+            try { e.pin(a, job) } catch (x: Cancelled) { throw x } catch (_: Exception) {}
+        }
+        job.label = keepLabel
+        job.total = keepTotal
+        job.done = 0
+    }
+
+    // ---------------------------------------------------------------- zip
+    private class ZItem(val src: String, val entry: String, val dir: Boolean, val size: Long)
+
+    /** Already compressed: stored instead of deflated, which makes zipping photos / videos several times faster. */
+    private val STORE_EXT = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "mp4", "m4v", "mkv", "mov", "avi", "webm", "3gp",
+        "mp3", "m4a", "aac", "ogg", "opus", "flac", "zip", "rar", "7z", "gz", "bz2", "xz", "cbz", "cbr", "apk", "jar",
+        "docx", "xlsx", "pptx", "odt", "ods", "odp", "epub", "pdf")
+
+    /** Packs files and folders of one device into a new .zip in a folder of the same device. */
+    fun startZip(devId: String, paths: List<String>, dir: String, name: String): String {
+        val e = ep(devId)
+        val ps = paths.map { vnorm(it) }
+        if (ps.isEmpty()) throw BadReq("nothing selected")
+        if (ps.any { it == "/" }) throw Denied("cannot zip the root")
+        val d = vnorm(dir)
+        if (arcSplit(d) != null) throw Denied("Archives are read-only - choose a normal folder for the ZIP")
+        var n = name.trim().replace('\\', '/').substringAfterLast('/').trim()   // a file name, never a path
+        if (n.isEmpty() || n == "." || n == ".." || n.lowercase() == ".zip") throw BadReq("enter a name for the ZIP")
+        if (!n.lowercase().endsWith(".zip")) n += ".zip"
+        val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        prune()
+        val job = Job("Zipping")
+        all[jid] = job
+        Thread({ zipWork(job, e, ps, d, n) }, "zip-$jid").also { it.isDaemon = true }.start()
+        return jid
+    }
+
+    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String) {
+        val dst: Endpoint = (e as? ArcEp)?.base ?: e
+        var tmp: File? = null
+        var uploading = false
+        var target = ""
+        try {
+            // 1. what goes in (folders are walked; links and unreadable folders are left out)
+            val items = ArrayList<ZItem>()
+            val tops = HashSet<String>()
+            var skipped = 0
+            for (p in paths) {
+                if (job.cancel) throw Cancelled()
+                val walked = e.walk(p)
+                val top = uniqueName(destName(p), tops, walked.firstOrNull()?.dir ?: false)
+                tops.add(top)
+                for (w in walked) {
+                    if (w.skip) { skipped++; continue }
+                    items.add(ZItem(if (w.rel.isEmpty()) p else p + "/" + w.rel, if (w.rel.isEmpty()) top else top + "/" + w.rel, w.dir, w.size))
+                }
+            }
+            if (items.isEmpty()) throw BadReq("nothing to zip")
+            val total = items.sumOf { if (it.dir) 0L else it.size }
+
+            // 2. where it goes: next to the originals, under a name that is free
+            val taken = try { dst.names(dir) } catch (x: Cancelled) { throw x } catch (x: Exception) { throw IOException("cannot read the destination folder: ${errText(x)}") }
+            val finalName = uniqueName(name, taken, false)
+            target = vjoin(dir, finalName)
+            val local = dst as? LocalFs
+            val out: File
+            if (local != null) {   // written straight into the destination folder (as .lspart, renamed when complete)
+                val real = local.real(target)
+                real.parentFile?.mkdirs()
+                out = File(real.path + ".lspart")
+                val free = try { local.root.usableSpace } catch (_: Exception) { Long.MAX_VALUE }
+                if (total + (5L shl 20) > free) throw Full("Not enough free space on this device (needs up to ${total / 1048576} MB)")
+            } else {   // another device / SMB share: built here first, then uploaded
+                Core.cacheDir.mkdirs()
+                out = File(Core.cacheDir, "z_" + UUID.randomUUID().toString().take(8) + ".part")
+                val free = try { Core.cacheDir.usableSpace } catch (_: Exception) { Long.MAX_VALUE }
+                if (total + (50L shl 20) > free) throw Full("Not enough free space on this phone to build the ZIP (needs up to ${total / 1048576} MB)")
+            }
+            tmp = out
+
+            // 3. pack
+            job.bytes = true
+            job.total = maxOf(total, 1L)
+            job.done = 0
+            job.label = "Zipping $finalName"
+            val buf = ByteArray(1 shl 16)
+            Zip64Writer(out.outputStream().buffered(1 shl 16)).use { zw ->   // no 4 GB / 65,535-entry limit (ZIP64 where needed)
+                for (item in items) {
+                    if (job.cancel) throw Cancelled()
+                    if (item.dir) { zw.putDir(item.entry); continue }
+                    try {
+                        zw.beginFile(item.entry, item.size, item.entry.substringAfterLast('.', "").lowercase() in STORE_EXT)
+                        e.open(item.src).use { s ->
+                            while (true) {
+                                if (job.cancel) throw Cancelled()
+                                val n = s.read(buf)
+                                if (n < 0) break
+                                zw.write(buf, 0, n)
+                                job.done += n
+                            }
+                        }
+                        zw.endFile()
+                    } catch (x: Cancelled) { throw x
+                    } catch (x: Exception) { throw IOException(item.entry + ": " + errText(x)) }
+                }
+                zw.finish()
+            }
+
+            // 4. put it in place
+            if (local != null) {
+                val real = local.real(target)
+                if (!out.renameTo(real)) { real.delete(); if (!out.renameTo(real)) throw IOException("could not move the ZIP into place") }
+            } else {
+                val sz = out.length()
+                job.label = "Saving $finalName to ${dst.name}"
+                job.total = maxOf(sz, 1L)
+                job.done = 0
+                uploading = true
+                out.inputStream().buffered(1 shl 16).use { ins -> dst.write(target, ins, sz) { n -> if (job.cancel) throw Cancelled(); job.done += n } }
+            }
+            job.done = job.total
+            job.label = "Created $finalName"
+            job.note = "Created $finalName" + (if (skipped > 0) " - $skipped item(s) (links or unreadable folders) were left out" else "")
+            job.state = "done"
+        } catch (x: Cancelled) {
+            job.state = "cancel"
+            if (uploading) try { dst.remove(target) } catch (_: Exception) {}   // drop the half-uploaded file
+        } catch (x: Throwable) {   // incl. OutOfMemoryError: the job must end, not stay "running" forever
+            job.error = errText(x)
+            job.state = "error"
+        } finally {
+            tmp?.let { if (it.exists()) it.delete() }
+            if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
+            job.end = System.currentTimeMillis()
+        }
+    }
+
     fun ep(dev: String): Endpoint = ArcEp(when {   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
         dev == "local" -> Core.local
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
@@ -277,6 +435,7 @@ object Jobs {
             }
             if (same && cut) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
+            if (!(same && cut)) pinArchives(job, src, plan)
             val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
             for ((p, walked) in plan) {
                 if (job.cancel) throw Cancelled()

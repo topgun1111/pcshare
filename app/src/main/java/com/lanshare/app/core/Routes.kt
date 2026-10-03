@@ -24,6 +24,7 @@ object Routes {
         } catch (e: Denied) { ex.fail(403, errText(e))
         } catch (e: Full) { ex.fail(507, errText(e))
         } catch (e: Exists) { ex.fail(409, errText(e))
+        } catch (e: Cancelled) { ex.fail(499, "cancelled")   // the user pressed Cancel while an archive was being opened
         } catch (e: BadReq) { ex.fail(400, errText(e))
         } catch (e: JSONException) { ex.fail(400, errText(e))
         } catch (e: FileNotFoundException) { ex.fail(if ((e.message ?: "").contains("denied", true)) 403 else 404, errText(e))
@@ -104,6 +105,7 @@ object Routes {
                 val data = Thumbs.make(e.real(vnorm(ex.q("path"))))
                 return ex.reply(200, data, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
             }
+            "arcjob" -> return ex.json(ArcProg.current())   // what a slow folder listing is busy with (fetching an archive ...): {} when nothing
             "jobcancel" -> {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true
                 return ok(ex)
@@ -133,6 +135,8 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"))))
             "smb" -> smbUpdate(ex, b)
+            "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
+                b.getString("dir"), b.getString("name"))))
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"
                 val dev = b.getString("dev")
                 val ps = b.getJSONArray("paths").strings().map { vnorm(it) }.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
