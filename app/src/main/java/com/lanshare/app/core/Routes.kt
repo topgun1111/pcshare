@@ -7,7 +7,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.UUID
 
-/** HTTP routing: /p/* is what other devices call, /api/* is what this device's own UI calls. Mirrors the Python H class. */
+// HTTP routing: the /p/ routes are what other devices call, the /api/ routes are what this device's own UI calls. Mirrors the Python H class.
 object Routes {
     fun handle(ex: Exchange) {
         try {
