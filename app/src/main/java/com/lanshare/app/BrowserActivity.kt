@@ -151,7 +151,7 @@ class BrowserActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
-        if (Core.url == null) { Toast.makeText(this, "LANShare is still starting - try again in a moment", Toast.LENGTH_LONG).show(); finish(); return }
+        if (Core.url == null) { startActivity(Intent(this, LauncherActivity::class.java)); finish(); return }
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         cBg = if (night) 0xFF121314.toInt() else 0xFFF4F5F6.toInt()
         cCard = if (night) 0xFF1E2022.toInt() else 0xFFFFFFFF.toInt()
@@ -176,6 +176,41 @@ class BrowserActivity : Activity() {
         started = true
         navigate(cur, false)
         if (jobIds.isNotEmpty()) ui.post(jobTick)
+        handleShareExtra(intent)
+    }
+
+    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleShareExtra(i) }
+
+    /** Files received from the Android share sheet (already copied to "LANShare Shared" by [LauncherActivity]): pick the target device and send. */
+    private fun handleShareExtra(i: Intent?) {
+        val js = i?.getStringExtra("share") ?: return
+        i.removeExtra("share")
+        val names = try { JSONArray(js).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (_: Exception) { return }
+        if (names.isEmpty()) return
+        ui.postDelayed({ if (!isFinishing && !isDestroyed) sendShared(names) }, 700)   // the device list fills in on the first refresh
+    }
+
+    private fun sendShared(names: List<String>) {
+        refreshDevices()
+        val targets = devs.filter { it.id != "local" }
+        if (targets.isEmpty()) { toast("No other device found - the file(s) are in \"LANShare Shared\" on this phone"); return }
+        val paths = names.map { vnorm("/LANShare Shared/$it") }
+        AlertDialog.Builder(this).setTitle("Send ${paths.size} shared file${if (paths.size == 1) "" else "s"} to\u2026")
+            .setItems(targets.map { it.name }.toTypedArray()) { _, w ->
+                val t = targets[w].id
+                io.execute {
+                    val r = try { Result.success(Jobs.start("local", paths, t, INBOX, false, "Sending")) } catch (e: Exception) { Result.failure(e) }
+                    ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot send") }
+                }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    /** Printing stays in the web UI (PC print dialog + live preview): open it on exactly the selected files. */
+    private fun printSelected() {
+        val names = selectedItems().filter { !it.dir }.map { it.name }
+        if (names.isEmpty() || searching) return
+        val req = JSONObject().put("dev", dev).put("path", cur).put("names", JSONArray(names))
+        startActivity(Intent(this, MainActivity::class.java).putExtra("print", req.toString()))
     }
 
     override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("cur", cur); o.putString("dev", dev) }
@@ -654,13 +689,13 @@ class BrowserActivity : Activity() {
         m.menu.add(0, 1, 0, "New folder")
         m.menu.add(0, 2, 1, "Refresh")
         m.menu.add(0, 3, 2, if (showHidden) "Hide hidden files" else "Show hidden files")
-        m.menu.add(0, 4, 3, "Full app (web UI)")
+        m.menu.add(0, 4, 3, "More tools (web)")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> newFolder()
                 2 -> { if (searching) refreshAfter() else { cache.remove(ck(cur)); Core.rescan(); load(cur) } }
                 3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); relist(); updateChrome() }
-                4 -> finish()
+                4 -> startActivity(Intent(this, MainActivity::class.java))
             }
             true
         }
@@ -688,6 +723,8 @@ class BrowserActivity : Activity() {
         if (devs.size > 1) m.menu.add(0, 3, 2, "Send to device…")
         if (one != null) m.menu.add(0, 4, 3, "Rename")
         if (one != null && !one.dir) m.menu.add(0, 5, 4, "Open with…")
+        val picked = selectedItems()
+        if (!searching && picked.isNotEmpty() && picked.none { it.dir }) m.menu.add(0, 6, 5, "Print…")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> { items.forEach { i -> sel.add(pathOf(i)) }; ad.notifyDataSetChanged(); updateChrome() }
@@ -695,6 +732,7 @@ class BrowserActivity : Activity() {
                 3 -> sendSelected()
                 4 -> renameSelected()
                 5 -> one?.let { i -> openWith(i, true) }
+                6 -> printSelected()
             }
             true
         }

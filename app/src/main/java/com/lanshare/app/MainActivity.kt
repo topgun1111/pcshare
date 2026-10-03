@@ -69,6 +69,10 @@ class MainActivity : Activity() {
         }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
+        /** Print started from the native browser: {dev, path, names}. Empty when the web UI was opened normally. */
+        @JavascriptInterface fun printRequest(): String = this@MainActivity.intent?.getStringExtra("print") ?: ""
+        /** Print dialog cancelled: nothing left to do here, go back to the native browser. */
+        @JavascriptInterface fun closeHost() { runOnUiThread { finish() } }
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) {
             phonePrint.start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", name))).toString())
@@ -118,7 +122,6 @@ class MainActivity : Activity() {
             }
         }
         setContentView(web)
-        askPermissions()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()
         handleShare(intent)
@@ -129,7 +132,11 @@ class MainActivity : Activity() {
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
     }
 
-    override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleShare(i) }
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        if (i.hasExtra("print")) { setIntent(i); pageReady = false; Core.url?.let { web.loadUrl(it) }; return }
+        handleShare(i)
+    }
 
     /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
     private fun handleShare(i: Intent?) {

@@ -14,8 +14,7 @@
     <application android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.LANShare">
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden">
+        <activity android:name=".LauncherActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -27,6 +26,9 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
+        <!-- web UI: now only used for printing (PC print dialog + preview) and the tools that are not native yet -->
+        <activity android:name=".MainActivity" android:exported="false" android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden"/>
         <activity android:name=".BrowserActivity" android:exported="false" android:launchMode="singleTop"/>
         <activity android:name=".PlayerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true"

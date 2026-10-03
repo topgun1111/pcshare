@@ -355,6 +355,8 @@ document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const PN=+((location.search.match(/[?&]pane=(\d)/)||[])[1]||0),KID=window.parent!==window&&PN>0;let DU=null;
+/* Opened by the native browser's "Print…": {dev,path,names} of the selected files; '' in a normal start */
+const PRINT_REQ=(()=>{try{return(!KID&&window.LSAndroid&&LSAndroid.printRequest)?(LSAndroid.printRequest()||''):''}catch(e){return ''}})();
 const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:true,rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
 const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
@@ -1453,7 +1455,7 @@ function lsFocus(n){if(!DU||DU.act===n)return;DU.act=n;DU.wa.classList.toggle('a
   try{(n===1?DU.a:DU.b).contentWindow.lsPane.refreshClip()}catch(e){}}  // clipboard is shared on the server: the pane you tap shows "Paste here"
 function duApply(){
   if(KID)return;
-  const pref=LD('ls_dual','auto'),want=pref==='1'||(pref==='auto'&&innerWidth>=600&&innerHeight>=480);
+  const pref=LD('ls_dual','auto'),want=!PRINT_REQ&&(pref==='1'||(pref==='auto'&&innerWidth>=600&&innerHeight>=480));
   const w=$('#dual');
   if(want&&!DU){w.textContent='';
     const mk=n=>{const d=E('div','dw'+(n===1?' act':'')),f=document.createElement('iframe');f.src='/?pane='+n;f.title='Pane '+n;d.append(f);w.append(d);return[d,f]};
@@ -1473,9 +1475,18 @@ async function lsXfer(from,op){
   catch(e){A.toast('\u26a0 '+e.message,5000)}}
 let duT=0;window.addEventListener('resize',()=>{clearTimeout(duT);duT=setTimeout(duApply,200)});
 duApply();
+/* print mode: open the folder, select the given files and run the normal doPrint() - the print dialog itself is untouched */
+async function printBoot(){
+  try{const q=JSON.parse(PRINT_REQ);S.dev=q.dev||'local';S.path=q.path||'/';await load();
+    S.sel=new Set(q.names||[]);render();
+    await doPrint();
+    const t=$('#toast');   // selection still there and no error toast = dialog cancelled -> back to the native browser
+    if(S.sel.size&&(!t||t.style.display!=='block')&&window.LSAndroid&&LSAndroid.closeHost)LSAndroid.closeHost()}
+  catch(e){toast('\u26a0 '+e.message,5000)}}
 (async()=>{
   const i=await api('GET','/api/info');
   setName(i.name);S.ips=(i.ips||[]).join(', ');
   document.title='LANShare - '+i.name;if(i.storage_ok===false)toast('⚠ Files are hidden by Android - allow "All files access" for LANShare',9000);
-  await pollOnce();renderPeers();load();refreshClip();pollPeers()})();
+  await pollOnce();renderPeers();
+  if(PRINT_REQ){refreshClip();pollPeers();printBoot()}else{load();refreshClip();pollPeers()}})();
 </script></body></html>

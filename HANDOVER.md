@@ -1,5 +1,7 @@
 # LANShare → Android: Handover
 
+> **Native conversion status + remaining plan: see `NATIVE_HANDOVER.md`.**
+
 **Current state: pure Kotlin.** Chaquopy/Python removed; `core/*.kt` serves `assets/ui.html` from `MiniHttp`. **Not yet compiled or device-tested** (no Android SDK was available): first Gradle build will likely show small compile errors in `core/*.kt` (likeliest: `Cfg` accessors, `Discovery.start()` function refs, smart-casts in `RemoteFs.callRaw`). Then run the test checklist below, incl. SMB and thumbnails.
 Wire protocol is unchanged — old Python builds and Kotlin builds interoperate.
 
