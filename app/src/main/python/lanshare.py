@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """LANShare - find devices running the same app on your Wi-Fi / hotspot, browse their
-storage, copy / cut / paste between devices, and send files.   Python 3.8+, stdlib only.
+storage, copy / cut / paste between devices, and send files.   Python 3.8+, stdlib only (SMB shares additionally need the 'smbprotocol' package).
 
 Run in Pydroid 3 (or any Python). It opens a phone-friendly UI at http://127.0.0.1:8765
 Optional:  python lanshare.py [shared_root_folder]
@@ -67,6 +67,8 @@ def load_cfg():
     CFG.setdefault("id", uuid.uuid4().hex[:8])
     CFG.pop("pin", None)
     CFG.pop("paired", None)
+    CFG.pop("backup_ips", None)  # old Tailscale backup list, replaced by SMB shares
+    CFG.setdefault("smb", [])
     host = socket.gethostname()
     fallback = host if host not in ("", "localhost") else "Phone-" + CFG["id"][:4]
     cur = CFG.get("name")
@@ -82,39 +84,6 @@ def save_cfg():
             json.dump(CFG, f)
     except Exception:
         pass
-
-
-# ----------------------------------------------------------------- backup (Tailscale / VPN) addresses
-def is_vpn_ip(ip):
-    """True for Tailscale-style CGNAT addresses (100.64.0.0/10) - used as a backup path, LAN is preferred."""
-    try:
-        return ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10")
-    except ValueError:
-        return False
-
-
-def norm_backup(s):
-    """'100.101.102.103' or '100.101.102.103:8765' -> normalised string; raises ValueError if invalid."""
-    s = str(s).strip()
-    ip, port = s, None
-    if s.count(":") == 1:
-        ip, _, ps = s.partition(":")
-        port = int(ps)
-        if not 1 <= port <= 65535:
-            raise ValueError("bad port")
-    if not isinstance(ipaddress.ip_address(ip.strip()), ipaddress.IPv4Address):
-        raise ValueError("IPv4 only")
-    return ip.strip() + (":%d" % port if port else "")
-
-
-def backup_list():
-    out = []
-    for e in CFG.get("backup_ips", []):
-        try:
-            out.append(norm_backup(e))
-        except ValueError:
-            pass
-    return out
 
 
 # ----------------------------------------------------------------- paths
@@ -499,6 +468,228 @@ class Remote:
         self._call("POST", "mv", {"path": v, "to": to_v})
 
 
+# ----------------------------------------------------------------- SMB shares
+SMB_STATE = {}  # share id -> True / False (did the last operation work?), shown as the dot in the device bar
+
+
+def smb_lib():
+    try:
+        import smbclient
+        return smbclient
+    except ImportError:
+        raise IOError("SMB support is not installed (needs the 'smbprotocol' package)")
+
+
+def smb_err(e):
+    """Turn smbprotocol errors into the exceptions the rest of the app understands."""
+    if isinstance(e, (OSError, ValueError)) and not hasattr(e, "ntstatus"):
+        return e
+    msg = str(e)
+    low = msg.lower()
+    code = getattr(e, "errno", None)
+    if code == errno.ENOENT or "no_such_file" in low or "object_name_not_found" in low or "object_path_not_found" in low:
+        return FileNotFoundError(msg)
+    if code in (errno.EACCES, errno.EPERM) or "access_denied" in low or "logon_failure" in low or "logon failure" in low \
+            or "authenticat" in low or "bad_network_name" in low:
+        if "bad_network_name" in low:
+            return FileNotFoundError("Share not found on that server - check the share name")
+        return PermissionError("Access denied - check the username and password")
+    if code == errno.EEXIST or "collision" in low:
+        return FileExistsError(msg)
+    return IOError(msg)
+
+
+def smb_split(host):
+    """'192.168.1.5' or '192.168.1.5:4455' or 'PC' -> (host, port)."""
+    host = host.strip().strip("\\/")
+    if host.count(":") == 1:
+        h, _, ps = host.partition(":")
+        if ps.isdigit() and 1 <= int(ps) <= 65535:
+            return h, int(ps)
+    return host, 445
+
+
+def smb_cfg(sid):
+    for c in CFG.get("smb", []):
+        if c["id"] == sid:
+            return c
+    return None
+
+
+class Smb:
+    """A shared folder on a PC / NAS (SMB / CIFS), same interface as Local. Virtual '/' is the share root."""
+
+    def __init__(self, c):
+        self.id, self.name = c["id"], c["name"]
+        self.host, self.port = smb_split(c["host"])
+        self.share = c["share"].strip().strip("\\/")
+        self.user, self.pw = c.get("user", ""), c.get("password", "")
+        self.base = "\\\\%s\\%s" % (self.host, self.share)
+        self.lib = smb_lib()
+        self.lib.register_session(self.host, username=self.user or "guest", password=self.pw, port=self.port,
+                                  connection_timeout=15)
+
+    def unc(self, v):
+        v = vnorm(v)
+        return self.base if v == "/" else self.base + v.replace("/", "\\")
+
+    def _run(self, fn, *a, **kw):
+        try:
+            r = fn(*a, **kw)
+            SMB_STATE[self.id] = True
+            return r
+        except Exception as e:
+            if not isinstance(e, (FileNotFoundError, FileExistsError, ValueError)):
+                SMB_STATE[self.id] = isinstance(e, PermissionError) and SMB_STATE.get(self.id, True)
+            raise smb_err(e)
+
+    @staticmethod
+    def _item(e):
+        try:
+            d = e.is_dir()
+        except Exception:
+            d = False
+        try:
+            st = e.stat()
+            size, mt = (0 if d else st.st_size), int(st.st_mtime)
+        except Exception:
+            size, mt = 0, 0
+        return {"name": e.name, "dir": d, "size": size, "mtime": mt}
+
+    def ls(self, v):
+        def go():
+            with self.lib.scandir(self.unc(v)) as it:
+                return [self._item(e) for e in it]
+        return self._run(go)
+
+    def search(self, v, q, limit=300, secs=15):
+        q, out, end = q.lower(), [], time.time() + secs
+
+        def go():
+            stack = [vnorm(v)]
+            while stack:
+                d = stack.pop()
+                try:
+                    with self.lib.scandir(self.unc(d)) as it:
+                        entries = [self._item(e) for e in it]
+                except Exception:
+                    continue
+                for i in entries:
+                    if i["dir"]:
+                        stack.append(vjoin(d, i["name"]))
+                    if q in i["name"].lower():
+                        i["path"] = vjoin(d, i["name"])
+                        out.append(i)
+                        if len(out) >= limit:
+                            return {"items": out, "partial": True}
+                if time.time() > end:
+                    return {"items": out, "partial": True}
+            out.sort(key=lambda i: (not i["dir"], i["name"].lower()))
+            return {"items": out, "partial": False}
+        return self._run(go)
+
+    def names(self, v):
+        try:
+            return {i["name"] for i in self.ls(v)}
+        except (OSError, PermissionError):
+            return set()
+
+    def walk(self, v):
+        import stat as _st
+
+        def go():
+            st = self.lib.stat(self.unc(v))
+            if not _st.S_ISDIR(st.st_mode):
+                return [{"rel": "", "dir": False, "size": st.st_size}]
+            res, stack = [{"rel": "", "dir": True, "size": 0}], [""]
+            while stack:
+                rel = stack.pop()
+                with self.lib.scandir(self.unc(vjoin(v, rel) if rel else v)) as it:
+                    for i in [self._item(e) for e in it]:
+                        r = (rel + "/" if rel else "") + i["name"]
+                        res.append({"rel": r, "dir": i["dir"], "size": i["size"]})
+                        if i["dir"]:
+                            stack.append(r)
+            return res
+        return self._run(go)
+
+    def open_read(self, v):
+        def go():
+            p = self.unc(v)
+            size = self.lib.stat(p).st_size
+            return self.lib.open_file(p, mode="rb"), size
+        return self._run(go)
+
+    def write(self, v, fobj, size, cb=None):
+        def go():
+            p = self.unc(v)
+            parent = p.rpartition("\\")[0]
+            if parent != self.base:
+                self.lib.makedirs(parent, exist_ok=True)
+            tmp = p + ".lspart"
+            left = size
+            try:
+                with self.lib.open_file(tmp, mode="wb") as f:
+                    while left > 0:
+                        b = fobj.read(min(CHUNK, left))
+                        if not b:
+                            raise IOError("connection lost")
+                        f.write(b)
+                        left -= len(b)
+                        if cb:
+                            cb(len(b))
+                self.lib.replace(tmp, p)
+            except BaseException:
+                try:
+                    self.lib.remove(tmp)
+                except Exception:
+                    pass
+                raise
+        return self._run(go)
+
+    def mkdir(self, v):
+        self._run(self.lib.makedirs, self.unc(v), exist_ok=True)
+
+    def remove(self, v):
+        if vnorm(v) == "/":
+            raise PermissionError("cannot delete the share root")
+
+        def go():
+            import stat as _st
+            p = self.unc(v)
+            if _st.S_ISDIR(self.lib.stat(p).st_mode):
+                self.lib.rmtree(p)
+            else:
+                self.lib.remove(p)
+        self._run(go)
+
+    def rename(self, v, newname):
+        if not newname or "/" in newname or "\\" in newname or newname in (".", ".."):
+            raise ValueError("invalid name")
+        dst = self.unc(vjoin(posixpath.dirname(vnorm(v)), newname))
+
+        def go():
+            try:
+                self.lib.stat(dst)
+            except Exception:
+                return self.lib.rename(self.unc(v), dst)
+            raise FileExistsError("name already exists")
+        self._run(go)
+
+    def move(self, v, to_v):
+        self._run(self.lib.rename, self.unc(v), self.unc(to_v))
+
+
+def smb_peers():
+    return [{"id": c["id"], "name": c["name"], "ip": c["host"], "ok": SMB_STATE.get(c["id"], True), "smb": True}
+            for c in CFG.get("smb", [])]
+
+
+def smb_status():
+    return [{"id": c["id"], "name": c["name"], "host": c["host"], "share": c["share"], "user": c.get("user", ""),
+             "ok": SMB_STATE.get(c["id"], True)} for c in CFG.get("smb", [])]
+
+
 LOCAL = None
 DISC = None
 STORAGE = {}
@@ -507,6 +698,11 @@ STORAGE = {}
 def ep(dev):
     if dev == "local":
         return LOCAL
+    if dev.startswith("smb:"):
+        c = smb_cfg(dev)
+        if not c:
+            raise IOError("that SMB share was removed")
+        return Smb(c)
     p = DISC.get(dev)
     if not p:
         raise IOError("that device is offline")
@@ -610,8 +806,6 @@ class Discovery:
         self.probe_pool = ThreadPoolExecutor(max_workers=8)  # own pool: live checks must never queue behind a subnet scan
         self.gen = 0            # bump -> listen() re-creates its UDP socket
         self.tick = time.time()  # last beacon-loop heartbeat (detects phone sleep / unlock)
-        self.bwake = threading.Event()  # wake backup_loop early (settings changed)
-        self.bk_err = {}                # backup address -> why the last attempt failed
 
     def msg(self):
         return json.dumps({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port,
@@ -622,7 +816,7 @@ class Discovery:
                 "ips": sorted(self.own_ips)}
 
     def start(self):
-        for fn in (self.listen, self.beacon, self.tcp_loop, self.live_loop, self.backup_loop):
+        for fn in (self.listen, self.beacon, self.tcp_loop, self.live_loop):
             threading.Thread(target=fn, daemon=True).start()
 
     # ---- peer table
@@ -636,8 +830,6 @@ class Discovery:
                                        "seen": now, "ips": [], "ok": True}
             elif not p.get("ok", True):
                 p["ip"] = ip  # last address failed - try the newest one
-            elif is_vpn_ip(p["ip"]) and not is_vpn_ip(ip):
-                p["ip"] = ip  # reachable on the LAN again - prefer it over the Tailscale backup
             p["port"], p["name"], p["seen"] = int(port), str(name)[:40], now
             allips = set(p["ips"]) | {ip}
             for i in (ips or []):
@@ -854,7 +1046,7 @@ class Discovery:
 
     # ---- keep known peers alive / fix their address
     def probe(self, peer):
-        rest = sorted((i for i in peer.get("ips", []) if i != peer["ip"]), key=is_vpn_ip)  # LAN first, VPN last
+        rest = [i for i in peer.get("ips", []) if i != peer["ip"]]
         cands = [peer["ip"]] + rest
         for ip in cands[:5]:
             try:
@@ -880,67 +1072,6 @@ class Discovery:
                 list(self.probe_pool.map(self.probe, self.list()))
             except Exception:
                 pass
-
-    # ---- backup addresses (Tailscale etc.): tried in the background, also when the LAN is down
-    def try_backup(self, entry):
-        """Connect to one saved backup address. True if a LANShare device answered.
-        The reason for a failure is kept in self.bk_err for the settings screen."""
-        ip, port0 = entry, None
-        if entry.count(":") == 1:
-            ip, _, ps = entry.partition(":")
-            port0 = int(ps)
-        if ip in self.own_ips:
-            self.bk_err[entry] = "This is this device's own address"
-            return False
-        why = "Nothing is listening on that device - is LANShare open there?"
-        for port in ([port0] if port0 else range(BASE_PORT, BASE_PORT + 20)):
-            try:
-                m = hello_url(ip, port, 4.0)
-            except ConnectionRefusedError:
-                continue            # nobody on this port - try the next one
-            except Exception as e:
-                msg = str(e).lower()
-                self.bk_err[entry] = ("No route - is Tailscale connected on this phone?" if "unreachable" in msg
-                                      else "No answer - Tailscale off on that device, or a firewall blocks it")
-                return False
-            try:
-                if m.get("app") == "lanshare" and m["id"] == CFG["id"]:
-                    self.bk_err[entry] = "This is this device's own address"
-                    return False
-                if m.get("app") == "lanshare":
-                    self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
-                    self.bk_err.pop(entry, None)
-                    return True
-            except Exception:
-                pass
-        self.bk_err[entry] = why
-        return False
-
-    def backup_status(self):
-        peers = self.list()
-        res = []
-        for e in backup_list():
-            ip = e.partition(":")[0]
-            hit = next((p for p in peers if ip in p.get("ips", []) or ip == p["ip"]), None)
-            res.append({"ip": e, "name": hit["name"] if hit else "",
-                        "up": bool(hit and hit.get("ok", True)),
-                        "why": "" if hit else self.bk_err.get(e, "Trying...")})
-        return res
-
-    def backup_loop(self):
-        while True:
-            try:
-                peers = self.list()
-                for e in backup_list():
-                    ip = e.partition(":")[0]
-                    # already known and healthy -> live_loop keeps it fresh
-                    if any((ip in p.get("ips", []) or ip == p["ip"]) and p.get("ok", True) for p in peers):
-                        continue
-                    self.try_backup(e)
-            except Exception:
-                pass
-            self.bwake.wait(15)
-            self.bwake.clear()
 
     def add_ip(self, ip):
         port0 = None
@@ -1311,7 +1442,8 @@ class H(BaseHTTPRequestHandler):
             return self.json({"id": CFG["id"], "name": CFG["name"], "ips": sorted(DISC.own_ips),
                               "port": DISC.port, "root": LOCAL.root, "storage_ok": STORAGE.get("ok")})
         if route == "peers":
-            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "ok": p.get("ok", True)} for p in DISC.list()])
+            return self.json([{"id": p["id"], "name": p["name"], "ip": p["ip"], "ok": p.get("ok", True)} for p in DISC.list()]
+                             + smb_peers())
         if route == "diag":
             return self.json({"me": CFG["name"], "id": CFG["id"], "port": DISC.port, "ifaces": [[i, str(n)] for i, n in DISC.ifaces],
                               "peers": DISC.list()})
@@ -1370,25 +1502,25 @@ class H(BaseHTTPRequestHandler):
             return self.json({"job": start_job(CLIP["dev"], CLIP["paths"], b["dev"], b["dir"], cut, "Moving" if cut else "Copying")})
         if route == "send":
             return self.json({"job": start_job(b["dev"], b["paths"], b["to"], INBOX, False, "Sending")})
-        if route == "backups" and self.command == "GET":
-            return self.json(DISC.backup_status())
-        if route == "backups":  # b was already read above
-            cur, found = backup_list(), None
+        if route == "smb" and self.command == "GET":
+            return self.json(smb_status())
+        if route == "smb":  # b was already read above
+            lst = list(CFG.get("smb", []))
             if b.get("remove"):
-                cur = [e for e in cur if e != str(b["remove"]).strip()]
+                lst = [c for c in lst if c["id"] != b["remove"]]
+                SMB_STATE.pop(b["remove"], None)
             else:
-                try:
-                    e = norm_backup(b["add"])
-                except (ValueError, KeyError):
-                    raise ValueError("enter an IPv4 address like 100.101.102.103")
-                if e not in cur:
-                    cur.append(e)
-            CFG["backup_ips"] = cur[:10]
+                host, share = str(b.get("host", "")).strip(), str(b.get("share", "")).strip().strip("\\/")
+                if not host or not share:
+                    raise ValueError("enter the server address and the share name")
+                c = {"id": "smb:" + uuid.uuid4().hex[:6], "host": host, "share": share,
+                     "user": str(b.get("user", "")).strip(), "password": str(b.get("password", "")),
+                     "name": str(b.get("name", "")).strip()[:40] or "%s/%s" % (smb_split(host)[0], share)}
+                Smb(c).ls("/")  # raises a readable error if the server, share or login is wrong
+                lst.append(c)
+            CFG["smb"] = lst[:10]
             save_cfg()
-            if b.get("add"):
-                found = DISC.try_backup(norm_backup(b["add"]))
-            DISC.bwake.set()
-            return self.json({"ok": True, "found": found, "list": DISC.backup_status()})
+            return self.json({"ok": True, "list": smb_status()})
         if route == "addip":
             if not DISC.add_ip(str(b["ip"]).strip()):
                 raise IOError("no LANShare device found at that address")
@@ -2112,31 +2244,41 @@ function openSettings(){
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sm.textContent=THN[S.theme]};card.append(rt);
-  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Reach devices outside this network');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','Tailscale / backup IPs'),sb);rb.append(tb);
-  rb.onclick=()=>{close();openBackups()};card.append(rb);
-  api('GET','/api/backups').then(l=>{if(l.length)sb.textContent=l.filter(x=>x.up).length+' of '+l.length+' connected'}).catch(()=>{});
+  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse a PC or NAS shared folder');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
+  rb.onclick=()=>{close();openSmb()};card.append(rb);
+  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' share':' shares')}).catch(()=>{});
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
-async function openBackups(){
+async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Tailscale / backup IPs'));
-  const info=E('p','','Add the Tailscale IP (100.x.x.x) of your other devices. They are tried in the background and used when the device is not found on this Wi-Fi. Tailscale must be running on both devices.');
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','SMB shares'));
+  const info=E('p','','Add a shared folder from your PC or NAS. Use the PC\u2019s IP address (e.g. 192.168.1.20), the share name, and a Windows account that can open the share. Shares appear next to your devices at the top.');
   info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
   const list=E('div');card.append(list);
+  const refresh=()=>{S.sig='';pollPeers()};
   const draw=l=>{list.textContent='';
-    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No backup addresses yet'));list.append(e)}
+    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No shares yet'));list.append(e)}
     l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
-      t.append(E('b','',x.ip),E('small','',x.up?'Connected'+(x.name?' · '+x.name:''):(x.why||'Not reachable')));
-      rm.onclick=async()=>{try{draw((await api('POST','/api/backups',{remove:x.ip})).list)}catch(e){toast('⚠ '+e.message,4000)}};
+      t.append(E('b','',x.name),E('small','','\\\\'+x.host+'\\'+x.share+(x.user?' \u00b7 '+x.user:' \u00b7 guest')));
+      rm.onclick=async()=>{try{draw((await api('POST','/api/smb',{remove:x.id})).list);if(S.dev===x.id)openDev('local');refresh()}catch(e){toast('\u26a0 '+e.message,4000)}};
       r.append(t,rm);list.append(r)})};
-  try{draw(await api('GET','/api/backups'))}catch(e){draw([])}
-  const add=E('button','tbtn fill','Add IP');add.onclick=async()=>{
-    const ip=await dlg({title:'Add Tailscale IP',msg:'e.g. 100.101.102.103 (optionally :port)',input:{label:'100.x.x.x'},ok:'Add'});if(!ip)return;
-    try{const r=await api('POST','/api/backups',{add:ip});draw(r.list);toast(r.found?'Connected!':'Saved - will keep trying',3000);S.sig=''}
-    catch(e){toast('⚠ '+e.message,4000)}};
+  try{draw(await api('GET','/api/smb'))}catch(e){draw([])}
+  const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';card.append(form);
+  const F={};[['host','Server address (e.g. 192.168.1.20)','text'],['share','Share name (e.g. Documents)','text'],['user','Username (empty = guest)','text'],['password','Password','password'],['name','Display name (optional)','text']].forEach(([k,ph,ty])=>{
+    const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
   const d=E('button','tbtn','Done');d.onclick=()=>{close();openSettings()};
-  const act=E('div','dact');act.append(d,add);card.append(act);o.append(card)}
+  const save=E('button','tbtn fill','Connect');
+  const add=E('button','tbtn fill','Add share');
+  add.onclick=()=>{form.style.display='flex';add.style.display='none';save.style.display='';F.host.focus()};
+  save.style.display='none';
+  save.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;
+    if(!b.host.trim()||!b.share.trim()){toast('Enter the server address and share name',3000);return}
+    save.disabled=true;save.textContent='Connecting\u2026';
+    try{const r=await api('POST','/api/smb',b,30000);draw(r.list);for(const k in F)F[k].value='';form.style.display='none';save.style.display='none';add.style.display='';toast('Connected!',2500);refresh()}
+    catch(e){toast('\u26a0 '+e.message,5000)}
+    save.disabled=false;save.textContent='Connect'};
+  const act=E('div','dact');act.append(d,add,save);card.append(act);o.append(card)}
 function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
   let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}

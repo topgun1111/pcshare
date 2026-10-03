@@ -59,5 +59,5 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
-chaquopy { defaultConfig { version = "3.11"; pip { install("Pillow") } } }
+chaquopy { defaultConfig { version = "3.11"; pip { install("Pillow"); install("smbprotocol") } } }
 dependencies { implementation("androidx.core:core-ktx:1.13.1") }

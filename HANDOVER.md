@@ -59,3 +59,12 @@ service; a thin Kotlin WebView loads its UI. Python stdlib only → no pip deps.
 - Intentionally NOT done (optional later): server PIN/trusted-network toggle (design of lanshare.py is no-PIN; use only on trusted Wi-Fi), pull-to-refresh, tablet layout.
 - **Test checklist:** (1) install on 2 phones, grant All-files + notifications; (2) both appear in device list within ~5 s; (3) browse, copy/cut/paste, send both ways; (4) upload via picker, download to /Download; (5) hotspot host + client; (6) toggle Wi-Fi → devices reappear; (7) share a file from Gallery → picker → delivered in `LANShare Received` on target; (8) screen off 10 min → still reachable.
 - If a build fails: paste the Actions log; most likely culprits are Chaquopy/AGP version pairing or Kotlin API nits.
+
+## Batch 6 – Tailscale backup IPs replaced by SMB shares
+- Removed: Tailscale / backup-IP settings screen, `/api/backups`, backup loop and VPN-address handling in `lanshare.py`. Old `backup_ips` is dropped from the config on load. ("+ IP" for adding a LAN device by IP is unchanged.)
+- Added: **Settings → SMB shares**. Enter server (IP, optional `:port`), share name, username/password (empty user = guest), optional display name. The connection is tested before saving.
+- Each saved share shows up as a chip in the device bar and works like any other device: browse, search, download, upload, copy/cut/paste, rename, delete, and "Send to…" (lands in the share root).
+- Backend: `Smb` class in `lanshare.py` (same interface as `Local`/`Remote`) on top of `smbclient` from the `smbprotocol` package (SMB2/3, signing/encryption). Added to Chaquopy pip in `app/build.gradle.kts`. Config: `CFG["smb"]` = list of `{id, host, share, user, password, name}` in `lanshare.json` (password stored in plain text in the app's private storage).
+- API: `GET /api/smb` (list), `POST /api/smb` `{host, share, user, password, name}` to add, `{remove: id}` to delete. `/api/peers` also returns the shares (`smb: true`).
+- Notes: use the PC's IP address (Android usually can't resolve Windows/NetBIOS names); SMB1-only servers are not supported; no thumbnails for SMB files.
+- **Not tested on a real device/server yet** (tested against a fake `smbclient`): first thing to check is that the Actions build can resolve `smbprotocol` (needs the `cryptography` wheel from Chaquopy's repo).
