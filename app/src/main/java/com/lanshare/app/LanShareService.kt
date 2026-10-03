@@ -38,7 +38,7 @@ class LanShareService : Service() {
         if (Build.VERSION.SDK_INT >= 26)
             getSystemService(NotificationManager::class.java)
                 .createNotificationChannel(NotificationChannel(ch, "LANShare", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(this, 0, Intent(this, BrowserActivity::class.java),
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE)
         try { startForeground(1, NotificationCompat.Builder(this, ch)
             .setSmallIcon(R.drawable.ic_notification)

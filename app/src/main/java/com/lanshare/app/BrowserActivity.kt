@@ -61,7 +61,6 @@ class BrowserActivity : Activity() {
             override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         }
         private val failed = HashSet<String>()
-        private var askedThisProcess = false
         private fun pool(n: Int) = Executors.newFixedThreadPool(n) { r -> Thread(r, "browser").also { it.isDaemon = true } }
         private val io = pool(4)
         private val pre = pool(1)
@@ -130,7 +129,6 @@ class BrowserActivity : Activity() {
 
     private var devs: List<Dev> = emptyList()
     private var devSig = ""
-    private val warmed = HashSet<String>()   // devices whose root listing was already pre-loaded
 
     private var searching = false
     private var query = ""
@@ -153,6 +151,7 @@ class BrowserActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        if (Core.url == null) { Toast.makeText(this, "LANShare is still starting - try again in a moment", Toast.LENGTH_LONG).show(); finish(); return }
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         cBg = if (night) 0xFF121314.toInt() else 0xFFF4F5F6.toInt()
         cCard = if (night) 0xFF1E2022.toInt() else 0xFFFFFFFF.toInt()
@@ -171,57 +170,12 @@ class BrowserActivity : Activity() {
         val p0 = b?.getString("cur") ?: intent.getStringExtra("path") ?: "/"
         cur = if (p0.startsWith("/") && !p0.contains('!')) p0 else "/"
 
-        // This is the launcher screen now: it starts the server itself and shows the window at once.
         buildUi()
         setGrid(grid, false)
-        if (Core.url == null) {
-            showEmpty("Starting…")
-            androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
-        }
-        askPermissionsOnce()
-        whenCoreReady { begin() }
-    }
-
-    /** Polls (every 40 ms) until the in-process server is up, then runs [go] on the UI thread. */
-    private fun whenCoreReady(go: () -> Unit) {
-        if (Core.url != null) { go(); return }
-        val t0 = System.currentTimeMillis()
-        val tick = object : Runnable {
-            override fun run() {
-                when {
-                    isFinishing || isDestroyed -> return
-                    Core.url != null -> go()
-                    Core.error != null -> showEmpty("LANShare could not start.\n" + Core.error)
-                    System.currentTimeMillis() - t0 > 40_000 -> showEmpty("LANShare did not start. Close and reopen the app.")
-                    else -> ui.postDelayed(this, 40)
-                }
-            }
-        }
-        ui.postDelayed(tick, 40)
-    }
-
-    private fun begin() {
         refreshDevices()
         started = true
         navigate(cur, false)
         if (jobIds.isNotEmpty()) ui.post(jobTick)
-        if (!firstResume) ui.post(devTick)
-    }
-
-    /** Notification / all-files / battery prompts: only on the very first start of the process, never again when coming back. */
-    private fun askPermissionsOnce() {
-        if (askedThisProcess) return
-        askedThisProcess = true
-        try {
-            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
-            if (Build.VERSION.SDK_INT >= 30) {
-                if (!android.os.Environment.isExternalStorageManager())
-                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-            } else requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 2)
-            val pm = getSystemService(android.os.PowerManager::class.java)
-            if (!pm.isIgnoringBatteryOptimizations(packageName))
-                startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-        } catch (_: Exception) {}
     }
 
     override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("cur", cur); o.putString("dev", dev) }
@@ -229,7 +183,7 @@ class BrowserActivity : Activity() {
     private var firstResume = true
     override fun onResume() {   // silent refresh after viewers / other apps (not on the very first resume: onCreate just loaded)
         super.onResume()
-        if (Core.url != null) { ui.removeCallbacks(devTick); ui.post(devTick) }
+        ui.removeCallbacks(devTick); ui.post(devTick)
         if (firstResume) { firstResume = false; return }
         if (started && !searching) load(cur)
     }
@@ -414,7 +368,6 @@ class BrowserActivity : Activity() {
         try { Smb.peers().forEach { l.add(Dev(it.getString("id"), it.getString("name"), it.optBoolean("ok", true), "smb")) } } catch (_: Exception) {}
         val sig = l.joinToString(";") { "${it.id}|${it.name}|${it.ok}" } + "#" + dev
         devs = l
-        for (d in l) if (d.ok && d.id != "local" && warmed.add(d.id)) prefetch(d.id, "/")
         if (sig == devSig) return
         devSig = sig
         buildDevBar()
@@ -573,11 +526,10 @@ class BrowserActivity : Activity() {
         cache.put(ck(path), nl)
         if (!(loaded && same(raw, nl))) setList(nl)
         loaded = true
-        val d = dev
-        if (d == "local") fetchCounts(path)   // item counts: cheap on this phone's storage only
-        // warm the next likely taps (peers / SMB: fewer, and a little later, so the network is not flooded)
-        val dirs = items.filter { it.dir && !it.name.startsWith(".") }.take(if (d == "local") 4 else 3)
-        ui.postDelayed({ if (cur == path && dev == d) dirs.forEach { prefetch(d, jn(path, it.name)) } }, if (d == "local") 250 else 500)
+        if (dev != "local") return   // counts / prefetch only for this phone's storage (cheap there, slow over the network)
+        fetchCounts(path)
+        val dirs = items.filter { it.dir && !it.name.startsWith(".") }.take(4)   // warm the next likely taps
+        ui.postDelayed({ if (cur == path && dev == "local") dirs.forEach { prefetch(jn(path, it.name)) } }, 250)
     }
 
     private fun fetchCounts(path: String) {
@@ -596,11 +548,11 @@ class BrowserActivity : Activity() {
         }
     }
 
-    private fun prefetch(d: String, p: String) {
-        val k = ck(d, p)
+    private fun prefetch(p: String) {
+        val k = ck("local", p)
         if (cache.get(k) != null || !inflight.add(k)) return
         pre.execute {
-            val l = try { if (d == "local") Core.local.ls(p, false) else ep(d).ls(p) } catch (_: Exception) { null }
+            val l = try { Core.local.ls(p, false) } catch (_: Exception) { null }
             ui.post { inflight.remove(k); if (l != null && cache.get(k) == null) cache.put(k, l) }
         }
     }
@@ -708,7 +660,7 @@ class BrowserActivity : Activity() {
                 1 -> newFolder()
                 2 -> { if (searching) refreshAfter() else { cache.remove(ck(cur)); Core.rescan(); load(cur) } }
                 3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); relist(); updateChrome() }
-                4 -> startActivity(Intent(this, MainActivity::class.java).putExtra("fromBrowser", true))
+                4 -> finish()
             }
             true
         }
@@ -1136,7 +1088,7 @@ class BrowserActivity : Activity() {
             h.root.setOnTouchListener { _, e ->   // head start: the folder listing loads while the finger is still lifting (this phone only)
                 if (e.actionMasked == MotionEvent.ACTION_DOWN && sel.isEmpty() && dev == "local" && !searching) {
                     val pos = h.bindingAdapterPosition
-                    if (pos != RecyclerView.NO_POSITION && items[pos].dir) prefetch(dev, jn(cur, items[pos].name))
+                    if (pos != RecyclerView.NO_POSITION && items[pos].dir) prefetch(jn(cur, items[pos].name))
                 }
                 false
             }
