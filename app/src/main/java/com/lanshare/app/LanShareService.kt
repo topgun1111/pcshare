@@ -6,10 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import com.lanshare.app.core.Core
-import com.lanshare.app.core.KOTLIN_CORE
 
 class LanShareService : Service() {
     private var started = false
@@ -17,12 +14,12 @@ class LanShareService : Service() {
     private val netCb = object : android.net.ConnectivityManager.NetworkCallback() {
         private fun go() {   // debounce: network events come in bursts
             val now = System.currentTimeMillis()
-            if (now - lastScan < 3000 || (!KOTLIN_CORE && !Python.isStarted())) return
+            if (now - lastScan < 3000) return
             lastScan = now
             Thread {
                 try {
                     Thread.sleep(1500)
-                    if (KOTLIN_CORE) Core.rescan() else Python.getInstance().getModule("android_main").callAttr("rescan")
+                    Core.rescan()
                 } catch (_: Exception) {}
             }.start()
         }
@@ -55,13 +52,7 @@ class LanShareService : Service() {
             val root = Environment.getExternalStorageDirectory().absolutePath
             try { getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(netCb) }
             catch (_: Exception) {}
-            if (KOTLIN_CORE) {
-                Thread { Core.start(applicationContext, root) }.apply { isDaemon = true; start() }
-            } else {
-                if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-                Thread { Python.getInstance().getModule("android_main").callAttr("start", filesDir.absolutePath, root) }
-                    .apply { isDaemon = true; start() }
-            }
+            Thread { Core.start(applicationContext, root) }.apply { isDaemon = true; start() }
         }
         return START_STICKY
     }

@@ -9,12 +9,6 @@ import android.util.Log
 import java.io.File
 import java.io.IOException
 
-/**
- * Cut-over switch. false = the app still runs the Python server through Chaquopy (current shipping behaviour).
- * true = the Kotlin core below serves the UI. Flip it once SMB + thumbnails are ported (see HANDOVER.md).
- */
-val KOTLIN_CORE: Boolean = false
-
 /** Replacement for android_main.py + lanshare.main(): owns config, local filesystem, HTTP server and discovery. */
 object Core {
     private const val TAG = "LANShare"

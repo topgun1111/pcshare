@@ -19,9 +19,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.chaquo.python.Python
 import com.lanshare.app.core.Core
-import com.lanshare.app.core.KOTLIN_CORE
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
@@ -320,14 +318,8 @@ class MainActivity : Activity() {
             while (url == null && err == null && System.currentTimeMillis() - t0 < 40_000) {
                 Thread.sleep(300)
                 try {
-                    if (KOTLIN_CORE) {
-                        url = Core.url
-                        err = Core.error
-                    } else if (Python.isStarted()) {
-                        val m = Python.getInstance().getModule("android_main")
-                        url = m.callAttr("get_url")?.toString()
-                        err = m.callAttr("get_error")?.toString()
-                    }
+                    url = Core.url
+                    err = Core.error
                 } catch (_: Exception) {}
             }
             runOnUiThread {
