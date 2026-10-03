@@ -156,6 +156,10 @@ object Jobs {
     private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean) {
         var dest: String? = null
         val same = src.id == dst.id
+        val fails = ArrayList<String>()   // what went wrong, one line each (first 50)
+        var failCount = 0
+        var skippedTotal = 0
+        fun fail(what: String, e: Throwable) { failCount++; if (fails.size < 50) fails.add("$what: ${errText(e)}") }
         try {
             val ddirN = vnorm(ddir)
             val plan = ArrayList<Pair<String, List<WalkItem>?>>()
@@ -164,30 +168,61 @@ object Jobs {
                 if (p == "/") throw Denied("cannot copy the root")
                 if (same && (ddirN == p || ddirN.startsWith("$p/"))) throw BadReq("cannot put a folder inside itself")
                 if (same && cut && vdir(p) == ddirN) continue   // moving into the same folder: nothing to do
-                plan.add(p to (if (same && cut) null else src.walk(p)))
+                try { plan.add(p to (if (same && cut) null else src.walk(p))) }
+                catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }   // one unreadable item must not stop the others
             }
             if (same && cut) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
-            val taken = dst.names(ddirN)
+            val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
             for ((p, walked) in plan) {
+                if (job.cancel) throw Cancelled()
                 val isDir = walked?.firstOrNull()?.dir ?: false
                 val nn = uniqueName(vbase(p), taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
                 dest = d
-                if (same && cut) { src.move(p, d); job.done += 1; continue }
+                if (same && cut) {
+                    try { src.move(p, d) } catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }
+                    job.done += 1
+                    continue
+                }
+                var bad = 0
+                var skipped = 0
                 for (w in walked!!) {
                     if (job.cancel) throw Cancelled()
+                    if (w.skip) { skipped++; continue }   // link / unreadable folder: not copied
                     val target = if (w.rel.isEmpty()) d else d + "/" + w.rel
-                    if (w.dir) { dst.mkdir(target); continue }
-                    val sp = if (w.rel.isEmpty()) p else p + "/" + w.rel
-                    copyFile(job, src, dst, sp, target)
+                    try {
+                        if (w.dir) { dst.mkdir(target); continue }
+                        val sp = if (w.rel.isEmpty()) p else p + "/" + w.rel
+                        copyFile(job, src, dst, sp, target)
+                    } catch (e: Cancelled) { throw e
+                    } catch (e: Exception) {
+                        bad++
+                        fail(if (w.rel.isEmpty()) vbase(p) else vbase(p) + "/" + w.rel, e)
+                        job.done += w.size   // keep the progress bar moving
+                    }
                 }
-                if (cut) src.remove(p)
+                skippedTotal += skipped
+                if (cut) {
+                    // SAFETY: the original is removed only when every single thing in it was copied
+                    if (bad == 0 && skipped == 0) {
+                        try { src.remove(p) } catch (e: Cancelled) { throw e }
+                        catch (e: Exception) { fail(vbase(p), IOException("copied, but the original could not be removed: ${errText(e)}")) }
+                    } else if (bad == 0) {
+                        failCount++; if (fails.size < 50) fails.add("${vbase(p)}: copied, but $skipped item(s) (links or unreadable folders) could not be copied, so the original was kept")
+                    } else if (fails.size < 50) fails.add("${vbase(p)}: not moved - the original was kept")
+                }
             }
             job.done = job.total
-            job.state = "done"
-            if (cut && Clip.paths.isNotEmpty() && Clip.dev == srcId) Clip.clear()
+            if (failCount == 0) {
+                job.state = "done"
+                if (skippedTotal > 0) job.note = "Done - $skippedTotal item(s) (links or unreadable folders) were skipped"
+                if (cut && Clip.paths.isNotEmpty() && Clip.dev == srcId) Clip.clear()
+            } else {
+                job.error = (if (failCount == 1) fails[0] else "$failCount problems - " + fails.take(3).joinToString("; ") + (if (failCount > 3) "; ..." else ""))
+                job.state = "error"
+            }
         } catch (e: Cancelled) {
             job.state = "cancel"
             val d = dest
@@ -214,11 +249,11 @@ object Jobs {
                 } finally { f.close() }
                 return
             } catch (e: Cancelled) { throw e
-            } catch (e: NotFound) { throw e
-            } catch (e: Denied) { throw e
-            } catch (e: Exists) { throw e
-            } catch (e: BadReq) { throw e
-            } catch (e: IOException) {
+            } catch (e: NotFound) { job.done -= sent; throw e
+            } catch (e: Denied) { job.done -= sent; throw e
+            } catch (e: Exists) { job.done -= sent; throw e
+            } catch (e: BadReq) { job.done -= sent; throw e
+            } catch (e: Exception) {   // IOException or a raw library error: retry a few times
                 job.done -= sent
                 if (attempt == 3) throw IOException(errText(e))
                 Thread.sleep(1500L * (attempt + 1))

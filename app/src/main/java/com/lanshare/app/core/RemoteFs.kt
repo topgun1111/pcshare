@@ -131,7 +131,7 @@ class RemoteFs(peer: Peer) : Endpoint {
 
     override fun walk(v: String): List<WalkItem> {
         val a = JSONArray(String(bytes("GET", "walk", mapOf("path" to v)), Charsets.UTF_8))
-        return (0 until a.length()).map { val o = a.getJSONObject(it); WalkItem(o.getString("rel"), o.optBoolean("dir"), o.optLong("size")) }
+        return (0 until a.length()).map { val o = a.getJSONObject(it); WalkItem(o.getString("rel"), o.optBoolean("dir"), o.optLong("size"), o.optBoolean("skip")) }
     }
 
     override fun open(v: String): Source = RemoteSource(this, v)

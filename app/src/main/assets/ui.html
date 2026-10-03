@@ -840,7 +840,7 @@ async function doPrint(){
 async function doDelete(){
   const n=S.sel.size;
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
-  try{await api('POST','/api/op',{dev:S.dev,op:'rm',paths:selPaths()});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}
+  try{await api('POST','/api/op',{dev:S.dev,op:'rm',paths:selPaths()});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,9000);load()}}  // part may have been deleted: refresh the list either way
 async function doRename(){
   const old=[...S.sel][0];const n=await dlg({title:'Rename',input:{value:old,label:'New name'},ok:'Rename'});if(!n||n===old)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'rename',path:jn(S.path,old),name:n});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}

@@ -213,6 +213,19 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     companion object {
         private val pool = ConcurrentHashMap<String, SmbConn>()
+        /** Statuses that mean "the cached connection/session is dead": reconnect once and try again. */
+        private val STALE = setOf("STATUS_NETWORK_NAME_DELETED", "STATUS_USER_SESSION_DELETED", "STATUS_CONNECTION_DISCONNECTED",
+            "STATUS_NETWORK_SESSION_EXPIRED", "STATUS_CONNECTION_RESET", "STATUS_NETWORK_UNREACHABLE")
+        private fun stale(e: Throwable) = e is TransportException || (e is SMBApiException && e.status.name in STALE)
+        private val BAD_CH = Regex("[<>:\"|?*\\u0000-\\u001f]")
+        private val RESERVED = Regex("(?i)^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\\..*)?$")
+        /** One path segment made acceptable to Windows (bad characters, trailing dot/space, reserved device names). */
+        fun winSafe(seg: String): String {
+            var t = BAD_CH.replace(seg, "_").trimEnd('.', ' ')
+            if (t.isEmpty()) t = "_"
+            if (RESERVED.matches(t)) t = "_$t"
+            return t
+        }
         private val cfg: SmbConfig by lazy {
             // Android's built-in BouncyCastle lacks MD4/RC4 (NTLM): replace it with the full bcprov once
             try { Security.removeProvider("BC"); Security.insertProviderAt(BouncyCastleProvider(), 1) } catch (_: Exception) {}
@@ -252,7 +265,14 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         if (e is SMBApiException) {
             val msg = (e.message ?: "").ifEmpty { e.status.name }
             return when (e.status.name) {   // matched by name: stays compatible across smbj versions
-                "STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE" -> NotFound(msg)
+                "STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE" ->
+                    NotFound("Not found on the PC (moved, deleted, or a broken link?)")
+                "STATUS_DISK_FULL", "STATUS_QUOTA_EXCEEDED" -> IOException("The PC drive is full")
+                "STATUS_OBJECT_NAME_INVALID", "STATUS_OBJECT_PATH_SYNTAX_BAD", "STATUS_NAME_TOO_LONG" -> BadReq("The PC does not accept that file name or path")
+                "STATUS_DIRECTORY_NOT_EMPTY" -> IOException("Folder is not empty")
+                "STATUS_CANNOT_DELETE" -> Denied("Cannot delete - protected or read-only")
+                "STATUS_USER_SESSION_DELETED", "STATUS_CONNECTION_DISCONNECTED", "STATUS_NETWORK_NAME_DELETED", "STATUS_NETWORK_UNREACHABLE",
+                "STATUS_IO_TIMEOUT", "STATUS_CONNECTION_RESET" -> IOException("Lost the connection to the PC - try again")
                 "STATUS_BAD_NETWORK_NAME" -> NotFound("Drive/share not found on that PC")
                 "STATUS_ACCESS_DENIED" -> Denied("Access denied by the PC (protected, read-only or not allowed for this user)")
                 "STATUS_SHARING_VIOLATION" -> IOException("In use by another program on the PC")
@@ -283,11 +303,11 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         val (sh, rv) = split(v)
         try {
             val r = try { fn(connect(sh).share, rv) }
-                    catch (e: TransportException) { dropConn(); if (!retry) throw e; fn(connect(sh).share, rv) }
+                    catch (e: Exception) { if (!stale(e)) throw e; dropConn(); if (!retry) throw e; fn(connect(sh).share, rv) }
             Smb.state[id] = true
             return r
         } catch (e: Throwable) {
-            if (e is TransportException || (e is SMBApiException && e.status.name == "STATUS_NETWORK_NAME_DELETED")) dropConn()
+            if (stale(e)) dropConn()
             val m = mapErr(e)
             if (m !is NotFound && m !is Exists && m !is BadReq && m !is Cancelled)
                 Smb.state[id] = m is Denied && (Smb.state[id] ?: true)
@@ -383,10 +403,18 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         stack.addLast("")
         while (stack.isNotEmpty()) {   // a folder's entries are added before its children: mkdir always precedes its files
             val r0 = stack.removeLast()
-            for (i in listRaw(s, if (r0.isEmpty()) rv else vjoin(rv, r0))) {
-                val r = if (r0.isEmpty()) i.name else r0 + "/" + i.name
-                res.add(WalkItem(r, i.dir, i.size))
-                if (i.dir) stack.addLast(r)
+            val kids = try { s.list(rel(if (r0.isEmpty()) rv else vjoin(rv, r0))) }
+                       catch (e: SMBApiException) { if (stale(e)) throw e; res.add(WalkItem(if (r0.isEmpty()) "(folder)" else r0, false, 0, true)); continue }   // unreadable folder: skipped, flagged
+            for (c in kids) {
+                val n = c.fileName
+                if (n == "." || n == "..") continue
+                val r = if (r0.isEmpty()) n else r0 + "/" + n
+                val a = c.fileAttributes
+                when {
+                    isReparse(a) -> res.add(WalkItem(r, false, 0, true))   // junctions/symlinks are never followed (loops, broken targets)
+                    isDir(a) -> { res.add(WalkItem(r, true, 0)); stack.addLast(r) }
+                    else -> res.add(WalkItem(r, false, c.endOfFile))
+                }
             }
         }
         res
@@ -413,7 +441,7 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
         op(v, retry = false) { s, rv ->
-            val p = rel(rv)
+            val p = wrel(rv)
             if (p.isEmpty()) throw BadReq("invalid path")
             mkdirs(s, p.substringBeforeLast('\\', ""))
             val tmp = "$p.lspart"
@@ -443,7 +471,10 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         }
     }
 
-    override fun mkdir(v: String) { op(v) { s, rv -> mkdirs(s, rel(rv)) } }
+    override fun mkdir(v: String) { op(v) { s, rv -> mkdirs(s, wrel(rv)) } }
+
+    /** Like rel(), but every segment is made Windows-safe: used for names we create (copy targets, new folders). */
+    private fun wrel(v: String) = vnorm(v).trim('/').split('/').filter { it.isNotEmpty() }.joinToString("\\") { winSafe(it) }
 
     private fun isReparse(a: Long) = EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_REPARSE_POINT)
 
@@ -528,7 +559,8 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         op(v) { s, rv ->
             if (rv == "/") throw BadReq("cannot rename a drive")
             val dst = rel(vjoin(vdir(rv), newName))
-            if (s.fileExists(dst) || s.folderExists(dst)) throw Exists("name already exists")
+            if (newName != winSafe(newName)) throw BadReq("A name on a PC cannot contain < > : \" | ? * or end with a dot or space")
+            if ((s.fileExists(dst) || s.folderExists(dst)) && !dst.equals(rel(rv), ignoreCase = true)) throw Exists("name already exists")
             renameTo(s, rel(rv), dst)
         }
     }

@@ -16,8 +16,9 @@ data class Item(val name: String, val dir: Boolean, val size: Long, val mtime: L
     }
 }
 
-data class WalkItem(val rel: String, val dir: Boolean, val size: Long) {
-    fun toJson(): JSONObject = JSONObject().put("rel", rel).put("dir", dir).put("size", size)
+/** [skip] = an entry that could not be walked (link, unreadable folder): never copied, and its parent must not be deleted after a move. */
+data class WalkItem(val rel: String, val dir: Boolean, val size: Long, val skip: Boolean = false) {
+    fun toJson(): JSONObject = JSONObject().put("rel", rel).put("dir", dir).put("size", size).also { if (skip) it.put("skip", true) }
 }
 
 class SearchResult(val items: List<Item>, val partial: Boolean) {

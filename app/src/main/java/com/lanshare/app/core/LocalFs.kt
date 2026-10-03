@@ -90,10 +90,11 @@ class LocalFs(rootPath: String) : Endpoint {
         stack.addLast(base to "")
         while (stack.isNotEmpty()) {   // a folder's entries are added before its children: mkdir always precedes its files
             val (dir, rel) = stack.removeLast()
-            val kids = dir.listFiles() ?: continue
+            val kids = dir.listFiles()
+            if (kids == null) { res.add(WalkItem(if (rel.isEmpty()) dir.name else rel, false, 0, true)); continue }   // unreadable folder
             for (k in kids) {
-                if (isLink(k)) continue
                 val r = if (rel.isEmpty()) k.name else rel + "/" + k.name
+                if (isLink(k)) { res.add(WalkItem(r, false, 0, true)); continue }   // links are never followed
                 if (k.isDirectory) { res.add(WalkItem(r, true, 0)); stack.addLast(k to r) }
                 else res.add(WalkItem(r, false, fsize(k)))
             }
@@ -142,9 +143,23 @@ class LocalFs(rootPath: String) : Endpoint {
     override fun remove(v: String) {
         val p = real(v)
         if (p == root) throw Denied("cannot delete the shared root")
-        if (!p.exists()) throw NotFound("No such file or directory")
-        val ok = if (p.isDirectory) p.deleteRecursively() else p.delete()
-        if (!ok) throw IOException("could not delete " + p.name)
+        if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
+        val fails = ArrayList<String>()
+        delRec(p, fails)
+        if (fails.isNotEmpty())
+            throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
+    }
+
+    /** Best-effort recursive delete: links are removed themselves (never followed), failures are collected and the rest carries on. */
+    private fun delRec(f: File, fails: MutableList<String>) {
+        if (!isLink(f) && f.isDirectory) {
+            val kids = f.listFiles()
+            if (kids == null) { fails.add(f.name + ": cannot read folder"); return }
+            val before = fails.size
+            for (k in kids) delRec(k, fails)
+            if (fails.size > before) return   // something inside stayed, so the folder cannot go either
+        }
+        if (!f.delete() && (f.exists() || isLink(f))) fails.add(f.name + ": " + (if (f.canWrite()) "in use" else "not allowed"))
     }
 
     override fun rename(v: String, newName: String) {
@@ -159,8 +174,10 @@ class LocalFs(rootPath: String) : Endpoint {
         var d = real(toV)
         if (d.isDirectory) d = File(d, s.name)         // shutil.move: into an existing folder
         if (!s.renameTo(d)) {                           // e.g. across volumes: copy + delete
-            if (s.isDirectory) s.copyRecursively(d, false) else s.copyTo(d, false)
-            if (!(if (s.isDirectory) s.deleteRecursively() else s.delete())) throw IOException("could not remove the source")
+            if (s.isDirectory) { if (!s.copyRecursively(d, false)) throw IOException("could not copy the folder") } else s.copyTo(d, false)
+            val fails = ArrayList<String>()
+            delRec(s, fails)   // only reached when the copy above worked completely
+            if (fails.isNotEmpty()) throw IOException("copied, but the original could not be removed: " + fails.take(3).joinToString("; "))
         }
     }
 }
