@@ -611,6 +611,7 @@ class Discovery:
         self.gen = 0            # bump -> listen() re-creates its UDP socket
         self.tick = time.time()  # last beacon-loop heartbeat (detects phone sleep / unlock)
         self.bwake = threading.Event()  # wake backup_loop early (settings changed)
+        self.bk_err = {}                # backup address -> why the last attempt failed
 
     def msg(self):
         return json.dumps({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port,
@@ -882,26 +883,37 @@ class Discovery:
 
     # ---- backup addresses (Tailscale etc.): tried in the background, also when the LAN is down
     def try_backup(self, entry):
-        """Connect to one saved backup address. True if a LANShare device answered."""
+        """Connect to one saved backup address. True if a LANShare device answered.
+        The reason for a failure is kept in self.bk_err for the settings screen."""
         ip, port0 = entry, None
         if entry.count(":") == 1:
             ip, _, ps = entry.partition(":")
             port0 = int(ps)
         if ip in self.own_ips:
+            self.bk_err[entry] = "This is this device's own address"
             return False
-        for port in ([port0] if port0 else range(BASE_PORT, BASE_PORT + 5)):
+        why = "Nothing is listening on that device - is LANShare open there?"
+        for port in ([port0] if port0 else range(BASE_PORT, BASE_PORT + 20)):
             try:
                 m = hello_url(ip, port, 4.0)
             except ConnectionRefusedError:
                 continue            # nobody on this port - try the next one
-            except Exception:
-                return False        # timeout / unreachable: device offline or VPN down
+            except Exception as e:
+                msg = str(e).lower()
+                self.bk_err[entry] = ("No route - is Tailscale connected on this phone?" if "unreachable" in msg
+                                      else "No answer - Tailscale off on that device, or a firewall blocks it")
+                return False
             try:
-                if m.get("app") == "lanshare" and m["id"] != CFG["id"]:
+                if m.get("app") == "lanshare" and m["id"] == CFG["id"]:
+                    self.bk_err[entry] = "This is this device's own address"
+                    return False
+                if m.get("app") == "lanshare":
                     self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
+                    self.bk_err.pop(entry, None)
                     return True
             except Exception:
                 pass
+        self.bk_err[entry] = why
         return False
 
     def backup_status(self):
@@ -911,7 +923,8 @@ class Discovery:
             ip = e.partition(":")[0]
             hit = next((p for p in peers if ip in p.get("ips", []) or ip == p["ip"]), None)
             res.append({"ip": e, "name": hit["name"] if hit else "",
-                        "up": bool(hit and hit.get("ok", True))})
+                        "up": bool(hit and hit.get("ok", True)),
+                        "why": "" if hit else self.bk_err.get(e, "Trying...")})
         return res
 
     def backup_loop(self):
@@ -2114,7 +2127,7 @@ async function openBackups(){
   const draw=l=>{list.textContent='';
     if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No backup addresses yet'));list.append(e)}
     l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
-      t.append(E('b','',x.ip),E('small','',x.up?'Connected'+(x.name?' · '+x.name:''):'Not reachable (offline or Tailscale off)'));
+      t.append(E('b','',x.ip),E('small','',x.up?'Connected'+(x.name?' · '+x.name:''):(x.why||'Not reachable')));
       rm.onclick=async()=>{try{draw((await api('POST','/api/backups',{remove:x.ip})).list)}catch(e){toast('⚠ '+e.message,4000)}};
       r.append(t,rm);list.append(r)})};
   try{draw(await api('GET','/api/backups'))}catch(e){draw([])}
