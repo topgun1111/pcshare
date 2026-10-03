@@ -111,11 +111,11 @@ object Jobs {
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
-        "reverse", "range", "wm", "wm_under", "hdr", "ftr")
+        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto")
 
     /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
-    private fun printQuery(name: String, opts: JSONObject?): String {
-        val sb = StringBuilder("/print?name=").append(URLEncoder.encode(name, "UTF-8"))
+    private fun printQuery(name: String, opts: JSONObject?, extra: String = ""): String {
+        val sb = StringBuilder("/print?name=").append(URLEncoder.encode(name, "UTF-8")).append(extra)
         if (opts != null) for (k in PRINT_KEYS) {
             if (!opts.has(k) || opts.isNull(k)) continue
             val v = opts.get(k).toString().trim()
@@ -218,6 +218,10 @@ object Jobs {
             if (files.isEmpty()) throw BadReq("nothing to print")
             job.total = maxOf(files.sumOf { it.second }, 1L)
             val failed = ArrayList<String>()
+            // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
+            val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") }
+            val bid = java.lang.Long.toString(System.nanoTime(), 36)
+            val rots = opts?.optJSONArray("rots")
             for ((i, f0) in files.withIndex()) {
                 val (sp, size) = f0
                 if (job.cancel) throw Cancelled()
@@ -226,7 +230,8 @@ object Jobs {
                 var sent = 0L
                 val f = src.open(sp)
                 try {
-                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(name, opts), emptyMap(),
+                    val extra = if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
+                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(name, opts, extra), emptyMap(),
                         120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
                     try {
                         val t = String(r.readUpTo(2000), Charsets.UTF_8)
@@ -240,6 +245,7 @@ object Jobs {
                 } catch (e: PrintFail) {
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
+                    if (sheet) break   // an incomplete set of sheets must not be printed
                 } finally { f.close() }
             }
             job.done = job.total
