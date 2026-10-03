@@ -217,10 +217,11 @@ object ArcStore {
 
 /**
  * Wraps any endpoint: paths that point into an archive are answered from the archive, everything else goes straight to [base].
- * Another LANShare device is not wrapped - it answers archive paths itself (it runs the same code).
+ * Works on any device: for another LANShare phone or an SMB share the archive is fetched once into the cache (so it also works
+ * when the other phone still runs an older build that knows nothing about archives).
  */
 class ArcEp(val base: Endpoint) : Endpoint by base {
-    private fun ar(v: String): Pair<String, String>? = if (base is RemoteFs) null else arcSplit(v)
+    private fun ar(v: String): Pair<String, String>? = arcSplit(v)
     private fun key(inner: String) = inner.trim('/')
     private fun ro(): Nothing = throw Denied("Archives are read-only - copy or extract files out of it")
     private fun need(ix: ArcIndex, k: String): AEntry = ix.all[k] ?: throw NotFound("No such file or folder in the archive")
