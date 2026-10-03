@@ -173,7 +173,7 @@ body.dual #dual{display:flex}
 #fab:active{transform:scale(.96)}body.selm #fab{display:none}
 /* bottom bar */
 #dock{touch-action:manipulation;position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--cont);border-top:1px solid var(--bd);box-shadow:0 -2px 8px #0002;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
-#bar{display:flex;gap:0;overflow-x:auto;scrollbar-width:none}#bar::-webkit-scrollbar{display:none}#bar:empty{display:none}
+#bar{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:2px 0;overflow:visible}#bar::-webkit-scrollbar{display:none}#bar:empty{display:none}
 .ib{touch-action:manipulation;flex:1 0 50px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0;font-size:11px;font-weight:500}
 .ib .ii{width:48px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .15s}
 .ib:active .ii{background:var(--hov)}
@@ -266,8 +266,10 @@ body.dopen{overflow:hidden}
 .di .dx{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
 .di .dx svg{width:20px;height:20px}
 .dmeter{height:3px;border-radius:2px;background:var(--bd);margin-top:4px;overflow:hidden}.dmeter i{display:block;height:100%;background:var(--ac)}
-.dsec{padding:14px 16px 6px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
+.dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
+.dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:600;letter-spacing:.6px;color:#0d8f7e}.dsec button:active{background:var(--hov)}
+.di.add .dt b{color:#0d8f7e}.di.dis{opacity:.45}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
@@ -882,6 +884,7 @@ function renderBar(){
     if(!S.sel.size&&!inArc()){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
   else c.style.display='none';
+  {const n=b.children.length;b.style.setProperty('--cols',n<=5?Math.max(n,1):Math.ceil(n/2))}   // more than 5 actions: two rows
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
   document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px')}
 function doDownload(){
@@ -1072,7 +1075,7 @@ function favToggle(dev,path){
   else FAV.push({dev,path,name:baseName(dev,path),dn:dev==='local'?'':devName(dev)});
   favSave();drawerRender()}
 function drawerOpen(){document.body.classList.add('dopen');drawerRender()}
-function drawerClose(){document.body.classList.remove('dopen')}
+function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)
 function openLoc(dev,path){
@@ -1086,9 +1089,12 @@ function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, m
   if(o.meter!=null){const m=E('div','dmeter'),i=E('i');i.style.width=o.meter+'%';m.append(i);t.append(m)}
   b.append(l,t);
   if(o.right)b.append(E('span','dr2',o.right));
-  if(o.x){const x=E('button','dx');x.setAttribute('aria-label',o.x.label);x.append(ic(o.x.icon));x.onclick=e=>{e.stopPropagation();o.x.fn()};b.append(x)}
+  (o.xs||(o.x?[o.x]:[])).forEach(a=>{const x=E('button','dx');x.setAttribute('aria-label',a.label);x.append(ic(a.icon));if(a.off){x.style.opacity='.25';x.disabled=true}x.onclick=e=>{e.stopPropagation();a.fn()};b.append(x)});
   b.onclick=o.onclick;b.onkeydown=e=>{if(e.key==='Enter')b.click()};return b}
-const DQ=[['Download','Download'],['DCIM','DCIM'],['Movies','Movies'],['Pictures','Pictures'],['Music','Music'],['Documents','Documents']];
+const QF0=()=>['Download','DCIM','Movies','Pictures','Music','Documents'].map(n=>({dev:'local',path:'/'+n,name:n}));
+let QF=JL('ls_qf',null);if(!Array.isArray(QF))QF=QF0();
+function qfSave(){try{localStorage.setItem('ls_qf',JSON.stringify(QF))}catch(e){}}
+Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z'});
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
@@ -1106,8 +1112,24 @@ function drawerRender(){
     bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
     bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
     bd.append(E('div','dsep'));
-    bd.append(E('div','dsec','Quick folders'));
-    DQ.forEach(q=>{const p='/'+q[0];bd.append(dItem({lead:folderLead(q[0]),title:q[1],on:here('local',p),onclick:()=>openLoc('local',p)}))});
+    {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
+    QF.forEach((q,n)=>{
+      const sub=q.dev==='local'?'':(devName(q.dev)!=='device'?devName(q.dev):(q.dn||''));
+      const o={lead:folderLead(q.name),title:q.name,sub,on:!DRW.edit&&here(q.dev,q.path),onclick:()=>openLoc(q.dev,q.path)};
+      if(DRW.edit){
+        o.onclick=async()=>{const nn=await dlg({title:'Rename shortcut',input:{value:q.name,label:'Name'},ok:'Save'});if(nn&&nn.trim()){q.name=nn.trim().slice(0,40);qfSave();drawerRender()}};
+        o.xs=[{icon:'up2',label:'Move up',off:n===0,fn:()=>{QF.splice(n-1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
+              {icon:'dn2',label:'Move down',off:n===QF.length-1,fn:()=>{QF.splice(n+1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
+              {icon:'close',label:'Remove',fn:()=>{QF.splice(n,1);qfSave();drawerRender()}}]}
+      bd.append(dItem(o))});
+    if(DRW.edit){
+      const dup=QF.some(q=>sameLoc(q,{dev:S.dev,path:S.path}));
+      const ad=dItem({lead:ic('add','s24'),title:'Add current folder',sub:S.path==='/'?'Open a folder first':baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),
+        onclick:()=>{if(S.path==='/'){toast('Open the folder you want first, then add it',2500);return}
+          if(dup){toast('Already in the list',1800);return}
+          QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
+      ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
+      bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Back to Download, DCIM, Movies, Pictures, Music, Documents.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
     bd.append(E('div','dsep'));
     bd.append(E('div','dsec','Devices'));
     S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
