@@ -805,7 +805,7 @@ async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,di
 function pickDevice(f,t){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',t||'Send to…'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-  const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});S.peers.filter(p=>p.id!==S.dev).forEach(p=>opts.push(p));
+  const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});S.peers.filter(p=>p.id!==S.dev||f).forEach(p=>opts.push(p));
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
   opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead');ld.append(ic('phone'));b.append(ld,E('span','',p.name));b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
@@ -819,7 +819,9 @@ async function doSend(){
   try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
 /* Print on PC: streams the selected files to pcprint.py on the PC, which prints them on its default printer */
 async function doPrint(){
-  const pcs=S.peers.filter(p=>p.id!==S.dev);let pc=pcs.length===1?pcs[0]:await pickDevice(1,'Print on…');if(!pc)return;
+  // the PC is usually the SMB device (even the one being browsed); other LANShare devices are phones
+  const smb=S.peers.filter(p=>p.smb);
+  const pc=smb.length===1?smb[0]:await pickDevice(1,'Print on…');if(!pc)return;
   try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:pc.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 async function doDelete(){
   const n=S.sel.size;
@@ -839,9 +841,9 @@ async function track(id){
   let ok=false;curJob=id;
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id)}catch(e){toast('⚠ '+e.message,5000);break}
-    if(j.state==='error'){toast('⚠ '+j.error,7000);break}
+    if(j.state==='error'){toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
     if(j.state==='cancel'){toast('Cancelled',2500);break}
-    if(j.state==='done'){toast('✅ Done',2500);ok=true;break}
+    if(j.state==='done'){toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
     const pct=Math.floor(j.done*100/j.total);
     toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total),0,pct);
     await new Promise(r=>setTimeout(r,400))}

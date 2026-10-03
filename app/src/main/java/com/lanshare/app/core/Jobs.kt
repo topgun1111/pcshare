@@ -19,7 +19,7 @@ object Clip {
         else JSONObject().put("op", op).put("dev", dev).put("paths", org.json.JSONArray(paths))
 }
 
-class Job(val label: String) {
+class Job(@Volatile var label: String) {
     @Volatile var state = "run"      // run | done | cancel | error
     @Volatile var done = 0L
     @Volatile var total = 1L
@@ -27,11 +27,13 @@ class Job(val label: String) {
     @Volatile var error: String? = null
     @Volatile var cancel = false
     @Volatile var end = 0L
+    @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
 
     fun toJson(): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
         .put("error", error ?: JSONObject.NULL).put("label", label).also {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
+            note?.let { n -> it.put("note", n) }
         }
 }
 
@@ -41,30 +43,42 @@ object Jobs {
 
     const val PRINT_PORT = 8799   // pcprint.py on the PC listens here
 
-    private fun printHost(dev: String): String = when {
+    private class PrintFail(msg: String) : IOException(msg)   // the PC answered and refused / failed to print this file
+
+    /** (address, display name) of the PC to print on. */
+    private fun printTarget(dev: String): Pair<String, String> = when {
         dev == "local" -> throw BadReq("choose the PC to print on")
-        dev.startsWith("smb:") -> Smb.split((Smb.cfg(dev) ?: throw IOException("that SMB share was removed")).getString("host")).first
-        else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).ip
+        dev.startsWith("smb:") -> {
+            val c = Smb.cfg(dev) ?: throw IOException("that SMB share was removed")
+            Smb.split(c.getString("host")).first to c.optString("name").ifEmpty { c.getString("host") }
+        }
+        else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).let { it.ip to it.name }
     }
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     fun startPrint(srcId: String, paths: List<String>, dstId: String): String {
         val src = ep(srcId)
-        val ip = printHost(dstId)
+        val (ip, pcName) = printTarget(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
-        val job = Job("Printing")
+        val job = Job("Printing on $pcName")
         all[jid] = job
-        Thread({ printWork(job, src, ip, paths) }, "print-$jid").also { it.isDaemon = true }.start()
+        Thread({ printWork(job, src, ip, pcName, paths) }, "print-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
-    private fun printWork(job: Job, src: Endpoint, ip: String, paths: List<String>) {
+    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>) {
         try {
+            var printer = ""
             try {
-                Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 4000).close()
+                val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 4000)
+                try {
+                    if (r.status != 200) throw IOException("HTTP ${r.status}")
+                    printer = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)).optString("printer") } catch (_: Exception) { "" }
+                } finally { r.close() }
             } catch (e: IOException) {
-                throw IOException("print service not reachable on the PC - run pcprint.py there once (${errText(e)})")
+                throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
             }
+            val dest = if (printer.isNotEmpty()) "$pcName ($printer)" else pcName
             val files = ArrayList<Pair<String, Long>>()
             for (p0 in paths) {
                 val p = vnorm(p0)
@@ -72,22 +86,39 @@ object Jobs {
             }
             if (files.isEmpty()) throw BadReq("nothing to print")
             job.total = maxOf(files.sumOf { it.second }, 1L)
-            for ((sp, _) in files) {
+            val failed = ArrayList<String>()
+            for ((i, f0) in files.withIndex()) {
+                val (sp, size) = f0
                 if (job.cancel) throw Cancelled()
+                job.label = "Printing ${i + 1}/${files.size} on $dest"
+                val name = vbase(sp)
+                var sent = 0L
                 val f = src.open(sp)
                 try {
-                    val r = Http.request(ip, PRINT_PORT, "POST", "/print?name=" + URLEncoder.encode(vbase(sp), "UTF-8"), emptyMap(),
-                        120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); job.done += n }
+                    val r = Http.request(ip, PRINT_PORT, "POST", "/print?name=" + URLEncoder.encode(name, "UTF-8"), emptyMap(),
+                        120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
                     try {
                         if (r.status != 200) {
                             val t = String(r.readUpTo(500), Charsets.UTF_8)
-                            throw IOException(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
+                            throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
                         }
                     } finally { r.close() }
+                } catch (e: PrintFail) {
+                    failed.add("$name: ${errText(e)}")
+                    job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                 } finally { f.close() }
             }
             job.done = job.total
-            job.state = "done"
+            val ok = files.size - failed.size
+            if (failed.isEmpty()) {
+                job.label = "Printed ${files.size} file${if (files.size > 1) "s" else ""} on $dest"
+                job.note = job.label
+                job.state = "done"
+            } else {
+                job.label = "Print problem on $dest"
+                job.error = "Printed $ok of ${files.size} on $dest. Failed - " + failed.joinToString("; ")
+                job.state = "error"
+            }
         } catch (e: Cancelled) {
             job.state = "cancel"
         } catch (e: Exception) {
