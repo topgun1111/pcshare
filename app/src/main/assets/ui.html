@@ -9,7 +9,7 @@
 --k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746;--tl:#4db6ac;color-scheme:dark}
 @media(prefers-color-scheme:dark){:root[data-theme=auto]{--bg:#121212;--fg:#e6e6e6;--card:#1a1a1a;--cont:#242424;--ac:#8ab4f8;--onac:#0b2a5b;--mut:#9a9a9a;--bd:#333;--sel:#233b5e;--onsel:#d6e4fb;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;
 --k-folder-c:#ffdf9e;--k-folder-b:#5c4300;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#d3e3fd;--k-doc-b:#0842a0;--k-file-c:#e1e3e1;--k-file-b:#444746;--tl:#4db6ac;color-scheme:dark}}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{touch-action:manipulation}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
 svg{width:24px;height:24px;fill:currentColor;flex:none;display:block}
 button,input,select,textarea{font-family:inherit;font-weight:inherit}
@@ -105,7 +105,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
 /* list */
 #list{padding:0;background:var(--card)}
-.row{display:flex;align-items:center;gap:14px;min-height:66px;padding:6px 14px 6px 10px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;transition:background .15s}
+.row{display:flex;align-items:center;gap:14px;min-height:66px;padding:6px 14px 6px 10px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .row:active{background:var(--hov)}
 .row.sel{background:var(--sel);color:var(--onsel)}
 .lead{position:relative;width:56px;height:50px;display:grid;place-items:center;flex:none}
@@ -528,6 +528,13 @@ let loadT;
 /* folders you already opened are drawn instantly from this cache while the fresh listing loads (only when navigating, never after a file operation) */
 const LSC=new Map();let useLSC=false;
 function lscPut(k,v){LSC.delete(k);LSC.set(k,v);if(LSC.size>30)LSC.delete(LSC.keys().next().value)}
+/* prefetch: warm LSC for a folder on touch-down (head start before the tap lands) and for the first few sub-folders when idle */
+const PFI=new Set();
+function prefetch(dev,path){if(dev!=='local'||path.indexOf('!')>=0)return;const ck=dev+'|'+path;if(LSC.has(ck)||PFI.has(ck))return;PFI.add(ck);
+  fetch('/api/ls?dev='+enc(dev)+'&path='+enc(path),{headers:{'X-LS':'1'}}).then(r=>r.ok?r.json():null).then(r=>{if(r&&r.items&&!LSC.has(ck))lscPut(ck,{items:r.items,used:r.used})}).catch(()=>{}).finally(()=>PFI.delete(ck))}
+function idlePre(){if(S.dev!=='local'||(navigator.connection&&navigator.connection.saveData))return;
+  const p=S.path,ds=S.items.filter(i=>i.dir&&i.name[0]!=='.').slice(0,4);
+  (window.requestIdleCallback||(f=>setTimeout(f,400)))(()=>{if(S.path===p)ds.forEach(i=>prefetch('local',jn(p,i.name)))})}
 async function fillCounts(dev,path){if(dev!=='local')return;
   try{const c=await api('GET','/api/counts?dev=local&path='+enc(path),null,20000);if(dev!==S.dev||path!==S.path)return;
     let any=false;S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});
@@ -539,9 +546,9 @@ async function load(){
   try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
     if(dev!==S.dev||path!==S.path)return;
     if(path.indexOf('!')<0)lscPut(ck,{items:r.items,used:r.used});
-    if(hit&&hit.items.length===r.items.length&&hit.items.every((o,k)=>o.name===r.items[k].name&&o.mtime===r.items[k].mtime&&o.size===r.items[k].size)){S.used=r.used;S.err='';if(!S.lost)banner('');loadSpace();fillCounts(dev,path);return}   // nothing changed: keep what is on screen
+    if(hit&&hit.items.length===r.items.length&&hit.items.every((o,k)=>o.name===r.items[k].name&&o.mtime===r.items[k].mtime&&o.size===r.items[k].size)){S.used=r.used;S.err='';if(!S.lost)banner('');loadSpace();fillCounts(dev,path);idlePre();return}   // nothing changed: keep what is on screen
     S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(S.dev==='local'&&r.used!=null)SV('ls_used',String(r.used));if(typeof histPush==='function')histPush();if(!S.lost)banner('');
-    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace();fillCounts(dev,path)}
+    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace();fillCounts(dev,path);idlePre()}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
     if(/^cancelled$/i.test(e.message)){const r=arcRoot();toast('Cancelled',2000);if(r)go(pdir(r));return}   // opening a big archive was cancelled: leave it
@@ -585,8 +592,9 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)};
     holdMenu(r,i);
+    if(i.dir)r.addEventListener('pointerdown',()=>prefetch(S.dev,jn(P0,i.name)));
     return r};
   // big folders: draw rows in chunks as the user scrolls (a 100k-file folder would otherwise freeze the WebView)
   const CH=300;let nShown=0,sent=null;
@@ -614,7 +622,7 @@ function render(){
         if(t.d){du.textContent=fmtDur(t.d);du.style.display=''}};
       const hit=thGet(key);if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'vid',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth),done:show}));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
-        if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else playVid(i)};
+        if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else playVid(i)};
       holdMenu(c,i);
       g.append(c)});
     l.append(g)}
@@ -767,20 +775,21 @@ const thKey=i=>'v2|'+S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
 const fmtDur=d=>{d=Math.round(d);const h=Math.floor(d/3600),m=Math.floor(d%3600/60),x=d%60,z=n=>(n<10?'0':'')+n;return h?h+':'+z(m)+':'+z(x):m+':'+z(x)};
 function thGet(k){if(thMem[k])return thMem[k];try{const v=localStorage.getItem('ls_th:'+k);if(v){thMem[k]=JSON.parse(v);return thMem[k]}}catch(e){}return null}
 function thPut(k,t){thMem[k]=t;if(!t.u)return;
+  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{  // localStorage is synchronous: never write while the user is scrolling/tapping
   try{localStorage.setItem('ls_th:'+k,JSON.stringify(t))}
-  catch(e){try{Object.keys(localStorage).filter(x=>x.indexOf('ls_th:')===0).forEach(x=>localStorage.removeItem(x));localStorage.setItem('ls_th:'+k,JSON.stringify(t))}catch(e2){}}}
+  catch(e){try{Object.keys(localStorage).filter(x=>x.indexOf('ls_th:')===0).forEach(x=>localStorage.removeItem(x));localStorage.setItem('ls_th:'+k,JSON.stringify(t))}catch(e2){}}})}
 const thIO=('IntersectionObserver' in window)?new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){thIO.unobserve(e.target);const f=e.target._th;if(f){e.target._th=null;THQ.push(f());thPump()}}}),{rootMargin:'300px'}):null;
 function thWatch(el,f){if(thIO){el._th=f;thIO.observe(el)}else{THQ.push(f());thPump()}}
 function thPump(){
-  while(thBusy<2&&THQ.length){const j=THQ.shift();if(j.gen!==S.rg)continue;thBusy++;
+  while(thBusy<4&&THQ.length){const j=THQ.shift();if(j.gen!==S.rg)continue;thBusy++;
     thMake(j.url,j.k).then(t=>{thPut(j.key,t);if(j.gen===S.rg)j.done(t)}).catch(()=>{thMem[j.key]={u:null,d:0}}).then(()=>{thBusy--;thPump()})}}
 function thMake(url,kd){return new Promise((res,rej)=>{
-  if(kd==='img'){const im=new Image();let done=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
+  if(kd==='img'){const im=new Image();let done=false,tryFull=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
+      if(!tryFull&&im.src.indexOf('/api/thumb?')>=0)return res({u:'/api/thumb?'+url.slice(8),d:0});   // server thumb is already small + disk-cached: use as is (no canvas, no base64)
       const sc=Math.min(1,400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
     // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
-    let tryFull=false;
     im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
     im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8):url;return}
   /* Android app: the phone grabs the frame natively (MKV/AVI/HEVC ... that the WebView cannot decode); on failure the in-browser method below runs */
@@ -1365,7 +1374,8 @@ function drawerRender(){
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
-    ft.append(add,smb,st)}
+    ft.append(add,smb,st);
+    if(window.LSAndroid&&LSAndroid.nativeBrowser){const nb=E('button');nb.append(ic('folder'),E('span','','Native'));nb.onclick=()=>{drawerClose();LSAndroid.nativeBrowser(S.dev==='local'&&S.path.indexOf('!')<0?S.path:'/')};ft.append(nb)}}
   else if(DRW.tab===1){
     const cur=isFav(S.dev,S.path);
     const a=dItem({lead:ic(cur?'star':'starb','s24'),title:cur?'Remove this folder':'Add this folder',sub:baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),onclick:()=>favToggle(S.dev,S.path)});

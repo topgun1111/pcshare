@@ -67,5 +67,6 @@ dependencies {
     implementation("com.github.junrar:junrar:7.5.5")                  // RAR (v4) reader, pure Java; ZIP uses java.util.zip
     implementation("androidx.media3:media3-exoplayer:1.3.1")           // dedicated video player (PlayerActivity)
     implementation("androidx.media3:media3-ui:1.3.1")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")         // native file browser (BrowserActivity)
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
 }
