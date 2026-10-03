@@ -19,8 +19,6 @@ jobs:
         with: { fetch-depth: 0 }   # commit sayısı için tam geçmiş şart
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
       - name: Android lisansları
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4

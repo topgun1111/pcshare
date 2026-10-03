@@ -1,6 +1,20 @@
-> **Kotlin port in progress — read `HANDOVER_KOTLIN.md` first.** The text below describes the Chaquopy/Python build (still the default).
-
 # LANShare → Android: Handover
+
+**Current state: pure Kotlin.** Chaquopy/Python removed; `core/*.kt` serves `assets/ui.html` from `MiniHttp`. **Not yet compiled or device-tested** (no Android SDK was available): first Gradle build will likely show small compile errors in `core/*.kt` (likeliest: `Cfg` accessors, `Discovery.start()` function refs, smart-casts in `RemoteFs.callRaw`). Then run the test checklist below, incl. SMB and thumbnails.
+Wire protocol is unchanged — old Python builds and Kotlin builds interoperate.
+
+## Behaviour differences / gotchas to keep in mind
+- `org.json` **drops a key** on `put(k, null)` → real nulls must be `JSONObject.NULL` (done for `used`, `storage_ok`, `error`, clipboard).
+- Query parsing mimics Python `parse_qs`: `+`/`%XX` decoded, **blank values dropped**, first value wins.
+- `MiniHttp` does not support chunked request bodies, `Expect: 100-continue` or `HEAD` (the Python server had none of these either).
+- Large uploads: an error mid-upload closes the connection instead of draining the body (same as Python's `close_connection`).
+- Android < 15: never call `removeFirst()/removeLast()` on a `java.util.List`; the code only uses them on `kotlin.collections.ArrayDeque` (safe).
+- `storageOk` is evaluated live on every call (Python evaluated once at start).
+- `File.renameTo` is used for rename/move, with copy+delete fallback across volumes (`LocalFs.move`).
+- `tcpProbe` treats "connection refused" as "host up, try next port" and anything else as "nobody home" — matches Python's `errno` logic.
+
+---
+## Historical notes (Chaquopy/Python era — superseded)
 
 **Approach:** Chaquopy (embedded Python 3.11) runs the unchanged `lanshare.py` server inside a foreground
 service; a thin Kotlin WebView loads its UI. Python stdlib only → no pip deps.
