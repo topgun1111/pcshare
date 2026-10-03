@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -24,40 +25,51 @@ import android.text.TextUtils
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.*
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.*
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.lanshare.app.core.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.URLEncoder
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * TRIAL: fully native file browser for THIS phone's storage (no WebView, no HTTP round-trip for listings).
- * Plain Views + RecyclerView, programmatic layout (no XML). Opens videos / pictures / PDFs in the existing
- * native viewers. Peers, SMB, archives, copy/move/paste and transfers stay in the web UI (menu > "Full app").
+ * Fully native file browser: this phone, other LANShare devices and SMB shares (device bar), copy / cut / paste with a
+ * native progress bar, recursive search and pull-to-refresh. No WebView, no HTTP round-trip for listings: everything
+ * goes through [Core.local] / [Jobs.ep] / [Jobs] / [Clip] in-process. Videos, pictures and PDFs open in the native viewers.
+ * Not native (web UI only): archives (paths with '!'), printing, zip, settings.
  */
 class BrowserActivity : Activity() {
 
     companion object {
-        // static: survive rotation / re-opening, so a second visit to a folder is instant
+        // static: survive rotation / re-opening, so a second visit to a folder is instant. Key = "<dev>|<path>"
         private val cache = LruCache<String, List<Item>>(80)
         private val thumbs = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
             override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         }
         private val failed = HashSet<String>()
         private fun pool(n: Int) = Executors.newFixedThreadPool(n) { r -> Thread(r, "browser").also { it.isDaemon = true } }
-        private val io = pool(2)
+        private val io = pool(4)
         private val pre = pool(1)
         private val thumbPool = pool(3)
+        private val searchPool = pool(2)
+        /** Running copy / move / delete jobs started from this screen (survive rotation). */
+        private val jobIds = ArrayList<String>()
+        /** Last folder per device, so switching back to a device returns where you were. */
+        private val lastPath = HashMap<String, String>()
 
         private val EXT: HashMap<String, String> = HashMap<String, String>().also { m ->
             fun add(k: String, s: String) { s.split(' ').forEach { m[it] = k } }
@@ -75,24 +87,38 @@ class BrowserActivity : Activity() {
         private val SUB = Regex("(?i).*\\.(srt|vtt|ass|ssa)$")
     }
 
+    private class Dev(val id: String, val name: String, val ok: Boolean, val kind: String)
+
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var prefs: SharedPreferences
     private lateinit var rv: RecyclerView
+    private lateinit var srl: SwipeRefreshLayout
     private lateinit var empty: TextView
     private lateinit var crumbs: LinearLayout
     private lateinit var crumbScroll: HorizontalScrollView
+    private lateinit var devRow: LinearLayout
     private lateinit var tTitle: TextView
     private lateinit var tSub: TextView
+    private lateinit var titleCol: LinearLayout
+    private lateinit var searchBox: EditText
     private lateinit var bLeft: TextView
     private lateinit var bA: TextView
     private lateinit var bB: TextView
     private lateinit var bC: TextView
+    private lateinit var bD: TextView
+    private lateinit var jobBar: LinearLayout
+    private lateinit var jobText: TextView
+    private lateinit var jobStat: TextView
+    private lateinit var jobProg: ProgressBar
+    private lateinit var pasteBar: LinearLayout
+    private lateinit var pasteText: TextView
     private val ad = Adapter()
 
+    private var dev = "local"
     private var cur = "/"
     private var raw: List<Item> = emptyList()
     private var items: List<Item> = emptyList()
-    private val sel = LinkedHashSet<String>()
+    private val sel = LinkedHashSet<String>()      // selected items, by full path (search results span several folders)
     private var gen = 0
     private var loaded = false
     private var started = false
@@ -100,6 +126,15 @@ class BrowserActivity : Activity() {
     private val states = HashMap<String, Parcelable?>()
     private val inflight = HashSet<String>()
     private val df = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+
+    private var devs: List<Dev> = emptyList()
+    private var devSig = ""
+
+    private var searching = false
+    private var query = ""
+    private var sgen = 0
+    private var partial = false
+    private var results: List<Item> = emptyList()
 
     private var grid = false
     private var sortKey = "name"
@@ -131,29 +166,39 @@ class BrowserActivity : Activity() {
         asc = prefs.getBoolean("asc", true)
         showHidden = prefs.getBoolean("hidden", false)
 
+        dev = b?.getString("dev") ?: intent.getStringExtra("dev") ?: "local"
         val p0 = b?.getString("cur") ?: intent.getStringExtra("path") ?: "/"
         cur = if (p0.startsWith("/") && !p0.contains('!')) p0 else "/"
 
         buildUi()
         setGrid(grid, false)
+        refreshDevices()
         started = true
         navigate(cur, false)
+        if (jobIds.isNotEmpty()) ui.post(jobTick)
     }
 
-    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("cur", cur) }
+    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("cur", cur); o.putString("dev", dev) }
 
     private var firstResume = true
     override fun onResume() {   // silent refresh after viewers / other apps (not on the very first resume: onCreate just loaded)
         super.onResume()
+        ui.removeCallbacks(devTick); ui.post(devTick)
         if (firstResume) { firstResume = false; return }
-        if (started) load(cur)
+        if (started && !searching) load(cur)
     }
+
+    override fun onPause() { ui.removeCallbacks(devTick); super.onPause() }
+
+    override fun onDestroy() { ui.removeCallbacks(devTick); ui.removeCallbacks(jobTick); super.onDestroy() }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when {
             sel.isNotEmpty() -> { sel.clear(); ad.notifyDataSetChanged(); updateChrome() }
+            searching -> exitSearch()
             cur != "/" -> navigate(parent(cur), true)
+            dev != "local" -> switchDev("local")
             else -> super.onBackPressed()
         }
     }
@@ -167,12 +212,26 @@ class BrowserActivity : Activity() {
         bLeft = btn(22f) { if (sel.isNotEmpty()) { sel.clear(); ad.notifyDataSetChanged(); updateChrome() } else onBackPressed() }
         tTitle = TextView(this).apply { textSize = 18f; setTypeface(null, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         tSub = TextView(this).apply { textSize = 12f; setTextColor(0xFFB0B4B8.toInt()); maxLines = 1 }
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(tTitle); addView(tSub) }
-        bA = btn(20f) {}; bB = btn(20f) {}; bC = btn(22f) {}
+        titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(tTitle); addView(tSub) }
+        searchBox = EditText(this).apply {
+            visibility = View.GONE; setSingleLine(); textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF9AA0A6.toInt())
+            background = null; imeOptions = EditorInfo.IME_ACTION_SEARCH; inputType = InputType.TYPE_CLASS_TEXT
+            setOnEditorActionListener { v, action, ev ->
+                if (action == EditorInfo.IME_ACTION_SEARCH || (ev != null && ev.keyCode == KeyEvent.KEYCODE_ENTER && ev.action == KeyEvent.ACTION_DOWN)) {
+                    runSearch(v.text.toString().trim()); true
+                } else false
+            }
+        }
+        bA = btn(20f) {}; bB = btn(20f) {}; bC = btn(20f) {}; bD = btn(22f) {}
         top.addView(bLeft, LinearLayout.LayoutParams(dp(52), dp(56)))
-        top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        for (v in listOf(bA, bB, bC)) top.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56)))
+        top.addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(searchBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        for (v in listOf(bA, bB, bC, bD)) top.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56)))
         root.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        devRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), 0, dp(8), 0) }
+        val devScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(cBg); addView(devRow) }
+        root.addView(devScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
 
         crumbs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), 0, dp(8), 0) }
         crumbScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(cCard); addView(crumbs) }
@@ -181,10 +240,43 @@ class BrowserActivity : Activity() {
 
         val body = FrameLayout(this)
         rv = RecyclerView(this).apply { itemAnimator = null; setHasFixedSize(true); setItemViewCacheSize(24); adapter = ad }
+        srl = SwipeRefreshLayout(this).apply {
+            setColorSchemeColors(cAccent); setProgressBackgroundColorSchemeColor(cCard)
+            setOnRefreshListener { pullRefresh() }
+            addView(rv)
+        }
         empty = TextView(this).apply { textSize = 15f; setTextColor(cMut); gravity = Gravity.CENTER; setPadding(dp(32), 0, dp(32), 0); visibility = View.GONE }
-        body.addView(rv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        body.addView(srl, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         body.addView(empty, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        // running job (copy / move / delete) with progress + Cancel
+        jobBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cCard); setPadding(dp(14), dp(8), dp(14), dp(8)); visibility = View.GONE }
+        jobText = TextView(this).apply { textSize = 14f; setTypeface(null, Typeface.BOLD); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        val cancel = TextView(this).apply {
+            text = "Cancel"; textSize = 14f; setTextColor(cAccent); setTypeface(null, Typeface.BOLD); setPadding(dp(12), dp(4), 0, dp(4))
+            setOnClickListener { jobIds.toList().forEach { id -> Jobs.all[id]?.cancel = true }; jobText.text = "Cancelling…" }
+        }
+        val jrow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        jrow.addView(jobText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); jrow.addView(cancel)
+        jobProg = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progressTintList = ColorStateList.valueOf(cAccent) }
+        jobStat = TextView(this).apply { textSize = 12f; setTextColor(cMut); maxLines = 1 }
+        jobBar.addView(jrow); jobBar.addView(jobProg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(4); bottomMargin = dp(4) }); jobBar.addView(jobStat)
+        root.addView(View(this).apply { setBackgroundColor(cDiv) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+        root.addView(jobBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        // clipboard bar: shown while something is copied / cut
+        pasteBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(cBar); setPadding(dp(14), 0, dp(4), 0); visibility = View.GONE }
+        pasteText = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val pasteBtn = TextView(this).apply {
+            text = "Paste here"; textSize = 14f; setTypeface(null, Typeface.BOLD); setTextColor(0xFF58D6C5.toInt()); gravity = Gravity.CENTER; setPadding(dp(14), 0, dp(14), 0)
+            setOnClickListener { paste() }
+        }
+        val clearBtn = btn(18f) { Clip.clear(); updateChrome() }.apply { text = "✕" }
+        pasteBar.addView(pasteText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        pasteBar.addView(pasteBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        pasteBar.addView(clearBtn, LinearLayout.LayoutParams(dp(44), ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(pasteBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         setContentView(root)
     }
 
@@ -196,72 +288,229 @@ class BrowserActivity : Activity() {
     }
 
     private fun setBtn(b: TextView, text: String, size: Float, desc: String, onClick: () -> Unit) {
-        b.text = text; b.textSize = size; b.contentDescription = desc; b.setOnClickListener { onClick() }
+        b.visibility = View.VISIBLE; b.text = text; b.textSize = size; b.contentDescription = desc; b.setOnClickListener { onClick() }
     }
 
     private fun updateChrome() {
         val sm = sel.isNotEmpty()
-        bLeft.text = if (sm) "\u2715" else "\u2190"
-        tTitle.text = if (sm) "${sel.size} selected" else if (cur == "/") "Main storage" else cur.substringAfterLast('/')
-        val sub = if (sm) "" else "${items.size} item${if (items.size == 1) "" else "s"}" + (free?.let { " \u00b7 $it free" } ?: "")
+        bLeft.text = if (sm || searching) (if (sm) "✕" else "←") else "←"
+        titleCol.visibility = if (searching) View.GONE else View.VISIBLE
+        searchBox.visibility = if (searching) View.VISIBLE else View.GONE
+        tTitle.text = if (sm) "${sel.size} selected" else if (cur == "/") (if (dev == "local") "Main storage" else devName(dev)) else cur.substringAfterLast('/')
+        val sub = if (sm) "" else "${items.size} item${if (items.size == 1) "" else "s"}" + (free?.let { " · $it free" } ?: "")
         tSub.text = sub; tSub.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
         if (sm) {
-            setBtn(bA, "Share", 14f, "Share") { shareSelected() }
-            setBtn(bB, "Delete", 14f, "Delete") { confirmDelete() }
-            setBtn(bC, "\u22ee", 22f, "More") { selectionMenu() }
+            setBtn(bA, "Copy", 14f, "Copy") { clipSelected("copy") }
+            setBtn(bB, "Cut", 14f, "Cut") { clipSelected("cut") }
+            setBtn(bC, "🗑", 18f, "Delete") { confirmDelete() }
+            setBtn(bD, "⋮", 22f, "More") { selectionMenu() }
+        } else if (searching) {
+            bA.visibility = View.GONE; bB.visibility = View.GONE; bC.visibility = View.GONE
+            setBtn(bD, "⋮", 22f, "Menu") { mainMenu() }
         } else {
-            setBtn(bA, if (grid) "\u2630" else "\u25a6", 20f, "Switch list / grid") { setGrid(!grid, true) }
-            setBtn(bB, "\u21c5", 20f, "Sort") { sortMenu() }
-            setBtn(bC, "\u22ee", 22f, "Menu") { mainMenu() }
+            setBtn(bA, if (grid) "☰" else "▦", 20f, "Switch list / grid") { setGrid(!grid, true) }
+            setBtn(bB, "⇅", 20f, "Sort") { sortMenu() }
+            setBtn(bC, "🔍", 18f, "Search") { enterSearch() }
+            setBtn(bD, "⋮", 22f, "Menu") { mainMenu() }
         }
+        // clipboard bar
+        val show = !Clip.isEmpty() && !sm && !searching
+        pasteBar.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            val n = Clip.paths.size
+            pasteText.text = "$n item${if (n == 1) "" else "s"} to ${if (Clip.op == "cut") "move" else "copy"} · from ${devName(Clip.dev ?: "local")}"
+        }
+        srl.isEnabled = !searching
     }
 
     private fun buildCrumbs() {
         crumbs.removeAllViews()
         fun crumb(label: String, path: String, last: Boolean) {
-            if (crumbs.childCount > 0) crumbs.addView(TextView(this).apply { text = "\u203a"; setTextColor(cMut); textSize = 16f })
+            if (crumbs.childCount > 0) crumbs.addView(TextView(this).apply { text = "›"; setTextColor(cMut); textSize = 16f })
             crumbs.addView(TextView(this).apply {
                 text = label; textSize = 14f; setPadding(dp(8), dp(8), dp(8), dp(8))
                 setTextColor(if (last) cFg else cMut); if (last) setTypeface(null, Typeface.BOLD)
-                setOnClickListener { if (path != cur) navigate(path, true) }
+                setOnClickListener { if (searching) { exitSearch(); navigate(path, true) } else if (path != cur) navigate(path, true) }
             })
         }
-        crumb("Storage", "/", cur == "/")
+        if (searching) {
+            crumbs.addView(TextView(this).apply {
+                text = if (query.isEmpty()) "Type a name and press search — searches this folder and everything below it"
+                       else "${items.size} result${if (items.size == 1) "" else "s"} for “$query”" + (if (partial) " · partial, narrow your search" else "")
+                textSize = 13f; setTextColor(cMut); setPadding(dp(8), 0, dp(8), 0)
+            })
+            return
+        }
+        crumb(if (dev == "local") "Storage" else devName(dev), "/", cur == "/")
         var acc = ""
         val segs = cur.split('/').filter { it.isNotEmpty() }
         segs.forEachIndexed { i, s -> acc += "/$s"; crumb(s, acc, i == segs.size - 1) }
         crumbScroll.post { crumbScroll.fullScroll(View.FOCUS_RIGHT) }
     }
 
+    // ------------------------------------------------------------------ devices (this phone, LANShare peers, SMB shares)
+
+    private fun devName(id: String): String = devs.firstOrNull { it.id == id }?.name ?: if (id == "local") "This phone" else "device"
+
+    private fun ep(d: String): Endpoint = if (d == "local") Core.local else Jobs.ep(d)
+
+    private fun ck(d: String, p: String) = "$d|$p"
+    private fun ck(p: String) = ck(dev, p)
+
+    private val devTick = object : Runnable {
+        override fun run() { refreshDevices(); ui.postDelayed(this, 3000) }
+    }
+
+    private fun refreshDevices() {
+        val l = ArrayList<Dev>()
+        l.add(Dev("local", "This phone", true, "local"))
+        try { Core.discOrNull()?.list()?.forEach { l.add(Dev(it.id, it.name, it.ok, "peer")) } } catch (_: Exception) {}
+        try { Smb.peers().forEach { l.add(Dev(it.getString("id"), it.getString("name"), it.optBoolean("ok", true), "smb")) } } catch (_: Exception) {}
+        val sig = l.joinToString(";") { "${it.id}|${it.name}|${it.ok}" } + "#" + dev
+        devs = l
+        if (sig == devSig) return
+        devSig = sig
+        buildDevBar()
+    }
+
+    private fun chip(label: String, on: Boolean, ok: Boolean, click: () -> Unit, long: (() -> Unit)?): TextView = TextView(this).apply {
+        text = label; textSize = 13f; maxLines = 1; setPadding(dp(14), dp(7), dp(14), dp(7))
+        setTextColor(if (on) 0xFFFFFFFF.toInt() else if (ok) cFg else cMut)
+        background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(if (on) cAccent else cCard); setStroke(1, cDiv) }
+        alpha = if (ok) 1f else 0.55f
+        setOnClickListener { click() }
+        if (long != null) setOnLongClickListener { long(); true }
+    }
+
+    private fun buildDevBar() {
+        devRow.removeAllViews()
+        fun add(v: View) = devRow.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
+        for (d in devs) {
+            val prefix = when (d.kind) { "smb" -> "🖥 "; "peer" -> "📱 "; else -> "" }
+            add(chip(prefix + d.name, d.id == dev, d.ok, { switchDev(d.id) },
+                if (d.kind == "smb") ({ confirmRemoveSmb(d) }) else null))
+        }
+        add(chip("＋", false, true, { addMenu(devRow.getChildAt(devRow.childCount - 1)) }, null))
+    }
+
+    private fun switchDev(id: String) {
+        if (searching) exitSearch()
+        if (id == dev) { if (cur != "/") navigate("/", true); return }
+        states[ck(cur)] = rv.layoutManager?.onSaveInstanceState()
+        lastPath[dev] = cur
+        dev = id; free = null; devSig = ""
+        refreshDevices()
+        navigate(lastPath[id] ?: "/", false)
+    }
+
+    private fun addMenu(anchor: View) {
+        val m = PopupMenu(this, anchor)
+        m.menu.add(0, 1, 0, "Add SMB share (Windows / NAS)…")
+        m.menu.add(0, 2, 1, "Add LANShare device by IP…")
+        m.menu.add(0, 3, 2, "Scan network again")
+        m.setOnMenuItemClickListener {
+            when (it.itemId) { 1 -> addSmbDialog(); 2 -> addIpDialog(); 3 -> { Core.rescan(); toast("Scanning the network…") } }
+            true
+        }
+        m.show()
+    }
+
+    private fun field(box: LinearLayout, hint: String, pwd: Boolean = false): EditText {
+        val et = EditText(this).apply {
+            this.hint = hint; setSingleLine()
+            inputType = if (pwd) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        box.addView(et)
+        return et
+    }
+
+    private fun addSmbDialog() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        val host = field(box, "PC address (IP, optional :port)")
+        val user = field(box, "Username (empty = guest)")
+        val pass = field(box, "Password", true)
+        val name = field(box, "Display name (optional)")
+        AlertDialog.Builder(this).setTitle("Add SMB share").setView(box)
+            .setPositiveButton("Connect") { _, _ ->
+                val h = host.text.toString(); val u = user.text.toString(); val pw = pass.text.toString(); val n = name.text.toString()
+                toast("Connecting…")
+                io.execute {
+                    val r = try { Result.success(Smb.add(h, u, pw, n)) } catch (e: Exception) { Result.failure(e) }
+                    ui.post {
+                        val id = r.getOrNull()
+                        if (id != null) { refreshDevices(); switchDev(id) }
+                        else AlertDialog.Builder(this).setTitle("Could not connect").setMessage(r.exceptionOrNull()?.let { errText(it) } ?: "unknown error").setPositiveButton("OK", null).show()
+                    }
+                }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun addIpDialog() {
+        input("Device IP address", "", "Add") { ip ->
+            toast("Looking for a LANShare device…")
+            io.execute {
+                val err = try { if (Core.disc.addIp(ip)) null else "no LANShare device found at that address" } catch (e: Exception) { errText(e) }
+                ui.post { if (err != null) toast(err) else { toast("Device added"); refreshDevices() } }
+            }
+        }
+    }
+
+    private fun confirmRemoveSmb(d: Dev) {
+        AlertDialog.Builder(this).setTitle("Remove “${d.name}”?").setMessage("The saved login is deleted from this phone. Files on the PC are not touched.")
+            .setPositiveButton("Remove") { _, _ ->
+                io.execute {
+                    try { Smb.remove(d.id) } catch (_: Exception) {}
+                    ui.post { if (dev == d.id) switchDev("local") else { devSig = ""; refreshDevices() } }
+                }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     // ------------------------------------------------------------------ navigation + loading
 
     private fun jn(a: String, b: String) = (if (a == "/") "" else a) + "/" + b
     private fun parent(p: String): String { val i = p.lastIndexOf('/'); return if (i <= 0) "/" else p.substring(0, i) }
+    private fun pathOf(i: Item): String = i.path ?: jn(cur, i.name)
 
     private fun navigate(path: String, saveScroll: Boolean) {
-        if (saveScroll) states[cur] = rv.layoutManager?.onSaveInstanceState()
+        if (saveScroll) states[ck(cur)] = rv.layoutManager?.onSaveInstanceState()
         cur = path; sel.clear()
-        val hit = cache.get(path)
+        val hit = cache.get(ck(path))
         loaded = hit != null
-        if (hit != null) setList(hit) else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty("Loading\u2026") }
+        if (hit != null) setList(hit) else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty("Loading…") }
         buildCrumbs(); updateChrome()
         load(path)
     }
 
     private fun load(path: String) {
         val g = ++gen
+        val d = dev
         io.execute {
-            val r: Result<List<Item>> = try { Result.success(Core.local.ls(path, false)) } catch (e: Exception) { Result.failure(e) }
-            val sp = try { Core.local.space("/") } catch (_: Exception) { null }
+            val r: Result<List<Item>> = try { Result.success(if (d == "local") Core.local.ls(path, false) else ep(d).ls(path)) } catch (e: Exception) { Result.failure(e) }
             ui.post {
-                if (g != gen || path != cur) return@post
-                sp?.let { free = humanSize(it.first) }
+                if (g != gen || path != cur || d != dev) return@post
+                srl.isRefreshing = false
                 val list = r.getOrNull()
                 if (list != null) applyList(path, list)
-                else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty(r.exceptionOrNull()?.message ?: "Cannot open this folder") }
+                else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot open this folder") }
                 updateChrome()
             }
+            // free space after the list is on screen (a peer / SMB share needs one more round-trip)
+            val sp = try { if (d == "local") Core.local.space("/") else ep(d).space(path) } catch (_: Exception) { null }
+            ui.post {
+                if (d != dev || path != cur) return@post
+                val f = sp?.let { humanSize(it.first) }
+                if (f != free) { free = f; updateChrome() }
+            }
         }
+    }
+
+    private fun pullRefresh() {
+        if (searching) { srl.isRefreshing = false; return }
+        cache.remove(ck(cur))
+        if (cur == "/") Core.rescan()
+        refreshDevices()
+        load(cur)
+        ui.postDelayed({ srl.isRefreshing = false }, 8000)   // never spin forever on a dead peer
     }
 
     private fun same(a: List<Item>, b: List<Item>): Boolean {
@@ -274,12 +523,13 @@ class BrowserActivity : Activity() {
         val old = HashMap<String, Int?>()
         raw.forEach { if (it.dir) old[it.name] = it.n }
         val nl = list.map { if (it.dir && it.n == null) it.copy(n = old[it.name]) else it }
-        cache.put(path, nl)
+        cache.put(ck(path), nl)
         if (!(loaded && same(raw, nl))) setList(nl)
         loaded = true
+        if (dev != "local") return   // counts / prefetch only for this phone's storage (cheap there, slow over the network)
         fetchCounts(path)
         val dirs = items.filter { it.dir && !it.name.startsWith(".") }.take(4)   // warm the next likely taps
-        ui.postDelayed({ if (cur == path) dirs.forEach { prefetch(jn(path, it.name)) } }, 250)
+        ui.postDelayed({ if (cur == path && dev == "local") dirs.forEach { prefetch(jn(path, it.name)) } }, 250)
     }
 
     private fun fetchCounts(path: String) {
@@ -288,30 +538,32 @@ class BrowserActivity : Activity() {
             val c = try { Core.local.counts(path) } catch (_: Exception) { emptyMap<String, Int>() }
             if (c.isEmpty()) return@execute
             ui.post {
-                if (path != cur) return@post
+                if (path != cur || dev != "local") return@post
                 var changed = false
                 fun upd(l: List<Item>) = l.map { if (it.dir && c[it.name] != null && it.n != c[it.name]) { changed = true; it.copy(n = c[it.name]) } else it }
-                raw = upd(raw); items = upd(items)
-                cache.put(path, raw)
-                if (changed) { if (sortKey == "size") { items = visibleSorted(raw); ad.notifyDataSetChanged() } else ad.notifyItemRangeChanged(0, items.size) }
+                raw = upd(raw); items = if (searching) items else upd(items)
+                cache.put(ck("local", path), raw)
+                if (changed && !searching) { if (sortKey == "size") { items = visibleSorted(raw); ad.notifyDataSetChanged() } else ad.notifyItemRangeChanged(0, items.size) }
             }
         }
     }
 
     private fun prefetch(p: String) {
-        if (cache.get(p) != null || !inflight.add(p)) return
+        val k = ck("local", p)
+        if (cache.get(k) != null || !inflight.add(k)) return
         pre.execute {
             val l = try { Core.local.ls(p, false) } catch (_: Exception) { null }
-            ui.post { inflight.remove(p); if (l != null && cache.get(p) == null) cache.put(p, l) }
+            ui.post { inflight.remove(k); if (l != null && cache.get(k) == null) cache.put(k, l) }
         }
     }
 
     private fun setList(list: List<Item>) {
-        raw = list; items = visibleSorted(list)
-        sel.retainAll(items.map { it.name }.toSet())
+        raw = list
+        if (!searching) items = visibleSorted(list)
+        sel.retainAll(items.map { pathOf(it) }.toSet())
         ad.notifyDataSetChanged()
         if (items.isEmpty()) showEmpty(if (list.isEmpty()) "This folder is empty" else "No visible files (hidden files are off)") else empty.visibility = View.GONE
-        states.remove(cur)?.let { rv.layoutManager?.onRestoreInstanceState(it) }
+        if (!searching) states.remove(ck(cur))?.let { rv.layoutManager?.onRestoreInstanceState(it) }
     }
 
     private fun showEmpty(t: String) { empty.text = t; empty.visibility = View.VISIBLE }
@@ -346,10 +598,59 @@ class BrowserActivity : Activity() {
         return l.sortedWith(dirsFirst.then(if (asc) key else key.reversed()))
     }
 
+    /** Re-draws whatever is on screen after the sort / hidden settings changed. */
+    private fun relist() { if (searching) { items = visibleSorted(results); ad.notifyDataSetChanged(); if (items.isEmpty()) showEmpty("No matches") else empty.visibility = View.GONE; buildCrumbs() } else setList(raw) }
+
+    /** After a file operation: the listing (or the search) is read again. */
+    private fun refreshAfter() {
+        cache.evictAll()
+        if (searching) { if (query.isNotEmpty()) runSearch(query) } else load(cur)
+    }
+
+    // ------------------------------------------------------------------ search
+
+    private fun enterSearch() {
+        if (searching) return
+        searching = true; query = ""; results = emptyList(); partial = false; sel.clear()
+        items = emptyList(); ad.notifyDataSetChanged()
+        showEmpty("Searches “${if (cur == "/") devName(dev) else cur.substringAfterLast('/')}” and everything below it")
+        searchBox.setText(""); searchBox.hint = "Search in ${if (cur == "/") devName(dev) else cur.substringAfterLast('/')}"
+        buildCrumbs(); updateChrome()
+        searchBox.requestFocus()
+        searchBox.post { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(searchBox, 0) }
+    }
+
+    private fun exitSearch() {
+        if (!searching) return
+        searching = false; sgen++; query = ""; results = emptyList(); partial = false; sel.clear()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(searchBox.windowToken, 0)
+        items = visibleSorted(raw); ad.notifyDataSetChanged()
+        if (items.isEmpty()) showEmpty(if (raw.isEmpty()) "This folder is empty" else "No visible files (hidden files are off)") else empty.visibility = View.GONE
+        buildCrumbs(); updateChrome()
+    }
+
+    private fun runSearch(q: String) {
+        if (q.isEmpty()) return
+        query = q; sel.clear()
+        val g = ++sgen; val d = dev; val base = cur
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(searchBox.windowToken, 0)
+        items = emptyList(); ad.notifyDataSetChanged(); showEmpty("Searching…"); buildCrumbs(); updateChrome()
+        searchPool.execute {
+            val r: Result<SearchResult> = try { Result.success(ep(d).search(base, q)) } catch (e: Exception) { Result.failure(e) }
+            ui.post {
+                if (g != sgen || !searching) return@post
+                val sr = r.getOrNull()
+                if (sr == null) { results = emptyList(); partial = false; items = emptyList(); ad.notifyDataSetChanged(); showEmpty(r.exceptionOrNull()?.let { errText(it) } ?: "Search failed") }
+                else { results = sr.items; partial = sr.partial; relist() }
+                buildCrumbs(); updateChrome()
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ menus
 
     private fun mainMenu() {
-        val m = PopupMenu(this, bC)
+        val m = PopupMenu(this, bD)
         m.menu.add(0, 1, 0, "New folder")
         m.menu.add(0, 2, 1, "Refresh")
         m.menu.add(0, 3, 2, if (showHidden) "Hide hidden files" else "Show hidden files")
@@ -357,8 +658,8 @@ class BrowserActivity : Activity() {
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> newFolder()
-                2 -> { cache.remove(cur); load(cur) }
-                3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); setList(raw); updateChrome() }
+                2 -> { if (searching) refreshAfter() else { cache.remove(ck(cur)); Core.rescan(); load(cur) } }
+                3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); relist(); updateChrome() }
                 4 -> finish()
             }
             true
@@ -368,27 +669,32 @@ class BrowserActivity : Activity() {
 
     private fun sortMenu() {
         val m = PopupMenu(this, bB)
-        fun mark(k: String, t: String) = (if (sortKey == k) "\u2713 " else "    ") + t
+        fun mark(k: String, t: String) = (if (sortKey == k) "✓ " else "    ") + t
         m.menu.add(0, 1, 0, mark("name", "Name")); m.menu.add(0, 2, 1, mark("date", "Date modified")); m.menu.add(0, 3, 2, mark("size", "Size"))
         m.menu.add(0, 4, 3, if (asc) "Order: ascending" else "Order: descending")
         m.setOnMenuItemClickListener {
             when (it.itemId) { 1 -> sortKey = "name"; 2 -> sortKey = "date"; 3 -> sortKey = "size"; 4 -> asc = !asc }
             prefs.edit().putString("sort", sortKey).putBoolean("asc", asc).apply()
-            setList(raw); true
+            relist(); true
         }
         m.show()
     }
 
     private fun selectionMenu() {
-        val m = PopupMenu(this, bC)
+        val m = PopupMenu(this, bD)
+        val one = if (sel.size == 1) items.firstOrNull { pathOf(it) == sel.first() } else null
         m.menu.add(0, 1, 0, "Select all")
-        if (sel.size == 1) m.menu.add(0, 2, 1, "Rename")
-        if (sel.size == 1 && items.firstOrNull { it.name == sel.first() }?.dir == false) m.menu.add(0, 3, 2, "Open with\u2026")
+        m.menu.add(0, 2, 1, "Share")
+        if (devs.size > 1) m.menu.add(0, 3, 2, "Send to device…")
+        if (one != null) m.menu.add(0, 4, 3, "Rename")
+        if (one != null && !one.dir) m.menu.add(0, 5, 4, "Open with…")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
-                1 -> { items.forEach { i -> sel.add(i.name) }; ad.notifyDataSetChanged(); updateChrome() }
-                2 -> renameSelected()
-                3 -> items.firstOrNull { i -> i.name == sel.first() }?.let { i -> openWith(i, true) }
+                1 -> { items.forEach { i -> sel.add(pathOf(i)) }; ad.notifyDataSetChanged(); updateChrome() }
+                2 -> shareSelected()
+                3 -> sendSelected()
+                4 -> renameSelected()
+                5 -> one?.let { i -> openWith(i, true) }
             }
             true
         }
@@ -407,23 +713,35 @@ class BrowserActivity : Activity() {
 
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_LONG).show()
 
-    private fun runOp(base: String, block: () -> Unit) {
+    private fun selectedItems(): List<Item> = items.filter { pathOf(it) in sel }
+
+    /** Quick single operations (new folder, rename): run on the current device, then reload. */
+    private fun runOp(block: (Endpoint) -> Unit) {
+        val d = dev
         io.execute {
-            val err = try { block(); null } catch (e: Exception) { e.message ?: e.javaClass.simpleName }
+            val err = try { block(ep(d)); null } catch (e: Exception) { errText(e) }
             ui.post {
                 err?.let { toast(it) }
-                sel.clear(); cache.remove(base)
-                if (base == cur) load(base)
+                sel.clear()
+                if (d == dev) refreshAfter()
                 updateChrome(); ad.notifyDataSetChanged()
             }
         }
     }
 
     private fun confirmDelete() {
-        val base = cur; val names = sel.toList()
-        AlertDialog.Builder(this).setTitle("Delete ${names.size} item${if (names.size == 1) "" else "s"}?")
-            .setMessage("This cannot be undone.")
-            .setPositiveButton("Delete") { _, _ -> runOp(base) { names.forEach { Core.local.remove(jn(base, it)) } } }
+        val d = dev
+        val paths = selectedItems().map { pathOf(it) }
+        if (paths.isEmpty()) return
+        AlertDialog.Builder(this).setTitle("Delete ${paths.size} item${if (paths.size == 1) "" else "s"}?")
+            .setMessage(if (d == "local") "This cannot be undone." else "This deletes them on ${devName(d)} and cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                sel.clear(); updateChrome(); ad.notifyDataSetChanged()
+                io.execute {
+                    val r = try { Result.success(Jobs.startDelete(d, paths)) } catch (e: Exception) { Result.failure(e) }
+                    ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot delete") }
+                }
+            }
             .setNegativeButton("Cancel", null).show()
     }
 
@@ -435,39 +753,186 @@ class BrowserActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
-    private fun newFolder() { val base = cur; input("New folder", "", "Create") { n -> runOp(base) { Core.local.mkdir(jn(base, n)) } } }
+    private fun newFolder() {
+        if (searching) { toast("Leave the search first"); return }
+        if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
+        val base = cur
+        input("New folder", "", "Create") { n -> runOp { e -> e.mkdir(jn(base, n)) } }
+    }
 
     private fun renameSelected() {
-        val base = cur; val old = sel.firstOrNull() ?: return
-        input("Rename", old, "Rename") { n -> runOp(base) { Core.local.rename(jn(base, old), n) } }
+        val i = selectedItems().firstOrNull() ?: return
+        val p = pathOf(i)
+        input("Rename", i.name, "Rename") { n -> runOp { e -> e.rename(p, n) } }
+    }
+
+    // --- clipboard (shared with the web UI through Clip) + copy / move jobs
+
+    private fun clipSelected(op: String) {
+        val paths = selectedItems().map { vnorm(pathOf(it)) }
+        if (paths.isEmpty()) return
+        Clip.set(op, dev, paths)
+        sel.clear(); ad.notifyDataSetChanged(); updateChrome()
+        toast("${paths.size} item${if (paths.size == 1) "" else "s"} ${if (op == "cut") "cut" else "copied"} — open a folder (any device) and tap Paste here")
+    }
+
+    private fun paste() {
+        if (Clip.isEmpty()) return
+        if (searching) { toast("Leave the search first"); return }
+        if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
+        val cut = Clip.op == "cut"; val srcDev = Clip.dev ?: return; val paths = Clip.paths
+        val d = dev; val dir = cur
+        io.execute {
+            val r = try { Result.success(Jobs.start(srcDev, paths, d, dir, cut, if (cut) "Moving" else "Copying")) } catch (e: Exception) { Result.failure(e) }
+            ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot paste") }
+        }
+    }
+
+    private fun sendSelected() {
+        val targets = devs.filter { it.id != dev }
+        val paths = selectedItems().map { vnorm(pathOf(it)) }
+        if (targets.isEmpty() || paths.isEmpty()) return
+        val src = dev
+        AlertDialog.Builder(this).setTitle("Send ${paths.size} item${if (paths.size == 1) "" else "s"} to…")
+            .setItems(targets.map { it.name }.toTypedArray()) { _, w ->
+                val t = targets[w].id
+                sel.clear(); ad.notifyDataSetChanged(); updateChrome()
+                io.execute {
+                    val r = try { Result.success(Jobs.start(src, paths, t, INBOX, false, "Sending")) } catch (e: Exception) { Result.failure(e) }
+                    ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot send") }
+                }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private val jobTick = object : Runnable {
+        override fun run() { pollJobs(); if (jobIds.isNotEmpty()) ui.postDelayed(this, 400) }
+    }
+
+    private fun startJob(id: String) {
+        jobIds.add(id)
+        ui.removeCallbacks(jobTick); ui.post(jobTick)
+    }
+
+    private fun pollJobs() {
+        var finished = false
+        var shown: Job? = null
+        for (id in jobIds.toList()) {
+            val j = Jobs.all[id]
+            if (j == null) { jobIds.remove(id); finished = true; continue }
+            if (j.state == "run") { if (shown == null) shown = j; continue }
+            jobIds.remove(id); finished = true
+            when (j.state) {
+                "done" -> toast(j.note ?: j.label)
+                "cancel" -> toast("Cancelled")
+                else -> AlertDialog.Builder(this).setTitle(j.label.substringBefore(' ').ifEmpty { "Problem" }).setMessage(j.error ?: "failed").setPositiveButton("OK", null).show()
+            }
+        }
+        if (shown == null) jobBar.visibility = View.GONE
+        else {
+            val j = shown
+            jobBar.visibility = View.VISIBLE
+            val more = jobIds.size - 1
+            jobText.text = j.label + (if (more > 0) "  (+$more more)" else "")
+            jobProg.progress = if (j.total > 0) (j.done * 1000 / j.total).toInt().coerceIn(0, 1000) else 0
+            val o = j.toJson()
+            val sp = o.optLong("speed", 0); val eta = o.optLong("eta", 0)
+            jobStat.text = (if (j.bytes) "${humanSize(j.done)} / ${humanSize(j.total)}" else "${j.done} / ${j.total}") +
+                (if (sp > 0) " · ${humanSize(sp)}/s" else "") + (if (eta > 0) " · ${eta2(eta)} left" else "")
+        }
+        if (finished) { refreshAfter(); updateChrome() }
+    }
+
+    private fun eta2(s: Long): String = if (s < 90) "${s}s" else if (s < 5400) "${s / 60} min" else String.format("%.1f h", s / 3600.0)
+
+    // --- files that other apps must read: fetched into cache/open first when they are not on this phone
+
+    private fun openDir(): File = File(Core.cacheDir.parentFile ?: Core.cacheDir, "open").also { it.mkdirs() }
+
+    private fun fetchAll(chosen: List<Item>, title: String, done: (List<File>) -> Unit) {
+        val d = dev
+        val base = openDir()
+        try { base.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.deleteRecursively() } } catch (_: Exception) {}
+        val work = File(base, "f" + System.nanoTime()).also { it.mkdirs() }
+        val cancel = AtomicBoolean(false)
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progressTintList = ColorStateList.valueOf(cAccent) }
+        val msg = TextView(this).apply { textSize = 13f; setTextColor(cMut) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(12), dp(20), 0); addView(bar); addView(msg) }
+        val dlg = AlertDialog.Builder(this).setTitle(title).setView(box).setCancelable(false)
+            .setNegativeButton("Cancel") { _, _ -> cancel.set(true) }.show()
+        val total = maxOf(chosen.sumOf { it.size }, 1L)
+        io.execute {
+            val out = ArrayList<File>()
+            var err: String? = null
+            try {
+                val e = ep(d)
+                var got = 0L
+                var last = 0L
+                for ((n, i) in chosen.withIndex()) {
+                    val f = File(File(work, "$n").also { it.mkdirs() }, i.name)
+                    e.open(vnorm(pathOf(i))).use { src ->
+                        f.outputStream().use { os ->
+                            val buf = ByteArray(128 * 1024)
+                            while (true) {
+                                if (cancel.get()) throw Cancelled()
+                                val r = src.read(buf, 0, buf.size)
+                                if (r < 0) break
+                                os.write(buf, 0, r)
+                                got += r
+                                val now = System.currentTimeMillis()
+                                if (now - last > 200) {
+                                    last = now
+                                    val g = got
+                                    ui.post { bar.progress = (g * 1000 / total).toInt().coerceIn(0, 1000); msg.text = "${humanSize(g)} / ${humanSize(total)}" }
+                                }
+                            }
+                        }
+                    }
+                    out.add(f)
+                }
+            } catch (x: Cancelled) { err = ""
+            } catch (x: Exception) { err = errText(x) }
+            ui.post {
+                try { dlg.dismiss() } catch (_: Exception) {}
+                val msgErr = err
+                if (msgErr == null) done(out)
+                else { work.deleteRecursively(); if (msgErr.isNotEmpty()) toast(msgErr) }
+            }
+        }
     }
 
     private fun uriFor(f: File): Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
 
     private fun shareSelected() {
-        val chosen = items.filter { it.name in sel }
+        val chosen = selectedItems()
         if (chosen.any { it.dir }) { toast("Folders can't be shared - select files only"); return }
+        if (chosen.isEmpty()) return
+        if (dev == "local") try { shareFiles(chosen.map { Core.local.real(pathOf(it)) }) } catch (e: Exception) { toast("Cannot share: ${errText(e)}") }
+        else fetchAll(chosen, "Getting ${chosen.size} file${if (chosen.size == 1) "" else "s"}…") { files -> shareFiles(files) }
+    }
+
+    private fun shareFiles(files: List<File>) {
         try {
-            val uris = ArrayList<Uri>(chosen.map { uriFor(Core.local.real(jn(cur, it.name))) })
+            val uris = ArrayList<Uri>(files.map { uriFor(it) })
             val i = if (uris.size == 1) Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris[0])
                     else Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             i.type = "*/*"; i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(i, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (e: Exception) { toast("Cannot share: ${e.message}") }
+        } catch (e: Exception) { toast("Cannot share: ${errText(e)}") }
     }
 
     // ------------------------------------------------------------------ opening files
 
     private fun kindOf(i: Item): String = if (i.dir) "dir" else EXT[i.name.substringAfterLast('.', "").lowercase()] ?: "file"
 
-    private fun url(p: String) = Core.url + "/api/dl?dev=local&path=" + URLEncoder.encode(p, "UTF-8").replace("+", "%20")
+    /** Viewers read through this phone's own server (Range requests, works for peers and SMB too). */
+    private fun url(p: String) = Core.url + "/api/dl?dev=" + URLEncoder.encode(dev, "UTF-8") + "&path=" + URLEncoder.encode(p, "UTF-8").replace("+", "%20")
 
     private fun imgOk(i: Item) = kindOf(i) == "img" && !Regex("(?i).*\\.(svg|gif)$").matches(i.name) &&
         (Build.VERSION.SDK_INT >= 28 || !Regex("(?i).*\\.(heic|heif)$").matches(i.name))
 
     private fun openItem(i: Item) {
         when {
-            i.dir -> navigate(jn(cur, i.name), true)
+            i.dir -> { if (searching) exitSearch(); navigate(pathOf(i), true) }
             kindOf(i) == "vid" -> playVideo(i)
             imgOk(i) -> viewImages(i)
             kindOf(i) == "pdf" -> viewPdf(i)
@@ -481,14 +946,13 @@ class BrowserActivity : Activity() {
         fun base(n: String) = n.substringBeforeLast('.').lowercase()
         val arr = JSONArray()
         vids.forEach { v ->
-            val b = base(v.name)
+            val b = base(v.name); val vp = pathOf(v)
             val sa = JSONArray()
-            subs.filter { val c = base(it.name); c == b || c.startsWith("$b.") }
-                .forEach { sa.put(JSONObject().put("name", it.name).put("url", url(jn(cur, it.name)))) }
-            arr.put(JSONObject().put("name", v.name).put("url", url(jn(cur, v.name)))
-                .put("key", "local|$cur/${v.name}|${v.size}").put("subs", sa))
+            subs.filter { parent(pathOf(it)) == parent(vp) && base(it.name).let { c -> c == b || c.startsWith("$b.") } }
+                .forEach { sa.put(JSONObject().put("name", it.name).put("url", url(pathOf(it)))) }
+            arr.put(JSONObject().put("name", v.name).put("url", url(vp)).put("key", "$dev|$vp|${v.size}").put("subs", sa))
         }
-        val at = vids.indexOfFirst { it.name == i.name }.coerceAtLeast(0)
+        val at = vids.indexOfFirst { pathOf(it) == pathOf(i) }.coerceAtLeast(0)
         PlayerActivity.pending = JSONObject().put("start", at).put("items", arr).toString()
         startActivity(Intent(this, PlayerActivity::class.java))
     }
@@ -496,25 +960,32 @@ class BrowserActivity : Activity() {
     private fun viewImages(i: Item) {
         val imgs = items.filter { imgOk(it) }
         val arr = JSONArray()
-        imgs.forEach { arr.put(JSONObject().put("name", it.name).put("url", url(jn(cur, it.name))).put("size", it.size)) }
-        val at = imgs.indexOfFirst { it.name == i.name }.coerceAtLeast(0)
+        imgs.forEach { arr.put(JSONObject().put("name", it.name).put("url", url(pathOf(it))).put("size", it.size)) }
+        val at = imgs.indexOfFirst { pathOf(it) == pathOf(i) }.coerceAtLeast(0)
         ImageViewerActivity.pending = JSONObject().put("start", at).put("items", arr).toString()
         startActivity(Intent(this, ImageViewerActivity::class.java))
     }
 
     private fun viewPdf(i: Item) {
-        PdfViewerActivity.pending = JSONObject().put("name", i.name).put("url", url(jn(cur, i.name))).put("size", i.size)
-            .put("key", "local|$cur/${i.name}|${i.size}").toString()
+        val p = pathOf(i)
+        PdfViewerActivity.pending = JSONObject().put("name", i.name).put("url", url(p)).put("size", i.size)
+            .put("key", "$dev|$p|${i.size}").toString()
         startActivity(Intent(this, PdfViewerActivity::class.java))
     }
 
-    /** Opened in place through FileProvider (root-path): no copy to cache, so it starts instantly. */
+    /** This phone: opened in place through FileProvider (root-path), instantly. Peers / SMB: fetched into cache/open first (with progress + Cancel). */
     private fun openWith(i: Item, pick: Boolean) {
-        val f = try { Core.local.real(jn(cur, i.name)) } catch (e: Exception) { toast("Cannot open: ${e.message}"); return }
+        if (dev == "local") {
+            val f = try { Core.local.real(pathOf(i)) } catch (e: Exception) { toast("Cannot open: ${errText(e)}"); return }
+            openFile(f, pick)
+        } else fetchAll(listOf(i), "Getting ${i.name}…") { files -> openFile(files[0], pick) }
+    }
+
+    private fun openFile(f: File, pick: Boolean) {
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
-        val uri = try { uriFor(f) } catch (e: Exception) { toast("Cannot open: ${e.message}"); return }
+        val uri = try { uriFor(f) } catch (e: Exception) { toast("Cannot open: ${errText(e)}"); return }
         fun go(m: String) {
             val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(if (pick) Intent.createChooser(v, "Open with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) else v)
@@ -522,7 +993,7 @@ class BrowserActivity : Activity() {
         try { go(mime) }
         catch (e: ActivityNotFoundException) {
             try { if (mime != "*/*") go("*/*") else throw e } catch (e2: Exception) { toast("No app can open .$ext") }
-        } catch (e: Exception) { toast("Cannot open: ${e.message}") }
+        } catch (e: Exception) { toast("Cannot open: ${errText(e)}") }
     }
 
     // ------------------------------------------------------------------ list adapter
@@ -533,8 +1004,8 @@ class BrowserActivity : Activity() {
         return if (i == 0) "$n B" else String.format("%.1f %s", v, u[i])
     }
 
-    private fun glyph(k: String) = when (k) { "dir" -> "\uD83D\uDCC1"; "img" -> "\uD83D\uDDBC"; "vid" -> "\uD83C\uDFAC"; "aud" -> "\uD83C\uDFB5"
-        "pdf" -> "\uD83D\uDCD5"; "zip" -> "\uD83D\uDDDC"; "apk" -> "\uD83D\uDCE6"; "doc" -> "\uD83D\uDCDD"; else -> "\uD83D\uDCC4" }
+    private fun glyph(k: String) = when (k) { "dir" -> "📁"; "img" -> "🖼"; "vid" -> "🎬"; "aud" -> "🎵"
+        "pdf" -> "📕"; "zip" -> "🗜"; "apk" -> "📦"; "doc" -> "📝"; else -> "📄" }
 
     private fun tint(k: String): Int = when (k) { "dir" -> 0xFFE2AC5F; "img" -> 0xFF4CAF7D; "vid" -> 0xFFD9534F; "aud" -> 0xFF8E6BD1
         "pdf" -> 0xFFD9534F; "zip" -> 0xFF8D6E63; "apk" -> 0xFF3DDC84; "doc" -> 0xFF4A90D9; else -> 0xFF78909C }.toInt()
@@ -559,7 +1030,7 @@ class BrowserActivity : Activity() {
     }
 
     private fun checkBadge() = TextView(this).apply {
-        text = "\u2713"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt()); visibility = View.GONE
+        text = "✓"; textSize = 12f; gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt()); visibility = View.GONE
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(cAccent) }
     }
 
@@ -574,7 +1045,7 @@ class BrowserActivity : Activity() {
         lead.addView(img, FrameLayout.LayoutParams(dp(44), dp(44)))
         lead.addView(check, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.BOTTOM or Gravity.END))
         val name = TextView(this).apply { textSize = 15f; setTypeface(null, Typeface.BOLD); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
-        val sub = TextView(this).apply { textSize = 12.5f; setTextColor(cMut); maxLines = 1 }
+        val sub = TextView(this).apply { textSize = 12.5f; setTextColor(cMut); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0); addView(name); addView(sub) }
         row.addView(lead, LinearLayout.LayoutParams(dp(44), dp(44)))
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -614,8 +1085,8 @@ class BrowserActivity : Activity() {
                 if (pos != RecyclerView.NO_POSITION && sel.isEmpty()) { h.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); toggle(items[pos], pos) }
                 true
             }
-            h.root.setOnTouchListener { _, e ->   // head start: the folder listing loads while the finger is still lifting
-                if (e.actionMasked == MotionEvent.ACTION_DOWN && sel.isEmpty()) {
+            h.root.setOnTouchListener { _, e ->   // head start: the folder listing loads while the finger is still lifting (this phone only)
+                if (e.actionMasked == MotionEvent.ACTION_DOWN && sel.isEmpty() && dev == "local" && !searching) {
                     val pos = h.bindingAdapterPosition
                     if (pos != RecyclerView.NO_POSITION && items[pos].dir) prefetch(jn(cur, items[pos].name))
                 }
@@ -628,23 +1099,27 @@ class BrowserActivity : Activity() {
     }
 
     private fun toggle(i: Item, pos: Int) {
-        if (!sel.add(i.name)) sel.remove(i.name)
+        val p = pathOf(i)
+        if (!sel.add(p)) sel.remove(p)
         ad.notifyItemChanged(pos); updateChrome()
     }
 
     private fun bind(h: VH, i: Item) {
-        val k = kindOf(i); val p = jn(cur, i.name); val s = sel.contains(i.name)
+        val k = kindOf(i); val p = pathOf(i); val s = sel.contains(p)
         h.name.text = i.name
-        h.sub?.text = (if (i.dir) (i.n?.let { "$it item${if (it == 1) "" else "s"}" } ?: "Folder") else humanSize(i.size)) +
-            (if (i.mtime > 0) " \u00b7 " + df.format(Date(i.mtime * 1000)) else "")
+        val where = if (searching) parent(p).let { if (it == "/") devName(dev) else it } else null
+        h.sub?.text = if (where != null) where + " · " + (if (i.dir) "Folder" else humanSize(i.size))
+            else (if (i.dir) (i.n?.let { "$it item${if (it == 1) "" else "s"}" } ?: "Folder") else humanSize(i.size)) +
+                (if (i.mtime > 0) " · " + df.format(Date(i.mtime * 1000)) else "")
         h.icon.text = glyph(k)
         h.icon.background = GradientDrawable().apply { cornerRadius = dp(if (h.gridMode) 10 else 8).toFloat(); setColor((tint(k) and 0x00FFFFFF) or 0x33000000) }
         h.root.setBackgroundColor(if (s) cSel else 0)
         h.check.visibility = if (s) View.VISIBLE else View.GONE
         h.job?.cancel(false); h.job = null
-        val key = "$p|${i.size}|${i.mtime}"
+        val key = "$dev|$p|${i.size}|${i.mtime}"
         h.key = key
         h.img.visibility = View.GONE
+        if (dev != "local") return   // thumbnails only for this phone's own files (a peer / SMB thumbnail would mean downloading the file)
         if (k != "img" && k != "vid" || i.dir) return
         if (k == "img" && (i.size > 30_000_000L || Regex("(?i).*\\.(svg|heic|heif)$").matches(i.name))) return
         thumbs.get(key)?.let { h.img.setImageBitmap(it); h.img.visibility = View.VISIBLE; return }

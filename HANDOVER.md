@@ -97,3 +97,58 @@ service; a thin Kotlin WebView loads its UI. Python stdlib only → no pip deps.
 - **Video player (native):** `PlayerActivity.kt` (Media3 / ExoPlayer 1.3.1, `media3-exoplayer` + `media3-ui`). Tapping a video in the Android app calls `LSAndroid.play(json)` (`MainActivity.Bridge.play`) with the folder's videos as a playlist (`{start, items:[{name,url,key,subs:[{name,url}]}]}`, URLs are the local server's `/api/dl`, which already does Range requests, so local / peer / SMB files stream without downloading). Handover goes through `PlayerActivity.pending` (no Binder size limit); only `http://127.0.0.1` / `localhost` URLs are accepted. Features: MKV/AVI/MOV/WebM/MP4/FLV/MPEG, audio + subtitle track menus, speed, next/previous, resume position (SharedPreferences `ls_player`), PiP (Home while playing, or the button), double-tap +-10 s, swipe left = brightness / right = volume, Fit/Zoom/Stretch, rotate button, auto landscape for wide videos. Sidecar subtitles (same base name, .srt/.vtt/.ass/.ssa) are fetched, converted to UTF-8 (windows-1254 fallback) into `cache/subs` and attached. Browsers (no `LSAndroid.play`) keep the HTML5 viewer (`openMedia`); inside that viewer a play button / the error box offer "Play in player". Manifest: `PlayerActivity` is its own task (`singleTask`, empty affinity) so PiP works; theme `Theme.LANShare.Player`. No background-audio service (audio stops when the screen is off or the PiP window is closed).
 
 - **Image viewer (native):** `ImageViewerActivity.kt` (+ `androidx.viewpager2`). Tapping a picture in the Android app calls `LSAndroid.viewImages(json)` (`{start, items:[{name,url,size}]}`, handover via `ImageViewerActivity.pending`, only `http://127.0.0.1`/`localhost` URLs accepted) with the folder's pictures in the current sort order. Each picture is fetched from `/api/dl` into `cache/img/<n>.bin`, decoded with `inSampleSize` (longest side <= 3072/4096 px depending on the device's memory class, never above the 4096 GPU texture limit), EXIF-rotated, kept in an LruCache; the neighbours are preloaded. `ZoomImageView`: pinch, double-tap (fit <-> 2.5x), drag-pan, and at the edge of a zoomed picture the drag becomes a page swipe. Top bar: back, name + position + original resolution + size, slideshow (4 s, stops on manual swipe), share (copy in `cache/open` through the existing FileProvider). Tap hides the bars. `.gif` / `.svg` (and `.heic` below Android 9, `LSAndroid.sdk()`) still go to the HTML viewer (`openMedia`). Zoom works on the decoded (downsampled) bitmap, so originals above ~4096 px are not shown at full pixel resolution.
+
+## Batch 9 – native browser: copy/move/paste, search, pull-to-refresh, peers + SMB (2026-10-03)
+**NOT compiled / NOT device-tested** (syntax-checked with kotlinc only). Changed: `BrowserActivity.kt` (rewritten), `core/SmbFs.kt` (`Smb.add/remove`), `core/Routes.kt` (`smbUpdate` uses them), `MainActivity.kt` (`nativeBrowser(path, dev)`), `ui.html` (passes `S.dev`), `app/build.gradle.kts` (+`swiperefreshlayout:1.1.0`).
+- **Devices:** chip bar = This phone · LANShare peers (`Core.disc.list()`) · SMB shares (`Smb.peers()`), refreshed every 3 s in-process; `＋` chip → add SMB share (tested via `Smb.add`), add device by IP, rescan; long-press an SMB chip → remove. Listings via `Jobs.ep(dev).ls`, free space via `Endpoint.space`, last folder remembered per device, cache key `<dev>|<path>`. Counts/prefetch/thumbnails stay phone-only.
+- **Copy / Cut / Paste:** selection bar Copy · Cut · Delete · ⋮ (Share, Send to device…, Rename, Open with…). Uses the shared `Clip` (web UI sees the same clipboard), paste bar at the bottom works across devices (`Jobs.start`), delete via `Jobs.startDelete`. Native job bar polls `Jobs.all` every 400 ms: progress, speed, ETA, Cancel; errors in a dialog; listing reloads when jobs end.
+- **Search:** 🔍 → `Endpoint.search(cur, q)` (recursive, phone/peer/SMB), results show parent folder, folders navigate, files open in viewers; selection/clipboard work on results (selection keyed by full path).
+- **Pull-to-refresh:** `SwipeRefreshLayout` around the list (drops cache, rescans peers at root).
+- **Files for other apps from peer/SMB** (Open with, Share): fetched into `cache/open/f<n>/` with a progress dialog + Cancel, then FileProvider.
+- Still web-only: archives (`!` paths), zip, print, settings.
+
+## Batch 8 – speed work + native file browser TRIAL (session of 2026-10-03)
+**Status: NOT compiled, NOT device-tested** (no Android SDK in the authoring environment). First Gradle build may show small compile errors in `BrowserActivity.kt`; send them to the assistant to fix.
+
+### Goal / decision log
+- User: "app works perfectly except sluggish feeling". Architecture stays: WebView UI (`assets/ui.html`) + Kotlin core server + native viewers (player/image/PDF).
+- Analysis given: a 100% native UI would be ~6,000–9,000 new Kotlin lines (Compose estimate), ~1–2 weeks, would NOT speed up storage reads / SMB / peers, and would split design work in two (HTML + Kotlin). Decision: **trial a native file-browser screen only**, keep the rest in HTML. If the trial feels clearly better, extend native further; if not, delete `BrowserActivity` (see "Rollback").
+
+### ui.html performance edits (WebView path, already in this tree)
+- `prefetch(dev,path)` / `idlePre()`: warms `LSC` listing cache on `pointerdown` of a folder row and, after a load, for the first 4 non-hidden sub-folders (local device only, skipped with Save-Data).
+- `body{touch-action:manipulation}` (no 300 ms tap delay); removed `transition:background` on `.row`.
+- Selection toggle (`r.onclick` / gallery `c.onclick`) no longer calls `render()`; toggles the `sel` class and calls `renderBar()` only.
+- Thumbnails: `thBusy<4` (was 2); image thumbs use the server's `/api/thumb` result directly (`{u:'/api/thumb?...'}`) instead of canvas re-encode + base64; `thPut` defers `localStorage.setItem` to `requestIdleCallback`. Video thumbs still go through base64.
+
+### Native browser trial: `BrowserActivity.kt` (new, ~660 lines, package `com.lanshare.app`)
+- Plain `android.app.Activity` (no AppCompat), programmatic Views, `RecyclerView` (explicit dep `androidx.recyclerview:recyclerview:1.3.2` in `app/build.gradle.kts`). Light/dark from system uiMode; accent `#0D8F7E`, bar `#1C1C1E`.
+- **Scope: this phone's storage only** (`Core.local`, `LocalFs`). Listings call `Core.local.ls(path, false)` directly, then `Core.local.counts(path)` for folder item counts (same two-step as the web UI). No HTTP for listings.
+- Speed features: static `LruCache` of listings (80) survives rotation/reopen; cached list drawn instantly then silently revalidated (`same()` skips redraw if unchanged); touch-down prefetch + idle prefetch of first 4 sub-folders; scroll position restored per folder (`states`); thumbnail `LruCache` (1/8 of heap) + 3-thread pool; thumbs from `Thumbs.make(File)` (disk-cached JPEG) and `VideoThumbs.make(Core.local.open(p))`; failed thumbs remembered.
+- Features: list/grid toggle, sort name(natural)/date/size + asc/desc, hidden-files toggle, breadcrumbs, free-space in subtitle, long-press multi-select, share, delete (confirm), rename, new folder, select all, Open-with chooser, back = up one level / clear selection. Prefs in SharedPreferences `ls_native` (view, sort, asc, hidden).
+- Opening: folder → navigate; video → `PlayerActivity.pending` (same JSON as `nativePlay` incl. sidecar subs + resume key `local|<dir>/<name>|<size>`); picture → `ImageViewerActivity.pending` (svg/gif excluded, heic only API 28+); PDF → `PdfViewerActivity.pending`; everything else → `ACTION_VIEW` via FileProvider **in place** (text/source extensions → `text/plain`). Viewer URLs are `Core.url + /api/dl?dev=local&path=…` (viewers only accept 127.0.0.1/localhost).
+- **Entry point:** `MainActivity.Bridge.nativeBrowser(path)` (`@JavascriptInterface`, starts `BrowserActivity` with extra `path`). `ui.html` drawer → Folders tab footer has a new **Native** button (only when `LSAndroid.nativeBrowser` exists) that passes the current local path (or `/`). Menu ⋮ → "Full app (web UI)" just `finish()`es back.
+- Manifest: `<activity .BrowserActivity exported=false launchMode=singleTop>` (default `Theme.LANShare`). `file_paths.xml` gained `<root-path name="root" path=""/>` so files can be shared/opened without copying to cache.
+- **Not in the trial (still web UI only):** peers/other devices, SMB, archives (`!` paths), copy/cut/paste/move, send/receive jobs & progress, search, favorites/recent, dual-pane, storage-permission banner, pull-to-refresh (menu → Refresh instead), long-press context actions beyond the ones above.
+
+### Likely compile-risk spots (check first)
+- `BrowserActivity.kt`: use of `Core.local.counts()` / `ls(v, counts)` (public in `LocalFs`), `Thumbs.make(File)`, `VideoThumbs.make(Source)` returns `Pair<ByteArray, Long>`, `Core.local.open(v)` returns `Source`; `bindingAdapterPosition` needs recyclerview ≥1.2 (we pin 1.3.2); `getDrawable(Int)` on Activity (API 21+ OK); `PopupMenu` anchor views are `TextView`s.
+- Name clashes: `core.*` is star-imported; `Item` is `core.Item` (not the private `Item` classes inside Player/Image viewers).
+- `FileProvider` root-path exposes the whole filesystem to *our own* grant-URI flow only (provider is `exported=false`, grantUriPermissions).
+
+### Test checklist for the trial
+1. Open web UI → drawer (≡) → Folders tab → footer **Native**. Browse into a large photo folder: thumbnails appear, scrolling smooth, back restores scroll.
+2. Re-enter a visited folder: should appear instantly (no "Loading…").
+3. Tap video / picture / PDF / .txt / .apk: each opens in the right viewer/app. Check sidecar subtitles and image swipe order = current sort.
+4. Long-press → select several → Share, Rename (1 item), Delete, Select all, back clears selection.
+5. New folder, sort menu, hidden-files toggle, list↔grid, rotate device (state kept), dark mode.
+6. Compare feel against the web UI on the same big folder.
+
+### Rollback
+Delete `BrowserActivity.kt`, the `<activity .BrowserActivity>` line, the `nativeBrowser` bridge method, the drawer "Native" button block in `ui.html` (search `LSAndroid.nativeBrowser`). The recyclerview dep and root-path entry are harmless to keep.
+
+### Next steps (if the trial is liked)
+1. Fix first-build compile errors; device-test the checklist above.
+2. Add pull-to-refresh (`androidx.swiperefreshlayout`), search (`LocalFs.search`), storage-permission banner (`Core.storageOk`).
+3. Add copy/move/paste by calling the existing `Jobs` API (see `Routes.kt` `"copy"/"move"` handling) with a native clipboard + progress notification.
+4. Peers/SMB: wrap `Jobs.ep(dev)` (`Endpoint.ls`) instead of `Core.local`; `RemoteFs`/`SmbFs` listings are slower, keep the cache + "stale while revalidate" pattern.
+5. Optionally make native the default start screen (launcher → `BrowserActivity`) and keep the web UI behind "Full app".

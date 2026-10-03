@@ -52,6 +52,34 @@ object Smb {
         return host to 445
     }
 
+    /** Tests the login (lists the PC's drives: throws a readable error if address or login is wrong), then saves the share. Returns its id. */
+    fun add(host0: String, user: String, password: String, name: String): String {
+        val host = host0.trim()
+        if (host.isEmpty()) throw BadReq("enter the PC's address")
+        val c = JSONObject().put("id", "smb:" + java.util.UUID.randomUUID().toString().replace("-", "").take(6))
+            .put("host", host).put("share", "").put("user", user.trim()).put("password", password)
+            .put("name", name.trim().take(40).ifEmpty { split(host).first })
+        SmbFs.create(c).ls("/")
+        val list = ArrayList<JSONObject>()
+        val cur = Cfg.smb()
+        for (i in 0 until cur.length()) list.add(cur.getJSONObject(i))
+        list.add(c)
+        Cfg.setSmb(JSONArray(list.take(10)))
+        Cfg.save()
+        return c.getString("id")
+    }
+
+    fun remove(id: String) {
+        val cur = Cfg.smb()
+        val list = ArrayList<JSONObject>()
+        for (i in 0 until cur.length()) list.add(cur.getJSONObject(i))
+        list.removeAll { it.optString("id") == id }
+        state.remove(id)
+        SmbFs.forget(id)
+        Cfg.setSmb(JSONArray(list.take(10)))
+        Cfg.save()
+    }
+
     fun peers(): List<JSONObject> = Cfg.smb().let { a ->
         (0 until a.length()).map {
             val c = a.getJSONObject(it)

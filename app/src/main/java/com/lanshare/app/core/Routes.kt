@@ -185,26 +185,9 @@ object Routes {
     }
 
     private fun smbUpdate(ex: Exchange, b: JSONObject) {
-        val cur = Cfg.smb()
-        val list = ArrayList<JSONObject>()
-        for (i in 0 until cur.length()) list.add(cur.getJSONObject(i))
         val remove = b.optString("remove")
-        if (remove.isNotEmpty()) {
-            list.removeAll { it.optString("id") == remove }
-            Smb.state.remove(remove)
-            SmbFs.forget(remove)
-        } else {
-            val host = b.optString("host").trim()
-            if (host.isEmpty()) throw BadReq("enter the PC's address")
-            val c = JSONObject().put("id", "smb:" + UUID.randomUUID().toString().replace("-", "").take(6))
-                .put("host", host).put("share", "").put("user", b.optString("user").trim())
-                .put("password", b.optString("password"))
-                .put("name", b.optString("name").trim().take(40).ifEmpty { Smb.split(host).first })
-            SmbFs.create(c).ls("/")   // lists the PC's drives: throws a readable error if the address or login is wrong
-            list.add(c)
-        }
-        Cfg.setSmb(JSONArray(list.take(10)))
-        Cfg.save()
+        if (remove.isNotEmpty()) Smb.remove(remove)
+        else Smb.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"))
         ex.json(JSONObject().put("ok", true).put("list", Smb.status()))
     }
 
