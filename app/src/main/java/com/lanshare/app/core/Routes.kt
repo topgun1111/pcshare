@@ -94,7 +94,7 @@ object Routes {
             "search" -> return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
-            "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev")))
+            "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "dl" -> {
                 val p = vnorm(ex.q("path"))
                 return sendFile(ex, Jobs.ep(ex.q("dev")).open(p), vbase(p), q["dl"] != "1")
@@ -138,7 +138,7 @@ object Routes {
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
-            "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"))))
+            "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"))))

@@ -8,16 +8,20 @@ The window is only a viewer: the print service runs separately in the background
 First run sets everything up:
   - installs itself to %APPDATA%\\LANSharePrint and starts with Windows
   - opens the firewall port for the LAN and Tailscale (one UAC prompt, first run only)
-  - installs SumatraPDF via winget if missing (silent PDF printing; optional)
-  - listens on port 8799 and prints whatever the app sends ("Print on PC") on the default printer
-Python stdlib only.
+  - installs SumatraPDF via winget if missing (silent PDF printing with printer / duplex / copies / colour)
+  - installs the pure-Python `pypdf` package with pip if missing (FinePrint-style layout features)
+  - listens on port 8799 and prints whatever the app sends ("Print on PC")
+FinePrint-style options (chosen in the app): any installed printer, copies, one/two-sided, colour/mono, 1/2/4/6/9 pages per
+sheet (+border), booklet, page range, odd/even, reverse order, watermark, header/footer ({page} {pages} {date} {time} {file}).
+Layout / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
+Python stdlib only (pypdf is optional and installed automatically).
 """
-import ctypes, ipaddress, json, os, queue, re, shutil, socket, subprocess, sys, threading, time
+import ctypes, importlib, io, ipaddress, json, math, os, queue, re, shutil, socket, subprocess, sys, threading, time, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "6"
+VERSION = "7"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -62,11 +66,13 @@ def find_sumatra():
 
 # Silent image printing through .NET (Windows 11's new Paint ignores "/pt" and just opens the picture)
 PS_IMG = r"""
-param([string]$Path)
+param([string]$Path, [string]$Printer, [int]$Copies = 1)
 Add-Type -AssemblyName System.Drawing
 $img = [System.Drawing.Image]::FromFile($Path)
 try {
   $pd = New-Object System.Drawing.Printing.PrintDocument
+  if ($Printer) { $pd.PrinterSettings.PrinterName = $Printer }
+  $pd.PrinterSettings.Copies = $Copies
   $pd.DefaultPageSettings.Landscape = ($img.Width -gt $img.Height)
   $pd.add_PrintPage({
     param($sender, $e)
@@ -83,33 +89,528 @@ try {
 """
 
 
-def print_image(path):
+def print_image(path, printer="", copies=1):
     ps1 = os.path.join(APP, "printimg.ps1")
     with open(ps1, "w", encoding="utf-8-sig") as f:
         f.write(PS_IMG)
-    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path],
-                       capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+    cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path]
+    if printer:
+        cmd += ["-Printer", printer]
+    cmd += ["-Copies", str(copies)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=0x08000000)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or f"exit {r.returncode}").strip()[:300])
 
 
-def print_file(path):
-    ext = os.path.splitext(path)[1].lower()
-    if not WIN:
-        subprocess.run(["lp", path], check=True, timeout=60)
-        return
-    if ext == ".pdf":
-        sm = find_sumatra()
-        if sm:
-            subprocess.run([sm, "-print-to-default", "-silent", path], check=True, timeout=180)
-            return
-    if ext in IMAGES:
+# ------------------------------------------------------------------ FinePrint-style options
+PAPERS = {"A3": (842, 1191), "A4": (595, 842), "A5": (420, 595), "Letter": (612, 792), "Legal": (612, 1008)}
+LAYOUT = {1: (1, 1, False), 2: (2, 1, True), 4: (2, 2, False), 6: (3, 2, True), 9: (3, 3, False)}   # cols, rows, landscape sheet
+TEXT_EXT = {".txt", ".log", ".md"}
+GLYPHS = {"\u011f": "gbreve", "\u011e": "Gbreve", "\u015f": "scedilla", "\u015e": "Scedilla", "\u0130": "Idotaccent", "\u0131": "dotlessi"}
+HW = {' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191, '(': 333, ')': 333, '*': 389, '+': 584,
+      ',': 278, '-': 333, '.': 278, '/': 278, ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556, '@': 1015,
+      'A': 667, 'B': 667, 'C': 722, 'D': 722, 'E': 667, 'F': 611, 'G': 778, 'H': 722, 'I': 278, 'J': 500, 'K': 667, 'L': 556,
+      'M': 833, 'N': 722, 'O': 778, 'P': 667, 'Q': 778, 'R': 722, 'S': 667, 'T': 611, 'U': 722, 'V': 667, 'W': 944, 'X': 667,
+      'Y': 667, 'Z': 611, '[': 278, '\\': 278, ']': 278, '^': 469, '_': 556, '`': 333, 'a': 556, 'b': 556, 'c': 500, 'd': 556,
+      'e': 556, 'f': 278, 'g': 556, 'h': 556, 'i': 222, 'j': 222, 'k': 500, 'l': 222, 'm': 833, 'n': 556, 'o': 556, 'p': 556,
+      'q': 556, 'r': 333, 's': 500, 't': 278, 'u': 556, 'v': 500, 'w': 722, 'x': 500, 'y': 500, 'z': 500, '{': 334, '|': 260,
+      '}': 334, '~': 584}
+_PYPDF = [None]
+
+
+def have_pypdf():
+    if _PYPDF[0] is None:
         try:
-            print_image(path)
-            return
+            import pypdf  # noqa: F401
+            _PYPDF[0] = True
+        except ImportError:
+            return False   # not cached: it may get installed while the service runs
+    return _PYPDF[0]
+
+
+def ensure_pypdf():
+    if have_pypdf():
+        return
+    log("installing pypdf (layout / watermark / booklet features)...")
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--quiet", "pypdf"], timeout=240,
+                       creationflags=0x08000000 if WIN else 0, capture_output=True)
+        importlib.invalidate_caches()
+    except Exception as e:
+        log(f"pypdf install skipped: {e}")
+
+
+def _int(v, d, lo, hi):
+    try:
+        return max(lo, min(hi, int(v)))
+    except (TypeError, ValueError):
+        return d
+
+
+def parse_opts(q):
+    g = lambda k: ((q.get(k) or [""])[0]).strip()
+    o = dict(printer=g("printer")[:200], copies=_int(g("copies"), 1, 1, 99),
+             duplex=g("duplex") if g("duplex") in ("off", "long", "short") else "",
+             color=g("color") if g("color") in ("color", "mono") else "",
+             fit=g("fit") if g("fit") in ("fit", "shrink", "noscale") else "shrink",
+             paper=g("paper") if g("paper") in PAPERS else "", nup=_int(g("nup"), 1, 1, 9),
+             booklet=g("booklet") == "1", border=g("border") == "1",
+             pages=g("pages") if g("pages") in ("odd", "even") else "", reverse=g("reverse") == "1",
+             range=re.sub(r"[^0-9,\- ]", "", g("range"))[:80], wm=g("wm")[:60], wm_under=g("wm_under") == "1",
+             hdr=g("hdr")[:120], ftr=g("ftr")[:120])
+    if o["nup"] not in LAYOUT:
+        o["nup"] = 1
+    if o["booklet"] and not o["duplex"]:
+        o["duplex"] = "short"   # booklets are printed on both sides, flipped on the short edge
+    return o
+
+
+def describe_opts(o):
+    d = []
+    if o["copies"] > 1: d.append(f"{o['copies']} copies")
+    if o["booklet"]: d.append("booklet")
+    elif o["nup"] > 1: d.append(f"{o['nup']}-up")
+    if o["duplex"]: d.append({"off": "one-sided", "long": "duplex long edge", "short": "duplex short edge"}[o["duplex"]])
+    if o["color"] == "mono": d.append("mono")
+    if o["range"]: d.append("pages " + o["range"])
+    if o["pages"]: d.append(o["pages"] + " pages")
+    if o["reverse"]: d.append("reversed")
+    if o["wm"]: d.append("watermark")
+    if o["hdr"] or o["ftr"]: d.append("header/footer")
+    return ", ".join(d)
+
+
+def needs_layout(o):
+    return bool(o["nup"] > 1 or o["booklet"] or o["range"] or o["pages"] or o["reverse"] or o["wm"] or o["hdr"] or o["ftr"] or o["border"])
+
+
+# ---- tiny PDF writer (watermark / header overlays, image + text -> PDF)
+class Pdf:
+    def __init__(self):
+        self.objs = []
+
+    def add(self, body):
+        self.objs.append(body)
+        return len(self.objs)
+
+    def stream(self, data, extra=b""):
+        return self.add(b"<< /Length %d %s >>\nstream\n" % (len(data), extra) + data + b"\nendstream")
+
+    def save(self, root):
+        out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        offs = []
+        for i, b in enumerate(self.objs, 1):
+            offs.append(len(out))
+            out += b"%d 0 obj\n" % i + b + b"\nendobj\n"
+        x = len(out)
+        out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(self.objs) + 1)
+        for o in offs:
+            out += b"%010d 00000 n \n" % o
+        out += b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(self.objs) + 1, root, x)
+        return bytes(out)
+
+
+def enc_text(s, extra):
+    """PDF string bytes: WinAnsi plus the Turkish letters WinAnsi lacks (mapped to spare codes via /Differences)."""
+    out = bytearray()
+    for ch in s:
+        if ch in GLYPHS:
+            if ch not in extra:
+                extra[ch] = len(extra) + 1
+            out.append(extra[ch])
+        elif ch in "\r\n\t":
+            out.append(32)
+        else:
+            try:
+                out += ch.encode("cp1252")
+            except UnicodeEncodeError:
+                out += b"?"
+    return bytes(out).replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
+
+
+def tw(s, size, mono=False):
+    return len(s) * 600 * size / 1000.0 if mono else sum(HW.get(c, 556) for c in s) * size / 1000.0
+
+
+def make_pdf(pages, extra, font="Helvetica", opacity=0.28, image=None):
+    """pages = [(w, h, content bytes)] sharing one font (/F1), one opacity state (/GW) and an optional JPEG (/Im0)."""
+    pdf = Pdf()
+    diff = b" ".join(b"/" + GLYPHS[ch].encode() for ch, _ in sorted(extra.items(), key=lambda kv: kv[1]))
+    enc = (b"<< /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [1 %s] >>" % diff) if extra else b"/WinAnsiEncoding"
+    f = pdf.add(b"<< /Type /Font /Subtype /Type1 /BaseFont /%s /Encoding %s >>" % (font.encode(), enc))
+    g = pdf.add(b"<< /Type /ExtGState /ca %.2f /CA %.2f >>" % (opacity, opacity))
+    im = 0
+    if image:
+        d, iw, ih, comps = image
+        im = pdf.stream(d, b"/Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /DCTDecode"
+                        % (iw, ih, b"DeviceGray" if comps == 1 else b"DeviceRGB"))
+    res = pdf.add(b"<< /Font << /F1 %d 0 R >> /ExtGState << /GW %d 0 R >> %s >>" % (f, g, (b"/XObject << /Im0 %d 0 R >>" % im) if im else b""))
+    n = len(pages)
+    pages_id = len(pdf.objs) + 1 + 2 * n
+    kids = []
+    for w, h, c in pages:
+        cid = pdf.stream(zlib.compress(c), b"/Filter /FlateDecode")
+        kids.append(pdf.add(b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.2f %.2f] /Contents %d 0 R /Resources %d 0 R >>" % (pages_id, w, h, cid, res)))
+    pdf.add(b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(b"%d 0 R" % k for k in kids), n))
+    cat = pdf.add(b"<< /Type /Catalog /Pages %d 0 R >>" % pages_id)
+    return pdf.save(cat)
+
+
+def jpeg_info(b):
+    i = 2
+    while i + 9 < len(b):
+        if b[i] != 0xFF:
+            i += 1
+            continue
+        m = b[i + 1]
+        if m in (0xC0, 0xC1, 0xC2):
+            return (b[i + 7] << 8 | b[i + 8], b[i + 5] << 8 | b[i + 6], b[i + 9])   # width, height, components
+        if m == 0xFF:
+            i += 1
+        elif m == 0xD8 or 0xD0 <= m <= 0xD7 or m == 0x01:
+            i += 2
+        else:
+            i += 2 + ((b[i + 2] << 8) | b[i + 3])
+    return None
+
+
+def jpeg_orientation(b):
+    try:
+        i = 2
+        while i + 4 < len(b) and b[i] == 0xFF:
+            m, L = b[i + 1], (b[i + 2] << 8) | b[i + 3]
+            if m == 0xE1 and b[i + 4:i + 10] == b"Exif\0\0":
+                t = b[i + 10:i + 2 + L]
+                end = "little" if t[:2] == b"II" else "big"
+                u16 = lambda o: int.from_bytes(t[o:o + 2], end)
+                ifd = int.from_bytes(t[4:8], end)
+                for k in range(u16(ifd)):
+                    e = ifd + 2 + 12 * k
+                    if u16(e) == 0x0112:
+                        return u16(e + 8)
+                return 1
+            if m == 0xDA:
+                break
+            i += 2 + L
+    except Exception:
+        pass
+    return 1
+
+
+PS_CONV = r"""
+param([string]$In, [string]$Out)
+Add-Type -AssemblyName System.Drawing
+$i = [System.Drawing.Image]::FromFile($In)
+try {
+  try { switch ($i.GetPropertyItem(274).Value[0]) { 2 {$i.RotateFlip('RotateNoneFlipX')} 3 {$i.RotateFlip('Rotate180FlipNone')} 4 {$i.RotateFlip('Rotate180FlipX')} 5 {$i.RotateFlip('Rotate90FlipX')} 6 {$i.RotateFlip('Rotate90FlipNone')} 7 {$i.RotateFlip('Rotate270FlipX')} 8 {$i.RotateFlip('Rotate270FlipNone')} } } catch {}
+  $b = New-Object System.Drawing.Bitmap($i.Width, $i.Height)
+  $g = [System.Drawing.Graphics]::FromImage($b)
+  $g.Clear([System.Drawing.Color]::White)
+  $g.DrawImage($i, 0, 0, $i.Width, $i.Height)
+  $g.Dispose()
+  $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+  $ep = New-Object System.Drawing.Imaging.EncoderParameters(1)
+  $ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]92)
+  $b.Save($Out, $enc, $ep)
+  $b.Dispose()
+} finally { $i.Dispose() }
+"""
+
+
+def out_pdf(path, tag):
+    return os.path.join(INBOX, os.path.splitext(os.path.basename(path))[0] + "." + tag + ".pdf")
+
+
+def img_to_pdf(path, o):
+    """Image -> one-page PDF (paper size from the options, EXIF rotation applied, fit with a margin)."""
+    data = open(path, "rb").read()
+    ext = os.path.splitext(path)[1].lower()
+    jpg = None
+    if ext in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
+        info = jpeg_info(data)
+        if info and info[2] in (1, 3) and (jpeg_orientation(data) == 1 or not WIN):
+            jpg = (data,) + info
+    if not jpg:
+        if not WIN:
+            raise RuntimeError("this image type can only be converted on Windows")
+        ps1, tmp = os.path.join(APP, "convimg.ps1"), os.path.join(APP, "conv.jpg")
+        with open(ps1, "w", encoding="utf-8-sig") as f:
+            f.write(PS_CONV)
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
+                           capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+        if r.returncode != 0 or not os.path.isfile(tmp):
+            raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
+        data = open(tmp, "rb").read()
+        info = jpeg_info(data)
+        if not info:
+            raise RuntimeError("image conversion failed")
+        jpg = (data,) + info
+    d, iw, ih, comps = jpg
+    pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
+    if iw > ih:
+        pw, ph = ph, pw
+    m = 28
+    k = min((pw - 2 * m) / iw, (ph - 2 * m) / ih)
+    w, h = iw * k, ih * k
+    c = b"q %.2f 0 0 %.2f %.2f %.2f cm /Im0 Do Q" % (w, h, (pw - w) / 2, (ph - h) / 2)
+    dest = out_pdf(path, "img")
+    open(dest, "wb").write(make_pdf([(pw, ph, c)], {}, image=jpg))
+    return dest
+
+
+def txt_to_pdf(path, o):
+    raw = open(path, "rb").read()
+    text = ""
+    for e in ("utf-8-sig", "cp1254", "cp1252"):
+        try:
+            text = raw.decode(e)
+            break
+        except UnicodeDecodeError:
+            pass
+    pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
+    cpl, lpp = int((pw - 100) / 6.0), int((ph - 100) / 12)
+    lines = []
+    for ln in text.replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n").split("\n"):
+        ln = re.sub(r"[\x00-\x08\x0b\x0e-\x1f]", "", ln).expandtabs(4)
+        while len(ln) > cpl:
+            lines.append(ln[:cpl])
+            ln = ln[cpl:]
+        lines.append(ln)
+    extra, pages = {}, []
+    for i in range(0, max(len(lines), 1), lpp):
+        c = b"BT /F1 10 Tf 12 TL 50 %.1f Td\n" % (ph - 60)
+        for ln in lines[i:i + lpp]:
+            c += b"(%s) Tj T*\n" % enc_text(ln, extra)
+        pages.append((pw, ph, c + b"ET"))
+    dest = out_pdf(path, "txt")
+    open(dest, "wb").write(make_pdf(pages, extra, font="Courier"))
+    return dest
+
+
+def page_set(rng, n):
+    if not rng.strip():
+        return list(range(n))
+    out = []
+    for part in rng.replace(" ", "").split(","):
+        if not part:
+            continue
+        try:
+            a, dash, b = part.partition("-")
+            if dash:
+                s, e = (int(a) if a else 1), (int(b) if b else n)
+            else:
+                s = e = int(a)
+        except ValueError:
+            raise ValueError(f"bad page range '{rng}'")
+        s, e = max(1, min(n, s)), max(1, min(n, e))
+        out += range(s - 1, e) if s <= e else range(s - 1, e - 2, -1)
+    return out
+
+
+def booklet_order(n):
+    """Page order for a folded booklet: per sheet front = (last, first), back = (second, second-to-last)."""
+    m = (n + 3) // 4 * 4
+    seq = []
+    for i in range(m // 4):
+        seq += [m - 1 - 2 * i, 2 * i, 2 * i + 1, m - 2 - 2 * i]
+    return [x if x < n else None for x in seq]
+
+
+def fill(s, i, n, name):
+    return (s.replace("{page}", str(i + 1)).replace("{pages}", str(n)).replace("{date}", time.strftime("%Y-%m-%d"))
+             .replace("{time}", time.strftime("%H:%M")).replace("{file}", name))
+
+
+def zones(text, y, w, size, extra):
+    parts = text.split("|")
+    parts = (["", parts[0], ""] if len(parts) == 1 else (parts + ["", ""])[:3])
+    c = b""
+    for k, t in enumerate(parts):
+        if not t.strip():
+            continue
+        t = t.strip()
+        x = (28, (w - tw(t, size)) / 2, w - 28 - tw(t, size))[k]
+        c += b"BT /F1 %.1f Tf 0.25 g %.2f %.2f Td (%s) Tj ET\n" % (size, x, y, enc_text(t, extra))
+    return c
+
+
+def process_pdf(src, o, name):
+    """Page selection, order, booklet / N-up, watermark, header/footer -> (new pdf path, sheets)."""
+    if not have_pypdf():
+        raise RuntimeError("layout options need the 'pypdf' package on the PC (pip install pypdf) - it is not installed yet")
+    from pypdf import PdfReader, PdfWriter, Transformation
+    rd = PdfReader(src)
+    if rd.is_encrypted:
+        try: rd.decrypt("")
+        except Exception: pass
+    pages = list(rd.pages)
+    idx = page_set(o["range"], len(pages))
+    if o["pages"]:
+        idx = [i for i in idx if (i + 1) % 2 == (1 if o["pages"] == "odd" else 0)]
+    if o["reverse"]:
+        idx.reverse()
+    if not idx:
+        raise ValueError("no pages left after the page selection")
+    for i in set(idx):
+        try:
+            if pages[i].get("/Rotate"):
+                pages[i].transfer_rotation_to_content()
+        except Exception:
+            pass
+    if o["booklet"]:
+        order = [None if x is None else idx[x] for x in booklet_order(len(idx))]
+        cols, rows, land = 2, 1, True
+    else:
+        order = idx
+        cols, rows, land = LAYOUT[o["nup"]]
+    per = cols * rows
+    box = lambda p: (float(p.mediabox.left), float(p.mediabox.bottom), float(p.mediabox.width), float(p.mediabox.height))
+    wr = PdfWriter()
+    sheets, rects = [], []
+    if per == 1 and all(box(pages[i])[:2] == (0.0, 0.0) for i in idx):
+        for i in order:
+            sheets.append(wr.add_page(pages[i]))
+            rects.append([])
+    else:
+        fw, fh = box(pages[next(i for i in order if i is not None)])[2:]
+        if o["paper"]:
+            fw, fh = PAPERS[o["paper"]]
+        short, long_ = sorted((fw, fh))
+        sw, sh = (long_, short) if land else (short, long_)
+        for s0 in range(0, len(order), per):
+            chunk = order[s0:s0 + per]
+            if per == 1:
+                l, b, w, h = box(pages[chunk[0]])
+                sw, sh = w, h
+            sheet = wr.add_blank_page(sw, sh)
+            cw, ch, rc = sw / cols, sh / rows, []
+            for k, i in enumerate(chunk):
+                if i is None:
+                    continue
+                l, b, w, h = box(pages[i])
+                mg = 0 if per == 1 else (8 if o["booklet"] else 12)
+                sc = 1.0 if per == 1 else min((cw - 2 * mg) / w, (ch - 2 * mg) / h)
+                x = (k % cols) * cw + (cw - w * sc) / 2
+                y = sh - (k // cols + 1) * ch + (ch - h * sc) / 2
+                sheet.merge_transformed_page(pages[i], Transformation().scale(sc, sc).translate(x - l * sc, y - b * sc))
+                rc.append((x, y, w * sc, h * sc))
+            sheets.append(sheet)
+            rects.append(rc)
+    n = len(sheets)
+    dims = [(float(s.mediabox.width), float(s.mediabox.height)) for s in sheets]
+    extra = {}
+
+    def overlay(contents, over, opacity=0.28):
+        ov = PdfReader(io.BytesIO(make_pdf([(d[0], d[1], c) for d, c in zip(dims, contents)], extra, opacity=opacity))).pages
+        for s, p in zip(sheets, ov):
+            s.merge_page(p, over=over)
+
+    if o["wm"]:
+        cs = []
+        for (w, h) in dims:
+            t = fill(o["wm"], 0, n, name)
+            ang = math.atan2(h, w)
+            size = max(8.0, min(150.0, math.hypot(w, h) * 0.7 / max(tw(t, 1), 0.1)))
+            tx = tw(t, size)
+            cs.append(b"q /GW gs 0.5 g %.4f %.4f %.4f %.4f %.2f %.2f cm BT /F1 %.1f Tf 1 0 0 1 %.2f %.2f Tm (%s) Tj ET Q"
+                      % (math.cos(ang), math.sin(ang), -math.sin(ang), math.cos(ang), w / 2, h / 2, size, -tx / 2, -size * 0.35, enc_text(t, extra)))
+        overlay(cs, not o["wm_under"])
+    if o["hdr"] or o["ftr"] or o["border"]:
+        cs = []
+        for i, ((w, h), rc) in enumerate(zip(dims, rects)):
+            c = b""
+            if o["border"] and per > 1:
+                for (x, y, rw, rh) in rc:
+                    c += b"0.6 G 0.5 w %.2f %.2f %.2f %.2f re S\n" % (x, y, rw, rh)
+            if o["hdr"]:
+                c += zones(fill(o["hdr"], i, n, name), h - 22, w, 9, extra)
+            if o["ftr"]:
+                c += zones(fill(o["ftr"], i, n, name), 14, w, 9, extra)
+            cs.append(c or b" ")
+        overlay(cs, True, 1.0)
+    dest = out_pdf(src, "print")
+    with open(dest, "wb") as f:
+        wr.write(f)
+    return dest, n
+
+
+def sumatra_args(sm, pdf, o, pr):
+    st = [f"{o['copies']}x"]
+    st.append({"off": "simplex", "long": "duplex", "short": "duplexshort"}.get(o["duplex"], ""))
+    if o["color"] == "mono": st.append("monochrome")
+    elif o["color"] == "color": st.append("color")
+    st.append(o["fit"])
+    if o["paper"]: st.append("paper=" + o["paper"])
+    cmd = [sm, "-print-to", pr] if pr else [sm, "-print-to-default"]
+    return cmd + ["-print-settings", ",".join(x for x in st if x), "-silent", pdf]
+
+
+PS_PRINTTO = r"""
+param([string]$File, [string]$Printer)
+Start-Process -FilePath $File -Verb PrintTo -ArgumentList ('"' + $Printer + '"') -WindowStyle Hidden -ErrorAction Stop
+"""
+
+
+def print_file(path, o):
+    """Prints one file with the chosen options; returns notes (things that could not be honoured)."""
+    notes = []
+    ext = os.path.splitext(path)[1].lower()
+    name = os.path.basename(path).split("_", 1)[-1]
+    pr = o["printer"] or None
+    sm = find_sumatra() if WIN else None
+    layout = needs_layout(o)
+    pdf = path if ext == ".pdf" else None
+    if ext in IMAGES and (sm or layout or not WIN):
+        try:
+            pdf = img_to_pdf(path, o)
         except Exception as e:
-            log(f"image print failed ({e}), falling back to shell print")
-    os.startfile(path, "print")   # whatever app is registered for this file type prints it on the default printer
+            if layout:
+                raise
+            log(f"image conversion failed ({e}), printing the picture directly")
+    elif ext in TEXT_EXT and layout:
+        pdf = txt_to_pdf(path, o)
+    elif layout and ext != ".pdf":
+        notes.append(f"layout options skipped: {ext} files only support printer and copies")
+    if pdf and layout:
+        pdf, sheets = process_pdf(pdf, o, name)
+        log(f"laid out {name}: {sheets} sheet{'s' if sheets != 1 else ''}")
+    if pdf:
+        if not WIN:
+            cmd = ["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"])]
+            sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
+            if sides: cmd += ["-o", "sides=" + sides]
+            if o["color"] == "mono": cmd += ["-o", "print-color-mode=monochrome"]
+            subprocess.run(cmd + [pdf], check=True, timeout=120)
+        elif sm:
+            subprocess.run(sumatra_args(sm, pdf, o, pr), check=True, timeout=300, creationflags=0x08000000)
+        else:
+            if pr or o["duplex"] or o["color"]:
+                notes.append("printer / duplex / colour ignored: SumatraPDF is not installed")
+            for _ in range(min(o["copies"], 10)):
+                os.startfile(pdf, "print")
+        return notes
+    if ext in IMAGES and WIN:
+        print_image(path, pr or "", o["copies"])
+        if o["duplex"] or o["color"]: notes.append("duplex / colour need SumatraPDF")
+        return notes
+    if not WIN:
+        subprocess.run(["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"]), path], check=True, timeout=60)
+        return notes
+    if o["duplex"] or o["color"]:
+        notes.append("duplex / colour only work for PDF, image and text files")
+    for _ in range(min(o["copies"], 10)):
+        if pr:
+            ps1 = os.path.join(APP, "printto.ps1")
+            with open(ps1, "w", encoding="utf-8-sig") as f:
+                f.write(PS_PRINTTO)
+            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, pr],
+                               capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+            if r.returncode != 0:
+                raise RuntimeError(f"no app on the PC can print {ext} files to a chosen printer - choose the default printer")
+        else:
+            os.startfile(path, "print")   # whatever app is registered for this file type prints it on the default printer
+        time.sleep(1)
+    return notes
 
 
 PRINTQ = queue.Queue()
@@ -118,7 +619,8 @@ PRINTER_PROBLEM = [None]   # e.g. "paper jam" (None = nothing reported)
 
 # One PowerShell call: default printer + its status + the states of the jobs waiting in its Windows queue.
 PS_STATE = r"""
-$d = Get-CimInstance Win32_Printer | Where-Object { $_.Default }
+param([string]$Name)
+$d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Name } } else { Get-CimInstance Win32_Printer | Where-Object { $_.Default } }
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
   $j = @(Get-PrintJob -PrinterName $d.Name -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.JobStatus })
@@ -154,12 +656,33 @@ def job_problem(info):
     return None
 
 
-def printer_info():
+PRINTERS = []   # names of all printers installed on the PC
+
+
+def list_printers():
+    if not WIN:
+        try:
+            return [l.split()[1] for l in subprocess.run(["lpstat", "-a"], capture_output=True, text=True, timeout=10).stdout.splitlines() if l.strip()]
+        except Exception:
+            return []
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
+        v = json.loads(out) if out else []
+        return [v] if isinstance(v, str) else [str(x) for x in v]
+    except Exception:
+        return []
+
+
+def printer_info(name=None):
     if not WIN:
         return None
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", PS_STATE], capture_output=True, text=True,
-                             timeout=30, creationflags=0x08000000).stdout.strip()
+        ps1 = os.path.join(APP, "pstate.ps1")
+        with open(ps1, "w", encoding="utf-8-sig") as f:
+            f.write(PS_STATE)
+        out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
+                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
         info = json.loads(out) if out else None
         if info:
             if isinstance(info.get("jobs"), str):
@@ -173,6 +696,7 @@ def printer_info():
 def refresh_printer():
     while True:
         try:
+            PRINTERS[:] = list_printers()
             if WIN:
                 info = printer_info()
                 DEFAULT_PRINTER[0] = info["name"] if info else None
@@ -185,7 +709,7 @@ def refresh_printer():
         time.sleep(20)
 
 
-def watch_printer(seconds=10):
+def watch_printer(seconds=10, printer=None):
     """After a file was handed over: wait a few seconds and report what the printer says if the job gets stuck (else None)."""
     if not WIN:
         return None
@@ -193,7 +717,7 @@ def watch_printer(seconds=10):
     issue = None
     while time.time() < end:
         time.sleep(2)
-        info = printer_info()
+        info = printer_info(printer)
         if not info:
             return None
         if not info["jobs"]:
@@ -216,13 +740,17 @@ def friendly(e, name):
 
 def print_worker():
     while True:
-        path, evt, res = PRINTQ.get()
+        path, evt, res, o = PRINTQ.get()
         name = os.path.basename(path)
         try:
-            pr = DEFAULT_PRINTER[0]
-            log(f"printing {name}" + (f" on {pr}" if pr else ""))
-            print_file(path)
-            warn = watch_printer()
+            pr = o["printer"] or DEFAULT_PRINTER[0]
+            d = describe_opts(o)
+            log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else ""))
+            notes = print_file(path, o)
+            if notes:
+                res["note"] = "; ".join(notes)
+                log(f"NOTE {name}: {res['note']}")
+            warn = watch_printer(10, o["printer"] or None)
             if warn:
                 log(f"WARNING {name}: printer reports {warn}")
                 res["warning"] = warn
@@ -232,7 +760,7 @@ def print_worker():
             evt.set()   # tell the phone
             time.sleep(4)   # let the spooler pick the file up before the next one starts
         except Exception as e:
-            msg = friendly(e, name)
+            msg = friendly(e, name) if not isinstance(e, (RuntimeError, ValueError)) else str(e)[:300]
             log(f"PRINT FAILED {name}: {msg}")
             res["error"] = msg
             evt.set()
@@ -286,9 +814,17 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.local_only():
             return self.reply(403, {"error": "LAN/Tailscale only"})
-        if urlparse(self.path).path == "/ping":
+        u = urlparse(self.path)
+        if u.path == "/ping":
+            want = (parse_qs(u.query).get("printer") or [""])[0]
+            pr, prob = DEFAULT_PRINTER[0], PRINTER_PROBLEM[0]
+            if want and want in PRINTERS:   # live state of the printer chosen in the app
+                pr = want
+                info = printer_info(want)
+                prob = describe_problem(info) or (job_problem(info) if info else None)
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
-                                    "printer": DEFAULT_PRINTER[0], "problem": PRINTER_PROBLEM[0]})
+                                    "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
+                                    "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None})
         self.reply(404, {"error": "not found"})
 
     def do_POST(self):
@@ -314,6 +850,9 @@ class H(BaseHTTPRequestHandler):
             return self.reply(415, {"error": f"{ext or 'this file type'} cannot be printed (allowed: pdf, images, office docs, txt)"})
         if n > MAX_BYTES:
             return self.reply(413, {"error": "file too large"})
+        o = parse_opts(parse_qs(u.query))
+        if o["printer"] and PRINTERS and o["printer"] not in PRINTERS:
+            return self.reply(400, {"error": f"unknown printer '{o['printer']}'"})
         os.makedirs(INBOX, exist_ok=True)
         dest = os.path.join(INBOX, f"{time.strftime('%H%M%S')}_{name}")
         left = n
@@ -332,12 +871,12 @@ class H(BaseHTTPRequestHandler):
             return
         log(f"received {name} ({n} bytes) from {self.client_address[0]}")
         evt, res = threading.Event(), {}
-        PRINTQ.put((dest, evt, res))
+        PRINTQ.put((dest, evt, res, o))
         if not evt.wait(90):   # still waiting in the queue: the phone treats this as sent
             return self.reply(200, {"ok": True, "queued": True})
         if "error" in res:
             return self.reply(500, {"error": res["error"]})   # the phone shows the reason
-        self.reply(200, {"ok": True, "printed": True, "printer": res.get("printer"), "warning": res.get("warning")})
+        self.reply(200, {"ok": True, "printed": True, "printer": res.get("printer"), "warning": res.get("warning"), "note": res.get("note")})
 
 
 def pc_addresses():
@@ -371,6 +910,8 @@ def serve():
     cleanup_old()
     threading.Thread(target=print_worker, daemon=True).start()
     threading.Thread(target=refresh_printer, daemon=True).start()
+    if not have_pypdf():
+        threading.Thread(target=ensure_pypdf, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), H)
     srv.daemon_threads = True
     ips, ts = pc_addresses()
@@ -496,6 +1037,7 @@ def setup_windows():
     fw = ensure_firewall()
     ensure_autostart()
     ensure_sumatra()
+    ensure_pypdf()
     ok = start_service()
     if not ok:
         print(f"Print service FAILED to start - see {LOG}")

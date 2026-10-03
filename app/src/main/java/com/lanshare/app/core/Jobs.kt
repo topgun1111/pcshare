@@ -90,29 +90,48 @@ object Jobs {
     }
 
     /** What the print service on that PC reports right now: {ok, printer?, problem?}. ok=false = nothing answered on the print port. */
-    fun printerStatus(dev: String): JSONObject {
+    fun printerStatus(dev: String, printer: String? = null): JSONObject {
         val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
         return try {
-            val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 3000)
+            val pq = if (printer.isNullOrEmpty()) "" else "?printer=" + URLEncoder.encode(printer, "UTF-8")
+            val r = Http.request(ip, PRINT_PORT, "GET", "/ping$pq", emptyMap(), if (pq.isEmpty()) 3000 else 9000)
             try {
                 if (r.status != 200) return JSONObject().put("ok", false)
-                val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                val o = JSONObject(String(r.readUpTo(32768), Charsets.UTF_8))
                 JSONObject().put("ok", true)
                     .put("printer", if (o.isNull("printer")) JSONObject.NULL else o.optString("printer"))
                     .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
+                    .put("default", if (o.isNull("default")) JSONObject.NULL else o.optString("default"))
+                    .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
+                    .put("pypdf", o.optBoolean("pypdf", false))
+                    .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
             } finally { r.close() }
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
-    fun startPrint(srcId: String, paths: List<String>, dstId: String): String {
+    private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
+        "reverse", "range", "wm", "wm_under", "hdr", "ftr")
+
+    /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
+    private fun printQuery(name: String, opts: JSONObject?): String {
+        val sb = StringBuilder("/print?name=").append(URLEncoder.encode(name, "UTF-8"))
+        if (opts != null) for (k in PRINT_KEYS) {
+            if (!opts.has(k) || opts.isNull(k)) continue
+            val v = opts.get(k).toString().trim()
+            if (v.isNotEmpty() && v != "false") sb.append('&').append(k).append('=').append(URLEncoder.encode(if (v == "true") "1" else v, "UTF-8"))
+        }
+        return sb.toString()
+    }
+
+    fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
         val src = ep(srcId)
         val (ip, pcName) = printTarget(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
         prune()
         val job = Job("Printing on $pcName")
         all[jid] = job
-        Thread({ printWork(job, src, ip, pcName, paths) }, "print-$jid").also { it.isDaemon = true }.start()
+        Thread({ printWork(job, src, ip, pcName, paths, opts) }, "print-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -171,12 +190,14 @@ object Jobs {
         }
     }
 
-    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>) {
+    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?) {
         try {
+            val chosen = opts?.optString("printer").orEmpty()
+            val notes = LinkedHashSet<String>()   // things the PC could not honour (e.g. layout options on a .docx)
             var printer = ""
             var problem = ""   // what the printer already reports before we send (paper jam, out of paper, ...)
             try {
-                val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 4000)
+                val r = Http.request(ip, PRINT_PORT, "GET", if (chosen.isEmpty()) "/ping" else "/ping?printer=" + URLEncoder.encode(chosen, "UTF-8"), emptyMap(), if (chosen.isEmpty()) 4000 else 9000)
                 try {
                     if (r.status != 200) throw IOException("HTTP ${r.status}")
                     try {
@@ -205,13 +226,15 @@ object Jobs {
                 var sent = 0L
                 val f = src.open(sp)
                 try {
-                    val r = Http.request(ip, PRINT_PORT, "POST", "/print?name=" + URLEncoder.encode(name, "UTF-8"), emptyMap(),
+                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(name, opts), emptyMap(),
                         120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
                     try {
-                        val t = String(r.readUpTo(500), Charsets.UTF_8)
+                        val t = String(r.readUpTo(2000), Charsets.UTF_8)
                         if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
                         // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
                         val w = try { JSONObject(t).let { o -> if (o.isNull("warning")) "" else o.optString("warning") } } catch (_: Exception) { "" }
+                        val nt = try { JSONObject(t).let { o -> if (o.isNull("note")) "" else o.optString("note") } } catch (_: Exception) { "" }
+                        if (nt.isNotEmpty()) notes.add("$name: $nt")
                         if (w.isNotEmpty()) { failed.add("$name: sent, but the printer reports $w"); job.done += maxOf(size - sent, 0L) }
                     } finally { r.close() }
                 } catch (e: PrintFail) {
@@ -223,7 +246,7 @@ object Jobs {
             val ok = files.size - failed.size
             if (failed.isEmpty()) {
                 job.label = "Printed ${files.size} file${if (files.size > 1) "s" else ""} on $dest"
-                job.note = job.label
+                job.note = job.label + (if (notes.isNotEmpty()) " (" + notes.joinToString("; ") + ")" else "")
                 job.state = "done"
             } else {
                 job.label = "Print problem on $dest"
