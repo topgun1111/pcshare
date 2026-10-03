@@ -214,6 +214,9 @@ body.dual #dual{display:flex}
 .pf .cr{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pf .tf{height:44px;margin:0;font-size:15px}.pf select.tf{padding:0 10px;background:var(--cont)}
 .pf .sub{font-size:12px;color:var(--mut)}.pf .sub.bad{color:var(--err)}.pf .sub.good{color:var(--ok)}.pf .chip{height:32px}.pf .chip.n{min-width:32px;justify-content:center;padding:0 8px}
 .pf .sr{display:flex;align-items:center;gap:12px}.pf .sr span{flex:1;font-size:15px}
+.ppv{position:sticky;top:0;z-index:2;background:var(--cont);padding:4px 0 6px;border-bottom:1px solid var(--bd);margin-bottom:4px}
+.ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start}
+.ppv .shp{flex:none;text-align:center;font-size:11px;color:var(--mut)}.ppv canvas{display:block;background:#fff;box-shadow:0 1px 3px #0006;margin-bottom:3px}
 .pact{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;position:sticky;bottom:-8px;background:var(--cont);padding:8px 0}
 .dcard{background:var(--cont);width:100%;max-width:420px;border-radius:12px;padding:24px 24px 16px;animation:up .2s ease-out}
 .dcard p{margin:0 0 16px;color:var(--mut)}
@@ -965,19 +968,87 @@ function printInfo(p,el){api('GET','/api/printer?dev='+enc(p.id),null,6000).then
 const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',wm:'',wm_under:0,hdr:'',ftr:''};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
-function printOptions(pc){return new Promise(res=>{
+/* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
+const PV_PAPER={A3:[842,1191],A4:[595,842],A5:[420,595],Letter:[612,792],Legal:[612,1008]},PV_LAY={1:[1,1,0],2:[2,1,1],4:[2,2,0],6:[3,2,1],9:[3,3,0]};
+const PV_IMG=['png','jpg','jpeg','bmp','gif','tif','tiff'],PV_TXT=['txt','log','md'];
+function pvPageSet(rng,n){const all=Array.from({length:n},(_,i)=>i);if(!rng||!rng.trim())return all;const out=[];
+  for(const part of rng.replace(/ /g,'').split(',')){if(!part)continue;const m=part.match(/^(\d*)(-?)(\d*)$/);if(!m)continue;
+    let a,b;if(m[2]){a=m[1]?+m[1]:1;b=m[3]?+m[3]:n}else{if(!m[1])continue;a=b=+m[1]}
+    a=Math.max(1,Math.min(n,a));b=Math.max(1,Math.min(n,b));if(a<=b)for(let i=a;i<=b;i++)out.push(i-1);else for(let i=a;i>=b;i--)out.push(i-1)}
+  return out.length?out:all}
+function pvBooklet(n){const m=Math.ceil(n/4)*4,q=[];for(let i=0;i<m/4;i++)q.push(m-1-2*i,2*i,2*i+1,m-2-2*i);return q.map(x=>x<n?x:null)}
+function pvFill(t,i,n,name){const d=new Date(),z=x=>String(x).padStart(2,'0');
+  return t.split('{page}').join(i+1).split('{pages}').join(n).split('{date}').join(d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())).split('{time}').join(z(d.getHours())+':'+z(d.getMinutes())).split('{file}').join(name)}
+/* what the preview needs from the first file: page count (PDF / text) or the picture itself */
+async function pvInfo(f){
+  const ext=(f.name.split('.').pop()||'').toLowerCase();
+  if(PV_IMG.includes(ext)){const im=new Image();await new Promise(r=>{im.onload=im.onerror=r;im.src=f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+  if(ext!=='pdf'&&!PV_TXT.includes(ext))return{kind:'none'};
+  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),25000);
+  try{const r=await fetch(f.url,{signal:ac.signal});if((+r.headers.get('content-length')||0)>60e6){ac.abort();return{kind:'doc',pages:0}}
+    const buf=await r.arrayBuffer();
+    if(ext==='pdf'){const t=new TextDecoder('latin1').decode(buf);let mx=0,m;const re=/[^<]{0,300}\/Type\s*\/Pages\b[^>]{0,300}/g;
+      while((m=re.exec(t))){const c=m[0].match(/\/Count\s+(\d+)/);if(c)mx=Math.max(mx,+c[1])}
+      const c2=(t.match(/\/Type\s*\/Page(?![s\w])/g)||[]).length;return{kind:'doc',pages:Math.max(mx,c2)}}
+    const txt=new TextDecoder('utf-8').decode(buf);let lines=0;for(const l of txt.replace(/\r/g,'').split('\n'))lines+=Math.max(1,Math.ceil(l.length/82));
+    return{kind:'doc',pages:Math.max(1,Math.ceil(lines/61))}}
+  catch(e){return{kind:'doc',pages:0}}finally{clearTimeout(tm)}}
+function printOptions(pc,files){files=files||[];return new Promise(res=>{
   const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card'),redraw=[];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','','Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
+  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
+  let pinfo=null,ptm=0;const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
+  function drawPv(){
+    strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=files[0];
+    if(!f){cap.textContent='Folders are expanded when printing - no preview';return}
+    if(!pinfo){cap.textContent='Loading preview\u2026';return}
+    if(pinfo.kind==='none'){cap.textContent='No layout preview for this file type - only printer and copies apply';return}
+    const total=pinfo.pages||6,sample=!pinfo.pages,name=f.name;
+    let idx=pvPageSet(st.range,total);if(st.pages)idx=idx.filter(i=>(i+1)%2===(st.pages==='odd'?1:0));if(st.reverse)idx.reverse();
+    if(!idx.length){cap.textContent='No pages left after the page selection';return}
+    let order,cols,rows,land;
+    if(st.booklet){order=pvBooklet(idx.length).map(x=>x==null?null:idx[x]);cols=2;rows=1;land=1}else{order=idx;[cols,rows,land]=PV_LAY[st.nup]||PV_LAY[1]}
+    const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=im&&im.naturalWidth>im.naturalHeight;
+    const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
+    let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
+    const k=Math.min(190/sw,138/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
+    for(let s0=0;s0<shown;s0++){
+      const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
+      const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
+      const cw=sw/cols,ch=sh/rows,mg=per===1?0:(st.booklet?8:12),cells=[];
+      chunk.forEach((pi,j)=>{if(pi==null)return;const sc=per===1?1:Math.min((cw-2*mg)/pw0,(ch-2*mg)/ph0);
+        cells.push({pi,sc,x:(j%cols)*cw+(cw-pw0*sc)/2,y:Math.floor(j/cols)*ch+(ch-ph0*sc)/2})});
+      const lw=Math.max(1,1/k*.8);
+      const wm=()=>{if(!st.wm)return;const t=pvFill(st.wm,0,nSheets,name);c.save();c.font='100px Helvetica,Arial,sans-serif';const w1=c.measureText(t).width/100||1;
+        const size=Math.max(8,Math.min(150,Math.hypot(sw,sh)*.7/w1));c.font='bold '+size+'px Helvetica,Arial,sans-serif';c.globalAlpha=.28;c.fillStyle='#808080';c.textAlign='center';c.textBaseline='middle';
+        c.translate(sw/2,sh/2);c.rotate(-Math.atan2(sh,sw));c.fillText(t,0,0);c.restore()};
+      cells.forEach(m=>{c.fillStyle='#fff';c.fillRect(m.x,m.y,pw0*m.sc,ph0*m.sc);c.strokeStyle='#cfcfcf';c.lineWidth=lw;c.strokeRect(m.x,m.y,pw0*m.sc,ph0*m.sc)});
+      if(st.wm&&st.wm_under)wm();
+      cells.forEach(m=>{c.save();c.translate(m.x,m.y);c.scale(m.sc,m.sc);
+        if(im){const a=28,fw=pw0-2*a,fh=ph0-2*a,q=Math.min(fw/im.naturalWidth,fh/im.naturalHeight),w=im.naturalWidth*q,h=im.naturalHeight*q;c.drawImage(im,(pw0-w)/2,(ph0-h)/2,w,h)}
+        else{c.fillStyle='#d6d6d6';for(let l=0;l<22;l++){const w=(pw0-120)*(.55+.45*(((m.pi+1)*(l+3)*37)%100)/100);c.fillRect(60,70+l*30,l%7===6?w*.5:w,9)}
+          c.fillStyle='#9aa7bd';c.font='bold 260px Helvetica,Arial,sans-serif';c.textAlign='center';c.textBaseline='middle';c.globalAlpha=.55;c.fillText(String(m.pi+1),pw0/2,ph0/2);c.globalAlpha=1}
+        c.restore()});
+      if(!(st.wm&&st.wm_under))wm();
+      if(st.border&&per>1){c.strokeStyle='#555';c.lineWidth=lw;cells.forEach(m=>c.strokeRect(m.x,m.y,pw0*m.sc,ph0*m.sc))}
+      const fs=Math.max(9,5.5/k),zone=(txt,y)=>{if(!txt)return;const pr=txt.split('|');const z=pr.length===1?['',pr[0],'']:[pr[0]||'',pr[1]||'',pr[2]||''];
+        c.fillStyle='#333';c.font=fs+'px Helvetica,Arial,sans-serif';c.textBaseline='alphabetic';
+        z.forEach((t,i2)=>{t=pvFill(t.trim(),s0,nSheets,name);if(!t)return;c.textAlign=['left','center','right'][i2];c.fillText(t,[28,sw/2,sw-28][i2],y)})};
+      zone(st.hdr,22+fs*.6);zone(st.ftr,sh-14);
+      const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
+    const paper=two?Math.ceil(nSheets/2):nSheets;
+    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')}
+  if(files[0])pvInfo(files[0]).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
   const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
     redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
   const sw=(key,label)=>{const r=E('div','sr'),w=E('label','sw'),i=E('input'),k=E('i');i.type='checkbox';i.onchange=()=>{st[key]=i.checked?1:0;redraw.forEach(f=>f())};
     w.append(i,k);r.append(E('span','',label),w);redraw.push(()=>{i.checked=!!st[key]});return r};
-  const txt=(key,ph)=>{const i=E('input','tf');i.placeholder=ph;i.autocomplete='off';i.oninput=()=>{st[key]=i.value};redraw.push(()=>{if(i.value!==st[key])i.value=st[key]});return i};
+  const txt=(key,ph)=>{const i=E('input','tf');i.placeholder=ph;i.autocomplete='off';i.oninput=()=>{st[key]=i.value;sched()};redraw.push(()=>{if(i.value!==st[key])i.value=st[key]});return i};
   // presets
   const pr=E('div','cr'),mine=lsGet('printPresets',{});
   const apply=p=>{const keep=st.printer;Object.assign(st,PRN_DEF,p);st.printer=keep;redraw.forEach(f=>f())};
@@ -1038,7 +1109,8 @@ async function doPrint(){
     if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
-  const opts=await printOptions(to);if(!opts)return;
+  const pvf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
+  const opts=await printOptions(to,pvf);if(!opts)return;
   try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id,opts});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 async function doDelete(){
   const n=S.sel.size;
