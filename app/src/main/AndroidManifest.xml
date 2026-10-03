@@ -30,6 +30,7 @@
         <activity android:name=".MainActivity" android:exported="false" android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden"/>
         <activity android:name=".BrowserActivity" android:exported="false" android:launchMode="singleTop"/>
+        <activity android:name=".SettingsActivity" android:exported="false"/>
         <activity android:name=".PlayerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true"
             android:supportsPictureInPicture="true" android:resizeableActivity="true"

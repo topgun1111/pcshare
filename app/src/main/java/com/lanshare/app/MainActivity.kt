@@ -29,7 +29,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.lanshare.app.core.Core
-import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
 import java.net.URLDecoder
@@ -80,7 +79,6 @@ class MainActivity : Activity() {
         /** All selected files as ONE print job. [json] = {items:[{name, url}]} */
         @JavascriptInterface fun printHereMany(json: String) { phonePrint.start(json) }
     }
-    private var pendingShare: List<String>? = null
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -100,7 +98,7 @@ class MainActivity : Activity() {
                     return false
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -124,7 +122,6 @@ class MainActivity : Activity() {
         setContentView(web)
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()
-        handleShare(intent)
     }
 
     override fun onResume() {
@@ -135,52 +132,6 @@ class MainActivity : Activity() {
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         if (i.hasExtra("print")) { setIntent(i); pageReady = false; Core.url?.let { web.loadUrl(it) }; return }
-        handleShare(i)
-    }
-
-    /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
-    private fun handleShare(i: Intent?) {
-        if (i == null || (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE)) return
-        @Suppress("DEPRECATION")
-        val uris: List<Uri> = if (i.action == Intent.ACTION_SEND)
-            listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
-        else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
-        if (uris.isEmpty()) return
-        i.action = null   // consume once
-        Thread {
-            var n = 0
-            val names = ArrayList<String>()
-            val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared").apply { mkdirs() }
-            for (u in uris) try {
-                var name = "shared_" + System.currentTimeMillis()
-                contentResolver.query(u, null, null, null, null)?.use { c ->
-                    if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }
-                        ?.let { name = c.getString(it) ?: name }
-                }
-                var f = File(dir, name.replace("/", "_")); var k = 1
-                while (f.exists()) { f = File(dir, "${f.nameWithoutExtension} ($k)${if (f.extension.isEmpty()) "" else "." + f.extension}"); k++ }
-                contentResolver.openInputStream(u)?.use { ins -> f.outputStream().use { ins.copyTo(it) } }
-                n++; names.add(f.name)
-            } catch (_: Exception) {}
-            runOnUiThread {
-                if (n > 0) { pendingShare = names; runShare() }
-                else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
-            }
-        }.start()
-    }
-
-    /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */
-    private fun runShare() {
-        val names = pendingShare ?: return
-        if (!pageReady) return
-        pendingShare = null
-        val arr = org.json.JSONArray(names).toString()
-        web.postDelayed({
-            web.evaluateJavascript(
-                "(async()=>{try{const p=await pickDevice();if(!p)return;" +
-                "const r=await api('POST','/api/send',{dev:'local',paths:" + arr +
-                ".map(n=>'/LANShare Shared/'+n),to:p.id});watchJob(r.job);track(r.job)}catch(e){toast('\\u26a0 '+e.message,5000)}})()", null)
-        }, 1200)
     }
 
     override fun onActivityResult(req: Int, res: Int, d: Intent?) {
