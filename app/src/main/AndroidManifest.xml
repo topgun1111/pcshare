@@ -34,6 +34,9 @@
         <activity android:name=".ImageViewerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTop" android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
+        <activity android:name=".PdfViewerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
+            android:launchMode="singleTop" android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>

@@ -564,7 +564,7 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)};
     holdMenu(r,i);
     return r};
   // big folders: draw rows in chunks as the user scrolls (a 100k-file folder would otherwise freeze the WebView)
@@ -618,6 +618,12 @@ function nativeImg(i){
   const at=Math.max(0,V.findIndex(m=>m.name===i.name));
   try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
 function viewImg(i){if(!nativeImg(i))openMedia(i)}
+/* Android app: PDFs open in the dedicated native reader (PdfRenderer, works for local / other device / SMB / inside archives); browsers keep their own PDF handling */
+function nativePdf(i){
+  if(!(window.LSAndroid&&LSAndroid.viewPdf))return false;
+  const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+  try{LSAndroid.viewPdf(JSON.stringify({name:i.name,url,size:i.size||0,key:S.dev+'|'+S.path+'/'+i.name+'|'+(i.size||0)}));return true}catch(e){return false}}
+function viewPdf(i){if(!nativePdf(i))openFile(i)}
 /* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
 function nativePlay(i){
   if(!(window.LSAndroid&&LSAndroid.play))return false;
