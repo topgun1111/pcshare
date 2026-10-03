@@ -130,7 +130,7 @@ class PlayerActivity : Activity() {
             setShowPreviousButton(true)
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { vis ->
-                top.visibility = if (inPip) View.GONE else if (vis == View.VISIBLE) View.VISIBLE else View.GONE
+                this@PlayerActivity.top.visibility = if (inPip) View.GONE else if (vis == View.VISIBLE) View.VISIBLE else View.GONE
             })
         }
         root.addView(view)
