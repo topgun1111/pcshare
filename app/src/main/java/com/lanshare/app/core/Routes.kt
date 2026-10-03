@@ -156,13 +156,12 @@ object Routes {
             Smb.state.remove(remove)
         } else {
             val host = b.optString("host").trim()
-            val share = b.optString("share").trim().trim('\\', '/')
-            if (host.isEmpty() || share.isEmpty()) throw BadReq("enter the server address and the share name")
+            if (host.isEmpty()) throw BadReq("enter the PC's address")
             val c = JSONObject().put("id", "smb:" + UUID.randomUUID().toString().replace("-", "").take(6))
-                .put("host", host).put("share", share).put("user", b.optString("user").trim())
+                .put("host", host).put("share", "").put("user", b.optString("user").trim())
                 .put("password", b.optString("password"))
-                .put("name", b.optString("name").trim().take(40).ifEmpty { Smb.split(host).first + "/" + share })
-            SmbFs.create(c).ls("/")   // throws a readable error if the server, share or login is wrong
+                .put("name", b.optString("name").trim().take(40).ifEmpty { Smb.split(host).first })
+            SmbFs.create(c).ls("/")   // lists the PC's drives: throws a readable error if the address or login is wrong
             list.add(c)
         }
         Cfg.setSmb(JSONArray(list.take(10)))

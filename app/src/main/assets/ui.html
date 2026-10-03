@@ -428,7 +428,7 @@ window.addEventListener('pageshow',resume);window.addEventListener('online',resu
 async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
-  S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();load()}
+  S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
 async function addIp(){
   const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
@@ -695,36 +695,36 @@ function openSettings(){
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sm.textContent=THN[S.theme]};card.append(rt);
-  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse a PC or NAS shared folder');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
+  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
   rb.onclick=()=>{close();openSmb()};card.append(rb);
-  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' share':' shares')}).catch(()=>{});
+  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','SMB shares'));
-  const info=E('p','','Add a shared folder from your PC or NAS. Use the PC\u2019s IP address (e.g. 192.168.1.20), the share name, and a Windows account that can open the share. Shares appear next to your devices at the top.');
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','SMB (PC drives)'));
+  const info=E('p','','Add a PC or NAS: enter its IP address (e.g. 192.168.1.20) and a Windows account on it. All its drives (C$, D$ \u2026) and shared folders are listed; the PC appears next to your devices at the top. Drives like C$ need an administrator account.');
   info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
   const list=E('div');card.append(list);
   const refresh=()=>{S.sig='';pollPeers()};
   const draw=l=>{list.textContent='';
-    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No shares yet'));list.append(e)}
+    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No PCs yet'));list.append(e)}
     l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
-      t.append(E('b','',x.name),E('small','','\\\\'+x.host+'\\'+x.share+(x.user?' \u00b7 '+x.user:' \u00b7 guest')));
+      t.append(E('b','',x.name),E('small','','\\\\'+x.host+(x.share?'\\'+x.share:'')+(x.user?' \u00b7 '+x.user:' \u00b7 guest')));
       rm.onclick=async()=>{try{draw((await api('POST','/api/smb',{remove:x.id})).list);if(S.dev===x.id)openDev('local');refresh()}catch(e){toast('\u26a0 '+e.message,4000)}};
       r.append(t,rm);list.append(r)})};
   try{draw(await api('GET','/api/smb'))}catch(e){draw([])}
   const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';card.append(form);
-  const F={};[['host','Server address (e.g. 192.168.1.20)','text'],['share','Share name (e.g. Documents)','text'],['user','Username (empty = guest)','text'],['password','Password','password'],['name','Display name (optional)','text']].forEach(([k,ph,ty])=>{
+  const F={};[['host','Server address (e.g. 192.168.1.20)','text'],['user','Username (empty = guest)','text'],['password','Password','password'],['name','Display name (optional)','text']].forEach(([k,ph,ty])=>{
     const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
   const d=E('button','tbtn','Done');d.onclick=()=>{close();openSettings()};
   const save=E('button','tbtn fill','Connect');
-  const add=E('button','tbtn fill','Add share');
+  const add=E('button','tbtn fill','Add PC');
   add.onclick=()=>{form.style.display='flex';add.style.display='none';save.style.display='';F.host.focus()};
   save.style.display='none';
   save.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;
-    if(!b.host.trim()||!b.share.trim()){toast('Enter the server address and share name',3000);return}
+    if(!b.host.trim()){toast('Enter the PC\u2019s IP address',3000);return}
     save.disabled=true;save.textContent='Connecting\u2026';
     try{const r=await api('POST','/api/smb',b,30000);draw(r.list);for(const k in F)F[k].value='';form.style.display='none';save.style.display='none';add.style.display='';toast('Connected!',2500);refresh()}
     catch(e){toast('\u26a0 '+e.message,5000)}
@@ -863,21 +863,29 @@ async function track(id){
       await new Promise(r=>setTimeout(r,400));busy=false}
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
-/* swipe left anywhere = next device (to the right in the chip bar), swipe right = previous; keep sliding to go further */
-(()=>{let x0=0,y0=0,mode=0;const STEP=50;  // mode: 0 undecided, 1 horizontal (ours), 2 ignore
+/* swipe left anywhere = next device (to the right in the chip bar), swipe right = previous; the list follows the finger and slides out/in; keep sliding to go further */
+(()=>{let x0=0,y0=0,mode=0,busy=false;const STEP=50;  // mode: 0 undecided, 1 horizontal (ours), 2 ignore
+  const L=()=>$('#list');
   const blocked=t=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex'||$('#pv').style.display==='flex'||
     /^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'')||(t&&t.closest&&t.closest('#peers,#crumbs'));
-  const step=dir=>{const ids=['local',...S.peers.map(p=>p.id)];if(S.dev!=='local'&&!ids.includes(S.dev))ids.push(S.dev);
-    const i=ids.indexOf(S.dev),j=i+dir;if(j<0||j>=ids.length){if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}return}
-    if(navigator.vibrate)try{navigator.vibrate(12)}catch(_){}
-    toast(devName(ids[j]),900);openDev(ids[j])};
-  window.addEventListener('touchstart',e=>{mode=(e.touches.length!==1||blocked(e.target))?2:0;
+  const tx=(x,o,ms)=>{const l=L();l.style.transition=ms?'transform '+ms+'ms ease-out,opacity '+ms+'ms ease-out':'none';l.style.transform=x?'translateX('+x+')':'';l.style.opacity=o}
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const step=async dir=>{const ids=['local',...S.peers.map(p=>p.id)];if(S.dev!=='local'&&!ids.includes(S.dev))ids.push(S.dev);
+    const i=ids.indexOf(S.dev),j=i+dir;if(j<0||j>=ids.length){if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}tx('',1,180);return false}
+    busy=true;if(navigator.vibrate)try{navigator.vibrate(12)}catch(_){}
+    tx(dir>0?'-35%':'35%',0,110);await wait(110);          // old list slides away
+    try{await openDev(ids[j])}catch(e){}
+    tx(dir>0?'35%':'-35%',0,0);L().offsetWidth;tx('',1,170); // new list slides in from the opposite side
+    await wait(170);busy=false;return true};
+  window.addEventListener('touchstart',e=>{mode=(busy||e.touches.length!==1||blocked(e.target))?2:0;
     x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
-  window.addEventListener('touchmove',e=>{if(mode===2)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
+  window.addEventListener('touchmove',e=>{if(mode===2||busy)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
     if(!mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;mode=Math.abs(dx)>Math.abs(dy)*1.2?1:2;if(mode===2)return}
     if(e.cancelable)e.preventDefault();
+    tx(Math.round(dx*0.4)+'px',1-Math.min(.5,Math.abs(dx)/260),0);   // list follows the finger
     if(Math.abs(dx)>=STEP){step(dx<0?1:-1);x0=c.clientX;y0=c.clientY}},{passive:false});
-})();
+  const end=()=>{if(mode===1&&!busy)tx('',1,150);mode=0};
+  window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
 
 window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scrollY||0)>4),{passive:true});
 (()=>{const dk=$('#dock');const upd=()=>document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
