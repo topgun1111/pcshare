@@ -41,6 +41,8 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 .chip:active{background:var(--hov)}
 .chip svg{width:18px;height:18px}
 .chip.on{background:var(--sel);color:var(--onsel);border-color:transparent}
+.chip.hot{outline:2px solid var(--ac);outline-offset:-2px}
+#peers.sl{touch-action:none}
 .chip.add{color:var(--ac);border-style:dashed}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:var(--warn)}
 #hint{padding:3px 14px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
@@ -399,16 +401,38 @@ function dlg(o){return new Promise(res=>{
   row.append(c,k);card.append(row);d.append(card);
   if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
 
+let slideOn=false;
 function renderPeers(){
+  if(slideOn)return;
   const sig=JSON.stringify([S.peers,S.dev]);if(sig===S.sig)return;S.sig=sig;
   const box=$('#peers');box.textContent='';
   const mk=(label,id,warn)=>{const c=E('button','chip'+(S.dev===id?' on':''));
-    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));c.onclick=()=>openDev(id);box.append(c)};
+    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));c.dataset.id=id;c.onclick=()=>openDev(id);box.append(c)};
   mk('This device','local');
   S.peers.forEach(p=>mk(p.name,p.id,p.ok===false));
   if(S.dev!=='local'&&!S.peers.find(p=>p.id===S.dev))mk(S.known[S.dev]||'device',S.dev,true);
   const add=E('button','chip add');add.append(ic('add'),E('span','','IP'));add.onclick=addIp;box.append(add);
   $('#hint').textContent=S.peers.length?'':'Searching for devices… tap refresh or + IP'+(S.ips?' · This device: '+S.ips:'')}
+/* hold on the device bar, then slide: the chip under the finger is highlighted, release switches to it */
+(()=>{const box=$('#peers');let t=0,x0=0,y0=0,hot=null;
+  const stop=()=>{clearTimeout(t);t=0};
+  const at=x=>{const r=box.getBoundingClientRect();x=Math.max(r.left+1,Math.min(r.right-1,x));
+    for(const c of box.children)if(c.dataset.id!==undefined){const b=c.getBoundingClientRect();if(x>=b.left&&x<=b.right)return c}return null};
+  const mark=c=>{if(c===hot)return;if(hot)hot.classList.remove('hot');hot=c;
+    if(c){c.classList.add('hot');if(navigator.vibrate)try{navigator.vibrate(8)}catch(_){}}};
+  const end=e=>{stop();if(!slideOn)return;const c=hot;if(hot)hot.classList.remove('hot');hot=null;slideOn=false;box.classList.remove('sl');
+    if(e&&e.type==='touchend'){if(e.cancelable)e.preventDefault();if(c&&c.dataset.id!==S.dev)openDev(c.dataset.id);else{S.sig='';renderPeers()}}
+    else{S.sig='';renderPeers()}};
+  box.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;end();x0=e.touches[0].clientX;y0=e.touches[0].clientY;
+    t=setTimeout(()=>{t=0;slideOn=true;box.classList.add('sl');if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
+      mark(at(x0))},350)},{passive:true});
+  box.addEventListener('touchmove',e=>{const tc=e.touches[0];
+    if(!slideOn){if(t&&(Math.abs(tc.clientX-x0)>10||Math.abs(tc.clientY-y0)>10))stop();return}
+    if(e.cancelable)e.preventDefault();
+    const r=box.getBoundingClientRect();if(tc.clientX<r.left+36)box.scrollLeft-=14;else if(tc.clientX>r.right-36)box.scrollLeft+=14;
+    mark(at(tc.clientX))},{passive:false});
+  box.addEventListener('touchend',end,{passive:false});box.addEventListener('touchcancel',end);
+  box.addEventListener('contextmenu',e=>{if(slideOn||t)e.preventDefault()})})();
 let pollGen=0,pollTimer;
 async function pollPeers(){
   const g=++pollGen;clearTimeout(pollTimer);
