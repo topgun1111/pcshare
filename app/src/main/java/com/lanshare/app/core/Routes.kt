@@ -79,10 +79,15 @@ object Routes {
                 .put("ifaces", JSONArray().also { a -> d.ifaces.forEach { a.put(JSONArray().put(it.ip).put(it.net.toString())) } })
                 .put("peers", jarr(d.list().map { it.toJson() })))
             "scan" -> { d.scanNow(); return ok(ex) }
+            "counts" -> {   // item counts of the sub-folders of this phone's folder, filled in after the list is on screen
+                val o = JSONObject()
+                if (ex.q("dev") == "local") Core.local.counts(vnorm(q["path"] ?: "/")).forEach { (k, n) -> o.put(k, n) }
+                return ex.json(o)
+            }
             "ls" -> {
                 val dev = ex.q("dev")
                 val path = vnorm(q["path"] ?: "/")
-                val items = Jobs.ep(dev).ls(path).sortedWith(compareBy<Item>({ !it.dir }, { it.name.lowercase() }))
+                val items = (if (dev == "local") Core.local.ls(path, false) else Jobs.ep(dev).ls(path)).sortedWith(compareBy<Item>({ !it.dir }, { it.name.lowercase() }))
                 var used: Any = JSONObject.NULL   // share of main storage in use, for the "70% USED" pill
                 if (dev == "local") try {
                     val r = Core.local.root

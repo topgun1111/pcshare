@@ -355,7 +355,7 @@ document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const PN=+((location.search.match(/[?&]pane=(\d)/)||[])[1]||0),KID=window.parent!==window&&PN>0;let DU=null;
-const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:(()=>{try{return localStorage.getItem('ls_gal')!=='0'}catch(e){return true}})(),rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
+const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:true,rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
 const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
 SORTS.none={t:'No Sort',l:'No Sort',a:'',d:''};
@@ -525,12 +525,23 @@ async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
   try{const r=await api('GET','/api/space?dev='+enc(dev)+'&path='+enc(k.seg),null,8000);SP[k.k]={t:Date.now(),v:r}}catch(e){SP[k.k]={t:Date.now()-20000,v:null}}
   if(S.dev===dev)showFree()}
 let loadT;
+/* folders you already opened are drawn instantly from this cache while the fresh listing loads (only when navigating, never after a file operation) */
+const LSC=new Map();let useLSC=false;
+function lscPut(k,v){LSC.delete(k);LSC.set(k,v);if(LSC.size>30)LSC.delete(LSC.keys().next().value)}
+async function fillCounts(dev,path){if(dev!=='local')return;
+  try{const c=await api('GET','/api/counts?dev=local&path='+enc(path),null,20000);if(dev!==S.dev||path!==S.path)return;
+    let any=false;S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});
+    const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
+    if(any&&S.sort==='size')render()}catch(e){}}
 async function load(){
-  clearTimeout(loadT);const dev=S.dev,path=S.path;
+  clearTimeout(loadT);const dev=S.dev,path=S.path,ck=dev+'|'+path,hit=useLSC&&path.indexOf('!')<0?LSC.get(ck):null;useLSC=false;
+  if(hit){S.items=hit.items;S.used=hit.used;S.err='';S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
   try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
     if(dev!==S.dev||path!==S.path)return;
+    if(path.indexOf('!')<0)lscPut(ck,{items:r.items,used:r.used});
+    if(hit&&hit.items.length===r.items.length&&hit.items.every((o,k)=>o.name===r.items[k].name&&o.mtime===r.items[k].mtime&&o.size===r.items[k].size)){S.used=r.used;S.err='';if(!S.lost)banner('');loadSpace();fillCounts(dev,path);return}   // nothing changed: keep what is on screen
     S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(S.dev==='local'&&r.used!=null)SV('ls_used',String(r.used));if(typeof histPush==='function')histPush();if(!S.lost)banner('');
-    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace()}
+    S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace();fillCounts(dev,path)}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
     if(/^cancelled$/i.test(e.message)){const r=arcRoot();toast('Cancelled',2000);if(r)go(pdir(r));return}   // opening a big archive was cancelled: leave it
@@ -570,7 +581,7 @@ function render(){
     lead.append(ic('check','ck'));
     const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(S.view==='compact'?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
-    if(S.view==='compact')sub.append(E('span','',S.sort==='date'&&dt?dt:sz));else sub.append(E('span','',sz),E('span','',dt));
+    if(S.view==='compact'){const sp=E('span','',S.sort==='date'&&dt?dt:sz);if(i.dir&&!(S.sort==='date'&&dt))i._sz=sp;sub.append(sp)}else{const sp=E('span','',sz);if(i.dir)i._sz=sp;sub.append(sp,E('span','',dt))}
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
@@ -822,10 +833,6 @@ function openSettings(){
   t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
   cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
   sw.append(cb,E('i'));row.append(t,sw);card.append(row);
-  const rowg=E('label','set'),tg=E('div','t'),swg=E('span','sw'),cbg=E('input');cbg.type='checkbox';cbg.checked=S.gal;
-  tg.append(E('b','','Video gallery'),E('small','','Show videos as a grid with thumbnails'));
-  cbg.onchange=()=>{S.gal=cbg.checked;try{localStorage.setItem('ls_gal',S.gal?'1':'0')}catch(e){}render()};
-  swg.append(cbg,E('i'));rowg.append(tg,swg);card.append(rowg);
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sm.textContent=THN[S.theme]};card.append(rt);
@@ -873,7 +880,7 @@ function holdMenu(r,i){  // press and hold (or right-click) selects the item; ac
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
-function go(p){S.newest=false;S.path=p;S.lim=0;S.sel.clear();clearQ();load()}
+function go(p){S.newest=false;S.path=p;S.lim=0;S.sel.clear();clearQ();useLSC=true;load()}
 /* ---- search in subfolders (server walks the tree below the current folder) ---- */
 let sT=0;
 function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
@@ -1301,7 +1308,7 @@ function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab==
 function openLoc(dev,path){
   drawerClose();
   if(dev!=='local'&&!S.peers.find(x=>x.id===dev)){toast('\u26a0 That device is not available right now',3000);return}
-  S.newest=false;S.dev=dev;S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);load()}
+  S.newest=false;S.dev=dev;S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=true;load()}
 function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, meter}
   const b=E('div','di'+(o.on?' on':''));b.setAttribute('role','button');b.tabIndex=0;
   const l=E('span','dl');l.append(o.lead);

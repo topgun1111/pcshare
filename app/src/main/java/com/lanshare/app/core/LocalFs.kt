@@ -41,18 +41,36 @@ class LocalFs(rootPath: String) : Endpoint {
         else try { val par = f.parentFile; par != null && File(par.canonicalFile, f.name).let { it.canonicalPath != it.absolutePath } }
         catch (_: IOException) { false }
 
-    override fun ls(v: String): List<Item> {
+    override fun ls(v: String): List<Item> = ls(v, true)
+
+    /** [counts]=false skips the "N items" count of sub-folders (one extra directory read each - slow on Android's FUSE storage); see [counts]. */
+    fun ls(v: String, counts: Boolean): List<Item> {
         val d = real(v)
         if (!d.exists()) throw NotFound("No such file or directory")
         val files = d.listFiles() ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))
         val out = ArrayList<Item>(files.size)
+        val modern = Build.VERSION.SDK_INT >= 26
         for (f in files) {   // never hide an entry just because stat() is refused (Android storage quirks)
-            val dir = f.isDirectory
-            out.add(Item(f.name, dir, if (dir) 0L else f.length(), f.lastModified() / 1000,
-                if (dir) f.list()?.size else null))
+            var dir: Boolean; var size: Long; var mt: Long
+            val a = if (modern) try { Files.readAttributes(f.toPath(), BasicFileAttributes::class.java) } catch (_: Exception) { null } else null
+            if (a != null) { dir = a.isDirectory; size = if (dir) 0L else a.size(); mt = a.lastModifiedTime().toMillis() / 1000 }   // ONE stat instead of three
+            else { dir = f.isDirectory; size = if (dir) 0L else f.length(); mt = f.lastModified() / 1000 }
+            out.add(Item(f.name, dir, size, mt, if (dir && counts) f.list()?.size else null))
         }
         if (out.isEmpty() && Core.storageOk == false) throw Denied(STORAGE_MSG)
         return out
+    }
+
+    /** Item counts of the sub-folders of v, read in parallel (the list itself is shown first, the counts follow). */
+    fun counts(v: String): Map<String, Int> {
+        val d = real(v)
+        val dirs = d.listFiles()?.filter { it.isDirectory } ?: return emptyMap()
+        val res = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
+        try {
+            dirs.map { f -> pool.submit { f.list()?.size?.let { res[f.name] = it } } }.forEach { try { it.get() } catch (_: Exception) {} }
+        } finally { pool.shutdownNow() }
+        return res
     }
 
     /** Recursive name search below folder v (case-insensitive substring). Capped by count and time. */
