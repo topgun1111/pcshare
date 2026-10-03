@@ -338,7 +338,7 @@ const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.inn
 const BADGE={dcim:['camera','#333'],download:['download','#2f9bd8'],downloads:['download','#2f9bd8'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#1a6fd1']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
-Object.assign(IC,{menu:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',starb:'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',hist:'M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z',folders:'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',pc:'M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z',info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
+Object.assign(IC,{extract:'M20.55 5.22l-1.39-1.68A1.51 1.51 0 0018 3H6c-.47 0-.88.21-1.15.55L3.46 5.22C3.17 5.57 3 6.01 3 6.5V19a2 2 0 002 2h14c1.1 0 2-.9 2-2V6.5c0-.49-.17-.93-.45-1.28zM12 9.5l5.5 5.5H14v2h-4v-2H6.5L12 9.5zM5.12 5l.82-1h12l.94 1H5.12z',menu:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',starb:'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',hist:'M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z',folders:'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',pc:'M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z',info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -383,7 +383,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.');
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
@@ -441,6 +441,12 @@ function openView(){
     const sb=E('button','vrow');sb.append(E('span','vt',SORTS[S.sort].t+(S.sort==='none'?'':(S.asc?' \u25B2':' \u25BC'))));sb.onclick=()=>{close();openSort()};card.append(sb);
     card.append(E('hr'),E('div','sh','Others'),cbrow('Show hidden files',S.hid,()=>{toggleHidden(true);draw()}))};
   draw()}
+/* archives: a .zip/.rar opens like a folder; its virtual path is "/dir/a.zip!/inner" */
+const ARC_RE=/\.(zip|rar|cbz|cbr)$/i;
+const isArcF=i=>!i.dir&&ARC_RE.test(i.name);
+const inArc=()=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(S.path);
+const arcRoot=()=>{const m=S.path.match(/^(.*?\.(?:zip|rar|cbz|cbr)!)/i);return m?m[1]:null};
+const pdir=p=>p.slice(0,p.lastIndexOf('/'))||'/';
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
 // themed dialog: returns true / the typed text, or null when cancelled
@@ -520,11 +526,13 @@ async function load(){
     else{S.err='';toast('⚠ '+e.message,4500);S.items=[];render()}}}
 function render(){
   applyPrefs();
+  const AR=inArc();
+  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR?'extract':'newfolder'),document.createTextNode(AR?'Extract all':'New folder'))}
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
   const dr=E('button','crumb'+(segs.length?'':' cur'));dr.append(raw(DRIVE));if(S.dev!=='local')dr.append(E('span','',devName(S.dev)));dr.onclick=()=>go('/');cr.append(dr);
-  let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),seg);b.onclick=()=>go(p);cr.append(b)});
+  let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),seg.replace(/!$/,''));b.onclick=()=>go(p);cr.append(b)});
   $('#ht').textContent=S.dev==='local'?'Main storage':devName(S.dev);
   const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used'}else pl.style.display='none';
   cr.scrollLeft=cr.scrollWidth;
@@ -534,14 +542,14 @@ function render(){
   if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
-  const GV=S.gal?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
+  const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(S.sel.has(i.name)?' sel':''));
     const lead=E('div','lead k-'+k);
     if(i.dir){lead.append(raw(FOLD,'fold'));const bd=BADGE[i.name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
-      if((k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){
+      if(!AR&&(k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){
         const key=thKey(i),pth0=jn(S.path,i.name);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
@@ -553,7 +561,7 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);render()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else openFile(i)};
     holdMenu(r,i);
     return r};
   // big folders: draw rows in chunks as the user scrolls (a 100k-file folder would otherwise freeze the WebView)
@@ -857,19 +865,21 @@ function renderBar(){
   if(S.sel.size){
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
     if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
-    btn('copy','Copy',()=>setClip('copy'));btn('cut','Cut',()=>setClip('cut'));
-    if(has)btn('paste','Paste',doPaste,'pri');
+    const A=inArc();
+    if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.some(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
+    btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));
+    if(has&&!A)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',doPrint);
-    if(S.sel.size===1)btn('edit','Rename',doRename);
+    if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',doDetails);
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
-    btn('del','Delete',doDelete,'dng')
+    if(!A)btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
   if(has){c.style.display='flex';c.textContent='';
     c.append(E('span','',(S.clip.op==='cut'?'Cut ':'Copied ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
-    if(!S.sel.size){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
+    if(!S.sel.size&&!inArc()){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
   else c.style.display='none';
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
@@ -1047,7 +1057,7 @@ function lsBack(){
 const DRW={tab:+LD('ls_dtab','0')||0};
 const JL=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){return d}};
 let FAV=JL('ls_fav',[]),HIS=JL('ls_his',[]);
-const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devName(dev)):path.split('/').filter(Boolean).pop();
+const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devName(dev)):path.split('/').filter(Boolean).pop().replace(/!$/,'');
 const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 const isFav=(dev,path)=>FAV.some(f=>sameLoc(f,{dev,path}));
 function histPush(){const e={dev:S.dev,path:S.path,t:Date.now()};
@@ -1138,7 +1148,15 @@ $('#srch').onclick=()=>sOpen(!document.body.classList.contains('srch'));
 $('#sback').onclick=()=>sOpen(false);
 $('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
 $('#sq').oninput=e=>{S.q=e.target.value.trim().toLowerCase();render();clearTimeout(sT);sT=setTimeout(doSearch,500)};
-$('#fab').onclick=doMkdir;
+async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
+  let paths,dir;
+  if(inArc()){const ar=arcRoot();dir=pdir(ar.slice(0,-1));paths=m===2?[ar]:selPaths()}
+  else{dir=S.path;paths=selItems().filter(isArcF).map(i=>jn(S.path,i.name))}
+  if(!paths.length)return;
+  const inside=inArc();S.sel.clear();render();
+  try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir});watchJob(r.job);
+    if(await track(r.job)&&!inside)load()}catch(e){toast('\u26a0 '+e.message,5000)}}
+$('#fab').onclick=()=>inArc()?doExtract(2):doMkdir();
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{S.sel=new Set(shown().map(i=>i.name));render()};
 $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');

@@ -15,6 +15,8 @@ object Core {
     @Volatile var url: String? = null
     @Volatile var error: String? = null
     lateinit var local: LocalFs
+    /** Scratch space for files extracted from archives (cleared at every start, size-capped while running). */
+    @Volatile var cacheDir: File = File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp", "lsarc")
     lateinit var disc: Discovery
     lateinit var page: ByteArray
     private var started = false
@@ -36,6 +38,8 @@ object Core {
             val app = ctx.applicationContext
             Cfg.load(File(app.filesDir, "lanshare.json"), phoneModel(), "")
             holdAwake(app)
+            cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
+            ArcStore.cleanOnStart()
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             var srv: MiniHttp? = null

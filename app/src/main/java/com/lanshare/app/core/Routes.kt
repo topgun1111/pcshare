@@ -38,7 +38,7 @@ object Routes {
 
     // ---------------------------------------------------------------- what other devices call
     private fun peer(ex: Exchange, route: String) {
-        val L = Core.local
+        val L: Endpoint = ArcEp(Core.local)
         when (route) {
             "ping" -> ok(ex)
             "ls" -> ex.json(jarr(L.ls(ex.q("path")).map { it.toJson() }))
@@ -99,8 +99,8 @@ object Routes {
                 return sendFile(ex, Jobs.ep(ex.q("dev")).open(p), vbase(p), q["dl"] != "1")
             }
             "thumb" -> {
-                val e = Jobs.ep(ex.q("dev"))
-                if (e !is LocalFs) throw BadReq("thumbnails only for this device's own files")
+                val e = Jobs.ep(ex.q("dev")).let { (it as? ArcEp)?.base ?: it }
+                if (e !is LocalFs || arcSplit(ex.q("path")) != null) throw BadReq("thumbnails only for this device's own files")
                 val data = Thumbs.make(e.real(vnorm(ex.q("path"))))
                 return ex.reply(200, data, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
             }
@@ -133,6 +133,11 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"))))
             "smb" -> smbUpdate(ex, b)
+            "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"
+                val dev = b.getString("dev")
+                val ps = b.getJSONArray("paths").strings().map { vnorm(it) }.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
+                ex.json(JSONObject().put("job", Jobs.start(dev, ps, dev, b.getString("dir"), false, "Extracting")))
+            }
             "addip" -> {
                 if (!d.addIp(b.getString("ip").trim())) throw IOException("no LANShare device found at that address")
                 ok(ex)

@@ -239,11 +239,11 @@ object Jobs {
         }
     }
 
-    fun ep(dev: String): Endpoint = when {
+    fun ep(dev: String): Endpoint = ArcEp(when {   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
         dev == "local" -> Core.local
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
-    }
+    })
 
     fun start(srcId: String, paths: List<String>, dstId: String, ddir: String, cut: Boolean, label: String): String {
         val src = ep(srcId)
@@ -252,7 +252,8 @@ object Jobs {
         prune()
         val job = Job(label)
         all[jid] = job
-        Thread({ work(job, src, dst, srcId, paths, ddir, cut) }, "job-$jid").also { it.isDaemon = true }.start()
+        val cutOk = cut && paths.none { arcSplit(it) != null }   // nothing can be moved out of an archive: it is copied
+        Thread({ work(job, src, dst, srcId, paths, ddir, cutOk) }, "job-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -280,7 +281,7 @@ object Jobs {
             for ((p, walked) in plan) {
                 if (job.cancel) throw Cancelled()
                 val isDir = walked?.firstOrNull()?.dir ?: false
-                val nn = uniqueName(vbase(p), taken, isDir)
+                val nn = uniqueName(destName(p), taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
                 dest = d
