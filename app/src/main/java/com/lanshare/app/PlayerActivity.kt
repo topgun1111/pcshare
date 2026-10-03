@@ -55,7 +55,9 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
 /**
- * Dedicated video player (Media3 / ExoPlayer). The file browser hands it the videos of the open folder as URLs of the app's own
+ * Dedicated video + audio player (Media3 / ExoPlayer). Audio files (mp3, m4a, flac ...) get a music screen with the title instead of a
+ * picture and keep playing when the screen is off or the app is in the background (the app's foreground service keeps the process alive).
+ *  The file browser hands it the videos of the open folder as URLs of the app's own
  * local HTTP server (/api/dl), which already supports Range requests, so local files, other devices and SMB shares all stream
  * the same way - nothing is downloaded first.
  *
@@ -67,7 +69,7 @@ import java.nio.charset.CodingErrorAction
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : Activity() {
     companion object {
-        /** JSON handed over by MainActivity.Bridge.play(): {start, items:[{name, url, key, subs:[{name, url}]}]} */
+        /** JSON handed over by BrowserActivity: {start, items:[{name, url, key, subs:[{name, url}]}]} */
         @Volatile var pending: String? = null
         private const val PREFS = "ls_player"
         private const val MAX_ITEMS = 500
@@ -84,6 +86,7 @@ class PlayerActivity : Activity() {
     private lateinit var hud: TextView
     private lateinit var errTv: TextView
     private lateinit var spin: ProgressBar
+    private lateinit var audioBg: TextView   // music screen shown behind the controls while an audio file is current
     private var player: ExoPlayer? = null
     private var items: List<Item> = emptyList()
     private var startIdx = 0
@@ -101,6 +104,18 @@ class PlayerActivity : Activity() {
     private val hideHud = Runnable { hud.visibility = View.GONE }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun isAudio(name: String?): Boolean =
+        (name ?: "").substringAfterLast('.', "").lowercase() in setOf("mp3", "wav", "m4a", "ogg", "oga", "flac", "aac", "opus", "mka", "wma", "amr", "mid", "midi")
+
+    private fun showAudioScreen(i: Int) {
+        val n = items.getOrNull(i)?.name
+        val a = isAudio(n)
+        audioBg.visibility = if (a) View.VISIBLE else View.GONE
+        if (a) audioBg.text = "\uD83C\uDFB5\n\n" + (n ?: "")
+        view.controllerShowTimeoutMs = if (a) 0 else 3000   // audio: controls stay on screen
+        if (a) view.showController()
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -134,6 +149,14 @@ class PlayerActivity : Activity() {
             })
         }
         root.addView(view)
+        // music screen: above the (black) player surface, below the top bar; a TextView does not consume touches, so taps / swipes still reach the PlayerView
+        audioBg = TextView(this).apply {
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            setPadding(dp(32), dp(96), dp(32), dp(0)); visibility = View.GONE; maxLines = 8
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        root.addView(audioBg)
 
         fun tv(txt: String, sp: Float = 20f) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
@@ -363,6 +386,7 @@ class PlayerActivity : Activity() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val i = p.currentMediaItemIndex
                 titleTv.text = items.getOrNull(i)?.name ?: ""
+                showAudioScreen(i)
                 errTv.visibility = View.GONE
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
                     val pos = savedPos(i)
@@ -389,6 +413,7 @@ class PlayerActivity : Activity() {
         view.player = p
         player = p
         titleTv.text = items.getOrNull(startIdx)?.name ?: ""
+        showAudioScreen(startIdx)
         ui.postDelayed(saver, 5000)
         view.showController()
     }
@@ -456,7 +481,8 @@ class PlayerActivity : Activity() {
     override fun onStop() {
         super.onStop()
         savePos()
-        player?.pause()
+        val cur = player?.currentMediaItemIndex ?: 0
+        if (!isAudio(items.getOrNull(cur)?.name)) player?.pause()   // video stops with the screen, music keeps playing
         if (inPip) finishAndRemoveTask()   // the floating window was closed
     }
 

@@ -1,37 +1,37 @@
-# Native conversion – handover for the next session
+# Native conversion – status (v: all screens native, printing removed)
 
-Read `HANDOVER.md` first (architecture, wire protocol, gotchas). This file = status + plan for finishing the WebView → native conversion.
-**Nothing below has been compiled or run on a device** (no Android SDK in the authoring sessions; only `kotlinc` parse-checks). Step 0 of any session with an SDK: `./gradlew assembleDebug`, fix compile errors, run the checklist.
+**Nothing has been built with Gradle or run on a device** (no Android SDK/Google Maven in the authoring sessions). A syntax + type pass of all `.kt` files with `kotlinc` against `android.jar` shows no errors except unresolved androidx / media3 / smbj / junrar symbols (libraries not available offline). Step 0 of any session with an SDK: `./gradlew assembleDebug`, fix what the compiler reports, run the checklist below.
 
-## Architecture (unchanged)
-- `core/*.kt` = in-process server + file layer. `Core` (start/config), `Endpoint` (interface for phone `LocalFs`, peers `RemoteFs`, SMB `SmbFs`; `Jobs.ep(dev)` wraps in `ArcEp` for archives), `Jobs` (copy/move/delete/zip/print jobs in `Jobs.all`), `Clip` (shared clipboard), `Discovery` (`Core.disc.list()`), `Smb` (config helpers: `peers/status/add/remove/cfg`), `Cfg`.
-- UI today: `assets/ui.html` in a WebView (`MainActivity`) + native screens: `BrowserActivity` (file browser), `PlayerActivity`, `ImageViewerActivity`, `PdfViewerActivity`.
-- Native code talks to core **in-process** (no HTTP) except viewers, which take `http://127.0.0.1:<port>/api/dl?dev=..&path=..` URLs (Range support; works for phone/peer/SMB).
+**Deleted from the project (must stay deleted):** `MainActivity.kt`, `PhonePrint.kt`, `assets/ui.html` (+ empty `assets/` folder). No remaining references in `.kt`/manifest (re-grepped).
 
-## DONE natively (BrowserActivity, Batch 8 + 9)
-Phone browsing, list/grid, sort, hidden toggle, breadcrumbs, thumbnails (phone only), long-press multi-select, share, delete (`Jobs.startDelete`), rename, new folder, copy/cut/paste across devices (`Clip` + `Jobs.start`) with native progress/speed/ETA/Cancel bar, recursive search (`Endpoint.search`), pull-to-refresh (SwipeRefreshLayout), device chip bar (phone, peers, SMB), add SMB share / add peer by IP / rescan / remove SMB, "Send to device…", open peer/SMB files in other apps via `cache/open/f<n>/`, native viewers for video/image/PDF. Details in HANDOVER.md "Batch 8/9".
+## What the app is now
+- **No WebView, no HTML.** `assets/ui.html`, `MainActivity` (WebView + JS bridge) and `PhonePrint` are deleted. **Printing is not part of the app** (PC print via pcprint.py and phone print were removed: `Jobs.startPrint/printerStatus`, `/api/print|printer`).
+- Screens (all plain `android.app.Activity`, programmatic Views): `LauncherActivity` (permissions, service, share-sheet intake) → `BrowserActivity` (main screen) · `SettingsActivity` · viewers: `PlayerActivity` (video **and audio**), `ImageViewerActivity` (pictures, **animated GIF on API 28+**), `PdfViewerActivity`, `TextViewerActivity` (new).
+- `core/*` = in-process server + file layer, unchanged protocol: `/p/*` peer routes for other LANShare devices; **`/api/dl` is the only local route left** (viewers stream through it with Range support; it now answers 127.0.0.1/::1 only — previously the whole `/api/*` UI API was reachable from the LAN). Dead code removed: `Core.page`, all other `/api/*` routes, print jobs.
 
-## NOT native yet (remaining work, suggested order)
-1. **Compile + device test** everything (checklist in HANDOVER.md Batch 8 + test: copy phone→peer, peer→SMB, cut, cancel, search on SMB root, pull-to-refresh, add/remove SMB, rotate during a job).
-2. ~~Native start screen~~ **DONE (Batch 10, uncompiled)**: `LauncherActivity` = launcher; asks permissions, starts `LanShareService`, waits for `Core.url`/`Core.error` (40 s), then opens `BrowserActivity` (CLEAR_TOP|SINGLE_TOP). Waits while a permission screen is on top (`active`). `MainActivity` no longer asks permissions / is not exported.
-3. ~~Share-sheet receive~~ **DONE (Batch 10, uncompiled)**: `LauncherActivity.handleShare` copies to `<storage>/LANShare Shared/`, passes names as extra `share` (JSON array) → `BrowserActivity.handleShareExtra/sendShared` (device dialog → `Jobs.start("local", ..., INBOX, false, "Sending")`). `MainActivity.handleShare/runShare` are now dead code (delete in cleanup).
-4. **Archives** (`!` paths): `ArcEp` already serves them via `Jobs.ep(dev)`. Native: tap zip/rar → `navigate(path + "!")`; show `ArcProg.current()` (poll like `/api/arcjob`) with Cancel (`Jobs.all[id].cancel`, `Cancelled` → go back); "Extract" action = `Jobs.start(dev, paths.map{ it + "!" }, dev, dir, false, "Extracting")` (see Routes `"extract"`). Read-only: hide cut/delete/rename/new-folder inside archives. Remove the `contains('!')` guards in `BrowserActivity.onCreate`.
-5. **Zip action**: selection menu → name dialog → `Jobs.startZip(dev, paths, dir, name)`; hide inside archives.
-6. **Print – DECISION: stays web.** Do not port. Selection menu → "Print…" (`BrowserActivity.printSelected`) starts `MainActivity` with extra `print` = `{dev,path,names}`; `ui.html` `PRINT_REQ`/`printBoot()` loads that folder, selects the names, runs the unchanged `doPrint()`; dialog cancelled (selection intact, no error toast) → `LSAndroid.closeHost()`. Printed/phone-print → stays in web UI (job progress, `PhonePrint` needs the host Activity alive). Split-screen disabled in print mode. `doPrint/printOptions/pvSheets` untouched (pvSheets must stay identical to `images_to_sheets()` in pcprint.py). Cleanup (step 11) must therefore KEEP `ui.html`, `MainActivity` WebView + `Bridge` print/closeHost/printRequest, `MiniHttp`, `Routes` `/api/print|printer|ls|dl|info|clip|paste|rm|stat|space|zip?`
-7. **Settings screen**: rename device (`Cfg.name`, `Cfg.nameCustom`, `Cfg.save()`, `Core.disc.announce()`), edit SMB share (currently add/remove only), diagnostics (`Core.disc.ifaces/list`), About/version.
-8. **Web-UI-only features to port**: favorites/recent (check `ui.html` for storage – localStorage keys `LSC`, favorites), dual-pane/tablet layout, storage-permission banner (`Core.storageOk == false` → button to `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`), file details dialog (`Endpoint.stat(v)` returns JSON: times, flags, folder totals, media info), rename/info for devices.
-9. **Viewers gaps**: `.gif/.svg/.heic(<API28)` still use the HTML viewer → add a simple native path (Movie/AnimatedImageDrawable for gif on API 28+, `androidx.core`/Glide-free decode otherwise; svg via external app); audio: add native audio playback (reuse `PlayerActivity` with audio-only UI or a `MediaSession` service for background play).
-10. **Remote thumbnails** (peer/SMB): only if wanted; would need ranged reads (`Endpoint.open` + `Thumbs`/`VideoThumbs.make(Source)` works on any `Source`) with disk cache. Folder item counts for peers/SMB likewise (`Endpoint.ls` only; no counts API).
-11. **Cleanup when done**: delete `ui.html`, WebView/JS bridge in `MainActivity`, `Routes.kt` `/api/*` routes that only the web UI used (keep `/p/*` peer routes, `/api/dl`, `/api/thumb`, `/api/vthumb` if viewers still use URLs), `Core.page`.
+## Added in this batch
+- **Upload**: main menu ⋮ → "Upload files here…" (SAF picker, multi-select) → `Jobs.startUpload` (works for this phone / peers / SMB; unknown sizes are staged in cache; cancel removes the half-uploaded remote file). Progress/Cancel in the normal job bar.
+- **Save to phone**: selection menu on a peer/SMB device → copies into `/Download` (`Jobs.start(dev, …, "local", "/Download", …)`).
+- **Audio**: tap an audio file → playlist of the folder's audio in `PlayerActivity`; music screen (note + title), controls stay visible, keeps playing when the activity is stopped (process kept alive by `LanShareService`). No MediaSession/notification controls (would need a `MediaSessionService`).
+- **GIF**: `ImageDecoder` → `AnimatedImageDrawable` (no pinch-zoom while animating; below API 28 the first frame is shown). SVG opens in another app (`.svg` removed from the text-extension set so it gets `image/svg+xml`).
+- **Text viewer**: source/text files (`TEXT_EXT`, dot-files) open natively (first 1 MB, UTF-8/UTF-16 BOM/windows-1254, selectable, 3 font sizes, wrap toggle). "Open with…" still hands a file to other apps.
+- **Remote thumbnails** (peers/SMB): JPEG → embedded EXIF thumbnail (header read only); other pictures ≤ 4 MB → fetched + sampled; videos → `VideoThumbs.make(Source)` with ranged reads. 2-thread pool, memory cache only. Not inside archives.
 
-## Conventions for the next session
-- User prefs: maximum info density, no preamble/closers, apply fixes directly to files, deliver **only modified files as a zip**, bullets over prose, assume expert context, pick the most reasonable interpretation instead of asking.
-- Code style in `BrowserActivity`: plain `android.app.Activity`, programmatic Views (no XML, no AppCompat), RecyclerView, `io` thread pool + `ui` Handler, static `LruCache`s keyed `"<dev>|<path>"`, selection keyed by full path, `Result<T>` for background results.
-- `org.json` drops keys on `put(k, null)` – use `JSONObject.NULL`. Never call `removeFirst()/removeLast()` on `java.util.List` (Android < 15).
-- Virtual paths: `/` root; `vnorm/vjoin/vdir/vbase` in `core/Util.kt`; SMB root `/` lists shares (cannot paste/mkdir there).
-- Likely compile-risk spots in `BrowserActivity.kt`: smart-casts on captured vars, `Job` name resolution (`core.Job`), `Result.success(Jobs.start(..))` inference, `PopupMenu` anchors, `progressTintList` (API 21 ok).
+## Still not done
+- **Tablet dual-pane** (two browsers side by side). Grid already scales its column count with the width.
+- Disk cache for remote thumbnails; background-audio notification/MediaSession; SVG rendering; pinch-zoom on animated GIF.
+- Folder item counts for peers/SMB (`Endpoint.ls` has no counts API).
 
-## Batch 10 status (end of session)
-- Added `LauncherActivity` (launcher + permissions + share intake), `BrowserActivity` Print… entry + share picker, `ui.html` print-mode hook (`PRINT_REQ`/`printBoot`), `MainActivity` bridge `printRequest/closeHost`. Uncompiled, untested on device.
-- Next, in order: (1) compile + fix; (2) native Settings (step 7); (3) archives + zip/extract (steps 4-5); (4) upload picker, download-to-phone, audio/text viewers, split-screen drop.
-- Printing stays web (see step 6). Device checks: share-sheet send, print cancel, PC print, phone print, cold start with permission screens.
+## Test checklist (first device run)
+1. Cold start (permission screens), share-sheet send, rotate during a job.
+2. Browse phone / peer / SMB; copy, cut, paste across devices; cancel; search; pull-to-refresh; add/edit/remove SMB.
+3. **Upload** 2 files + 1 file of unknown size to phone, peer, SMB; cancel mid-way. **Save to phone** a folder from a peer.
+4. mp3/flac/m4a playlist (screen off, back to browser, Home); video with subtitles; GIF; HEIC; PDF; .txt/.php/.json; .svg (external app).
+5. zip open/cancel, rar, zip inside a peer, Extract, Zip, Details, storage-permission banner.
+6. Thumbnails on a peer photo folder (EXIF thumbs appear fast), SMB video folder (watch network use).
+
+## Conventions
+- User prefs: dense output, no preamble/closers, apply fixes directly, deliver **only modified files as a zip** (list deleted files separately), assume expert context.
+- `org.json` drops keys on `put(k, null)` → `JSONObject.NULL`. Never `removeFirst()/removeLast()` on `java.util.List` (Android < 15).
+- Virtual paths: `/` root; `vnorm/vjoin/vdir/vbase` in `core/Util.kt`; SMB root `/` lists shares (cannot paste/mkdir/upload there).
+- `Result<T>` for background results; annotate (`val r: Result<String> = try {…}`) when adding new ones.

@@ -27,8 +27,7 @@ import java.io.File
 /**
  * Entry point of the app (no WebView). Asks for the permissions, starts the background service, copies files that
  * arrive through the Android share sheet into "LANShare Shared", waits until the server is up and then opens the
- * native browser ([BrowserActivity]). The old web UI ([MainActivity]) is only used for printing and the tools that
- * are not native yet.
+ * native browser ([BrowserActivity]). The app has no web UI any more: everything after this screen is native.
  */
 class LauncherActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
