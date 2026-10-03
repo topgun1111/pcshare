@@ -55,9 +55,16 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+    packaging { resources { excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     lint { checkReleaseBuilds = false; abortOnError = false }  // lintVital must never block the APK
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
 chaquopy { defaultConfig { version = "3.11"; pip { install("Pillow"); install("smbprotocol") } } }
-dependencies { implementation("androidx.core:core-ktx:1.13.1") }
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")      // thumbnails: EXIF rotation
+    implementation("com.hierynomus:smbj:0.13.0")                      // SMB2/3 client (pure Java)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")          // MD4/RC4 for NTLM (Android's BC lacks them)
+    implementation("org.slf4j:slf4j-android:1.7.36")
+}

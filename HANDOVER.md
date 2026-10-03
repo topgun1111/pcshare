@@ -1,3 +1,5 @@
+> **Kotlin port in progress — read `HANDOVER_KOTLIN.md` first.** The text below describes the Chaquopy/Python build (still the default).
+
 # LANShare → Android: Handover
 
 **Approach:** Chaquopy (embedded Python 3.11) runs the unchanged `lanshare.py` server inside a foreground
