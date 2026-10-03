@@ -229,10 +229,16 @@ class ImageViewerActivity : Activity() {
                 bm = r.first; dim = r.second
             } catch (e: OutOfMemoryError) { err = "Not enough memory for this picture"
             } catch (e: Exception) { err = e.message ?: "Cannot open this picture" }
+            val rb = bm
+            val re = err
+            val rd = dim
             ui.post {
                 if (my != gen || isDestroyed) return@post
                 loading.remove(pos)
-                if (bm != null) { cache.put(pos, bm); dim?.let { d -> dims[pos] = d } } else failed[pos] = err ?: "Cannot open this picture"
+                if (rb != null) {
+                    cache.put(pos, rb)
+                    if (rd != null) dims[pos] = rd
+                } else failed[pos] = re ?: "Cannot open this picture"
                 holder(pos)?.show(pos)
                 if (pager.currentItem == pos) updateTitle(pos)
             }

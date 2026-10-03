@@ -38,7 +38,6 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -64,7 +63,6 @@ import java.nio.charset.CodingErrorAction
  * Subtitle files next to a video (same name: .srt .vtt .ass .ssa) are picked up automatically; their text is converted to UTF-8
  * first (old Turkish files are windows-1254), so ğ ş ı İ ö ü ç show correctly.
  */
-@androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : Activity() {
     companion object {
         /** JSON handed over by MainActivity.Bridge.play(): {start, items:[{name, url, key, subs:[{name, url}]}]} */
