@@ -137,7 +137,13 @@ object Routes {
                 val e = Jobs.ep(b.getString("dev"))
                 when (b.getString("op")) {
                     "mkdir" -> e.mkdir(vnorm(b.getString("path")))
-                    "rm" -> { val ps = b.getJSONArray("paths").strings(); for (p in ps) e.remove(vnorm(p)) }
+                    "rm" -> {   // delete everything that can be deleted; report what could not instead of stopping at the first problem
+                        val ps = b.getJSONArray("paths").strings()
+                        val errs = ArrayList<Exception>()
+                        for (p in ps) try { e.remove(vnorm(p)) } catch (x: Exception) { errs.add(x) }
+                        if (errs.size == 1 && ps.size == 1) throw errs[0]
+                        if (errs.isNotEmpty()) throw IOException("${errs.size} of ${ps.size} items not deleted - " + errs.take(3).joinToString("; ") { errText(it) })
+                    }
                     "rename" -> e.rename(vnorm(b.getString("path")), b.getString("name"))
                     else -> throw BadReq("unknown op")
                 }

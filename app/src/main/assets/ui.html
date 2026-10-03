@@ -311,6 +311,9 @@ let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 const pfKey=()=>S.dev+'|'+S.path;
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
   S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s'}
+  // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
+  try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
+    if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
 function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}

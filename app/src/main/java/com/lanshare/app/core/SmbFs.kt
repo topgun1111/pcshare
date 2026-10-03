@@ -1,6 +1,8 @@
 package com.lanshare.app.core
 
 import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.msdtyp.FileTime
+import com.hierynomus.msfscc.fileinformation.FileBasicInformation
 import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2CreateDisposition
 import com.hierynomus.mssmb2.SMB2CreateOptions
@@ -170,7 +172,7 @@ private object Srvsvc {
         return out
     }
 
-    /** Disk shares of the server (drives like C$ and normal shared folders), without ADMIN$/IPC$/print$. */
+    /** Disk shares of the server (normal shared folders only): every hidden share ending in $ (C$, D$, ADMIN$, IPC$, ...) is left out. */
     fun list(session: Session, host: String): List<String> {
         val ps = session.connectShare("IPC$") as? PipeShare ?: throw IOException("The PC does not allow listing its shares")
         val pipe = ps.open("srvsvc", SMB2ImpersonationLevel.Impersonation, EnumSet.of(AccessMask.MAXIMUM_ALLOWED), null,
@@ -179,7 +181,7 @@ private object Srvsvc {
             val ack = pipe.transact(bind())
             if (ack.size < 3 || ack[2].toInt() != 12) throw IOException("The PC refused the share list request")
             return parse(pipe.transact(enumRequest("\\\\" + host)))
-                .filter { (it.second and 0x0f) == 0 && it.first.isNotEmpty() && it.first.lowercase() !in HIDDEN }
+                .filter { (it.second and 0x0f) == 0 && it.first.isNotEmpty() && !it.first.endsWith("$") && it.first.lowercase() !in HIDDEN }
                 .map { it.first }
         } finally {
             try { pipe.close() } catch (_: Exception) {}
@@ -252,7 +254,9 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
             return when (e.status.name) {   // matched by name: stays compatible across smbj versions
                 "STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE" -> NotFound(msg)
                 "STATUS_BAD_NETWORK_NAME" -> NotFound("Drive/share not found on that PC")
-                "STATUS_ACCESS_DENIED", "STATUS_LOGON_FAILURE", "STATUS_ACCOUNT_DISABLED", "STATUS_ACCOUNT_LOCKED_OUT",
+                "STATUS_ACCESS_DENIED" -> Denied("Access denied by the PC (protected, read-only or not allowed for this user)")
+                "STATUS_SHARING_VIOLATION" -> IOException("In use by another program on the PC")
+                "STATUS_LOGON_FAILURE", "STATUS_ACCOUNT_DISABLED", "STATUS_ACCOUNT_LOCKED_OUT",
                 "STATUS_WRONG_PASSWORD", "STATUS_PASSWORD_EXPIRED" -> Denied("Access denied - check the username and password")
                 "STATUS_OBJECT_NAME_COLLISION" -> Exists(msg)
                 else -> IOException(msg)
@@ -293,19 +297,13 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     private fun rel(v: String) = vnorm(v).trim('/').replace('/', '\\')
 
-    /** Drives/shares the PC offers: RPC share list, or (if the PC refuses that) the admin drive shares C$..Z$. */
+    /** Shared folders the PC offers (RPC share list); hidden $ shares such as C$ are not shown. */
     private fun shareNames(): List<String> {
         val client = SMBClient(cfg)
         try {
             val session = client.connect(host, port).authenticate(auth())
             val names = try { Srvsvc.list(session, host) } catch (_: Exception) { emptyList() }
-            if (names.isNotEmpty()) return names
-            val found = ArrayList<String>()
-            for (c in 'C'..'Z') {
-                val n = "${c}\$"
-                try { session.connectShare(n).close(); found.add(n) } catch (_: Exception) {}
-            }
-            return found
+            return names
         } finally {
             try { client.close() } catch (_: Exception) {}
         }
@@ -315,7 +313,7 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         try {
             val names = shareNames()
             Smb.state[id] = true
-            if (names.isEmpty()) throw NotFound("No drives or shared folders found on that PC")
+            if (names.isEmpty()) throw NotFound("No shared folders found on that PC (hidden $ shares are not shown - share a folder in Windows first)")
             return names.sortedWith(compareBy({ !(it.length == 2 && it[1] == '$') }, { it.lowercase() }))
                 .map { Item(it, true, 0L, 0L) }
         } catch (e: Throwable) {
@@ -447,11 +445,75 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     override fun mkdir(v: String) { op(v) { s, rv -> mkdirs(s, rel(rv)) } }
 
+    private fun isReparse(a: Long) = EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_REPARSE_POINT)
+
+    private fun why(e: Throwable): String = if (e is SMBApiException) when (e.status.name) {
+        "STATUS_ACCESS_DENIED" -> "access denied"
+        "STATUS_SHARING_VIOLATION" -> "in use by another program"
+        "STATUS_CANNOT_DELETE" -> "protected or read-only"
+        "STATUS_DIRECTORY_NOT_EMPTY" -> "folder not empty"
+        else -> e.status.name.removePrefix("STATUS_").lowercase().replace('_', ' ')
+    } else (e.message ?: e.javaClass.simpleName)
+
+    /** Deletes this one entry (file, empty folder or link) without following links; clears read-only once if needed. Already gone = fine. */
+    private fun delEntry(s: DiskShare, p: String, link: Boolean) {
+        fun once() {
+            val opts = EnumSet.of(SMB2CreateOptions.FILE_DELETE_ON_CLOSE)
+            if (link) opts.add(SMB2CreateOptions.FILE_OPEN_REPARSE_POINT)   // a junction/symlink is removed itself, its target is never touched
+            s.open(p, EnumSet.of(AccessMask.DELETE), EnumSet.noneOf(FileAttributes::class.java),
+                SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, opts).close()
+        }
+        try { once() } catch (e: SMBApiException) {
+            when (e.status.name) {
+                "STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE" -> return
+                "STATUS_CANNOT_DELETE", "STATUS_ACCESS_DENIED" -> {
+                    try { s.setFileInformation(p, FileBasicInformation(FileTime(0L), FileTime(0L), FileTime(0L), FileTime(0L),
+                        FileAttributes.FILE_ATTRIBUTE_NORMAL.value)) } catch (_: Exception) {}   // drop read-only/hidden/system, then retry once
+                    try { once() } catch (e2: SMBApiException) {
+                        if (e2.status.name in setOf("STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE")) return
+                        throw e2
+                    }
+                }
+                else -> throw e
+            }
+        }
+    }
+
+    /** Empties folder [p] item by item; whatever cannot be deleted is collected in [fails] and the rest carries on. */
+    private fun delTree(s: DiskShare, p: String, fails: MutableList<String>) {
+        val kids = try { s.list(p) } catch (e: Exception) { fails.add("${p.substringAfterLast('\\')}: ${why(e)}"); return }
+        for (c in kids) {
+            val n = c.fileName
+            if (n == "." || n == "..") continue
+            val cp = "$p\\$n"
+            val link = isReparse(c.fileAttributes)
+            try {
+                if (isDir(c.fileAttributes) && !link) {
+                    val before = fails.size
+                    delTree(s, cp, fails)
+                    if (fails.size > before) continue   // something inside stayed, so the folder cannot go either
+                }
+                delEntry(s, cp, link)
+            } catch (e: Exception) { fails.add("$n: ${why(e)}") }
+        }
+    }
+
     override fun remove(v: String) {
         op(v) { s, rv ->
             if (rv == "/") throw Denied("cannot delete the " + (if (multi) "drive" else "share") + " root")
             val p = rel(rv)
-            if (s.getFileInformation(p).standardInformation.isDirectory) s.rmdir(p, true) else s.rm(p)
+            val name = p.substringAfterLast('\\')
+            val parent = if ('\\' in p) p.substringBeforeLast('\\') else ""
+            // attributes come from the parent's listing: asking for the entry itself would follow a link into its target
+            val me = s.list(parent).firstOrNull { it.fileName.equals(name, ignoreCase = true) } ?: return@op
+            val link = isReparse(me.fileAttributes)
+            val fails = ArrayList<String>()
+            if (isDir(me.fileAttributes) && !link) delTree(s, p, fails)
+            if (fails.isEmpty()) {
+                try { delEntry(s, p, link) } catch (e: Exception) { fails.add("$name: ${why(e)}") }
+            }
+            if (fails.isNotEmpty())
+                throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
         }
     }
 
