@@ -25,7 +25,7 @@ object Cfg {
 
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
-        try { obj = JSONObject(f.readText()) } catch (_: Exception) { obj = JSONObject() }
+        obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy
         if (!obj.has("id")) obj.put("id", UUID.randomUUID().toString().replace("-", "").take(8))
         obj.remove("pin"); obj.remove("paired"); obj.remove("backup_ips")
         if (!obj.has("smb")) obj.put("smb", JSONArray())
@@ -37,7 +37,16 @@ object Cfg {
         save()
     }
 
+    private fun readOr(f: File): JSONObject? = try { if (f.isFile) JSONObject(f.readText()).takeIf { it.has("id") } else null } catch (_: Exception) { null }
+
+    /** Write to a temp file, then rename: a crash or a killed process mid-write can no longer destroy the device id and the SMB logins. */
     @Synchronized fun save() {
-        try { file?.writeText(obj.toString()) } catch (_: Exception) {}
+        val f = file ?: return
+        try {
+            val tmp = File(f.path + ".tmp")
+            tmp.writeText(obj.toString())
+            if (f.isFile) try { f.copyTo(File(f.path + ".bak"), overwrite = true) } catch (_: Exception) {}
+            if (!tmp.renameTo(f)) { f.delete(); if (!tmp.renameTo(f)) f.writeText(obj.toString()) }
+        } catch (_: Exception) {}
     }
 }

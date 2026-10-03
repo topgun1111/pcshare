@@ -11,6 +11,7 @@ class NotFound(msg: String) : IOException(msg)            // FileNotFoundError -
 class Denied(msg: String) : IOException(msg)              // PermissionError   -> 403
 class Exists(msg: String) : IOException(msg)              // FileExistsError   -> 409
 class BadReq(msg: String) : RuntimeException(msg)         // ValueError/KeyError -> 400
+class Full(msg: String) : IOException(msg)                // not enough free space -> 507, never retried
 class Cancelled : RuntimeException("cancelled")           // job cancelled by the user
 
 const val CHUNK = 1 shl 20

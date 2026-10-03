@@ -40,13 +40,16 @@ class LanShareService : Service() {
                 .createNotificationChannel(NotificationChannel(ch, "LANShare", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE)
-        startForeground(1, NotificationCompat.Builder(this, ch)
+        try { startForeground(1, NotificationCompat.Builder(this, ch)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("LANShare is running")
             .setContentText("Sharing on your network").setContentIntent(open).setOngoing(true)
             .addAction(R.drawable.ic_notification, "Stop",
                 PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"),
                     PendingIntent.FLAG_IMMUTABLE)).build())
+        } catch (e: Exception) {   // ForegroundServiceStartNotAllowedException etc.: keep running as a normal service rather than crash
+            android.util.Log.w("LANShare", "startForeground refused: " + e)
+        }
         if (!started) {
             started = true
             val root = Environment.getExternalStorageDirectory().absolutePath

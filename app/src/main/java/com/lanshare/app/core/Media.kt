@@ -63,7 +63,7 @@ object Media {
                 if (w > 0 && h > 0) o.put("w", w).put("h", h)
             }
             r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)?.let { d ->
-                if (d.length >= 8 && d[0] == '2' || d.startsWith("19")) o.put("taken", isoDate(d))
+                if (d.length >= 8 && (d.startsWith("19") || d.startsWith("20"))) o.put("taken", isoDate(d))
             }
         } finally {
             try { r.release() } catch (_: Throwable) {}

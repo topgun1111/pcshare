@@ -102,6 +102,7 @@ class RemoteFs(peer: Peer) : Endpoint {
             when (r.status) {
                 404 -> throw NotFound(txt)
                 403 -> throw Denied(txt)
+                507 -> throw Full(txt)
                 else -> throw IOException("$name: $txt")
             }
         }

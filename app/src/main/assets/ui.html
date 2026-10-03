@@ -240,9 +240,44 @@ body.kid #fab svg{width:20px;height:20px}
 .lead .dub{position:absolute;right:3px;bottom:3px;padding:0 4px;border-radius:8px;background:#0009;color:#fff;font-size:10px;font-weight:500;line-height:14px}
 .dupb{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--warn);color:#3b2a00;font-size:11px;font-weight:600;vertical-align:middle}
 #newb{flex:none;height:28px;padding:0 10px;border:1px solid var(--bd);border-radius:14px;font-size:12px;margin-right:6px}#newb.on{background:var(--sel);color:var(--onsel);border-color:transparent}
+
+/* side drawer (hamburger, top left) */
+.bar.mainb{padding-left:4px}.bar.mainb .ttl{margin-left:2px}
+#dscrim{position:fixed;inset:0;z-index:13;background:#000;opacity:0;visibility:hidden;transition:opacity .22s,visibility 0s .22s}
+#dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(84vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform .22s ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity .22s}
+body.dopen #dwr{transform:none;visibility:visible;transition:transform .22s ease-out}
+body.dopen{overflow:hidden}
+#dtabs{display:flex;flex:none;border-bottom:1px solid var(--bd);background:var(--bg)}
+#dtabs button{flex:1;height:52px;display:grid;place-items:center;color:var(--mut);position:relative}
+#dtabs button.on{color:var(--fg)}
+#dtabs button.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#0d8f7e}
+#dbody{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.di{display:flex;align-items:center;gap:16px;width:100%;min-height:56px;padding:6px 8px 6px 16px;text-align:left;border-bottom:1px solid var(--bd);transition:background .15s}
+.di:active{background:var(--hov)}
+.di.on{background:var(--sel);color:var(--onsel)}
+.di .dl{flex:none;width:36px;height:36px;display:grid;place-items:center}
+.di .dl svg{width:36px;height:36px}.di .dl svg.s24{width:24px;height:24px}
+.di .dt{flex:1;min-width:0;display:flex;flex-direction:column}
+.di .dt b{font-weight:400;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di .dt small{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di.on .dt small{color:inherit;opacity:.75}
+.di .dr2{flex:none;font-size:14px;color:var(--mut)}
+.di .dx{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
+.di .dx svg{width:20px;height:20px}
+.dmeter{height:3px;border-radius:2px;background:var(--bd);margin-top:4px;overflow:hidden}.dmeter i{display:block;height:100%;background:var(--ac)}
+.dsec{padding:14px 16px 6px;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
+.dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
+.dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
+.ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
+#dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
+#dfoot button{flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#0d8f7e}
+#dfoot button:active{background:var(--hov)}#dfoot svg{width:20px;height:20px}
+#dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
+body.dual #dedge,body.selm #dedge{display:none}
 </style></head><body>
 <header id=top>
-  <div class="bar mainb"><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
+  <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
@@ -253,6 +288,7 @@ body.kid #fab svg{width:20px;height:20px}
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
+<div id=dedge></div><div id=dscrim></div><aside id=dwr aria-label="Navigation"><div id=dtabs></div><div id=dbody></div><div id=dfoot></div></aside>
 <div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
@@ -302,7 +338,7 @@ const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.inn
 const BADGE={dcim:['camera','#333'],download:['download','#2f9bd8'],downloads:['download','#2f9bd8'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#1a6fd1']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
-Object.assign(IC,{info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
+Object.assign(IC,{menu:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',starb:'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',hist:'M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z',folders:'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',pc:'M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z',info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -367,10 +403,12 @@ function shown(){  // visible items in the chosen order; folders always come fir
     return COL.compare(a.name,b.name)*(k==='name'?d:1)})}
 let DUPS=new Set();
 /* Candidates only: same size (>0) and the same name once a copy suffix like \" (1)\", \" - Copy\" or \"_1\" is removed. Nothing is compared byte by byte. */
-function findDups(items){const g={};
+let DUPC=null;
+function findDups(items){if(DUPC&&DUPC.items===items)return DUPC.set;if(items.length>5000){DUPC={items:items,set:new Set()};return DUPC.set}
+  const g={};
   items.forEach(i=>{if(i.dir||!(i.size>0))return;const e=extOf(i.name),b=(e?i.name.slice(0,-e.length-1):i.name).replace(/(\s*\(\d+\)|\s*-\s*copy(\s*\(\d+\))?|\s+copy(\s*\d+)?|_\d+)$/i,'').toLowerCase();
     const k=i.size+'|'+e+'|'+b;(g[k]=g[k]||[]).push(i.name)});
-  const out=new Set();Object.keys(g).forEach(k=>{if(g[k].length>1)g[k].forEach(n=>out.add(n))});return out}
+  const out=new Set();Object.keys(g).forEach(k=>{if(g[k].length>1)g[k].forEach(n=>out.add(n))});DUPC={items:items,set:out};return out}
 function renderTools(V){
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
   const n=V.length,sm=$('#sum');sm.textContent='';
@@ -423,7 +461,7 @@ function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45
 function peerSub(p){const via=p.via||'',ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
   return {via:via,t:[via,ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
 function renderPeers(){
-  const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;
+  const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;if(typeof drawerRefresh==='function')drawerRefresh();
   const box=$('#peers');box.textContent='';
   const mk=(label,id,warn,p)=>{const c=E('button','chip'+(S.dev===id?' on':''));
     c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));
@@ -473,7 +511,7 @@ async function load(){
   clearTimeout(loadT);const dev=S.dev,path=S.path;
   try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
     if(dev!==S.dev||path!==S.path)return;
-    S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(!S.lost)banner('');
+    S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(S.dev==='local'&&r.used!=null)SV('ls_used',String(r.used));if(typeof histPush==='function')histPush();if(!S.lost)banner('');
     S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace()}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
@@ -933,9 +971,9 @@ function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return
 let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 async function track(id){
-  let ok=false;curJob=id;
+  let ok=false,jf=0;curJob=id;
   for(;;){
-    let j;try{j=await api('GET','/api/job?id='+id)}catch(e){toast('⚠ '+e.message,5000);break}
+    let j;try{j=await api('GET','/api/job?id='+id,null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
     if(j.state==='error'){toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
     if(j.state==='cancel'){toast('Cancelled',2500);break}
     if(j.state==='done'){toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
@@ -996,6 +1034,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 // Android back: close the top-most overlay / search / selection; returns true when it handled the press
 function lsBack(){
+  if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
   for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
   if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
@@ -1003,6 +1042,95 @@ function lsBack(){
   if(S.sel.size){S.sel.clear();render();return true}
   if(S.path&&S.path!=='/'){go(S.path.slice(0,S.path.lastIndexOf('/'))||'/');return true}
   return false}
+
+/* ---- side drawer: tabs Folders / Favorites / Recent, quick folders, devices ---- */
+const DRW={tab:+LD('ls_dtab','0')||0};
+const JL=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){return d}};
+let FAV=JL('ls_fav',[]),HIS=JL('ls_his',[]);
+const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devName(dev)):path.split('/').filter(Boolean).pop();
+const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
+const isFav=(dev,path)=>FAV.some(f=>sameLoc(f,{dev,path}));
+function histPush(){const e={dev:S.dev,path:S.path,t:Date.now()};
+  if(e.dev==='local'&&e.path==='/')return;
+  if(HIS[0]&&sameLoc(HIS[0],e))return;
+  HIS=HIS.filter(h=>!sameLoc(h,e));HIS.unshift(e);if(HIS.length>40)HIS.length=40;
+  try{localStorage.setItem('ls_his',JSON.stringify(HIS))}catch(x){}
+  if(document.body.classList.contains('dopen')&&DRW.tab===2)drawerRender()}
+function favSave(){try{localStorage.setItem('ls_fav',JSON.stringify(FAV))}catch(e){}}
+function favToggle(dev,path){
+  if(isFav(dev,path))FAV=FAV.filter(f=>!sameLoc(f,{dev,path}));
+  else FAV.push({dev,path,name:baseName(dev,path),dn:dev==='local'?'':devName(dev)});
+  favSave();drawerRender()}
+function drawerOpen(){document.body.classList.add('dopen');drawerRender()}
+function drawerClose(){document.body.classList.remove('dopen')}
+function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
+// jump to any device + folder (used by every drawer entry)
+function openLoc(dev,path){
+  drawerClose();
+  if(dev!=='local'&&!S.peers.find(x=>x.id===dev)){toast('\u26a0 That device is not available right now',3000);return}
+  S.newest=false;S.dev=dev;S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);load()}
+function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, meter}
+  const b=E('div','di'+(o.on?' on':''));b.setAttribute('role','button');b.tabIndex=0;
+  const l=E('span','dl');l.append(o.lead);
+  const t=E('span','dt');t.append(E('b','',o.title));if(o.sub)t.append(E('small','',o.sub));
+  if(o.meter!=null){const m=E('div','dmeter'),i=E('i');i.style.width=o.meter+'%';m.append(i);t.append(m)}
+  b.append(l,t);
+  if(o.right)b.append(E('span','dr2',o.right));
+  if(o.x){const x=E('button','dx');x.setAttribute('aria-label',o.x.label);x.append(ic(o.x.icon));x.onclick=e=>{e.stopPropagation();o.x.fn()};b.append(x)}
+  b.onclick=o.onclick;b.onkeydown=e=>{if(e.key==='Enter')b.click()};return b}
+const DQ=[['Download','Download'],['DCIM','DCIM'],['Movies','Movies'],['Pictures','Pictures'],['Music','Music'],['Documents','Documents']];
+function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
+  const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
+  const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
+function drawerRender(){
+  // tabs
+  const tb=$('#dtabs');tb.textContent='';
+  [['folders','Folders'],['star','Favorites'],['hist','Recent']].forEach((t,n)=>{
+    const b=E('button',DRW.tab===n?'on':'');b.setAttribute('aria-label',t[1]);b.append(ic(t[0]));
+    b.onclick=()=>{DRW.tab=n;SV('ls_dtab',String(n));drawerRender()};tb.append(b)});
+  const bd=$('#dbody'),keep=bd.scrollTop;bd.textContent='';
+  const ft=$('#dfoot');ft.textContent='';
+  const here=(dev,path)=>S.dev===dev&&S.path===path;
+  if(DRW.tab===0){
+    const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
+    bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
+    bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
+    bd.append(E('div','dsep'));
+    bd.append(E('div','dsec','Quick folders'));
+    DQ.forEach(q=>{const p='/'+q[0];bd.append(dItem({lead:folderLead(q[0]),title:q[1],on:here('local',p),onclick:()=>openLoc('local',p)}))});
+    bd.append(E('div','dsep'));
+    bd.append(E('div','dsec','Devices'));
+    S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
+    if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
+    const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
+    const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
+    const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
+    ft.append(add,smb,st)}
+  else if(DRW.tab===1){
+    const cur=isFav(S.dev,S.path);
+    const a=dItem({lead:ic(cur?'star':'starb','s24'),title:cur?'Remove this folder':'Add this folder',sub:baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),onclick:()=>favToggle(S.dev,S.path)});
+    a.querySelector('.dl svg').style.color='#e2ac5f';bd.append(a);bd.append(E('div','dsep'));
+    if(!FAV.length)bd.append(E('div','dnone','No favorites yet.\nTap the star above to pin the current folder.'));
+    FAV.forEach(f=>bd.append(dItem({lead:folderLead(f.name),title:f.name,sub:(f.dev==='local'?'This device':(devName(f.dev)!=='device'?devName(f.dev):f.dn))+' \u00b7 '+f.path,on:here(f.dev,f.path),onclick:()=>openLoc(f.dev,f.path),x:{icon:'close',label:'Remove',fn:()=>favToggle(f.dev,f.path)}})));
+    const dn=bd.querySelector('.dnone');if(dn)dn.style.whiteSpace='pre-line'}
+  else{
+    if(!HIS.length)bd.append(E('div','dnone','Folders you open will show up here.'));
+    HIS.forEach(h=>bd.append(dItem({lead:folderLead(baseName(h.dev,h.path)),title:baseName(h.dev,h.path),sub:(h.dev==='local'?'This device':devName(h.dev))+' \u00b7 '+h.path,on:here(h.dev,h.path),onclick:()=>openLoc(h.dev,h.path),x:{icon:'close',label:'Remove',fn:()=>{HIS=HIS.filter(z=>!sameLoc(z,h));try{localStorage.setItem('ls_his',JSON.stringify(HIS))}catch(e){}drawerRender()}}})));
+    if(HIS.length){const c=E('button');c.append(ic('del'),E('span','','Clear history'));c.onclick=()=>{HIS=[];try{localStorage.removeItem('ls_his')}catch(e){}drawerRender()};ft.append(c)}}
+  bd.scrollTop=keep}
+$('#menub').onclick=drawerOpen;
+$('#dscrim').onclick=drawerClose;
+// swipe: from the left edge opens, swipe left on the drawer closes
+(()=>{let x0=0,y0=0,mode=0;
+  const st=(e,m)=>{if(e.touches.length!==1)return;x0=e.touches[0].clientX;y0=e.touches[0].clientY;mode=m};
+  $('#dedge').addEventListener('touchstart',e=>st(e,1),{passive:true});
+  $('#dwr').addEventListener('touchstart',e=>st(e,2),{passive:true});
+  $('#dscrim').addEventListener('touchstart',e=>st(e,2),{passive:true});
+  document.addEventListener('touchmove',e=>{if(!mode)return;const dx=e.touches[0].clientX-x0,dy=e.touches[0].clientY-y0;
+    if(Math.abs(dy)>Math.abs(dx)*1.2&&Math.abs(dy)>14){mode=0;return}
+    if(mode===1&&dx>50){mode=0;drawerOpen()}else if(mode===2&&dx<-50){mode=0;drawerClose()}},{passive:true});
+  document.addEventListener('touchend',()=>{mode=0},{passive:true})})();
 $('#cog').onclick=openSettings;
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};

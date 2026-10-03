@@ -234,6 +234,9 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
         fun create(cfg: JSONObject): Endpoint = SmbFs(cfg)
 
+        /** A share was removed in Settings: close its cached connections now instead of leaving them open until they go stale. */
+        fun forget(shareId: String) { pool.keys.filter { it.startsWith("$shareId|") }.forEach { k -> pool.remove(k)?.close() } }
+
         private fun isDir(a: Long) = EnumWithValue.EnumUtils.isSet(a, FileAttributes.FILE_ATTRIBUTE_DIRECTORY)
     }
 
@@ -261,13 +264,13 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
     }
 
     private fun mapErr(e: Throwable): Throwable {
-        if (e is NotFound || e is Denied || e is Exists || e is BadReq || e is Cancelled) return e
+        if (e is NotFound || e is Denied || e is Exists || e is BadReq || e is Cancelled || e is Full) return e
         if (e is SMBApiException) {
             val msg = (e.message ?: "").ifEmpty { e.status.name }
             return when (e.status.name) {   // matched by name: stays compatible across smbj versions
                 "STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_NO_SUCH_FILE" ->
                     NotFound("Not found on the PC (moved, deleted, or a broken link?)")
-                "STATUS_DISK_FULL", "STATUS_QUOTA_EXCEEDED" -> IOException("The PC drive is full")
+                "STATUS_DISK_FULL", "STATUS_QUOTA_EXCEEDED" -> Full("The PC drive is full")
                 "STATUS_OBJECT_NAME_INVALID", "STATUS_OBJECT_PATH_SYNTAX_BAD", "STATUS_NAME_TOO_LONG" -> BadReq("The PC does not accept that file name or path")
                 "STATUS_DIRECTORY_NOT_EMPTY" -> IOException("Folder is not empty")
                 "STATUS_CANNOT_DELETE" -> Denied("Cannot delete - protected or read-only")

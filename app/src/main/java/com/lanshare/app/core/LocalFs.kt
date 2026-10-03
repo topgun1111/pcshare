@@ -165,6 +165,11 @@ class LocalFs(rootPath: String) : Endpoint {
 
     override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
         val p = real(v)
+        try {   // refuse up front instead of failing at 95 % of a big transfer (keeps 5 MB spare for Android itself)
+            val free = root.usableSpace
+            if (size > 0 && free > 0 && size + (5L shl 20) > free)
+                throw Full("Not enough free space on $name (needs ${size / 1048576} MB, ${free / 1048576} MB free)")
+        } catch (e: SecurityException) {}
         p.parentFile?.mkdirs()
         val tmp = File(p.path + ".lspart")
         try {

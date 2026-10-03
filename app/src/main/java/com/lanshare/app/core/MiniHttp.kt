@@ -76,7 +76,7 @@ class Exchange(
 
     private fun reason(c: Int) = when (c) {
         200 -> "OK"; 206 -> "Partial Content"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
-        409 -> "Conflict"; 500 -> "Internal Server Error"; else -> "Status"
+        409 -> "Conflict"; 500 -> "Internal Server Error"; 507 -> "Insufficient Storage"; else -> "Status"
     }
 }
 
@@ -85,6 +85,7 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
     private val server = ServerSocket()
     private val pool = Executors.newCachedThreadPool { r -> Thread(r, "http").also { it.isDaemon = true } }
     @Volatile private var running = true
+    private val slots = java.util.concurrent.Semaphore(MAX_CONN)   // bounds threads/sockets when many clients (or a runaway scan) connect at once
 
     fun bind(): MiniHttp {
         server.reuseAddress = true
@@ -95,9 +96,15 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
     fun start() {
         Thread({
             while (running) {
-                try { val s = server.accept(); pool.execute { serve(s) } }
-                catch (_: SocketException) { if (!running) break }
-                catch (_: IOException) {}
+                try {
+                    val s = server.accept()
+                    if (!slots.tryAcquire()) { try { s.close() } catch (_: Exception) {}; continue }   // overloaded: refuse, the client retries
+                    try { pool.execute { try { serve(s) } finally { slots.release() } } }
+                    catch (e: Throwable) { slots.release(); try { s.close() } catch (_: Exception) {} }
+                }
+                catch (_: SocketException) { if (!running) break; Thread.sleep(200) }   // e.g. out of file descriptors: never spin
+                catch (_: IOException) { Thread.sleep(200) }
+                catch (_: Throwable) { Thread.sleep(200) }
             }
         }, "http-accept").also { it.isDaemon = true }.start()
     }
@@ -106,19 +113,23 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
 
     private fun serve(s: Socket) {
         try {
-            s.tcpNoDelay = true; s.keepAlive = true; s.soTimeout = 120_000
+            s.tcpNoDelay = true; s.keepAlive = true; s.soTimeout = IDLE_MS
             val ins = java.io.BufferedInputStream(s.getInputStream(), 65536)
             val out = s.getOutputStream()
             val ip = s.inetAddress?.hostAddress ?: ""
             while (true) {
+                s.soTimeout = IDLE_MS            // waiting for the next request on a kept-alive connection: do not hold a thread for minutes
                 val line = readLine(ins) ?: break
+                s.soTimeout = BUSY_MS            // a request is in flight (large uploads/downloads)
                 if (line.isEmpty()) continue
                 val parts = line.split(" ")
                 if (parts.size < 2) break
                 val http10 = parts.getOrNull(2) == "HTTP/1.0"
                 val hdrs = HashMap<String, String>()
+                var nh = 0
                 while (true) {
                     val l = readLine(ins) ?: return
+                    if (++nh > 100) return           // header flood / garbage: drop the connection
                     if (l.isEmpty()) break
                     val i = l.indexOf(':')
                     if (i > 0) hdrs[l.substring(0, i).trim().lowercase()] = l.substring(i + 1).trim()
@@ -138,11 +149,14 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
                     while (body.read(sink) >= 0) { /* drain */ }
                 }
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {   // incl. Errors: an uncaught Throwable in a worker thread would kill the app process
         } finally { try { s.close() } catch (_: Exception) {} }
     }
 
     companion object {
+        const val MAX_CONN = 96
+        const val IDLE_MS = 30_000
+        const val BUSY_MS = 120_000
         /** Like Python's parse_qs: '+' and %XX decoded, blank values dropped, first value wins. */
         fun parseQuery(q: String): Map<String, String> {
             val m = LinkedHashMap<String, String>()

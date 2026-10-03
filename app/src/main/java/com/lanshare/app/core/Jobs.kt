@@ -67,6 +67,11 @@ class Job(@Volatile var label: String) {
 object Jobs {
     val all = ConcurrentHashMap<String, Job>()
 
+    private fun prune() {
+        val now = System.currentTimeMillis()
+        all.entries.removeAll { it.value.state != "run" && it.value.end > 0 && now - it.value.end > 600_000 }
+    }
+
 
     const val PRINT_PORT = 8799   // pcprint.py on the PC listens here
 
@@ -102,6 +107,7 @@ object Jobs {
         val src = ep(srcId)
         val (ip, pcName) = printTarget(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        prune()
         val job = Job("Printing on $pcName")
         all[jid] = job
         Thread({ printWork(job, src, ip, pcName, paths) }, "print-$jid").also { it.isDaemon = true }.start()
@@ -112,6 +118,7 @@ object Jobs {
     fun startDelete(devId: String, paths: List<String>): String {
         val e = ep(devId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        prune()
         val job = Job("Deleting")
         job.bytes = false
         job.total = maxOf(paths.size, 1).toLong()
@@ -153,10 +160,11 @@ object Jobs {
         } catch (x: Cancelled) {
             job.label = "Stopped after $removed items"
             job.state = "cancel"
-        } catch (x: Exception) {
+        } catch (x: Throwable) {
             job.error = errText(x)
             job.state = "error"
         } finally {
+            if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
         }
     }
@@ -222,10 +230,11 @@ object Jobs {
             }
         } catch (e: Cancelled) {
             job.state = "cancel"
-        } catch (e: Exception) {
+        } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             job.error = errText(e)
             job.state = "error"
         } finally {
+            if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
         }
     }
@@ -240,8 +249,7 @@ object Jobs {
         val src = ep(srcId)
         val dst = ep(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
-        val now = System.currentTimeMillis()
-        all.entries.removeAll { it.value.state != "run" && it.value.end > 0 && now - it.value.end > 600_000 }
+        prune()
         val job = Job(label)
         all[jid] = job
         Thread({ work(job, src, dst, srcId, paths, ddir, cut) }, "job-$jid").also { it.isDaemon = true }.start()
@@ -322,10 +330,11 @@ object Jobs {
             job.state = "cancel"
             val d = dest
             if (d != null && !(same && cut)) try { dst.remove(d) } catch (_: Exception) {}   // drop the half-copied item; finished ones stay
-        } catch (e: Exception) {
+        } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             job.error = errText(e)
             job.state = "error"
         } finally {
+            if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
         }
     }
@@ -348,9 +357,11 @@ object Jobs {
             } catch (e: Denied) { job.done -= sent; throw e
             } catch (e: Exists) { job.done -= sent; throw e
             } catch (e: BadReq) { job.done -= sent; throw e
+            } catch (e: Full) { job.done -= sent; throw e   // retrying cannot create space
             } catch (e: Exception) {   // IOException or a raw library error: retry a few times
                 job.done -= sent
                 if (attempt == 3) throw IOException(errText(e))
+                if (job.cancel) throw Cancelled()
                 Thread.sleep(1500L * (attempt + 1))
             }
         }

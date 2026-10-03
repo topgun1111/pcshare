@@ -22,11 +22,13 @@ object Routes {
             }
         } catch (e: NotFound) { ex.fail(404, errText(e))
         } catch (e: Denied) { ex.fail(403, errText(e))
+        } catch (e: Full) { ex.fail(507, errText(e))
         } catch (e: Exists) { ex.fail(409, errText(e))
         } catch (e: BadReq) { ex.fail(400, errText(e))
         } catch (e: JSONException) { ex.fail(400, errText(e))
         } catch (e: FileNotFoundException) { ex.fail(if ((e.message ?: "").contains("denied", true)) 403 else 404, errText(e))
-        } catch (e: Exception) { ex.fail(500, errText(e)) }
+        } catch (e: Exception) { ex.fail(500, errText(e))
+        } catch (e: Throwable) { ex.fail(500, "internal error: " + errText(e)) }   // OutOfMemoryError, LinkageError (a library missing on this Android version) ...
     }
 
     private fun ok(ex: Exchange) = ex.json(JSONObject().put("ok", true))
@@ -171,6 +173,7 @@ object Routes {
         if (remove.isNotEmpty()) {
             list.removeAll { it.optString("id") == remove }
             Smb.state.remove(remove)
+            SmbFs.forget(remove)
         } else {
             val host = b.optString("host").trim()
             if (host.isEmpty()) throw BadReq("enter the PC's address")
