@@ -782,7 +782,7 @@ function renderBar(){
     btn('copy','Copy',()=>setClip('copy'));btn('cut','Cut',()=>setClip('cut'));
     if(has)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
-    if(S.peers.some(p=>p.id!==S.dev))btn('print','Print on PC',doPrint);
+    if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',doPrint);
     if(S.sel.size===1)btn('edit','Rename',doRename);
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     btn('del','Delete',doDelete,'dng')
@@ -802,10 +802,10 @@ async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}r
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});
   watchJob(r.job);if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
-function pickDevice(f,t){return new Promise(res=>{
+function pickDevice(f,t,extra){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',t||'Send to…'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-  const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});S.peers.filter(p=>p.id!==S.dev||f).forEach(p=>opts.push(p));
+  const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});(extra||[]).forEach(x=>opts.push(x));S.peers.filter(p=>p.id!==S.dev||f).forEach(p=>opts.push(p));
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
   opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead');ld.append(ic('phone'));b.append(ld,E('span','',p.name));b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
@@ -817,12 +817,23 @@ function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
 async function doSend(){
   const p=await pickDevice();if(!p)return;
   try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
-/* Print on PC: streams the selected files to pcprint.py on the PC, which prints them on its default printer */
+/* Print: either on this phone itself (Android print system: any printer the phone knows) or on a PC running pcprint.py.
+   The files can come from any connected device (this phone, another phone, a PC / SMB share). */
+const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
 async function doPrint(){
-  // the PC is usually the SMB device (even the one being browsed); other LANShare devices are phones
-  const smb=S.peers.filter(p=>p.smb);
-  const pc=smb.length===1?smb[0]:await pickDevice(1,'Print on…');if(!pc)return;
-  try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:pc.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
+  const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
+  const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
+  const all=here.concat(pcs);
+  const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
+  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here);
+  if(!to)return;
+  try{localStorage.setItem('printTo',to.id)}catch(e){}
+  if(to.id==='__here'){
+    const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
+    if(!f.length)return toast('Select files to print');
+    f.forEach(i=>LSAndroid.printHere(location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),i.name));
+    return}
+  try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 async function doDelete(){
   const n=S.sel.size;
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;

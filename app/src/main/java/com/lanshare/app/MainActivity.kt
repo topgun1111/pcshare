@@ -15,6 +15,15 @@ import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.*
+import android.graphics.*
+import android.graphics.pdf.PdfDocument
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.*
+import android.text.TextUtils
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.Executors
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -42,6 +51,8 @@ class MainActivity : Activity() {
         @JavascriptInterface fun open(url: String) { saveToDownloads(url, null, true) }
         /** Same, but always shows the system "Open with" app chooser. */
         @JavascriptInterface fun openWith(url: String) { saveToDownloads(url, null, true, true) }
+        /** Print a file on this phone through the Android print system (pdf, images, text). */
+        @JavascriptInterface fun printHere(url: String, name: String) { printLocally(url, name) }
     }
     private var pendingShare: List<String>? = null
 
@@ -291,6 +302,89 @@ class MainActivity : Activity() {
             try { if (mime != "*/*") go("*/*") else throw e }
             catch (e2: Exception) { Toast.makeText(this, "No app can open .${ext}. Long-press the file to download it instead.", Toast.LENGTH_LONG).show() }
         } catch (e: Exception) { Toast.makeText(this, "Cannot open: ${e.message}", Toast.LENGTH_LONG).show() }
+    }
+
+    // ---- print on this phone (Android print framework: Wi-Fi/Mopria/vendor plugins/Save as PDF) ----
+    private val printPool = Executors.newSingleThreadExecutor()
+    private var printWv: WebView? = null
+    private fun toastUi(t: String) = runOnUiThread { Toast.makeText(this, t, Toast.LENGTH_LONG).show() }
+
+    private fun printLocally(url: String, name: String) {
+        printPool.execute {
+            try {
+                val host = URL(url).host
+                if (host != "127.0.0.1" && host != "localhost") throw IOException("bad address")
+                val ext = name.substringAfterLast('.', "").lowercase()
+                val kind = when (ext) {
+                    "pdf" -> "pdf"
+                    "png", "jpg", "jpeg", "bmp", "gif", "webp" -> "img"
+                    "txt", "log", "md", "csv", "tsv", "json", "xml", "ini", "cfg", "conf", "yml", "yaml", "srt", "sql", "py", "kt", "java", "js", "html", "htm" -> "txt"
+                    else -> { toastUi("Can't print .$ext on the phone. Use a PC with pcprint.py for Office files."); return@execute }
+                }
+                val dir = File(cacheDir, "print").apply { mkdirs() }
+                dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
+                val f = File(dir, "${System.currentTimeMillis()}_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+                URL(url).openStream().use { i -> f.outputStream().use { o -> i.copyTo(o) } }
+                val pdf = if (kind == "img") imageToPdf(f) else f
+                runOnUiThread {
+                    try {
+                        val pm = getSystemService(PRINT_SERVICE) as PrintManager
+                        if (kind == "txt") printText(pm, f, name) else pm.print(name, pdfAdapter(pdf, name), PrintAttributes.Builder().build())
+                    } catch (e: Exception) { toastUi("Print failed: ${e.message}") }
+                }
+                Thread.sleep(1200)   // let the print dialog open before the next file's
+            } catch (e: Exception) { toastUi("Print failed: ${e.message ?: e.javaClass.simpleName}") }
+        }
+    }
+
+    private fun pdfAdapter(f: File, name: String) = object : PrintDocumentAdapter() {
+        override fun onLayout(o: PrintAttributes?, n: PrintAttributes?, c: CancellationSignal?, cb: LayoutResultCallback, x: Bundle?) {
+            if (c?.isCanceled == true) { cb.onLayoutCancelled(); return }
+            cb.onLayoutFinished(PrintDocumentInfo.Builder(name).setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                .setPageCount(PrintDocumentInfo.PAGE_COUNT_UNKNOWN).build(), true)
+        }
+        override fun onWrite(p: Array<out PageRange>?, d: ParcelFileDescriptor, c: CancellationSignal?, cb: WriteResultCallback) {
+            try {
+                f.inputStream().use { i -> FileOutputStream(d.fileDescriptor).use { o -> i.copyTo(o) } }
+                cb.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+            } catch (e: Exception) { cb.onWriteFailed(e.message) }
+        }
+    }
+
+    /** One image fitted on one A4 page (landscape if the picture is wide), returned as a PDF file. */
+    private fun imageToPdf(img: File): File {
+        val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(img.path, b)
+        var s = 1
+        while (b.outWidth / s > 3000 || b.outHeight / s > 3000) s *= 2
+        val bm = BitmapFactory.decodeFile(img.path, BitmapFactory.Options().apply { inSampleSize = s }) ?: throw IOException("unreadable image")
+        val land = bm.width > bm.height
+        val pw = if (land) 842 else 595
+        val ph = if (land) 595 else 842
+        val doc = PdfDocument()
+        val page = doc.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create())
+        val m = 24f
+        val k = minOf((pw - 2 * m) / bm.width, (ph - 2 * m) / bm.height)
+        val dw = bm.width * k; val dh = bm.height * k
+        val l = (pw - dw) / 2; val t = (ph - dh) / 2
+        page.canvas.drawBitmap(bm, null, RectF(l, t, l + dw, t + dh), Paint(Paint.FILTER_BITMAP_FLAG))
+        doc.finishPage(page)
+        val out = File(img.parentFile, img.name + ".pdf")
+        out.outputStream().use { doc.writeTo(it) }
+        doc.close(); bm.recycle()
+        return out
+    }
+
+    private fun printText(pm: PrintManager, f: File, name: String) {
+        val wv = WebView(this)
+        printWv = wv   // keep a reference until the job has been handed to the print system
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(v: WebView, u: String) {
+                pm.print(name, v.createPrintDocumentAdapter(name), PrintAttributes.Builder().build())
+            }
+        }
+        val txt = TextUtils.htmlEncode(f.readText().take(2_000_000))
+        wv.loadDataWithBaseURL(null, "<html><body><pre style=\"white-space:pre-wrap;word-wrap:break-word;font-size:11pt\">$txt</pre></body></html>", "text/html", "UTF-8", null)
     }
 
     @SuppressLint("BatteryLife")
