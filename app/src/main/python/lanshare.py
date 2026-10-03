@@ -84,6 +84,39 @@ def save_cfg():
         pass
 
 
+# ----------------------------------------------------------------- backup (Tailscale / VPN) addresses
+def is_vpn_ip(ip):
+    """True for Tailscale-style CGNAT addresses (100.64.0.0/10) - used as a backup path, LAN is preferred."""
+    try:
+        return ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10")
+    except ValueError:
+        return False
+
+
+def norm_backup(s):
+    """'100.101.102.103' or '100.101.102.103:8765' -> normalised string; raises ValueError if invalid."""
+    s = str(s).strip()
+    ip, port = s, None
+    if s.count(":") == 1:
+        ip, _, ps = s.partition(":")
+        port = int(ps)
+        if not 1 <= port <= 65535:
+            raise ValueError("bad port")
+    if not isinstance(ipaddress.ip_address(ip.strip()), ipaddress.IPv4Address):
+        raise ValueError("IPv4 only")
+    return ip.strip() + (":%d" % port if port else "")
+
+
+def backup_list():
+    out = []
+    for e in CFG.get("backup_ips", []):
+        try:
+            out.append(norm_backup(e))
+        except ValueError:
+            pass
+    return out
+
+
 # ----------------------------------------------------------------- paths
 def vnorm(p):
     return posixpath.normpath("/" + str(p).replace("\\", "/").lstrip("/"))
@@ -577,6 +610,7 @@ class Discovery:
         self.probe_pool = ThreadPoolExecutor(max_workers=8)  # own pool: live checks must never queue behind a subnet scan
         self.gen = 0            # bump -> listen() re-creates its UDP socket
         self.tick = time.time()  # last beacon-loop heartbeat (detects phone sleep / unlock)
+        self.bwake = threading.Event()  # wake backup_loop early (settings changed)
 
     def msg(self):
         return json.dumps({"app": "lanshare", "id": CFG["id"], "name": CFG["name"], "port": self.port,
@@ -587,7 +621,7 @@ class Discovery:
                 "ips": sorted(self.own_ips)}
 
     def start(self):
-        for fn in (self.listen, self.beacon, self.tcp_loop, self.live_loop):
+        for fn in (self.listen, self.beacon, self.tcp_loop, self.live_loop, self.backup_loop):
             threading.Thread(target=fn, daemon=True).start()
 
     # ---- peer table
@@ -601,6 +635,8 @@ class Discovery:
                                        "seen": now, "ips": [], "ok": True}
             elif not p.get("ok", True):
                 p["ip"] = ip  # last address failed - try the newest one
+            elif is_vpn_ip(p["ip"]) and not is_vpn_ip(ip):
+                p["ip"] = ip  # reachable on the LAN again - prefer it over the Tailscale backup
             p["port"], p["name"], p["seen"] = int(port), str(name)[:40], now
             allips = set(p["ips"]) | {ip}
             for i in (ips or []):
@@ -817,8 +853,9 @@ class Discovery:
 
     # ---- keep known peers alive / fix their address
     def probe(self, peer):
-        cands = [peer["ip"]] + [i for i in peer.get("ips", []) if i != peer["ip"]]
-        for ip in cands[:4]:
+        rest = sorted((i for i in peer.get("ips", []) if i != peer["ip"]), key=is_vpn_ip)  # LAN first, VPN last
+        cands = [peer["ip"]] + rest
+        for ip in cands[:5]:
             try:
                 m = hello_url(ip, peer["port"], 2.5)
                 if m.get("id") == peer["id"]:
@@ -842,6 +879,55 @@ class Discovery:
                 list(self.probe_pool.map(self.probe, self.list()))
             except Exception:
                 pass
+
+    # ---- backup addresses (Tailscale etc.): tried in the background, also when the LAN is down
+    def try_backup(self, entry):
+        """Connect to one saved backup address. True if a LANShare device answered."""
+        ip, port0 = entry, None
+        if entry.count(":") == 1:
+            ip, _, ps = entry.partition(":")
+            port0 = int(ps)
+        if ip in self.own_ips:
+            return False
+        for port in ([port0] if port0 else range(BASE_PORT, BASE_PORT + 5)):
+            try:
+                m = hello_url(ip, port, 4.0)
+            except ConnectionRefusedError:
+                continue            # nobody on this port - try the next one
+            except Exception:
+                return False        # timeout / unreachable: device offline or VPN down
+            try:
+                if m.get("app") == "lanshare" and m["id"] != CFG["id"]:
+                    self.add(m["id"], ip, m["port"], m["name"], m.get("ips"))
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def backup_status(self):
+        peers = self.list()
+        res = []
+        for e in backup_list():
+            ip = e.partition(":")[0]
+            hit = next((p for p in peers if ip in p.get("ips", []) or ip == p["ip"]), None)
+            res.append({"ip": e, "name": hit["name"] if hit else "",
+                        "up": bool(hit and hit.get("ok", True))})
+        return res
+
+    def backup_loop(self):
+        while True:
+            try:
+                peers = self.list()
+                for e in backup_list():
+                    ip = e.partition(":")[0]
+                    # already known and healthy -> live_loop keeps it fresh
+                    if any((ip in p.get("ips", []) or ip == p["ip"]) and p.get("ok", True) for p in peers):
+                        continue
+                    self.try_backup(e)
+            except Exception:
+                pass
+            self.bwake.wait(15)
+            self.bwake.clear()
 
     def add_ip(self, ip):
         port0 = None
@@ -1271,6 +1357,25 @@ class H(BaseHTTPRequestHandler):
             return self.json({"job": start_job(CLIP["dev"], CLIP["paths"], b["dev"], b["dir"], cut, "Moving" if cut else "Copying")})
         if route == "send":
             return self.json({"job": start_job(b["dev"], b["paths"], b["to"], INBOX, False, "Sending")})
+        if route == "backups" and self.command == "GET":
+            return self.json(DISC.backup_status())
+        if route == "backups":  # b was already read above
+            cur, found = backup_list(), None
+            if b.get("remove"):
+                cur = [e for e in cur if e != str(b["remove"]).strip()]
+            else:
+                try:
+                    e = norm_backup(b["add"])
+                except (ValueError, KeyError):
+                    raise ValueError("enter an IPv4 address like 100.101.102.103")
+                if e not in cur:
+                    cur.append(e)
+            CFG["backup_ips"] = cur[:10]
+            save_cfg()
+            if b.get("add"):
+                found = DISC.try_backup(norm_backup(b["add"]))
+            DISC.bwake.set()
+            return self.json({"ok": True, "found": found, "list": DISC.backup_status()})
         if route == "addip":
             if not DISC.add_ip(str(b["ip"]).strip()):
                 raise IOError("no LANShare device found at that address")
@@ -1994,8 +2099,31 @@ function openSettings(){
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sm.textContent=THN[S.theme]};card.append(rt);
+  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Reach devices outside this network');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','Tailscale / backup IPs'),sb);rb.append(tb);
+  rb.onclick=()=>{close();openBackups()};card.append(rb);
+  api('GET','/api/backups').then(l=>{if(l.length)sb.textContent=l.filter(x=>x.up).length+' of '+l.length+' connected'}).catch(()=>{});
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+async function openBackups(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Tailscale / backup IPs'));
+  const info=E('p','','Add the Tailscale IP (100.x.x.x) of your other devices. They are tried in the background and used when the device is not found on this Wi-Fi. Tailscale must be running on both devices.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const list=E('div');card.append(list);
+  const draw=l=>{list.textContent='';
+    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No backup addresses yet'));list.append(e)}
+    l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
+      t.append(E('b','',x.ip),E('small','',x.up?'Connected'+(x.name?' · '+x.name:''):'Not reachable (offline or Tailscale off)'));
+      rm.onclick=async()=>{try{draw((await api('POST','/api/backups',{remove:x.ip})).list)}catch(e){toast('⚠ '+e.message,4000)}};
+      r.append(t,rm);list.append(r)})};
+  try{draw(await api('GET','/api/backups'))}catch(e){draw([])}
+  const add=E('button','tbtn fill','Add IP');add.onclick=async()=>{
+    const ip=await dlg({title:'Add Tailscale IP',msg:'e.g. 100.101.102.103 (optionally :port)',input:{label:'100.x.x.x'},ok:'Add'});if(!ip)return;
+    try{const r=await api('POST','/api/backups',{add:ip});draw(r.list);toast(r.found?'Connected!':'Saved - will keep trying',3000);S.sig=''}
+    catch(e){toast('⚠ '+e.message,4000)}};
+  const d=E('button','tbtn','Done');d.onclick=()=>{close();openSettings()};
+  const act=E('div','dact');act.append(d,add);card.append(act);o.append(card)}
 function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
   let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
