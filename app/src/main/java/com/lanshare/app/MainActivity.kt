@@ -118,7 +118,7 @@ class MainActivity : Activity() {
             }
         }
         setContentView(web)
-        askPermissions()
+        if (!intent.getBooleanExtra("fromBrowser", false)) askPermissions()   // the native browser (launcher) already asked
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()
         handleShare(intent)

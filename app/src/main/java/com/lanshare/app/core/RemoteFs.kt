@@ -117,7 +117,7 @@ class RemoteFs(peer: Peer) : Endpoint {
     fun ping() { bytes("GET", "ping") }
 
     override fun ls(v: String): List<Item> {
-        val a = JSONArray(String(bytes("GET", "ls", mapOf("path" to v)), Charsets.UTF_8))
+        val a = JSONArray(String(bytes("GET", "ls", mapOf("path" to v), 10_000), Charsets.UTF_8))   // a dead peer must not hold the screen for 30 s
         return (0 until a.length()).map { Item.fromJson(a.getJSONObject(it)) }
     }
 
