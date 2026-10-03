@@ -385,7 +385,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.');
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
@@ -606,16 +606,39 @@ function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});
 function mediaList(){return shown().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
-function viewImg(i){openMedia(i)}
-function playVid(i){openMedia(i)}
+/* Android app: pictures open in the dedicated native viewer (folder = gallery); animated GIF / SVG and browsers keep the built-in viewer */
+function nativeImg(i){
+  if(!(window.LSAndroid&&LSAndroid.viewImages))return false;
+  const heicOk=!!(LSAndroid.sdk&&LSAndroid.sdk()>=28);
+  const okImg=x=>!x.dir&&kind(x)==='img'&&!/\.(svg|gif)$/i.test(x.name)&&(heicOk||!/\.(heic|heif)$/i.test(x.name));
+  if(!okImg(i))return false;
+  const V=shown().filter(okImg);if(!V.length)return false;
+  const url=m=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
+  const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0}));
+  const at=Math.max(0,V.findIndex(m=>m.name===i.name));
+  try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
+function viewImg(i){if(!nativeImg(i))openMedia(i)}
+/* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
+function nativePlay(i){
+  if(!(window.LSAndroid&&LSAndroid.play))return false;
+  const V=shown().filter(x=>!x.dir&&kind(x)==='vid');if(!V.length)return false;
+  const subs=vis().filter(x=>!x.dir&&/\.(srt|vtt|ass|ssa)$/i.test(x.name));
+  const url=m=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
+  const base=n=>n.replace(/\.[^.]+$/,'').toLowerCase();
+  const items=V.map(m=>{const b=base(m.name);return{name:m.name,url:url(m),key:S.dev+'|'+S.path+'/'+m.name+'|'+(m.size||0),
+    subs:subs.filter(s=>{const c=base(s.name);return c===b||c.indexOf(b+'.')===0}).map(s=>({name:s.name,url:url(s)}))}});
+  const at=Math.max(0,V.findIndex(m=>m.name===i.name));
+  try{LSAndroid.play(JSON.stringify({start:at,items}));return true}catch(e){return false}}
+function playVid(i){if(!nativePlay(i))openMedia(i)}
 function openMedia(first){
   const o=$('#pv'),L=mediaList();if(!L.length)return;
   let idx=Math.max(0,L.findIndex(m=>m.name===first.name)),cur=null,hideT=0,rate=1;
   const U=m=>'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
   o.textContent='';o.style.display='flex';o.className='ui';
-  const stage=E('div','pst'),hd=E('div','ph2'),x=E('button','ibtn'),tw=E('div','pt'),ttl=E('b'),sub=E('small'),dl=E('button','ibtn');
-  x.append(ic('close'));dl.append(ic('download'));x.style.color=dl.style.color='#fff';
-  tw.append(ttl,sub);hd.append(x,tw,dl);
+  const stage=E('div','pst'),hd=E('div','ph2'),x=E('button','ibtn'),tw=E('div','pt'),ttl=E('b'),sub=E('small'),dl=E('button','ibtn'),np=E('button','ibtn');
+  x.append(ic('close'));dl.append(ic('download'));np.append(ic('play'));x.style.color=dl.style.color=np.style.color='#fff';np.style.display='none';
+  np.title='Play in video player';np.onclick=()=>{const v=stage.querySelector('video');if(v)v.pause();nativePlay(L[idx])};
+  tw.append(ttl,sub);hd.append(x,tw,np,dl);
   const pr=E('button','pnav l'),nx=E('button','pnav r');pr.append(ic('prev'));nx.append(ic('chev'));
   o.append(stage,hd,pr,nx);
   const showUI=on=>o.classList.toggle('ui',on);
@@ -628,6 +651,7 @@ function openMedia(first){
   o._close=close;x.onclick=close;dl.onclick=()=>window.open(U(L[idx])+'&dl=1','_blank');pr.onclick=()=>step(-1);nx.onclick=()=>step(1);
   const step=d=>{const n=idx+d;if(n<0||n>=L.length)return false;idx=n;load(d);return true};
   const fail=(pane,er,m,msg)=>{er.textContent=msg;er.append(document.createElement('br'));
+    if(window.LSAndroid&&LSAndroid.play&&kind(m)==='vid'){const pb=E('button','tbtn','Play in player');pb.style.marginRight='8px';pb.onclick=()=>nativePlay(m);er.append(pb)}
     const a=E('button','tbtn','Download');a.onclick=()=>window.open(U(m)+'&dl=1','_blank');er.append(a);
     if(window.LSAndroid&&LSAndroid.open){const b=E('button','tbtn','Open with...');b.style.marginLeft='8px';b.onclick=()=>LSAndroid.open(location.origin+U(m));er.append(b)}
     er.style.display='block'};
@@ -705,6 +729,7 @@ function openMedia(first){
     clean();const m=L[idx];ttl.textContent=m.name;sub.textContent=(idx+1)+' / '+L.length+' \u00b7 '+fmt(m.size||0);
     pr.style.visibility=idx>0?'':'hidden';nx.style.visibility=idx<L.length-1?'':'hidden';showUI(true);
     const pane=E('div','ppane');stage.append(pane);
+    np.style.display=(kind(m)==='vid'&&window.LSAndroid&&LSAndroid.play)?'':'none';
     kind(m)==='vid'?mkVideo(pane,m):mkImage(pane,m);
     if(dir&&pane.animate)pane.animate([{transform:'translateX('+dir*35+'%)',opacity:0},{transform:'none',opacity:1}],{duration:180,easing:'ease-out'});
     [idx-1,idx+1].forEach(k=>{const n=L[k];if(n&&kind(n)==='img'&&(n.size||0)<12e6){const p=new Image();p.src=U(n)}})}

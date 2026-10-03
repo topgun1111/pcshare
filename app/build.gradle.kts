@@ -65,4 +65,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")          // MD4/RC4 for NTLM (Android's BC lacks them)
     implementation("org.slf4j:slf4j-android:1.7.36")
     implementation("com.github.junrar:junrar:7.5.5")                  // RAR (v4) reader, pure Java; ZIP uses java.util.zip
+    implementation("androidx.media3:media3-exoplayer:1.3.1")           // dedicated video player (PlayerActivity)
+    implementation("androidx.media3:media3-ui:1.3.1")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
 }

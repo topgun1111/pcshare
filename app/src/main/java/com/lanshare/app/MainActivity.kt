@@ -51,6 +51,16 @@ class MainActivity : Activity() {
         @JavascriptInterface fun open(url: String) { saveToDownloads(url, null, true) }
         /** Same, but always shows the system "Open with" app chooser. */
         @JavascriptInterface fun openWith(url: String) { saveToDownloads(url, null, true, true) }
+        /** Video tapped: open the dedicated player (Media3) with the folder's videos as a playlist. [json] = {start, items:[{name,url,key,subs}]} */
+        @JavascriptInterface fun play(json: String) {
+            runOnUiThread { PlayerActivity.pending = json; startActivity(Intent(this@MainActivity, PlayerActivity::class.java)) }
+        }
+        /** Picture tapped: open the dedicated image viewer with the folder's pictures. [json] = {start, items:[{name,url,size}]} */
+        @JavascriptInterface fun viewImages(json: String) {
+            runOnUiThread { ImageViewerActivity.pending = json; startActivity(Intent(this@MainActivity, ImageViewerActivity::class.java)) }
+        }
+        /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
+        @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) { printLocally(url, name) }
     }
