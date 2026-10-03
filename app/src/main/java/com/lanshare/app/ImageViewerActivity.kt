@@ -49,11 +49,11 @@ import java.util.concurrent.Executors
  * (/api/dl), so local files, other devices and SMB shares all work. Swipe between pictures, pinch / double-tap to zoom, drag to
  * pan (at the edge of a zoomed picture the drag turns into a page swipe), EXIF rotation is applied, big photos are decoded
  * down to at most 4096 px (so no out-of-memory), neighbours are preloaded, tap hides the bars, share, slideshow.
- * Animated GIF plays on Android 9+ (ImageDecoder); older versions show its first frame. SVG is opened by the browser in another app.
+ * (Animated GIF and SVG stay in the built-in browser viewer.)
  */
 class ImageViewerActivity : Activity() {
     companion object {
-        /** JSON handed over by BrowserActivity: {start, items:[{name, url, size}]} */
+        /** JSON handed over by MainActivity.Bridge.viewImages(): {start, items:[{name, url, size}]} */
         @Volatile var pending: String? = null
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
@@ -318,34 +318,13 @@ class ImageViewerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- pager pages
-    private inner class Pg(val root: FrameLayout, val iv: ZoomImageView, val spin: ProgressBar, val err: TextView, val anim: ImageView) : RecyclerView.ViewHolder(root) {
+    private inner class Pg(val root: FrameLayout, val iv: ZoomImageView, val spin: ProgressBar, val err: TextView) : RecyclerView.ViewHolder(root) {
         var pos = -1
-        fun stopAnim() {
-            val d = anim.drawable
-            if (Build.VERSION.SDK_INT >= 28 && d is android.graphics.drawable.AnimatedImageDrawable) d.stop()
-            anim.setImageDrawable(null); anim.visibility = View.GONE
-        }
-        /** GIF on Android 9+: the cached file is decoded as an animated drawable (no pinch zoom, tap still hides the bars). */
-        private fun tryAnimate(p: Int) {
-            if (Build.VERSION.SDK_INT < 28 || !items[p].name.lowercase().endsWith(".gif")) return
-            val f = File(File(cacheDir, "img"), "$p.bin")
-            if (!f.isFile) return
-            try {
-                val d = android.graphics.ImageDecoder.decodeDrawable(android.graphics.ImageDecoder.createSource(f)) { dec, _, _ ->
-                    dec.setTargetSampleSize(if (f.length() > 20L * 1024 * 1024) 2 else 1)
-                }
-                anim.setImageDrawable(d)
-                anim.visibility = View.VISIBLE
-                iv.visibility = View.INVISIBLE
-                if (d is android.graphics.drawable.AnimatedImageDrawable) { d.repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE; d.start() }
-            } catch (_: Throwable) { stopAnim(); iv.visibility = View.VISIBLE }   // fall back to the still first frame
-        }
         fun show(p: Int) {
             if (p != pos) return
             val bm = cache.get(p)
             val e = failed[p]
             iv.setBmp(bm)
-            if (bm != null && anim.visibility != View.VISIBLE) tryAnimate(p)
             spin.visibility = if (bm == null && e == null) View.VISIBLE else View.GONE
             err.text = e ?: ""
             err.visibility = if (e != null) View.VISIBLE else View.GONE
@@ -358,19 +337,17 @@ class ImageViewerActivity : Activity() {
             val c = parent.context
             val root = FrameLayout(c).apply { layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
             val iv = ZoomImageView(c).apply { onTap = { toggleUi() } }
-            val anim = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER; visibility = View.GONE; setOnClickListener { toggleUi() } }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
             root.addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            root.addView(anim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             root.addView(spin); root.addView(err)
-            return Pg(root, iv, spin, err, anim)
+            return Pg(root, iv, spin, err)
         }
         override fun onBindViewHolder(h: Pg, position: Int) { h.pos = position; h.show(position); request(position) }
-        override fun onViewRecycled(h: Pg) { h.pos = -1; h.stopAnim(); h.iv.visibility = View.VISIBLE; h.iv.setBmp(null) }
+        override fun onViewRecycled(h: Pg) { h.pos = -1; h.iv.setBmp(null) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

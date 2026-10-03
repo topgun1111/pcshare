@@ -20,7 +20,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Parcelable
-import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextUtils
 import android.util.LruCache
@@ -31,7 +30,6 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.*
 import androidx.core.content.FileProvider
-import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -49,14 +47,10 @@ import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Fully native file browser (the whole app is native, there is no WebView): this phone, other LANShare devices and SMB shares
- * (device bar), copy / cut / paste with a native progress bar, recursive search, pull-to-refresh, upload from the phone's file picker,
- * "Save to phone" for files on other devices. No HTTP round-trip for listings: everything goes through [Core.local] / [Jobs.ep] /
- * [Jobs] / [Clip] in-process. Videos and audio open in [PlayerActivity], pictures (incl. animated GIF) in [ImageViewerActivity], PDFs in
- * [PdfViewerActivity], text / source files in [TextViewerActivity]; everything else goes to an installed app.
- * Archives (.zip/.rar/.cbz/.cbr, virtual paths "a.zip!/dir") open like folders (read-only) and can be extracted; Zip packs a selection;
- * Settings is [SettingsActivity]. Print: on this phone through the Android print system ([PhonePrint]) or on a PC running pcprint.py
- * ([PcPrintDialog] options + [Jobs.startPrint]).
+ * Fully native file browser: this phone, other LANShare devices and SMB shares (device bar), copy / cut / paste with a
+ * native progress bar, recursive search and pull-to-refresh. No WebView, no HTTP round-trip for listings: everything
+ * goes through [Core.local] / [Jobs.ep] / [Jobs] / [Clip] in-process. Videos, pictures and PDFs open in the native viewers.
+ * Not native (web UI only): archives (paths with '!'), printing, zip, settings.
  */
 class BrowserActivity : Activity() {
 
@@ -77,14 +71,11 @@ class BrowserActivity : Activity() {
         /** Last folder per device, so switching back to a device returns where you were. */
         private val lastPath = HashMap<String, String>()
 
-        private const val REQ_UPLOAD = 21
-        private val remotePool = pool(2)   // thumbnails of files on other devices / SMB shares (network bound: kept small)
-
         private val EXT: HashMap<String, String> = HashMap<String, String>().also { m ->
             fun add(k: String, s: String) { s.split(' ').forEach { m[it] = k } }
             add("img", "jpg jpeg png gif webp bmp heic heif svg")
             add("vid", "mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts")
-            add("aud", "mp3 wav m4a ogg oga flac aac opus mka wma amr mid midi")
+            add("aud", "mp3 wav m4a ogg flac aac opus")
             add("pdf", "pdf")
             add("zip", "zip rar 7z tar gz cbz cbr")
             add("apk", "apk")
@@ -92,7 +83,7 @@ class BrowserActivity : Activity() {
         }
         private val TEXT_EXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",
             "ini", "cfg", "conf", "env", "md", "log", "sql", "py", "kt", "kts", "java", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb",
-            "sh", "bat", "ps1", "gradle", "properties", "htaccess", "gitignore", "csv", "tsv", "srt", "vtt", "tex", "txt", "html", "htm")   // svg is NOT here: it is a picture for other apps
+            "sh", "bat", "ps1", "gradle", "properties", "htaccess", "gitignore", "csv", "tsv", "srt", "vtt", "tex", "txt", "html", "htm", "svg")
         private val SUB = Regex("(?i).*\\.(srt|vtt|ass|ssa)$")
     }
 
@@ -119,7 +110,6 @@ class BrowserActivity : Activity() {
     private lateinit var jobText: TextView
     private lateinit var jobStat: TextView
     private lateinit var jobProg: ProgressBar
-    private lateinit var permBar: TextView
     private lateinit var pasteBar: LinearLayout
     private lateinit var pasteText: TextView
     private val ad = Adapter()
@@ -151,11 +141,6 @@ class BrowserActivity : Activity() {
     private var asc = true
     private var showHidden = false
 
-    // an archive is being opened (fetched / indexed): [arcTick] shows its progress in the job bar and lets the user cancel it
-    private var arcWait = false
-    private var arcWaitGen = 0
-    private var arcJobId: String? = null
-
     // palette
     private var cBg = 0; private var cCard = 0; private var cFg = 0; private var cMut = 0
     private var cDiv = 0; private var cSel = 0
@@ -166,7 +151,7 @@ class BrowserActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
-        if (Core.url == null) { startActivity(Intent(this, LauncherActivity::class.java)); finish(); return }
+        if (Core.url == null) { Toast.makeText(this, "LANShare is still starting - try again in a moment", Toast.LENGTH_LONG).show(); finish(); return }
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         cBg = if (night) 0xFF121314.toInt() else 0xFFF4F5F6.toInt()
         cCard = if (night) 0xFF1E2022.toInt() else 0xFFFFFFFF.toInt()
@@ -183,7 +168,7 @@ class BrowserActivity : Activity() {
 
         dev = b?.getString("dev") ?: intent.getStringExtra("dev") ?: "local"
         val p0 = b?.getString("cur") ?: intent.getStringExtra("path") ?: "/"
-        cur = if (p0.startsWith("/")) vnorm(p0) else "/"
+        cur = if (p0.startsWith("/") && !p0.contains('!')) p0 else "/"
 
         buildUi()
         setGrid(grid, false)
@@ -191,33 +176,6 @@ class BrowserActivity : Activity() {
         started = true
         navigate(cur, false)
         if (jobIds.isNotEmpty()) ui.post(jobTick)
-        handleShareExtra(intent)
-    }
-
-    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleShareExtra(i) }
-
-    /** Files received from the Android share sheet (already copied to "LANShare Shared" by [LauncherActivity]): pick the target device and send. */
-    private fun handleShareExtra(i: Intent?) {
-        val js = i?.getStringExtra("share") ?: return
-        i.removeExtra("share")
-        val names = try { JSONArray(js).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (_: Exception) { return }
-        if (names.isEmpty()) return
-        ui.postDelayed({ if (!isFinishing && !isDestroyed) sendShared(names) }, 700)   // the device list fills in on the first refresh
-    }
-
-    private fun sendShared(names: List<String>) {
-        refreshDevices()
-        val targets = devs.filter { it.id != "local" }
-        if (targets.isEmpty()) { toast("No other device found - the file(s) are in \"LANShare Shared\" on this phone"); return }
-        val paths = names.map { vnorm("/LANShare Shared/$it") }
-        AlertDialog.Builder(this).setTitle("Send ${paths.size} shared file${if (paths.size == 1) "" else "s"} to\u2026")
-            .setItems(targets.map { it.name }.toTypedArray()) { _, w ->
-                val t = targets[w].id
-                io.execute {
-                    val r = try { Result.success(Jobs.start("local", paths, t, INBOX, false, "Sending")) } catch (e: Exception) { Result.failure(e) }
-                    ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot send") }
-                }
-            }.setNegativeButton("Cancel", null).show()
     }
 
     override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("cur", cur); o.putString("dev", dev) }
@@ -225,7 +183,6 @@ class BrowserActivity : Activity() {
     private var firstResume = true
     override fun onResume() {   // silent refresh after viewers / other apps (not on the very first resume: onCreate just loaded)
         super.onResume()
-        updatePerm()
         ui.removeCallbacks(devTick); ui.post(devTick)
         if (firstResume) { firstResume = false; return }
         if (started && !searching) load(cur)
@@ -233,7 +190,7 @@ class BrowserActivity : Activity() {
 
     override fun onPause() { ui.removeCallbacks(devTick); super.onPause() }
 
-    override fun onDestroy() { ui.removeCallbacks(devTick); ui.removeCallbacks(jobTick); ui.removeCallbacks(arcTick); super.onDestroy() }
+    override fun onDestroy() { ui.removeCallbacks(devTick); ui.removeCallbacks(jobTick); super.onDestroy() }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -281,13 +238,6 @@ class BrowserActivity : Activity() {
         root.addView(crumbScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
         root.addView(View(this).apply { setBackgroundColor(cDiv) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
 
-        permBar = TextView(this).apply {
-            text = "Android hides most files from LANShare. Tap here and allow “All files access”."
-            textSize = 13f; setTextColor(0xFF3E2C00.toInt()); setBackgroundColor(0xFFFFD866.toInt()); setPadding(dp(14), dp(10), dp(14), dp(10)); visibility = View.GONE
-            setOnClickListener { askAllFiles() }
-        }
-        root.addView(permBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
         val body = FrameLayout(this)
         rv = RecyclerView(this).apply { itemAnimator = null; setHasFixedSize(true); setItemViewCacheSize(24); adapter = ad }
         srl = SwipeRefreshLayout(this).apply {
@@ -305,11 +255,7 @@ class BrowserActivity : Activity() {
         jobText = TextView(this).apply { textSize = 14f; setTypeface(null, Typeface.BOLD); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         val cancel = TextView(this).apply {
             text = "Cancel"; textSize = 14f; setTextColor(cAccent); setTypeface(null, Typeface.BOLD); setPadding(dp(12), dp(4), 0, dp(4))
-            setOnClickListener {
-                jobIds.toList().forEach { id -> Jobs.all[id]?.cancel = true }
-                arcJobId?.let { id -> Jobs.all[id]?.cancel = true }
-                jobText.text = "Cancelling…"
-            }
+            setOnClickListener { jobIds.toList().forEach { id -> Jobs.all[id]?.cancel = true }; jobText.text = "Cancelling…" }
         }
         val jrow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         jrow.addView(jobText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); jrow.addView(cancel)
@@ -350,17 +296,13 @@ class BrowserActivity : Activity() {
         bLeft.text = if (sm || searching) (if (sm) "✕" else "←") else "←"
         titleCol.visibility = if (searching) View.GONE else View.VISIBLE
         searchBox.visibility = if (searching) View.VISIBLE else View.GONE
-        tTitle.text = if (sm) "${sel.size} selected" else if (cur == "/") (if (dev == "local") "Main storage" else devName(dev)) else shown(cur.substringAfterLast('/'))
+        tTitle.text = if (sm) "${sel.size} selected" else if (cur == "/") (if (dev == "local") "Main storage" else devName(dev)) else cur.substringAfterLast('/')
         val sub = if (sm) "" else "${items.size} item${if (items.size == 1) "" else "s"}" + (free?.let { " · $it free" } ?: "")
         tSub.text = sub; tSub.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
         if (sm) {
-            val ro = readOnly()
             setBtn(bA, "Copy", 14f, "Copy") { clipSelected("copy") }
-            if (ro) { setBtn(bB, "Extract", 14f, "Extract") { extractSelected() }; bC.visibility = View.GONE }
-            else {
-                setBtn(bB, "Cut", 14f, "Cut") { clipSelected("cut") }
-                setBtn(bC, "🗑", 18f, "Delete") { confirmDelete() }
-            }
+            setBtn(bB, "Cut", 14f, "Cut") { clipSelected("cut") }
+            setBtn(bC, "🗑", 18f, "Delete") { confirmDelete() }
             setBtn(bD, "⋮", 22f, "More") { selectionMenu() }
         } else if (searching) {
             bA.visibility = View.GONE; bB.visibility = View.GONE; bC.visibility = View.GONE
@@ -402,7 +344,7 @@ class BrowserActivity : Activity() {
         crumb(if (dev == "local") "Storage" else devName(dev), "/", cur == "/")
         var acc = ""
         val segs = cur.split('/').filter { it.isNotEmpty() }
-        segs.forEachIndexed { i, s -> acc += "/$s"; crumb(if (s.endsWith("!")) "🗜 " + s.dropLast(1) else s, acc, i == segs.size - 1) }
+        segs.forEachIndexed { i, s -> acc += "/$s"; crumb(s, acc, i == segs.size - 1) }
         crumbScroll.post { crumbScroll.fullScroll(View.FOCUS_RIGHT) }
     }
 
@@ -529,12 +471,6 @@ class BrowserActivity : Activity() {
     private fun parent(p: String): String { val i = p.lastIndexOf('/'); return if (i <= 0) "/" else p.substring(0, i) }
     private fun pathOf(i: Item): String = i.path ?: jn(cur, i.name)
 
-    /** Inside a .zip / .rar ("a.zip!/dir"): read-only, served by the archive layer instead of the plain file system. */
-    private fun inArc(p: String) = p.contains('!') && arcSplit(p) != null
-    private fun readOnly() = inArc(cur) || (searching && selectedItems().any { inArc(pathOf(it)) })
-    private fun shown(n: String) = if (n.endsWith("!") && isArcName(n.dropLast(1))) n.dropLast(1) else n
-    private fun canOpenAsArchive(i: Item) = !i.dir && isArcName(i.name)
-
     private fun navigate(path: String, saveScroll: Boolean) {
         if (saveScroll) states[ck(cur)] = rv.layoutManager?.onSaveInstanceState()
         cur = path; sel.clear()
@@ -548,23 +484,18 @@ class BrowserActivity : Activity() {
     private fun load(path: String) {
         val g = ++gen
         val d = dev
-        val arc = inArc(path)
-        if (arc) { arcWait = true; arcWaitGen = g; ui.removeCallbacks(arcTick); ui.postDelayed(arcTick, 250) }
         io.execute {
-            val r: Result<List<Item>> = try { Result.success(if (d == "local" && !arc) Core.local.ls(path, false) else ep(d).ls(path)) } catch (e: Exception) { Result.failure(e) }
+            val r: Result<List<Item>> = try { Result.success(if (d == "local") Core.local.ls(path, false) else ep(d).ls(path)) } catch (e: Exception) { Result.failure(e) }
             ui.post {
-                if (arcWaitGen == g) { arcWait = false; arcJobId = null; if (jobIds.isEmpty()) jobBar.visibility = View.GONE }
                 if (g != gen || path != cur || d != dev) return@post
                 srl.isRefreshing = false
                 val list = r.getOrNull()
-                val err = r.exceptionOrNull()
                 if (list != null) applyList(path, list)
-                else if (err is Cancelled && arc) { navigate(parent(arcSplit(path)?.first ?: path), false); return@post }   // user cancelled opening the archive: back to its folder
-                else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty(err?.let { errText(it) } ?: "Cannot open this folder") }
+                else { raw = emptyList(); items = emptyList(); ad.notifyDataSetChanged(); showEmpty(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot open this folder") }
                 updateChrome()
             }
             // free space after the list is on screen (a peer / SMB share needs one more round-trip)
-            val sp = try { if (arc) null else if (d == "local") Core.local.space("/") else ep(d).space(path) } catch (_: Exception) { null }
+            val sp = try { if (d == "local") Core.local.space("/") else ep(d).space(path) } catch (_: Exception) { null }
             ui.post {
                 if (d != dev || path != cur) return@post
                 val f = sp?.let { humanSize(it.first) }
@@ -582,26 +513,6 @@ class BrowserActivity : Activity() {
         ui.postDelayed({ srl.isRefreshing = false }, 8000)   // never spin forever on a dead peer
     }
 
-    /** While an archive is being fetched / indexed: label + progress + Cancel in the job bar (what ArcProg reports). */
-    private val arcTick = object : Runnable {
-        override fun run() {
-            if (!arcWait) return
-            if (jobIds.isEmpty()) {
-                val o = ArcProg.current()
-                val id = o.optString("id", "")
-                if (id.isNotEmpty()) {
-                    arcJobId = id
-                    val done = o.optLong("done", 0); val total = o.optLong("total", 1).coerceAtLeast(1)
-                    jobBar.visibility = View.VISIBLE
-                    jobText.text = o.optString("label", "Opening archive…")
-                    jobProg.progress = (done * 1000 / total).toInt().coerceIn(0, 1000)
-                    jobStat.text = "${humanSize(done)} / ${humanSize(total)}"
-                } else if (jobBar.visibility == View.VISIBLE) jobBar.visibility = View.GONE
-            }
-            ui.postDelayed(this, 300)
-        }
-    }
-
     private fun same(a: List<Item>, b: List<Item>): Boolean {
         if (a.size != b.size) return false
         val x = a.sortedBy { it.name }; val y = b.sortedBy { it.name }
@@ -615,7 +526,7 @@ class BrowserActivity : Activity() {
         cache.put(ck(path), nl)
         if (!(loaded && same(raw, nl))) setList(nl)
         loaded = true
-        if (dev != "local" || inArc(path)) return   // counts / prefetch only for this phone's storage (cheap there, slow over the network)
+        if (dev != "local") return   // counts / prefetch only for this phone's storage (cheap there, slow over the network)
         fetchCounts(path)
         val dirs = items.filter { it.dir && !it.name.startsWith(".") }.take(4)   // warm the next likely taps
         ui.postDelayed({ if (cur == path && dev == "local") dirs.forEach { prefetch(jn(path, it.name)) } }, 250)
@@ -740,20 +651,16 @@ class BrowserActivity : Activity() {
 
     private fun mainMenu() {
         val m = PopupMenu(this, bD)
-        val arc = inArc(cur) && !searching
-        if (arc) m.menu.add(0, 5, 0, "Extract all to " + (arcSplit(cur)?.first?.let { vdir(it) }?.let { if (it == "/") "storage root" else vbase(it) } ?: "folder"))
-        else if (!searching) { m.menu.add(0, 1, 0, "New folder"); m.menu.add(0, 6, 0, "Upload files here…") }
+        m.menu.add(0, 1, 0, "New folder")
         m.menu.add(0, 2, 1, "Refresh")
         m.menu.add(0, 3, 2, if (showHidden) "Hide hidden files" else "Show hidden files")
-        m.menu.add(0, 4, 3, "Settings")
+        m.menu.add(0, 4, 3, "Full app (web UI)")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> newFolder()
                 2 -> { if (searching) refreshAfter() else { cache.remove(ck(cur)); Core.rescan(); load(cur) } }
                 3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); relist(); updateChrome() }
-                4 -> startActivity(Intent(this, SettingsActivity::class.java))
-                5 -> extractHere()
-                6 -> pickUpload()
+                4 -> finish()
             }
             true
         }
@@ -779,15 +686,8 @@ class BrowserActivity : Activity() {
         m.menu.add(0, 1, 0, "Select all")
         m.menu.add(0, 2, 1, "Share")
         if (devs.size > 1) m.menu.add(0, 3, 2, "Send to device…")
-        val ro = readOnly()
-        if (one != null && !ro) m.menu.add(0, 4, 3, "Rename")
+        if (one != null) m.menu.add(0, 4, 3, "Rename")
         if (one != null && !one.dir) m.menu.add(0, 5, 4, "Open with…")
-        val picked = selectedItems()
-        if (!ro && picked.isNotEmpty()) m.menu.add(0, 7, 6, "Zip…")
-        if (picked.any { canOpenAsArchive(it) } || ro) m.menu.add(0, 8, 7, "Extract")
-        if (one != null) m.menu.add(0, 9, 8, "Details")
-        if (picked.isNotEmpty() && picked.none { it.dir }) m.menu.add(0, 11, 5, "Print…")
-        if (dev != "local" && picked.isNotEmpty()) m.menu.add(0, 10, 9, "Save to phone (Download)")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> { items.forEach { i -> sel.add(pathOf(i)) }; ad.notifyDataSetChanged(); updateChrome() }
@@ -795,11 +695,6 @@ class BrowserActivity : Activity() {
                 3 -> sendSelected()
                 4 -> renameSelected()
                 5 -> one?.let { i -> openWith(i, true) }
-                7 -> zipSelected()
-                8 -> extractSelected()
-                9 -> one?.let { i -> showDetails(i) }
-                10 -> saveToPhone()
-                11 -> printSelected()
             }
             true
         }
@@ -837,7 +732,7 @@ class BrowserActivity : Activity() {
     private fun confirmDelete() {
         val d = dev
         val paths = selectedItems().map { pathOf(it) }
-        if (paths.isEmpty() || readOnly()) return
+        if (paths.isEmpty()) return
         AlertDialog.Builder(this).setTitle("Delete ${paths.size} item${if (paths.size == 1) "" else "s"}?")
             .setMessage(if (d == "local") "This cannot be undone." else "This deletes them on ${devName(d)} and cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
@@ -860,7 +755,6 @@ class BrowserActivity : Activity() {
 
     private fun newFolder() {
         if (searching) { toast("Leave the search first"); return }
-        if (inArc(cur)) { toast("Archives are read-only"); return }
         if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
         val base = cur
         input("New folder", "", "Create") { n -> runOp { e -> e.mkdir(jn(base, n)) } }
@@ -872,240 +766,9 @@ class BrowserActivity : Activity() {
         input("Rename", i.name, "Rename") { n -> runOp { e -> e.rename(p, n) } }
     }
 
-    // --- archives: Extract + Zip
-
-    private fun startCopyJob(src: String, paths: List<String>, dst: String, dir: String, label: String) {
-        io.execute {
-            val r = try { Result.success(Jobs.start(src, paths, dst, dir, false, label)) } catch (e: Exception) { Result.failure(e) }
-            ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot start") }
-        }
-    }
-
-    /** Selected archives (or entries inside one) are unpacked next to the archive; extracting is a copy job out of "a.zip!". */
-    private fun extractSelected() {
-        val chosen = selectedItems().map { vnorm(pathOf(it)) }
-        val ps = chosen.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
-        val real = ps.filter { arcSplit(it) != null }
-        if (real.isEmpty()) { toast("Select a .zip or .rar file (or something inside one)"); return }
-        val dest = arcSplit(real[0])?.first?.let { vdir(it) } ?: cur
-        sel.clear(); ad.notifyDataSetChanged(); updateChrome()
-        toast("Extracting to ${if (dest == "/") "the storage root" else vbase(dest)}")
-        startCopyJob(dev, real, dev, dest, "Extracting")
-    }
-
-    /** Whole archive / current folder inside it -> the folder that holds the archive. */
-    private fun extractHere() {
-        val a = arcSplit(cur) ?: return
-        val dest = vdir(a.first)
-        toast("Extracting to ${if (dest == "/") "the storage root" else vbase(dest)}")
-        startCopyJob(dev, listOf(cur), dev, dest, "Extracting")
-    }
-
-    private fun zipSelected() {
-        val chosen = selectedItems()
-        val ps = chosen.map { vnorm(pathOf(it)) }
-        if (ps.isEmpty() || readOnly()) return
-        if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
-        val def = if (chosen.size == 1) (if (chosen[0].dir) chosen[0].name else chosen[0].name.substringBeforeLast('.', chosen[0].name))
-                  else (if (cur == "/") devName(dev) else cur.substringAfterLast('/')).ifEmpty { "archive" }
-        val d = dev; val dir = cur
-        input("Zip ${ps.size} item${if (ps.size == 1) "" else "s"}", def, "Zip") { n ->
-            sel.clear(); ad.notifyDataSetChanged(); updateChrome()
-            io.execute {
-                val r = try { Result.success(Jobs.startZip(d, ps, dir, n)) } catch (e: Exception) { Result.failure(e) }
-                ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot zip") }
-            }
-        }
-    }
-
-    // --- upload from this phone's file picker / save to phone
-
-    private fun pickUpload() {
-        if (searching) { toast("Leave the search first"); return }
-        if (inArc(cur)) { toast("Archives are read-only - open a normal folder"); return }
-        if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
-        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        try { startActivityForResult(i, REQ_UPLOAD) } catch (e: Exception) { toast("No file picker available") }
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(req: Int, res: Int, d: Intent?) {
-        super.onActivityResult(req, res, d)
-        if (req != REQ_UPLOAD || res != RESULT_OK || d == null) return
-        val uris = ArrayList<Uri>()
-        val clip = d.clipData
-        if (clip != null) for (k in 0 until clip.itemCount) clip.getItemAt(k).uri?.let { uris.add(it) }
-        if (uris.isEmpty()) d.data?.let { uris.add(it) }
-        if (uris.isEmpty()) return
-        val target = dev; val dir = cur
-        toast("Uploading ${uris.size} file${if (uris.size == 1) "" else "s"} to ${if (dir == "/") devName(target) else vbase(dir)}")
-        io.execute {
-            val list = ArrayList<Jobs.UploadSrc>()
-            for (u in uris) {
-                try { contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-                var nm = "file"
-                var sz = -1L
-                try {
-                    contentResolver.query(u, null, null, null, null)?.use { c ->
-                        if (c.moveToFirst()) {
-                            val ni = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                            if (ni >= 0) c.getString(ni)?.let { n -> nm = n }
-                            val si = c.getColumnIndex(OpenableColumns.SIZE)
-                            if (si >= 0 && !c.isNull(si)) sz = c.getLong(si)
-                        }
-                    }
-                } catch (_: Exception) {}
-                val fname = nm
-                list.add(Jobs.UploadSrc(fname, sz) { contentResolver.openInputStream(u) ?: throw IOException("cannot open $fname") })
-            }
-            val r: Result<String> = try { Result.success(Jobs.startUpload(target, dir, list)) } catch (e: Exception) { Result.failure(e) }
-            ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot upload") }
-        }
-    }
-
-    /** Files / folders of another device or SMB share -> this phone's Download folder (a copy job, with the usual progress bar). */
-    private fun saveToPhone() {
-        val ps = selectedItems().map { vnorm(pathOf(it)) }
-        if (ps.isEmpty() || dev == "local") return
-        val d = dev
-        sel.clear(); ad.notifyDataSetChanged(); updateChrome()
-        toast("Saving to the Download folder of this phone")
-        io.execute {
-            try { Core.local.mkdir("/Download") } catch (_: Exception) {}   // normally exists; make sure the copy job has a destination
-            val r: Result<String> = try { Result.success(Jobs.start(d, ps, "local", "/Download", false, "Downloading")) } catch (e: Exception) { Result.failure(e) }
-            ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot save") }
-        }
-    }
-
-    // --- print: this phone (Android print system) or a PC running pcprint.py
-
-    private val phonePrint by lazy { PhonePrint(this) }
-
-    private fun urlFor(d: String, p: String) =
-        Core.url + "/api/dl?dev=" + URLEncoder.encode(d, "UTF-8") + "&path=" + URLEncoder.encode(p, "UTF-8").replace("+", "%20")
-
-    private fun printSelected() {
-        val picked = selectedItems()
-        if (picked.isEmpty() || picked.any { it.dir }) { toast("Select files to print"); return }
-        val d = dev
-        val ps = picked.map { vnorm(pathOf(it)) }
-        val nm = picked.map { it.name }
-        val last = prefs.getString("printTo", null)
-        val pcs = devs.filter { it.id != "local" && it.ok }.sortedByDescending { it.id == last }
-        if (pcs.isEmpty()) { printHere(d, ps, nm); return }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), 0) }
-        var dlg: AlertDialog? = null
-        fun row(title: String, sub: TextView?, go: () -> Unit) {
-            val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = ripple() }
-            r.addView(TextView(this).apply { text = title; textSize = 16f; setTextColor(cFg) })
-            if (sub != null) r.addView(sub)
-            r.setOnClickListener { dlg?.dismiss(); go() }
-            box.addView(r)
-        }
-        row("This phone (any printer)", null) { printHere(d, ps, nm) }
-        for (p in pcs) {
-            val sub = TextView(this).apply { textSize = 12f; setTextColor(cMut); text = "Checking printer…" }
-            row(p.name, sub) { prefs.edit().putString("printTo", p.id).apply(); printOnPc(d, ps, nm, p) }
-            io.execute {
-                val r: JSONObject? = try { Jobs.printerStatus(p.id) } catch (_: Exception) { null }
-                ui.post {
-                    val pr = if (r == null || r.isNull("printer")) "" else r.optString("printer")
-                    val problem = if (r == null || r.isNull("problem")) "" else r.optString("problem")
-                    when {
-                        r == null || !r.optBoolean("ok", false) -> { sub.text = "Print service not reachable"; sub.setTextColor(0xFFD9534F.toInt()) }
-                        pr.isEmpty() -> { sub.text = "No default printer set on the PC"; sub.setTextColor(0xFFD9534F.toInt()) }
-                        problem.isNotEmpty() -> { sub.text = "$pr · $problem"; sub.setTextColor(0xFFD9534F.toInt()) }
-                        else -> { sub.text = "$pr · ready"; sub.setTextColor(0xFF2E9E5B.toInt()) }
-                    }
-                }
-            }
-        }
-        dlg = AlertDialog.Builder(this).setTitle("Print on…").setView(ScrollView(this).apply { addView(box) })
-            .setNegativeButton("Cancel", null).show()
-    }
-
-    /** One print job for all files (one dialog): the phone's print framework reads them through the local /api/dl route. */
-    private fun printHere(d: String, ps: List<String>, nm: List<String>) {
-        sel.clear(); ad.notifyDataSetChanged(); updateChrome()
-        val arr = JSONArray()
-        ps.forEachIndexed { i, p -> arr.put(JSONObject().put("name", nm[i]).put("url", urlFor(d, p))) }
-        phonePrint.start(JSONObject().put("items", arr).toString())
-    }
-
-    private fun printOnPc(d: String, ps: List<String>, nm: List<String>, pc: Dev) {
-        PcPrintDialog(this, pc.id, pc.name, nm, ps, { p -> ep(d).open(p) }, ui, Pal(cCard, cFg, cMut, cDiv, cAccent)) { opts ->
-            if (opts != null) {
-                sel.clear(); ad.notifyDataSetChanged(); updateChrome()
-                io.execute {
-                    val r: Result<String> = try { Result.success(Jobs.startPrint(d, ps, pc.id, opts)) } catch (e: Exception) { Result.failure(e) }
-                    ui.post { r.getOrNull()?.let { startJob(it) } ?: toast(r.exceptionOrNull()?.let { errText(it) } ?: "Cannot print") }
-                }
-            }
-        }.show()
-    }
-
-    // --- details + storage permission
-
-    private fun showDetails(i: Item) {
-        val p = vnorm(pathOf(i)); val d = dev
-        io.execute {
-            val r = try { Result.success(ep(d).stat(p)) } catch (e: Exception) { Result.failure(e) }
-            ui.post {
-                val o = r.getOrNull()
-                AlertDialog.Builder(this).setTitle(i.name)
-                    .setMessage(if (o != null) detailsText(o, p) else (r.exceptionOrNull()?.let { errText(it) } ?: "No details"))
-                    .setPositiveButton("OK", null).show()
-            }
-        }
-    }
-
-    private fun detailsText(o: JSONObject, p: String): String {
-        val sb = StringBuilder()
-        fun line(k: String, v: String) { sb.append(k).append(": ").append(v).append('\n') }
-        fun time(k: String, label: String) { if (o.optLong(k, 0) > 0) line(label, df.format(Date(o.getLong(k) * 1000))) }
-        line("Path", p)
-        val dir = o.optBoolean("dir")
-        if (dir) {
-            if (o.has("files")) line("Contents", "${o.optLong("files")} file(s), ${o.optLong("folders")} folder(s)" + (if (o.optBoolean("partial")) " (partial count)" else ""))
-            if (o.has("total")) line("Total size", humanSize(o.optLong("total")))
-        } else line("Size", humanSize(o.optLong("size")) + " (${o.optLong("size")} bytes)")
-        time("mtime", "Modified"); time("ctime", "Created"); time("atime", "Opened")
-        val flags = ArrayList<String>()
-        if (o.optBoolean("readonly")) flags.add("read-only")
-        if (o.optBoolean("hidden")) flags.add("hidden")
-        if (o.optBoolean("link")) flags.add("link")
-        if (flags.isNotEmpty()) line("Flags", flags.joinToString(", "))
-        val known = setOf("name", "path", "dir", "size", "mtime", "ctime", "atime", "readonly", "hidden", "link", "files", "folders", "total", "partial")
-        val keys = o.keys()
-        while (keys.hasNext()) {
-            val k = keys.next()
-            if (k in known || o.isNull(k)) continue
-            val v = o.opt(k)?.toString() ?: continue
-            if (v.isNotEmpty() && v.length < 200) line(k.replace('_', ' ').replaceFirstChar { c -> c.uppercase() }, v)
-        }
-        return sb.toString().trimEnd()
-    }
-
-    /** Android 11+ without "All files access": the app only sees its own files - say so, with a one-tap fix. */
-    private fun updatePerm() {
-        if (!::permBar.isInitialized) return
-        permBar.visibility = if (Core.storageOk == false) View.VISIBLE else View.GONE
-    }
-
-    private fun askAllFiles() {
-        try {
-            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-        } catch (_: Exception) {
-            try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { toast(STORAGE_MSG) }
-        }
-    }
-
-    // --- clipboard (Clip) + copy / move jobs
+    // --- clipboard (shared with the web UI through Clip) + copy / move jobs
 
     private fun clipSelected(op: String) {
-        if (op == "cut" && readOnly()) { toast("Nothing can be moved out of an archive - use Copy or Extract"); return }
         val paths = selectedItems().map { vnorm(pathOf(it)) }
         if (paths.isEmpty()) return
         Clip.set(op, dev, paths)
@@ -1116,7 +779,6 @@ class BrowserActivity : Activity() {
     private fun paste() {
         if (Clip.isEmpty()) return
         if (searching) { toast("Leave the search first"); return }
-        if (inArc(cur)) { toast("Archives are read-only - open a normal folder to paste"); return }
         if (dev.startsWith("smb:") && cur == "/") { toast("Open a drive first"); return }
         val cut = Clip.op == "cut"; val srcDev = Clip.dev ?: return; val paths = Clip.paths
         val d = dev; val dir = cur
@@ -1244,7 +906,7 @@ class BrowserActivity : Activity() {
         val chosen = selectedItems()
         if (chosen.any { it.dir }) { toast("Folders can't be shared - select files only"); return }
         if (chosen.isEmpty()) return
-        if (dev == "local" && chosen.none { inArc(pathOf(it)) }) try { shareFiles(chosen.map { Core.local.real(pathOf(it)) }) } catch (e: Exception) { toast("Cannot share: ${errText(e)}") }
+        if (dev == "local") try { shareFiles(chosen.map { Core.local.real(pathOf(it)) }) } catch (e: Exception) { toast("Cannot share: ${errText(e)}") }
         else fetchAll(chosen, "Getting ${chosen.size} file${if (chosen.size == 1) "" else "s"}…") { files -> shareFiles(files) }
     }
 
@@ -1265,18 +927,15 @@ class BrowserActivity : Activity() {
     /** Viewers read through this phone's own server (Range requests, works for peers and SMB too). */
     private fun url(p: String) = Core.url + "/api/dl?dev=" + URLEncoder.encode(dev, "UTF-8") + "&path=" + URLEncoder.encode(p, "UTF-8").replace("+", "%20")
 
-    private fun imgOk(i: Item) = kindOf(i) == "img" && !Regex("(?i).*\\.svg$").matches(i.name) &&
+    private fun imgOk(i: Item) = kindOf(i) == "img" && !Regex("(?i).*\\.(svg|gif)$").matches(i.name) &&
         (Build.VERSION.SDK_INT >= 28 || !Regex("(?i).*\\.(heic|heif)$").matches(i.name))
 
     private fun openItem(i: Item) {
         when {
             i.dir -> { if (searching) exitSearch(); navigate(pathOf(i), true) }
-            canOpenAsArchive(i) -> { val p = vnorm(pathOf(i)) + "!"; if (searching) exitSearch(); navigate(p, true) }
             kindOf(i) == "vid" -> playVideo(i)
-            kindOf(i) == "aud" -> playAudio(i)
             imgOk(i) -> viewImages(i)
             kindOf(i) == "pdf" -> viewPdf(i)
-            isText(i) -> viewText(i)
             else -> openWith(i, false)
         }
     }
@@ -1298,27 +957,6 @@ class BrowserActivity : Activity() {
         startActivity(Intent(this, PlayerActivity::class.java))
     }
 
-    /** Audio files of the open folder as a playlist in the player (it shows a music screen instead of a picture). */
-    private fun playAudio(i: Item) {
-        val auds = items.filter { !it.dir && kindOf(it) == "aud" }
-        val arr = JSONArray()
-        auds.forEach { a -> arr.put(JSONObject().put("name", a.name).put("url", url(pathOf(a))).put("key", "$dev|${pathOf(a)}|${a.size}").put("subs", JSONArray())) }
-        val at = auds.indexOfFirst { pathOf(it) == pathOf(i) }.coerceAtLeast(0)
-        PlayerActivity.pending = JSONObject().put("start", at).put("items", arr).toString()
-        startActivity(Intent(this, PlayerActivity::class.java))
-    }
-
-    private fun isText(i: Item): Boolean {
-        if (i.dir) return false
-        val e = i.name.substringAfterLast('.', "").lowercase()
-        return e in TEXT_EXT || (i.name.startsWith(".") && !i.name.substring(1).contains('.'))   // .htaccess, .gitignore ...
-    }
-
-    private fun viewText(i: Item) {
-        TextViewerActivity.pending = JSONObject().put("name", i.name).put("url", url(pathOf(i))).put("size", i.size).toString()
-        startActivity(Intent(this, TextViewerActivity::class.java))
-    }
-
     private fun viewImages(i: Item) {
         val imgs = items.filter { imgOk(it) }
         val arr = JSONArray()
@@ -1337,7 +975,7 @@ class BrowserActivity : Activity() {
 
     /** This phone: opened in place through FileProvider (root-path), instantly. Peers / SMB: fetched into cache/open first (with progress + Cancel). */
     private fun openWith(i: Item, pick: Boolean) {
-        if (dev == "local" && !inArc(pathOf(i))) {
+        if (dev == "local") {
             val f = try { Core.local.real(pathOf(i)) } catch (e: Exception) { toast("Cannot open: ${errText(e)}"); return }
             openFile(f, pick)
         } else fetchAll(listOf(i), "Getting ${i.name}…") { files -> openFile(files[0], pick) }
@@ -1356,59 +994,6 @@ class BrowserActivity : Activity() {
         catch (e: ActivityNotFoundException) {
             try { if (mime != "*/*") go("*/*") else throw e } catch (e2: Exception) { toast("No app can open .$ext") }
         } catch (e: Exception) { toast("Cannot open: ${errText(e)}") }
-    }
-
-    // ------------------------------------------------------------------ thumbnails of files on other devices / SMB shares
-
-    /** JPEG: the camera's embedded EXIF thumbnail (first few KB only). Other small pictures: fetched and decoded down. Videos: one frame via ranged reads. */
-    private fun remoteThumb(d: String, p: String, k: String, size: Long): Bitmap? {
-        val e = ep(d)
-        if (k == "vid") {
-            val data = VideoThumbs.make(e.open(p)).first
-            return BitmapFactory.decodeByteArray(data, 0, data.size)
-        }
-        val low = p.lowercase()
-        if (low.endsWith(".jpg") || low.endsWith(".jpeg")) {
-            try {
-                e.open(p).use { src ->
-                    val ex = ExifInterface(src)
-                    val tb = ex.thumbnailBytes
-                    if (tb != null) {
-                        val bm = BitmapFactory.decodeByteArray(tb, 0, tb.size)
-                        if (bm != null) return rotateExif(bm, ex.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL))
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        if (size > (4L shl 20)) return null   // no embedded thumbnail and too big to fetch just for an icon
-        val buf = java.io.ByteArrayOutputStream(maxOf(minOf(size, 4L shl 20).toInt(), 1024))
-        e.open(p).use { src ->
-            val b = ByteArray(64 * 1024)
-            while (true) { val n = src.read(b); if (n < 0) break; buf.write(b, 0, n) }
-        }
-        val bytes = buf.toByteArray()
-        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-        if (o.outWidth <= 0 || o.outHeight <= 0) return null
-        var sample = 1
-        while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= 256) sample *= 2
-        val bm = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        val ori = try { ExifInterface(java.io.ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }
-                  catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
-        return rotateExif(bm, ori)
-    }
-
-    private fun rotateExif(bm: Bitmap, ori: Int): Bitmap {
-        val m = android.graphics.Matrix()
-        when (ori) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> m.setRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> m.setRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> m.setRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.setScale(-1f, 1f)
-            ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.setScale(1f, -1f)
-            else -> return bm
-        }
-        return try { Bitmap.createBitmap(bm, 0, 0, bm.width, bm.height, m, true) } catch (_: Throwable) { bm }
     }
 
     // ------------------------------------------------------------------ list adapter
@@ -1534,21 +1119,15 @@ class BrowserActivity : Activity() {
         val key = "$dev|$p|${i.size}|${i.mtime}"
         h.key = key
         h.img.visibility = View.GONE
-        if (inArc(p)) return   // inside archives: no thumbnails (each one would unpack its entry)
+        if (dev != "local") return   // thumbnails only for this phone's own files (a peer / SMB thumbnail would mean downloading the file)
         if (k != "img" && k != "vid" || i.dir) return
         if (k == "img" && (i.size > 30_000_000L || Regex("(?i).*\\.(svg|heic|heif)$").matches(i.name))) return
-        val remote = dev != "local"
-        if (remote && i.size <= 0L) return
         thumbs.get(key)?.let { h.img.setImageBitmap(it); h.img.visibility = View.VISIBLE; return }
         if (synchronized(failed) { failed.contains(key) }) return
-        val d = dev
-        h.job = (if (remote) remotePool else thumbPool).submit(Runnable {
+        h.job = thumbPool.submit(Runnable {
             val bm: Bitmap? = try {
-                if (remote) remoteThumb(d, p, k, i.size)
-                else {
-                    val data = if (k == "vid") VideoThumbs.make(Core.local.open(p)).first else Thumbs.make(Core.local.real(p))
-                    BitmapFactory.decodeByteArray(data, 0, data.size)
-                }
+                val data = if (k == "vid") VideoThumbs.make(Core.local.open(p)).first else Thumbs.make(Core.local.real(p))
+                BitmapFactory.decodeByteArray(data, 0, data.size)
             } catch (_: Throwable) { null }
             if (bm != null) {
                 thumbs.put(key, bm)

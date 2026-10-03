@@ -9,7 +9,7 @@ import android.util.Log
 import java.io.File
 import java.io.IOException
 
-/** Owns config, the local file system, the HTTP server (peer routes + /api/dl for the native viewers) and discovery. */
+/** Replacement for android_main.py + lanshare.main(): owns config, local filesystem, HTTP server and discovery. */
 object Core {
     private const val TAG = "LANShare"
     @Volatile var url: String? = null
@@ -18,6 +18,7 @@ object Core {
     /** Scratch space for files extracted from archives (cleared at every start, size-capped while running). */
     @Volatile var cacheDir: File = File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp", "lsarc")
     lateinit var disc: Discovery
+    lateinit var page: ByteArray
     private var started = false
     private var server: MiniHttp? = null
     private val held = ArrayList<Any>()   // wake/wifi/multicast locks - kept referenced for the life of the process
@@ -39,6 +40,7 @@ object Core {
             holdAwake(app)
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
+            page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             var srv: MiniHttp? = null
             var port = BASE_PORT

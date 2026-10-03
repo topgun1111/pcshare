@@ -63,7 +63,7 @@ import java.util.concurrent.Executors
  */
 class PdfViewerActivity : Activity() {
     companion object {
-        /** JSON handed over by BrowserActivity: {name, url, size, key} */
+        /** JSON handed over by MainActivity.Bridge.viewPdf(): {name, url, size, key} */
         @Volatile var pending: String? = null
         private const val GAP_DP = 6
         private const val POS_PREFS = "ls_pdf"        // key -> "page,timestamp"

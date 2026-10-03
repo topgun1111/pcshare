@@ -69,24 +69,6 @@ object Smb {
         return c.getString("id")
     }
 
-    /** Edit a saved share. [password] null = keep the saved one. The new login is tested first; on failure nothing is changed. */
-    fun update(id: String, host0: String, user: String, password: String?, name: String) {
-        val old = cfg(id) ?: throw NotFound("that SMB share was removed")
-        val host = host0.trim()
-        if (host.isEmpty()) throw BadReq("enter the PC's address")
-        val c = JSONObject(old.toString()).put("host", host).put("user", user.trim())
-            .put("name", name.trim().take(40).ifEmpty { split(host).first })
-        if (password != null) c.put("password", password)
-        SmbFs.forget(id)
-        try { SmbFs.create(c).ls("/") } finally { SmbFs.forget(id) }
-        val cur = Cfg.smb()
-        val list = ArrayList<JSONObject>()
-        for (i in 0 until cur.length()) { val o = cur.getJSONObject(i); list.add(if (o.optString("id") == id) c else o) }
-        state.remove(id)
-        Cfg.setSmb(JSONArray(list))
-        Cfg.save()
-    }
-
     fun remove(id: String) {
         val cur = Cfg.smb()
         val list = ArrayList<JSONObject>()
