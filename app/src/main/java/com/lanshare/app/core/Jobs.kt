@@ -2,6 +2,7 @@ package com.lanshare.app.core
 
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -36,6 +37,66 @@ class Job(val label: String) {
 
 object Jobs {
     val all = ConcurrentHashMap<String, Job>()
+
+
+    const val PRINT_PORT = 8799   // pcprint.py on the PC listens here
+
+    private fun printHost(dev: String): String = when {
+        dev == "local" -> throw BadReq("choose the PC to print on")
+        dev.startsWith("smb:") -> Smb.split((Smb.cfg(dev) ?: throw IOException("that SMB share was removed")).getString("host")).first
+        else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).ip
+    }
+
+    /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
+    fun startPrint(srcId: String, paths: List<String>, dstId: String): String {
+        val src = ep(srcId)
+        val ip = printHost(dstId)
+        val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        val job = Job("Printing")
+        all[jid] = job
+        Thread({ printWork(job, src, ip, paths) }, "print-$jid").also { it.isDaemon = true }.start()
+        return jid
+    }
+
+    private fun printWork(job: Job, src: Endpoint, ip: String, paths: List<String>) {
+        try {
+            try {
+                Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 4000).close()
+            } catch (e: IOException) {
+                throw IOException("print service not reachable on the PC - run pcprint.py there once (${errText(e)})")
+            }
+            val files = ArrayList<Pair<String, Long>>()
+            for (p0 in paths) {
+                val p = vnorm(p0)
+                for (w in src.walk(p)) if (!w.dir) files.add((if (w.rel.isEmpty()) p else p + "/" + w.rel) to w.size)
+            }
+            if (files.isEmpty()) throw BadReq("nothing to print")
+            job.total = maxOf(files.sumOf { it.second }, 1L)
+            for ((sp, _) in files) {
+                if (job.cancel) throw Cancelled()
+                val f = src.open(sp)
+                try {
+                    val r = Http.request(ip, PRINT_PORT, "POST", "/print?name=" + URLEncoder.encode(vbase(sp), "UTF-8"), emptyMap(),
+                        120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); job.done += n }
+                    try {
+                        if (r.status != 200) {
+                            val t = String(r.readUpTo(500), Charsets.UTF_8)
+                            throw IOException(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
+                        }
+                    } finally { r.close() }
+                } finally { f.close() }
+            }
+            job.done = job.total
+            job.state = "done"
+        } catch (e: Cancelled) {
+            job.state = "cancel"
+        } catch (e: Exception) {
+            job.error = errText(e)
+            job.state = "error"
+        } finally {
+            job.end = System.currentTimeMillis()
+        }
+    }
 
     fun ep(dev: String): Endpoint = when {
         dev == "local" -> Core.local

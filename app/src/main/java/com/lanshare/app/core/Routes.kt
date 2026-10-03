@@ -119,6 +119,7 @@ object Routes {
             }
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
+            "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"))))
             "smb" -> smbUpdate(ex, b)
             "addip" -> {
                 if (!d.addIp(b.getString("ip").trim())) throw IOException("no LANShare device found at that address")
