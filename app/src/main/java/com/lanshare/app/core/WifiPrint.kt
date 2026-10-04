@@ -53,7 +53,13 @@ object WifiPrint {
             job.total = maxOf(files.sumOf { it.second }, 1L)
             val failed = ArrayList<String>()
 
-            for ((i, f0) in files.withIndex()) {
+            // several pictures + several pages per sheet: all pictures share the sheets
+            val nup0 = (opts?.optInt("nup", 1) ?: 1).takeIf { it in LAY } ?: 1
+            val allPics = files.size > 1 && files.all { (sp, _) -> vbase(sp).substringAfterLast('.', "").lowercase().let { it in IMG || it in PrintPrep.PICS } }
+            val merge = nup0 > 1 && allPics
+            if (merge) mergeImages(job, src, p, files, jo, nup0, (opts?.optInt("border", 0) ?: 0) == 1, dir, failed)
+
+            for ((i, f0) in (if (merge) emptyList<Pair<String, Long>>() else files).withIndex()) {
                 if (job.cancel) throw Cancelled()
                 val (sp, size) = f0
                 val name = vbase(sp)
@@ -229,6 +235,95 @@ object WifiPrint {
         if ("application/pdf" !in fm) throw PrintFail("this printer only accepts ${fmtList(p)} - print through a PC instead")
         val pdf = imageToPdf(jpg).also { temps.add(it) }
         submit(p, pdf, "application/pdf", name, jo)
+    }
+
+    /** Downloads every picture, turns it into JPEG and prints them together on shared sheets. */
+    private fun mergeImages(job: Job, src: Endpoint, p: WifiPrinters.P, files: List<Pair<String, Long>>, jo: Ipp.JobOpts, nup: Int,
+                            border: Boolean, dir: File, failed: MutableList<String>) {
+        val temps = ArrayList<File>()
+        try {
+            job.label = "Merging ${files.size} pictures for ${p.name}"
+            val jpgs = ArrayList<File>()
+            for ((sp, _) in files) {
+                if (job.cancel) throw Cancelled()
+                val nm = vbase(sp)
+                val t = File(dir, "w-" + System.nanoTime().toString(36)).also { temps.add(it) }
+                src.open(sp).use { s ->
+                    t.outputStream().use { o ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            if (job.cancel) throw Cancelled()
+                            val n = s.read(buf)
+                            if (n < 0) break
+                            o.write(buf, 0, n); job.done += n
+                        }
+                    }
+                }
+                try {
+                    val out = PrintPrep.convert(PrintPrep.Kind.PIC, t, nm)
+                    temps.add(out.file); jpgs.add(out.file)
+                } catch (x: Cancelled) { throw x
+                } catch (x: Throwable) { failed.add("$nm: could not be read (" + errText(x) + ")") }
+            }
+            if (jpgs.isEmpty()) return
+            val pk = PAPER.entries.firstOrNull { it.value == jo.media }?.key ?: "A4"
+            val pdf = picturesToSheets(job, jpgs, nup, border, pk).also { temps.add(it) }
+            sendPdf(p, job, pdf, "pictures", Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling), temps)
+        } catch (e: PrintFail) { failed.add("pictures: ${errText(e)}")
+        } catch (e: IOException) { failed.add("pictures: ${errText(e)}")
+        } finally { temps.forEach { try { it.delete() } catch (_: Exception) {} } }
+    }
+
+    /** [nup] pictures per sheet; a picture is turned 90 degrees when that fills its cell better. */
+    private fun picturesToSheets(job: Job, jpgs: List<File>, nup: Int, border: Boolean, paper: String): File {
+        val (cols, rows, land) = LAY[nup] ?: throw PrintFail("unsupported pages per sheet")
+        val d = DIMS[paper] ?: DIMS.getValue("A4")
+        val pw = if (land) d.second else d.first
+        val ph = if (land) d.first else d.second
+        val m = 18f; val gap = 8f
+        val cw = (pw - 2 * m - (cols - 1) * gap) / cols
+        val ch = (ph - 2 * m - (rows - 1) * gap) / rows
+        val doc = PdfDocument()
+        try {
+            val line = Paint().apply { style = Paint.Style.STROKE; color = Color.GRAY; strokeWidth = 0.6f }
+            val bp = Paint(Paint.FILTER_BITMAP_FLAG)
+            for ((sn, chunk) in jpgs.chunked(nup).withIndex()) {
+                if (job.cancel) throw Cancelled()
+                val page = doc.startPage(PdfDocument.PageInfo.Builder(pw, ph, sn + 1).create())
+                val cv = page.canvas
+                cv.drawColor(Color.WHITE)
+                for ((j, f) in chunk.withIndex()) {
+                    val bo = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(f.path, bo)
+                    var ss = 1
+                    while (maxOf(bo.outWidth, bo.outHeight) / ss > 2400) ss *= 2
+                    val bmp = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = ss }) ?: continue
+                    try {
+                        val cx = m + (j % cols) * (cw + gap) + cw / 2
+                        val cy = m + (j / cols) * (ch + gap) + ch / 2
+                        val rot = (bmp.width > bmp.height) != (cw > ch)
+                        val iw = if (rot) bmp.height else bmp.width
+                        val ih = if (rot) bmp.width else bmp.height
+                        val k = minOf(cw / iw, ch / ih)
+                        val bw = bmp.width * k; val bh = bmp.height * k
+                        cv.save()
+                        cv.translate(cx, cy)
+                        if (rot) cv.rotate(90f)
+                        val r = RectF(-bw / 2, -bh / 2, bw / 2, bh / 2)
+                        cv.drawBitmap(bmp, null, r, bp)
+                        if (border) cv.drawRect(r, line)
+                        cv.restore()
+                    } finally { bmp.recycle() }
+                }
+                doc.finishPage(page)
+            }
+            val out = File(jpgs[0].parentFile, "sheets-" + System.nanoTime().toString(36) + ".pdf")
+            FileOutputStream(out).use { doc.writeTo(it) }
+            return out
+        } catch (e: PrintFail) { throw e
+        } catch (e: Cancelled) { throw e
+        } catch (e: Throwable) { throw PrintFail("could not lay out the pictures (" + errText(e) + ")")
+        } finally { doc.close() }
     }
 
     /** [nup] source pages per sheet (page range applied first) -> new PDF with the sheets. */

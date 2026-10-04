@@ -1011,9 +1011,31 @@ function wifiOptions(pr,files){return new Promise(res=>{
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
   let pinfo=null,ptm=0;const pvf0=files.find(pvOK)||files[0];
   const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
+  /* several pictures: they share the sheets when "pages per sheet" > 1 (same idea as the PC dialog) */
+  const imgMode=files.length>1&&files.every(f=>PV_IMG.includes(pvExt(f)));
+  const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
+  function drawImgPv(){
+    const [cols,rows,landS]=PV_LAY[st.nup]||PV_LAY[1],per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4;
+    const nSheets=Math.ceil(files.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short';
+    const mw=Math.max(160,card.clientWidth-40),mh=Math.max(160,innerHeight*.45),dpr=Math.min(2,window.devicePixelRatio||1);
+    for(let s0=0;s0<shown;s0++){const chunk=files.map((_,i)=>i).slice(s0*per,s0*per+per),t0=thumbs[chunk[0]],fl=t0.naturalWidth>t0.naturalHeight;
+      const sw=per===1?(fl?pd[1]:pd[0]):(landS?pd[1]:pd[0]),sh=per===1?(fl?pd[0]:pd[1]):(landS?pd[0]:pd[1]),k=Math.min(mw/sw,mh/sh);
+      const cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
+      const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
+      const m=18,gap=8,cw=(sw-2*m-(cols-1)*gap)/cols,ch=(sh-2*m-(rows-1)*gap)/rows;
+      chunk.forEach((i,j)=>{const t=thumbs[i],cx=m+(j%cols)*(cw+gap)+cw/2,cy=m+Math.floor(j/cols)*(ch+gap)+ch/2;
+        if(!t.naturalWidth){c.fillStyle='#ddd';c.fillRect(cx-cw/2,cy-ch/2,cw,ch);return}
+        const rot=per>1&&((t.naturalWidth>t.naturalHeight)!==(cw>ch)),iw=rot?t.naturalHeight:t.naturalWidth,ih=rot?t.naturalWidth:t.naturalHeight,q=Math.min(cw/iw,ch/ih),bw=t.naturalWidth*q,bh=t.naturalHeight*q;
+        c.save();c.translate(cx,cy);if(rot)c.rotate(Math.PI/2);c.drawImage(t,-bw/2,-bh/2,bw,bh);
+        if(st.border&&per>1){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(-bw/2,-bh/2,bw,bh)}c.restore()});
+      c.strokeStyle='#cfcfcf';c.lineWidth=Math.max(1,.8/k);c.strokeRect(0,0,sw,sh);
+      const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
+    const paper=two?Math.ceil(nSheets/2):nSheets;
+    cap.textContent=files.length+' pictures \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')}
   function drawPv(){try{drawPv0()}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
   function drawPv0(){
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
+    if(imgMode)return drawImgPv();
     if(!pvf0){cap.textContent='No preview';return}
     if(!pinfo){cap.textContent='Loading preview\u2026';return}
     if(pinfo.kind==='none'||pinfo.kind==='office'){cap.textContent=(pinfo.why||'No preview for this file type');return}
@@ -1044,7 +1066,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
     cap.textContent=total+' page'+(total===1?'':'s')+(idx.length!==total?' \u2192 '+idx.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+pvf0.name+' (+'+(files.length-1)+' more)':'')}
-  if(pvf0)pvInfo(pvf0,pr).then(i=>{pinfo=i;drawPv()});else cap.textContent='No preview';
+  if(imgMode)drawPv();else if(pvf0)pvInfo(pvf0,pr).then(i=>{pinfo=i;drawPv()});else cap.textContent='No preview';
   const sec=(t,...kids)=>{const d=E('div','pf');d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip',l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
   const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
