@@ -513,7 +513,7 @@ async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;
   S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
 async function addIp(){
-  const ip=await dlg({title:'Add device by IP',msg:'IP address of the other device',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
+  const ip=await dlg({title:'Add another LANShare device',msg:'IP address of the other device running LANShare',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
 
 const SP={};
@@ -1042,7 +1042,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
-  const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=im.onerror=()=>sched();im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
+  const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull'),redraw=[];
   /* preview size: as wide as the screen allows and up to ~45% of its height */
@@ -1056,9 +1056,9 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const turn=i=>{if(!st.noauto&&cur){cur.sheets.forEach(sh=>sh.forEach(m=>{st.rots[m.i]=m.r}));st.noauto=1}
     const m=cur&&cur.sheets.flat().find(c=>c.i===i);st.rots[i]=((m&&st.noauto?m.r:st.rots[i])+90)%360;redraw.forEach(g=>g())};
   const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
-  function drawImgPv(){
+  function drawImgPv(){try{drawImgPv0()}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
+  function drawImgPv0(){
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
-    if(thumbs.some(t=>!t.complete)){cap.textContent='Loading preview\u2026';return}
     const dims=thumbs.map(t=>[t.naturalWidth||3,t.naturalHeight||2]),L=pvSheets(dims,st.rots,st),sw=L.sw,sh=L.sh,n=L.sheets.length;cur=L;
     const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),two=st.duplex==='long'||st.duplex==='short',shown=Math.min(n,60);
     for(let s0=0;s0<shown;s0++){const cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
@@ -1069,7 +1069,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
         if(st.border){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(m.cx-m.w/2,m.cy-m.h/2,m.w,m.h)}});
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(n/2):n;
-    cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+' \u00b7 watermark / header / footer are not shown here'}
+    cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')+' \u00b7 watermark / header / footer are not shown here'}
   function drawPv(){
     if(imgMode)return drawImgPv();
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=files[0];
@@ -1120,7 +1120,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const txt=(key,ph)=>{const i=E('input','tf');i.placeholder=ph;i.autocomplete='off';i.oninput=()=>{st[key]=i.value;sched()};redraw.push(()=>{if(i.value!==st[key])i.value=st[key]});return i};
   if(imgMode){
     const row=E('div','cr rotrow');
-    files.forEach((f,i)=>{const b=E('button','rtile'),im=E('img'),lb=E('span');im.src=thumbs[i].src;b.append(im,lb);b.setAttribute('aria-label','Turn '+f.name);
+    files.forEach((f,i)=>{const b=E('button','rtile'),im=E('img'),lb=E('span');im.src=thumbs[i].src;im.onerror=()=>{im.onerror=null;im.src=f.url};b.append(im,lb);b.setAttribute('aria-label','Turn '+f.name);
       b.onclick=()=>turn(i);
       redraw.push(()=>{im.style.transform='rotate('+st.rots[i]+'deg)';lb.textContent=st.rots[i]?st.rots[i]+'\u00b0':'\u21bb'});row.append(b)});
     const au=E('div','sr'),aw=E('label','sw'),ai=E('input'),ak=E('i');ai.type='checkbox';ai.onchange=()=>{st.noauto=ai.checked?0:1;if(ai.checked)st.rots=files.map(()=>0);redraw.forEach(g=>g())};aw.append(ai,ak);au.append(E('span','','Auto-turn pictures to fill the sheet'),aw);redraw.push(()=>{ai.checked=!st.noauto});
