@@ -27,9 +27,9 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
-        <!-- Second share-sheet entry: same activity, but files shared through it open the print dialog instead of "Send to..." -->
-        <activity-alias android:name=".PrintShareAlias" android:targetActivity=".MainActivity" android:exported="true"
-            android:label="LANShare Print" android:icon="@mipmap/ic_launcher">
+        <!-- Second share-sheet entry: the plain "LANShare" share entry opens the print dialog; files shared through this one open the "Send to..." device picker -->
+        <activity-alias android:name=".SendShareAlias" android:targetActivity=".MainActivity" android:exported="true"
+            android:label="LANShare Send" android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>

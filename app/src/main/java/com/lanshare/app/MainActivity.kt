@@ -154,7 +154,7 @@ class MainActivity : Activity() {
             listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
         if (uris.isEmpty()) return
-        val toPrint = i.component?.className?.endsWith("PrintShareAlias") == true   // came in through the "LANShare Print" share entry
+        val toPrint = i.component?.className?.endsWith("SendShareAlias") != true   // plain "LANShare" share entry = print; only the "LANShare Send" entry sends
         i.action = null   // consume once
         Thread {
             var n = 0
