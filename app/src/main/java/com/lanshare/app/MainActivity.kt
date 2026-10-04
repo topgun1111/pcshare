@@ -29,6 +29,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.lanshare.app.core.Core
+import com.lanshare.app.core.InProc
+import java.io.ByteArrayInputStream
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
@@ -94,6 +96,14 @@ class MainActivity : Activity() {
                     val u = r.url.toString()
                     if (u.contains("/api/dl")) { saveToDownloads(u, null); return true }
                     return false
+                }
+                // quick local GETs (folder listing, free space, job progress ...) are answered in-process: no localhost TCP round trip
+                override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
+                    return try {
+                        val u = r.url
+                        val x = InProc.serve(r.method, u.host, u.port, u.encodedPath ?: "", u.encodedQuery) ?: return null
+                        WebResourceResponse(x.ctype, "utf-8", x.code, x.reason, x.headers, x.body())
+                    } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
                     if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare() }

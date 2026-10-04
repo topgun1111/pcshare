@@ -18,6 +18,9 @@ class LocalSource(private val f: RandomAccessFile, override val size: Long) : So
     override fun close() = f.close()
 }
 
+private const val PAR_MIN = 150      // folders with fewer entries are read on the calling thread
+private const val PAR_THREADS = 4
+
 /** Files on this device, exposed as virtual paths rooted at '/'. */
 class LocalFs(rootPath: String) : Endpoint {
     override val id = "local"
@@ -41,6 +44,8 @@ class LocalFs(rootPath: String) : Endpoint {
         else try { val par = f.parentFile; par != null && File(par.canonicalFile, f.name).let { it.canonicalPath != it.absolutePath } }
         catch (_: IOException) { false }
 
+    private val statPool = java.util.concurrent.Executors.newFixedThreadPool(PAR_THREADS) { r -> Thread(r, "stat").also { it.isDaemon = true } }
+
     override fun ls(v: String): List<Item> = ls(v, true)
 
     /** [counts]=false skips the "N items" count of sub-folders (one extra directory read each - slow on Android's FUSE storage); see [counts]. */
@@ -48,15 +53,24 @@ class LocalFs(rootPath: String) : Endpoint {
         val d = real(v)
         if (!d.exists()) throw NotFound("No such file or directory")
         val files = d.listFiles() ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))
-        val out = ArrayList<Item>(files.size)
+        val n = files.size
+        val slots = arrayOfNulls<Item>(n)
         val modern = Build.VERSION.SDK_INT >= 26
-        for (f in files) {   // never hide an entry just because stat() is refused (Android storage quirks)
+        fun one(i: Int) {   // never hide an entry just because stat() is refused (Android storage quirks)
+            val f = files[i]
             var dir: Boolean; var size: Long; var mt: Long
             val a = if (modern) try { Files.readAttributes(f.toPath(), BasicFileAttributes::class.java) } catch (_: Exception) { null } else null
             if (a != null) { dir = a.isDirectory; size = if (dir) 0L else a.size(); mt = a.lastModifiedTime().toMillis() / 1000 }   // ONE stat instead of three
             else { dir = f.isDirectory; size = if (dir) 0L else f.length(); mt = f.lastModified() / 1000 }
-            out.add(Item(f.name, dir, size, mt, if (dir && counts) f.list()?.size else null))
+            slots[i] = Item(f.name, dir, size, mt, if (dir && counts) f.list()?.size else null)
         }
+        if (n < PAR_MIN) for (i in 0 until n) one(i)
+        else {   // every stat is a round trip into Android's storage layer: several at once overlap their waiting (big folders)
+            val per = (n + PAR_THREADS - 1) / PAR_THREADS
+            (0 until PAR_THREADS).map { c -> statPool.submit { for (i in c * per until minOf(n, (c + 1) * per)) one(i) } }.forEach { it.get() }
+        }
+        val out = ArrayList<Item>(n)
+        for (x in slots) if (x != null) out.add(x)
         if (out.isEmpty() && Core.storageOk == false) throw Denied(STORAGE_MSG)
         return out
     }

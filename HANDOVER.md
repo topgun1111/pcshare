@@ -159,3 +159,11 @@ Delete `BrowserActivity.kt`, the `<activity .BrowserActivity>` line, the `native
 - **Preview must stay identical** to the PC side: `pvFitK()` ⇔ `fit_cell()`, `pvSheets()` ⇔ `images_to_sheets()` (checked for equal results on 36 scale cases and 5 picture layouts).
 - **Pictures** (`imgMode`): Scaling = Fit whole picture / Fill page (crop), plus Margins; custom scale, position and turn-pages are document-only. **Text files:** margin = page margin, custom scale = font size.
 - **Not tested on a real printer / SumatraPDF** (rendered with pdftoppm only). Printers cannot print the last ~3–5 mm, so margin "None" is clipped by the printer hardware.
+
+## Batch 11 – faster file browsing without touching the UI (2026-10-04)
+**NOT compiled / NOT device-tested** (no Android SDK here; the GitHub build will show any compile error). `ui.html` is unchanged.
+- **`core/InProc.kt` (new) + `MainActivity` `shouldInterceptRequest`:** the WebView's quick local GETs `/api/ls`, `/api/space`, `/api/stat` (only `dev=local`, no `!` archive paths), `/api/job`, `/api/clip`, `/api/info` are answered inside the app by running the same `Routes.handle` against an in-memory `Exchange`, so no localhost TCP/accept/thread/HTTP parse; answers are byte-identical. Everything else (POSTs, `/api/dl`, thumbnails, other devices, SMB, archives, search, any 5xx) returns `null` and goes the old HTTP way. `WebViewClient` cannot see POST bodies, so POST routes always stay on HTTP. Kill switch: `InProc.enabled = false`. Slow answers (>300 ms) are logged to logcat as `LANShare: slow in-process ...`.
+- **`LocalFs.ls`:** folders with ≥150 entries are stat'ed by 4 parallel threads (`statPool`) instead of one by one; same Items, same order as `listFiles()`. Also helps `BrowserActivity`.
+- **`Routes` `ls`:** names are lower-cased once for sorting instead of on every comparison.
+- Not done on purpose (risk / no way to measure here): in-process thumbnails (heavy decode would block WebView's intercept threads), counts, search, peers/SMB; a native listing cache (would show stale lists after changes made by other apps).
+- If it still feels slow after this, the remaining cost is probably DOM rendering of big folders in the WebView, or Android's storage layer itself - capture `adb logcat -s LANShare` while browsing a big folder and send it.

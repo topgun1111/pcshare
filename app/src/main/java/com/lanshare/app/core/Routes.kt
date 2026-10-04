@@ -87,7 +87,9 @@ object Routes {
             "ls" -> {
                 val dev = ex.q("dev")
                 val path = vnorm(q["path"] ?: "/")
-                val items = (if (dev == "local") Core.local.ls(path, false) else Jobs.ep(dev).ls(path)).sortedWith(compareBy<Item>({ !it.dir }, { it.name.lowercase() }))
+                val items = (if (dev == "local") Core.local.ls(path, false) else Jobs.ep(dev).ls(path))
+                    .map { it to it.name.lowercase() }   // lower-case each name once, not on every comparison (big folders)
+                    .sortedWith(compareBy<Pair<Item, String>>({ !it.first.dir }, { it.second })).map { it.first }
                 var used: Any = JSONObject.NULL   // share of main storage in use, for the "70% USED" pill
                 if (dev == "local") try {
                     val r = Core.local.root
