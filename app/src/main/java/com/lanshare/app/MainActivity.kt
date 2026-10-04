@@ -154,6 +154,7 @@ class MainActivity : Activity() {
             listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
         if (uris.isEmpty()) return
+        val toPrint = i.component?.className?.endsWith("PrintShareAlias") == true   // came in through the "LANShare Print" share entry
         i.action = null   // consume once
         Thread {
             var n = 0
@@ -171,7 +172,7 @@ class MainActivity : Activity() {
                 n++; names.add(f.name)
             } catch (_: Exception) {}
             runOnUiThread {
-                if (n > 0) { pendingShare = names; runShare() }
+                if (n > 0) { if (toPrint) { pendingPrint = names; runPrint() } else { pendingShare = names; runShare() } }
                 else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
             }
         }.start()

@@ -27,6 +27,16 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity>
+        <!-- Second share-sheet entry: same activity, but files shared through it open the print dialog instead of "Send to..." -->
+        <activity-alias android:name=".PrintShareAlias" android:targetActivity=".MainActivity" android:exported="true"
+            android:label="LANShare Print" android:icon="@mipmap/ic_launcher">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <action android:name="android.intent.action.SEND_MULTIPLE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+        </activity-alias>
         <activity android:name=".PlayerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true"
             android:supportsPictureInPicture="true" android:resizeableActivity="true"
