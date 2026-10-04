@@ -29,6 +29,9 @@ object WifiPrint {
     private val IMG = setOf("png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff")
     private val OFFICE = setOf("doc", "docx", "rtf", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp")
     private val TXT = setOf("txt", "log", "md", "csv")
+    /** pages per sheet -> columns, rows, landscape sheet (same table as pcprint.py / the preview) */
+    private val LAY = mapOf(2 to Triple(2, 1, true), 4 to Triple(2, 2, false), 6 to Triple(3, 2, true), 9 to Triple(3, 3, false))
+    private val DIMS = mapOf("A4" to (595 to 842), "A3" to (842 to 1191), "A5" to (420 to 595), "Letter" to (612 to 792), "Legal" to (612 to 1008))
     private val PAPER = mapOf("A4" to "iso_a4_210x297mm", "A3" to "iso_a3_297x420mm", "A5" to "iso_a5_148x210mm",
         "Letter" to "na_letter_8.5x11in", "Legal" to "na_legal_8.5x14in")
 
@@ -91,9 +94,17 @@ object WifiPrint {
                     if (kind == PrintPrep.Kind.TEXT || cext in TXT) {
                         cur = textToPdf(cur).also { temps.add(it) }; cext = "pdf"
                     }
+                    var joUse = jo
+                    val nup = (opts?.optInt("nup", 1) ?: 1).takeIf { it in LAY } ?: 1
+                    if (nup > 1 && (cext == "pdf" || cext == "jpg" || cext == "jpeg")) {   // several pages on one sheet: laid out here, then sent as a normal PDF
+                        if (cext != "pdf") { cur = imageToPdf(cur).also { temps.add(it) }; cext = "pdf" }
+                        val pk = PAPER.entries.firstOrNull { it.value == jo.media }?.key ?: "A4"
+                        cur = nupPdf(job, cur, nup, (opts?.optInt("border", 0) ?: 0) == 1, jo.ranges, pk).also { temps.add(it) }
+                        joUse = Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling)   // page range was applied while laying out
+                    }
                     when (cext) {
-                        "pdf" -> sendPdf(p, job, cur, name, jo, temps)
-                        "jpg", "jpeg" -> sendJpeg(p, cur, name, jo, temps)
+                        "pdf" -> sendPdf(p, job, cur, name, joUse, temps)
+                        "jpg", "jpeg" -> sendJpeg(p, cur, name, joUse, temps)
                         else -> throw PrintFail("$cext files cannot be printed on a Wi-Fi printer")
                     }
                 } catch (e: PrintFail) {
@@ -218,6 +229,55 @@ object WifiPrint {
         if ("application/pdf" !in fm) throw PrintFail("this printer only accepts ${fmtList(p)} - print through a PC instead")
         val pdf = imageToPdf(jpg).also { temps.add(it) }
         submit(p, pdf, "application/pdf", name, jo)
+    }
+
+    /** [nup] source pages per sheet (page range applied first) -> new PDF with the sheets. */
+    private fun nupPdf(job: Job, pdf: File, nup: Int, border: Boolean, ranges: List<IntArray>, paper: String): File {
+        val (cols, rows, land) = LAY[nup] ?: throw PrintFail("unsupported pages per sheet")
+        val d = DIMS[paper] ?: DIMS.getValue("A4")
+        val pw = if (land) d.second else d.first
+        val ph = if (land) d.first else d.second
+        val m = 18f; val gap = 8f
+        val cw = (pw - 2 * m - (cols - 1) * gap) / cols
+        val ch = (ph - 2 * m - (rows - 1) * gap) / rows
+        val fd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
+        val rr = PdfRenderer(fd)
+        val doc = PdfDocument()
+        try {
+            val pages = (0 until rr.pageCount).filter { i -> ranges.isEmpty() || ranges.any { (i + 1) >= it[0] && (i + 1) <= it[1] } }
+            if (pages.isEmpty()) throw PrintFail("the page range selects no pages")
+            val line = Paint().apply { style = Paint.Style.STROKE; color = Color.GRAY; strokeWidth = 0.6f }
+            val bp = Paint(Paint.FILTER_BITMAP_FLAG)
+            for ((sn, chunk) in pages.chunked(nup).withIndex()) {
+                if (job.cancel) throw Cancelled()
+                val page = doc.startPage(PdfDocument.PageInfo.Builder(pw, ph, sn + 1).create())
+                page.canvas.drawColor(Color.WHITE)
+                for ((j, pi) in chunk.withIndex()) {
+                    val src = rr.openPage(pi)
+                    try {
+                        val s = minOf(cw / src.width, ch / src.height)
+                        val w = src.width * s; val h = src.height * s
+                        val x = m + (j % cols) * (cw + gap) + (cw - w) / 2
+                        val y = m + (j / cols) * (ch + gap) + (ch - h) / 2
+                        var bw = (w * 2).toInt().coerceAtLeast(1); var bh = (h * 2).toInt().coerceAtLeast(1)   // ~144 dpi
+                        val big = maxOf(bw, bh); if (big > 2400) { val f = 2400f / big; bw = (bw * f).toInt().coerceAtLeast(1); bh = (bh * f).toInt().coerceAtLeast(1) }
+                        val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+                        bmp.eraseColor(Color.WHITE)
+                        src.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                        page.canvas.drawBitmap(bmp, null, RectF(x, y, x + w, y + h), bp)
+                        bmp.recycle()
+                        if (border) page.canvas.drawRect(x, y, x + w, y + h, line)
+                    } finally { src.close() }
+                }
+                doc.finishPage(page)
+            }
+            val out = File(pdf.parentFile, pdf.name + ".nup.pdf")
+            FileOutputStream(out).use { doc.writeTo(it) }
+            return out
+        } catch (e: PrintFail) { throw e
+        } catch (e: Cancelled) { throw e
+        } catch (e: Throwable) { throw PrintFail("could not lay out the pages (" + errText(e) + ")")
+        } finally { doc.close(); try { rr.close() } catch (_: Exception) {}; try { fd.close() } catch (_: Exception) {} }
     }
 
     private fun imageToPdf(f: File): File {

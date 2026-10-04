@@ -1001,12 +1001,50 @@ let WIFI=[];
 async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:'Wi-Fi'}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
 function wifiOptions(pr,files){return new Promise(res=>{
-  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:''};
+  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0};
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull'),redraw=[];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','','Print on '+pr.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
+  /* page preview (same renderer as the PC dialog: PDF pages from the phone, pictures, text) */
+  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
+  let pinfo=null,ptm=0;const pvf0=files.find(pvOK)||files[0];
+  const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
+  function drawPv(){try{drawPv0()}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
+  function drawPv0(){
+    strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
+    if(!pvf0){cap.textContent='No preview';return}
+    if(!pinfo){cap.textContent='Loading preview\u2026';return}
+    if(pinfo.kind==='none'||pinfo.kind==='office'){cap.textContent=(pinfo.why||'No preview for this file type');return}
+    const isText=pinfo.kind==='text',tx=isText?pvTextPages(pinfo.text,st):null,im=pinfo.img;
+    const total=isText?tx.pages.length:(pinfo.pages||1),idx=pvPageSet(st.range,total);
+    if(!idx.length){cap.textContent='No pages left after the page selection';return}
+    const [cols,rows,landS]=PV_LAY[st.nup]||PV_LAY[1],per=cols*rows;
+    const pd=PV_PAPER[st.paper]||PV_PAPER.A4,srcLand=(im&&im.naturalWidth>im.naturalHeight)||(!isText&&pinfo.pw>pinfo.ph);
+    const pgw=srcLand?pd[1]:pd[0],pgh=srcLand?pd[0]:pd[1];
+    let sw,sh;if(per===1){sw=pgw;sh=pgh}else{sw=landS?pd[1]:pd[0];sh=landS?pd[0]:pd[1]}
+    const mw=Math.max(160,card.clientWidth-40),mh=Math.max(160,innerHeight*.45),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1);
+    const two=st.duplex==='long'||st.duplex==='short',nSheets=Math.ceil(idx.length/per),shown=Math.min(nSheets,60);
+    for(let s0=0;s0<shown;s0++){const chunk=idx.slice(s0*per,s0*per+per),cv=document.createElement('canvas');
+      cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
+      const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
+      const cw=sw/cols,ch=sh/rows,g=per===1?0:10;
+      chunk.forEach((pi,j)=>{
+        const sc=Math.min((cw-2*g)/pgw,(ch-2*g)/pgh),x=(j%cols)*cw+(cw-pgw*sc)/2,y=Math.floor(j/cols)*ch+(ch-pgh*sc)/2;
+        c.save();c.translate(x,y);c.scale(sc,sc);c.fillStyle='#fff';c.fillRect(0,0,pgw,pgh);
+        if(im){const a=28,fw=pgw-2*a,fh=pgh-2*a,q=(st.fit==='fill'?Math.max:Math.min)(fw/im.naturalWidth,fh/im.naturalHeight),w=im.naturalWidth*q,h=im.naturalHeight*q;c.save();c.beginPath();c.rect(a,a,fw,fh);c.clip();c.drawImage(im,(pgw-w)/2,(pgh-h)/2,w,h);c.restore()}
+        else if(isText){const P=tx.pages[pi]||[];c.fillStyle='#222';c.font=tx.size+'px Courier New,Courier,monospace';c.textAlign='left';c.textBaseline='alphabetic';P.forEach((ln,l)=>{if(ln)c.fillText(ln,tx.mm,tx.mm+tx.size+l*tx.lead)})}
+        else if(pinfo.id){const gi=pvPg(pinfo.id,pi,per>1?340:760,sched);
+          if(gi.complete&&gi.naturalWidth){const ar=gi.naturalWidth/gi.naturalHeight;let w=pgw,h=pgw/ar;if(h>pgh){h=pgh;w=pgh*ar}c.drawImage(gi,(pgw-w)/2,(pgh-h)/2,w,h)}
+          else{c.fillStyle='#e4e4e4';c.fillRect(pgw*.08,pgh*.08,pgw*.84,pgh*.84)}}
+        else{c.fillStyle='#d6d6d6';for(let l=0;l<22;l++){const w=(pgw-120)*(.55+.45*(((pi+1)*(l+3)*37)%100)/100);c.fillRect(60,70+l*30,l%7===6?w*.5:w,9)}}
+        c.strokeStyle=(st.border&&per>1)?'#555':'#cfcfcf';c.lineWidth=Math.max(1,.8/(k*sc));c.strokeRect(0,0,pgw,pgh);
+        c.restore()});
+      const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
+    const paper=two?Math.ceil(nSheets/2):nSheets;
+    cap.textContent=total+' page'+(total===1?'':'s')+(idx.length!==total?' \u2192 '+idx.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+pvf0.name+' (+'+(files.length-1)+' more)':'')}
+  if(pvf0)pvInfo(pvf0,pr).then(i=>{pinfo=i;drawPv()});else cap.textContent='No preview';
   const sec=(t,...kids)=>{const d=E('div','pf');d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip',l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
   const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
@@ -1015,13 +1053,15 @@ function wifiOptions(pr,files){return new Promise(res=>{
   const sides=sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
   const colour=sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
   sec('Paper',seg('paper',[['','Printer default'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
+  sec('Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']]));
+  sec('Page border',seg('border',[[0,'Off'],[1,'On']]));
   sec('Scaling',seg('fit',[['','Printer default'],['shrink','Fit to page'],['fill','Fill (crop)'],['noscale','Actual size']]));
   const rg=E('input','tf');rg.placeholder='Page range, e.g. 1-3,5,8-  (PDF files)';rg.autocomplete='off';rg.oninput=()=>{st.range=rg.value};sec('Pages',rg);
-  const note=E('div','sub','Direct Wi-Fi printing: PDF, pictures and text. Booklets, several pages per sheet, watermarks and Word / Excel / PowerPoint files need a PC.');
+  const note=E('div','sub','Direct Wi-Fi printing: PDF, pictures and text. Booklets, watermarks and Word / Excel / PowerPoint files need a PC.');
   note.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(note);
   const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill','Print');
   c.onclick=()=>fin(null);
-  k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range'].forEach(n=>{if(st[n]!==''&&st[n]!==1)out[n]=st[n]});fin(out)};
+  k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range','nup','border'].forEach(n=>{if(st[n]!==''&&st[n]!==1&&st[n]!==0)out[n]=st[n]});fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());
   api('GET','/api/printer?dev='+enc(pr.id),null,12000).then(r=>{
     if(!r.ok){info.textContent='Printer not reachable - is it on and on this Wi-Fi?';info.style.color='var(--err)';return}
@@ -1286,7 +1326,7 @@ async function doPrint(){
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   if(to.wifi){
-    const wf=selItems().filter(i=>!i.dir);
+    const wf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(S.path,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
     const wo=await wifiOptions(to,wf);if(!wo)return;
     try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id,opts:wo});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
