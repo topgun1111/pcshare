@@ -23,6 +23,9 @@ object WifiPrinters {
         @Volatile var formats: List<String> = pdl            // refined by status() from the printer itself
         @Volatile var sides: List<String> = emptyList()
         @Volatile var colorModes: List<String> = emptyList()
+        @Volatile var mediaReady: List<String> = emptyList()      // paper actually loaded
+        @Volatile var mediaDefault: List<String> = emptyList()
+        @Volatile var mediaSupported: List<String> = emptyList()
     }
 
     private val map = ConcurrentHashMap<String, P>()
@@ -99,6 +102,7 @@ object WifiPrinters {
             if (fm.isNotEmpty()) p.formats = fm
             p.sides = r.strs("sides-supported")
             p.colorModes = r.strs("print-color-mode-supported")
+            p.mediaReady = r.strs("media-ready"); p.mediaDefault = r.strs("media-default"); p.mediaSupported = r.strs("media-supported")
             val reasons = r.strs("printer-state-reasons").filter { it != "none" }
             val problems = ArrayList<String>()
             if (r.int("printer-state") == 5) problems.add("stopped")

@@ -132,15 +132,26 @@ object WifiPrint {
         }
     }
 
-    private fun jobOpts(p: WifiPrinters.P, o: JSONObject?): Ipp.JobOpts {
-        if (o == null) return Ipp.JobOpts()
+    /** Always name the paper explicitly: without it Brother / Epson inkjets guess a size from the image (e.g. 4x6) and stop with "media needed / media empty". */
+    private fun pickMedia(p: WifiPrinters.P, want: String?): String? {
+        val sup = p.mediaSupported
+        fun ok(m: String) = sup.isEmpty() || m in sup
+        if (want != null && ok(want)) return want
+        p.mediaReady.firstOrNull { it.startsWith("iso_a4") && ok(it) }?.let { return it }
+        p.mediaReady.firstOrNull { ok(it) }?.let { return it }
+        p.mediaDefault.firstOrNull { ok(it) }?.let { return it }
+        return if (ok("iso_a4_210x297mm")) "iso_a4_210x297mm" else null
+    }
+
+    private fun jobOpts(p: WifiPrinters.P, o0: JSONObject?): Ipp.JobOpts {
+        val o = o0 ?: JSONObject()
         val copies = o.optInt("copies", 1).coerceIn(1, 99)
         val sides = when (o.optString("duplex")) { "long" -> "two-sided-long-edge"; "short" -> "two-sided-short-edge"; "off" -> "one-sided"; else -> null }
             ?.takeIf { p.sides.isEmpty() || it in p.sides }
         val color = when (o.optString("color")) { "color" -> "color"; "mono" -> "monochrome"; else -> null }
             ?.takeIf { p.colorModes.isEmpty() || it in p.colorModes }
-        val scaling = when (o.optString("fit")) { "shrink", "fit" -> "fit"; "fill" -> "fill"; "noscale" -> "none"; else -> null }
-        return Ipp.JobOpts(copies, sides, color, PAPER[o.optString("paper")], scaling, ranges(o.optString("range")))
+        val scaling = when (o.optString("fit")) { "shrink", "fit" -> "fit"; "fill" -> "fill"; "noscale" -> "none"; else -> "fit" }
+        return Ipp.JobOpts(copies, sides, color, pickMedia(p, PAPER[o.optString("paper")]), scaling, ranges(o.optString("range")))
     }
 
     /** "1-3,5,8-" -> [1,3] [5,5] [8,MAX] */
@@ -156,7 +167,9 @@ object WifiPrint {
 
     private fun submit(p: WifiPrinters.P, f: File, mime: String, name: String, jo: Ipp.JobOpts) {
         var r = Ipp.printJob(p, name, mime, jo, f)
-        if (!r.ok && (r.status == 0x040B || r.status == 0x040E))   // the printer rejected an option: send again with copies only
+        if (!r.ok && (r.status == 0x040B || r.status == 0x040E))   // an option was rejected: drop scaling / colour / sides first, keep paper + copies
+            r = Ipp.printJob(p, name, mime, Ipp.JobOpts(copies = jo.copies, media = jo.media, ranges = jo.ranges), f)
+        if (!r.ok && (r.status == 0x040B || r.status == 0x040E))
             r = Ipp.printJob(p, name, mime, Ipp.JobOpts(copies = jo.copies), f)
         if (!r.ok) throw PrintFail(Ipp.statusText(r.status))
     }

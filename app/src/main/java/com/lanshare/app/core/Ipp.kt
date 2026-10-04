@@ -55,7 +55,8 @@ object Ipp {
     fun printerAttrs(p: WifiPrinters.P): Resp {
         val rq = Req(OP_GET_PRINTER_ATTRS, p.uri)
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
-            "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs"))
+            "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
+            "media-ready", "media-default", "media-supported"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
 
