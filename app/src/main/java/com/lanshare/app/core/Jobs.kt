@@ -77,6 +77,35 @@ object Jobs {
 
     const val PRINT_PORT = 8799   // pcprint.py on the PC listens here
 
+    @Volatile private var convIp: String? = null
+
+    /** IP of a PC whose pcprint.py can turn Office files into PDF (v11 /convert + an engine), for Wi-Fi printers that have no PC of their own. */
+    fun converterIp(): String? {
+        fun ok(ip: String) = try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 2500)
+            try { r.status == 200 && JSONObject(String(r.readUpTo(32768), Charsets.UTF_8)).let { it.optBoolean("convert", false) && !it.isNull("office") } } finally { r.close() }
+        } catch (_: Exception) { false }
+        convIp?.let { if (ok(it)) return it }
+        for (p in Core.disc.list()) if (ok(p.ip)) { convIp = p.ip; return p.ip }
+        return null
+    }
+
+    /** Office file -> PDF through pcprint.py /convert on [ip]. */
+    fun officeToPdf(ip: String, f: File, name: String, out: File) {
+        f.inputStream().use { ins ->
+            val r = Http.request(ip, PRINT_PORT, "POST", "/convert?name=" + URLEncoder.encode(name, "UTF-8"), emptyMap(), 180_000, ins, f.length())
+            try {
+                if (r.status == 404) throw IOException("update pcprint.py on the PC (v11) to convert office files")
+                if (r.status != 200) {
+                    val t = String(r.readUpTo(2000), Charsets.UTF_8)
+                    throw IOException(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
+                }
+                out.outputStream().use { o -> val b = ByteArray(64 * 1024); while (true) { val n = r.body.read(b); if (n < 0) break; o.write(b, 0, n) } }
+                if (out.length() == 0L) throw IOException("empty answer from the PC")
+            } finally { r.close() }
+        }
+    }
+
     private class PrintFail(msg: String) : IOException(msg)   // the PC answered and refused / failed to print this file
 
     /** (address, display name) of the PC to print on. */

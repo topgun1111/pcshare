@@ -111,19 +111,10 @@ object PrintPreview {
     }
 
     private fun office(to: String, f: File, name: String, out: File) {
-        val (ip, _) = Jobs.printTarget(to)
-        f.inputStream().use { ins ->
-            val r = Http.request(ip, Jobs.PRINT_PORT, "POST", "/convert?name=" + java.net.URLEncoder.encode(name, "UTF-8"), emptyMap(), 180_000, ins, f.length())
-            try {
-                if (r.status == 404) throw IOException("update pcprint.py on the PC (v11) for real page previews of office files")
-                if (r.status != 200) {
-                    val t = String(r.readUpTo(2000), Charsets.UTF_8)
-                    throw IOException(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
-                }
-                out.outputStream().use { o -> val b = ByteArray(64 * 1024); while (true) { val n = r.body.read(b); if (n < 0) break; o.write(b, 0, n) } }
-                if (out.length() == 0L) throw IOException("empty answer from the PC")
-            } finally { r.close() }
-        }
+        val ip = if (to.startsWith("wifi:") || to.isEmpty()) Jobs.converterIp()
+            ?: throw IOException("Office files are converted on a PC: start pcprint.py (v11, with Word or LibreOffice) on a PC on this Wi-Fi")
+        else Jobs.printTarget(to).first
+        Jobs.officeToPdf(ip, f, name, out)
     }
 
     private fun doc(id: String): Doc = synchronized(docs) { docs[id] } ?: throw NotFound("preview expired - reopen the print dialog")

@@ -20,7 +20,7 @@ import java.nio.charset.Charset
  *  - PDF goes as it is (printers without PDF: every page is rendered to a JPEG and sent as its own job);
  *  - pictures are turned into JPEG (EXIF rotation applied), or into a PDF when the printer has no JPEG;
  *  - text / code is laid out into a PDF here; html / svg are converted by [PrintPrep];
- *  - Word / Excel / PowerPoint cannot be converted on the phone: those go through a PC.
+ *  - Word / Excel / PowerPoint are converted to PDF by a PC running pcprint.py (/convert), then sent from here.
  * Options that apply: copies, sides, colour, paper size, scaling, page range (the rest of the PC dialog needs the PC).
  */
 object WifiPrint {
@@ -71,7 +71,6 @@ object WifiPrint {
                     val kind = PrintPrep.kind(ext)
                     if (kind == PrintPrep.Kind.NO || (kind == PrintPrep.Kind.SNIFF && size > PrintPrep.SNIFF_MAX))
                         throw PrintFail(if (ext.isEmpty()) "this file type cannot be printed" else "$ext files cannot be printed")
-                    if (ext in OFFICE) throw PrintFail("Word / Excel / PowerPoint files cannot go straight to a Wi-Fi printer - print them through a PC")
 
                     val t = File(dir, "w-" + System.nanoTime().toString(36)).also { temps.add(it) }
                     src.open(sp).use { s ->
@@ -88,6 +87,12 @@ object WifiPrint {
 
                     var cur: File = t
                     var cext = ext
+                    if (ext in OFFICE) {   // no converter on the phone: a PC running pcprint.py turns it into a PDF, the phone sends that to the printer
+                        val ip = Jobs.converterIp() ?: throw PrintFail("Word / Excel / PowerPoint files need a PC on this Wi-Fi running pcprint.py (v11, with Word or LibreOffice) to be converted")
+                        val pdf = File(dir, "w-" + System.nanoTime().toString(36) + ".pdf").also { temps.add(it) }
+                        try { Jobs.officeToPdf(ip, t, "x.$ext", pdf) } catch (x: IOException) { throw PrintFail("conversion on the PC failed (" + errText(x) + ")") }
+                        cur = pdf; cext = "pdf"
+                    }
                     val k2 = if (ext in IMG) PrintPrep.Kind.PIC else kind
                     if (k2 == PrintPrep.Kind.PIC || k2 == PrintPrep.Kind.WEB || k2 == PrintPrep.Kind.SNIFF) {
                         try {
