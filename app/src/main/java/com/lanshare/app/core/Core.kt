@@ -43,6 +43,7 @@ object Core {
             holdAwake(app)
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
+            try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             var srv: MiniHttp? = null

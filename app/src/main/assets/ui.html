@@ -1030,7 +1030,42 @@ function pvBooklet(n){const m=Math.ceil(n/4)*4,q=[];for(let i=0;i<m/4;i++)q.push
 function pvFill(t,i,n,name){const d=new Date(),z=x=>String(x).padStart(2,'0');
   return t.split('{page}').join(i+1).split('{pages}').join(n).split('{date}').join(d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())).split('{time}').join(z(d.getHours())+':'+z(d.getMinutes())).split('{file}').join(name)}
 /* what the preview needs from the first file: page count (PDF / text) or the picture itself */
-async function pvInfo(f){
+const pvImgs=new Map();
+/* one rendered page of the previewed document (JPEG from the phone: PdfRenderer), loaded lazily; cb redraws when it arrives */
+function pvPg(id,n,w,cb){const k=id+'|'+n+'|'+w;let im=pvImgs.get(k);if(im)return im;if(pvImgs.size>400)pvImgs.clear();
+  im=new Image();im.onload=()=>cb&&cb();im.onerror=()=>{im._bad=1;cb&&cb()};im.src='/api/pvpage?id='+id+'&n='+n+'&w='+w;pvImgs.set(k,im);return im}
+/* text files: same wrapping as pcprint.py txt_to_pdf (Courier, 0.6 em per character, 1.2 line height; custom scale = font size, margin = page margin) */
+const pvTxCache={k:'',v:null};
+function pvTextPages(text,st){
+  const pd=PV_PAPER[st.paper]||PV_PAPER.A4,mm=st.margin!==''?+st.margin:50,size=Math.max(4,Math.min(40,10*(+st.scale>0?+st.scale/100:1))),lead=size*1.2;
+  const key=[pd[0],mm,size].join('|');if(pvTxCache.k===key&&pvTxCache.t===text)return pvTxCache.v;
+  const cpl=Math.max(1,Math.floor((pd[0]-2*mm)/(.6*size))),lpp=Math.max(1,Math.floor((pd[1]-2*mm)/lead)),lines=[];
+  for(let ln of text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').replace(/\f/g,'\n').split('\n')){
+    ln=ln.replace(/[\x00-\x08\x0b\x0e-\x1f]/g,'');let o='';for(const ch of ln){if(ch==='\t')o+=' '.repeat(4-o.length%4);else o+=ch}
+    while(o.length>cpl){lines.push(o.slice(0,cpl));o=o.slice(cpl)}lines.push(o)}
+  const pages=[];for(let i=0;i<Math.max(lines.length,1);i+=lpp)pages.push(lines.slice(i,i+lpp));
+  const v={pages,size,lead,mm};pvTxCache.k=key;pvTxCache.t=text;pvTxCache.v=v;return v}
+async function pvText(url){const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);const buf=await r.arrayBuffer();
+  let t;try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){t=new TextDecoder('windows-1254').decode(buf)}return t.replace(/^\uFEFF/,'')}
+/* what the preview needs from the first file: real pages (PDF, office via the PC, html/svg, unknown types: the phone converts), the picture, or the text */
+async function pvInfo(f,to){
+  const ext=(f.name.split('.').pop()||'').toLowerCase(),u=new URL(f.url,location.href),dev=u.searchParams.get('dev')||'local',path=f.path||u.searchParams.get('path')||'';
+  const NAT=['heic','heif','avif','wbmp','dng'];
+  try{
+    if(PV_IMG.includes(ext)&&!NAT.includes(ext)){const im=new Image();await new Promise(r=>{im.onload=im.onerror=r;im.src=f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+    if(PV_TXT.includes(ext)){const r0=await fetch(f.url,{method:'GET'});const len=+r0.headers.get('content-length')||0;
+      if(len>8e6){try{r0.body&&r0.body.cancel()}catch(e){}return await pvInfoOld(f)}
+      const buf=await r0.arrayBuffer();let t;try{t=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){t=new TextDecoder('windows-1254').decode(buf)}return{kind:'text',pages:1,text:t.replace(/^\uFEFF/,'')}}
+    const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),200000);
+    try{const r=await fetch('/api/pvinfo?dev='+enc(dev)+'&path='+enc(path)+'&to='+enc((to&&to.id)||''),{signal:ac.signal});
+      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+      if(j.kind==='pdf')return{kind:'doc',pages:j.pages,id:j.id,pw:j.w,ph:j.h};
+      if(j.kind==='img'){const im=new Image();await new Promise(r2=>{im.onload=im.onerror=r2;im.src='/api/pvfile?id='+j.id});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+      if(j.kind==='text')return{kind:'text',pages:1,text:await pvText('/api/pvfile?id='+j.id)};
+      return{kind:'office',pages:0,why:j.why||''}}
+    finally{clearTimeout(tm)}
+  }catch(e){const m=(e&&e.message)||'';if(/cannot be|too large/.test(m))return{kind:'none',why:m};const o=await pvInfoOld(f);if(o.kind==='doc'&&!o.pages)o.why=m;return o}}
+async function pvInfoOld(f){
   const ext=(f.name.split('.').pop()||'').toLowerCase();
   if(PV_IMG.includes(ext)){const im=new Image(),nat=['heic','heif','avif','wbmp','dng'].includes(ext);await new Promise(r=>{im.onload=im.onerror=r;im.src=nat?f.url.replace('/api/dl?','/api/thumb?'):f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
   if(PV_OFFICE.includes(ext))return{kind:'office',pages:0};   /* page count unknown: sample layout, the PC converts the file to PDF when printing */
@@ -1085,21 +1120,22 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(!f){cap.textContent='Folders are expanded when printing - no preview';return}
     if(!pinfo){cap.textContent='Loading preview\u2026';return}
     if(pinfo.kind==='office'&&!hasOffice){cap.textContent='Printed by the PC\u2019s own app (Word, Excel ...): only printer and copies apply. Install LibreOffice (or Microsoft Office) on the PC and run the new pcprint.py to unlock layout options';return}
-    if(pinfo.kind==='none'){cap.textContent='No layout preview for this file type - only printer and copies apply';return}
-    const total=pinfo.pages||6,sample=!pinfo.pages,name=f.name;
+    if(pinfo.kind==='none'){cap.textContent=(pinfo.why||'No layout preview for this file type')+' - only printer and copies apply';return}
+    const isText=pinfo.kind==='text',tx=isText?pvTextPages(pinfo.text,st):null;
+    const total=isText?tx.pages.length:(pinfo.pages||6),sample=!isText&&!pinfo.pages,name=f.name;
     let idx=pvPageSet(st.range,total);if(st.pages)idx=idx.filter(i=>(i+1)%2===(st.pages==='odd'?1:0));if(st.reverse)idx.reverse();
     if(!idx.length){cap.textContent='No pages left after the page selection';return}
     let order,cols,rows,land;
     if(st.booklet){order=pvBooklet(idx.length).map(x=>x==null?null:idx[x]);cols=2;rows=1;land=1}else{order=idx;[cols,rows,land]=PV_LAY[st.nup]||PV_LAY[1]}
-    const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=im&&im.naturalWidth>im.naturalHeight;
+    const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=(im&&im.naturalWidth>im.naturalHeight)||(!isText&&!st.paper&&pinfo.pw>pinfo.ph);
     const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
-    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?+st.margin:0,clipBox=fitting&&per===1&&FM>0;
+    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!isText&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?+st.margin:0,clipBox=fitting&&per===1&&FM>0;
     let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
     const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
     for(let s0=0;s0<shown;s0++){
       const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
-      const cw=(sw-2*FM)/cols,ch=(sh-2*FM)/rows,mg=per===1?0:(st.booklet?8:12),cells=[],tm=PV_TXT.includes(ext0)&&st.margin!==''?+st.margin:50;
+      const cw=(sw-2*FM)/cols,ch=(sh-2*FM)/rows,mg=per===1?0:(st.booklet?8:12),cells=[],tm=(isText||PV_TXT.includes(ext0))&&st.margin!==''?+st.margin:50;
       const clipOn=()=>{if(clipBox){c.save();c.beginPath();c.rect(FM,FM,sw-2*FM,sh-2*FM);c.clip()}},clipOff=()=>{if(clipBox)c.restore()};
       chunk.forEach((pi,j)=>{if(pi==null)return;
         if(!fitting){const sc=per===1?1:Math.min((cw-2*mg)/pw0,(ch-2*mg)/ph0);cells.push({pi,sc,x:(j%cols)*cw+(cw-pw0*sc)/2,y:Math.floor(j/cols)*ch+(ch-ph0*sc)/2});return}
@@ -1113,6 +1149,11 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       if(st.wm&&st.wm_under)wm();
       clipOn();cells.forEach(m=>{c.save();c.translate(m.x,m.y);c.scale(m.sc,m.sc);
         if(im){const a=st.margin!==''?+st.margin:28,fw=pw0-2*a,fh=ph0-2*a,q=(st.fit==='fill'?Math.max:Math.min)(fw/im.naturalWidth,fh/im.naturalHeight),w=im.naturalWidth*q,h=im.naturalHeight*q;c.save();c.beginPath();c.rect(a,a,fw,fh);c.clip();c.drawImage(im,(pw0-w)/2,(ph0-h)/2,w,h);c.restore()}
+        else if(isText){const P=tx.pages[m.pi]||[];c.fillStyle='#222';c.font=tx.size+'px Courier New,Courier,monospace';c.textAlign='left';c.textBaseline='alphabetic';
+          P.forEach((ln,l)=>{if(ln)c.fillText(ln,tx.mm,tx.mm+tx.size+l*tx.lead)})}
+        else if(pinfo.id){const g=pvPg(pinfo.id,m.pi,per>1?340:760,sched);
+          if(g.complete&&g.naturalWidth){const ar=g.naturalWidth/g.naturalHeight;let w=pw0,h=pw0/ar;if(h>ph0){h=ph0;w=ph0*ar}c.drawImage(g,(pw0-w)/2,(ph0-h)/2,w,h)}
+          else{c.fillStyle='#e4e4e4';c.fillRect(pw0*.08,ph0*.08,pw0*.84,ph0*.84)}}
         else{c.fillStyle='#d6d6d6';for(let l=0;l<22;l++){const w=(pw0-2*tm-20)*(.55+.45*(((m.pi+1)*(l+3)*37)%100)/100);c.fillRect(tm+10,tm+20+l*30,l%7===6?w*.5:w,9)}
           c.fillStyle='#9aa7bd';c.font='bold 260px Helvetica,Arial,sans-serif';c.textAlign='center';c.textBaseline='middle';c.globalAlpha=.55;c.fillText(String(m.pi+1),pw0/2,ph0/2);c.globalAlpha=1}
         c.restore()});clipOff();
@@ -1124,8 +1165,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       zone(st.hdr,22+fs*.6);zone(st.ftr,sh-14);
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
-    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')}
-  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile()).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
+    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
+  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
   const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
     redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};

@@ -80,7 +80,7 @@ object Jobs {
     private class PrintFail(msg: String) : IOException(msg)   // the PC answered and refused / failed to print this file
 
     /** (address, display name) of the PC to print on. */
-    private fun printTarget(dev: String): Pair<String, String> = when {
+    internal fun printTarget(dev: String): Pair<String, String> = when {
         dev == "local" -> throw BadReq("choose the PC to print on")
         dev.startsWith("smb:") -> {
             val c = Smb.cfg(dev) ?: throw IOException("that SMB share was removed")

@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "10"
+VERSION = "11"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1107,6 +1107,56 @@ class H(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
+    CONVERT_LOCK = threading.Lock()   # one conversion at a time (Word / LibreOffice do not like parallel automation)
+
+    def convert(self, u):
+        name = safe_name(parse_qs(u.query).get("name", ["file"])[0])
+        ext = os.path.splitext(name)[1].lower()
+        try:
+            n = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self.reply(400, {"error": "missing Content-Length"})
+        if ext not in OFFICE_EXT:
+            return self.reply(415, {"error": f"{ext or 'this file type'} is not an office document"})
+        if n > MAX_BYTES:
+            return self.reply(413, {"error": "file too large"})
+        os.makedirs(INBOX, exist_ok=True)
+        src = os.path.join(INBOX, f"pv{int(time.time() * 1000) % 10**9}_{name}")
+        left, pdf = n, None
+        try:
+            with open(src, "wb") as f:
+                while left > 0:
+                    b = self.rfile.read(min(1 << 20, left))
+                    if not b:
+                        raise ConnectionError("upload interrupted")
+                    f.write(b)
+                    left -= len(b)
+            with H.CONVERT_LOCK:
+                pdf = office_to_pdf(src)
+            data = open(pdf, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(data)
+            self.close_connection = True
+            log(f"preview conversion {name}: {len(data)} bytes")
+        except ConnectionError as e:
+            log(f"preview upload failed {name}: {e}")
+        except Exception as e:
+            log(f"preview conversion failed {name}: {e}")
+            try:
+                self.reply(500, {"error": str(e)[:300]})
+            except OSError:
+                pass
+        finally:
+            for p in (src, pdf):
+                try:
+                    if p: os.remove(p)
+                except OSError:
+                    pass
+
     def do_GET(self):
         if not self.local_only():
             return self.reply(403, {"error": "LAN/Tailscale only"})
@@ -1121,7 +1171,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine()})
+                                    "office": office_engine(), "convert": True})
         self.reply(404, {"error": "not found"})
 
     def do_POST(self):
@@ -1135,6 +1185,8 @@ class H(BaseHTTPRequestHandler):
             log("service stopped from the window")
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return
+        if u.path == "/convert":   # office file -> PDF, only so the app can show a real page preview (nothing is printed)
+            return self.convert(u)
         if u.path != "/print":
             return self.reply(404, {"error": "not found"})
         name = safe_name(parse_qs(u.query).get("name", ["file"])[0])
