@@ -111,7 +111,7 @@ object Jobs {
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
-        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto")
+        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot")
 
     /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
     private fun printQuery(name: String, opts: JSONObject?, extra: String = ""): String {

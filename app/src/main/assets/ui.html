@@ -997,7 +997,7 @@ function printInfo(p,el){api('GET','/api/printer?dev='+enc(p.id),null,6000).then
   if(r.problem){el.textContent=r.printer+' \u00b7 '+r.problem;el.className='bad';return}
   el.textContent=r.printer+' \u00b7 ready';el.className='good'}).catch(()=>{el.textContent='Printer status unavailable';el.className=''})}
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
-const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',wm:'',wm_under:0,hdr:'',ftr:'',noauto:0};
+const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
@@ -1010,16 +1010,19 @@ function pvPageSet(rng,n){const all=Array.from({length:n},(_,i)=>i);if(!rng||!rn
   return out.length?out:all}
 /* several pictures on shared sheets - must stay identical to images_to_sheets() in pcprint.py. dims = [[w,h]] as the pictures look (EXIF applied), rots = manual turns */
 const PV_GRID={1:[[1,1],[1,1]],2:[[1,2],[2,1]],4:[[2,2],[2,2]],6:[[2,3],[3,2]],9:[[3,3],[3,3]]};
-function pvSheets(dims,rots,st){const pd=PV_PAPER[st.paper]||PV_PAPER.A4,M=14,G=8,per=PV_GRID[st.nup]?st.nup:1,order=dims.map((_,i)=>i);if(st.reverse)order.reverse();
+function pvSheets(dims,rots,st){const pd=PV_PAPER[st.paper]||PV_PAPER.A4,M=st.margin!==''&&st.margin!=null?+st.margin:14,G=8,fill=st.fit==='fill',per=PV_GRID[st.nup]?st.nup:1,order=dims.map((_,i)=>i);if(st.reverse)order.reverse();
   const plan=portrait=>{const sw=portrait?pd[0]:pd[1],sh=portrait?pd[1]:pd[0],[cols,rows]=PV_GRID[per][portrait?0:1],cw=(sw-2*M-G*(cols-1))/cols,ch=(sh-2*M-G*(rows-1))/rows,sheets=[];let score=0;
     for(let s0=0;s0<order.length;s0+=cols*rows){const cells=[];
       order.slice(s0,s0+cols*rows).forEach((i,j)=>{let best=null;
         for(const ex of st.noauto?[0]:[0,90]){const r=((rots[i]||0)+ex)%360,w=dims[i][0],h=dims[i][1],dw=r%180?h:w,dh=r%180?w:h,k=Math.min(cw/dw,ch/dh);if(!best||k>best.k*1.0001)best={k,r,dw,dh}}
-        score+=best.k*best.k*best.dw*best.dh;
-        cells.push({i,r:best.r,k:best.k,w:best.dw*best.k,h:best.dh*best.k,cx:M+(j%cols)*(cw+G)+cw/2,cy:M+Math.floor(j/cols)*(ch+G)+ch/2})});
+        const fk=best.k,kk=fill?Math.max(cw/best.dw,ch/best.dh):fk;score+=fk*fk*best.dw*best.dh;
+        cells.push({i,r:best.r,k:kk,w:fill?cw:best.dw*kk,h:fill?ch:best.dh*kk,cx:M+(j%cols)*(cw+G)+cw/2,cy:M+Math.floor(j/cols)*(ch+G)+ch/2})});
       sheets.push(cells)}
     return{sw,sh,sheets,score}};
   const a=plan(true),b=plan(false);return b.score>a.score*1.0001?b:a}
+/* scale of one page in a cell - must stay identical to fit_cell() in pcprint.py (per = pages per sheet) */
+function pvFitK(w,h,cw,ch,st,per){const fk=Math.min(cw/w,ch/h),sc=+st.scale>0?Math.max(10,Math.min(500,+st.scale))/100:st.fit==='noscale'?1:(st.fit==='fill'&&per===1)?Math.max(cw/w,ch/h):(st.fit==='fit'||per>1)?fk:Math.min(1,fk);
+  return per>1?Math.min(sc,fk):sc}
 function pvBooklet(n){const m=Math.ceil(n/4)*4,q=[];for(let i=0;i<m/4;i++)q.push(m-1-2*i,2*i,2*i+1,m-2-2*i);return q.map(x=>x<n?x:null)}
 function pvFill(t,i,n,name){const d=new Date(),z=x=>String(x).padStart(2,'0');
   return t.split('{page}').join(i+1).split('{pages}').join(n).split('{date}').join(d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())).split('{time}').join(z(d.getHours())+':'+z(d.getMinutes())).split('{file}').join(name)}
@@ -1064,7 +1067,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     for(let s0=0;s0<shown;s0++){const cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
       cv.style.cursor='pointer';cv.onclick=e=>{const b=cv.getBoundingClientRect(),x=(e.clientX-b.left)/k*(sw*k/b.width),y=(e.clientY-b.top)/k*(sh*k/b.height),m=L.sheets[s0].find(m=>Math.abs(x-m.cx)<=m.w/2&&Math.abs(y-m.cy)<=m.h/2);if(m)turn(m.i)};
-      L.sheets[s0].forEach(m=>{const t=thumbs[m.i],pw=dims[m.i][0]*m.k,ph=dims[m.i][1]*m.k;c.save();c.translate(m.cx,m.cy);c.rotate(m.r*Math.PI/180);
+      L.sheets[s0].forEach(m=>{const t=thumbs[m.i],pw=dims[m.i][0]*m.k,ph=dims[m.i][1]*m.k;c.save();if(st.fit==='fill'){c.beginPath();c.rect(m.cx-m.w/2,m.cy-m.h/2,m.w,m.h);c.clip()}c.translate(m.cx,m.cy);c.rotate(m.r*Math.PI/180);
         if(t.naturalWidth)c.drawImage(t,-pw/2,-ph/2,pw,ph);else{c.fillStyle='#ccc';c.fillRect(-pw/2,-ph/2,pw,ph)}c.restore();
         if(st.border){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(m.cx-m.w/2,m.cy-m.h/2,m.w,m.h)}});
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
@@ -1083,25 +1086,29 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(st.booklet){order=pvBooklet(idx.length).map(x=>x==null?null:idx[x]);cols=2;rows=1;land=1}else{order=idx;[cols,rows,land]=PV_LAY[st.nup]||PV_LAY[1]}
     const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=im&&im.naturalWidth>im.naturalHeight;
     const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
+    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?+st.margin:0,clipBox=fitting&&per===1&&FM>0;
     let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
     const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
     for(let s0=0;s0<shown;s0++){
       const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
-      const cw=sw/cols,ch=sh/rows,mg=per===1?0:(st.booklet?8:12),cells=[];
-      chunk.forEach((pi,j)=>{if(pi==null)return;const sc=per===1?1:Math.min((cw-2*mg)/pw0,(ch-2*mg)/ph0);
-        cells.push({pi,sc,x:(j%cols)*cw+(cw-pw0*sc)/2,y:Math.floor(j/cols)*ch+(ch-ph0*sc)/2})});
+      const cw=(sw-2*FM)/cols,ch=(sh-2*FM)/rows,mg=per===1?0:(st.booklet?8:12),cells=[],tm=PV_TXT.includes(ext0)&&st.margin!==''?+st.margin:50;
+      const clipOn=()=>{if(clipBox){c.save();c.beginPath();c.rect(FM,FM,sw-2*FM,sh-2*FM);c.clip()}},clipOff=()=>{if(clipBox)c.restore()};
+      chunk.forEach((pi,j)=>{if(pi==null)return;
+        if(!fitting){const sc=per===1?1:Math.min((cw-2*mg)/pw0,(ch-2*mg)/ph0);cells.push({pi,sc,x:(j%cols)*cw+(cw-pw0*sc)/2,y:Math.floor(j/cols)*ch+(ch-ph0*sc)/2});return}
+        const iw=cw-2*mg,ih=ch-2*mg,sc=pvFitK(pw0,ph0,iw,ih,st,per),ix=FM+(j%cols)*cw+mg,iy=FM+Math.floor(j/cols)*ch+mg;
+        cells.push({pi,sc,x:st.align==='topleft'?ix:ix+(iw-pw0*sc)/2,y:st.align?iy:iy+(ih-ph0*sc)/2})});
       const lw=Math.max(1,1/k*.8);
       const wm=()=>{if(!st.wm)return;const t=pvFill(st.wm,0,nSheets,name);c.save();c.font='100px Helvetica,Arial,sans-serif';const w1=c.measureText(t).width/100||1;
         const size=Math.max(8,Math.min(150,Math.hypot(sw,sh)*.7/w1));c.font='bold '+size+'px Helvetica,Arial,sans-serif';c.globalAlpha=.28;c.fillStyle='#808080';c.textAlign='center';c.textBaseline='middle';
         c.translate(sw/2,sh/2);c.rotate(-Math.atan2(sh,sw));c.fillText(t,0,0);c.restore()};
-      cells.forEach(m=>{c.fillStyle='#fff';c.fillRect(m.x,m.y,pw0*m.sc,ph0*m.sc);c.strokeStyle='#cfcfcf';c.lineWidth=lw;c.strokeRect(m.x,m.y,pw0*m.sc,ph0*m.sc)});
+      clipOn();cells.forEach(m=>{c.fillStyle='#fff';c.fillRect(m.x,m.y,pw0*m.sc,ph0*m.sc);c.strokeStyle='#cfcfcf';c.lineWidth=lw;c.strokeRect(m.x,m.y,pw0*m.sc,ph0*m.sc)});clipOff();
       if(st.wm&&st.wm_under)wm();
-      cells.forEach(m=>{c.save();c.translate(m.x,m.y);c.scale(m.sc,m.sc);
-        if(im){const a=28,fw=pw0-2*a,fh=ph0-2*a,q=Math.min(fw/im.naturalWidth,fh/im.naturalHeight),w=im.naturalWidth*q,h=im.naturalHeight*q;c.drawImage(im,(pw0-w)/2,(ph0-h)/2,w,h)}
-        else{c.fillStyle='#d6d6d6';for(let l=0;l<22;l++){const w=(pw0-120)*(.55+.45*(((m.pi+1)*(l+3)*37)%100)/100);c.fillRect(60,70+l*30,l%7===6?w*.5:w,9)}
+      clipOn();cells.forEach(m=>{c.save();c.translate(m.x,m.y);c.scale(m.sc,m.sc);
+        if(im){const a=st.margin!==''?+st.margin:28,fw=pw0-2*a,fh=ph0-2*a,q=(st.fit==='fill'?Math.max:Math.min)(fw/im.naturalWidth,fh/im.naturalHeight),w=im.naturalWidth*q,h=im.naturalHeight*q;c.save();c.beginPath();c.rect(a,a,fw,fh);c.clip();c.drawImage(im,(pw0-w)/2,(ph0-h)/2,w,h);c.restore()}
+        else{c.fillStyle='#d6d6d6';for(let l=0;l<22;l++){const w=(pw0-2*tm-20)*(.55+.45*(((m.pi+1)*(l+3)*37)%100)/100);c.fillRect(tm+10,tm+20+l*30,l%7===6?w*.5:w,9)}
           c.fillStyle='#9aa7bd';c.font='bold 260px Helvetica,Arial,sans-serif';c.textAlign='center';c.textBaseline='middle';c.globalAlpha=.55;c.fillText(String(m.pi+1),pw0/2,ph0/2);c.globalAlpha=1}
-        c.restore()});
+        c.restore()});clipOff();
       if(!(st.wm&&st.wm_under))wm();
       if(st.border&&per>1){c.strokeStyle='#555';c.lineWidth=lw;cells.forEach(m=>c.strokeRect(m.x,m.y,pw0*m.sc,ph0*m.sc))}
       const fs=Math.max(9,5.5/k),zone=(txt,y)=>{if(!txt)return;const pr=txt.split('|');const z=pr.length===1?['',pr[0],'']:[pr[0]||'',pr[1]||'',pr[2]||''];
@@ -1161,13 +1168,16 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   if(imgMode)sec('Order',sw('reverse','Reverse order'));
   else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
   sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
-  if(!imgMode)sec('Scaling',seg('fit',[['shrink','Shrink to fit'],['fit','Fit'],['noscale','Actual size']]));
-  const tok=E('div','sub','Layout works for PDF, image and text files; other files get printer and copies only.');
+  sec('Scaling',seg('fit',imgMode?[['shrink','Fit whole picture'],['fill','Fill page (crop)']]:[['shrink','Shrink to fit'],['fit','Fit'],['noscale','Actual size'],['fill','Fill (crop)']]),...(imgMode?[]:[txt('scale','Custom scale in %, e.g. 90 (overrides the above)')]));
+  sec('Margins',seg('margin',[['','Default'],['0','None'],['14','Small'],['28','Normal'],['42','Large']]));
+  const mnote=E('div','sub','None = edge to edge; most printers cannot print the last 3-5 mm of the paper.');mnote.style.cssText='font-size:12px;color:var(--mut);margin:-2px 0 4px';card.append(mnote);
+  if(!imgMode)sec('Position',seg('align',[['','Centre'],['top','Top'],['topleft','Top left']]),sw('autorot','Turn pages to fit the sheet'));
+  const tok=E('div','sub','Layout and fitting work for PDF, image and text files; other files get printer and copies only.');
   tok.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(tok,hint);
   const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill','Print');
   c.onclick=()=>fin(null);
   k.onclick=()=>{const out={};Object.keys(PRN_DEF).forEach(n=>{if(st[n]!==PRN_DEF[n]&&st[n]!==''&&st[n]!==0)out[n]=st[n]});
-    if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages}
+    if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
     const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
