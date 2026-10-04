@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="open" path="open/"/>
-    <root-path name="root" path=""/>   <!-- native browser opens/shares files in place, no copy -->
 </paths>

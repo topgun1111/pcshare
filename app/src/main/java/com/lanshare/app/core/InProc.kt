@@ -10,7 +10,8 @@ class InProcReply(val code: Int, val reason: String, val ctype: String, val head
 }
 
 /**
- * Answers the WebView's own quick GET requests (folder listing, free space, stat, job progress, clipboard, info) directly
+ * Answers the WebView's own quick GET requests (folder listing, free space, stat, job progress, clipboard, info,
+ * device list, SMB share list, archive progress: all cheap in-memory/local reads) directly
  * inside the app instead of through a localhost TCP connection: no socket, no accept/thread hand-off, no HTTP parsing.
  * It runs the very same [Routes.handle] code, so the answers are byte-identical to the HTTP ones and ui.html is untouched.
  * Anything else (POSTs, downloads, thumbnails, other devices, archives, searches ...) returns null and goes the normal HTTP way.
@@ -20,7 +21,9 @@ object InProc {
     /** Set to false to switch the shortcut off completely (everything then uses HTTP as before). */
     @Volatile var enabled = true
 
-    private val ROUTES = setOf("/api/ls", "/api/space", "/api/stat", "/api/job", "/api/clip", "/api/info")
+    // Only routes that never block on the network or do heavy work. Thumbnails (HTTP-cached by the WebView), downloads (streamed,
+    // Range), counts (thread pool), search, and remote/archive listings deliberately stay on the normal HTTP path.
+    private val ROUTES = setOf("/api/ls", "/api/space", "/api/stat", "/api/job", "/api/clip", "/api/info", "/api/peers", "/api/smb", "/api/arcjob")
     private val LOCAL_ONLY = setOf("/api/ls", "/api/space", "/api/stat")   // these also reach other devices / archives: those stay on HTTP
     private val SKIP = setOf("content-length", "server", "connection", "content-type")
 

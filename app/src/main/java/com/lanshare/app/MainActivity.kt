@@ -65,10 +65,6 @@ class MainActivity : Activity() {
         @JavascriptInterface fun viewPdf(json: String) {
             runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java)) }
         }
-        /** Open the fully native file browser on device [dev] ("local", a peer id or "smb:..") at [path]. */
-        @JavascriptInterface fun nativeBrowser(path: String, dev: String) {
-            runOnUiThread { startActivity(Intent(this@MainActivity, BrowserActivity::class.java).putExtra("path", path).putExtra("dev", dev)) }
-        }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Print a file on this phone through the Android print system (pdf, images, text). */

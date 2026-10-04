@@ -1405,7 +1405,7 @@ function drawerRender(){
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
     ft.append(add,smb,st);
-    if(window.LSAndroid&&LSAndroid.nativeBrowser){const nb=E('button');nb.append(ic('folder'),E('span','','Native'));nb.onclick=()=>{drawerClose();LSAndroid.nativeBrowser(S.path.indexOf('!')<0?S.path:'/',S.dev||'local')};ft.append(nb)}}
+  }
   else if(DRW.tab===1){
     const cur=isFav(S.dev,S.path);
     const a=dItem({lead:ic(cur?'star':'starb','s24'),title:cur?'Remove this folder':'Add this folder',sub:baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),onclick:()=>favToggle(S.dev,S.path)});
