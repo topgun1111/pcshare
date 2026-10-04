@@ -39,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
 class MainActivity : Activity() {
+    companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
     private lateinit var web: WebView
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
@@ -75,6 +76,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun printHereMany(json: String) { phonePrint.start(json) }
     }
     private var pendingShare: List<String>? = null
+    private var pendingPrint: List<String>? = null
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -102,7 +104,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runPrint() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -139,6 +141,13 @@ class MainActivity : Activity() {
 
     /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
     private fun handleShare(i: Intent?) {
+        if (i != null && i.action == ACTION_PRINT_SHARED) {   // from PcPrintService: a document printed from another app
+            val n = i.getStringArrayExtra("names")?.toList().orEmpty()
+            getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0))
+            i.action = null
+            if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
+            return
+        }
         if (i == null || (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE)) return
         @Suppress("DEPRECATION")
         val uris: List<Uri> = if (i.action == Intent.ACTION_SEND)
@@ -166,6 +175,15 @@ class MainActivity : Activity() {
                 else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
             }
         }.start()
+    }
+
+    /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */
+    private fun runPrint() {
+        val names = pendingPrint ?: return
+        if (!pageReady) return
+        pendingPrint = null
+        val arr = org.json.JSONArray(names).toString()
+        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr)", null) }, 1200)
     }
 
     /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */

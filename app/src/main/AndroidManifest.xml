@@ -41,6 +41,11 @@
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
         </provider>
+        <service android:name=".PcPrintService" android:label="LANShare - print on PC" android:exported="true"
+            android:permission="android.permission.BIND_PRINT_SERVICE">
+            <intent-filter><action android:name="android.printservice.PrintService"/></intent-filter>
+            <meta-data android:name="android.printservice" android:resource="@xml/printservice"/>
+        </service>
         <service android:name=".LanShareService" android:exported="false"
             android:foregroundServiceType="dataSync"/>
     </application>

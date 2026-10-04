@@ -1254,6 +1254,18 @@ async function doPrint(){
   const pvf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(S.path,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
   const opts=await printOptions(to,pvf,pvf.length===S.sel.size);if(!opts)return;
   try{const r=await api('POST','/api/print',{dev:S.dev,paths:opts.sheet?pvf.map(p=>p.path):selPaths(),to:to.id,opts});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
+/* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
+window.lsPrintShared=async names=>{
+  try{
+    const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
+    const last=localStorage.getItem('printTo');pcs.sort((a,b)=>(b.id===last)-(a.id===last));
+    const to=pcs.length===1?pcs[0]:await pickDevice(1,'Print on\u2026',[],printInfo);
+    if(!to)return;
+    try{localStorage.setItem('printTo',to.id)}catch(e){}
+    const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
+    const opts=await printOptions(to,pvf,true);if(!opts)return;
+    const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});watchJob(r.job);track(r.job)
+  }catch(e){toast('\u26a0 '+e.message,5000)}};
 async function doDelete(){
   const n=S.sel.size;
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
