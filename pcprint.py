@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "9"
+VERSION = "10"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -109,6 +109,7 @@ def print_image(path, printer="", copies=1):
 PAPERS = {"A3": (842, 1191), "A4": (595, 842), "A5": (420, 595), "Letter": (612, 792), "Legal": (612, 1008)}
 LAYOUT = {1: (1, 1, False), 2: (2, 1, True), 4: (2, 2, False), 6: (3, 2, True), 9: (3, 3, False)}   # cols, rows, landscape sheet
 TEXT_EXT = {".txt", ".log", ".md"}
+OFFICE_EXT = {".doc", ".docx", ".rtf", ".odt", ".xls", ".xlsx", ".csv", ".ods", ".ppt", ".pptx", ".odp"}   # converted to PDF first when layout options are asked for
 GLYPHS = {"\u011f": "gbreve", "\u011e": "Gbreve", "\u015f": "scedilla", "\u015e": "Scedilla", "\u0130": "Idotaccent", "\u0131": "dotlessi"}
 HW = {' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191, '(': 333, ')': 333, '*': 389, '+': 584,
       ',': 278, '-': 333, '.': 278, '/': 278, ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556, '@': 1015,
@@ -628,6 +629,106 @@ Start-Process -FilePath $File -Verb PrintTo -ArgumentList ('"' + $Printer + '"')
 """
 
 
+# ---- office documents -> PDF (so layout / duplex / colour options work): Microsoft Office through COM, else LibreOffice
+OFFICE_COM = {".doc": "Word.Application", ".docx": "Word.Application", ".rtf": "Word.Application", ".odt": "Word.Application",
+              ".xls": "Excel.Application", ".xlsx": "Excel.Application", ".csv": "Excel.Application", ".ods": "Excel.Application",
+              ".ppt": "PowerPoint.Application", ".pptx": "PowerPoint.Application", ".odp": "PowerPoint.Application"}
+CF = 0x08000000 if WIN else 0   # CREATE_NO_WINDOW (subprocess only accepts creationflags on Windows)
+
+# hidden + read-only; the app is only closed when it has no other document open (never closes the user's own Word / Excel / PowerPoint)
+PS_OFFICE = r"""
+param([string]$Src, [string]$Dst)
+$ErrorActionPreference = 'Stop'
+$ext = [IO.Path]::GetExtension($Src).ToLower()
+if ($ext -in '.doc','.docx','.rtf','.odt') {
+  $app = New-Object -ComObject Word.Application
+  $app.Visible = $false; $app.DisplayAlerts = 0
+  try { $d = $app.Documents.Open($Src, $false, $true); try { $d.ExportAsFixedFormat($Dst, 17) } finally { $d.Close($false) } }
+  finally { if ($app.Documents.Count -eq 0) { $app.Quit() } }
+} elseif ($ext -in '.xls','.xlsx','.csv','.ods') {
+  $app = New-Object -ComObject Excel.Application
+  $app.Visible = $false; $app.DisplayAlerts = $false
+  try { $b = $app.Workbooks.Open($Src, 0, $true); try { $b.ExportAsFixedFormat(0, $Dst) } finally { $b.Close($false) } }
+  finally { if ($app.Workbooks.Count -eq 0) { $app.Quit() } }
+} elseif ($ext -in '.ppt','.pptx','.odp') {
+  $app = New-Object -ComObject PowerPoint.Application
+  try { $p = $app.Presentations.Open($Src, -1, 0, 0); try { $p.SaveAs($Dst, 32) } finally { $p.Close() } }
+  finally { if ($app.Presentations.Count -eq 0) { $app.Quit() } }
+} else { exit 2 }
+"""
+
+
+def has_com(progid):
+    if not WIN:
+        return False
+    try:
+        import winreg
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid + r"\CLSID"))
+        return True
+    except OSError:
+        return False
+
+
+def find_soffice():
+    for p in (shutil.which("soffice"), shutil.which("libreoffice"),
+              os.path.join(os.environ.get("ProgramFiles", ""), "LibreOffice", "program", "soffice.exe"),
+              os.path.join(os.environ.get("ProgramFiles(x86)", ""), "LibreOffice", "program", "soffice.exe")):
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def office_engine(ext=None):
+    """Which program can turn office files into PDF on this PC (None = none): shown in the app, which then offers a layout preview."""
+    exts = [ext] if ext else sorted(OFFICE_COM)
+    if any(has_com(OFFICE_COM[e]) for e in exts):
+        return "Microsoft Office"
+    return "LibreOffice" if find_soffice() else None
+
+
+def office_to_pdf(path):
+    ext = os.path.splitext(path)[1].lower()
+    dst = out_pdf(path, "office")
+    errs = []
+    if has_com(OFFICE_COM.get(ext, "")):
+        ps1 = os.path.join(APP, "office2pdf.ps1")
+        with open(ps1, "w", encoding="utf-8-sig") as f:
+            f.write(PS_OFFICE)
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+        try:
+            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, dst],
+                               capture_output=True, text=True, timeout=180, creationflags=CF)
+            if r.returncode == 0 and os.path.isfile(dst) and os.path.getsize(dst) > 0:
+                return dst
+            errs.append("Microsoft Office: " + ((r.stderr or r.stdout or "").strip().splitlines() or ["exit %d" % r.returncode])[0][:150])
+        except subprocess.TimeoutExpired:
+            errs.append("Microsoft Office took too long (password or a dialog open?)")
+    so = find_soffice()
+    if so:
+        outdir = os.path.join(APP, "lo-out")
+        os.makedirs(outdir, exist_ok=True)
+        tmp = os.path.join(outdir, os.path.splitext(os.path.basename(path))[0] + ".pdf")
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        try:
+            from pathlib import Path
+            prof = Path(APP, "lo-profile").resolve().as_uri()   # own profile: works while the user has LibreOffice open
+            r = subprocess.run([so, "-env:UserInstallation=" + prof, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", outdir, path],
+                               capture_output=True, text=True, timeout=180, creationflags=CF)
+            if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
+                os.replace(tmp, dst)
+                return dst
+            errs.append("LibreOffice: " + ((r.stderr or r.stdout or "").strip().splitlines() or ["no output"])[0][:150])
+        except subprocess.TimeoutExpired:
+            errs.append("LibreOffice took too long")
+    raise RuntimeError("; ".join(errs) or "neither Microsoft Office nor LibreOffice is installed on the PC")
+
+
 # ---- several pictures on shared sheets (tight grid, per-picture rotation, automatic turn-to-fit)
 SHEET_GRID = {1: ((1, 1), (1, 1)), 2: ((1, 2), (2, 1)), 4: ((2, 2), (2, 2)), 6: ((2, 3), (3, 2)), 9: ((3, 3), (3, 3))}   # (cols, rows) on a portrait / landscape sheet
 SHEET_MARGIN, SHEET_GAP = 14.0, 8.0   # points
@@ -753,6 +854,7 @@ def print_file(path, o):
     fitting = needs_fitting(o)
     layout = needs_layout(o)
     pdf = path if ext == ".pdf" else None
+    converted = False   # office document turned into a PDF below: from here on it is handled like a real PDF
     ol = o   # options for process_pdf: pictures and text are fitted while they are converted, so only a real PDF is fitted again
     if ext in IMAGES and (sm or layout or fitting or not WIN):
         try:
@@ -765,9 +867,17 @@ def print_file(path, o):
     elif ext in TEXT_EXT and (layout or fitting):
         pdf = txt_to_pdf(path, o)
         ol = neutral_fit(o)
+    elif ext in OFFICE_EXT and (layout or fitting or ((o["duplex"] or o["color"]) and sm)):
+        try:
+            pdf = office_to_pdf(path)
+            converted = True
+        except Exception as e:
+            log(f"{ext} -> PDF failed: {e}")
+            notes.append(f"could not convert {ext} to PDF ({str(e)[:140]}) - printed by its own app: only printer and copies apply")
+            pdf = None
     elif (layout or fitting) and ext != ".pdf":
         notes.append(f"layout / fitting options skipped: {ext} files only support printer and copies")
-    if pdf and (layout or (fitting and ext == ".pdf")):
+    if pdf and (layout or (fitting and (ext == ".pdf" or converted))):
         pdf, sheets = process_pdf(pdf, ol, name)
         log(f"laid out {name}: {sheets} sheet{'s' if sheets != 1 else ''}")
     if pdf:
@@ -1010,7 +1120,8 @@ class H(BaseHTTPRequestHandler):
                 prob = describe_problem(info) or (job_problem(info) if info else None)
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
-                                    "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None})
+                                    "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
+                                    "office": office_engine()})
         self.reply(404, {"error": "not found"})
 
     def do_POST(self):

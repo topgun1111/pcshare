@@ -1002,7 +1002,10 @@ const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
 const PV_PAPER={A3:[842,1191],A4:[595,842],A5:[420,595],Letter:[612,792],Legal:[612,1008]},PV_LAY={1:[1,1,0],2:[2,1,1],4:[2,2,0],6:[3,2,1],9:[3,3,0]};
-const PV_IMG=['png','jpg','jpeg','bmp','gif','tif','tiff'],PV_TXT=['txt','log','md'];
+/* layout preview types = what the PC can lay out. webp/heic/heif pictures are converted to JPEG on the phone and code/config files are sent as .txt (see Jobs.printWork), so they preview like pictures / text */
+const PV_IMG=['png','jpg','jpeg','bmp','gif','tif','tiff','webp','heic','heif'],PV_TXT=['txt','log','md','php','phtml','js','mjs','ts','tsx','jsx','css','scss','json','xml','yml','yaml','toml','ini','cfg','conf','env','sql','py','kt','kts','java','c','h','cpp','hpp','cs','go','rs','rb','sh','bat','ps1','gradle','properties','tsv','srt','vtt'],
+  PV_OFFICE=['doc','docx','rtf','odt','xls','xlsx','csv','ppt','pptx','odp','ods'];
+const pvExt=f=>(f.name.split('.').pop()||'').toLowerCase(),pvOK=f=>{const e=pvExt(f);return e==='pdf'||PV_IMG.includes(e)||PV_TXT.includes(e)||PV_OFFICE.includes(e)};
 function pvPageSet(rng,n){const all=Array.from({length:n},(_,i)=>i);if(!rng||!rng.trim())return all;const out=[];
   for(const part of rng.replace(/ /g,'').split(',')){if(!part)continue;const m=part.match(/^(\d*)(-?)(\d*)$/);if(!m)continue;
     let a,b;if(m[2]){a=m[1]?+m[1]:1;b=m[3]?+m[3]:n}else{if(!m[1])continue;a=b=+m[1]}
@@ -1029,7 +1032,8 @@ function pvFill(t,i,n,name){const d=new Date(),z=x=>String(x).padStart(2,'0');
 /* what the preview needs from the first file: page count (PDF / text) or the picture itself */
 async function pvInfo(f){
   const ext=(f.name.split('.').pop()||'').toLowerCase();
-  if(PV_IMG.includes(ext)){const im=new Image();await new Promise(r=>{im.onload=im.onerror=r;im.src=f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+  if(PV_IMG.includes(ext)){const im=new Image(),nat=ext==='heic'||ext==='heif';await new Promise(r=>{im.onload=im.onerror=r;im.src=nat?f.url.replace('/api/dl?','/api/thumb?'):f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+  if(PV_OFFICE.includes(ext))return{kind:'office',pages:0};   /* page count unknown: sample layout, the PC converts the file to PDF when printing */
   if(ext!=='pdf'&&!PV_TXT.includes(ext))return{kind:'none'};
   const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),25000);
   try{const r=await fetch(f.url,{signal:ac.signal});if((+r.headers.get('content-length')||0)>60e6){ac.abort();return{kind:'doc',pages:0}}
@@ -1054,7 +1058,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   card.append(E('div','handle'),E('h3','','Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
-  let pinfo=null,ptm=0,cur=null;
+  let pinfo=null,ptm=0,cur=null,hasOffice=false;
+  const pvFile=()=>files.find(pvOK)||files[0];
   /* turn picture i by 90deg from how it looks NOW: the current auto-turns are frozen into the manual turns first, so the others do not jump and the tap always shows */
   const turn=i=>{if(!st.noauto&&cur){cur.sheets.forEach(sh=>sh.forEach(m=>{st.rots[m.i]=m.r}));st.noauto=1}
     const m=cur&&cur.sheets.flat().find(c=>c.i===i);st.rots[i]=((m&&st.noauto?m.r:st.rots[i])+90)%360;redraw.forEach(g=>g())};
@@ -1075,9 +1080,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')+''}
   function drawPv(){
     if(imgMode)return drawImgPv();
-    strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=files[0];
+    strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=pvFile();
     if(!f){cap.textContent='Folders are expanded when printing - no preview';return}
     if(!pinfo){cap.textContent='Loading preview\u2026';return}
+    if(pinfo.kind==='office'&&!hasOffice){cap.textContent='Printed by the PC\u2019s own app (Word, Excel ...): only printer and copies apply. Install LibreOffice (or Microsoft Office) on the PC and run the new pcprint.py to unlock layout options';return}
     if(pinfo.kind==='none'){cap.textContent='No layout preview for this file type - only printer and copies apply';return}
     const total=pinfo.pages||6,sample=!pinfo.pages,name=f.name;
     let idx=pvPageSet(st.range,total);if(st.pages)idx=idx.filter(i=>(i+1)%2===(st.pages==='odd'?1:0));if(st.reverse)idx.reverse();
@@ -1118,7 +1124,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
     cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')}
-  if(imgMode)drawPv();else if(files[0])pvInfo(files[0]).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
+  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile()).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
   const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
     redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
@@ -1155,6 +1161,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       if(!r.printer){info.textContent='No default printer set on the PC';info.style.color='var(--err)'}
       else if(r.problem){info.textContent=r.printer+' \u00b7 '+r.problem;info.style.color='var(--err)'}
       else{info.textContent=r.printer+' \u00b7 ready';info.style.color='var(--ok)'}
+      if(!!r.office!==hasOffice){hasOffice=!!r.office;if(pinfo&&pinfo.kind==='office')drawPv()}
       if(r.pypdf===false){hint.style.display='block';hint.textContent='Layout needs the pypdf package on the PC - run pcprint.py again (it installs it) if they fail.'}
       if(!r.engine&&r.ok){hint.style.display='block';hint.textContent=(hint.textContent?hint.textContent+' ':'')+'SumatraPDF is missing on the PC: duplex, colour and paper size are ignored.'}
     }).catch(()=>{info.textContent='Printer status unavailable';info.style.color=''})};

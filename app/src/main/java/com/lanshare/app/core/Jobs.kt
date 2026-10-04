@@ -105,6 +105,7 @@ object Jobs {
                     .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
                     .put("pypdf", o.optBoolean("pypdf", false))
                     .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
+                    .put("office", if (o.isNull("office")) JSONObject.NULL else o.optString("office"))   // what turns Word/Excel/PowerPoint files into PDF on the PC (null = nothing, or an older pcprint.py)
             } finally { r.close() }
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
@@ -114,6 +115,13 @@ object Jobs {
         "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot")
 
     /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
+    // pcprint.py only knows jpg/png/bmp/gif/tif and txt/log/md for layout options: other pictures are converted to JPEG here
+    // (the phone decodes them natively), code/config text files are sent as .txt. The PC service needs no update for this.
+    private val PRINT_PICS = setOf("webp", "heic", "heif")
+    private val PRINT_TEXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",
+        "ini", "cfg", "conf", "env", "sql", "py", "kt", "kts", "java", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb",
+        "sh", "bat", "ps1", "gradle", "properties", "tsv", "srt", "vtt")
+
     private fun printQuery(name: String, opts: JSONObject?, extra: String = ""): String {
         val sb = StringBuilder("/print?name=").append(URLEncoder.encode(name, "UTF-8")).append(extra)
         if (opts != null) for (k in PRINT_KEYS) {
@@ -219,7 +227,7 @@ object Jobs {
             job.total = maxOf(files.sumOf { it.second }, 1L)
             val failed = ArrayList<String>()
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
-            val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") }
+            val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PRINT_PICS }
             val bid = java.lang.Long.toString(System.nanoTime(), 36)
             val rots = opts?.optJSONArray("rots")
             for ((i, f0) in files.withIndex()) {
@@ -229,10 +237,35 @@ object Jobs {
                 val name = vbase(sp)
                 var sent = 0L
                 val f = src.open(sp)
+                var tmp: java.io.File? = null
                 try {
+                    val ext = name.substringAfterLast('.', "").lowercase()
+                    var body: java.io.InputStream = f
+                    var bodyLen = f.size
+                    var sendName = name
+                    if (ext in PRINT_PICS) {
+                        try {
+                            Core.cacheDir.mkdirs()
+                            val t = java.io.File(Core.cacheDir, "print-" + System.nanoTime().toString(36)).also { tmp = it }
+                            t.outputStream().use { o ->
+                                val buf = ByteArray(64 * 1024)
+                                while (true) {
+                                    if (job.cancel) throw Cancelled()
+                                    val n = f.read(buf)
+                                    if (n < 0) break
+                                    o.write(buf, 0, n); sent += n; job.done += n
+                                }
+                            }
+                            val jpg = Thumbs.forPrint(t)
+                            body = java.io.ByteArrayInputStream(jpg); bodyLen = jpg.size.toLong()
+                            sendName = name.substringBeforeLast('.') + ".jpg"
+                        } catch (x: Cancelled) { throw x
+                        } catch (x: Throwable) { throw PrintFail("this picture could not be converted for printing (" + errText(x) + ")") }
+                    } else if (ext in PRINT_TEXT) sendName = name.substringBeforeLast('.') + ".txt"
+                    val counted = body === f   // converted pictures were already counted while they were read
                     val extra = if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
-                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(name, opts, extra), emptyMap(),
-                        120_000, f, f.size) { n -> if (job.cancel) throw Cancelled(); sent += n; job.done += n }
+                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
+                        120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
                     try {
                         val t = String(r.readUpTo(2000), Charsets.UTF_8)
                         if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
@@ -246,7 +279,7 @@ object Jobs {
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
-                } finally { f.close() }
+                } finally { f.close(); try { tmp?.delete() } catch (_: Exception) {} }
             }
             job.done = job.total
             val ok = files.size - failed.size

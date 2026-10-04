@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
 object Thumbs {
     private const val MAX = 400
     private const val DRAFT = 800
+    private const val PRINT_MAX = 3508
     private val writes = AtomicInteger()
 
     private fun cacheRoot() = File(Cfg.dir ?: File("/data/local/tmp"), "thumbcache")
@@ -43,7 +44,10 @@ object Thumbs {
         return data
     }
 
-    private fun render(f: File): ByteArray {
+    /** Full-quality JPEG (longest side <= ~A4 at 300 dpi) for pictures the PC cannot decode itself (webp, heic ...). */
+    fun forPrint(f: File): ByteArray = render(f, PRINT_MAX, PRINT_MAX, 92)
+
+    private fun render(f: File, max: Int = MAX, draft: Int = DRAFT, quality: Int = 70): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.path, bounds)
         val w0 = bounds.outWidth
@@ -51,7 +55,7 @@ object Thumbs {
         if (w0 <= 0 || h0 <= 0) throw IOException("not an image")
 
         var sample = 1   // decode at roughly >= 800 px: far faster and lighter than full size
-        while (w0 / (sample * 2) >= DRAFT && h0 / (sample * 2) >= DRAFT) sample *= 2
+        while (w0 / (sample * 2) >= draft && h0 / (sample * 2) >= draft) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         val src = BitmapFactory.decodeFile(f.path, opts) ?: throw IOException("cannot decode the image")
 
@@ -69,7 +73,7 @@ object Thumbs {
         } catch (_: Exception) {}   // no EXIF / unsupported format: keep as is
 
         val longest = maxOf(src.width, src.height)
-        if (longest > MAX) { val s = MAX.toFloat() / longest; m.postScale(s, s) }
+        if (longest > max) { val s = max.toFloat() / longest; m.postScale(s, s) }
         var bmp = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
         if (bmp !== src) src.recycle()
 
@@ -80,7 +84,7 @@ object Thumbs {
             bmp = flat
         }
         val out = ByteArrayOutputStream()
-        val ok = bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+        val ok = bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
         bmp.recycle()
         if (!ok) throw IOException("could not encode the thumbnail")
         return out.toByteArray()

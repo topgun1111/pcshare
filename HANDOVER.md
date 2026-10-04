@@ -1,3 +1,9 @@
+> **2026-10-04 update:** the native file-browser screen (`BrowserActivity`, "Native" drawer button, `LSAndroid.nativeBrowser`, `swiperefreshlayout` dep, FileProvider `root-path`) was REMOVED. The WebView UI is the only browser again; the Batch 8/9 sections below that describe `BrowserActivity` are historical. `InProc` now also answers `/api/peers`, `/api/smb` (GET) and `/api/arcjob` in-process.
+
+> **2026-10-04 office files:** pcprint.py v10 converts doc/docx/rtf/odt/xls/xlsx/csv/ods/ppt/pptx/odp to PDF on the PC (Microsoft Office via COM, else LibreOffice headless) when layout/fitting options (or duplex/colour with SumatraPDF) are asked for; then the normal PDF pipeline applies. No converter or a failure = old behaviour (printed by its own app, printer + copies only) plus a note. `/ping` now reports `office` (engine name); `Jobs.printerStatus` forwards it and ui.html shows a sample layout preview for office files only when it is set. Needs the new pcprint.py run once on the PC.
+
+> **2026-10-04 print types:** printing to the PC now also handles webp/heic/heif pictures (converted to JPEG on the phone: `Thumbs.forPrint`, `Jobs.printWork`) and code/config text files (sent as `.txt`), with full layout options + preview. pcprint.py is unchanged. Office files (doc/docx/xls/xlsx/ppt/pptx/rtf/odt/ods/odp/csv) still print through the PC's own app: printer and copies only. The preview now uses the first previewable file of the selection.
+
 # LANShare → Android: Handover
 
 **Current state: pure Kotlin.** Chaquopy/Python removed; `core/*.kt` serves `assets/ui.html` from `MiniHttp`. **Not yet compiled or device-tested** (no Android SDK was available): first Gradle build will likely show small compile errors in `core/*.kt` (likeliest: `Cfg` accessors, `Discovery.start()` function refs, smart-casts in `RemoteFs.callRaw`). Then run the test checklist below, incl. SMB and thumbnails.
