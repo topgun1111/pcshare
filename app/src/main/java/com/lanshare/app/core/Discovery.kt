@@ -250,6 +250,56 @@ class Discovery(val port: Int) {
         }
     }
 
+    /** Hosts on the local networks that accept connections on the SMB port (445): PCs, NAS boxes, routers with a USB disk. [{ip, name}] - name comes from NetBIOS when the host answers. */
+    fun smbScan(): JSONArray {
+        val found = java.util.Collections.synchronizedList(ArrayList<String>())
+        val ex = daemonPool(96)
+        try {
+            ex.invokeAll(candidates().map { h -> Callable<Unit> {
+                val s = Net.newSocket(h)
+                try { s.connect(InetSocketAddress(h, 445), 700); found.add(h) } catch (_: Exception) {} finally { try { s.close() } catch (_: Exception) {} }
+            } }, 20, TimeUnit.SECONDS)
+        } finally { ex.shutdownNow() }
+        val hosts = found.toList().sortedBy { Net.ipToInt(it) ?: 0 }
+        val names = arrayOfNulls<String>(hosts.size)
+        val ths = hosts.mapIndexed { i, h -> Thread { names[i] = nbName(h) }.also { it.isDaemon = true; it.start() } }
+        ths.forEach { try { it.join(1500) } catch (_: Exception) {} }
+        val a = JSONArray()
+        hosts.forEachIndexed { i, h -> a.put(JSONObject().put("ip", h).put("name", names[i] ?: "")) }
+        return a
+    }
+
+    /** NetBIOS node-status query (UDP 137): the computer name of a Windows PC / NAS, or "" when it does not answer. */
+    private fun nbName(ip: String): String {
+        try {
+            val q = ByteArray(50)
+            q[0] = 0x13; q[1] = 0x37; q[5] = 1
+            q[12] = 0x20; q[13] = 'C'.code.toByte(); q[14] = 'K'.code.toByte()
+            for (i in 15..44) q[i] = 'A'.code.toByte()
+            q[47] = 0x21; q[49] = 1
+            DatagramSocket().use { s ->
+                s.soTimeout = 700
+                s.send(DatagramPacket(q, q.size, InetAddress.getByName(ip), 137))
+                val r = ByteArray(1024)
+                val pk = DatagramPacket(r, r.size)
+                s.receive(pk)
+                var p = 12
+                p += if ((r[p].toInt() and 0xC0) == 0xC0) 2 else 34
+                p += 10
+                val n = r[p].toInt() and 0xFF
+                p++
+                for (i in 0 until n) {
+                    val o = p + 18 * i
+                    if (o + 18 > pk.length) break
+                    val suffix = r[o + 15].toInt() and 0xFF
+                    val group = (r[o + 16].toInt() and 0x80) != 0
+                    if (suffix == 0 && !group) return String(r, o, 15, Charsets.ISO_8859_1).trim()
+                }
+            }
+        } catch (_: Exception) {}
+        return ""
+    }
+
     fun scanNow() {
         announce()
         Thread { try { sweep() } catch (_: Exception) {} }.also { it.isDaemon = true }.start()

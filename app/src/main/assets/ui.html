@@ -215,8 +215,9 @@ body.dual #dual{display:flex}
 .pf .cr{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pf .tf{height:44px;margin:0;font-size:15px}.pf select.tf{padding:0 10px;background:var(--cont)}
 .pf .sub{font-size:12px;color:var(--mut)}.pf .sub.bad{color:var(--err)}.pf .sub.good{color:var(--ok)}.pf .chip{height:32px}.pf .chip.n{min-width:32px;justify-content:center;padding:0 8px}
 .pf .sr{display:flex;align-items:center;gap:12px}.pf .sr span{flex:1;font-size:15px}
+#sheet .card.pfull{height:100vh;height:100dvh;max-height:none;border-radius:0;padding-top:calc(8px + env(safe-area-inset-top))}
 .ppv{position:sticky;top:0;z-index:2;background:var(--cont);padding:4px 0 6px;border-bottom:1px solid var(--bd);margin-bottom:4px}
-.ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start}
+.ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start;justify-content:safe center}
 .rtile{flex:none;width:64px;height:64px;position:relative;border:1px solid var(--bd);border-radius:6px;background:var(--card);overflow:hidden;padding:0}.rtile img{width:100%;height:100%;object-fit:contain;transition:transform .15s}.rtile span{position:absolute;right:3px;bottom:2px;font-size:11px;background:#000a;color:#fff;border-radius:3px;padding:0 4px}
 .ppv .shp{flex:none;text-align:center;font-size:11px;color:var(--mut)}.ppv canvas{display:block;background:#fff;box-shadow:0 1px 3px #0006;margin-bottom:3px}
 .pact{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;position:sticky;bottom:-8px;background:var(--cont);padding:8px 0}
@@ -857,8 +858,9 @@ async function openSmb(){
   const info=E('p','','Add a PC or NAS: enter its IP address (e.g. 192.168.1.20) and a Windows account on it. All its drives (C$, D$ \u2026) and shared folders are listed; the PC appears next to your devices at the top. Drives like C$ need an administrator account.');
   info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
   const list=E('div');card.append(list);
+  const found=E('div');card.append(found);let cur=[],lastFound=null;
   const refresh=()=>{S.sig='';pollPeers()};
-  const draw=l=>{list.textContent='';
+  const draw=l=>{cur=l;list.textContent='';showFound();
     if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No PCs yet'));list.append(e)}
     l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
       t.append(E('b','',x.name),E('small','','\\\\'+x.host+(x.share?'\\'+x.share:'')+(x.user?' \u00b7 '+x.user:' \u00b7 guest')));
@@ -868,6 +870,18 @@ async function openSmb(){
   const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';card.append(form);
   const F={};[['host','Server address (e.g. 192.168.1.20)','text'],['user','Username (empty = guest)','text'],['password','Password','password'],['name','Display name (optional)','text']].forEach(([k,ph,ty])=>{
     const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
+  /* PCs / NAS / routers answering on the SMB port: found automatically when this dialog opens; Add asks for the account */
+  function showFound(){found.textContent='';
+    const hd=E('div','set'),ht=E('div','t'),rs=E('button','tbtn','Rescan');ht.append(E('b','','Found on the network'));
+    if(lastFound===null)ht.append(E('small','','Scanning for PCs\u2026 (up to 20 s)'));rs.disabled=lastFound===null;rs.onclick=()=>scan();hd.append(ht,rs);found.append(hd);
+    if(lastFound===null)return;
+    const fl=lastFound.filter(f=>!cur.some(x=>x.host.split(':')[0]===f.ip));
+    if(!fl.length){const e=E('div','set'),t=E('div','t');t.append(E('small','',lastFound.length?'All PCs found are already added':'No PC with file sharing found. Use Add PC to type an address.'));e.append(t);found.append(e)}
+    fl.forEach(f=>{const r=E('div','set'),t=E('div','t'),ab=E('button','tbtn fill','Add');
+      t.append(E('b','',f.name||f.ip),E('small','','\\\\'+f.ip));
+      ab.onclick=()=>{F.host.value=f.ip;F.name.value=f.name||'';F.user.value='';F.password.value='';form.style.display='flex';add.style.display='none';save.style.display='';F.user.focus();toast('Enter the PC\u2019s Windows username and password',4000)};
+      r.append(t,ab);found.append(r)})}
+  async function scan(){lastFound=null;showFound();try{lastFound=await api('GET','/api/smbscan',null,40000)}catch(e){lastFound=[]}showFound()}
   const d=E('button','tbtn','Done');d.onclick=()=>{close();openSettings()};
   const save=E('button','tbtn fill','Connect');
   const add=E('button','tbtn fill','Add PC');
@@ -879,7 +893,7 @@ async function openSmb(){
     try{const r=await api('POST','/api/smb',b,30000);draw(r.list);for(const k in F)F[k].value='';form.style.display='none';save.style.display='none';add.style.display='';toast('Connected!',2500);refresh()}
     catch(e){toast('\u26a0 '+e.message,5000)}
     save.disabled=false;save.textContent='Connect'};
-  const act=E('div','dact');act.append(d,add,save);card.append(act);o.append(card)}
+  const act=E('div','dact');act.append(d,add,save);card.append(act);o.append(card);scan()}
 function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
   let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
@@ -1027,28 +1041,35 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
-  st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;
+  st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=im.onerror=()=>sched();im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const card=E('div','card'),redraw=[];
+  const card=E('div','card pfull'),redraw=[];
+  /* preview size: as wide as the screen allows and up to ~45% of its height */
+  const pvMax=()=>[Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','','Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
-  let pinfo=null,ptm=0;const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
+  let pinfo=null,ptm=0,cur=null;
+  /* turn picture i by 90deg from how it looks NOW: the current auto-turns are frozen into the manual turns first, so the others do not jump and the tap always shows */
+  const turn=i=>{if(!st.noauto&&cur){cur.sheets.forEach(sh=>sh.forEach(m=>{st.rots[m.i]=m.r}));st.noauto=1}
+    const m=cur&&cur.sheets.flat().find(c=>c.i===i);st.rots[i]=((m&&st.noauto?m.r:st.rots[i])+90)%360;redraw.forEach(g=>g())};
+  const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);
   function drawImgPv(){
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
     if(thumbs.some(t=>!t.complete)){cap.textContent='Loading preview\u2026';return}
-    const dims=thumbs.map(t=>[t.naturalWidth||3,t.naturalHeight||2]),L=pvSheets(dims,st.rots,st),sw=L.sw,sh=L.sh,n=L.sheets.length;
-    const k=Math.min(220/sw,170/sh),dpr=Math.min(2,window.devicePixelRatio||1),two=st.duplex==='long'||st.duplex==='short',shown=Math.min(n,60);
+    const dims=thumbs.map(t=>[t.naturalWidth||3,t.naturalHeight||2]),L=pvSheets(dims,st.rots,st),sw=L.sw,sh=L.sh,n=L.sheets.length;cur=L;
+    const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),two=st.duplex==='long'||st.duplex==='short',shown=Math.min(n,60);
     for(let s0=0;s0<shown;s0++){const cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
+      cv.style.cursor='pointer';cv.onclick=e=>{const b=cv.getBoundingClientRect(),x=(e.clientX-b.left)/k*(sw*k/b.width),y=(e.clientY-b.top)/k*(sh*k/b.height),m=L.sheets[s0].find(m=>Math.abs(x-m.cx)<=m.w/2&&Math.abs(y-m.cy)<=m.h/2);if(m)turn(m.i)};
       L.sheets[s0].forEach(m=>{const t=thumbs[m.i],pw=dims[m.i][0]*m.k,ph=dims[m.i][1]*m.k;c.save();c.translate(m.cx,m.cy);c.rotate(m.r*Math.PI/180);
         if(t.naturalWidth)c.drawImage(t,-pw/2,-ph/2,pw,ph);else{c.fillStyle='#ccc';c.fillRect(-pw/2,-ph/2,pw,ph)}c.restore();
         if(st.border){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(m.cx-m.w/2,m.cy-m.h/2,m.w,m.h)}});
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(n/2):n;
-    cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+' \u00b7 watermark / header / footer are not shown here'}
+    cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+' \u00b7 watermark / header / footer are not shown here'}
   function drawPv(){
     if(imgMode)return drawImgPv();
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=files[0];
@@ -1063,7 +1084,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=im&&im.naturalWidth>im.naturalHeight;
     const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
     let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
-    const k=Math.min(190/sw,138/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
+    const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
     for(let s0=0;s0<shown;s0++){
       const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
@@ -1097,6 +1118,14 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const sw=(key,label)=>{const r=E('div','sr'),w=E('label','sw'),i=E('input'),k=E('i');i.type='checkbox';i.onchange=()=>{st[key]=i.checked?1:0;redraw.forEach(f=>f())};
     w.append(i,k);r.append(E('span','',label),w);redraw.push(()=>{i.checked=!!st[key]});return r};
   const txt=(key,ph)=>{const i=E('input','tf');i.placeholder=ph;i.autocomplete='off';i.oninput=()=>{st[key]=i.value;sched()};redraw.push(()=>{if(i.value!==st[key])i.value=st[key]});return i};
+  if(imgMode){
+    const row=E('div','cr rotrow');
+    files.forEach((f,i)=>{const b=E('button','rtile'),im=E('img'),lb=E('span');im.src=thumbs[i].src;b.append(im,lb);b.setAttribute('aria-label','Turn '+f.name);
+      b.onclick=()=>turn(i);
+      redraw.push(()=>{im.style.transform='rotate('+st.rots[i]+'deg)';lb.textContent=st.rots[i]?st.rots[i]+'\u00b0':'\u21bb'});row.append(b)});
+    const au=E('div','sr'),aw=E('label','sw'),ai=E('input'),ak=E('i');ai.type='checkbox';ai.onchange=()=>{st.noauto=ai.checked?0:1;if(ai.checked)st.rots=files.map(()=>0);redraw.forEach(g=>g())};aw.append(ai,ak);au.append(E('span','','Auto-turn pictures to fill the sheet'),aw);redraw.push(()=>{ai.checked=!st.noauto});
+    sec('Turn pictures (tap = 90\u00b0 clockwise)',row,au);
+  }
   // presets
   const pr=E('div','cr'),mine=lsGet('printPresets',{});
   const apply=p=>{const keep=st.printer;Object.assign(st,PRN_DEF,p);st.printer=keep;redraw.forEach(f=>f())};
@@ -1129,15 +1158,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
   sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
   sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
-  if(imgMode){
-    const row=E('div','cr rotrow');
-    files.forEach((f,i)=>{const b=E('button','rtile'),im=E('img'),lb=E('span');im.src=thumbs[i].src;b.append(im,lb);b.setAttribute('aria-label','Turn '+f.name);
-      b.onclick=()=>{st.rots[i]=(st.rots[i]+90)%360;redraw.forEach(g=>g())};
-      redraw.push(()=>{im.style.transform='rotate('+st.rots[i]+'deg)';lb.textContent=st.rots[i]?st.rots[i]+'\u00b0':'\u21bb'});row.append(b)});
-    const au=E('div','sr'),aw=E('label','sw'),ai=E('input'),ak=E('i');ai.type='checkbox';ai.onchange=()=>{st.noauto=ai.checked?0:1;redraw.forEach(g=>g())};aw.append(ai,ak);au.append(E('span','','Auto-turn pictures to fill the sheet'),aw);redraw.push(()=>{ai.checked=!st.noauto});
-    sec('Turn pictures (tap = 90\u00b0 clockwise)',row,au);
-    sec('Order',sw('reverse','Reverse order'));
-  }else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
+  if(imgMode)sec('Order',sw('reverse','Reverse order'));
+  else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
   sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
   if(!imgMode)sec('Scaling',seg('fit',[['shrink','Shrink to fit'],['fit','Fit'],['noscale','Actual size']]));
   sec('Watermark',txt('wm','Text, e.g. DRAFT'),sw('wm_under','Behind the page content'));

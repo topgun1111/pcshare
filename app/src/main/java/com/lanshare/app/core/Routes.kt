@@ -123,6 +123,7 @@ object Routes {
             "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson())
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
+            "smbscan" -> return ex.json(d.smbScan())
         }
         val b = ex.bodyJson()
         when (route) {
