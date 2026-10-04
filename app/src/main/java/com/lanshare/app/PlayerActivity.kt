@@ -90,6 +90,8 @@ class PlayerActivity : Activity() {
     private var gen = 0                  // bumped on every (re)start: a late subtitle-preparation thread is then ignored
     private var inPip = false
     private var userRotated = false
+    private var fullscreen = false       // default: normal window (system bars visible); toggled with the fullscreen button and remembered
+    private lateinit var fsBtn: TextView
     private var resizeIdx = 0
     private var gMode = 0                // swipe gesture: 0 undecided, -1 ignored, 1 brightness, 2 volume
     private var gB0 = 0.5f
@@ -107,7 +109,9 @@ class PlayerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 28)
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        fullscreen = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("fullscreen", false)
         buildUi()
+        fsBtn.text = if (fullscreen) "\u2715" else "\u26F6"
         begin()
     }
 
@@ -157,6 +161,7 @@ class PlayerActivity : Activity() {
                 text = names[resizeIdx]
             }
         }
+        fsBtn = tv("\u26F6", 22f).apply { setOnClickListener { setFullscreen(!fullscreen) } }
         val rot = tv("\u27F3", 22f).apply {
             setOnClickListener {
                 userRotated = true
@@ -167,13 +172,15 @@ class PlayerActivity : Activity() {
         top.addView(back)
         top.addView(titleTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(aspect)
+        top.addView(fsBtn)
         top.addView(rot)
         if (Build.VERSION.SDK_INT >= 26) {
             top.addView(tv("\u29C9", 20f).apply { setOnClickListener { enterPip() } })
         }
-        ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
+        // keep the whole player inside the system bars while they are visible (they are hidden only in fullscreen)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(8) + b.left, dp(8) + b.top, dp(8) + b.right, dp(16))
+            v.setPadding(b.left, b.top, b.right, b.bottom)
             insets
         }
         root.addView(top)
@@ -201,6 +208,28 @@ class PlayerActivity : Activity() {
 
         setupGestures()
         setContentView(root)
+    }
+
+    private fun applyBars() {
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreen && !inPip) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
+        ViewCompat.requestApplyInsets(root)
+    }
+
+    private fun applyOrientation() {
+        if (userRotated || inPip) return
+        val v = player?.videoSize
+        requestedOrientation = if (!fullscreen || v == null || v.width <= 0) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        else if (v.width >= v.height) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+    }
+
+    private fun setFullscreen(on: Boolean) {
+        fullscreen = on
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("fullscreen", on).apply()
+        fsBtn.text = if (on) "\u2715" else "\u26F6"
+        applyBars()
+        applyOrientation()
     }
 
     private fun showHud(t: String) {
@@ -376,9 +405,7 @@ class PlayerActivity : Activity() {
                 view.showController()
             }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (!userRotated && !inPip && videoSize.width > 0)
-                    requestedOrientation = if (videoSize.width >= videoSize.height) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                if (videoSize.width > 0) applyOrientation()   // only turns the screen to the video's shape in fullscreen
                 if (Build.VERSION.SDK_INT >= 26 && inPip) try { setPictureInPictureParams(pipParams()) } catch (_: Exception) {}
             }
         })
@@ -440,15 +467,12 @@ class PlayerActivity : Activity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
         view.useController = !inPip
-        if (inPip) top.visibility = View.GONE else view.showController()
+        if (inPip) top.visibility = View.GONE else { applyBars(); view.showController() }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) WindowInsetsControllerCompat(window, window.decorView).apply {
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(WindowInsetsCompat.Type.systemBars())
-        }
+        if (hasFocus) applyBars()
     }
 
     override fun onPause() { super.onPause(); savePos() }

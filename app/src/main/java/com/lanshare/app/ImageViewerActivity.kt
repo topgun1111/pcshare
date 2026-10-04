@@ -74,6 +74,7 @@ class ImageViewerActivity : Activity() {
     private val dims = HashMap<Int, String>()
     private lateinit var cache: LruCache<Int, Bitmap>
     private var maxDim = 3072
+    private var bmBudget = 16 shl 20              // max bytes of ONE decoded picture: current + both neighbours must fit in the cache together
     private var uiOn = true
     private var slide = false
     private var gen = 0
@@ -96,9 +97,12 @@ class ImageViewerActivity : Activity() {
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        maxDim = if (am.memoryClass >= 192) 4096 else 3072
-        cache = object : LruCache<Int, Bitmap>(maxOf(am.memoryClass, 64) * 1024 * 1024 / 4) {
-            override fun sizeOf(key: Int, value: Bitmap) = value.byteCount
+        val mc = maxOf(am.memoryClass, 96)
+        maxDim = if (mc >= 192) 4096 else 3072
+        val cacheBytes = mc * 1024 * 1024 / 8 * 3
+        bmBudget = cacheBytes / 3 - (1 shl 20)
+        cache = object : LruCache<Int, Bitmap>(cacheBytes) {
+            override fun sizeOf(key: Int, value: Bitmap) = value.allocationByteCount
         }
         File(cacheDir, "img").deleteRecursively()
         buildUi()
@@ -119,7 +123,7 @@ class ImageViewerActivity : Activity() {
             offscreenPageLimit = 1
             adapter = Ad()
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) { updateTitle(position); prefetch(position) }
+                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position) }
                 override fun onPageScrollStateChanged(state: Int) { if (state == ViewPager2.SCROLL_STATE_DRAGGING && slide) setSlide(false) }
             })
         }
@@ -237,6 +241,7 @@ class ImageViewerActivity : Activity() {
                 loading.remove(pos)
                 if (rb != null) {
                     cache.put(pos, rb)
+                    if (cache.get(pos) == null) failed[pos] = "Not enough memory for this picture"   // cannot happen with the decode budget, but never leave a blank page
                     if (rd != null) dims[pos] = rd
                 } else failed[pos] = re ?: "Cannot open this picture"
                 holder(pos)?.show(pos)
@@ -252,8 +257,10 @@ class ImageViewerActivity : Activity() {
         val tmp = File(dir, "$pos.part")
         val c = URL(it.url).openConnection() as HttpURLConnection
         c.connectTimeout = 5000; c.readTimeout = 30000
-        if (c.responseCode != 200) throw IOException("HTTP " + c.responseCode)
-        c.inputStream.use { ins -> tmp.outputStream().use { o -> ins.copyTo(o, 64 * 1024) } }
+        try {
+            if (c.responseCode != 200) throw IOException("HTTP " + c.responseCode)
+            c.inputStream.use { ins -> tmp.outputStream().use { o -> ins.copyTo(o, 64 * 1024) } }
+        } finally { c.disconnect() }
         if (!tmp.renameTo(f)) throw IOException("cannot cache the picture")
         return f
     }
@@ -262,16 +269,26 @@ class ImageViewerActivity : Activity() {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.path, o)
         if (o.outWidth <= 0 || o.outHeight <= 0) throw IOException("This device cannot decode this picture")
-        val big = maxOf(o.outWidth, o.outHeight)
+        val w0 = o.outWidth
+        val h0 = o.outHeight
+        // target scale: long side <= maxDim (also the GPU texture limit) and at most bmBudget bytes per picture
+        val k = minOf(1.0, maxDim.toDouble() / maxOf(w0, h0), Math.sqrt(bmBudget / 4.0 / (w0.toDouble() * h0)))
         var s = 1
-        while (big / (s * 2) >= maxDim) s *= 2
-        while (big / s > 4096) s *= 2            // larger bitmaps cannot be drawn (GPU texture limit)
+        while (s * 2 <= 1.0 / k) s *= 2          // cheap power-of-two decode first, never smaller than the target
         var bm: Bitmap? = null
         while (bm == null) {
             try {
                 bm = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = s })
                 if (bm == null) throw IOException("This device cannot decode this picture")
             } catch (e: OutOfMemoryError) { if (s >= 64) throw e; s *= 2 }
+        }
+        var b: Bitmap = bm!!
+        val tw = maxOf(1, Math.round(w0 * k).toInt())
+        val th = maxOf(1, Math.round(h0 * k).toInt())
+        if (b.width > tw + tw / 20 || b.height > th + th / 20) {   // power-of-two step overshot the budget: scale down exactly
+            val r = Bitmap.createScaledBitmap(b, tw, th, true)
+            if (r !== b) b.recycle()
+            b = r
         }
         val ori = try { ExifInterface(f.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
         val m = Matrix()
@@ -287,14 +304,14 @@ class ImageViewerActivity : Activity() {
         }
         val swap = ori == ExifInterface.ORIENTATION_TRANSPOSE || ori == ExifInterface.ORIENTATION_ROTATE_90 ||
             ori == ExifInterface.ORIENTATION_TRANSVERSE || ori == ExifInterface.ORIENTATION_ROTATE_270
-        val ow = if (swap) o.outHeight else o.outWidth
-        val oh = if (swap) o.outWidth else o.outHeight
+        val ow = if (swap) h0 else w0
+        val oh = if (swap) w0 else h0
         if (!m.isIdentity) {
-            val r = Bitmap.createBitmap(bm!!, 0, 0, bm.width, bm.height, m, true)
-            if (r !== bm) bm.recycle()
-            bm = r
+            val r = Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true)
+            if (r !== b) b.recycle()
+            b = r
         }
-        return bm!! to "$ow\u00d7$oh"
+        return b to "$ow\u00d7$oh"
     }
 
     // ---------------------------------------------------------------- share
@@ -324,10 +341,12 @@ class ImageViewerActivity : Activity() {
             if (p != pos) return
             val bm = cache.get(p)
             val e = failed[p]
-            iv.setBmp(bm)
-            spin.visibility = if (bm == null && e == null) View.VISIBLE else View.GONE
+            if (bm != null) iv.setBmp(bm) else if (e != null) iv.setBmp(null)   // evicted from the cache but still on screen: keep showing it
+            val wait = !iv.hasBmp() && e == null
+            spin.visibility = if (wait) View.VISIBLE else View.GONE
             err.text = e ?: ""
             err.visibility = if (e != null) View.VISIBLE else View.GONE
+            if (wait) request(p)      // nothing to show and nothing coming: (re)load, so a page can never stay black
         }
     }
 
@@ -346,7 +365,9 @@ class ImageViewerActivity : Activity() {
             root.addView(spin); root.addView(err)
             return Pg(root, iv, spin, err)
         }
-        override fun onBindViewHolder(h: Pg, position: Int) { h.pos = position; h.show(position); request(position) }
+        override fun onBindViewHolder(h: Pg, position: Int) { if (h.pos != position) h.iv.setBmp(null); h.pos = position; h.show(position); request(position) }
+        // RecyclerView re-attaches cached pages WITHOUT calling bind: this is where a page that finished loading while it was off-screen gets its picture
+        override fun onViewAttachedToWindow(h: Pg) { if (h.pos >= 0) h.show(h.pos) }
         override fun onViewRecycled(h: Pg) { h.pos = -1; h.iv.setBmp(null) }
     }
 
@@ -376,7 +397,12 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     init { scaleType = ScaleType.MATRIX }
 
+    private var cur: Bitmap? = null
+    fun hasBmp() = cur != null
+
     fun setBmp(b: Bitmap?) {
+        if (b === cur) return                   // same picture again: keep the current zoom
+        cur = b
         if (b == null) { setImageDrawable(null); bw = 0; bh = 0; return }
         setImageBitmap(b); bw = b.width; bh = b.height; reset()
     }
