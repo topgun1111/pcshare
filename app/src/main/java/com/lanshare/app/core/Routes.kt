@@ -102,6 +102,7 @@ object Routes {
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
+            "wifiprinters" -> return ex.json(WifiPrinters.listJson())   // printers found on the Wi-Fi (mDNS), printed to directly over IPP
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))

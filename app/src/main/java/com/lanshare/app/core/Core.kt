@@ -57,6 +57,7 @@ object Core {
             server = srv
             srv.start()
             disc.start()
+            try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
             url = "http://127.0.0.1:$port"
             Log.i(TAG, "running on $port, sharing ${local.root}, device ${Cfg.name}")
         } catch (e: Throwable) {

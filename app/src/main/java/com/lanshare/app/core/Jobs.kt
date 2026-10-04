@@ -91,6 +91,7 @@ object Jobs {
 
     /** What the print service on that PC reports right now: {ok, printer?, problem?}. ok=false = nothing answered on the print port. */
     fun printerStatus(dev: String, printer: String? = null): JSONObject {
+        if (dev.startsWith("wifi:")) return WifiPrinters.status(dev)
         val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
         return try {
             val pq = if (printer.isNullOrEmpty()) "" else "?printer=" + URLEncoder.encode(printer, "UTF-8")
@@ -129,6 +130,15 @@ object Jobs {
 
     fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
         val src = ep(srcId)
+        if (dstId.startsWith("wifi:")) {   // a printer on the same Wi-Fi: straight over IPP, no PC (WifiPrint)
+            val wp = WifiPrinters.get(dstId) ?: throw IOException("that printer is no longer on the network")
+            val wid = UUID.randomUUID().toString().replace("-", "").take(8)
+            prune()
+            val wjob = Job("Printing on ${wp.name}")
+            all[wid] = wjob
+            Thread({ WifiPrint.work(wjob, src, wp, paths, opts) }, "wprint-$wid").also { it.isDaemon = true }.start()
+            return wid
+        }
         val (ip, pcName) = printTarget(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
         prune()

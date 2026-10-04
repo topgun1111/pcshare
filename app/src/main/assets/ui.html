@@ -981,7 +981,7 @@ function pickDevice(f,t,extra,after){return new Promise(res=>{
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const opts=[];if(S.dev!=='local'&&!f)opts.push({id:'local',name:'This device'});(extra||[]).forEach(x=>opts.push(x));S.peers.filter(p=>p.id!==S.dev||f).forEach(p=>opts.push(p));
   if(!opts.length)card.append(E('p','','No other devices found yet.'));
-  opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('phone'));lt.append(E('span','',p.name));
+  opts.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('phone'));{const nr=E('div','');nr.append(E('span','',p.name));const tg=p.tag||(after&&p.id!=='__here'?'via PC':'');if(tg){const tb=E('em','',tg);tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;background:rgba(21,101,192,.15);color:#1565C0;white-space:nowrap';nr.append(tb)}lt.append(nr)}
     if(after&&p.id!=='__here'){const sm=E('small','','Checking printer\u2026');lt.append(sm);after(p,sm)}
     b.append(ld,lt);b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
@@ -996,6 +996,39 @@ async function doSend(){
 /* Print: either on this phone itself (Android print system: any printer the phone knows) or on a PC running pcprint.py.
    The files can come from any connected device (this phone, another phone, a PC / SMB share). */
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
+/* printers found on the same Wi-Fi (mDNS); printed to directly over IPP, no PC needed */
+let WIFI=[];
+async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:'Wi-Fi'}))}catch(e){WIFI=[]}return WIFI}
+/* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
+function wifiOptions(pr,files){return new Promise(res=>{
+  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:''};
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const card=E('div','card pfull'),redraw=[];
+  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  card.append(E('div','handle'),E('h3','','Print on '+pr.name));
+  const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
+  const sec=(t,...kids)=>{const d=E('div','pf');d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
+  const seg=(key,opts)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip',l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
+  const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
+  mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
+  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);sec('Copies',cp);
+  const sides=sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
+  const colour=sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
+  sec('Paper',seg('paper',[['','Printer default'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
+  sec('Scaling',seg('fit',[['','Printer default'],['shrink','Fit to page'],['fill','Fill (crop)'],['noscale','Actual size']]));
+  const rg=E('input','tf');rg.placeholder='Page range, e.g. 1-3,5,8-  (PDF files)';rg.autocomplete='off';rg.oninput=()=>{st.range=rg.value};sec('Pages',rg);
+  const note=E('div','sub','Direct Wi-Fi printing: PDF, pictures and text. Booklets, several pages per sheet, watermarks and Word / Excel / PowerPoint files need a PC.');
+  note.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(note);
+  const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill','Print');
+  c.onclick=()=>fin(null);
+  k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range'].forEach(n=>{if(st[n]!==''&&st[n]!==1)out[n]=st[n]});fin(out)};
+  act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());
+  api('GET','/api/printer?dev='+enc(pr.id),null,12000).then(r=>{
+    if(!r.ok){info.textContent='Printer not reachable - is it on and on this Wi-Fi?';info.style.color='var(--err)';return}
+    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi';info.style.color='var(--ok)'}
+    if(r.duplex===false)sides.style.display='none';
+    if(r.color===false)colour.style.display='none'
+  }).catch(()=>{info.textContent='Printer status unavailable'})})}
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
 function printInfo(p,el){api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
   if(!r.ok){el.textContent='Print service not reachable';el.className='bad';return}
@@ -1239,9 +1272,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
 async function doPrint(){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
-  const all=here.concat(pcs);
+  await loadWifi();
+  const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here,printInfo);
+  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here.concat(WIFI),printInfo);
   if(!to)return;
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
@@ -1251,18 +1285,26 @@ async function doPrint(){
     if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
+  if(to.wifi){
+    const wf=selItems().filter(i=>!i.dir);
+    const wo=await wifiOptions(to,wf);if(!wo)return;
+    try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id,opts:wo});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+    return}
   const pvf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(S.path,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
   const opts=await printOptions(to,pvf,pvf.length===S.sel.size);if(!opts)return;
   try{const r=await api('POST','/api/print',{dev:S.dev,paths:opts.sheet?pvf.map(p=>p.path):selPaths(),to:to.id,opts});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsPrintShared=async names=>{
   try{
+    await loadWifi();
     const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
-    const last=localStorage.getItem('printTo');pcs.sort((a,b)=>(b.id===last)-(a.id===last));
-    const to=pcs.length===1?pcs[0]:await pickDevice(1,'Print on\u2026',[],printInfo);
+    const all=WIFI.concat(pcs);
+    const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
+    const to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',WIFI,printInfo);
     if(!to)return;
     try{localStorage.setItem('printTo',to.id)}catch(e){}
     const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
+    if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});watchJob(rw.job);track(rw.job);return}
     const opts=await printOptions(to,pvf,true);if(!opts)return;
     const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});watchJob(r.job);track(r.job)
   }catch(e){toast('\u26a0 '+e.message,5000)}};
