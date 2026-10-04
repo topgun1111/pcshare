@@ -88,7 +88,7 @@ object WifiPrint {
                     var cur: File = t
                     var cext = ext
                     if (ext in OFFICE) {   // no converter on the phone: a PC running pcprint.py turns it into a PDF, the phone sends that to the printer
-                        val ip = Jobs.converterIp() ?: throw PrintFail("Word / Excel / PowerPoint files need a PC on this Wi-Fi running pcprint.py (v11, with Word or LibreOffice) to be converted")
+                        val ip = try { Jobs.converterIp() } catch (x: IOException) { throw PrintFail(errText(x)) }
                         val pdf = File(dir, "w-" + System.nanoTime().toString(36) + ".pdf").also { temps.add(it) }
                         try { Jobs.officeToPdf(ip, t, "x.$ext", pdf) } catch (x: IOException) { throw PrintFail("conversion on the PC failed (" + errText(x) + ")") }
                         cur = pdf; cext = "pdf"

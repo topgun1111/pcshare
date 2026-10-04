@@ -112,7 +112,6 @@ object PrintPreview {
 
     private fun office(to: String, f: File, name: String, out: File) {
         val ip = if (to.startsWith("wifi:") || to.isEmpty()) Jobs.converterIp()
-            ?: throw IOException("Office files are converted on a PC: start pcprint.py (v11, with Word or LibreOffice) on a PC on this Wi-Fi")
         else Jobs.printTarget(to).first
         Jobs.officeToPdf(ip, f, name, out)
     }

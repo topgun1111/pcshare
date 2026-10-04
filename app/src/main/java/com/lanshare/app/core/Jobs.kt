@@ -79,15 +79,30 @@ object Jobs {
 
     @Volatile private var convIp: String? = null
 
-    /** IP of a PC whose pcprint.py can turn Office files into PDF (v11 /convert + an engine), for Wi-Fi printers that have no PC of their own. */
-    fun converterIp(): String? {
-        fun ok(ip: String) = try {
-            val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 2500)
-            try { r.status == 200 && JSONObject(String(r.readUpTo(32768), Charsets.UTF_8)).let { it.optBoolean("convert", false) && !it.isNull("office") } } finally { r.close() }
-        } catch (_: Exception) { false }
-        convIp?.let { if (ok(it)) return it }
-        for (p in Core.disc.list()) if (ok(p.ip)) { convIp = p.ip; return p.ip }
-        return null
+    /** IP of a PC whose pcprint.py can turn Office files into PDF (v11 /convert + Word/LibreOffice). Throws with the real reason when none can. */
+    fun converterIp(): String {
+        val ips = LinkedHashSet<String>()
+        convIp?.let { ips.add(it) }
+        for (p in Core.disc.list()) { ips.add(p.ip); ips.addAll(p.ips) }
+        try { val a = Cfg.smb(); for (k in 0 until a.length()) a.optJSONObject(k)?.optString("host")?.takeIf { it.isNotEmpty() }?.let { ips.add(Smb.split(it).first) } } catch (_: Exception) {}
+        val res = java.util.concurrent.ConcurrentHashMap<String, String>()   // ip -> "ok" | "old" | "noengine"
+        val ts = ips.map { ip -> Thread {
+            try {
+                val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 2500)
+                try {
+                    if (r.status == 200) JSONObject(String(r.readUpTo(32768), Charsets.UTF_8)).let {
+                        res[ip] = if (!it.optBoolean("convert", false)) "old" else if (it.isNull("office")) "noengine" else "ok"
+                    }
+                } finally { r.close() }
+            } catch (_: Exception) {}
+        }.also { t -> t.isDaemon = true; t.start() } }
+        ts.forEach { try { it.join(3500) } catch (_: InterruptedException) {} }
+        res.entries.firstOrNull { it.value == "ok" }?.let { convIp = it.key; return it.key }
+        throw IOException(when {
+            res.containsValue("noengine") -> "pcprint.py is running on a PC, but it found no Word / Excel / PowerPoint or LibreOffice to convert with (Office installed for another Windows user, Microsoft Store/Click-to-Run edition, or not activated?) - install LibreOffice there"
+            res.containsValue("old") -> "pcprint.py on the PC is an old version - replace it with v11 and restart it"
+            else -> "no PC with pcprint.py answered on port $PRINT_PORT (${ips.size} checked) - start pcprint.py on the PC, same Wi-Fi, allow it through the Windows firewall"
+        })
     }
 
     /** Office file -> PDF through pcprint.py /convert on [ip]. */
