@@ -1002,10 +1002,10 @@ const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
 const PV_PAPER={A3:[842,1191],A4:[595,842],A5:[420,595],Letter:[612,792],Legal:[612,1008]},PV_LAY={1:[1,1,0],2:[2,1,1],4:[2,2,0],6:[3,2,1],9:[3,3,0]};
-/* layout preview types = what the PC can lay out. webp/heic/heif pictures are converted to JPEG on the phone and code/config files are sent as .txt (see Jobs.printWork), so they preview like pictures / text */
-const PV_IMG=['png','jpg','jpeg','bmp','gif','tif','tiff','webp','heic','heif'],PV_TXT=['txt','log','md','php','phtml','js','mjs','ts','tsx','jsx','css','scss','json','xml','yml','yaml','toml','ini','cfg','conf','env','sql','py','kt','kts','java','c','h','cpp','hpp','cs','go','rs','rb','sh','bat','ps1','gradle','properties','tsv','srt','vtt'],
+/* layout preview types = what the PC can lay out. Everything else is converted on the phone (PrintPrep): other pictures -> JPEG, html/svg -> PDF, code/config/unknown text -> .txt, unknown extensions are sniffed */
+const PV_IMG=['png','jpg','jpeg','bmp','gif','tif','tiff','webp','heic','heif','avif','ico','wbmp','dng','jfif','jpe','jfi'],PV_WEB=['html','htm','xhtml','svg'],PV_TXT=['txt','log','md','php','phtml','js','mjs','ts','tsx','jsx','css','scss','json','xml','yml','yaml','toml','ini','cfg','conf','env','sql','py','kt','kts','java','c','h','cpp','hpp','cs','go','rs','rb','sh','bat','ps1','gradle','properties','tsv','srt','vtt','cjs','sass','less','jsonl','ndjson','geojson','bash','zsh','cmd','cc','ass','ssa','swift','dart','lua','pl','pm','r','scala','vb','vbs','asm','jl','ex','exs','erl','hs','clj','vue','svelte','graphql','proto','tex','bib','rst','adoc','org','ics','vcf','eml','nfo','lrc','diff','patch','gitignore','gitattributes','editorconfig','dockerfile','makefile','mk','cmake','reg','inf','m3u','m3u8','har','lock','text'],
   PV_OFFICE=['doc','docx','rtf','odt','xls','xlsx','csv','ppt','pptx','odp','ods'];
-const pvExt=f=>(f.name.split('.').pop()||'').toLowerCase(),pvOK=f=>{const e=pvExt(f);return e==='pdf'||PV_IMG.includes(e)||PV_TXT.includes(e)||PV_OFFICE.includes(e)};
+const pvExt=f=>(f.name.split('.').pop()||'').toLowerCase(),pvOK=f=>{const e=pvExt(f);return e==='pdf'||PV_IMG.includes(e)||PV_TXT.includes(e)||PV_OFFICE.includes(e)||PV_WEB.includes(e)};
 function pvPageSet(rng,n){const all=Array.from({length:n},(_,i)=>i);if(!rng||!rng.trim())return all;const out=[];
   for(const part of rng.replace(/ /g,'').split(',')){if(!part)continue;const m=part.match(/^(\d*)(-?)(\d*)$/);if(!m)continue;
     let a,b;if(m[2]){a=m[1]?+m[1]:1;b=m[3]?+m[3]:n}else{if(!m[1])continue;a=b=+m[1]}
@@ -1032,9 +1032,10 @@ function pvFill(t,i,n,name){const d=new Date(),z=x=>String(x).padStart(2,'0');
 /* what the preview needs from the first file: page count (PDF / text) or the picture itself */
 async function pvInfo(f){
   const ext=(f.name.split('.').pop()||'').toLowerCase();
-  if(PV_IMG.includes(ext)){const im=new Image(),nat=ext==='heic'||ext==='heif';await new Promise(r=>{im.onload=im.onerror=r;im.src=nat?f.url.replace('/api/dl?','/api/thumb?'):f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
+  if(PV_IMG.includes(ext)){const im=new Image(),nat=['heic','heif','avif','wbmp','dng'].includes(ext);await new Promise(r=>{im.onload=im.onerror=r;im.src=nat?f.url.replace('/api/dl?','/api/thumb?'):f.url});return{kind:'img',pages:1,img:im.naturalWidth?im:null}}
   if(PV_OFFICE.includes(ext))return{kind:'office',pages:0};   /* page count unknown: sample layout, the PC converts the file to PDF when printing */
-  if(ext!=='pdf'&&!PV_TXT.includes(ext))return{kind:'none'};
+  if(PV_WEB.includes(ext))return{kind:'doc',pages:0};   /* html / svg: turned into a PDF on the phone, page count unknown -> sample layout */
+  if(ext!=='pdf'&&!PV_TXT.includes(ext))return{kind:'doc',pages:0};   /* unknown type: the phone looks inside and converts it (PrintPrep), or the job reports it cannot be printed */
   const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),25000);
   try{const r=await fetch(f.url,{signal:ac.signal});if((+r.headers.get('content-length')||0)>60e6){ac.abort();return{kind:'doc',pages:0}}
     const buf=await r.arrayBuffer();

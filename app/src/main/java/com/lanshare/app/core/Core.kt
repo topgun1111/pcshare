@@ -14,6 +14,8 @@ object Core {
     private const val TAG = "LANShare"
     @Volatile var url: String? = null
     @Volatile var error: String? = null
+    /** Application context (WebView-based HTML/SVG -> PDF conversion for printing needs one). */
+    @Volatile var appCtx: Context? = null
     lateinit var local: LocalFs
     /** Scratch space for files extracted from archives (cleared at every start, size-capped while running). */
     @Volatile var cacheDir: File = File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp", "lsarc")
@@ -36,6 +38,7 @@ object Core {
         started = true
         try {
             val app = ctx.applicationContext
+            appCtx = app
             Cfg.load(File(app.filesDir, "lanshare.json"), phoneModel(), "")
             holdAwake(app)
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
