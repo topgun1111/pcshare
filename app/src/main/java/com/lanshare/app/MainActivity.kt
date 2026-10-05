@@ -90,6 +90,15 @@ class MainActivity : Activity() {
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
         @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
+        /** Native search box (NlSearch.kt): ui.html nlSrPush() geometry / state, the query the next nlItems was filtered by, focus request. */
+        @JavascriptInterface fun nlSearch(json: String) { runOnUiThread { try { nl.setSearch(json) } catch (_: Throwable) { } } }
+        @JavascriptInterface fun nlQ(q: String) { runOnUiThread { nl.noteQ(q) } }
+        @JavascriptInterface fun nlSrFocus() { runOnUiThread { nl.focusSearch() } }
+        /** Native Sort / View sheets (NlSheets.kt): JSON = current state from ui.html. Choices come back through nlPref(). */
+        @JavascriptInterface fun nlSort(json: String) { runOnUiThread { try { nl.sheets.showSort(json) } catch (_: Throwable) { } } }
+        @JavascriptInterface fun nlView(json: String) { runOnUiThread { try { nl.sheets.showView(json) } catch (_: Throwable) { } } }
+        @JavascriptInterface fun nlSheets(): Boolean = NativeList.SHEETS
+        @JavascriptInterface fun nlSearchOk(): Boolean = NativeList.SEARCH
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) {
             phonePrint.start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", name))).toString())
@@ -151,6 +160,7 @@ class MainActivity : Activity() {
         val root = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(-1, -1))
             addView(nl.overlay, FrameLayout.LayoutParams(-1, -1))   // native file list: above the page, invisible until ui.html sends a layout
+            addView(nl.search, FrameLayout.LayoutParams(1, 1))      // native search box: its own view (the overlay forwards touches outside the list to the page); GONE until the page opens its search row
         }
         setContentView(root)
         splash = NlSplash(this, nl, web, root)
@@ -428,6 +438,7 @@ class MainActivity : Activity() {
         // Never web.goBack(): history still holds the "Starting..." page. Let the UI close its own
         // overlays / selection first; otherwise leave the app (the server keeps running in the service).
         if (!pageReady) { finish(); return }
+        if (::nl.isInitialized && nl.backUp()) return   // plain folder, nothing open: up one level at once (rows from the native cache)
         web.evaluateJavascript("(window.lsBack?lsBack():false)") { if (it != "true") finish() }
     }
 }

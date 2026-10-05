@@ -11,6 +11,8 @@ import android.text.TextUtils
 import android.view.*
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.content.Intent
+import android.os.Build
 import androidx.core.graphics.PathParser
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -48,7 +50,9 @@ object NlIcons {
         "apk" to "M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24c-2.86-1.21-6.08-1.21-8.94 0L5.65 5.67c-.19-.29-.58-.38-.87-.2-.28.18-.37.54-.22.83L6.4 9.48C3.3 11.25 1.28 14.44 1 18h22c-.28-3.56-2.3-6.75-5.4-8.52zM7 15.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25zm10 0c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z",
         "check" to "M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z",
         "camera" to "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z",
-        "download" to "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
+        "download" to "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+        "back" to "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z",
+        "close" to "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
     )
     private val cache = HashMap<String, Path>()
     fun path(k: String): Path? {
@@ -77,7 +81,7 @@ class NlRow(
 class NlPal(private val j: JSONObject) {
     private fun c(n: String) = j.optLong(n).toInt()
     val card = c("card"); val bg = c("bg"); val fg = c("fg"); val mut = c("mut"); val bd = c("bd"); val sel = c("sel")
-    val onsel = c("onsel"); val hov = c("hov"); val ac = c("ac"); val onac = c("onac"); val warn = c("warn"); val cont = c("cont")
+    val onsel = c("onsel"); val hov = c("hov"); val ac = c("ac"); val onac = c("onac"); val warn = c("warn"); val cont = c("cont"); val tl = c("tl")
     val kc = HashMap<String, Int>(); val kb = HashMap<String, Int>()
     init {
         val k = j.optJSONObject("k")
@@ -562,6 +566,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         const val ENABLED = true
         /** Kill switch for the native path bar + tool row (NlHead.kt): false = the HTML rows only. */
         const val HEAD = true
+        /** Kill switch for the native search box (NlSearch.kt) and its instant filter: false = the HTML input. */
+        const val SEARCH = true
+        /** Kill switch for the native Sort / View sheets (NlSheets.kt): false = the page's HTML sheets. */
+        const val SHEETS = true
 
         fun parseRows(json: String, dev: String = "local"): List<NlRow> {
             val a = JSONArray(json); val out = ArrayList<NlRow>(a.length())
@@ -605,6 +613,15 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var headData: NlHeadData? = null
     private var headGeom = false                 // the page sent a geometry ("hd") for the two rows
     private val headRect = RectF()
+    // ---- native search box (NlSearch.kt) + native Sort / View sheets (NlSheets.kt) ----
+    val search = NlSearchRow(act, d)
+    val sheets = NlSheets(act) { o -> pref(o) }
+    private var searchOn = false                 // the native box is shown (page: body.srch)
+    private var curQ = ""                        // what the box holds (trimmed, lower case) = the query the page is asked to apply
+    private var pageQ = ""                       // query the last rows from the page were filtered by (ui.html nlQ, sent right before nlItems)
+    private var baseRows: List<NlRow>? = null    // unfiltered rows of baseKey: source of the instant filter
+    private var baseKey = ""
+    private var prefGen = 0
     // ---- instant folder entry: Kotlin builds the rows of the next folder itself (NlModel); the page only revalidates ----
     private class Built(val rows: List<NlRow>, val sig: Int, val cfg: String, val at: Long, val sumB: String?, val sumS: String?)
     private val built = LinkedHashMap<String, Built>()      // key = dev|view|path (UI thread only)
@@ -643,32 +660,108 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) } }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) }; if (dy != 0) preload(dy > 0) }
         })
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
         overlay.addView(head, FrameLayout.LayoutParams(1, 1))
         head.visibility = View.GONE
-        head.onAct = { ev, i -> raw(ev, i) }      // crumb / newb / sort -> ui.html nlOn (never held back by the instant-entry guard)
+        search.visibility = View.GONE
+        search.onText = { t -> onSearchText(t) }
+        search.onClear = { curQ = ""; web.evaluateJavascript("window.nlSr&&nlSr('clear',0)", null); filterNow("") }
+        search.onBack = { search.hideKeyboard(); web.evaluateJavascript("window.nlSr&&nlSr('back',0)", null) }
+        head.onAct = { ev, i -> if (ev == "crumb") crumbTo(i) else raw(ev, i) }      // crumb: instant (rows from `built`), page confirms; newb / sort -> ui.html nlOn
         overlay.visibility = View.GONE
     }
 
     private fun raw(ev: String, i: Int) { web.evaluateJavascript("window.nlOn&&nlOn('$ev',$i)", null) }
     private fun emit(ev: String, i: Int) {
         if (navUntil != 0L && ev != "refresh" && ev != "el") { if (android.os.SystemClock.uptimeMillis() < navUntil) return; navUntil = 0L }
+        if (ev == "tap" && sel.isEmpty() && openNative(i)) return
+        if ((ev == "tap" && sel.isNotEmpty()) || ev == "long") optimisticSel(ev, i)
         raw(ev, i)
     }
 
-    fun setCfg(c: String) { if (c != curCfg) built.clear(); curCfg = c }
+    // ---- picture / video / PDF tap: the viewer starts straight from the rows (no page round trip, no JSON of the whole folder built in JS) ----
+    private fun encU(x: String): String = java.net.URLEncoder.encode(x, "UTF-8").replace("+", "%20").replace("%21", "!").replace("%27", "'").replace("%28", "(").replace("%29", ")").replace("%7E", "~")   // = encodeURIComponent
+    private val NOIMG = Regex("\\.(svg|gif)$", RegexOption.IGNORE_CASE)
+    private val HEIC = Regex("\\.(heic|heif)$", RegexOption.IGNORE_CASE)
+    private val SUBX = Regex("\\.(srt|vtt|ass|ssa)$", RegexOption.IGNORE_CASE)
+
+    /** Same payloads as ui.html nativePlay / nativeImg / nativePdf. false = not handled here (the page decides: documents, svg/gif, search, archives, newest ...). */
+    private fun openNative(i: Int): Boolean {
+        try {
+            val r = rows.getOrNull(i) ?: return false
+            val origin = Core.url ?: return false
+            if (r.dir || r.hit || r.k == "hdr" || sqOn) return false
+            val kp = curKey.split('|', limit = 3)
+            if (kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!')) return false
+            val dev = kp[0]; val path = kp[2]
+            fun url(n: String) = origin + "/api/dl?dev=" + encU(dev) + "&path=" + encU((if (path == "/") "" else path) + "/" + n)
+            fun key(n: String, sz: Long) = dev + "|" + path + "/" + n + "|" + sz
+            val files = rows.filter { !it.dir && !it.hit && it.k != "hdr" }
+            when (r.k) {
+                "vid" -> {
+                    val v = files.filter { it.k == "vid" }
+                    val subs = files.filter { SUBX.containsMatchIn(it.nm) }
+                    val base = { n: String -> n.replace(Regex("\\.[^.]+$"), "").lowercase() }
+                    val items = JSONArray()
+                    for (m in v) {
+                        val b = base(m.nm); val sj = JSONArray()
+                        for (x in subs) { val c = base(x.nm); if (c == b || c.startsWith("$b.")) sj.put(JSONObject().put("name", x.nm).put("url", url(x.nm))) }
+                        items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("key", key(m.nm, m.size)).put("subs", sj))
+                    }
+                    val at = Math.max(0, v.indexOfFirst { it.nm == r.nm })
+                    PlayerActivity.pending = JSONObject().put("start", at).put("items", items).toString()
+                    act.startActivity(Intent(act, PlayerActivity::class.java))
+                }
+                "img" -> {
+                    val heicOk = Build.VERSION.SDK_INT >= 28
+                    val ok = { x: NlRow -> x.k == "img" && !NOIMG.containsMatchIn(x.nm) && (heicOk || !HEIC.containsMatchIn(x.nm)) }
+                    if (!ok(r)) return false
+                    val v = files.filter(ok)
+                    val items = JSONArray()
+                    for (m in v) items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("size", m.size))
+                    ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, v.indexOfFirst { it.nm == r.nm })).put("items", items).toString()
+                    act.startActivity(Intent(act, ImageViewerActivity::class.java))
+                }
+                "pdf" -> {
+                    PdfViewerActivity.pending = JSONObject().put("name", r.nm).put("url", url(r.nm)).put("size", r.size).put("key", key(r.nm, r.size)).toString()
+                    act.startActivity(Intent(act, PdfViewerActivity::class.java))
+                }
+                else -> return false
+            }
+            return true
+        } catch (_: Throwable) { return false }
+    }
+
+    // ---- selection answered here at once; the page repeats the same toggle (S.sel) and its pushes are held back while taps are in flight ----
+    private var selHold = 0L
+    private var heldSel: Set<Int>? = null
+    private val applyHeld = Runnable { val h = heldSel; heldSel = null; if (h != null) applySel(h) }
+
+    /** Long press adds the row, a tap in selection mode toggles it: exactly what ui.html nlOn does for ordinary rows (hits / headers are not selectable). */
+    private fun optimisticSel(ev: String, i: Int) {
+        val r = rows.getOrNull(i) ?: return
+        if (r.hit || r.k == "hdr") return
+        val n = HashSet(sel)
+        if (ev == "long") n.add(i) else if (!n.remove(i)) n.add(i)
+        selHold = android.os.SystemClock.uptimeMillis() + 400; heldSel = null; rv.removeCallbacks(applyHeld)
+        applySel(n)
+    }
+
+    fun setCfg(c: String) { if (c != curCfg) { built.clear(); baseRows = null }; curCfg = c }
+    /** ui.html nlQ(): the query the rows of the next nlItems were filtered by. */
+    fun noteQ(q: String) { pageQ = q }
 
     private fun fresh(e: Built?) = e != null && e.cfg == curCfg && android.os.SystemClock.uptimeMillis() - e.at < 30_000
 
-    /** Row i is a plain folder of this phone that can be entered instantly -> (rows key, folder path). */
+    /** Row i is a plain folder that can be entered instantly -> (rows key, folder path). Built here only for this phone ([isLocal]); other devices / SMB use rows the page sent earlier. */
     private fun childKey(i: Int): Pair<String, String>? {
         if (sel.isNotEmpty() || i !in 0 until galStart || curCfg.isEmpty()) return null
         val r = rows[i]
         if (!r.dir || r.hit || r.k == "hdr" || r.gal) return null
         val kp = curKey.split('|', limit = 3)
-        if (kp.size != 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return null
+        if (kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!')) return null
         val child = (if (kp[2] == "/") "" else kp[2]) + "/" + r.nm
         return Pair(kp[0] + "|" + kp[1] + "|" + child, child)
     }
@@ -697,7 +790,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     /** Finger down on a folder row: start building its rows already. */
-    private fun warmFor(i: Int) { val ck = childKey(i) ?: return; warm(ck.first, ck.second, true) }
+    private fun isLocal(key: String) = key.startsWith("local|")
+    private fun warmFor(i: Int) { val ck = childKey(i) ?: return; if (isLocal(ck.first)) warm(ck.first, ck.second, true) }
 
     /** After a list is on screen (idle): build the rows of its first sub-folders ahead. */
     private fun warmNeighbours() {
@@ -706,6 +800,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         for (i in 0 until galStart) {
             if (rows[i].nm.startsWith('.')) continue
             val ck = childKey(i) ?: continue
+            if (!isLocal(ck.first)) return                    // never pre-list other devices (network traffic)
             warm(ck.first, ck.second, false)
             if (++n >= 6) break
         }
@@ -717,9 +812,150 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val ck = childKey(i)
         if (ck == null) { emit("tap", i); return }
         val e = built[ck.first]
-        if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig); headTo(ck.second, e.sumB, e.sumS) }
+        if (!isLocal(ck.first)) {      // other device / SMB: only a folder the page listed before (<= 10 min) is shown early; the page revalidates over the network
+            if (e != null && e.cfg == curCfg && android.os.SystemClock.uptimeMillis() - e.at < 600_000) { navKey = null; applyItems(ck.first, e.rows, emptySet(), e.sig); headTo(ck.second, e.sumB, e.sumS) }
+            else { emit("tap", i); return }
+        }
+        else if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig); headTo(ck.second, e.sumB, e.sumS) }
         else { navKey = ck.first; warm(ck.first, ck.second, true) }
         raw("tap", i); navUntil = android.os.SystemClock.uptimeMillis() + 2000
+    }
+
+    private fun rawPath(p: String) { web.evaluateJavascript("window.nlOn&&nlOn('goto'," + JSONObject.quote(p) + ")", null) }
+    private var sqOn = false                                    // search box open / query typed (from the page's layout JSON)
+
+    /** Show a local folder's rows at once (cached or built here), then let the page navigate to the same path and revalidate. */
+    private fun goPath(dev: String, path: String, view: String): Boolean {
+        val key = "$dev|$view|$path"
+        val e = built[key]
+        if (e != null && e.cfg == curCfg && android.os.SystemClock.uptimeMillis() - e.at < 600_000) { navKey = null; applyItems(key, e.rows, emptySet(), e.sig); headTo(path, e.sumB, e.sumS) }
+        else if (dev == "local") { navKey = key; warm(key, path, true) }
+        else return false                                  // not cached and not buildable here: the page does it
+        rawPath(path); navUntil = android.os.SystemClock.uptimeMillis() + 2000
+        return true
+    }
+
+    /** Path-bar tap: root / drive / a parent folder. Same targets as ui.html nlOn('crumb'); instant for this phone's plain folders. */
+    private fun crumbTo(i: Int) {
+        val hd = headData; val kp = curKey.split('|', limit = 3)
+        if (hd == null || kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!') || curCfg.isEmpty() || sqOn) { raw("crumb", i); return }
+        val path = if (i < 2) "/" else "/" + hd.segs.take(i - 1).joinToString("/")
+        if (path == kp[2] || !goPath(kp[0], path, kp[1])) raw("crumb", i)
+    }
+
+    /** System back: up one folder instantly when nothing else (dialog, drawer, selection, search, viewer) needs the key. false = the page decides. */
+    fun backUp(): Boolean {
+        if (overlay.visibility != View.VISIBLE || overlay.passAll || overlay.dim > 0f || sel.isNotEmpty() || sqOn || curCfg.isEmpty()) return false
+        if (navUntil != 0L && android.os.SystemClock.uptimeMillis() < navUntil) return false
+        if (headData == null) return false
+        val kp = curKey.split('|', limit = 3)
+        if (kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!') || kp[2] == "/" || kp[2].isEmpty()) return false
+        return goPath(kp[0], kp[2].substringBeforeLast('/').ifEmpty { "/" }, kp[1])
+    }
+
+    /** A list the page sent for a plain local folder is kept too, so going back / up to it later is instant. */
+    private fun rememberPage(key: String, list: List<NlRow>, sig: Int) {
+        val kp = key.split('|', limit = 3)
+        if (kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!') || curCfg.isEmpty()) return
+        if (list.any { it.hit || it.k == "hdr" }) return
+        val hd = headData
+        built.remove(key); built[key] = Built(list, sig, curCfg, android.os.SystemClock.uptimeMillis(), hd?.sumB, hd?.sumS)
+        while (built.size > 24) built.remove(built.keys.first())
+    }
+
+    // ================= native search box =================
+    /** json from ui.html nlSrPush(): "0" = closed, else {r:[l,t,w,h] css px, h:1 hidden under a page dialog, p:palette, x?:query set by the page itself}. */
+    fun setSearch(json: String) {
+        if (!SEARCH) return
+        if (json == "0") {
+            if (searchOn) { search.hideKeyboard(); search.setText("") }
+            searchOn = false; curQ = ""; search.visibility = View.GONE
+            return
+        }
+        val j = JSONObject(json)
+        val r = j.getJSONArray("r")
+        val l = Math.round((r.getDouble(0) * d).toFloat()); val t = Math.round((r.getDouble(1) * d).toFloat())
+        val w = Math.round((r.getDouble(2) * d).toFloat()); val h = Math.round((r.getDouble(3) * d).toFloat())
+        j.optJSONObject("p")?.let { search.setPal(NlPal(it)) }
+        val lp = search.layoutParams as FrameLayout.LayoutParams
+        if (lp.leftMargin != l || lp.topMargin != t || lp.width != w || lp.height != h) {
+            lp.leftMargin = l; lp.topMargin = t; lp.width = w; lp.height = h
+            search.layoutParams = lp
+        }
+        searchOn = true
+        if (j.has("x")) {                                            // the page set the query itself (e.g. "find this file"): adopt it, then ask for the rows again (answers sent meanwhile were dropped as stale)
+            val x = j.getString("x"); search.setText(x); curQ = x.trim().lowercase(java.util.Locale.ROOT)
+            web.evaluateJavascript("window.nlRe&&nlRe()", null)
+        }
+        if (j.optInt("h") == 1) { if (search.visibility == View.VISIBLE) search.hideKeyboard(); search.visibility = View.INVISIBLE }
+        else search.visibility = View.VISIBLE
+    }
+
+    fun focusSearch() { if (SEARCH && searchOn) search.focusInput() }
+
+    private fun onSearchText(raw: String) {
+        val q = raw.trim().lowercase(java.util.Locale.ROOT)
+        if (q == curQ) return
+        curQ = q
+        web.evaluateJavascript("window.nlSr&&nlSr('q'," + JSONObject.quote(raw) + ")", null)   // the page filters / searches sub-folders as before and confirms
+        filterNow(q)
+    }
+
+    /** Instant filter: same rule as ui.html shown() (name contains the query, order kept) over the unfiltered rows; the page's answer is identical -> no redraw. */
+    private fun filterNow(q: String) {
+        val base = baseRows ?: return
+        if (!searchOn || baseKey != curKey || sel.isNotEmpty() || overlay.visibility != View.VISIBLE) return
+        if (base.any { it.gal }) return
+        val out = if (q.isEmpty()) base else base.filter { it.nm.lowercase(java.util.Locale.ROOT).contains(q) }
+        if (out.isEmpty()) return                                   // "No matches": the page shows that itself
+        val sg = NlModel.sig(out)
+        if (sg == curSig) return
+        rows = out; calcGal(); curSig = sg; ad.notifyDataSetChanged()
+        navUntil = android.os.SystemClock.uptimeMillis() + 1500     // taps are ignored until the page answers (its row indexes must match ours)
+    }
+
+    // ================= native Sort / View =================
+    /** A choice made in the native sheet. Sort / view / thumbnails: rows are re-built here at once for this phone's plain folders; in every case the page applies the same preference. */
+    fun pref(o: JSONObject) {
+        try { instantPref(o) } catch (_: Throwable) { }
+        web.evaluateJavascript("window.nlPref&&nlPref(" + JSONObject.quote(o.toString()) + ")", null)
+    }
+
+    private fun instantPref(o: JSONObject) {
+        if (!o.has("sort") && !o.has("view") && !o.has("thumb")) return
+        val c = curCfg.split(',')
+        val kp = curKey.split('|', limit = 3)
+        if (c.size != 6 || kp.size != 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return
+        if (sel.isNotEmpty() || sqOn || searchOn || headData == null || overlay.visibility != View.VISIBLE || overlay.passAll) return
+        val sort = o.optString("sort", c[0])
+        val asc = if (o.has("asc")) o.optInt("asc") else (c[1].toIntOrNull() ?: 1)
+        val view = o.optString("view", c[4])
+        val thumb = o.optString("thumb", c[5])
+        if (sort !in setOf("none", "name", "size", "date", "type") || view !in setOf("list", "compact", "grid") || (thumb != "s" && thumb != "l")) return
+        val newCfg = listOf(sort, asc.toString(), c[2], c[3], view, thumb).joinToString(",")
+        if (newCfg == curCfg) return
+        val oldKey = curKey
+        val key = kp[0] + "|" + view + (if (view == "list" && thumb == "l") "L" else "") + "|" + kp[2]
+        val path = kp[2]
+        val gen = ++prefGen
+        buildNow.execute {
+            val res = NlModel.build(path, newCfg, Int.MAX_VALUE)
+            val list = res.rows; val sg = if (list != null) NlModel.sig(list) else 0
+            act.runOnUiThread {
+                if (gen != prefGen || list == null || curKey != oldKey || sel.isNotEmpty()) return@runOnUiThread
+                built.clear(); baseRows = null
+                curCfg = newCfg
+                compact = view == "compact"; large = view == "list" && thumb == "l"
+                applyItems(key, list, emptySet(), sg)
+                headData?.let { h ->
+                    val lab = sheets.labels?.optString(sort, "") ?: ""
+                    headData = h.copy(sortLabel = if (lab.isNotEmpty()) lab else h.sortLabel, sortDir = if (sort == "none") 0 else if (asc == 1) 1 else 2,
+                        sumB = res.sum?.first ?: h.sumB, sumS = res.sum?.second ?: h.sumS)
+                    head.set(headData, true)
+                }
+                navUntil = android.os.SystemClock.uptimeMillis() + 2000    // until the page confirms (setItems resets this)
+            }
+        }
     }
 
     fun setPalette(json: String) {
@@ -745,7 +981,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     fun setItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
-        navUntil = 0L; navKey = null; applyItems(key, list, selected, sig)
+        if (searchOn && pageQ != curQ) return          // stale answer: the box already holds a newer query, the page answers that one next
+        navUntil = 0L; navKey = null
+        if (pageQ.isEmpty()) { baseRows = if (list.none { it.hit || it.k == "hdr" || it.gal }) list else null; baseKey = key }
+        applyItems(key, list, selected, sig)
+        if (pageQ.isEmpty()) rememberPage(key, list, sig)      // never cache a search-filtered list as the folder's rows
         rv.removeCallbacks(idleWarm); rv.postDelayed(idleWarm, 400)
     }
 
@@ -762,6 +1002,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     fun setSel(n: Set<Int>) {
+        val left = selHold - android.os.SystemClock.uptimeMillis()
+        if (left > 0) { heldSel = n; rv.removeCallbacks(applyHeld); rv.postDelayed(applyHeld, left + 10); return }   // a push from the page while taps are in flight: apply the last one afterwards
+        applySel(n)
+    }
+
+    private fun applySel(n: Set<Int>) {
         val old = sel; sel = n
         if ((gridOn || galStart < rows.size) && old.isEmpty() != n.isEmpty()) { ad.notifyDataSetChanged(); return }
         if (Math.abs(old.size - n.size) > 40) { ad.notifyDataSetChanged(); return }
@@ -788,6 +1034,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         overlay.holes = hs
         overlay.dim = j.optDouble("dm", 0.0).toFloat()
         overlay.passAll = j.optInt("ps") == 1
+        sqOn = j.optInt("sq") == 1
         val cp = j.optInt("cp") == 1
         val lg = j.optInt("lg") == 1
         if (cp != compact || lg != large) { compact = cp; large = lg; ad.notifyDataSetChanged() }
@@ -830,7 +1077,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     /** Instant folder entry: path bar + summary follow the rows at once (the page's own push confirms or corrects them). */
     private fun headTo(path: String, sumB: String?, sumS: String?) {
         val cur = headData ?: return
-        if (sumB == null || cur.dn.isNotEmpty()) return
+        if (sumB == null) return
         headData = cur.copy(segs = NlHeadData.segsOf(path), sumB = sumB, sumS = sumS ?: "")
         head.set(headData, true)
     }
@@ -869,6 +1116,26 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     /** Decode one thumbnail on the pool; `ok()` is checked on the UI thread (the view may have been recycled meanwhile). */
+    // ---- thumbnails of the rows just beyond the screen (in the scroll direction) are decoded ahead into the memory cache ----
+    private val preloading = HashSet<String>()      // UI thread only
+    private fun preload(down: Boolean) {
+        if (preloading.size > 24) { preloading.removeAll { k -> thumbs.get(k) != null || synchronized(failed) { failed.contains(k) } }; if (preloading.size > 24) return }   // failed decodes never call back: drop them here
+        val first = lm.findFirstVisibleItemPosition(); val last = lm.findLastVisibleItemPosition()
+        if (first < 0 || last < 0 || galStart == 0) return
+        val ahead = 10 * Math.max(1, spanN)
+        val idx: IntProgression = if (down) (last + 1..Math.min(galStart - 1, last + ahead)) else (first - 1 downTo Math.max(0, first - ahead))
+        for (p in idx) {
+            val r = rows.getOrNull(p) ?: continue
+            val key = r.thumbKey ?: continue
+            if (thumbs.get(key) != null || key in preloading) continue
+            val bad = synchronized(failed) { failed.contains(key) }
+            if (bad) continue
+            preloading.add(key)
+            loadTh(r, key, { preloading.remove(key); false }, { })
+            if (preloading.size > 24) return
+        }
+    }
+
     private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
         val th: Th? = try {
             if (r.dev != "local") {   // other LANShare device / SMB share: through the endpoint (disk cached), see RemoteThumbs

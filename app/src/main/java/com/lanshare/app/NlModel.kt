@@ -86,11 +86,16 @@ object NlModel {
     fun build(path: String, cfgS: String, maxItems: Int = Int.MAX_VALUE): Result {
         try {
             val cfg = parseCfg(cfgS) ?: return Result(null, 0)
-            if (cfg.sort == "size" || path.contains('!')) return Result(null, 0)      // size order needs the folder counts (they arrive later): the page decides
+            if (path.contains('!')) return Result(null, 0)
+            if (cfg.sort == "size" && maxItems != Int.MAX_VALUE) return Result(null, 0)   // size order needs every sub-folder's count: only built on a real tap, never as an idle pre-build
             if (cfg.view != "list" && cfg.view != "compact" && cfg.view != "grid") return Result(null, 0)
             if (Core.url == null) return Result(null, 0)
-            val items = Core.local.ls(path, false)
+            var items = Core.local.ls(path, false)
             if (items.size > maxItems) return Result(null, items.size)
+            if (cfg.sort == "size") {   // the page's final state: counts filled in (fillCounts) and the list re-sorted by them
+                val c = Core.local.counts(path)
+                items = items.map { if (it.dir) (c[it.name]?.let { n -> it.copy(n = n) } ?: it) else it }
+            }
             return Result(rows(items, path, cfg), items.size, headSum(items, cfg.hid))
         } catch (_: Throwable) { return Result(null, 0) }
     }
@@ -148,6 +153,7 @@ object NlModel {
                 BADGE[i.name.lowercase()]?.let { badge = it.icon; badgeCol = it.color }
             } else {
                 if (i.name in dups) dup = true
+                size = i.size                                   // every file row carries its size (viewers need it); ui.html nlBuild sends `s` for all files too
                 if ((k == "img" || k == "vid") && !NOTHUMB.containsMatchIn(i.name) && (k == "vid" || i.size < 30_000_000L)) {
                     path = (if (p0 == "/") "" else p0) + "/" + i.name; size = i.size; mt = i.mtime
                 }
