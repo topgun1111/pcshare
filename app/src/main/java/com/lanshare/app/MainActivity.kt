@@ -24,6 +24,7 @@ import android.text.TextUtils
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.Executors
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -41,6 +42,7 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
     private lateinit var web: WebView
+    private lateinit var nl: NativeList
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
     private val dlSeq = AtomicInteger()
@@ -68,6 +70,18 @@ class MainActivity : Activity() {
         }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
+        // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
+        @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
+        @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
+        /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
+        @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
+            try { val rows = NativeList.parseRows(items); val s = NativeList.parseSel(sel); val sig = items.hashCode()
+                runOnUiThread { nl.setItems(key, rows, s, sig) } } catch (_: Throwable) { }
+        }
+        @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
+        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { } } }
+        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide() } }
+        @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) {
             phonePrint.start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", name))).toString())
@@ -125,7 +139,11 @@ class MainActivity : Activity() {
                 saveToDownloads(url, URLUtil.guessFileName(url, cd, null))
             }
         }
-        setContentView(web)
+        nl = NativeList(this, web)
+        setContentView(FrameLayout(this).apply {
+            addView(web, FrameLayout.LayoutParams(-1, -1))
+            addView(nl.overlay, FrameLayout.LayoutParams(-1, -1))   // native file list: above the page, invisible until ui.html sends a layout
+        })
         askPermissions()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()

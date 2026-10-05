@@ -571,7 +571,7 @@ function idlePre(){if(S.dev!=='local'||(navigator.connection&&navigator.connecti
   (window.requestIdleCallback||(f=>setTimeout(f,400)))(()=>{if(S.path===p)ds.forEach(i=>prefetch('local',jn(p,i.name)))})}
 async function fillCounts(dev,path){if(dev!=='local')return;
   try{const c=await api('GET','/api/counts?dev=local&path='+enc(path),null,20000);if(dev!==S.dev||path!==S.path)return;
-    let any=false;S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});
+    let any=false;S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});if(any&&window.nlRe)nlRe();
     const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
     if(any&&S.sort==='size')render()}catch(e){}}
 async function load(){
@@ -589,6 +589,57 @@ async function load(){
     if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
       S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
     else{S.err='';toast('⚠ '+e.message,4500);S.items=[];render()}}}
+/* ---- native file list (Android app only; Kotlin: NativeList.kt). The folder rows are drawn by a RecyclerView laid over the page.
+   Used only for: this phone, plain "list" view, small thumbnails, no search / archive / video gallery; everything else keeps the DOM rows.
+   Kill switches: localStorage ls_nl='0' or NativeList.ENABLED=false.  See HANDOVER_NATIVE_LIST.md ---- */
+const NL=(window.LSAndroid&&LSAndroid.nlItems&&LSAndroid.nlAvail&&LSAndroid.nlAvail())?LSAndroid:null;
+let NLL=null,NLP0='',NLPAL='',NLLAY='',NLSEL='',NLGN=0;
+const NLON=(()=>{try{return localStorage.getItem('ls_nl')!=='0'}catch(e){return true}})();
+const nlCol=v=>{v=(v||'').trim();let m;
+  if(m=/^#([0-9a-f]{3})$/i.exec(v)){const a=m[1];return 0xFF000000+parseInt(a[0]+a[0]+a[1]+a[1]+a[2]+a[2],16)}
+  if(m=/^#([0-9a-f]{6})$/i.exec(v))return 0xFF000000+parseInt(m[1],16);
+  if(m=/^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(v))return parseInt(m[2],16)*16777216+parseInt(m[1],16);
+  return 0xFF000000};
+function nlPal(){const cs=getComputedStyle(document.documentElement),g=n=>nlCol(cs.getPropertyValue('--'+n)),k={};
+  ['folder','img','vid','aud','pdf','zip','apk','doc','file'].forEach(n=>k[n]=[g('k-'+n+'-c'),g('k-'+n+'-b')]);
+  return JSON.stringify({card:g('card'),bg:g('bg'),fg:g('fg'),mut:g('mut'),bd:g('bd'),sel:g('sel'),onsel:g('onsel'),hov:g('hov'),ac:g('ac'),onac:g('onac'),warn:g('warn'),cont:g('cont'),k})}
+const nlUse=(AR,GV,n)=>!!NL&&NLON&&n>0&&S.dev==='local'&&!AR&&!S.sr&&(S.view==='list'||S.view==='compact'||S.view==='grid');
+function nlRender(LIST,P0,GN){
+  if(GN==null)GN=NLGN;NLL=LIST;NLP0=P0;NLGN=GN;   // LIST = folder rows followed by the video-gallery cells (index >= GN)
+  const CP=S.view==='compact';
+  const dt=i=>i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(CP?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
+  const a=LIST.map((i,x)=>{const k=kind(i),sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size),o={n:i.name,k:k,a:CP?(S.sort==='date'&&dt(i)?dt(i):sz):sz,b:CP?'':dt(i)};
+    if(x>=GN)o.v=1;
+    if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}}
+    else{if(DUPS.has(i.name))o.u=1;
+      if((k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
+    return o});
+  const sel=[];LIST.forEach((i,x)=>{if(S.sel.has(i.name))sel.push(x)});NLSEL=JSON.stringify(sel);
+  const pal=nlPal();if(pal!==NLPAL){NLPAL=pal;NL.nlPalette(pal)}
+  NL.nlItems(S.dev+'|'+S.view+(S.view==='list'&&S.thumb==='l'?'L':'')+'|'+(S.newest?'N:':'')+P0,JSON.stringify(a),NLSEL);
+  window.scrollTo(0,0);nlLay(true)}
+function nlLay(force){if(!NL||!NLL)return;
+  const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
+  const r=$('#list').getBoundingClientRect(),dh=parseFloat(getComputedStyle(document.body).getPropertyValue('--dockh'))||0;
+  const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
+  const full=vis($('#pv'))||vis($('#dual'));                       // full-screen viewers: hide the native list
+  const holes=[];let dm=0,ps=0;
+  ['#fab','#toast','#dlw'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
+  ['#sheet','#dlg'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
+  const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
+  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,dm:Math.round(dm*100)/100,ps:ps,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
+  if(force||j!==NLLAY){NLLAY=j;NL.nlLayout(j)}}
+window.nlSyncSel=()=>{if(!NL||!NLL)return;const s=[];NLL.forEach((i,x)=>{if(S.sel.has(i.name))s.push(x)});const j=JSON.stringify(s);if(j!==NLSEL){NLSEL=j;NL.nlSel(j)}};
+window.nlRe=()=>{if(NLL)nlRender(NLL,NLP0,NLGN)};                       // folder item counts arrived: resend the texts
+window.nlOn=(ev,x)=>{if(!NLL)return;const i=NLL[x];
+  if(ev==='refresh'){(async()=>{try{api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}NL.nlDone()})();return}
+  if(!i)return;
+  if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
+  if(ev==='long'){S.sel.add(i.name);renderBar();return}
+  if(ev==='tap'){const k=kind(i);
+    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);renderBar()}
+    else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)}};
+if(NL)setInterval(()=>{if(NLL)nlLay()},150);
 function render(){
   applyPrefs();
   const AR=inArc();
@@ -609,6 +660,8 @@ function render(){
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
+  if(nlUse(AR,GV,LIST.length+GV.length)){nlRender(LIST.concat(GV),P0,LIST.length);S.rg++;THQ.length=0;renderBar();return}
+  if(NLL){NLL=null;NLSEL='';NLLAY='';NL.nlHide()}
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(S.sel.has(i.name)?' sel':''));
     const lead=E('div','lead k-'+k);
@@ -966,7 +1019,7 @@ function doSearch(){
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
-function renderBar(){
+function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';
   const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;b.append(x)};
   const has=S.clip&&S.clip.paths.length;
