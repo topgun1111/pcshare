@@ -79,6 +79,13 @@ object Net {
         return res
     }
 
+    /** This phone's own Tailscale (100.64.0.0/10) addresses - the tun interface is skipped by ifaces(), but peers need to learn these. */
+    fun tailscaleIps(): List<String> = try {
+        java.util.Collections.list(NetworkInterface.getNetworkInterfaces() ?: return emptyList()).flatMap { ni ->
+            ni.interfaceAddresses.mapNotNull { (it.address as? Inet4Address)?.hostAddress?.takeIf { ip -> viaOf(ip) == "Tailscale" } }
+        }.distinct()
+    } catch (_: Exception) { emptyList() }
+
     fun arpNeighbors(): List<String> = try {
         File("/proc/net/arp").readLines().drop(1).mapNotNull { line ->
             val p = line.trim().split(Regex("\\s+"))

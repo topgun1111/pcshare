@@ -23,6 +23,14 @@ object Cfg {
     @Synchronized fun smb(): JSONArray = obj.optJSONArray("smb") ?: JSONArray()
     @Synchronized fun setSmb(a: JSONArray) { obj.put("smb", a) }
 
+    /** Remote (tailnet / other-subnet) device IPs that are re-probed on every scan; filled by "+ IP" and by Tailscale addresses peers advertise. */
+    @Synchronized fun pins(): List<String> { val a = obj.optJSONArray("pins") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) } }
+    @Synchronized fun addPin(ip: String): Boolean {
+        val cur = pins()
+        if (ip in cur || cur.size >= 64) return false
+        obj.put("pins", JSONArray(cur + ip)); save(); return true
+    }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy
