@@ -287,6 +287,12 @@ body.dopen{overflow:hidden}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:#0d8f7e}.dsec button:active{background:var(--hov)}
 .di.add .dt b{color:#0d8f7e}.di.dis{opacity:.45}
+.dprh .dchev{flex:none;width:40px;height:40px;display:grid;place-items:center;color:var(--mut);transition:transform .2s}.dprh .dchev svg{width:24px;height:24px}
+.dprh.open .dchev{transform:rotate(180deg)}
+.dprg{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease}.dprg.open{grid-template-rows:1fr}
+.dprg>div{overflow:hidden;min-height:0}
+.dprg .di{padding-left:32px;min-height:48px;background:var(--bg)}.dprg .di .dl{width:28px;height:28px}
+.dprg .dnone{padding:12px 24px;font-size:13px}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
@@ -969,7 +975,7 @@ function renderBar(){
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&!A)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
-    if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',doPrint);
+    if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',doDetails);
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
@@ -1227,7 +1233,7 @@ async function pvInfoOld(f){
     return{kind:'doc',pages:Math.max(1,Math.ceil(lines/61))}}
   catch(e){return{kind:'doc',pages:0}}finally{clearTimeout(tm)}}
 function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res=>{
-  const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;
+  const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;if(pc.pn)st.printer=pc.pn;
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
@@ -1376,13 +1382,13 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     else if(st.booklet&&!st.duplex)out.duplex='short';
     const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
-async function doPrint(){
+async function doPrint(preset){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
   await loadWifi();
   const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=await choosePrinter(here);
+  let to=preset||await choosePrinter(here);
   if(!to)return;
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
@@ -1580,6 +1586,31 @@ Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.4
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
+/* Printers: one-line drop-down under Devices. Tap to expand the printer list, tap a printer to print the selected files on it */
+DRW.pr=LD('ls_prn','0')==='1';DRW.pcp={};
+function drawerPrinters(bd){
+  const h=dItem({lead:ic('print','s24'),title:'Printers',onclick:()=>{}});h.classList.add('dprh');if(DRW.pr)h.classList.add('open');
+  const r2=E('span','dr2'),ch=E('span','dchev');ch.append(ic('dn2'));h.append(r2,ch);
+  const g=E('div','dprg'+(DRW.pr?' open':'')),inner=E('div');g.append(inner);
+  const fill=()=>{inner.textContent='';
+    const items=[];
+    if(CAN_PRINT)items.push({t:{id:'__here',name:'This phone (any printer)'},name:'This phone',sub:'Android print'});
+    (WIFI||[]).forEach(w=>items.push({t:w,name:w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),sub:w.tag||'Wi-Fi'}));
+    S.peers.forEach(p=>{const l=DRW.pcp[p.id];if(l&&l.length)l.forEach(n=>items.push({t:Object.assign({},p,{pn:n}),name:n,sub:p.name}))});
+    items.forEach(i=>{inner.append(dItem({lead:ic('print','s24'),title:i.name,sub:i.sub,onclick:()=>{
+      if(!S.sel.size){toast('Select files first, then tap a printer',2800);return}
+      drawerClose();doPrint(i.t)}}))});
+    if(!items.length)inner.append(E('div','dnone',DRW.prl?'Searching for printers\u2026':'No printers found'));
+    r2.textContent=items.length?String(items.length):''};
+  const load=async()=>{DRW.prl=1;fill();
+    try{await loadWifi()}catch(e){}
+    await Promise.all(S.peers.filter(p=>p.ok!==false||p.smb).map(p=>api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{DRW.pcp[p.id]=r&&r.ok?(r.printers&&r.printers.length?r.printers:(r.printer?[r.printer]:[])):[]}).catch(()=>{DRW.pcp[p.id]=[]})));
+    DRW.prl=0;DRW.pdone=1;fill()};
+  h.onclick=()=>{DRW.pr=!DRW.pr;try{localStorage.setItem('ls_prn',DRW.pr?'1':'0')}catch(e){}
+    h.classList.toggle('open',DRW.pr);g.classList.toggle('open',DRW.pr);
+    if(DRW.pr&&!DRW.pdone&&!DRW.prl)load()};
+  fill();if(DRW.pr&&!DRW.pdone&&!DRW.prl)load();
+  bd.append(h,g)}
 function drawerRender(){
   // tabs
   const tb=$('#dtabs');tb.textContent='';
@@ -1598,6 +1629,7 @@ function drawerRender(){
     S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
       bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
     if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
+    drawerPrinters(bd);
     bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
     QF.forEach((q,n)=>{
