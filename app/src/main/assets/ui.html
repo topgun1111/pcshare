@@ -1396,6 +1396,7 @@ async function doPrint(preset){
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
   let to=preset||await choosePrinter(here);
   if(!to)return;
+  if(!S.sel.size)return toast('Select files first, then pick a printer',3000);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
     const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
@@ -1592,11 +1593,14 @@ Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.4
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
-/* Printers: plain item under Devices. Tapping it closes the drawer and opens the same "Print on…" picker as the toolbar Print button (needs selected files). */
+/* Printers: plain item under Devices. Tapping it closes the drawer and opens the same "Print on…" picker as the toolbar Print button (view-only, nothing is printed from here). */
 function drawerPrinters(bd){
   bd.append(dItem({lead:ic('print','s24'),title:'Printers',onclick:()=>{
-    if(!S.sel.size){toast('Select files first, then tap Printers',2800);return}
-    drawerClose();doPrint()}}))}
+    drawerClose();showPrinters()}}))}
+/* view-only: shows the "Print on…" picker (devices, printers, Search for printers); choosing a printer here prints nothing */
+async function showPrinters(){
+  const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
+  await loadWifi();await choosePrinter(here)}
 function drawerRender(){
   // tabs
   const tb=$('#dtabs');tb.textContent='';
