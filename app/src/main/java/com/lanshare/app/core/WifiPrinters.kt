@@ -18,8 +18,10 @@ import java.util.concurrent.TimeUnit
  */
 object WifiPrinters {
     class P(val id: String, val name: String, val host: String, val port: Int, val path: String, val model: String,
-            val pdl: List<String>, val color: Boolean?, val duplex: Boolean?) {
+            val pdl: List<String>, val color: Boolean?, val duplex: Boolean?, val viaPeer: String? = null) {
         val uri: String get() = "ipp://$host:$port/$path"
+        /** Id of the printer as the device that owns it knows it ("wifi:ip:port/path"); ids of remote printers are "rwifi:<peer id>|<that id>". */
+        val origId: String get() = if (viaPeer != null) id.substringAfter('|') else id
         @Volatile var formats: List<String> = pdl            // refined by status() from the printer itself
         @Volatile var sides: List<String> = emptyList()
         @Volatile var colorModes: List<String> = emptyList()
@@ -29,6 +31,8 @@ object WifiPrinters {
     }
 
     private val map = ConcurrentHashMap<String, P>()
+    private val remote = ConcurrentHashMap<String, P>()   // printers on other devices (reached through that device, see [remoteJson])
+    private val WIFI_ID = Regex("^wifi:([0-9.]+):(\\d+)/(.*)$")
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "wifi-resolve").also { it.isDaemon = true } }   // resolveService: one at a time
     @Volatile private var started = false
     private var nsd: NsdManager? = null
@@ -78,7 +82,50 @@ object WifiPrinters {
         map[id] = P(id, s.serviceName ?: model.ifEmpty { ip }, ip, s.port, rp, model, pdl, flag("Color"), flag("Duplex"))
     }
 
-    fun get(id: String): P? = map[id] ?: Regex("^wifi:([0-9.]+):(\\d+)/(.*)$").find(id)?.let {
+    /** A printer this device itself discovered (what a remote device may ask it to forward IPP to). */
+    fun known(id: String): P? { Core.appCtx?.let { start(it) }; return map[id] }
+
+    fun isWifi(id: String) = id.startsWith("wifi:") || id.startsWith("rwifi:")
+
+    /** Printers of the other LANShare devices (their /p/wifiprinters), as list entries with id "rwifi:<peer>|<printer id>" and the device name in "via". */
+    fun remoteJson(): JSONArray {
+        val out = java.util.Collections.synchronizedList(ArrayList<JSONObject>())
+        val ths = Core.disc.list().filter { it.ok }.map { peer -> Thread {
+            try {
+                val r = Http.request(peer.ip, peer.port, "GET", "/p/wifiprinters", emptyMap(), 2500)
+                try {
+                    if (r.status == 200) {
+                        val arr = JSONArray(String(r.readUpTo(1 shl 18), Charsets.UTF_8))
+                        for (i in 0 until arr.length()) {
+                            val o = arr.getJSONObject(i)
+                            val oid = o.getString("id")
+                            val m = WIFI_ID.find(oid) ?: continue
+                            val id = "rwifi:${peer.id}|$oid"
+                            val name = o.optString("name").ifEmpty { m.groupValues[1] }
+                            remote[id] = P(id, name, m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3], o.optString("model"), emptyList(),
+                                if (o.isNull("color")) null else o.optBoolean("color"), if (o.isNull("duplex")) null else o.optBoolean("duplex"), peer.id)
+                            out.add(JSONObject().put("id", id).put("name", name).put("model", o.optString("model")).put("via", peer.name).put("viaId", peer.id)
+                                .put("color", if (o.isNull("color")) JSONObject.NULL else o.optBoolean("color"))
+                                .put("duplex", if (o.isNull("duplex")) JSONObject.NULL else o.optBoolean("duplex")))
+                        }
+                    }
+                } finally { r.close() }
+            } catch (_: Exception) {}   // offline, or an older LANShare without /p/wifiprinters
+        }.also { it.isDaemon = true; it.start() } }
+        ths.forEach { try { it.join(3000) } catch (_: InterruptedException) {} }
+        return JSONArray(out.toList().sortedBy { it.optString("name").lowercase() })
+    }
+
+    fun get(id: String): P? {
+        if (id.startsWith("rwifi:")) {
+            remote[id]?.let { return it }
+            val m = Regex("^rwifi:([0-9A-Za-z]+)\\|wifi:([0-9.]+):(\\d+)/(.*)$").find(id) ?: return null
+            return P(id, m.groupValues[2], m.groupValues[2], m.groupValues[3].toInt(), m.groupValues[4], "", emptyList(), null, null, m.groupValues[1]).also { remote[id] = it }
+        }
+        return getLocal(id)
+    }
+
+    private fun getLocal(id: String): P? = map[id] ?: Regex("^wifi:([0-9.]+):(\\d+)/(.*)$").find(id)?.let {
         P(id, it.groupValues[1], it.groupValues[1], it.groupValues[2].toInt(), it.groupValues[3], "", emptyList(), null, null)
     }
 
