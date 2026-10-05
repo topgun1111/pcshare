@@ -188,7 +188,7 @@ class Discovery(val port: Int) {
         }
     }
 
-    private fun candidates(): List<String> {
+    fun candidates(): List<String> {
         val nets = ifaces.map { it.net }.toMutableList()
         val hosts = ArrayList<String>()
         val seen = HashSet<String>(ownIps)

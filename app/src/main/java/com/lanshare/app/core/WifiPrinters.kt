@@ -36,26 +36,129 @@ object WifiPrinters {
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "wifi-resolve").also { it.isDaemon = true } }   // resolveService: one at a time
     @Volatile private var started = false
     private var nsd: NsdManager? = null
+    private var listener: NsdManager.DiscoveryListener? = null
+    @Volatile private var loaded = false
+    @Volatile private var keeper = false
+    @Volatile private var lastScan = 0L
+    private val scanBusy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     @Synchronized
     fun start(ctx: Context) {
+        if (!loaded) { loaded = true; loadCache() }
+        startKeeper()
         if (started) return
         started = true
         try {
             val m = ctx.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
             nsd = m
-            m.discoverServices("_ipp._tcp", NsdManager.PROTOCOL_DNS_SD, object : NsdManager.DiscoveryListener {
+            val l = object : NsdManager.DiscoveryListener {
                 override fun onStartDiscoveryFailed(type: String?, code: Int) { started = false }
                 override fun onStopDiscoveryFailed(type: String?, code: Int) {}
                 override fun onDiscoveryStarted(type: String?) {}
                 override fun onDiscoveryStopped(type: String?) { started = false }
                 override fun onServiceFound(info: NsdServiceInfo?) { if (info != null) pool.execute { resolve(m, info) } }
-                override fun onServiceLost(info: NsdServiceInfo?) {
-                    val n = info?.serviceName ?: return
-                    map.values.filter { it.name == n }.forEach { map.remove(it.id) }
-                }
-            })
+                // Not removed on purpose: with the screen off the Wi-Fi chip drops multicast and Android reports "lost" for printers that are still there.
+                // Whether a printer is really gone is decided by reaching it (see [listJson]).
+                override fun onServiceLost(info: NsdServiceInfo?) {}
+            }
+            listener = l
+            m.discoverServices("_ipp._tcp", NsdManager.PROTOCOL_DNS_SD, l)
         } catch (_: Throwable) { started = false }
+    }
+
+    /** Stops and starts the mDNS search again (it silently dies / goes deaf when the phone sleeps or the network changes). */
+    fun restart() {
+        val ctx = Core.appCtx ?: return
+        synchronized(this) {
+            try { listener?.let { nsd?.stopServiceDiscovery(it) } } catch (_: Throwable) {}
+            listener = null; started = false
+        }
+        Thread { try { Thread.sleep(700) } catch (_: InterruptedException) {}; try { start(ctx) } catch (_: Throwable) {} }
+            .also { it.isDaemon = true }.start()
+    }
+
+    /** Screen back on / Wi-Fi changed: search again (mDNS) and look for printers directly (port 631), no multicast needed. */
+    fun refresh() { restart(); scanAsync(true) }
+
+    private fun startKeeper() {
+        if (keeper) return
+        keeper = true
+        Thread {
+            while (true) {
+                try { Thread.sleep(90_000) } catch (_: InterruptedException) {}
+                try { restart(); scanAsync(false) } catch (_: Throwable) {}
+            }
+        }.also { it.isDaemon = true; it.name = "wifi-keeper" }.start()
+    }
+
+    /** Looks for IPP printers (TCP 631) on every local address. Works while mDNS is deaf. Runs in the background. */
+    fun scanAsync(force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastScan < 120_000) return
+        if (!scanBusy.compareAndSet(false, true)) return
+        lastScan = now
+        Thread {
+            try { scan() } catch (_: Throwable) {} finally { scanBusy.set(false) }
+        }.also { it.isDaemon = true; it.name = "wifi-scan" }.start()
+    }
+
+    private fun scan() {
+        val d = Core.discOrNull() ?: return
+        val hits = java.util.Collections.synchronizedList(ArrayList<String>())
+        val ex = Executors.newFixedThreadPool(48) { r -> Thread(r).also { it.isDaemon = true } }
+        try {
+            ex.invokeAll(d.candidates().filter { h -> map.values.none { it.host == h } }.map { h -> java.util.concurrent.Callable<Unit> {
+                val s = Net.newSocket(h)
+                try { s.connect(java.net.InetSocketAddress(h, 631), 500); hits.add(h) } catch (_: Exception) {} finally { try { s.close() } catch (_: Exception) {} }
+            } }, 25, TimeUnit.SECONDS)
+        } finally { ex.shutdownNow() }
+        var added = false
+        for (h in hits.toList()) {
+            if (h in d.ownIps) continue
+            val id = "wifi:$h:631/ipp/print"
+            if (map.containsKey(id)) continue
+            val p = P(id, h, h, 631, "ipp/print", "", emptyList(), null, null)
+            try {
+                val r = Ipp.printerAttrs(p)
+                if (!r.ok) continue
+                val nm = r.strs("printer-name").firstOrNull().orEmpty().ifEmpty { h }
+                val md = r.strs("printer-make-and-model").firstOrNull().orEmpty()
+                map[id] = P(id, nm, h, 631, "ipp/print", md, r.strs("document-format-supported").map { it.lowercase() }, null, null)
+                added = true
+            } catch (_: Exception) {}
+        }
+        if (added) saveCache()
+    }
+
+    private fun loadCache() {
+        try {
+            val a = Cfg.printerCache()
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                val pd = o.optJSONArray("pdl")
+                map[o.getString("id")] = P(o.getString("id"), o.optString("name"), o.getString("host"), o.getInt("port"), o.optString("path"),
+                    o.optString("model"), if (pd == null) emptyList() else (0 until pd.length()).map { pd.optString(it) },
+                    if (o.has("color")) o.optBoolean("color") else null, if (o.has("duplex")) o.optBoolean("duplex") else null)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun saveCache() {
+        try {
+            val a = JSONArray()
+            map.values.sortedBy { it.id }.take(32).forEach {
+                val o = JSONObject().put("id", it.id).put("name", it.name).put("host", it.host).put("port", it.port).put("path", it.path)
+                    .put("model", it.model).put("pdl", JSONArray(it.pdl))
+                it.color?.let { c -> o.put("color", c) }; it.duplex?.let { d -> o.put("duplex", d) }
+                a.put(o)
+            }
+            Cfg.setPrinterCache(a)
+        } catch (_: Exception) {}
+    }
+
+    private fun reachable(p: P): Boolean {
+        val s = Net.newSocket(p.host)
+        return try { s.connect(java.net.InetSocketAddress(p.host, p.port), 900); true } catch (_: Exception) { false } finally { try { s.close() } catch (_: Exception) {} }
     }
 
     @Suppress("DEPRECATION")
@@ -80,6 +183,7 @@ object WifiPrinters {
         val flag = { k: String -> txt(k).takeIf { it.isNotEmpty() }?.equals("T", true) }
         val id = "wifi:$ip:${s.port}/$rp"
         map[id] = P(id, s.serviceName ?: model.ifEmpty { ip }, ip, s.port, rp, model, pdl, flag("Color"), flag("Duplex"))
+        saveCache()
     }
 
     /** A printer this device itself discovered (what a remote device may ask it to forward IPP to). */
@@ -131,8 +235,15 @@ object WifiPrinters {
 
     fun listJson(): JSONArray {
         Core.appCtx?.let { start(it) }
+        if (map.isEmpty()) scanAsync(true)
         val a = JSONArray()
-        map.values.sortedBy { it.name.lowercase() }.forEach {
+        // remembered printers are listed only while they answer (a printer that was switched off simply drops out and comes back later)
+        val all = map.values.toList()
+        val up = java.util.Collections.synchronizedSet(HashSet<String>())
+        all.map { p -> Thread { if (reachable(p)) up.add(p.id) }.also { it.isDaemon = true; it.start() } }
+            .forEach { try { it.join(1500) } catch (_: InterruptedException) {} }
+        if (up.size < all.size) scanAsync(false)
+        all.filter { it.id in up }.sortedBy { it.name.lowercase() }.forEach {
             a.put(JSONObject().put("id", it.id).put("name", it.name).put("model", it.model)
                 .put("color", it.color ?: JSONObject.NULL).put("duplex", it.duplex ?: JSONObject.NULL))
         }

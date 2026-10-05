@@ -27,6 +27,13 @@ class LanShareService : Service() {
         override fun onLinkPropertiesChanged(n: android.net.Network, lp: android.net.LinkProperties) = go()
     }
 
+    private val screenRx = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: Intent?) {
+            // screen on / unlock: peers and printers may have been missed while asleep -> look again
+            Thread { try { Thread.sleep(800); Core.rescan() } catch (_: Exception) {} }.also { it.isDaemon = true }.start()
+        }
+    }
+
     override fun onBind(i: Intent?): IBinder? = null
 
     override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
@@ -55,6 +62,10 @@ class LanShareService : Service() {
             val root = Environment.getExternalStorageDirectory().absolutePath
             try { getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(netCb) }
             catch (_: Exception) {}
+            try {
+                val f = android.content.IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }
+                registerReceiver(screenRx, f)
+            } catch (_: Exception) {}
             Thread { Core.start(applicationContext, root) }.apply { isDaemon = true; start() }
         }
         return START_STICKY
@@ -62,6 +73,7 @@ class LanShareService : Service() {
 
     override fun onDestroy() {
         try { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(netCb) } catch (_: Exception) {}
+        try { unregisterReceiver(screenRx) } catch (_: Exception) {}
         super.onDestroy()
     }
 }
