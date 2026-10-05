@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
     private lateinit var web: WebView
     private lateinit var nl: NativeList
+    private lateinit var chrome: NlChrome
     private lateinit var splash: NlSplash
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
@@ -99,6 +100,9 @@ class MainActivity : Activity() {
         @JavascriptInterface fun nlView(json: String) { runOnUiThread { try { nl.sheets.showView(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSheets(): Boolean = NativeList.SHEETS
         @JavascriptInterface fun nlSearchOk(): Boolean = NativeList.SEARCH
+        /** Native app chrome (NlChrome.kt): top bar, selection bar, FAB, dock, snackbar, download cards. JSON from ui.html nlChPush(); "0" = hide all. */
+        @JavascriptInterface fun nlChromeOk(): Boolean = NlChrome.ENABLED
+        @JavascriptInterface fun nlChrome(json: String) { runOnUiThread { try { chrome.set(json) } catch (_: Throwable) { } } }
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) {
             phonePrint.start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", name))).toString())
@@ -157,10 +161,12 @@ class MainActivity : Activity() {
             }
         }
         nl = NativeList(this, web)
+        chrome = NlChrome(this) { ev, x -> web.evaluateJavascript("window.nlCh&&nlCh(" + JSONObject.quote(ev) + "," + JSONObject.quote(x) + ")", null) }
         val root = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(-1, -1))
             addView(nl.overlay, FrameLayout.LayoutParams(-1, -1))   // native file list: above the page, invisible until ui.html sends a layout
             addView(nl.search, FrameLayout.LayoutParams(1, 1))      // native search box: its own view (the overlay forwards touches outside the list to the page); GONE until the page opens its search row
+            addView(chrome.layer, FrameLayout.LayoutParams(-1, -1)) // native app chrome (bars, FAB, dock, snackbar): no background, touches outside its buttons fall through
         }
         setContentView(root)
         splash = NlSplash(this, nl, web, root)

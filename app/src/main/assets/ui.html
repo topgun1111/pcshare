@@ -704,7 +704,7 @@ function nlSrPush(){if(!NLSR)return;
 // drawer / dialog fade (0.2 s): follow the scrim every frame instead of every 150 ms
 let NLB=0;
 function nlBurst(ms){if(!NL)return;const end=performance.now()+ms,go=!NLB;NLB=Math.max(NLB,end);if(!go)return;
-  const f=()=>{if(NLL)nlLay();nlSrPush();if(performance.now()<NLB)requestAnimationFrame(f);else{NLB=0;if(NLL)nlLay()}};requestAnimationFrame(f)}
+  const f=()=>{if(NLL)nlLay();nlSrPush();nlChPush();if(performance.now()<NLB)requestAnimationFrame(f);else{NLB=0;if(NLL)nlLay()}};requestAnimationFrame(f)}
 if(NL){['click','pointerup','touchend','transitionrun','transitionend','animationstart','animationend'].forEach(ev=>document.addEventListener(ev,()=>nlBurst(500),true))}
 window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='el'){$('#top').classList.toggle('el',x===1);return}     // list scrolled: header shadow like the page scroll handler
@@ -721,7 +721,63 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='tap'){const k=kind(i);
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);renderBar()}
     else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)}};
-if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush()},150);
+/* native app chrome (Kotlin: NlChrome.kt): top bar / selection bar, New-folder button, bottom dock + clipboard strip, snackbar, download cards.
+   Same scheme as the path bar: the HTML elements stay underneath and keep all behaviour; Kotlin draws on top of their exact rects and a tap comes back as nlCh() which clicks the HTML twin.
+   Hidden (so the page's own look shows) while a dialog / sheet / drawer / viewer / split screen is up. Kill switches: localStorage ls_nlc='0' or NlChrome.ENABLED=false. */
+const NLCH=(()=>{try{return !!NL&&!KID&&!!NL.nlChrome&&!!NL.nlChromeOk&&NL.nlChromeOk()&&localStorage.getItem('ls_nlc')!=='0'}catch(e){return false}})();
+let NLCHJ='0';const NLICN={};
+// SVG path with arc flags written out with spaces ("a1 1 0 001 1" -> "a 1 1 0 0 0 1 1") so Android's PathParser reads every icon the same way the browser does
+function nlNormPath(d){const out=[];let i=0,cmd='';
+  const sk=()=>{while(i<d.length&&(d[i]===' '||d[i]===','||d[i]==='\n'))i++};
+  const nm=()=>{sk();const m=/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/.exec(d.slice(i));if(!m)return null;i+=m[0].length;return m[0]};
+  const fl=()=>{sk();const c=d[i];if(c==='0'||c==='1'){i++;return c}return null};
+  const grp=()=>{const c=cmd.toLowerCase();
+    if(c==='a'){const r=[nm(),nm(),nm(),fl(),fl(),nm(),nm()];return r.every(x=>x!==null)?r:null}
+    const n={m:2,l:2,h:1,v:1,c:6,s:4,q:4,t:2}[c];if(!n)return null;const r=[];for(let k=0;k<n;k++)r.push(nm());return r.every(x=>x!==null)?r:null};
+  for(;;){sk();if(i>=d.length)break;const c=d[i];
+    if(/[a-zA-Z]/.test(c)){cmd=c;i++;out.push(c);if(c==='z'||c==='Z')continue}
+    else if(!cmd||cmd==='z'||cmd==='Z')return d;
+    const g=grp();if(!g)return d;out.push(g.join(' '))}
+  return out.join(' ')}
+const nlIc=k=>NLICN[k]!=null?NLICN[k]:(NLICN[k]=nlNormPath(IC[k]||''));
+function nlChPal(){const cs=getComputedStyle(document.documentElement),g=n=>nlCol(cs.getPropertyValue('--'+n));
+  return{bar:g('bar'),onbar:g('onbar'),barmut:g('barmut'),cont:g('cont'),bd:g('bd'),sel:g('sel'),onsel:g('onsel'),ac:g('ac'),onac:g('onac'),hov:g('hov'),err:g('err'),fg:g('fg'),mut:g('mut')}}
+function nlChPush(){if(!NLCH)return;
+  const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
+  const q2=v=>Math.round(v*100)/100;
+  const rc=e=>{if(!vis(e))return null;const b=e.getBoundingClientRect();return(b.width>0&&b.height>0)?[q2(b.left),q2(b.top),q2(b.width),q2(b.height)]:null};
+  let modal=0,all=0;
+  ['#sheet','#dlg'].forEach(q=>{if(vis($(q)))modal=1});
+  ['#pv','#dual'].forEach(q=>{if(vis($(q)))all=1});
+  const sc=$('#dscrim');if(document.body.classList.contains('dopen')||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
+  if(all){if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
+  const sel=document.body.classList.contains('selm'),o={p:nlChPal(),ic:{}};
+  const need=k=>{if(k&&!(k in o.ic))o.ic[k]=nlIc(k)};
+  if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
+    const br=rc($(sel?'#top .selb':'#top .mainb'));
+    if(br){['menu','search','tune','refresh','vsplit','settings','edit','close','selall'].forEach(need);
+      o.bar={r:br,sel:sel?1:0,t:$('#ht').textContent,nm:$('#nmt').textContent,du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
+    const fr=rc($('#fab'));if(fr){const ik=inArc()?'extract':'newfolder';need(ik);o.fab={r:fr,l:$('#fab').textContent,k:ik}}
+    const dr=rc($('#dock'));
+    if(dr){NLACL.forEach(a=>need(a.k));need('close');
+      o.dock={r:dr,a:NLACL,cl:vis($('#clip'))?{t:(($('#clip span')||{}).textContent)||'',p:$('#clip .tbtn')?1:0}:null}}
+  }
+  const tr=rc($('#toast'));
+  if(tr){const tp=$('#tp');o.t={r:tr,x:$('#tx').textContent,p:vis(tp)?(parseFloat(tp.firstChild.style.width)||0):-1,c:vis($('#tc'))?1:0}}
+  const dk=Object.keys(DLS);
+  if(dk.length){const dw=$('#dlw'),wr=rc(dw);
+    if(wr){const w0=dw.getBoundingClientRect().top;
+      o.dl={r:wr,k:dk.map(k=>{const c=DLS[k],b=c.el.getBoundingClientRect();
+        return{k:k,n:c.nm.textContent,x:(c.cx.style.display!=='none'&&!c.cx.disabled)?1:0,w:parseFloat(c.fill.style.width)||0,i:c.el.classList.contains('ind')?1:0,s:c.info.textContent,y:q2(b.top-w0),h:q2(b.height)}})}}}
+  const j=JSON.stringify(o);if(j!==NLCHJ){NLCHJ=j;NL.nlChrome(j)}}
+// a tap on a native chrome control: click the HTML twin so the page's own handler runs
+window.nlCh=(ev,x)=>{
+  if(ev==='btn'){const e=document.getElementById(x);if(e)e.click();return}          // menub srch tune scan dualb cog nm xsel allsel fab tc
+  if(ev==='act'){const f=NLACT[+x];if(f)f();return}                                   // dock action (same order as NLACL)
+  if(ev==='paste'){const b=$('#clip .tbtn');if(b)b.click();return}
+  if(ev==='clipx'){const b=$('#clip .ibtn');if(b)b.click();return}
+  if(ev==='dlx'){const c=DLS[x];if(c&&c.cx)c.cx.click()}};
+if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush()},150);
 function render(){
   applyPrefs();
   const AR=inArc();
@@ -1102,9 +1158,10 @@ function doSearch(){
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
+var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
-  const b=$('#bar');b.textContent='';
-  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;b.append(x)};
+  const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
+  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
   const has=S.clip&&S.clip.paths.length;
   document.body.classList.toggle('selm',S.sel.size>0);
   const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
@@ -1131,7 +1188,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
   else c.style.display='none';
   {const n=b.children.length;b.style.setProperty('--cols',n<=5?Math.max(n,1):Math.ceil(n/2))}   // more than 5 actions: two rows
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
-  document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px')}
+  document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
+  try{nlChPush()}catch(e){}}
 function doDownload(){
   const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
   f.forEach((i,k)=>setTimeout(()=>{const a=document.createElement('a');a.href='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))+'&dl=1';a.download=i.name;document.body.append(a);a.click();a.remove()},k*600))}

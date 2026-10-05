@@ -1,3 +1,5 @@
+> **2026-10-06 native app chrome (phase 10):** new `NlChrome.kt` draws the top bar / selection bar, New-folder button, bottom dock + clipboard strip, snackbar and download cards natively on top of their unchanged HTML twins (`nlChrome` bridge, `nlChPush()`/`nlCh()` in ui.html; taps click the HTML element). Switch: `NlChrome.ENABLED` / `ls_nlc='0'`. Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2o.
+
 > **2026-10-05 native path bar + tool row (phase 7a):** new `NlHead.kt` draws `#pathrow` / `#toolrow` natively on top of the unchanged HTML rows (`nlHead` bridge, layout JSON `hd`, `nlOn crumb/newb/sort`, instant update on folder entry). Switch: `NativeList.HEAD` / `ls_nlh='0'`. Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2l.
 
 > **2026-10-05 native list phase 6a:** folder entry no longer waits for the page: new `NlModel.kt` builds the next folder's rows in Kotlin (list, sort, dups, texts), `NativeList.tapRow` shows them at once, the page revalidates; JS `nlStash` removed. Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2k.
