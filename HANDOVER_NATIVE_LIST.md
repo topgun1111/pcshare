@@ -1,6 +1,6 @@
 # Native dosya listesi (Seçenek A) — Handover
 
-Tarih: 2026-10-05 · Durum: **Faz 4a (en yeni modu) + Faz 1 + Faz 2a (compact) + Faz 2b (büyük küçük resim) + Faz 3a (grid görünümü) + Faz 3b (video galerisi) kodlandı, DERLENMEDİ, cihazda TEST EDİLMEDİ** (bu ortamda Android SDK/kotlinc yok).
+Tarih: 2026-10-05 · Durum: **Faz 4c (tüm cihazlar + her görünümde arama + sayı yaması + karartma/gölge senkronu) + Faz 4a (en yeni modu) + Faz 1 + Faz 2a (compact) + Faz 2b (büyük küçük resim) + Faz 3a (grid görünümü) + Faz 3b (video galerisi) kodlandı, DERLENMEDİ, cihazda TEST EDİLMEDİ** (bu ortamda Android SDK/kotlinc yok).
 
 ## 1. Amaç ve kararlar
 - Gezinme gecikmesi WebView katmanından geliyor (daha önceki native deneme çok hızlıydı). Ama ayrı ekran olan `BrowserActivity` görünümü bozmuştu → **kaldırıldı, geri getirilmeyecek**.
@@ -63,6 +63,15 @@ Android uygulaması + `LSAndroid.nlAvail()` + `localStorage.ls_nl!=='0'` + liste
 - Diğer cihazlar (`S.dev!=='local'`) bilerek DOM'da: Kotlin küçük resim yükleyici yalnızca yerel `File`/`Source` kullanıyor; native yapınca uzak küçük resimler kaybolurdu.
 - Cihazda bak: arşiv içi gezinme/açma, aramada "In subfolders" başlığı + sonuç tıklama (klasöre git / dosyayı bul), arama kutusu temizlenince normal liste, seçim modunda sonuç satırı, compact/grid'de aramada DOM fallback.
 
+## 2h. Faz 4c — kalan her şey (2026-10-05)
+- **Diğer cihazlar / SMB native:** `nlUse` artık `S.dev==='local'` istemiyor. Satırlar `NlRow.dev` taşır (`nlItems` anahtarının ilk parçası). Küçük resimler `core/RemoteThumbs.kt` ile üretilir: `Jobs.ep(dev).open(path)` → resim geçici dosyaya (≤30 MB) akıtılıp `Thumbs.makeUncached` ile JPEG, video `VideoThumbs.make(Source)` (aralıklı okuma); disk önbelleği `rthumbcache/` (dev|yol|boyut|mtime). Bellek önbelleği anahtarına `dev` eklendi. Yerel yol değişmedi.
+- **Arama sonuçları compact/grid'de de native:** `nlUse(n)` görünüm kısıtı yok (list/compact/grid). Grid'de `hdr` satırı tam genişlik (`SpanSizeLookup`) ve `NlRowView` ile çizilir (`getItemViewType`).
+- **Klasör sayısı yaması:** `fillCounts` → `nlPatch(Set)` → `LSAndroid.nlPatch([[idx,metin]])` → `NativeList.patch` yalnızca ilgili satırı yeniler (tüm listeyi yeniden göndermez). `nlA()` metin hesabını ortaklaştırır.
+- **Karartma geçişi:** `nlBurst(500)` — tık/dokunma/transition/animation olaylarında 500 ms boyunca her karede `nlLay()`; çekmece/diyalog solması 150 ms gecikmesiz izlenir. `layout()` yalnızca geometri değişince `LayoutParams` günceller (karartma-only değişiklikte yeniden ölçüm yok).
+- **Başlık gölgesi:** `RecyclerView` kaydırma dinleyicisi → `nlOn('el',0|1)` → `#top.el`; native liste kapanınca sayfa kaydırmasına göre yeniden hesaplanır.
+- Kalan (bilerek): yok. Açık riskler cihazda doğrulanacak: uzak klasörde çok sayıda küçük resim/ağ yükü (havuz 3 iş parçacığı), SMB'de büyük video küçük resmi gecikmesi, arama sonuçlarının grid'de kart görünümü, `hdr` satırı x konumu (24 dp), kaydırınca gölge.
+- Geri alma: yalnızca uzak cihazları DOM'a döndürmek için `nlUse`'a `&&S.dev==='local'` ekle; her şey için `ls_nl='0'` / `NativeList.ENABLED=false`.
+
 ## 3. Derlemede ilk bakılacak yerler (tahmini risk)
 1. `NativeList.kt`: `PathParser.createPathFromPathData` (androidx.core 1.13.1'de var), `Region.Op.DIFFERENCE` ile `clipRect` (kullanımdan kalkmış uyarısı normal), `pool.submit(Runnable { })`, `LruCache` alt sınıfı, `lm.onSaveInstanceState()` dönüş tipi.
 2. `Core.local.real(path)`, `Core.local.open(path)`, `Thumbs.make(File)`, `VideoThumbs.make(Source): Pair<ByteArray, Long>` (süre **ms** varsayıldı; ui.html `X-Duration/1000` yapıyor).
@@ -80,7 +89,7 @@ Android uygulaması + `LSAndroid.nlAvail()` + `localStorage.ls_nl!=='0'` + liste
 ## 5. Bilinen eksikler / sonraki fazlar (öncelik sırasıyla)
 1. **Faz 2 tamam (kodlandı, test yok):** ~~`compact`~~ (2b), ~~`S.thumb==='l'`~~ (2c). Video galerisi 3b'de kodlandı (bkz. 2e).
 2. **Faz 3 — grid görünümü** ~~(yapıldı, bkz. 2d)~~; video galerisi (3b) kodlandı, bkz. 2e.
-3. **Faz 4 — kapsam:** arama sonuçları (`S.sr`), arşiv içi (`!` yolları), diğer cihazlar / SMB (`S.dev!=='local'`, küçük resim yok), `S.newest` modu.
+3. **Faz 4 — kapsam: TAMAMLANDI** (bkz. 2f, 2g, 2h). Sıradaki iş: derleme + cihaz doğrulaması.
 4. Çekmece/diyalog karartması şimdilik `dm=0.42` sabit tahmini (`#dscrim` opaklığı okunuyor); geçiş animasyonunda 150 ms gecikme olabilir. İstenirse `transitionend` ile tetiklenir.
 5. Seçimdeyken küçük resim gizleme, `row:active` ve seçili satır renk öncelikleri CSS'e göre uyarlandı; ayrıntılar cihazda gözle doğrulanmalı.
 6. Klasör sayısı (`i.n`) geç geldiğinde `nlRe()` tüm satır metinlerini yeniden gönderiyor (hash değişince `notifyDataSetChanged`). Çok büyük klasörlerde yalnızca ilgili satırı güncelleyen `nlPatch(idx,text)` daha ucuz olur.

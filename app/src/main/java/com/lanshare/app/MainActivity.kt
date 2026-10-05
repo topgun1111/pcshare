@@ -75,9 +75,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
-            try { val rows = NativeList.parseRows(items); val s = NativeList.parseSel(sel); val sig = items.hashCode()
+            try { val rows = NativeList.parseRows(items, key.substringBefore('|')); val s = NativeList.parseSel(sel); val sig = items.hashCode()
                 runOnUiThread { nl.setItems(key, rows, s, sig) } } catch (_: Throwable) { }
         }
+        @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
         @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide() } }

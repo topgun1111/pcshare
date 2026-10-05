@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.lanshare.app.core.Core
+import com.lanshare.app.core.RemoteThumbs
 import com.lanshare.app.core.Thumbs
 import com.lanshare.app.core.VideoThumbs
 import org.json.JSONArray
@@ -63,12 +64,13 @@ object NlIcons {
 }
 
 class NlRow(
-    val nm: String, val dir: Boolean, val k: String, val a: String, val b: String,
+    val nm: String, val dir: Boolean, val k: String, var a: String, val b: String,
     val badge: String?, val badgeCol: Int, val dup: Boolean,
     val path: String?, val size: Long, val mtime: Long,
-    val gal: Boolean = false            // video-gallery cell (drawn by NlGalView, several per adapter row)
+    val gal: Boolean = false,           // video-gallery cell (drawn by NlGalView, several per adapter row)
+    val dev: String = "local"           // endpoint the row belongs to ("local", a peer id, "smb:...")
 ) {
-    val thumbKey: String? = if (path == null) null else "$path|$size|$mtime"
+    val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }
 
 class NlPal(private val j: JSONObject) {
@@ -557,13 +559,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
         /** Kill switch: false = the WebView draws the list exactly as before. */
         const val ENABLED = true
 
-        fun parseRows(json: String): List<NlRow> {
+        fun parseRows(json: String, dev: String = "local"): List<NlRow> {
             val a = JSONArray(json); val out = ArrayList<NlRow>(a.length())
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
                 out.add(NlRow(o.getString("n"), o.optInt("d") == 1, o.optString("k", "file"), o.optString("a"), o.optString("b"),
                     if (o.has("g")) o.getString("g") else null, o.optLong("gc").toInt(), o.optInt("u") == 1,
-                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1))
+                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev))
             }
             return out
         }
@@ -593,6 +595,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var curSig = 0
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
+    private var elev = false
     private var compact = false
     private var large = false
     private class Th(val bm: Bitmap, val dur: String?)
@@ -618,6 +621,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         rv.layoutManager = lm; rv.adapter = ad; rv.itemAnimator = null; rv.setHasFixedSize(true)
         srl.addView(rv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         srl.setOnRefreshListener { emit("refresh", 0) }
+        // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
+        rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) } }
+        })
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
         overlay.visibility = View.GONE
     }
@@ -641,7 +648,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         rv.setPadding(pd, pd, pd, pd); rv.clipToPadding = !grid
         if (grid) rv.addItemDecoration(gap)
         lm = if (grid) GridLayoutManager(act, span).also { g ->
-            g.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() { override fun getSpanSize(position: Int) = if (position >= galStart) span else 1 }
+            g.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() { override fun getSpanSize(position: Int) = if (position >= galStart || rows.getOrNull(position)?.k == "hdr") span else 1 }
         } else LinearLayoutManager(act)
         rv.layoutManager = lm
     }
@@ -674,8 +681,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val l = (j.getDouble("l") * d).toFloat(); val t = (j.getDouble("t") * d).toFloat()
         val w = (j.getDouble("w") * d).toFloat(); val h = (j.getDouble("h") * d).toFloat()
         val lp = srl.layoutParams as FrameLayout.LayoutParams
-        lp.leftMargin = Math.round(l); lp.topMargin = Math.round(t); lp.width = Math.round(w); lp.height = Math.max(0, Math.round(h))
-        srl.layoutParams = lp
+        val nl = Math.round(l); val nt = Math.round(t); val nw = Math.round(w); val nh = Math.max(0, Math.round(h))
+        if (lp.leftMargin != nl || lp.topMargin != nt || lp.width != nw || lp.height != nh) {   // a dim-only change (drawer fade) must not re-measure the list
+            lp.leftMargin = nl; lp.topMargin = nt; lp.width = nw; lp.height = nh
+            srl.layoutParams = lp
+        }
         overlay.listRect.set(l, t, l + w, t + h)
         val hs = ArrayList<RectF>(); val o = j.optJSONArray("o")
         if (o != null) for (i in 0 until o.length()) { val a = o.getJSONArray(i); hs.add(RectF((a.getDouble(0) * d).toFloat(), (a.getDouble(1) * d).toFloat(), (a.getDouble(2) * d).toFloat(), (a.getDouble(3) * d).toFloat())) }
@@ -691,7 +701,18 @@ class NativeList(private val act: Activity, private val web: WebView) {
         overlay.invalidate()
     }
 
-    fun hide() { lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    /** json = [[rowIndex, newSmallText], ...]: folder item counts that arrived late; only those rows are redrawn. */
+    fun patch(json: String) {
+        val a = JSONArray(json)
+        for (i in 0 until a.length()) {
+            val o = a.getJSONArray(i); val x = o.getInt(0)
+            if (x < 0 || x >= rows.size) continue
+            val r = rows[x]; val t = o.getString(1)
+            if (r.a != t) { r.a = t; ad.notifyItemChanged(posOf(x)) }
+        }
+    }
+
+    fun hide() { elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {
@@ -707,7 +728,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
     /** Decode one thumbnail on the pool; `ok()` is checked on the UI thread (the view may have been recycled meanwhile). */
     private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
         val th: Th? = try {
-            if (r.k == "vid") { val (data, ms) = VideoThumbs.make(Core.local.open(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) } }
+            if (r.dev != "local") {   // other LANShare device / SMB share: through the endpoint (disk cached), see RemoteThumbs
+                val (data, ms) = RemoteThumbs.make(r.dev, r.path!!, r.size, r.mtime, r.k == "vid")
+                BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) }
+            }
+            else if (r.k == "vid") { val (data, ms) = VideoThumbs.make(Core.local.open(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) } }
             else { val data = Thumbs.make(Core.local.real(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, null) } }
         } catch (_: Throwable) { null }
         if (th != null) {
@@ -718,7 +743,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private inner class Ad : RecyclerView.Adapter<VH>() {
         override fun getItemCount() = galStart + galRowCount()
-        override fun getItemViewType(position: Int) = if (position >= galStart) 2 else if (gridOn) 1 else 0
+        override fun getItemViewType(position: Int) = if (position >= galStart) 2 else if (gridOn && rows[position].k != "hdr") 1 else 0
         override fun onCreateViewHolder(parent: ViewGroup, t: Int): VH {
             if (t == 2) {
                 val gv = NlGalView(parent.context, d)
