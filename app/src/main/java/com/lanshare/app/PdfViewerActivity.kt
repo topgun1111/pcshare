@@ -13,6 +13,7 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.text.TextPaint
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfRenderer
@@ -23,6 +24,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.text.InputType
+import android.util.Log
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -68,6 +70,8 @@ class PdfViewerActivity : Activity() {
         private const val GAP_DP = 6
         private const val POS_PREFS = "ls_pdf"        // key -> "page,timestamp"
         private const val SET_PREFS = "ls_pdf_set"    // night mode
+        private const val MAX_TRIES = 3               // a page that failed to render is retried this often, then shows the error text until re-bound
+        private const val TAG = "PdfViewer"
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -99,8 +103,13 @@ class PdfViewerActivity : Activity() {
     private var maxPx = 5_000_000
 
     private val inflight = HashMap<Int, Int>()         // UI thread only: page -> requested pixel width
-    private val failedPages = HashSet<Int>()           // UI thread only
-    private val bound = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()   // pages currently bound to a view
+    private val failCount = HashMap<Int, Int>()        // UI thread only: page -> failed render attempts in a row
+    private val lastErr = HashMap<Int, String>()       // UI thread only: page -> why the last attempt failed (shown on the page)
+    private val bound = HashMap<Int, Int>()            // page -> number of holders currently bound to it (guarded by synchronized(bound)); a counter, not a set:
+                                                   // a stale holder being recycled after the new one was bound must not hide the page from the render gate
+    private fun bAdd(p: Int) { synchronized(bound) { bound.put(p, (bound[p] ?: 0) + 1) } }
+    private fun bDel(p: Int) { synchronized(bound) { val n = (bound[p] ?: 0) - 1; if (n <= 0) bound.remove(p) else bound.put(p, n) } }
+    private fun bHas(p: Int): Boolean = synchronized(bound) { bound.containsKey(p) }
     private lateinit var cache: LruCache<Int, Bitmap>
 
     private lateinit var root: FrameLayout
@@ -136,8 +145,9 @@ class PdfViewerActivity : Activity() {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         val big = am.memoryClass >= 192
         maxW = if (big) 3200 else 2400
-        maxPx = if (big) 9_000_000 else 5_000_000
-        cache = object : LruCache<Int, Bitmap>(maxOf(am.memoryClass, 64) * 1024 * 1024 / 3) {
+        maxPx = if (big) 6_000_000 else 4_000_000          // one page bitmap = maxPx * 4 bytes
+        val perPage = maxPx * 4
+        cache = object : LruCache<Int, Bitmap>(maxOf(perPage * 2, am.memoryClass * 1024 * 1024 / 4)) {   // always room for >= 2 pages
             override fun sizeOf(key: Int, value: Bitmap) = value.byteCount
         }
         night = getSharedPreferences(SET_PREFS, MODE_PRIVATE).getBoolean("night", false)
@@ -168,7 +178,7 @@ class PdfViewerActivity : Activity() {
             layoutManager = lm
             itemAnimator = null
             clipToPadding = false
-            setItemViewCacheSize(2)
+            setItemViewCacheSize(0)                        // off-screen pages are recycled at once (bitmap dropped), re-bound from the LruCache on return
             setPadding(0, dp(56), 0, dp(16))
             adapter = pageAd
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -304,7 +314,7 @@ class PdfViewerActivity : Activity() {
         gen++; rgen++
         closeDoc()
         ready = false; pageCount = 0; curPage = 0; pendingStart = null; zoomLevel = 1f
-        cache.evictAll(); inflight.clear(); failedPages.clear(); bound.clear()
+        cache.evictAll(); inflight.clear(); failCount.clear(); lastErr.clear()
         zf.reset()
         pageAd.notifyDataSetChanged()
         name = o.optString("name").ifEmpty { "document.pdf" }
@@ -345,6 +355,9 @@ class PdfViewerActivity : Activity() {
                     }
                 }
                 if (my != gen) return@Thread
+                val declared = c.contentLengthLong
+                if (declared > 0 && done != declared) throw IOException("Download incomplete ($done of $declared bytes)")
+                Log.i(TAG, "downloaded $done bytes (declared $declared)")
                 if (!tmp.renameTo(out)) throw IOException("cannot cache the document")
             } catch (e: Exception) {
                 if (my != gen) return@Thread
@@ -413,7 +426,7 @@ class PdfViewerActivity : Activity() {
     private fun showPages(at: Int) {
         pendingStart = null
         rgen++
-        cache.evictAll(); inflight.clear(); bound.clear()
+        cache.evictAll(); inflight.clear(); failCount.clear(); lastErr.clear()
         pageAd.notifyDataSetChanged()
         lm.scrollToPositionWithOffset(at.coerceIn(0, maxOf(pageCount - 1, 0)), 0)
         curPage = at.coerceIn(0, maxOf(pageCount - 1, 0))
@@ -524,7 +537,7 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun request(pos: Int) {
-        if (!ready || viewW <= 0 || pos !in 0 until pageCount || failedPages.contains(pos)) return
+        if (!ready || viewW <= 0 || pos !in 0 until pageCount || (failCount[pos] ?: 0) >= MAX_TRIES) return
         val (w, h) = renderSize(pos, (viewW * zoomLevel).toInt().coerceAtLeast(viewW))
         val have = cache.get(pos) ?: holder(pos)?.v?.bmp
         if (have != null && have.width >= w - 1) return
@@ -536,24 +549,45 @@ class PdfViewerActivity : Activity() {
             pool.execute {
                 var bm: Bitmap? = null
                 var tried = false
-                if (my == rgen && bound.contains(pos)) {          // skipped when the page already scrolled away
+                var why: String? = null
+                if (my == rgen && bHas(pos)) {          // skipped when the page already scrolled away
                     tried = true
                     try {
                         bm = renderPage(pos, w, h)
+                        if (bm == null) why = "document is closed"
                     } catch (e: OutOfMemoryError) {
+                        Log.w(TAG, "OOM rendering page $pos at ${w}x$h")
                         cache.evictAll()
-                        try { bm = renderPage(pos, maxOf(w / 2, 1), maxOf(h / 2, 1)) } catch (_: Throwable) { }
-                    } catch (_: Exception) { }
+                        try {
+                            bm = renderPage(pos, maxOf(w * 2 / 3, 1), maxOf(h * 2 / 3, 1))     // smaller, still readable
+                        } catch (t: Throwable) {
+                            why = "out of memory (${w}x$h)"
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "render failed for page $pos", e)
+                        why = e.javaClass.simpleName + (e.message?.let { ": $it" } ?: "")
+                    }
                 }
                 val rb = bm
                 val rf = tried && rb == null
+                val reason = why ?: "render failed"
                 ui.post {
                     if (my != rgen || isDestroyed) return@post
                     inflight.remove(pos)
                     if (rb != null) {
+                        failCount.remove(pos); lastErr.remove(pos)
                         cache.put(pos, rb)
-                        holder(pos)?.v?.bmp = rb
-                    } else if (rf) failedPages.add(pos)
+                        holder(pos)?.v?.let { it.err = null; it.bmp = rb }
+                    } else if (rf) {
+                        // never give up for good: retry a few times with a growing delay, then show the reason on the page
+                        val c = (failCount[pos] ?: 0) + 1
+                        failCount[pos] = c
+                        lastErr[pos] = reason
+                        holder(pos)?.v?.err = reason
+                        if (c < MAX_TRIES) ui.postDelayed({ if (my == rgen && !isDestroyed) request(pos) }, 400L * c)
+                    } else if (!tried && bHas(pos)) {
+                        request(pos)                 // the gate said "not on screen" but the page is bound now: never leave it white
+                    }
                 }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) { inflight.remove(pos) }
@@ -619,20 +653,24 @@ class PdfViewerActivity : Activity() {
             return Pg(v)
         }
         override fun onBindViewHolder(h: Pg, position: Int) {
+            if (h.pos >= 0) bDel(h.pos)                    // re-bound without a recycle in between: release the old position first
             h.pos = position
-            bound.add(position)
+            bAdd(position)
             val lp = h.v.layoutParams as RecyclerView.LayoutParams
             lp.height = pageH(position)
             lp.bottomMargin = gap()
             h.v.layoutParams = lp
             h.v.night = night
+            h.v.err = lastErr[position]
             h.v.bmp = cache.get(position)
+            if ((failCount[position] ?: 0) >= MAX_TRIES) failCount[position] = MAX_TRIES - 1     // scrolling back to a failed page = one more try
             request(position)
         }
         override fun onViewRecycled(h: Pg) {
-            if (h.pos >= 0) bound.remove(h.pos)
+            if (h.pos >= 0) bDel(h.pos)
             h.pos = -1
             h.v.bmp = null
+            h.v.err = null
         }
     }
 
@@ -664,6 +702,9 @@ internal class PdfPageView(c: Context) : View(c) {
     }
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val dst = RectF()
+    private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF777777.toInt(); textSize = 14f * c.resources.displayMetrics.scaledDensity; textAlign = Paint.Align.CENTER }
+    var err: String? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
     var bmp: Bitmap? = null
         set(v) { field = v; invalidate() }
     var night = false
@@ -671,7 +712,18 @@ internal class PdfPageView(c: Context) : View(c) {
 
     override fun onDraw(canvas: Canvas) {
         val b = bmp
-        if (b == null) { canvas.drawColor(if (night) Color.BLACK else Color.WHITE); return }
+        if (b == null) {
+            canvas.drawColor(if (night) Color.BLACK else Color.WHITE)
+            val e = err
+            if (e != null) {                       // a failed page says why instead of staying silently white
+                val cx = width / 2f
+                var y = height / 2f
+                canvas.drawText("Page could not be drawn", cx, y, tp); y += tp.textSize * 1.4f
+                canvas.drawText(e.take(60), cx, y, tp); y += tp.textSize * 1.4f
+                canvas.drawText("(scroll away and back to retry)", cx, y, tp)
+            }
+            return
+        }
         dst.set(0f, 0f, width.toFloat(), height.toFloat())
         canvas.drawBitmap(b, null, dst, paint)
     }
