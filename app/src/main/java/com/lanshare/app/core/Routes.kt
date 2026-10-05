@@ -87,13 +87,13 @@ object Routes {
             "scan" -> { d.scanNow(); return ok(ex) }
             "counts" -> {   // item counts of the sub-folders of this phone's folder, filled in after the list is on screen
                 val o = JSONObject()
-                if (ex.q("dev") == "local") Core.local.counts(vnorm(q["path"] ?: "/")).forEach { (k, n) -> o.put(k, n) }
+                if (ex.q("dev") == "local" && arcSplit(vnorm(q["path"] ?: "/")) == null) Core.local.counts(vnorm(q["path"] ?: "/")).forEach { (k, n) -> o.put(k, n) }
                 return ex.json(o)
             }
             "ls" -> {
                 val dev = ex.q("dev")
                 val path = vnorm(q["path"] ?: "/")
-                val items = (if (dev == "local") Core.local.ls(path, false) else Jobs.ep(dev).ls(path))
+                val items = (if (dev == "local" && arcSplit(path) == null) Core.local.ls(path, false) else Jobs.ep(dev).ls(path))   // paths inside a .zip/.rar must go through ArcEp
                     .map { it to it.name.lowercase() }   // lower-case each name once, not on every comparison (big folders)
                     .sortedWith(compareBy<Pair<Item, String>>({ !it.first.dir }, { it.second })).map { it.first }
                 var used: Any = JSONObject.NULL   // share of main storage in use, for the "70% USED" pill
