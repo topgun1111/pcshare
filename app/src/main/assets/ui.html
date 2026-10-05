@@ -1590,6 +1590,11 @@ function drawerRender(){
     bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
     bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
     bd.append(E('div','dsep'));
+    bd.append(E('div','dsec','Devices'));
+    S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
+    if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
+    bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
     QF.forEach((q,n)=>{
       const sub=q.dev==='local'?'':(devName(q.dev)!=='device'?devName(q.dev):(q.dn||''));
@@ -1608,11 +1613,6 @@ function drawerRender(){
           QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
       bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Back to Download, DCIM, Movies, Pictures, Music, Documents.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
-    bd.append(E('div','dsep'));
-    bd.append(E('div','dsec','Devices'));
-    S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
-      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
-    if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
