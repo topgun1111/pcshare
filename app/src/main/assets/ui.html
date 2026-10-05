@@ -998,7 +998,7 @@ async function doSend(){
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
 /* printers found on the same Wi-Fi (mDNS); printed to directly over IPP, no PC needed */
 let WIFI=[];
-async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:'Wi-Fi'}))}catch(e){WIFI=[]}return WIFI}
+async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi'}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
 function wifiOptions(pr,files){return new Promise(res=>{
   const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0};

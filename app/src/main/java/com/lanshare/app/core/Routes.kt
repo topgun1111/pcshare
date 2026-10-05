@@ -53,6 +53,12 @@ object Routes {
                 L.write(ex.q("path"), ex.body, n)
                 ok(ex)
             }
+            "wifiprinters" -> ex.json(WifiPrinters.listJson())   // this device's Wi-Fi printers, for printing on them from another device
+            "ipp" -> {   // forwards one IPP request from another device to a printer this device discovered (not to arbitrary hosts)
+                val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
+                val p = WifiPrinters.known(ex.q("id")) ?: throw Denied("not a printer of this device")
+                ex.reply(200, Ipp.forward(p, ex.body, n), "application/ipp")
+            }
             "mkdir" -> { L.mkdir(ex.q("path")); ok(ex) }
             "rm" -> { L.remove(ex.q("path")); ok(ex) }
             "rename" -> { L.rename(ex.q("path"), ex.q("name")); ok(ex) }
@@ -102,7 +108,7 @@ object Routes {
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
-            "wifiprinters" -> return ex.json(WifiPrinters.listJson())   // printers found on the Wi-Fi (mDNS), printed to directly over IPP
+            "wifiprinters" -> return ex.json(WifiPrinters.listJson().also { a -> WifiPrinters.remoteJson().let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) } })   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))

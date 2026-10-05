@@ -84,11 +84,24 @@ object Ipp {
     private fun call(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
         val head = ByteArrayInputStream(req)
         val body: InputStream = if (data == null) head else SequenceInputStream(head, data)
-        val r = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"),
-            timeoutMs, body, req.size + dataLen, onSent)
+        val hdr = mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp")
+        val vp = p.viaPeer
+        val r = if (vp != null) {   // a printer on another device: that device forwards the raw IPP request (see [forward])
+            val peer = Core.disc.get(vp) ?: throw IOException("the device that has this printer is offline")
+            Http.request(peer.ip, peer.port, "POST", "/p/ipp?id=" + java.net.URLEncoder.encode(p.origId, "UTF-8"), hdr, timeoutMs, body, req.size + dataLen, onSent)
+        } else Http.request(p.host, p.port, "POST", "/" + p.path, hdr, timeoutMs, body, req.size + dataLen, onSent)
+        try {
+            if (r.status != 200) throw IOException(if (vp != null) "the other device could not reach the printer (HTTP ${r.status}) - is its LANShare up to date?" else "the printer answered HTTP ${r.status}")
+            return parse(readBody(r))
+        } finally { r.close() }
+    }
+
+    /** Device side of a remote print: sends one raw IPP request ([len] bytes of [body]) to a printer discovered here and returns the printer's raw answer. */
+    fun forward(p: WifiPrinters.P, body: InputStream, len: Long): ByteArray {
+        val r = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), 170_000, body, len)
         try {
             if (r.status != 200) throw IOException("the printer answered HTTP ${r.status}")
-            return parse(readBody(r))
+            return readBody(r)
         } finally { r.close() }
     }
 
