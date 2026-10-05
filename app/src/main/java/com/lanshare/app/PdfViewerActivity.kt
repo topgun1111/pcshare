@@ -198,10 +198,13 @@ class PdfViewerActivity : Activity() {
         nightBtn = tv("\u263E", 20f).apply { setOnClickListener { setNight(!night) } }
         val openWith = tv("\u2197", 20f).apply { setOnClickListener { openWith() } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
+        val print = tv("\u2399", 20f).apply { setOnClickListener {   // same print flow as the file browser (downloads the url again; office PDFs are cached)
+            if (url.isNotEmpty()) PhonePrint(this@PdfViewerActivity).start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", if (name.endsWith(".pdf", true)) name else "$name.pdf"))).toString()) } }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(nightBtn)
         top.addView(openWith)
+        top.addView(print)
         top.addView(share)
         root.addView(top)
         paintNightBtn()
