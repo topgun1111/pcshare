@@ -112,7 +112,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
 class NlRowView(c: Context, private val d: Float) : View(c) {
     var row: NlRow? = null
     var pal: NlPal? = null
-    var selected = false
+    var isSel = false
     var thumb: Bitmap? = null
     var dur: String? = null
     var compact = false
@@ -132,7 +132,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean) {
         if (cp != compact || lg != large) { compact = cp; large = lg; requestLayout() }
-        row = r; pal = pl; selected = sel; thumb = null; dur = null; ell = null; invalidate()
+        row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; invalidate()
     }
 
     override fun setPressed(pressed: Boolean) { super.setPressed(pressed); invalidate() }
@@ -150,7 +150,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
-        if (selected) { p.color = pl.sel; cv.drawRect(0f, 0f, w, h, p) }
+        if (isSel) { p.color = pl.sel; cv.drawRect(0f, 0f, w, h, p) }
         else if (isPressed) { p.color = pl.hov; cv.drawRect(0f, 0f, w, h, p) }
         p.color = pl.bd; cv.drawRect(0f, h - d, w, h, p)           // border-bottom 1px
 
@@ -164,7 +164,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val leadR = (if (c) 18f else if (lg) 38f else 24f) * d                       // half lead width
         val leadB = (if (c) 18f else if (lg) 34f else 22f) * d                       // half lead height
         // ---- lead ----
-        if (selected) {
+        if (isSel) {
             p.color = pl.ac; cv.drawCircle(lcx, cy, tile, p)
             icon("check", lcx - ico / 2f, cy - ico / 2f, ico, pl.onac, cv)
         } else if (r.dir) {
@@ -212,8 +212,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val xr = w - 14f * d
         nameP.textSize = (if (c) 15f else 16f) * d
         smallP.textSize = (if (c) 12f else 13f) * d
-        nameP.color = if (selected) pl.onsel else pl.fg
-        smallP.color = if (selected) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
+        nameP.color = if (isSel) pl.onsel else pl.fg
+        smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var dupW = 0f
         if (r.dup) { dupP.color = 0xFF3B2A00.toInt(); dupW = dupP.measureText("duplicate?") + 12f * d }
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
@@ -255,7 +255,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 class NlGridView(c: Context, private val d: Float) : View(c) {
     var row: NlRow? = null
     var pal: NlPal? = null
-    var selected = false
+    var isSel = false
     var selMode = false
     var thumb: Bitmap? = null
     var dur: String? = null
@@ -275,7 +275,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     private var layW = -1
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean) {
-        row = r; pal = pl; selected = sel; selMode = selm; thumb = null; dur = null; layRow = null; invalidate()
+        row = r; pal = pl; isSel = sel; selMode = selm; thumb = null; dur = null; layRow = null; invalidate()
     }
 
     private fun prep(w: Int) {
@@ -367,7 +367,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         }
         // ---- check circle (top 5, right 5, 24px) ----
         val kx = lx + s - 5f * d - 12f * d; val ky = ly + 5f * d + 12f * d
-        if (selected) {
+        if (isSel) {
             p.style = Paint.Style.FILL
             p.color = 0x26000000; cv.drawCircle(kx, ky + d, 14.5f * d, p)
             p.color = Color.WHITE; cv.drawCircle(kx, ky, 14f * d, p)
