@@ -30,6 +30,8 @@ class OfficeViewerActivity : Activity() {
     private lateinit var msg: TextView
     @Volatile private var dead = false
     private lateinit var printBtn: TextView
+    private var srcDev = ""
+    private var srcPath = ""
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -37,6 +39,7 @@ class OfficeViewerActivity : Activity() {
         val j = try { JSONObject(pending ?: "{}") } catch (_: Exception) { JSONObject() }
         pending = null
         val url = j.optString("url")
+        srcDev = j.optString("dev"); srcPath = j.optString("path")
         title = j.optString("name", "Document")
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         web = WebView(this).apply {
@@ -86,6 +89,11 @@ class OfficeViewerActivity : Activity() {
 
     /** Android print dialog (simplified layout; the phone reader has no page layout of the original). */
     private fun printDoc() {
+        val m = MainActivity.inst
+        if (m != null && srcDev.isNotEmpty() && srcPath.isNotEmpty()) {   // the app's own print dialog (Wi-Fi/IPP + PC printers), prints the ORIGINAL file
+            m.printFile(srcDev, srcPath, srcPath.substringAfterLast('/'))
+            finish(); return
+        }
         try {
             val n = (title?.toString() ?: "Document")
             (getSystemService(PRINT_SERVICE) as PrintManager).print(n, web.createPrintDocumentAdapter(n), PrintAttributes.Builder().build())

@@ -54,7 +54,15 @@ object OfficeView {
     fun canText(name: String) = OfficeText.canRead(name)
 
     /** Is a PC converter reachable right now? (the UI picks tier 1 or 2 with this) */
-    fun converterOk(): Boolean = try { Jobs.converterIp(); true } catch (_: Throwable) { false }
+    @Volatile private var okAt = 0L
+    @Volatile private var okVal = false
+    fun converterOk(): Boolean {   // cached 30 s (yes) / 15 s (no): a tap must not re-ping the whole LAN
+        val now = System.currentTimeMillis()
+        if (now - okAt < (if (okVal) 30000L else 15000L)) return okVal
+        val v = try { Jobs.converterIp(); true } catch (_: Throwable) { false }
+        okVal = v; okAt = System.currentTimeMillis()
+        return v
+    }
 
     /** Tier 2: the file rendered to one HTML page on the phone (no PC needed). */
     fun htmlFor(dev: String, path: String): String {

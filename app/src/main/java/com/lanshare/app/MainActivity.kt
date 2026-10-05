@@ -39,7 +39,19 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
 class MainActivity : Activity() {
-    companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
+    companion object {
+        const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED"
+        @Volatile var inst: MainActivity? = null
+    }
+    /** Viewers (office / PDF) call this: opens the app's own "Print on..." dialog (Wi-Fi printers over IPP, PC printers) for one file. */
+    fun printFile(dev: String, path: String, name: String) {
+        runOnUiThread {
+            web.postDelayed({
+                web.evaluateJavascript("window.lsPrintFile&&lsPrintFile(${JSONObject.quote(dev)},${JSONObject.quote(path)},${JSONObject.quote(name)})", null)
+            }, 350)
+        }
+    }
+    override fun onDestroy() { if (inst === this) inst = null; super.onDestroy() }
     private lateinit var web: WebView
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
@@ -86,6 +98,7 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        inst = this
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true

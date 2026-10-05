@@ -83,6 +83,8 @@ class PdfViewerActivity : Activity() {
     private var name = "document.pdf"
     private var url = ""
     private var key = ""
+    private var srcDev = ""
+    private var srcPath = ""
     private var srcSize = 0L
     private var file: File? = null
     private var gen = 0                                // document generation (fetch)
@@ -199,7 +201,9 @@ class PdfViewerActivity : Activity() {
         val openWith = tv("\u2197", 20f).apply { setOnClickListener { openWith() } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
         val print = tv("\u2399", 20f).apply { setOnClickListener {   // same print flow as the file browser (downloads the url again; office PDFs are cached)
-            if (url.isNotEmpty()) PhonePrint(this@PdfViewerActivity).start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", if (name.endsWith(".pdf", true)) name else "$name.pdf"))).toString()) } }
+            val m = MainActivity.inst
+            if (m != null && srcDev.isNotEmpty() && srcPath.isNotEmpty()) { m.printFile(srcDev, srcPath, srcPath.substringAfterLast('/')); finish() }   // app's own print dialog
+            else if (url.isNotEmpty()) PhonePrint(this@PdfViewerActivity).start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", if (name.endsWith(".pdf", true)) name else "$name.pdf"))).toString()) } }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(nightBtn)
@@ -307,6 +311,7 @@ class PdfViewerActivity : Activity() {
         url = u
         srcSize = o.optLong("size", 0L)
         key = o.optString("key")
+        srcDev = o.optString("dev"); srcPath = o.optString("path")
         file = null
         updateTitle()
         setState("Loading\u2026", null, false)

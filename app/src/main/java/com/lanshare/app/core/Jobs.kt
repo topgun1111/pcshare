@@ -81,6 +81,12 @@ object Jobs {
 
     /** IP of a PC whose pcprint.py can turn Office files into PDF (v11 /convert + Word/LibreOffice). Throws with the real reason when none can. */
     fun converterIp(): String {
+        convIp?.let { ip ->   // fast path: the PC that worked last time (one short ping instead of pinging every known IP)
+            try {
+                val r = Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 800)
+                try { if (r.status == 200 && JSONObject(String(r.readUpTo(32768), Charsets.UTF_8)).let { it.optBoolean("convert", false) && !it.isNull("office") }) return ip } finally { r.close() }
+            } catch (_: Exception) {}
+        }
         val ips = LinkedHashSet<String>()
         convIp?.let { ips.add(it) }
         for (p in Core.disc.list()) { ips.add(p.ip); ips.addAll(p.ips) }
