@@ -298,6 +298,7 @@ body.dopen{overflow:hidden}
 .pdot{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid var(--bg);background:#9e9e9e}
 .pdot.ok{background:var(--ok)}.pdot.wn{background:var(--warn,#e0a100)}.pdot.ck{animation:pdk 1s ease-in-out infinite}
 @keyframes pdk{50%{opacity:.35}}
+@keyframes pgl{0%,100%{opacity:.08}50%{opacity:1}}.pglow{animation:pgl 1.1s ease-in-out infinite}
 .di.poff{opacity:.55}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
@@ -1020,22 +1021,26 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const last=localStorage.getItem('printTo');
   const dev=(name,conn,kind)=>{const box=E('div','');box.style.cssText='border:1px solid rgba(128,128,128,.28);border-radius:12px;padding:8px 10px;margin:6px 0';
-    const hd=E('div','');hd.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';const acc=E('span','');hd.append(ic('phone'),E('b','',name),chip(conn,kind),acc);box.append(hd);card.append(box);return{box,acc,n:0}};
+    const hd=E('div','');hd.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';const acc=E('span','');const pi=ic('phone'),gr=document.createElementNS('http://www.w3.org/2000/svg','rect');gr.setAttribute('x','7');gr.setAttribute('y','5');gr.setAttribute('width','10');gr.setAttribute('height','14');gr.setAttribute('fill','#2E7D32');gr.setAttribute('opacity','0');pi.insertBefore(gr,pi.firstChild);
+    hd.append(pi,E('b','',name),chip(conn,kind),acc);box.append(hd);card.append(box);return{box,acc,n:0,gr}};
+  /* online printer: the inside of the phone icon blinks green */
+  const live=d=>d.gr.setAttribute('class','pglow');
+  const chk=(d,t)=>api('GET','/api/printer?dev='+enc(t.id),null,7000).then(r=>{if(r&&r.ok&&!(r.problem&&/offline|not available/i.test(r.problem)))live(d)}).catch(()=>{});
   const acc=(d,t,k)=>{d.acc.textContent='';d.acc.append(chip(t,k))};
   const add=(d,t,label,tag)=>{d.n++;const b=E('button','tbtn'+(t.id===last?' fill':''));b.textContent=label;if(tag){const g=E('em','',' · '+tag);g.style.cssText='font-style:normal;font-size:11px;opacity:.75';b.append(g)}
     b.style.margin='6px 6px 0 0';b.onclick=()=>fin(t);d.box.append(b)};
   const cnt=d=>acc(d,d.n+' printer'+(d.n===1?'':'s'),'ok');
-  if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
+  if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok');live(d)}
   peers.forEach(p=>{
     const ts=p.via==='Tailscale',d=dev(p.name,ts?'Tailscale':'Wi-Fi',ts?'ts':'wifi');
     if(p.ok===false&&!p.smb){acc(d,'offline','off');return}
-    wifi.filter(w=>w.viaId===p.id).forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),'Wi-Fi printer'));
+    wifi.filter(w=>w.viaId===p.id).forEach(w=>{add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),'Wi-Fi printer');chk(d,w)});
     if(d.n)cnt(d);else acc(d,'checking…','off');
     api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
-      if(r&&r.ok&&r.printer)add(d,p,r.printer+(r.problem?' · '+r.problem:''),'PC print service');
+      if(r&&r.ok&&r.printer){add(d,p,r.printer+(r.problem?' · '+r.problem:''),'PC print service');if(!(r.problem&&/offline|not available/i.test(r.problem)))live(d)}
       d.n?cnt(d):acc(d,'No printer access','off')}).catch(()=>{d.n?cnt(d):acc(d,'No printer access','off')})});
   const lan=wifi.filter(w=>!w.viaId);
-  if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'')));cnt(d)}
+  if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>{add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''));chk(d,w)});cnt(d)}
   if(!lan.length)card.append(E('p','',peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.'));
   const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
   sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
