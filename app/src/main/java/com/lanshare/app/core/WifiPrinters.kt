@@ -22,6 +22,7 @@ object WifiPrinters {
         val uri: String get() = "ipp://$host:$port/$path"
         /** Id of the printer as the device that owns it knows it ("wifi:ip:port/path"); ids of remote printers are "rwifi:<peer id>|<that id>". */
         val origId: String get() = if (viaPeer != null) id.substringAfter('|') else id
+        @Volatile var seen: Long = System.currentTimeMillis()
         @Volatile var formats: List<String> = pdl            // refined by status() from the printer itself
         @Volatile var sides: List<String> = emptyList()
         @Volatile var colorModes: List<String> = emptyList()
@@ -35,26 +36,71 @@ object WifiPrinters {
     private val WIFI_ID = Regex("^wifi:([0-9.]+):(\\d+)/(.*)$")
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "wifi-resolve").also { it.isDaemon = true } }   // resolveService: one at a time
     @Volatile private var started = false
+    @Volatile private var watching = false
+    @Volatile private var listener: NsdManager.DiscoveryListener? = null
     private var nsd: NsdManager? = null
+
+    /** Printers remembered from earlier scans: with the screen off Android stops delivering mDNS, but the printer itself still answers on its IPP port. */
+    private fun loadSaved() {
+        try {
+            val a = Cfg.printers()
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                if (id.isEmpty() || map.containsKey(id)) continue
+                map[id] = P(id, o.optString("name"), o.optString("host"), o.optInt("port", 631), o.optString("path"), o.optString("model"), emptyList(),
+                    if (o.has("color")) o.optBoolean("color") else null, if (o.has("duplex")) o.optBoolean("duplex") else null).also { it.seen = o.optLong("t", 0L) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun saveAll() {
+        try {
+            val a = JSONArray()
+            for (p in map.values.sortedByDescending { it.seen }.take(20)) {
+                val o = JSONObject().put("id", p.id).put("name", p.name).put("host", p.host).put("port", p.port).put("path", p.path).put("model", p.model).put("t", p.seen)
+                p.color?.let { o.put("color", it) }; p.duplex?.let { o.put("duplex", it) }
+                a.put(o)
+            }
+            Cfg.setPrinters(a)
+        } catch (_: Exception) {}
+    }
+
+    /** Re-issue the mDNS queries (Android lets discovery go quiet in the background) - also called when the network changes. */
+    @Synchronized fun restart() {
+        val m = nsd; val l = listener
+        if (m != null && l != null) try { m.stopServiceDiscovery(l) } catch (_: Throwable) {}
+        started = false
+        Core.appCtx?.let { start(it) }
+    }
+
+    private fun reachable(p: P): Boolean {
+        val s = try { Net.newSocket(p.host) } catch (_: Exception) { return false }
+        return try { s.connect(java.net.InetSocketAddress(p.host, p.port), 800); true } catch (_: Exception) { false } finally { try { s.close() } catch (_: Exception) {} }
+    }
 
     @Synchronized
     fun start(ctx: Context) {
+        if (!watching) {
+            watching = true
+            loadSaved()
+            Thread({ while (true) { try { Thread.sleep(90_000); restart() } catch (_: Throwable) {} } }, "wifi-nsd-watch").also { it.isDaemon = true }.start()
+        }
         if (started) return
         started = true
         try {
             val m = ctx.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
             nsd = m
-            m.discoverServices("_ipp._tcp", NsdManager.PROTOCOL_DNS_SD, object : NsdManager.DiscoveryListener {
-                override fun onStartDiscoveryFailed(type: String?, code: Int) { started = false }
+            val l = object : NsdManager.DiscoveryListener {
+                override fun onStartDiscoveryFailed(type: String?, code: Int) { if (listener === this) started = false }
                 override fun onStopDiscoveryFailed(type: String?, code: Int) {}
                 override fun onDiscoveryStarted(type: String?) {}
-                override fun onDiscoveryStopped(type: String?) { started = false }
+                override fun onDiscoveryStopped(type: String?) { if (listener === this) started = false }
                 override fun onServiceFound(info: NsdServiceInfo?) { if (info != null) pool.execute { resolve(m, info) } }
-                override fun onServiceLost(info: NsdServiceInfo?) {
-                    val n = info?.serviceName ?: return
-                    map.values.filter { it.name == n }.forEach { map.remove(it.id) }
-                }
-            })
+                override fun onServiceLost(info: NsdServiceInfo?) {}   // kept: a lost mDNS record (screen off, multicast filtered) does not mean the printer is gone - listJson checks reachability
+            }
+            listener = l
+            m.discoverServices("_ipp._tcp", NsdManager.PROTOCOL_DNS_SD, l)
         } catch (_: Throwable) { started = false }
     }
 
@@ -79,7 +125,9 @@ object WifiPrinters {
         val pdl = txt("pdl").split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         val flag = { k: String -> txt(k).takeIf { it.isNotEmpty() }?.equals("T", true) }
         val id = "wifi:$ip:${s.port}/$rp"
+        val old = map[id]
         map[id] = P(id, s.serviceName ?: model.ifEmpty { ip }, ip, s.port, rp, model, pdl, flag("Color"), flag("Duplex"))
+        if (old == null || old.name != (map[id]?.name ?: "") || System.currentTimeMillis() - old.seen > 3600_000) saveAll()
     }
 
     /** A printer this device itself discovered (what a remote device may ask it to forward IPP to). */
@@ -131,8 +179,12 @@ object WifiPrinters {
 
     fun listJson(): JSONArray {
         Core.appCtx?.let { start(it) }
+        val ps = map.values.toList()
+        val up = ConcurrentHashMap.newKeySet<String>()
+        val ths = ps.map { p -> Thread { if (reachable(p)) up.add(p.id) }.also { it.isDaemon = true; it.start() } }
+        ths.forEach { try { it.join(1500) } catch (_: InterruptedException) {} }
         val a = JSONArray()
-        map.values.sortedBy { it.name.lowercase() }.forEach {
+        ps.filter { it.id in up }.sortedBy { it.name.lowercase() }.forEach {
             a.put(JSONObject().put("id", it.id).put("name", it.name).put("model", it.model)
                 .put("color", it.color ?: JSONObject.NULL).put("duplex", it.duplex ?: JSONObject.NULL))
         }
