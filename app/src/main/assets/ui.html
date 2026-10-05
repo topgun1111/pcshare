@@ -290,9 +290,15 @@ body.dopen{overflow:hidden}
 .dprh .dchev{flex:none;width:40px;height:40px;display:grid;place-items:center;color:var(--mut);transition:transform .2s}.dprh .dchev svg{width:24px;height:24px}
 .dprh.open .dchev{transform:rotate(180deg)}
 .dprg{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease}.dprg.open{grid-template-rows:1fr}
-.dprg>div{overflow:hidden;min-height:0}
+.dprg>div{overflow-y:auto;overflow-x:hidden;min-height:0;max-height:38vh;overscroll-behavior:contain}
 .dprg .di{padding-left:32px;min-height:48px;background:var(--bg)}.dprg .di .dl{width:28px;height:28px}
 .dprg .dnone{padding:12px 24px;font-size:13px}
+.dprg .pmore{justify-content:center;min-height:40px;color:#0d8f7e;font-size:13px;font-weight:700;padding-left:16px}
+.pdw{position:relative;display:block;width:28px;height:28px}.pdw svg{width:24px;height:24px;margin:2px}
+.pdot{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid var(--bg);background:#9e9e9e}
+.pdot.ok{background:var(--ok)}.pdot.wn{background:var(--warn,#e0a100)}.pdot.ck{animation:pdk 1s ease-in-out infinite}
+@keyframes pdk{50%{opacity:.35}}
+.di.poff{opacity:.55}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
@@ -1586,30 +1592,65 @@ Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.4
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
-/* Printers: one-line drop-down under Devices. Tap to expand the printer list, tap a printer to print the selected files on it */
-DRW.pr=LD('ls_prn','0')==='1';DRW.pcp={};
+/* Printers: one-line drop-down under Devices. Only real printers are listed (virtual ones such as "Print to PDF" are tucked away), each with an online dot. Tap one to print the selected files on it. */
+DRW.pr=LD('ls_prn','0')==='1';DRW.pcp={};DRW.pst={};DRW.pt=0;DRW.vp=false;
+const PRN_VIRT=/pdf|xps|onenote|fax|anydesk|fineprint|pdffactory|print to file|send to|snagit|cutepdf|image writer|document writer|virtual|nitro|bullzip|dopdf|primo|teamviewer|rustdesk|\bnul\b/i;
+const prnNorm=n=>String(n).toLowerCase().replace(/\(.*?\)/g,'').replace(/printer|series|copy \d+/g,'').replace(/[^a-z0-9]/g,'');
+function prnItems(){
+  const items=[];
+  if(CAN_PRINT)items.push({key:'here',t:{id:'__here',name:'This phone (any printer)'},name:'This phone',src:'Android print',here:1});
+  const wn=[];
+  (WIFI||[]).forEach(w=>{const nm=w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'');wn.push(prnNorm(w.name),prnNorm(w.model||''));items.push({key:w.id,t:w,name:nm,src:w.tag||'Wi-Fi',wifi:1})});
+  let hidden=0;
+  S.peers.forEach(p=>{(DRW.pcp[p.id]||[]).forEach(n=>{
+    const k=prnNorm(n);
+    if(k.length>=4&&wn.some(w=>w&&(w.includes(k)||k.includes(w))))return;   // same physical printer already listed over Wi-Fi
+    if(PRN_VIRT.test(n)&&!DRW.vp){hidden++;return}
+    items.push({key:p.id+'|'+n,t:Object.assign({},p,{pn:n}),name:n,src:p.name,pc:p,pn:n})})});
+  items.hidden=hidden;return items}
+function prnCheck(items){   // online check: Wi-Fi printers over IPP, PC printers through the print service; one PC is asked one printer at a time
+  const jobs={};const now=Date.now();
+  items.forEach(i=>{if(i.here)return;const o=DRW.pst[i.key];if(o&&now-o.at<30000)return;
+    const q=i.wifi?'w':i.pc.id;(jobs[q]=jobs[q]||[]).push(i)});
+  const done=()=>{DRW.pt=Date.now();prnPaint()};
+  Object.keys(jobs).forEach(async q=>{for(const i of jobs[q]){
+    let r={s:'off',t:'offline'};
+    try{
+      if(i.pc&&i.pc.ok===false&&!i.pc.smb)r={s:'off',t:'PC offline'};
+      else{const a=await api('GET','/api/printer?dev='+enc(i.wifi?i.t.id:i.pc.id)+(i.pc?'&printer='+enc(i.pn):''),null,i.pc?14000:7000);
+        if(a&&a.ok){const pr=a.problem;r=!pr?{s:'ok',t:'online'}:/offline|not available/i.test(pr)?{s:'off',t:pr}:{s:'wn',t:pr}}}
+    }catch(e){}
+    DRW.pst[i.key]={s:r.s,t:r.t,at:Date.now()};done()}})}
+let prnPaint=()=>{};
 function drawerPrinters(bd){
   const h=dItem({lead:ic('print','s24'),title:'Printers',onclick:()=>{}});h.classList.add('dprh');if(DRW.pr)h.classList.add('open');
   const r2=E('span','dr2'),ch=E('span','dchev');ch.append(ic('dn2'));h.append(r2,ch);
   const g=E('div','dprg'+(DRW.pr?' open':'')),inner=E('div');g.append(inner);
-  const fill=()=>{inner.textContent='';
-    const items=[];
-    if(CAN_PRINT)items.push({t:{id:'__here',name:'This phone (any printer)'},name:'This phone',sub:'Android print'});
-    (WIFI||[]).forEach(w=>items.push({t:w,name:w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),sub:w.tag||'Wi-Fi'}));
-    S.peers.forEach(p=>{const l=DRW.pcp[p.id];if(l&&l.length)l.forEach(n=>items.push({t:Object.assign({},p,{pn:n}),name:n,sub:p.name}))});
-    items.forEach(i=>{inner.append(dItem({lead:ic('print','s24'),title:i.name,sub:i.sub,onclick:()=>{
-      if(!S.sel.size){toast('Select files first, then tap a printer',2800);return}
-      drawerClose();doPrint(i.t)}}))});
+  const paint=()=>{const keep=inner.scrollTop;inner.textContent='';
+    const items=prnItems();let on=0;
+    items.forEach(i=>{const st=i.here?{s:'ok',t:'ready'}:DRW.pst[i.key];if(st&&st.s==='ok')on++;
+      const w=E('span','pdw');w.append(ic('print','s24'));w.append(E('i','pdot '+(st?st.s:'ck')));
+      const sub=i.src+' \u00b7 '+(st?st.t:'checking\u2026');
+      const row=dItem({lead:w,title:i.name,sub,onclick:()=>{
+        if(st&&st.s==='off'){toast('\u26a0 '+i.name+' is offline',2800);return}
+        if(!S.sel.size){toast('Select files first, then tap a printer',2800);return}
+        drawerClose();doPrint(i.t)}});
+      if(st&&st.s==='off')row.classList.add('poff');inner.append(row)});
     if(!items.length)inner.append(E('div','dnone',DRW.prl?'Searching for printers\u2026':'No printers found'));
-    r2.textContent=items.length?String(items.length):''};
-  const load=async()=>{DRW.prl=1;fill();
+    if(items.hidden||DRW.vp){const m=E('div','di pmore');m.setAttribute('role','button');m.textContent=DRW.vp?'Hide virtual printers':'Show '+items.hidden+' virtual printer'+(items.hidden===1?'':'s');
+      m.onclick=()=>{DRW.vp=!DRW.vp;paint();prnCheck(prnItems())};inner.append(m)}
+    r2.textContent=items.length?(DRW.pdone?on+'/'+items.length:String(items.length)):'';
+    inner.scrollTop=keep};
+  prnPaint=()=>{if(h.isConnected)paint()};
+  const load=async()=>{DRW.prl=1;paint();
     try{await loadWifi()}catch(e){}
     await Promise.all(S.peers.filter(p=>p.ok!==false||p.smb).map(p=>api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{DRW.pcp[p.id]=r&&r.ok?(r.printers&&r.printers.length?r.printers:(r.printer?[r.printer]:[])):[]}).catch(()=>{DRW.pcp[p.id]=[]})));
-    DRW.prl=0;DRW.pdone=1;fill()};
+    DRW.prl=0;DRW.pdone=1;DRW.pt=Date.now();paint();prnCheck(prnItems())};
+  const need=()=>!DRW.prl&&(!DRW.pdone||Date.now()-DRW.pt>60000);
   h.onclick=()=>{DRW.pr=!DRW.pr;try{localStorage.setItem('ls_prn',DRW.pr?'1':'0')}catch(e){}
     h.classList.toggle('open',DRW.pr);g.classList.toggle('open',DRW.pr);
-    if(DRW.pr&&!DRW.pdone&&!DRW.prl)load()};
-  fill();if(DRW.pr&&!DRW.pdone&&!DRW.prl)load();
+    if(DRW.pr&&need())load()};
+  paint();if(DRW.pr&&need())load();
   bd.append(h,g)}
 function drawerRender(){
   // tabs
