@@ -132,12 +132,13 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean) {
         if (cp != compact || lg != large) { compact = cp; large = lg; requestLayout() }
+        if ((r.k == "hdr") != (row?.k == "hdr")) requestLayout()
         row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; invalidate()
     }
 
     override fun setPressed(pressed: Boolean) { super.setPressed(pressed); invalidate() }
 
-    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (compact) 44f else if (large) 84f else 60f) * d)) }
+    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else 60f) * d)) }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
         val path = NlIcons.path(k) ?: NlIcons.path("file") ?: return
@@ -150,6 +151,13 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
+        if (r.k == "hdr") {   // "In subfolders (N)" search header: text only, padding 14/16/6, 13px muted
+            smallP.textSize = 13f * d; smallP.color = pl.mut
+            val f = smallP.fontMetrics
+            val t = TextUtils.ellipsize(r.nm, smallP, w - 32f * d, TextUtils.TruncateAt.END).toString()
+            cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
+            return
+        }
         if (isSel) { p.color = pl.sel; cv.drawRect(0f, 0f, w, h, p) }
         else if (isPressed) { p.color = pl.hov; cv.drawRect(0f, 0f, w, h, p) }
         p.color = pl.bd; cv.drawRect(0f, h - d, w, h, p)           // border-bottom 1px

@@ -55,6 +55,14 @@ Android uygulaması + `LSAndroid.nlAvail()` + `localStorage.ls_nl!=='0'` + liste
 - Cihazda bak: "Newest" düğmesi açıkken native liste, kapatınca eski sıraya ve kaydırma konumuna dönüş, seçim/uzun basma, list/compact/grid üçünde.
 - Kalan Faz 4: arama sonuçları (`S.sr`), arşiv içi (`!`), diğer cihazlar/SMB.
 
+
+## 2g. Faz 4b — arşiv içi + arama sonuçları (2026-10-05)
+- Derleme (6b4dffb, `isSel`) başarılı. `ui.html`: `nlUse(n,SR)` artık arşiv içini (`!AR`) ve arama durumunu (`!S.sr`) elemiyor. Arşivde küçük resim yok (`!inArc()`), tıklama mantığı aynı (`isArcF` → `go(..'!')`).
+- Alt klasör arama sonuçları (`renderSR`): `srRows()` başlık + sonuç satırlarını üretir; native listeye `LIST + sonuçlar + galeri` sırasıyla gider (`GN` = LIST+sonuç). Sonuç satırı: `_h` (alt metin = üst klasör yolu, seçilemez, tıklama `go`/`goFind`), başlık: `_hd` (`k:'hdr'`). Arama sonuçları yalnızca **list** görünümünde native; compact/grid + sonuç varken DOM'a düşer.
+- `NativeList.kt`: `NlRowView` `k=="hdr"` için metin-only başlık satırı (38 dp, 13 sp, `mut`). Başka Kotlin değişikliği yok.
+- Diğer cihazlar (`S.dev!=='local'`) bilerek DOM'da: Kotlin küçük resim yükleyici yalnızca yerel `File`/`Source` kullanıyor; native yapınca uzak küçük resimler kaybolurdu.
+- Cihazda bak: arşiv içi gezinme/açma, aramada "In subfolders" başlığı + sonuç tıklama (klasöre git / dosyayı bul), arama kutusu temizlenince normal liste, seçim modunda sonuç satırı, compact/grid'de aramada DOM fallback.
+
 ## 3. Derlemede ilk bakılacak yerler (tahmini risk)
 1. `NativeList.kt`: `PathParser.createPathFromPathData` (androidx.core 1.13.1'de var), `Region.Op.DIFFERENCE` ile `clipRect` (kullanımdan kalkmış uyarısı normal), `pool.submit(Runnable { })`, `LruCache` alt sınıfı, `lm.onSaveInstanceState()` dönüş tipi.
 2. `Core.local.real(path)`, `Core.local.open(path)`, `Thumbs.make(File)`, `VideoThumbs.make(Source): Pair<ByteArray, Long>` (süre **ms** varsayıldı; ui.html `X-Duration/1000` yapıyor).
