@@ -31,6 +31,10 @@ object Cfg {
         obj.put("pins", JSONArray(cur + ip)); save(); return true
     }
 
+    /** Wi-Fi printers seen so far ({id,name,host,port,path,model,color,duplex,t}): still offered when mDNS is blind (screen off, app in background). */
+    @Synchronized fun printers(): JSONArray = obj.optJSONArray("printers") ?: JSONArray()
+    @Synchronized fun setPrinters(a: JSONArray) { obj.put("printers", a); save() }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy

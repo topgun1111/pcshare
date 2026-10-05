@@ -68,7 +68,7 @@ object Core {
     }
 
     /** Wi-Fi / hotspot changed: refresh own IPs and sweep the subnet. */
-    fun rescan() { try { discOrNull()?.scanNow() } catch (_: Exception) {} }
+    fun rescan() { try { discOrNull()?.scanNow() } catch (_: Exception) {}; try { WifiPrinters.restart() } catch (_: Throwable) {} }
 
     fun stop() { server?.stop(); server = null }
 
