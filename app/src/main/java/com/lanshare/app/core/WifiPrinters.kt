@@ -41,6 +41,7 @@ object WifiPrinters {
     @Volatile private var keeper = false
     @Volatile private var lastScan = 0L
     private val scanBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val IPP_PATHS = listOf("ipp/print", "ipp", "")   // en yaygın IPP yolları (HP/Epson/Brother/Canon ...)
 
     @Synchronized
     fun start(ctx: Context) {
@@ -115,17 +116,21 @@ object WifiPrinters {
         var added = false
         for (h in hits.toList()) {
             if (h in d.ownIps) continue
-            val id = "wifi:$h:631/ipp/print"
-            if (map.containsKey(id)) continue
-            val p = P(id, h, h, 631, "ipp/print", "", emptyList(), null, null)
-            try {
-                val r = Ipp.printerAttrs(p)
-                if (!r.ok) continue
-                val nm = r.strs("printer-name").firstOrNull().orEmpty().ifEmpty { h }
-                val md = r.strs("printer-make-and-model").firstOrNull().orEmpty()
-                map[id] = P(id, nm, h, 631, "ipp/print", md, r.strs("document-format-supported").map { it.lowercase() }, null, null)
-                added = true
-            } catch (_: Exception) {}
+            if (map.values.any { it.host == h }) continue      // mDNS zaten buldu
+            // Yazıcıların IPP yolu markaya göre değişir; sırayla dene, ilk cevap veren kazanır
+            for (path in IPP_PATHS) {
+                val id = "wifi:$h:631/$path"
+                val p = P(id, h, h, 631, path, "", emptyList(), null, null)
+                try {
+                    val r = Ipp.printerAttrs(p)
+                    if (!r.ok) continue
+                    val nm = r.strs("printer-name").firstOrNull().orEmpty().ifEmpty { h }
+                    val md = r.strs("printer-make-and-model").firstOrNull().orEmpty()
+                    map[id] = P(id, nm, h, 631, path, md, r.strs("document-format-supported").map { it.lowercase() }, null, null)
+                    added = true
+                    break
+                } catch (_: Exception) {}
+            }
         }
         if (added) saveCache()
     }
@@ -163,14 +168,20 @@ object WifiPrinters {
 
     @Suppress("DEPRECATION")
     private fun resolve(m: NsdManager, i: NsdServiceInfo) {
-        val latch = CountDownLatch(1)
-        try {
-            m.resolveService(i, object : NsdManager.ResolveListener {
-                override fun onResolveFailed(info: NsdServiceInfo?, code: Int) { latch.countDown() }
-                override fun onServiceResolved(info: NsdServiceInfo?) { try { if (info != null) add(info) } finally { latch.countDown() } }
-            })
-            latch.await(6, TimeUnit.SECONDS)
-        } catch (_: Throwable) {}
+        // Android bazen "already active" / zaman aşımı ile çözümlemeyi düşürür: 3 kez dene
+        for (attempt in 0 until 3) {
+            val latch = CountDownLatch(1)
+            var okRes = false
+            try {
+                m.resolveService(i, object : NsdManager.ResolveListener {
+                    override fun onResolveFailed(info: NsdServiceInfo?, code: Int) { latch.countDown() }
+                    override fun onServiceResolved(info: NsdServiceInfo?) { try { if (info != null) { add(info); okRes = true } } finally { latch.countDown() } }
+                })
+                latch.await(6, TimeUnit.SECONDS)
+            } catch (_: Throwable) {}
+            if (okRes) return
+            try { Thread.sleep(600) } catch (_: InterruptedException) { return }
+        }
     }
 
     private fun add(s: NsdServiceInfo) {
@@ -182,6 +193,7 @@ object WifiPrinters {
         val pdl = txt("pdl").split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
         val flag = { k: String -> txt(k).takeIf { it.isNotEmpty() }?.equals("T", true) }
         val id = "wifi:$ip:${s.port}/$rp"
+        map.values.filter { it.host == ip && it.port == s.port && it.id != id }.forEach { map.remove(it.id) }   // aynı yazıcının tarama kaydı
         map[id] = P(id, s.serviceName ?: model.ifEmpty { ip }, ip, s.port, rp, model, pdl, flag("Color"), flag("Duplex"))
         saveCache()
     }
@@ -233,9 +245,28 @@ object WifiPrinters {
         P(id, it.groupValues[1], it.groupValues[1], it.groupValues[2].toInt(), it.groupValues[3], "", emptyList(), null, null)
     }
 
-    fun listJson(): JSONArray {
+    /** Şimdi ara: mDNS'i yeniden başlatır ve ağı (port 631) senkron tarar, sonra listeyi döner (en çok ~15 sn). "Yazıcıları ara" düğmesi bunu çağırır. */
+    fun searchNow(): JSONArray {
         Core.appCtx?.let { start(it) }
-        if (map.isEmpty()) scanAsync(true)
+        restart()
+        if (scanBusy.compareAndSet(false, true)) {
+            lastScan = System.currentTimeMillis()
+            try { scan() } catch (_: Throwable) {} finally { scanBusy.set(false) }
+        } else {                                  // arka planda zaten tarama var: bitmesini bekle
+            var w = 0
+            while (scanBusy.get() && w < 15_000) { try { Thread.sleep(200) } catch (_: InterruptedException) { break }; w += 200 }
+        }
+        try { Thread.sleep(1200) } catch (_: InterruptedException) {}   // mDNS cevapları son anda gelebilir
+        return listJson()
+    }
+
+    /** [wait] = hiç yazıcı bilinmiyorsa ilk mDNS/tarama sonucunu kısa süre bekle (ilk açılışta boş liste görünmesin). */
+    fun listJson(wait: Boolean = false): JSONArray {
+        Core.appCtx?.let { start(it) }
+        if (map.isEmpty()) {
+            scanAsync(true)
+            if (wait) { var w = 0; while (map.isEmpty() && w < 2500) { try { Thread.sleep(150) } catch (_: InterruptedException) { break }; w += 150 } }
+        }
         val a = JSONArray()
         // remembered printers are listed only while they answer (a printer that was switched off simply drops out and comes back later)
         val all = map.values.toList()

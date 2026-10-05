@@ -108,7 +108,7 @@ object Routes {
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
-            "wifiprinters" -> return ex.json(WifiPrinters.listJson().also { a -> WifiPrinters.remoteJson().let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) } })   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
+            "wifiprinters" -> return ex.json((if (q["scan"] == "1") WifiPrinters.searchNow() else WifiPrinters.listJson(true)).also { a -> WifiPrinters.remoteJson().let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) } })   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))

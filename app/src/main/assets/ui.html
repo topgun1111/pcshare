@@ -1024,8 +1024,12 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
       d.n?cnt(d):acc(d,'No printer access','off')}).catch(()=>{d.n?cnt(d):acc(d,'No printer access','off')})});
   const lan=wifi.filter(w=>!w.viaId);
   if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'')));cnt(d)}
-  if(!here.length&&!lan.length&&!peers.length)card.append(E('p','','No devices or printers found yet.'));
+  if(!lan.length)card.append(E('p','',peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.'));
+  const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
+  sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
+/* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
+async function choosePrinter(here){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers);if(!(to&&to.rescan))return to}return null}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
@@ -1039,7 +1043,7 @@ async function doSend(){
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
 /* printers found on the same Wi-Fi (mDNS); printed to directly over IPP, no PC needed */
 let WIFI=[];
-async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi',viaId:w.viaId||''}))}catch(e){WIFI=[]}return WIFI}
+async function loadWifi(scan){try{WIFI=((await api('GET','/api/wifiprinters'+(scan?'?scan=1':''),null,scan?30000:9000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi',viaId:w.viaId||''}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
 function wifiOptions(pr,files){return new Promise(res=>{
   const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0};
@@ -1378,7 +1382,7 @@ async function doPrint(){
   await loadWifi();
   const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=await pickPrinter(here,WIFI,S.peers);
+  let to=await choosePrinter(here);
   if(!to)return;
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
@@ -1403,7 +1407,7 @@ window.lsPrintShared=async names=>{
     const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
     const all=WIFI.concat(pcs);
     const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-    const to=await pickPrinter([],WIFI,S.peers);
+    const to=await choosePrinter([]);
     if(!to)return;
     try{localStorage.setItem('printTo',to.id)}catch(e){}
     const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
