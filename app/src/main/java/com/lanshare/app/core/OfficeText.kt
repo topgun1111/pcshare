@@ -303,8 +303,10 @@ object OfficeText {
         }
 
         /** One embedded picture (relationship id -> zip entry) via the shared `imgTag`. */
-        private fun img(z: ZipFile, rels: Map<String, String>, id: String?): String =
-            OfficeText.imgTag(z, rels[id ?: return OfficeText.IMG_PH])
+        private fun img(z: ZipFile, rels: Map<String, String>, id: String?): String {
+            if (id == null) return OfficeText.IMG_PH
+            return OfficeText.imgTag(z, rels[id])
+        }
 
     }
 
