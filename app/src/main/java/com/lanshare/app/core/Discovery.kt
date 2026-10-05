@@ -30,7 +30,7 @@ class Discovery(val port: Int) {
     private val lock = Any()
     private val peers = HashMap<String, Peer>()
     @Volatile var ifaces: List<Iface> = Net.ifaces()
-    @Volatile var ownIps: Set<String> = ifaces.map { it.ip }.toSet()
+    @Volatile var ownIps: Set<String> = ifaces.map { it.ip }.toSet() + Net.tailscaleIps()
     private val out = DatagramSocket().also { it.broadcast = true }
     private val wake = Semaphore(0)
     private val sweepBusy = AtomicBoolean(false)
@@ -58,7 +58,7 @@ class Discovery(val port: Int) {
             }, "disc-$n").also { it.isDaemon = true }.start()
     }
 
-    private fun refreshIfaces() { ifaces = Net.ifaces(); ownIps = ifaces.map { it.ip }.toSet() }
+    private fun refreshIfaces() { ifaces = Net.ifaces(); ownIps = ifaces.map { it.ip }.toSet() + Net.tailscaleIps() }
 
     // ---- peer table
     fun add(pid: String, ip: String, port: Int, name: String, ips: List<String> = emptyList()): Boolean {
@@ -73,6 +73,7 @@ class Discovery(val port: Int) {
             all.add(ip)
             for (i in ips) if (Net.ipToInt(i) != null) all.add(i)
             all.removeAll(ownIps)
+            for (i in all) if (viaOf(i) == "Tailscale") Cfg.addPin(i)   // remember tailnet addresses: reachable from any network later
             p.ips = all.sorted().take(8)
             return isNew
         }
@@ -192,6 +193,7 @@ class Discovery(val port: Int) {
         val hosts = ArrayList<String>()
         val seen = HashSet<String>(ownIps)
         fun put(h: String) { if (seen.add(h)) hosts.add(h) }
+        for (ip in Cfg.pins()) put(ip)   // remembered tailnet / remote devices are probed first and on every sweep
         for (ip in Net.arpNeighbors()) {
             put(ip)
             Net.ipToInt(ip)?.let { val c = Cidr.of(it, 24); if (c !in nets) nets.add(c) }
@@ -344,6 +346,8 @@ class Discovery(val port: Int) {
                 val m = Http.hello(ip, p, 2000)
                 if (m.optString("app") == "lanshare" && m.getString("id") != Cfg.id) {
                     add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings())
+                    val a = Net.ipToInt(ip)
+                    if (a != null && ifaces.none { it.net.contains(a) }) Cfg.addPin(ip)   // not on a local subnet -> keep it
                     unicast(ip)
                     return true
                 }
