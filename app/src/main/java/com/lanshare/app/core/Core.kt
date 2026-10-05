@@ -44,6 +44,7 @@ object Core {
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
+            try { File(app.cacheDir, "ov").deleteRecursively() } catch (_: Exception) {}   // converted office PDFs (OfficeView)
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             var srv: MiniHttp? = null

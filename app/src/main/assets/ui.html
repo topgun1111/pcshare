@@ -627,7 +627,7 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isOffice(i))viewOffice(i);else openFile(i)};
     holdMenu(r,i);
     if(i.dir)r.addEventListener('pointerdown',()=>prefetch(S.dev,jn(P0,i.name)));
     return r};
@@ -688,6 +688,21 @@ function nativePdf(i){
   const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   try{LSAndroid.viewPdf(JSON.stringify({name:i.name,url,size:i.size||0,key:S.dev+'|'+S.path+'/'+i.name+'|'+(i.size||0)}));return true}catch(e){return false}}
 function viewPdf(i){if(!nativePdf(i))openFile(i)}
+/* Office files: the PC converts to PDF (pcprint.py v11); the same native reader shows it. Errors (no PC / old pcprint.py / no engine) are shown by the reader; "Open with..." stays as fallback. */
+const OFFICE_EXT=['doc','docx','rtf','odt','xls','xlsx','csv','ods','ppt','pptx','odp'];
+function isOffice(i){return !i.dir&&OFFICE_EXT.includes((i.name.split('.').pop()||'').toLowerCase())}
+const OFFICE_T2=['docx','xlsx','xlsm','pptx','pptm','odt','ods','odp','ott','ots','otp'];
+function viewOffice(i){
+  const q='dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),ext=(i.name.split('.').pop()||'').toLowerCase();
+  const pdf=()=>{const url=location.origin+'/api/officepdf?'+q;
+    if(window.LSAndroid&&LSAndroid.viewPdf){try{LSAndroid.viewPdf(JSON.stringify({name:i.name.replace(/\.[^.]*$/,'')+'.pdf',url,size:0,key:'office|'+S.dev+'|'+S.path+'/'+i.name+'|'+(i.size||0)}));return}catch(e){}}
+    window.open(url,'_blank')};
+  const txt=()=>{const url=location.origin+'/api/officehtml?'+q;
+    if(window.LSAndroid&&LSAndroid.viewOffice){try{LSAndroid.viewOffice(JSON.stringify({name:i.name,url}));return true}catch(e){}}
+    window.open(url,'_blank');return true};
+  if(!OFFICE_T2.includes(ext)){pdf();return}   /* doc/xls/ppt/rtf/csv: PC only (tier 1) */
+  if(!(window.LSAndroid&&LSAndroid.viewOffice)){pdf();return}
+  fetch('/api/officeok').then(r=>r.json()).then(j=>j.pc?pdf():txt()).catch(txt)}
 /* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
 function nativePlay(i){
   if(!(window.LSAndroid&&LSAndroid.play))return false;

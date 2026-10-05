@@ -109,6 +109,12 @@ object Routes {
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "wifiprinters" -> return ex.json((if (q["scan"] == "1") WifiPrinters.searchNow() else WifiPrinters.listJson(true)).also { a -> WifiPrinters.remoteJson().let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) } })   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
+            "officepdf" -> {   // office file -> PDF converted by the PC (see OfficeView); opened by the native PDF reader
+                val f = OfficeView.pdfFor(ex.q("dev"), vnorm(ex.q("path")))
+                return ex.reply(200, f.readBytes(), "application/pdf", mapOf("Cache-Control" to "private, max-age=600"))
+            }
+            "officeok" -> return ex.json(JSONObject().put("pc", OfficeView.converterOk()))   // UI: tier 1 (PC) or tier 2 (phone)
+            "officehtml" -> return ex.reply(200, OfficeView.htmlFor(ex.q("dev"), vnorm(ex.q("path"))).toByteArray(Charsets.UTF_8), "text/html; charset=utf-8", mapOf("Cache-Control" to "no-store"))
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))

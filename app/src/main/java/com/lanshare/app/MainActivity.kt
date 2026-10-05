@@ -66,6 +66,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun viewPdf(json: String) {
             runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java)) }
         }
+        /** Office file tapped, phone-only reader (tier 2). [json] = {name, url} (url = /api/officehtml) */
+        @JavascriptInterface fun viewOffice(json: String) {
+            runOnUiThread { OfficeViewerActivity.pending = json; startActivity(Intent(this@MainActivity, OfficeViewerActivity::class.java)) }
+        }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Print a file on this phone through the Android print system (pdf, images, text). */
