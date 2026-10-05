@@ -635,6 +635,17 @@ function nlRender(LIST,P0,GN){
   NL.nlCfg(nlCfg());
   NL.nlItems(S.dev+'|'+S.view+(S.view==='list'&&S.thumb==='l'?'L':'')+'|'+(S.newest?'N:':'')+P0,JSON.stringify(a),NLSEL);
   window.scrollTo(0,0);nlLay(true)}
+/* native path bar + tool row (Kotlin: NlHead.kt). Same texts as render() / renderTools(); the HTML rows stay underneath unchanged.
+   Kill switches: localStorage ls_nlh='0' or NativeList.HEAD=false. */
+const NLHEAD=(()=>{try{return localStorage.getItem('ls_nlh')!=='0'}catch(e){return true}})();
+function nlHeadPush(V){
+  if(!NL||!NL.nlHead||!NLHEAD)return;
+  let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
+  const n=V.length,segs=S.path.split('/').filter(Boolean);
+  NL.nlHead(JSON.stringify({c:segs.map(s=>s.replace(/!$/,'')),dn:S.dev!=='local'?devName(S.dev):'',
+    u:S.dev==='local'&&S.used!=null?S.used:-1,
+    s:[n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):''),fo&&fi?fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files'):''],
+    n:S.newest?1:0,t:(SORTS[S.sort]||{t:''}).t,d:S.sort==='none'?0:S.asc?1:2}))}
 function nlLay(force){if(!NL||!NLL)return;
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   const r=$('#list').getBoundingClientRect(),dh=parseFloat(getComputedStyle(document.body).getPropertyValue('--dockh'))||0;
@@ -644,7 +655,11 @@ function nlLay(force){if(!NL||!NLL)return;
   ['#fab','#toast','#dlw'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
   const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
-  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,dm:Math.round(dm*100)/100,ps:ps,sq:S.q?1:0,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
+  let hd=null;                                                         // native path bar + tool row sit exactly on top of these two rows
+  if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
+    if(vis(pr)&&vis(tr)){const a=pr.getBoundingClientRect(),b=tr.getBoundingClientRect(),q=v=>Math.round(v*100)/100;
+      if(a.width>0&&a.height>0&&b.height>0)hd=[q(a.left),q(a.top),q(a.width),q(a.height),q(b.height)]}}
+  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:S.q?1:0,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
   if(force||j!==NLLAY){NLLAY=j;NL.nlLayout(j)}}
 /* Instant folder entry is done in Kotlin (NlModel + NativeList.tapRow): it builds the next folder's rows itself and shows them on tap;
    go() below still runs as usual and its rows replace them only if they differ. Nothing to do here but send nlCfg() with every render. */
@@ -662,6 +677,9 @@ function nlBurst(ms){if(!NL)return;const end=performance.now()+ms,go=!NLB;NLB=Ma
 if(NL){['click','pointerup','touchend','transitionrun','transitionend','animationstart','animationend'].forEach(ev=>document.addEventListener(ev,()=>nlBurst(500),true))}
 window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='el'){$('#top').classList.toggle('el',x===1);return}     // list scrolled: header shadow like the page scroll handler
+  if(ev==='crumb'){const sg=S.path.split('/').filter(Boolean);go(x<2?'/':'/'+sg.slice(0,x-1).join('/'));return}   // 0 root, 1 drive, 2.. folders: same targets as the HTML crumbs
+  if(ev==='newb'){$('#newb').onclick();return}
+  if(ev==='sort'){openSort();return}
   const i=NLL[x];
   if(ev==='refresh'){(async()=>{try{api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}NL.nlDone()})();return}
   if(!i||i._hd)return;
@@ -693,7 +711,7 @@ function render(){
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
   const SR=srRows();
-  if(nlUse(LIST.length+GV.length)){const HR=SR||[];nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
+  if(nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
   if(NLL){NLL=null;NLSEL='';NLLAY='';NL.nlHide();$('#top').classList.toggle('el',(window.scrollY||0)>4)}
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(S.sel.has(i.name)?' sel':''));

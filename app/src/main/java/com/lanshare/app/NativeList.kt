@@ -88,6 +88,7 @@ class NlPal(private val j: JSONObject) {
 /** Overlay over the WebView: touches outside the list (or inside "holes" such as the FAB / toast) go to the WebView. */
 class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
     val listRect = RectF()
+    val headRect = RectF()  // path bar + tool row (NlHeadView); empty = not shown natively
     var holes: List<RectF> = emptyList()
     var dim = 0f            // 0..1 black veil over the list (drawer scrim / dialog scrim in the page)
     var passAll = false     // true while a drawer/dialog is open: every touch belongs to the page
@@ -97,7 +98,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
             val x = ev.x; val y = ev.y
-            toWeb = passAll || !listRect.contains(x, y) || holes.any { it.contains(x, y) }
+            toWeb = passAll || (!listRect.contains(x, y) && !headRect.contains(x, y)) || holes.any { it.contains(x, y) }
         }
         return if (toWeb) web.dispatchTouchEvent(ev) else super.dispatchTouchEvent(ev)
     }
@@ -106,7 +107,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
         c.save()
         for (h in holes) c.clipRect(h, Region.Op.DIFFERENCE)
         super.dispatchDraw(c)
-        if (dim > 0f) { veil.color = Color.argb((dim * 255f).toInt().coerceIn(0, 255), 0, 0, 0); c.drawRect(listRect, veil) }
+        if (dim > 0f) { veil.color = Color.argb((dim * 255f).toInt().coerceIn(0, 255), 0, 0, 0); c.drawRect(listRect, veil); if (!headRect.isEmpty) c.drawRect(headRect, veil) }
         c.restore()
     }
 }
@@ -559,6 +560,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     companion object {
         /** Kill switch: false = the WebView draws the list exactly as before. */
         const val ENABLED = true
+        /** Kill switch for the native path bar + tool row (NlHead.kt): false = the HTML rows only. */
+        const val HEAD = true
 
         fun parseRows(json: String, dev: String = "local"): List<NlRow> {
             val a = JSONArray(json); val out = ArrayList<NlRow>(a.length())
@@ -597,8 +600,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
     private var elev = false
+    // ---- native path bar + tool row (NlHead.kt) ----
+    private val head = NlHeadView(act, d)
+    private var headData: NlHeadData? = null
+    private var headGeom = false                 // the page sent a geometry ("hd") for the two rows
+    private val headRect = RectF()
     // ---- instant folder entry: Kotlin builds the rows of the next folder itself (NlModel); the page only revalidates ----
-    private class Built(val rows: List<NlRow>, val sig: Int, val cfg: String, val at: Long)
+    private class Built(val rows: List<NlRow>, val sig: Int, val cfg: String, val at: Long, val sumB: String?, val sumS: String?)
     private val built = LinkedHashMap<String, Built>()      // key = dev|view|path (UI thread only)
     private val pending = HashSet<String>()                 // keys being built right now
     private val tooBig = HashSet<String>()                  // idle pre-builds skip folders known to be big
@@ -638,6 +646,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) } }
         })
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
+        overlay.addView(head, FrameLayout.LayoutParams(1, 1))
+        head.visibility = View.GONE
+        head.onAct = { ev, i -> raw(ev, i) }      // crumb / newb / sort -> ui.html nlOn (never held back by the instant-entry guard)
         overlay.visibility = View.GONE
     }
 
@@ -673,12 +684,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
             act.runOnUiThread {
                 pending.remove(key)
                 if (list != null) {
-                    built.remove(key); built[key] = Built(list, sg, cfg, android.os.SystemClock.uptimeMillis())
+                    built.remove(key); built[key] = Built(list, sg, cfg, android.os.SystemClock.uptimeMillis(), res.sum?.first, res.sum?.second)
                     while (built.size > 24) built.remove(built.keys.first())
                 } else if (!urgent && res.count > 0) { if (tooBig.size > 64) tooBig.clear(); tooBig.add(key) }
                 if (navKey == key) {
                     navKey = null
-                    if (list != null && cfg == curCfg && curKey != key) applyItems(key, list, emptySet(), sg)
+                    if (list != null && cfg == curCfg && curKey != key) { applyItems(key, list, emptySet(), sg); headTo(path, res.sum?.first, res.sum?.second) }
                     else navUntil = 0L               // nothing to show early: the page's answer will do
                 }
             }
@@ -706,14 +717,14 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val ck = childKey(i)
         if (ck == null) { emit("tap", i); return }
         val e = built[ck.first]
-        if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig) }
+        if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig); headTo(ck.second, e.sumB, e.sumS) }
         else { navKey = ck.first; warm(ck.first, ck.second, true) }
         raw("tap", i); navUntil = android.os.SystemClock.uptimeMillis() + 2000
     }
 
     fun setPalette(json: String) {
         if (json == palJson) return
-        palJson = json; val p = NlPal(JSONObject(json)); pal = p
+        palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
         rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac)
         ad.notifyDataSetChanged()
     }
@@ -782,8 +793,46 @@ class NativeList(private val act: Activity, private val web: WebView) {
         if (cp != compact || lg != large) { compact = cp; large = lg; ad.notifyDataSetChanged() }
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
+        val hd = j.optJSONArray("hd")
+        if (HEAD && hd != null && hd.length() >= 5) {
+            val hl = Math.round((hd.getDouble(0) * d).toFloat()); val ht = Math.round((hd.getDouble(1) * d).toFloat())
+            val hw = Math.round((hd.getDouble(2) * d).toFloat())
+            val ha = (hd.getDouble(3) * d).toFloat(); val hb = (hd.getDouble(4) * d).toFloat()
+            val hh = Math.round(ha + hb)
+            val hp = head.layoutParams as FrameLayout.LayoutParams
+            if (hp.leftMargin != hl || hp.topMargin != ht || hp.width != hw || hp.height != hh) {
+                hp.leftMargin = hl; hp.topMargin = ht; hp.width = hw; hp.height = hh
+                head.layoutParams = hp
+            }
+            head.setGeom(ha, hb)
+            headRect.set(hl.toFloat(), ht.toFloat(), (hl + hw).toFloat(), (ht + hh).toFloat())
+            headGeom = true
+        } else headGeom = false
+        updateHeadVis()
         overlay.visibility = if (j.optBoolean("v", true)) View.VISIBLE else View.INVISIBLE
         overlay.invalidate()
+    }
+
+    private fun updateHeadVis() {
+        val on = HEAD && headGeom && headData != null
+        head.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) overlay.headRect.set(headRect) else overlay.headRect.setEmpty()
+    }
+
+    /** ui.html nlHeadPush(): what the path bar and tool row show (sent with every render of the native list). "" = nothing. */
+    fun setHead(json: String) {
+        if (!HEAD) return
+        headData = if (json.isEmpty()) null else NlHeadData.parse(json)
+        head.set(headData, true)
+        updateHeadVis()
+    }
+
+    /** Instant folder entry: path bar + summary follow the rows at once (the page's own push confirms or corrects them). */
+    private fun headTo(path: String, sumB: String?, sumS: String?) {
+        val cur = headData ?: return
+        if (sumB == null || cur.dn.isNotEmpty()) return
+        headData = cur.copy(segs = NlHeadData.segsOf(path), sumB = sumB, sumS = sumS ?: "")
+        head.set(headData, true)
     }
 
     /** json = [[rowIndex, newSmallText], ...]: folder item counts that arrived late; only those rows are redrawn. */
@@ -806,7 +855,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { navUntil = 0L; navKey = null; elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

@@ -99,6 +99,16 @@ Amaç: klasör girişi için JS gidiş-dönüşünü (`go` → `render` → JSON
 - Cihazda bak: klasöre ilk dokunuşta satırların anında gelmesi (daha önce hiç girilmemiş klasörde de), hızlı iki dokunuş, sıralama/gizli/galeri/compact/grid ayarı değişince eski sıranın görünmemesi, sayfa cevabı sonrası titreme/yeniden çizim olmaması (imza eşitliği), büyük klasör (5000+) girişi, geri dönüşte kaydırma konumu.
 - Geri alma: `NativeList.tapRow` içinde `childKey(i)` yerine `null` döndür → eski davranış (yalnızca sayfa). Tamamen `NativeList.ENABLED=false`.
 
+## 2l. Faz 7a — yol çubuğu + araç satırı native (2026-10-05) — DERLENMEDİ, TEST EDİLMEDİ
+`#pathrow` (kırıntılar + depolama yüzdesi hapı) ve `#toolrow` (öğe/boyut özeti, Newest, Sort) artık native çizilir. HTML satırlar **yerinde ve aynen kalır**; native görünüm tam üstlerine opak çizilir (hata olursa altta DOM görünür).
+- **Yeni `NlHead.kt`:** `NlHeadData` (veri, `segsOf(path)`), `NlHeadView` (özel çizim: ev/sürücü simgeleri, `›` ayraçları, yatay kaydırma + fling, depolama hapı, özet metni, Newest, Sort; ölçüler `ui.html` CSS'i: kırıntı 34 yüksek/14 sp, özet 13 kalın + 12 sol, Newest 28/12, Sort 32/13, hap 28/12). Dokunma: kırıntı → `nlOn('crumb',i)` (0 kök, 1 sürücü, 2.. klasörler), `newb`, `sort`.
+- **`NativeList.kt`:** `HEAD` anahtarı, `head` görünümü overlay içinde; `layout()` JSON'unda `hd:[sol,üst,genişlik,yolYüksekliği,araçYüksekliği]` okunur; `NlOverlay.headRect` (dokunma native, karartma bu bölgeye de biner); `setHead(json)`; **anında klasör girişi:** `headTo()` kırıntıları ve özet metnini satırlarla birlikte hemen günceller (`Built.sumB/sumS`, `NlModel.headSum`). Sayfanın kendi `nlHead` itmesi her `render()`'da gelir ve doğrular/düzeltir.
+- **`NlModel.kt`:** `headSum(items, hid)` = `renderTools()` metinleri; `Result.sum`.
+- **`MainActivity.kt`:** köprü `nlHead(json)`.
+- **`ui.html`:** `nlHeadPush(V)` (render'da `nlRender` öncesi), `nlLay` JSON'una `hd`, `nlOn`'a `crumb/newb/sort`.
+- Kapatma: `NativeList.HEAD=false` veya `localStorage.setItem('ls_nlh','0')` → yalnızca HTML satırlar.
+- Cihazda bak: iki satırın DOM ile 1 px'e kadar aynı hizada olması (açık/koyu), uzun yolda kırıntıların sona kaydırılması + elle kaydırma, kök/sürücü simgeleri, diğer cihazda cihaz adı, hap yüzdesi, Newest açık/kapalı, Sort etiketi + ok, çekmece/diyalog açıkken karartma ve dokunmanın sayfaya gitmesi, arama kutusu açıkken konum, klasöre girişte yolun listeyle aynı anda değişmesi, hızlı çift dokunuş.
+
 ## 3. Derlemede ilk bakılacak yerler (tahmini risk)
 1. `NativeList.kt`: `PathParser.createPathFromPathData` (androidx.core 1.13.1'de var), `Region.Op.DIFFERENCE` ile `clipRect` (kullanımdan kalkmış uyarısı normal), `pool.submit(Runnable { })`, `LruCache` alt sınıfı, `lm.onSaveInstanceState()` dönüş tipi.
 2. `Core.local.real(path)`, `Core.local.open(path)`, `Thumbs.make(File)`, `VideoThumbs.make(Source): Pair<ByteArray, Long>` (süre **ms** varsayıldı; ui.html `X-Duration/1000` yapıyor).

@@ -20,7 +20,7 @@ object NlModel {
     class Cfg(val sort: String, val asc: Boolean, val hid: Boolean, val gal: Boolean, val view: String, val thumb: String)
 
     /** rows == null: not buildable here (page decides); count = number of entries read (for the "too big" memo). */
-    class Result(val rows: List<NlRow>?, val count: Int)
+    class Result(val rows: List<NlRow>?, val count: Int, val sum: Pair<String, String>? = null)
 
     /** ui.html nlCfg(): sort,asc,hid,gal,view,thumb */
     fun parseCfg(s: String): Cfg? {
@@ -91,8 +91,20 @@ object NlModel {
             if (Core.url == null) return Result(null, 0)
             val items = Core.local.ls(path, false)
             if (items.size > maxItems) return Result(null, items.size)
-            return Result(rows(items, path, cfg), items.size)
+            return Result(rows(items, path, cfg), items.size, headSum(items, cfg.hid))
         } catch (_: Throwable) { return Result(null, 0) }
+    }
+
+    /** ui.html renderTools(): "12 items . 3.4 MB" (bold) and "2 folders . 10 files" (small, only when both kinds exist) of the visible entries. */
+    fun headSum(items: List<Item>, hid: Boolean): Pair<String, String> {
+        var n = 0; var fo = 0; var fi = 0; var sz = 0L
+        for (i in items) {
+            if (!hid && i.name.isNotEmpty() && i.name[0] == '.') continue
+            n++; if (i.dir) fo++ else { fi++; sz += i.size }
+        }
+        val b = n.toString() + (if (n == 1) " item" else " items") + (if (fi > 0) " \u00b7 " + fmt(sz) else "")
+        val s = if (fo > 0 && fi > 0) fo.toString() + (if (fo == 1) " folder" else " folders") + " \u00b7 " + fi + (if (fi == 1) " file" else " files") else ""
+        return Pair(b, s)
     }
 
     fun rows(items0: List<Item>, p0: String, cfg: Cfg): List<NlRow>? {

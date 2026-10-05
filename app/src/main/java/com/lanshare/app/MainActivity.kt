@@ -85,6 +85,8 @@ class MainActivity : Activity() {
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
         @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss() } }
         @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide(); splash.dismiss() } }
+        /** Path bar + tool row content (NlHead.kt): JSON from ui.html nlHeadPush(). */
+        @JavascriptInterface fun nlHead(json: String) { runOnUiThread { try { nl.setHead(json) } catch (_: Throwable) { } } }
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
         @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
