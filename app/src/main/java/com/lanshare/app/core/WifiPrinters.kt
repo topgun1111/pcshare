@@ -104,7 +104,7 @@ object WifiPrinters {
                             val name = o.optString("name").ifEmpty { m.groupValues[1] }
                             remote[id] = P(id, name, m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3], o.optString("model"), emptyList(),
                                 if (o.isNull("color")) null else o.optBoolean("color"), if (o.isNull("duplex")) null else o.optBoolean("duplex"), peer.id)
-                            out.add(JSONObject().put("id", id).put("name", name).put("model", o.optString("model")).put("via", peer.name)
+                            out.add(JSONObject().put("id", id).put("name", name).put("model", o.optString("model")).put("via", peer.name).put("viaId", peer.id)
                                 .put("color", if (o.isNull("color")) JSONObject.NULL else o.optBoolean("color"))
                                 .put("duplex", if (o.isNull("duplex")) JSONObject.NULL else o.optBoolean("duplex")))
                         }

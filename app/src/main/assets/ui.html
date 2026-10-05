@@ -985,6 +985,32 @@ function pickDevice(f,t,extra,after){return new Promise(res=>{
     if(after&&p.id!=='__here'){const sm=E('small','','Checking printer\u2026');lt.append(sm);after(p,sm)}
     b.append(ld,lt);b.onclick=()=>fin(p);card.append(b)});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
+/* Print target picker: one card per device with how it is connected (Wi-Fi / Mobile data / Tailscale), whether it gives printer access, and its printers as tap targets */
+const CHIPC={wifi:'rgba(46,125,50,.15);color:#2E7D32',ts:'rgba(106,27,154,.15);color:#6A1B9A',mob:'rgba(239,108,0,.16);color:#E65100',ok:'rgba(21,101,192,.15);color:#1565C0',off:'rgba(120,120,120,.18);color:#757575',bad:'rgba(198,40,40,.14);color:#C62828'};
+const chip=(t,k)=>{const e=E('em','',t);e.style.cssText='font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+CHIPC[k];return e};
+function pickPrinter(here,wifi,peers){return new Promise(res=>{
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Print on…'));
+  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  const last=localStorage.getItem('printTo');
+  const dev=(name,conn,kind)=>{const box=E('div','');box.style.cssText='border:1px solid rgba(128,128,128,.28);border-radius:12px;padding:8px 10px;margin:6px 0';
+    const hd=E('div','');hd.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';const acc=E('span','');hd.append(ic('phone'),E('b','',name),chip(conn,kind),acc);box.append(hd);card.append(box);return{box,acc,n:0}};
+  const acc=(d,t,k)=>{d.acc.textContent='';d.acc.append(chip(t,k))};
+  const add=(d,t,label,tag)=>{d.n++;const b=E('button','tbtn'+(t.id===last?' fill':''));b.textContent=label;if(tag){const g=E('em','',' · '+tag);g.style.cssText='font-style:normal;font-size:11px;opacity:.75';b.append(g)}
+    b.style.margin='6px 6px 0 0';b.onclick=()=>fin(t);d.box.append(b)};
+  const cnt=d=>acc(d,d.n+' printer'+(d.n===1?'':'s'),'ok');
+  if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
+  peers.forEach(p=>{
+    const ts=p.via==='Tailscale',d=dev(p.name,ts?'Tailscale':'Wi-Fi',ts?'ts':'wifi');
+    if(p.ok===false&&!p.smb){acc(d,'offline','off');return}
+    wifi.filter(w=>w.viaId===p.id).forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),'Wi-Fi printer'));
+    if(d.n)cnt(d);else acc(d,'checking…','off');
+    api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
+      if(r&&r.ok&&r.printer)add(d,p,r.printer+(r.problem?' · '+r.problem:''),'PC print service');
+      d.n?cnt(d):acc(d,'No printer access','off')}).catch(()=>{d.n?cnt(d):acc(d,'No printer access','off')})});
+  const lan=wifi.filter(w=>!w.viaId);
+  if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'')));cnt(d)}
+  if(!here.length&&!lan.length&&!peers.length)card.append(E('p','','No devices or printers found yet.'));
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
@@ -998,7 +1024,7 @@ async function doSend(){
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
 /* printers found on the same Wi-Fi (mDNS); printed to directly over IPP, no PC needed */
 let WIFI=[];
-async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi'}))}catch(e){WIFI=[]}return WIFI}
+async function loadWifi(){try{WIFI=((await api('GET','/api/wifiprinters',null,4000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi',viaId:w.viaId||''}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
 function wifiOptions(pr,files){return new Promise(res=>{
   const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0};
@@ -1337,7 +1363,7 @@ async function doPrint(){
   await loadWifi();
   const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',here.concat(WIFI),printInfo);
+  let to=await pickPrinter(here,WIFI,S.peers);
   if(!to)return;
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
@@ -1362,7 +1388,7 @@ window.lsPrintShared=async names=>{
     const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
     const all=WIFI.concat(pcs);
     const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-    const to=all.length===1?all[0]:await pickDevice(1,'Print on\u2026',WIFI,printInfo);
+    const to=await pickPrinter([],WIFI,S.peers);
     if(!to)return;
     try{localStorage.setItem('printTo',to.id)}catch(e){}
     const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
