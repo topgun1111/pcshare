@@ -1,3 +1,5 @@
+> **2026-10-05 native list phase 6a:** folder entry no longer waits for the page: new `NlModel.kt` builds the next folder's rows in Kotlin (list, sort, dups, texts), `NativeList.tapRow` shows them at once, the page revalidates; JS `nlStash` removed. Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2k.
+
 > **2026-10-05 native list phase 3b:** video gallery (`.gal`) now drawn natively too (`NlGalView`, rows flagged `v:1`, `nlUse` no longer excludes `GV`). Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2e.
 
 > **2026-10-05 native list phase 3a:** grid view now drawn natively too (`NlGridView`, `GridLayoutManager` 2/4 columns, `nlUse` accepts `S.view==='grid'`, palette `bg`). Still **not compiled / not device-tested**; see `HANDOVER_NATIVE_LIST.md` §2d.

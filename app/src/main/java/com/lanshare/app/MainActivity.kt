@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
     private lateinit var web: WebView
     private lateinit var nl: NativeList
+    private lateinit var splash: NlSplash
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
     private val dlSeq = AtomicInteger()
@@ -75,13 +76,17 @@ class MainActivity : Activity() {
         @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
-            try { val rows = NativeList.parseRows(items, key.substringBefore('|')); val s = NativeList.parseSel(sel); val sig = items.hashCode()
+            splash.noteItems(key, items)
+            try { val rows = NativeList.parseRows(items, key.substringBefore('|')); val s = NativeList.parseSel(sel); val sig = NlModel.sig(rows)
                 runOnUiThread { nl.setItems(key, rows, s, sig) } } catch (_: Throwable) { }
         }
+        @JavascriptInterface fun nlCfg(c: String) { runOnUiThread { nl.setCfg(c) } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
-        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { } } }
-        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide() } }
+        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss() } }
+        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide(); splash.dismiss() } }
+        /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
+        @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
         /** Print a file on this phone through the Android print system (pdf, images, text). */
         @JavascriptInterface fun printHere(url: String, name: String) {
@@ -141,15 +146,20 @@ class MainActivity : Activity() {
             }
         }
         nl = NativeList(this, web)
-        setContentView(FrameLayout(this).apply {
+        val root = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(-1, -1))
             addView(nl.overlay, FrameLayout.LayoutParams(-1, -1))   // native file list: above the page, invisible until ui.html sends a layout
-        })
+        }
+        setContentView(root)
+        splash = NlSplash(this, nl, web, root)
+        if (b == null) splash.start()      // cold start: draw the last screen natively while the page loads
         askPermissions()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()
         handleShare(intent)
     }
+
+    override fun onPause() { super.onPause(); if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
     override fun onResume() {
         super.onResume()
@@ -397,16 +407,16 @@ class MainActivity : Activity() {
             var err: String? = null
             val t0 = System.currentTimeMillis()
             while (url == null && err == null && System.currentTimeMillis() - t0 < 40_000) {
-                Thread.sleep(300)
                 try {
                     url = Core.url
                     err = Core.error
                 } catch (_: Exception) {}
+                if (url == null && err == null) Thread.sleep(25)      // was 300 ms (+300 ms before the first check): up to 0.6 s of pure waiting
             }
             runOnUiThread {
-                if (url != null) web.loadUrl(url)
-                else web.loadDataWithBaseURL(null,
-                    page("Server did not start. Close and reopen the app.", err ?: "timeout"), "text/html", "utf-8", null)
+                if (url != null) { web.loadUrl(url); web.postDelayed({ splash.dismiss() }, 8000) }   // watchdog: never leave the start picture up
+                else { splash.dismiss(); web.loadDataWithBaseURL(null,
+                    page("Server did not start. Close and reopen the app.", err ?: "timeout"), "text/html", "utf-8", null) }
             }
         }.start()
     }

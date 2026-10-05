@@ -68,7 +68,8 @@ class NlRow(
     val badge: String?, val badgeCol: Int, val dup: Boolean,
     val path: String?, val size: Long, val mtime: Long,
     val gal: Boolean = false,           // video-gallery cell (drawn by NlGalView, several per adapter row)
-    val dev: String = "local"           // endpoint the row belongs to ("local", a peer id, "smb:...")
+    val dev: String = "local",          // endpoint the row belongs to ("local", a peer id, "smb:...")
+    val hit: Boolean = false            // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
 ) {
     val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }
@@ -565,7 +566,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 val o = a.getJSONObject(i)
                 out.add(NlRow(o.getString("n"), o.optInt("d") == 1, o.optString("k", "file"), o.optString("a"), o.optString("b"),
                     if (o.has("g")) o.getString("g") else null, o.optLong("gc").toInt(), o.optInt("u") == 1,
-                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev))
+                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1))
             }
             return out
         }
@@ -596,6 +597,17 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
     private var elev = false
+    // ---- instant folder entry: Kotlin builds the rows of the next folder itself (NlModel); the page only revalidates ----
+    private class Built(val rows: List<NlRow>, val sig: Int, val cfg: String, val at: Long)
+    private val built = LinkedHashMap<String, Built>()      // key = dev|view|path (UI thread only)
+    private val pending = HashSet<String>()                 // keys being built right now
+    private val tooBig = HashSet<String>()                  // idle pre-builds skip folders known to be big
+    private var navKey: String? = null                      // folder just tapped whose rows are still being built
+    private val buildNow = Executors.newSingleThreadExecutor { Thread(it, "nl-build").also { t -> t.isDaemon = true } }
+    private val buildIdle = Executors.newSingleThreadExecutor { Thread(it, "nl-idle").also { t -> t.isDaemon = true; t.priority = Thread.MIN_PRIORITY } }
+    private val idleWarm = Runnable { warmNeighbours() }
+    private var curCfg = ""
+    private var navUntil = 0L           // while the page has not yet answered an instant entry, taps would hit the wrong row list
     private var compact = false
     private var large = false
     private class Th(val bm: Bitmap, val dur: String?)
@@ -629,7 +641,75 @@ class NativeList(private val act: Activity, private val web: WebView) {
         overlay.visibility = View.GONE
     }
 
-    private fun emit(ev: String, i: Int) { web.evaluateJavascript("window.nlOn&&nlOn('$ev',$i)", null) }
+    private fun raw(ev: String, i: Int) { web.evaluateJavascript("window.nlOn&&nlOn('$ev',$i)", null) }
+    private fun emit(ev: String, i: Int) {
+        if (navUntil != 0L && ev != "refresh" && ev != "el") { if (android.os.SystemClock.uptimeMillis() < navUntil) return; navUntil = 0L }
+        raw(ev, i)
+    }
+
+    fun setCfg(c: String) { if (c != curCfg) built.clear(); curCfg = c }
+
+    private fun fresh(e: Built?) = e != null && e.cfg == curCfg && android.os.SystemClock.uptimeMillis() - e.at < 30_000
+
+    /** Row i is a plain folder of this phone that can be entered instantly -> (rows key, folder path). */
+    private fun childKey(i: Int): Pair<String, String>? {
+        if (sel.isNotEmpty() || i !in 0 until galStart || curCfg.isEmpty()) return null
+        val r = rows[i]
+        if (!r.dir || r.hit || r.k == "hdr" || r.gal) return null
+        val kp = curKey.split('|', limit = 3)
+        if (kp.size != 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return null
+        val child = (if (kp[2] == "/") "" else kp[2]) + "/" + r.nm
+        return Pair(kp[0] + "|" + kp[1] + "|" + child, child)
+    }
+
+    /** Build the rows of a folder in the background (NlModel). [urgent] = finger down / tap, otherwise idle pre-build. */
+    private fun warm(key: String, path: String, urgent: Boolean) {
+        if (fresh(built[key]) || key in pending || (!urgent && key in tooBig)) return
+        pending.add(key)
+        val cfg = curCfg
+        (if (urgent) buildNow else buildIdle).execute {
+            val res = NlModel.build(path, cfg, if (urgent) Int.MAX_VALUE else 2000)
+            val list = res.rows; val sg = if (list != null) NlModel.sig(list) else 0
+            act.runOnUiThread {
+                pending.remove(key)
+                if (list != null) {
+                    built.remove(key); built[key] = Built(list, sg, cfg, android.os.SystemClock.uptimeMillis())
+                    while (built.size > 24) built.remove(built.keys.first())
+                } else if (!urgent && res.count > 0) { if (tooBig.size > 64) tooBig.clear(); tooBig.add(key) }
+                if (navKey == key) {
+                    navKey = null
+                    if (list != null && cfg == curCfg && curKey != key) applyItems(key, list, emptySet(), sg)
+                    else navUntil = 0L               // nothing to show early: the page's answer will do
+                }
+            }
+        }
+    }
+
+    /** Finger down on a folder row: start building its rows already. */
+    private fun warmFor(i: Int) { val ck = childKey(i) ?: return; warm(ck.first, ck.second, true) }
+
+    /** After a list is on screen (idle): build the rows of its first sub-folders ahead. */
+    private fun warmNeighbours() {
+        if (curCfg.isEmpty() || overlay.visibility != View.VISIBLE) return
+        var n = 0
+        for (i in 0 until galStart) {
+            if (rows[i].nm.startsWith('.')) continue
+            val ck = childKey(i) ?: continue
+            warm(ck.first, ck.second, false)
+            if (++n >= 6) break
+        }
+    }
+
+    /** A tap on a plain folder row: show its rows now (built here), then let the page navigate and revalidate as usual. */
+    private fun tapRow(i: Int) {
+        if (navUntil != 0L) { if (android.os.SystemClock.uptimeMillis() < navUntil) return; navUntil = 0L }   // page has not answered the last tap yet: indexes would not match
+        val ck = childKey(i)
+        if (ck == null) { emit("tap", i); return }
+        val e = built[ck.first]
+        if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig) }
+        else { navKey = ck.first; warm(ck.first, ck.second, true) }
+        raw("tap", i); navUntil = android.os.SystemClock.uptimeMillis() + 2000
+    }
 
     fun setPalette(json: String) {
         if (json == palJson) return
@@ -654,6 +734,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     fun setItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
+        navUntil = 0L; navKey = null; applyItems(key, list, selected, sig)
+        rv.removeCallbacks(idleWarm); rv.postDelayed(idleWarm, 400)
+    }
+
+    private fun applyItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
         if (key == curKey && sig == curSig) { setSel(selected); return }
         sel = selected
         if (key != curKey) {
@@ -712,7 +797,16 @@ class NativeList(private val act: Activity, private val web: WebView) {
         }
     }
 
-    fun hide() { elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    class NlSnap(val key: String, val pal: String, val lay: String, val top: Int, val bottom: Int)
+    /** What NlSplash may store: a plain, idle, local, native list on screen (no selection / dialog / drawer / newest). */
+    fun snapshot(): NlSnap? {
+        if (overlay.visibility != View.VISIBLE || rows.isEmpty() || sel.isNotEmpty() || overlay.passAll || overlay.dim > 0f || lastLay.isEmpty() || palJson.isEmpty()) return null
+        val kp = curKey.split('|', limit = 3)
+        if (kp.size < 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return null
+        return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
+    }
+
+    fun hide() { navUntil = 0L; navKey = null; elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {
@@ -756,12 +850,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
             v.layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             v.isClickable = true; v.isLongClickable = true
             val h = VH(v)
-            v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) emit("tap", i) }
+            v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) tapRow(i) }
             v.setOnLongClickListener {
                 val i = h.bindingAdapterPosition
                 if (i >= 0) { it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); emit("long", i); true } else false
             }
-            v.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = h.bindingAdapterPosition; if (i >= 0) emit("down", i) }; false }
+            v.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = h.bindingAdapterPosition; if (i >= 0) { warmFor(i); emit("down", i) } }; false }
             return h
         }
         override fun onBindViewHolder(h: VH, pos: Int) {

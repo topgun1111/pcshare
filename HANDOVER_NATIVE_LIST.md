@@ -1,6 +1,6 @@
 # Native dosya listesi (Seçenek A) — Handover
 
-Tarih: 2026-10-05 · Durum: **Faz 4c (tüm cihazlar + her görünümde arama + sayı yaması + karartma/gölge senkronu) + Faz 4a (en yeni modu) + Faz 1 + Faz 2a (compact) + Faz 2b (büyük küçük resim) + Faz 3a (grid görünümü) + Faz 3b (video galerisi) kodlandı, DERLENMEDİ, cihazda TEST EDİLMEDİ** (bu ortamda Android SDK/kotlinc yok).
+Tarih: 2026-10-05 · Durum: **Faz 5b (anında açılış: yerel başlangıç resmi, derlenmedi) + Faz 5a (anında klasör girişi; derleme 4c ile GEÇTİ, 5a derlenmedi) + Faz 4c (tüm cihazlar + her görünümde arama + sayı yaması + karartma/gölge senkronu) + Faz 4a (en yeni modu) + Faz 1 + Faz 2a (compact) + Faz 2b (büyük küçük resim) + Faz 3a (grid görünümü) + Faz 3b (video galerisi) kodlandı, DERLENMEDİ, cihazda TEST EDİLMEDİ** (bu ortamda Android SDK/kotlinc yok).
 
 ## 1. Amaç ve kararlar
 - Gezinme gecikmesi WebView katmanından geliyor (daha önceki native deneme çok hızlıydı). Ama ayrı ekran olan `BrowserActivity` görünümü bozmuştu → **kaldırıldı, geri getirilmeyecek**.
@@ -72,9 +72,37 @@ Android uygulaması + `LSAndroid.nlAvail()` + `localStorage.ls_nl!=='0'` + liste
 - Kalan (bilerek): yok. Açık riskler cihazda doğrulanacak: uzak klasörde çok sayıda küçük resim/ağ yükü (havuz 3 iş parçacığı), SMB'de büyük video küçük resmi gecikmesi, arama sonuçlarının grid'de kart görünümü, `hdr` satırı x konumu (24 dp), kaydırınca gölge.
 - Geri alma: yalnızca uzak cihazları DOM'a döndürmek için `nlUse`'a `&&S.dev==='local'` ekle; her şey için `ls_nl='0'` / `NativeList.ENABLED=false`.
 
+## 2i. Faz 5a — anında klasör girişi (2026-10-05) — YERİNE 2k GEÇTİ: JS `nlStash` düzeneği kaldırıldı, aşağıdaki JS/Kotlin stash ayrıntıları tarihsel
+Amaç: klasöre dokununca satırların JS gidiş-dönüşünü (`go()` → `render` → JSON → köprü) beklemeden görünmesi. Biçimlendirme kopyalanmadı: satırları yine JS üretir, Kotlin yalnızca saklar.
+- **JS (`ui.html`):** `nlRender` ikiye bölündü: `nlBuild(LIST,P0,GN)` (yan etkisiz, satır dizisi) + `nlRender`. `nlStash(dev,path,{items})` bir klasörün satırlarını (geçici `S.items`/`DUPS` değişimiyle, mevcut ayarlarla) üretip `NL.nlStash(key,json,cfg)` ile Kotlin'e yollar. Çağrı noktaları: `prefetch()` bitişi (dokunma-başı ve boşta) ve `idlePre()` (ilk **6** alt klasör; LSC'de varsa doğrudan). `nlRender` her seferinde `NL.nlCfg(cfg)` yollar (`cfg` = sort,asc,hid,gal,view,thumb). Atlananlar: yalnızca yerel cihaz, arama açıkken, newest, `sort==='size'` (sayılar sonradan gelir, sıra bozulur), arşiv yolları, >2000 satır, boş klasör.
+- **Kotlin (`NativeList.kt`, `MainActivity.kt`):** `stashed` (en çok 24, anahtar = `dev|görünüm|yol`; `cfg` değişince temizlenir), `tapRow(i)`: seçim yok + düz klasör satırı (`NlRow.hit` değil, `hdr` değil) + saklı satır varsa `applyItems` ile hemen gösterir, ardından `raw("tap")` ile sayfa normal `go()` yapar ve doğrular (satırlar aynıysa `sig` eşit → yeniden çizim yok). Sayfa cevap verene kadar (en çok 2 sn, `navUntil`) yeni dokunuşlar yutulur: eski `NLL` ile yeni satır dizinleri karışmasın. `setItems` (köprüden gelen) bunu sıfırlar. Yeni köprü: `nlCfg`, `nlStash`.
+- Kapatma: `NL.nlStash` yoksa/çağrılmazsa hiçbir şey değişmez (davranış eskisi). Tam kapatma için `nlStash` içinde ilk satıra `return` koy.
+- Cihazda bak: ilk dokunuşta klasörün anında açılması (özellikle yeni girilen klasörün alt klasörleri), üst çubuğun yolu birkaç on ms sonra güncellemesi, hızlı çift dokunuşta yanlış satırın açılmaması, boş/yeni klasörde hata olmaması, ayar (sıralama/görünüm) değişince eski sıranın görünmemesi.
+
+## 2j. Faz 5b — anında açılış (2026-10-05)
+Soğuk başlangıçta WebView `ui.html`'i yüklerken son ekran yerel çizilir. NOT compiled / NOT device-tested.
+- **Yeni `NlSplash.kt`:** `onPause` → `save()`: görünen klasörün ilk 120 satırı (küçük resim yolları `p/s/t` ÇIKARILIR; Core hazır olmayabilir), palet, liste geometrisi ve sayfanın liste dışı iki şeridi (üst: başlık+yol çubuğu, alt: dock) `PixelCopy` ile (API 26+; altında yalnızca liste) `filesDir/nlsplash/{state.json,top.jpg,bot.jpg}`. Yalnızca düz, boşta, **yerel** native liste varken (seçim/çekmece/diyalog/newest/arşiv/arama kutusu açıkken kaydedilmez; `lay.sq`). `start()` (yalnızca `savedInstanceState==null`): iş parçacığında okur, WebView ilk yerleşimden sonra (`web.width>0`) palet + satırlar + geometri (FAB/toast delikleri temizlenir) + iki resim ekranda. Boyut/dpi/uygulama sürümü (`lastUpdateTime`) değiştiyse atlanır.
+- **Kaldırma:** sayfanın ilk canlı cevabı (`nlLayout`, `nlHide`, yeni `nlBoot` = ilk `load()` bitişi, 8 sn bekçi, sunucu hata sayfası) → `dismiss()`: WebView boyadıktan sonra (`postVisualStateCallback`) resimler gider; sayfa native liste kullanmadıysa (`live=false`) eski satırlar `nl.hide()` ile kalkar.
+- **`MainActivity`:** `splash` alanı, `nlItems` içinde `splash.noteItems`, `nlBoot` köprüsü, `onPause`. `loadWhenReady`: sunucu bekleme yoklaması **25 ms** (eskiden önce 300 ms uyuyup 300 ms'de bir bakıyordu: 0,6 sn'ye kadar boş bekleme).
+- **`ui.html`:** `load()` → `loadMain()` sarmalayıcı (`finally nlBoot()`), `nlLay` JSON'una `sq`.
+- Kapatma: `NativeList.ENABLED=false` hepsini kapatır; yalnızca açılış resmi için `MainActivity.onCreate`'ta `splash.start()` satırını sil.
+- Cihazda bak: soğuk açılışta ilk karede son klasör + üst/alt çubuk görünmeli; canlı sayfa gelince sıçrama/yanıp sönme olmamalı; boş klasör/başka cihaz/tema değişimi/yön değişimi; uygulama güncellenince resim kullanılmamalı; ilk saniyede dokunuşların zarar vermemesi.
+
+## 2k. Faz 6a — liste hattı Kotlin'de (2026-10-05) — DERLENMEDİ, TEST EDİLMEDİ
+Amaç: klasör girişi için JS gidiş-dönüşünü (`go` → `render` → JSON → köprü) ve JS'in önceden kurduğu "stash" düzeneğini kaldırmak.
+- **Yeni `NlModel.kt`:** `ui.html` hattının yerel cihaz için Kotlin ikizi: `Core.local.ls(path,false)` → sunucu sırası (klasör önce, küçük harf ad) → gizli dosya süzgeci → sıralama (`android.icu` Collator, numeric + PRIMARY = `Intl.Collator numeric/base`) → `findDups` → galeri ayrımı → satır metinleri (`fmt`, `nlA`, tarih/saat `yMMMd`/`jjmm`, `BADGE`, küçük resim kuralı). `NlModel.sig(rows)` = satır İÇERİĞİ imzası (eskiden JSON metninin hash'i): JS ve Kotlin aynı satırları kurarsa imza eşit → yeniden çizim yok.
+- **`NativeList.kt`:** `Stash`/`stashed`/`stashCfg`/`stash()`/`cfgOk()` kaldırıldı. Yerine `built` (en çok 24 klasör, 30 sn ömür, `cfg` değişince temizlenir), `warm()` (arka plan: parmak basınca acil, yükleme sonrası 400 ms'de ilk 6 alt klasör boşta; >2000 öğe boşta atlanır), `childKey()`, `warmFor()`, `warmNeighbours()`. `tapRow`: hazırsa satırları hemen gösterir, değilse kurulunca gösterir; her durumda `raw("tap")` ile sayfa normal `go()` yapar ve doğrular. Sayfa cevap verene kadar (en çok 2 sn) yeni dokunuş yutulur (artık `tapRow` başında da).
+- **`MainActivity.kt`:** `nlStash` köprüsü kaldırıldı; `nlItems` imzayı `NlModel.sig(rows)` ile hesaplar.
+- **`ui.html`:** `nlStash()` ve `prefetch`/`idlePre` içindeki çağrıları kaldırıldı (JS `LSC` ısıtması kalır). `nlCfg()` her `nlRender`'da gitmeye devam eder.
+- Kotlin'in kurmadığı durumlar (sayfa karar verir): `sort==='size'` (klasör sayıları sonradan gelir), newest, arşiv (`!`), diğer cihazlar/SMB, arama sonuçları, seçim açıkken, boş/hepsi gizli klasör, `view` list/compact/grid dışı.
+- Bilinen fark: Kotlin satırlarında klasör sayısı yok ("Folder"); sayfanın `LSC`'sinde sayı varsa ilk cevapta yalnızca o metin değişir. Tarih/saat biçimi ICU ile WebView'in `Intl`'i arasında 1 karakter (ör. U+202F) farklı olabilir → sayfa satırları değiştirir, işlev bozulmaz.
+- Cihazda bak: klasöre ilk dokunuşta satırların anında gelmesi (daha önce hiç girilmemiş klasörde de), hızlı iki dokunuş, sıralama/gizli/galeri/compact/grid ayarı değişince eski sıranın görünmemesi, sayfa cevabı sonrası titreme/yeniden çizim olmaması (imza eşitliği), büyük klasör (5000+) girişi, geri dönüşte kaydırma konumu.
+- Geri alma: `NativeList.tapRow` içinde `childKey(i)` yerine `null` döndür → eski davranış (yalnızca sayfa). Tamamen `NativeList.ENABLED=false`.
+
 ## 3. Derlemede ilk bakılacak yerler (tahmini risk)
 1. `NativeList.kt`: `PathParser.createPathFromPathData` (androidx.core 1.13.1'de var), `Region.Op.DIFFERENCE` ile `clipRect` (kullanımdan kalkmış uyarısı normal), `pool.submit(Runnable { })`, `LruCache` alt sınıfı, `lm.onSaveInstanceState()` dönüş tipi.
 2. `Core.local.real(path)`, `Core.local.open(path)`, `Thumbs.make(File)`, `VideoThumbs.make(Source): Pair<ByteArray, Long>` (süre **ms** varsayıldı; ui.html `X-Duration/1000` yapıyor).
+2b. `NlModel.kt`: `android.icu.text.Collator/RuleBasedCollator.setNumericCollation`, `DateFormat.getInstanceForSkeleton`, `Comparator<Item>` etiketi `return@Comparator`, `Result` iç sınıfı.
 3. `MainActivity`: `nl` alanı `web`'den sonra oluşturuluyor; `recreate()` sonrası yeniden kuruluyor (sorun beklenmez).
 4. Yeni bağımlılık yok (`recyclerview`, `swiperefreshlayout` zaten `app/build.gradle.kts` içinde).
 
