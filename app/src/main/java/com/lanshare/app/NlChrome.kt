@@ -282,7 +282,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         if (n > 0) {
             val cols = if (n <= 5) Math.max(n, 1) else (n + 1) / 2
             val cw = (bw - 8f * d) / cols
-            val rh = 57.4f * d
+            val rh = 63.4f * d
             for (i in 0 until n) {
                 val row = i / cols; val col = i % cols
                 val top = y + row * (rh + 2f * d)
@@ -326,10 +326,10 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val r = cells[i]
             val pri = a.c.contains("pri"); val dng = a.c.contains("dng")
             val col = if (dng) p.err else p.fg
-            val pill = RectF(r.centerX() - 24f * d, r.top + 4f * d, r.centerX() + 24f * d, r.top + 4f * d + 30f * d)
-            if (pri) { fillP.color = p.ac; cv.drawRoundRect(pill, 15f * d, 15f * d, fillP) }
-            if (pressed == "a$i") { fillP.color = p.hov; cv.drawRoundRect(pill, 15f * d, 15f * d, fillP) }
-            glyph(cv, a.k, pill.centerX(), pill.centerY(), 24f, if (pri) p.onac else col)
+            val pill = RectF(r.centerX() - 28f * d, r.top + 4f * d, r.centerX() + 28f * d, r.top + 4f * d + 36f * d)
+            if (pri) { fillP.color = p.ac; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
+            if (pressed == "a$i") { fillP.color = p.hov; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
+            glyph(cv, a.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else col)
             lbP.color = col
             val t = fit(a.lb, lbP, r.width() - 2f * d)
             cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7.7f * d, lbP), lbP)

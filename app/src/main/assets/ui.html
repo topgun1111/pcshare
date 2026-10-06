@@ -24,8 +24,8 @@ body{margin:0;font:500 15px/1.4 'Inter LS','Segoe UI','Segoe UI Variable Text',S
 #top:before{content:"";display:block;height:env(safe-area-inset-top);background:var(--bar)}
 #top.el{box-shadow:0 2px 6px #0004}
 #pathrow{display:flex;align-items:center;gap:8px;padding:2px 8px 2px 4px;background:var(--card);border-bottom:1px solid var(--bd)}
-.pill{display:none;align-items:center;gap:6px;flex:none;height:28px;padding:0 9px;border:1px solid var(--mut);border-radius:14px;font-weight:700;font-size:12px;letter-spacing:.2px;text-transform:uppercase}
-.pill i{width:14px;height:14px;border-radius:50%;background:conic-gradient(var(--fg) var(--p,0%),var(--bd) 0)}
+.pill{display:none;align-items:center;gap:6px;flex:none;height:32px;padding:0 10px;border:1px solid var(--mut);border-radius:16px;font-weight:700;font-size:13px;letter-spacing:.2px;text-transform:uppercase}
+.pill i{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--fg) var(--p,0%),var(--bd) 0)}
 .bar{display:flex;align-items:center;gap:0;height:44px;padding:0 2px 0 14px;background:var(--bar);color:var(--onbar)}
 .selb{display:none;padding-left:4px;background:var(--sel);color:var(--onsel)}
 body.selm .mainb{display:none}body.selm .selb{display:flex}
@@ -45,19 +45,19 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 .chip svg{width:18px;height:18px}
 .chip.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 .chip.add{color:var(--ac);border-style:dashed}
-#peers{gap:10px;padding:8px 12px}
-#peers .chip{height:44px;gap:10px;padding:0 18px 0 14px;border-radius:22px;font-size:17px;font-weight:600}
-#peers .chip svg{width:24px;height:24px}
-#peers .chip .dot{width:12px;height:12px;margin:0 4px}
-#peers .chip small{font-size:13px}
+#peers{gap:8px;padding:6px 12px}
+#peers .chip{height:38px;gap:8px;padding:0 15px 0 12px;border-radius:19px;font-size:14px;font-weight:600}
+#peers .chip svg{width:20px;height:20px}
+#peers .chip .dot{width:10px;height:10px;margin:0 3px}
+#peers .chip small{font-size:11px}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:var(--warn)}
 #hint{padding:3px 14px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
 /* breadcrumbs */
 #crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;color:var(--mut)}#crumbs::-webkit-scrollbar{display:none}
-.crumb{flex:none;display:flex;align-items:center;gap:6px;height:34px;padding:0 5px;border-radius:6px;font-size:14px;color:var(--mut);transition:background .15s}
-.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:24px;height:24px}
+.crumb{flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 5px;border-radius:6px;font-size:16px;color:var(--mut);transition:background .15s}
+.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:28px;height:28px}
 .crumb.cur{color:var(--fg);font-weight:700}
-#crumbs>svg{width:18px;height:18px;opacity:.6}
+#crumbs>svg{width:20px;height:20px;opacity:.6}
 /* sort / view toolbar */
 #toolrow{display:flex;align-items:center;gap:4px;min-height:36px;padding:0 2px 0 14px;background:var(--card);border-bottom:1px solid var(--bd)}
 #sum{flex:1;min-width:0;line-height:1.25;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -189,7 +189,7 @@ body.dual #dual{display:flex}
 #dock{touch-action:manipulation;position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--cont);border-top:1px solid var(--bd);box-shadow:0 -2px 8px #0002;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 #bar{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:2px 0;overflow:visible}#bar::-webkit-scrollbar{display:none}#bar:empty{display:none}
 .ib{touch-action:manipulation;flex:1 0 50px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0;font-size:11px;font-weight:600}
-.ib .ii{width:48px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .15s}
+.ib .ii{width:56px;height:36px;border-radius:18px;display:grid;place-items:center;transition:background .15s}.ib .ii svg{width:30px;height:30px}
 .ib:active .ii{background:var(--hov)}
 .ib.pri .ii{background:var(--ac);color:var(--onac)}.ib.dng{color:var(--err)}
 #clip{display:none;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#clip span{flex:1;min-width:0}
@@ -1974,11 +1974,27 @@ async function doZip(){   // pack the selected files / folders into a new .zip n
   if(!n||!n.trim())return;
   const paths=selPaths();S.sel.clear();render();
   try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:S.path,name:n.trim()});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
+/* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
+function pickExtractDir(start){return new Promise(res=>{
+  const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;
+  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  const draw=async(p)=>{const my=++tk;let items=[],err='';
+    try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>i.dir&&(S.hid||i.name[0]!=='.'))}catch(e){if(my!==tk)return;err=e.message}
+    cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','','Extract to\u2026'));
+    const loc=E('small','',p);loc.style.cssText='color:var(--mut);margin:-4px 0 6px;word-break:break-all';card.append(loc);
+    if(p!=='/'){const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('back'));lt.append(E('span','','..'));b.append(ld,lt);b.onclick=()=>draw(pdir(p));card.append(b)}
+    if(err)card.append(E('p','','\u26a0 '+err));
+    else if(!items.length)card.append(E('p','','No sub-folders here.'));
+    items.forEach(i=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('folder'));lt.append(E('span','',i.name));b.append(ld,lt);b.onclick=()=>draw(jn(p,i.name));card.append(b)});
+    const row=E('div','');row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:8px;position:sticky;bottom:0;background:var(--cont);padding-top:4px';
+    const c=E('button','tbtn','Cancel');c.onclick=()=>fin(null);const ok=E('button','tbtn fill','Extract here');ok.onclick=()=>fin(cur);row.append(c,ok);card.append(row);o.append(card)};
+  draw(cur)})}
 async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
   let paths,dir;
   if(inArc()){const ar=arcRoot();dir=pdir(ar.slice(0,-1));paths=m===2?[ar]:selPaths()}
   else{dir=S.path;paths=selItems().filter(isArcF).map(i=>jn(S.path,i.name))}
   if(!paths.length)return;
+  const to=await pickExtractDir(dir);if(!to)return;dir=to;   // ask where to extract (starts in the archive's own folder)
   const inside=inArc();S.sel.clear();render();
   try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir});watchJob(r.job);
     if(await track(r.job)&&!inside)load()}catch(e){toast('\u26a0 '+e.message,5000)}}
