@@ -290,8 +290,10 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     private var layRow: NlRow? = null
     private var layW = -1
 
-    fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean) {
-        row = r; pal = pl; isSel = sel; selMode = selm; thumb = null; dur = null; layRow = null; invalidate()
+    var bare = false       // picture-only card of an image folder: no padding, no caption (ui.html #list.imgf .row.im)
+
+    fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
+        row = r; pal = pl; isSel = sel; selMode = selm; this.bare = bare; thumb = null; dur = null; layRow = null; invalidate()
     }
 
     private fun prep(w: Int) {
@@ -318,6 +320,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
 
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val w = MeasureSpec.getSize(wSpec)
+        if (bare) { setMeasuredDimension(w, w); return }
         prep(w)
         val r = row
         val s = w - 14f * d
@@ -339,7 +342,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 16f * d, 16f * d, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 15.5f * d, 15.5f * d, p)
         p.style = Paint.Style.FILL
-        val s = w - 14f * d; val lx = 7f * d; val ly = 7f * d
+        val s = if (bare) w - 2f * d else w - 14f * d; val lx = if (bare) d else 7f * d; val ly = lx
         val cx = lx + s / 2f; val cy = ly + s / 2f
         // ---- lead ----
         if (r.dir) {
@@ -364,7 +367,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 val sw = (s / sc).toInt(); val sh = (s / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - sh) / 2, (bm.width - sw) / 2 + sw, (bm.height - sh) / 2 + sh)
                 rf.set(lx, ly, lx + s, ly + s)
-                clip.reset(); clip.addRoundRect(rf, 12f * d, 12f * d, Path.Direction.CW)
+                clip.reset(); clip.addRoundRect(rf, (if (bare) 15f else 12f) * d, (if (bare) 15f else 12f) * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
@@ -394,6 +397,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             p.style = Paint.Style.STROKE; p.strokeWidth = 2f * d; p.color = Color.WHITE; cv.drawCircle(kx, ky, 11f * d, p)
             p.style = Paint.Style.FILL
         }
+        if (bare) return
         // ---- texts ----
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
         nameP.color = pl.fg; smallP.color = pl.mut
@@ -652,7 +656,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private fun galRowCount() = if (rows.size > galStart) (rows.size - galStart + gs - 1) / gs else 0
     /** combined row index -> adapter position */
     private fun posOf(i: Int) = if (i < galStart) i else galStart + (i - galStart) / gs
-    private fun calcGal() { galStart = rows.indexOfFirst { it.gal }.let { if (it < 0) rows.size else it }; gs = galSpan() }
+    private var imgMode = false         // image folder (most files are pictures): grid cards of pictures are bare and bigger
+    private fun calcGal() {
+        galStart = rows.indexOfFirst { it.gal }.let { if (it < 0) rows.size else it }; gs = galSpan()
+        var f = 0; var im = 0
+        for (r in rows) { if (r.gal || r.dir || r.k == "hdr") continue; f++; if (r.k == "img") im++ }
+        imgMode = im > 0 && im * 2 >= f
+    }
 
     init {
         rv.layoutManager = lm; rv.adapter = ad; rv.itemAnimator = null; rv.setHasFixedSize(true)
@@ -910,7 +920,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         if (out.isEmpty()) return                                   // "No matches": the page shows that itself
         val sg = NlModel.sig(out)
         if (sg == curSig) return
-        rows = out; calcGal(); curSig = sg; ad.notifyDataSetChanged()
+        val im = imgMode; rows = out; calcGal(); imgMode = im; curSig = sg; ad.notifyDataSetChanged()   // typing must not flip the column count
         navUntil = android.os.SystemClock.uptimeMillis() + 1500     // taps are ignored until the page answers (its row indexes must match ours)
     }
 
@@ -967,7 +977,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     /** List = LinearLayoutManager; grid view = GridLayoutManager (2 columns, 4 from 600 dp), cards 8 dp apart (rv padding 4 + item offset 4). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (web.width / d >= 600f) 4 else 2) else 1
+        val span = if (grid) (if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
@@ -994,11 +1004,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
         sel = selected
         if (key != curKey) {
             lm.onSaveInstanceState()?.let { states[curKey] = it; if (states.size > 40) states.remove(states.keys.first()) }
+            rows = list; calcGal(); curKey = key; curSig = sig
             ensureMgr(key.split('|').getOrNull(1) == "grid")
-            rows = list; calcGal(); curKey = key; curSig = sig; ad.notifyDataSetChanged()
+            ad.notifyDataSetChanged()
             val st = states[key]
             if (st != null) lm.onRestoreInstanceState(st) else lm.scrollToPositionWithOffset(0, 0)
-        } else { rows = list; calcGal(); curSig = sig; ad.notifyDataSetChanged() }
+        } else { rows = list; calcGal(); curSig = sig; if (gridOn) ensureMgr(true); ad.notifyDataSetChanged() }
     }
 
     fun setSel(n: Set<Int>) {
@@ -1180,7 +1191,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             if (hv is NlGalView) { bindGal(h, hv, pos, p); return }
             val r = rows[pos]
             h.job?.cancel(false); h.job = null; h.key = null
-            if (hv is NlGridView) hv.bind(r, p, pos in sel, sel.isNotEmpty()) else (hv as NlRowView).bind(r, p, pos in sel, compact, large)
+            if (hv is NlGridView) hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") else (hv as NlRowView).bind(r, p, pos in sel, compact, large)
             val key = r.thumbKey ?: return
             val hit = thumbs.get(key)
             if (hit != null) { setThumb(hv, hit.bm, hit.dur); return }

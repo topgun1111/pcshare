@@ -12,9 +12,9 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
 
-/** JPEG thumbnails (<= 400 px, quality 70) with an on-disk cache keyed by path + mtime + size. Port of make_thumb(). */
+/** JPEG thumbnails (<= 600 px, quality 70) with an on-disk cache keyed by path + mtime + size. Port of make_thumb(). */
 object Thumbs {
-    private const val MAX = 400
+    private const val MAX = 600
     private const val DRAFT = 800
     private const val PRINT_MAX = 3508
     private val writes = AtomicInteger()
