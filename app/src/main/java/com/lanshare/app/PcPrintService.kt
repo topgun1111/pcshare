@@ -21,7 +21,7 @@ import java.io.IOException
 /**
  * Makes LANShare show up as a printer ("LANShare - print on PC") in Android's own print dialog, so
  * "Print" in ANY app / file manager can pick it. The finished PDF is copied to <storage>/LANShare Shared/
- * and MainActivity (or the native FilesActivity, whichever was used last) opens LANShare's own print dialog (PC picker, layout options, preview) for it.
+ * and the native FilesActivity opens LANShare's own print dialog (PC picker, layout options, preview) for it.
  *
  * The user has to switch the service on once: Settings > Connected devices > Printing > LANShare.
  */
@@ -79,9 +79,7 @@ class PcPrintService : PrintService() {
     /** Open LANShare's print dialog for the file. Android 10+ may block a background start, so a tap-to-open notification is posted too. */
     private fun openInApp(name: String) {
         val nid = 7000 + (name.hashCode() and 0xFFF)
-        // the screen that was used last handles it: the fully native one (FilesActivity) or the WebView app (MainActivity)
-        val native = getSharedPreferences("ls_print_ui", MODE_PRIVATE).getBoolean("nativeLast", false)
-        val i = Intent(this, if (native) FilesActivity::class.java else MainActivity::class.java)
+        val i = Intent(this, FilesActivity::class.java)
             .setAction(MainActivity.ACTION_PRINT_SHARED)
             .putExtra("names", arrayOf(name)).putExtra("nid", nid)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)

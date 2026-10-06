@@ -52,6 +52,11 @@ class FsController(private val ui: Listener) {
     var err: String? = null; private set
     var loading = false; private set
     val sel = LinkedHashSet<String>()
+    /** Active name search below [path] (null = normal folder listing). Result names are relative to [path], so vjoin(path, name) is always the real file. */
+    var query: String? = null; private set
+    /** The search stopped at its result / time limit. */
+    var queryPartial = false; private set
+    private var sgen = 0
 
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newCachedThreadPool { r -> Thread(r, "fsctl").also { it.isDaemon = true } }
@@ -65,7 +70,7 @@ class FsController(private val ui: Listener) {
     fun openDev(id: String) = nav(id, "/", push = true)
     /** Jump to any device + folder (favourites, quick folders, history). */
     fun open(d: String, p: String) = nav(d, vnorm(p), push = true)
-    fun refresh() = load(keepSel = true)
+    fun refresh() { val q = query; if (q != null) search(q) else load(keepSel = true) }
 
     /** Parent folder; inside an archive "/a.zip!/x" goes to "/a.zip!", and the archive root "/a.zip!" to the folder holding the file (ui.html pdir). */
     fun parent(p: String = path): String {
@@ -86,7 +91,43 @@ class FsController(private val ui: Listener) {
     private fun nav(d: String, p: String, push: Boolean) {
         if (push && (d != dev || p != path)) { back.add(dev to path); if (back.size > 100) back.removeAt(0) }
         dev = d; path = p
+        query = null; queryPartial = false; sgen++     // a search ends with every navigation
         if (sel.isNotEmpty()) { sel.clear(); ui.onSelection() }
+        load(keepSel = false)
+    }
+
+    /** Recursive name search below the current folder (any device: this phone, another phone, SMB, archives). Empty text = back to the folder. */
+    fun search(q: String) {
+        val t = q.trim()
+        if (t.isEmpty()) { clearSearch(); return }
+        query = t
+        retry?.let { main.removeCallbacks(it) }; retry = null
+        gen++                                         // drops a folder listing still on its way
+        val g = ++sgen; val d = dev; val p = path
+        if (sel.isNotEmpty()) { sel.clear(); ui.onSelection() }
+        loading = true
+        io.execute {
+            val res = try { Result.success(Jobs.ep(d).search(p, t)) } catch (e: Throwable) { Result.failure(e) }
+            main.post {
+                if (g != sgen || query != t || d != dev || p != path) return@post
+                loading = false
+                res.onSuccess { r ->
+                    val base = if (p == "/") "" else vnorm(p)
+                    items = r.items.map { x ->
+                        val full = x.path ?: vjoin(p, x.name)
+                        x.copy(name = if (base.isNotEmpty() && full.startsWith("$base/")) full.substring(base.length + 1) else full.trimStart('/'))
+                    }
+                    queryPartial = r.partial; err = null
+                    ui.onList()
+                }.onFailure { e -> ui.onToast("\u26A0 " + errText(e), true); ui.onList() }
+            }
+        }
+    }
+
+    /** Leave the search: the folder listing comes back. */
+    fun clearSearch() {
+        if (query == null) return
+        query = null; queryPartial = false; sgen++
         load(keepSel = false)
     }
 

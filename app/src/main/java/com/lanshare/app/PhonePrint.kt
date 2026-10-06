@@ -72,25 +72,7 @@ class PhonePrint(private val act: Activity) {
     /** One file to print: display [name] + a way to read its bytes (runs on a worker thread). Used by the native browser (no local HTTP round-trip). */
     class Src(val name: String, val open: () -> java.io.InputStream)
 
-    /** json = {items:[{name, url}]}; urls must point at the app's own local server. */
-    fun start(json: String) {
-        pool.execute {
-            try {
-                val arr = JSONObject(json).getJSONArray("items")
-                val l = ArrayList<Src>()
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    val url = o.getString("url")
-                    val host = URL(url).host
-                    if (host != "127.0.0.1" && host != "localhost") throw IOException("bad address")
-                    l.add(Src(o.optString("name", "file")) { URL(url).openStream() })
-                }
-                prepare(l)
-            } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
-        }
-    }
-
-    /** Native entry: print these files as ONE Android print job (same rules as [start]). Safe to call from the main thread. */
+    /** Native entry: print these files as ONE Android print job (as ONE job). Safe to call from the main thread. */
     fun startSources(items: List<Src>) {
         pool.execute {
             try { prepare(items) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }

@@ -109,16 +109,8 @@ class MainActivity : Activity() {
         /** Native side drawer (NlDrawer.kt): "0" = closed, "h" = hidden behind a page dialog, else the JSON model from ui.html nlDrPush(). */
         @JavascriptInterface fun nlDrawerOk(): Boolean = NlDrawer.ENABLED
         @JavascriptInterface fun nlDrawer(json: String) { runOnUiThread { try { drawer.set(json) } catch (_: Throwable) { } } }
-        /** Print a file on this phone through the Android print system (pdf, images, text). */
-        @JavascriptInterface fun printHere(url: String, name: String) {
-            phonePrint.start(JSONObject().put("items", org.json.JSONArray().put(JSONObject().put("url", url).put("name", name))).toString())
-        }
-        /** All selected files as ONE print job. [json] = {items:[{name, url}]} */
-        @JavascriptInterface fun printHereMany(json: String) { phonePrint.start(json) }
     }
     private var pendingShare: List<String>? = null
-    private var pendingPrint: List<String>? = null
-    private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
@@ -146,7 +138,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runPrint() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -190,7 +182,6 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        getSharedPreferences("ls_print_ui", MODE_PRIVATE).edit().putBoolean("nativeLast", false).apply()   // PcPrintService opens the screen that was used last
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
     }
 
@@ -198,20 +189,12 @@ class MainActivity : Activity() {
 
     /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
     private fun handleShare(i: Intent?) {
-        if (i != null && i.action == ACTION_PRINT_SHARED) {   // from PcPrintService: a document printed from another app
-            val n = i.getStringArrayExtra("names")?.toList().orEmpty()
-            getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0))
-            i.action = null
-            if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
-            return
-        }
         if (i == null || (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE)) return
         @Suppress("DEPRECATION")
         val uris: List<Uri> = if (i.action == Intent.ACTION_SEND)
             listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
         if (uris.isEmpty()) return
-        val toPrint = i.component?.className?.endsWith("SendShareAlias") != true   // plain "LANShare" share entry = print; only the "LANShare Send" entry sends
         i.action = null   // consume once
         Thread {
             var n = 0
@@ -229,19 +212,10 @@ class MainActivity : Activity() {
                 n++; names.add(f.name)
             } catch (_: Exception) {}
             runOnUiThread {
-                if (n > 0) { if (toPrint) { pendingPrint = names; runPrint() } else { pendingShare = names; runShare() } }
+                if (n > 0) { pendingShare = names; runShare() }   // printing moved to the native screen (FilesActivity); only the "LANShare Send" entry reaches this app
                 else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
             }
         }.start()
-    }
-
-    /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */
-    private fun runPrint() {
-        val names = pendingPrint ?: return
-        if (!pageReady) return
-        pendingPrint = null
-        val arr = org.json.JSONArray(names).toString()
-        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr)", null) }, 1200)
     }
 
     /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */
@@ -409,7 +383,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) { Toast.makeText(this, "Cannot open: ${e.message}", Toast.LENGTH_LONG).show() }
     }
 
-    // ---- print on this phone (Android print framework: Wi-Fi/Mopria/vendor plugins/Save as PDF) ----
+    // ---- (printing lives in the native screen now: NativePrint / NativePrintPc / PrintPv) ----
     private fun toastUi(t: String) = runOnUiThread { Toast.makeText(this, t, Toast.LENGTH_LONG).show() }
 
     @SuppressLint("BatteryLife")

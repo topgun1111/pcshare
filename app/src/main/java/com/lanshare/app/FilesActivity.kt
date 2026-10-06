@@ -98,6 +98,10 @@ class FilesActivity : Activity(), FsController.Listener {
     private lateinit var tvClip: TextView
     private lateinit var dock: HorizontalScrollView
     private lateinit var dockRow: LinearLayout
+    private lateinit var searchRow: LinearLayout
+    private lateinit var etSearch: EditText
+    private var lastQuery: String? = null
+    private val searchRun = Runnable { runSearch() }
 
     // ---- list model
     private var rows: List<NlRow> = emptyList()
@@ -109,6 +113,9 @@ class FilesActivity : Activity(), FsController.Listener {
     private val saved = HashMap<String, Parcelable>()   // scroll position per folder
     private val ad = Ad()
     private val printer by lazy { NativePrint(this, ctl, c) { msg -> onToast(msg, false) } }
+    private val settings by lazy {
+        NativeSettings(this, c, { ctl.dev }, { ctl.openDev("local") }, { rebuild(); header() }, { m, l -> onToast(m, l) }, { })
+    }
 
     // ---- thumbnails
     private class Th(val bm: Bitmap, val dur: String?)
@@ -146,28 +153,56 @@ class FilesActivity : Activity(), FsController.Listener {
             }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
-                if (ok) { ctl.go("/"); handlePrintIntent(intent) } else showEmpty("Server did not start. Close and reopen the app.\n" + (err ?: "timeout"))
+                if (ok) { ctl.go("/"); handleIntent(intent) } else showEmpty("Server did not start. Close and reopen the app.\n" + (err ?: "timeout"))
             }
         }.also { it.isDaemon = true }.start()
     }
 
     @Deprecated("ok")
-    override fun onBackPressed() { if (!ctl.back()) finish() }
-
-    override fun onResume() {
-        super.onResume()
-        getSharedPreferences("ls_print_ui", MODE_PRIVATE).edit().putBoolean("nativeLast", true).apply()   // PcPrintService opens the screen that was used last
+    override fun onBackPressed() {
+        if (ctl.sel.isEmpty() && searchRow.visibility == View.VISIBLE) { closeSearch(); return }   // selection first, then the search, then folders
+        if (!ctl.back()) finish()
     }
 
-    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handlePrintIntent(i) }
+    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleIntent(i) }
 
-    /** A document printed from another app through Android's print dialog (PcPrintService): open the print flow for it. */
-    private fun handlePrintIntent(i: Intent?) {
-        if (i == null || i.action != MainActivity.ACTION_PRINT_SHARED) return
-        val names = i.getStringArrayExtra("names")?.toList().orEmpty()
-        try { getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0)) } catch (_: Throwable) { }
-        i.action = null
-        if (names.isNotEmpty()) printer.startShared(names)
+    /**
+     * Print intake: (1) a document printed from another app through Android's print dialog (PcPrintService, files already in /LANShare Shared),
+     * (2) files shared to LANShare from any app's share sheet (ACTION_SEND / SEND_MULTIPLE): copied to /LANShare Shared, then the same print flow.
+     */
+    private fun handleIntent(i: Intent?) {
+        if (i == null) return
+        if (i.action == MainActivity.ACTION_PRINT_SHARED) {
+            val names = i.getStringArrayExtra("names")?.toList().orEmpty()
+            try { getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0)) } catch (_: Throwable) { }
+            i.action = null
+            if (names.isNotEmpty()) printer.startShared(names)
+            return
+        }
+        if (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE) return
+        @Suppress("DEPRECATION")
+        val uris: List<Uri> = if (i.action == Intent.ACTION_SEND) listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+        i.action = null   // consume once
+        if (uris.isEmpty()) return
+        Thread {
+            val names = ArrayList<String>()
+            val dir = java.io.File(Environment.getExternalStorageDirectory(), "LANShare Shared").apply { mkdirs() }
+            for (u in uris) try {
+                var name = "shared_" + System.currentTimeMillis()
+                contentResolver.query(u, null, null, null, null)?.use { q ->
+                    if (q.moveToFirst()) q.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { name = q.getString(it) ?: name }
+                }
+                var f = java.io.File(dir, name.replace("/", "_")); var k = 1
+                while (f.exists()) { f = java.io.File(dir, "${f.nameWithoutExtension} ($k)${if (f.extension.isEmpty()) "" else "." + f.extension}"); k++ }
+                contentResolver.openInputStream(u)?.use { ins -> f.outputStream().use { ins.copyTo(it) } }
+                names.add(f.name)
+            } catch (_: Exception) { }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (names.isNotEmpty()) printer.startShared(names) else onToast("Could not read the shared file(s)", true)
+            }
+        }.also { it.isDaemon = true }.start()
     }
 
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
@@ -210,6 +245,7 @@ class FilesActivity : Activity(), FsController.Listener {
         titles.addView(tvTitle); titles.addView(tvSub)
         topBar.addView(btnUp, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        topBar.addView(button("\uD83D\uDD0D") { openSearch() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(button("\u2605") { places() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(button("\u21C5") { sortDialog() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(button("\u25A6") { viewDialog() }, LinearLayout.LayoutParams(-2, -1))
@@ -224,6 +260,26 @@ class FilesActivity : Activity(), FsController.Listener {
         barFrame.addView(topBar, FrameLayout.LayoutParams(-1, -1))
         barFrame.addView(selBar, FrameLayout.LayoutParams(-1, -1))
         root.addView(barFrame, LinearLayout.LayoutParams(-1, dp(56)))
+
+        // search row (hidden until the magnifier is tapped): recursive name search below the open folder
+        searchRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setBackgroundColor(c.cont); setPadding(dp(14), 0, 0, 0) }
+        etSearch = EditText(this).apply {
+            hint = "Search this folder and below"; setSingleLine(); setTextColor(c.fg); setHintTextColor(c.mut); background = null
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setOnEditorActionListener { _, a, _ ->
+                if (a == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { ui.removeCallbacks(searchRun); runSearch(); hideKeyboard(); true } else false
+            }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) { ui.removeCallbacks(searchRun); ui.postDelayed(searchRun, 600) }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, n: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, n: Int) {}
+            })
+        }
+        searchRow.addView(etSearch, LinearLayout.LayoutParams(0, -1, 1f))
+        searchRow.addView(button("\u2715", sp = 18f) { closeSearch() }, LinearLayout.LayoutParams(-2, -1))
+        root.addView(searchRow, LinearLayout.LayoutParams(-1, dp(48)))
 
         // breadcrumbs + summary
         val pathRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -282,14 +338,16 @@ class FilesActivity : Activity(), FsController.Listener {
             if (curKey.isNotEmpty()) rv.layoutManager?.onSaveInstanceState()?.let { saved[curKey] = it }
             if (ctl.err == null) { Prefs.histPush(ctl.dev, ctl.path); if (ctl.dev == "local") Prefs.used = ctl.used }
         }
+        if (key != curKey && searchRow.visibility == View.VISIBLE) hideSearchUi()   // navigated away (e.g. tapped a folder in the results)
         rebuild()
+        if (ctl.query != lastQuery) { lastQuery = ctl.query; rv.scrollToPosition(0) }
         if (key != curKey) {
             curKey = key
             val st = saved[key]
             if (st != null) rv.layoutManager?.onRestoreInstanceState(st) else rv.scrollToPosition(0)
         }
         srl.isRefreshing = false
-        showEmpty(if (rows.isNotEmpty()) null else if (ctl.err != null) "\u26A0 " + ctl.err + "\nRetrying\u2026" else "This folder is empty")
+        showEmpty(if (rows.isNotEmpty()) null else if (ctl.err != null) "\u26A0 " + ctl.err + "\nRetrying\u2026" else if (ctl.query != null) "No matches" else "This folder is empty")
         header()
     }
 
@@ -379,6 +437,10 @@ class FilesActivity : Activity(), FsController.Listener {
         val sum = NlModel.headSum(ctl.items, Prefs.hidden).first
         val u = ctl.used
         tvSum.text = sum + (if (u != null) " \u00b7 $u% used" else "")
+        ctl.query?.let { q ->
+            tvSub.text = ctl.items.size.toString() + " result" + (if (ctl.items.size == 1) "" else "s") + " for \"" + q + "\"" + (if (ctl.queryPartial) " (stopped at the limit)" else "")
+            tvSub.visibility = View.VISIBLE
+        }
     }
 
     private fun renderDock() {
@@ -392,9 +454,11 @@ class FilesActivity : Activity(), FsController.Listener {
         if (sel.isNotEmpty()) {
             if (arch || sel.any { ctl.isArc(it) }) b("Extract") { ctl.extract() }
             b("Copy") { ctl.copy(false) }
-            if (!arch) { b("Cut") { ctl.copy(true) }; b("Zip") { askZip() } }
+            val srch = ctl.query != null   // results come from several folders: zip / rename work on the open folder only
+            if (!arch) { b("Cut") { ctl.copy(true) }; if (!srch) b("Zip") { askZip() } }
             if (hasClip && !arch) b("Paste") { ctl.paste() }
-            if (sel.size == 1 && !arch) b("Rename") { askRename(sel[0].name) }
+            if (!arch) b("Send to\u2026") { askSend() }
+            if (sel.size == 1 && !arch && !srch) b("Rename") { askRename(sel[0].name) }
             if (sel.size == 1) b("Details") { details(sel[0].name) }
             if (sel.size == 1 && !sel[0].dir) b("Open with") { FileOpen.external(this, ctl.dev, vjoin(ctl.path, sel[0].name), sel[0].name, true) }
             if (sel.none { it.dir }) b("Print") { printer.start() }   // files only, like ui.html
@@ -404,6 +468,50 @@ class FilesActivity : Activity(), FsController.Listener {
         val showClip = hasClip && sel.isEmpty() && !arch
         clipBar.visibility = if (showClip) View.VISIBLE else View.GONE
         if (showClip) tvClip.text = (if (Clip.op == "cut") "Cut " else "Copied ") + Clip.paths.size + " item(s) from " + devName(Clip.dev ?: "local")
+    }
+
+    // ---------------------------------------------------------------- search
+    private fun openSearch() {
+        searchRow.visibility = View.VISIBLE
+        etSearch.requestFocus()
+        try { getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(etSearch, 0) } catch (_: Throwable) { }
+    }
+
+    private fun hideKeyboard() {
+        try { getSystemService(android.view.inputmethod.InputMethodManager::class.java).hideSoftInputFromWindow(etSearch.windowToken, 0) } catch (_: Throwable) { }
+    }
+
+    private fun runSearch() {
+        val q = etSearch.text.toString().trim()
+        if (q.isEmpty()) { ctl.clearSearch(); return }
+        showEmpty("Searching\u2026")
+        ctl.search(q)
+    }
+
+    /** Close the search row only (the controller already left the search, e.g. after a navigation). */
+    private fun hideSearchUi() {
+        etSearch.setText(""); ui.removeCallbacks(searchRun)
+        searchRow.visibility = View.GONE
+        hideKeyboard()
+    }
+
+    /** The x button / back: leave the search, the folder comes back. */
+    private fun closeSearch() {
+        hideSearchUi()
+        ctl.clearSearch()
+        showEmpty(null)
+    }
+
+    // ---------------------------------------------------------------- send to another device
+    /** "Send to...": the selection goes to the other device's storage root (its INBOX), same job + progress as copy. */
+    private fun askSend() {
+        if (ctl.selItems().isEmpty()) return
+        val ids = ArrayList<String>(); val names = ArrayList<String>()
+        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty() && id != ctl.dev) { ids.add(id); names.add(s.optString("name").ifEmpty { id } + "  (SMB share)") } } } catch (_: Throwable) { }
+        try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok && p.id != ctl.dev) { ids.add(p.id); names.add(p.name) } } } catch (_: Throwable) { }
+        if (ids.isEmpty()) { onToast("No other devices found yet - open the same app on the other phone / PC on this Wi-Fi", true); return }
+        AlertDialog.Builder(this).setTitle("Send to\u2026").setItems(names.toTypedArray()) { _, i -> ctl.send(ids[i]) }
+            .setNegativeButton("Cancel", null).show()
     }
 
     // ---------------------------------------------------------------- dialogs
@@ -471,12 +579,14 @@ class FilesActivity : Activity(), FsController.Listener {
         m.menu.add(0, 2, 1, "Refresh")
         m.menu.add(0, 3, 2, if (Prefs.isFav(ctl.dev, ctl.path)) "Remove from favourites" else "Add to favourites")
         m.menu.add(0, 4, 3, "Theme: " + Prefs.theme)
+        m.menu.add(0, 5, 4, "Settings")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> askMkdir()
                 2 -> ctl.refresh()
                 3 -> Prefs.toggleFav(ctl.dev, ctl.path, devName(ctl.dev))
                 4 -> { Prefs.theme = when (Prefs.theme) { "light" -> "dark"; "dark" -> "auto"; else -> "light" }; recreate() }
+                5 -> settings.show()
             }
             true
         }
