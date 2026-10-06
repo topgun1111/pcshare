@@ -129,5 +129,6 @@ object Prefs {
         while (l.size > 40) l.removeAt(l.size - 1)
         saveLocs("ls_his", l)
     }
+    fun removeHistory(dev: String, path: String) { saveLocs("ls_his", history().filterNot { it.dev == dev && it.path == path }) }
     fun clearHistory() { s().edit().remove("ls_his").apply() }
 }

@@ -47,6 +47,7 @@ import com.lanshare.app.core.Smb
 import com.lanshare.app.core.Thumbs
 import com.lanshare.app.core.VideoThumbs
 import com.lanshare.app.core.errText
+import com.lanshare.app.core.viaOf
 import com.lanshare.app.core.isArcName
 import com.lanshare.app.core.vjoin
 import java.util.concurrent.Executors
@@ -62,9 +63,9 @@ import com.lanshare.app.core.Cfg as CoreCfg
  * selection, copy / cut / paste / delete / rename / new folder / zip / extract / details / open with, progress + cancel, viewers
  * (video / pictures / PDF), places (quick folders, favourites, recent, devices), theme.
  * Print (see NativePrint / NativePrintPc / PrintPv): "Print on..." picker with device badges, this phone / Wi-Fi printer / PC, options dialogs with live
- * page preview, job progress, documents printed from other apps (PcPrintService -> ACTION_PRINT_SHARED), "Printers" entry in Go to.
+ * page preview, job progress, documents printed from other apps (PcPrintService -> ACTION_PRINT_SHARED), "Printers" entry in the drawer.
  * Also done since: search, printing (PC and Wi-Fi printers share the FinePrint-style dialog; the phone lays out for Wi-Fi), settings, SMB dialog,
- * "Send to...", share-sheet print intake. Add IP: "Go to" > Add IP. Not yet: split screen.
+ * "Send to...", share-sheet print intake. Add IP: "+ IP" chip or the drawer footer. Device chips under the top bar, side drawer in NativeDrawer.kt (menu button / left-edge swipe). Not yet: split screen.
  * NOT compiled / NOT device-tested.
  */
 class FilesActivity : Activity(), FsController.Listener {
@@ -101,6 +102,13 @@ class FilesActivity : Activity(), FsController.Listener {
     private lateinit var dock: HorizontalScrollView
     private lateinit var dockRow: LinearLayout
     private lateinit var searchRow: LinearLayout
+    private lateinit var deviceRow: LinearLayout
+    private lateinit var deviceScroll: HorizontalScrollView
+    private var devSig = ""
+    private lateinit var drawer: NativeDrawer
+    private val devPoll = object : Runnable {
+        override fun run() { renderDevices(); drawerSig(); ui.postDelayed(this, 1500) }
+    }
     private lateinit var etSearch: EditText
     private var lastQuery: String? = null
     private val searchRun = Runnable { runSearch() }
@@ -162,6 +170,7 @@ class FilesActivity : Activity(), FsController.Listener {
 
     @Deprecated("ok")
     override fun onBackPressed() {
+        if (drawer.isOpen) { drawer.close(); return }
         if (ctl.sel.isEmpty() && searchRow.visibility == View.VISIBLE) { closeSearch(); return }   // selection first, then the search, then folders
         if (!ctl.back()) finish()
     }
@@ -210,6 +219,8 @@ class FilesActivity : Activity(), FsController.Listener {
         }.also { it.isDaemon = true }.start()
     }
 
+    override fun onResume() { super.onResume(); ui.removeCallbacks(devPoll); ui.post(devPoll) }
+    override fun onPause() { ui.removeCallbacks(devPoll); super.onPause() }
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
 
     private fun askPermissions() {
@@ -248,10 +259,10 @@ class FilesActivity : Activity(), FsController.Listener {
         tvTitle = text("", 18f, c.fg, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         tvSub = text("", 12f, c.mut).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         titles.addView(tvTitle); titles.addView(tvSub)
+        topBar.addView(button("\u2630", sp = 20f) { drawer.open() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(btnUp, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
         topBar.addView(button("\uD83D\uDD0D") { openSearch() }, LinearLayout.LayoutParams(-2, -1))
-        topBar.addView(button("\u2605") { places() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(button("\u21C5") { sortDialog() }, LinearLayout.LayoutParams(-2, -1))
         topBar.addView(button("\u25A6") { viewDialog() }, LinearLayout.LayoutParams(-2, -1))
         val more = button("\u22EE", sp = 22f) { }
@@ -285,6 +296,12 @@ class FilesActivity : Activity(), FsController.Listener {
         searchRow.addView(etSearch, LinearLayout.LayoutParams(0, -1, 1f))
         searchRow.addView(button("\u2715", sp = 18f) { closeSearch() }, LinearLayout.LayoutParams(-2, -1))
         root.addView(searchRow, LinearLayout.LayoutParams(-1, dp(48)))
+
+        // device strip: the open device, "Devices N" picker, + IP, rescan
+        deviceScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; setBackgroundColor(c.bg) }
+        deviceRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), 0, dp(10), 0) }
+        deviceScroll.addView(deviceRow, FrameLayout.LayoutParams(-2, -1))
+        root.addView(deviceScroll, LinearLayout.LayoutParams(-1, dp(44)))
 
         // breadcrumbs + summary
         val pathRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -330,7 +347,12 @@ class FilesActivity : Activity(), FsController.Listener {
         dockRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         dock.addView(dockRow)
         root.addView(dock, LinearLayout.LayoutParams(-1, dp(52)))
-        setContentView(root)
+        drawer = NativeDrawer(this, c, ctl, { devName(it) }, { t, i, o, f -> input(t, i, o) { f(it) } },
+            { askAddIp() }, { settings.smb() }, { settings.show() }, { printer.showPrinters() }, { onToast(it, false) })
+        val frame = FrameLayout(this)
+        frame.addView(root, FrameLayout.LayoutParams(-1, -1))
+        drawer.attach(frame)
+        setContentView(frame)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
@@ -354,6 +376,7 @@ class FilesActivity : Activity(), FsController.Listener {
         srl.isRefreshing = false
         showEmpty(if (rows.isNotEmpty()) null else if (ctl.err != null) "\u26A0 " + ctl.err + "\nRetrying\u2026" else if (ctl.query != null) "No matches" else "This folder is empty")
         header()
+        renderDevices(); drawer.refresh()
     }
 
     override fun onSelection() {
@@ -429,7 +452,7 @@ class FilesActivity : Activity(), FsController.Listener {
         tvTitle.text = if (p == "/") dn else Prefs.baseName(p)
         tvSub.text = if (p == "/") "" else dn
         tvSub.visibility = if (p == "/") View.GONE else View.VISIBLE
-        btnUp.visibility = if (p == "/") View.INVISIBLE else View.VISIBLE
+        btnUp.visibility = if (p == "/") View.GONE else View.VISIBLE
         crumbs.removeAllViews()
         val segs = p.split('/').filter { it.isNotEmpty() }
         crumbs.addView(button(dn, c.ac, 13f) { ctl.go("/") }, LinearLayout.LayoutParams(-2, -1))
@@ -652,19 +675,64 @@ class FilesActivity : Activity(), FsController.Listener {
         m.show()
     }
 
-    /** Devices, quick folders, favourites and recent folders in one list (stands in for the side drawer). */
-    private fun places() {
-        val labels = ArrayList<String>(); val acts = ArrayList<() -> Unit>()
-        fun add(l: String, f: () -> Unit) { labels.add(l); acts.add(f) }
-        add("\uFF0B Add IP") { askAddIp() }
-        add("\uD83D\uDDA8 Printers") { printer.showPrinters() }   // view-only, like the drawer entry of ui.html
-        add("\u25A3 This device (" + CoreCfg.name + ")") { ctl.openDev("local") }
-        try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok) add("\u25A3 " + p.name) { ctl.openDev(p.id) } } } catch (_: Throwable) { }
-        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty()) add("\u25A3 " + s.optString("name").ifEmpty { id }) { ctl.openDev(id) } } } catch (_: Throwable) { }
-        Prefs.quick().forEach { q -> add("\u25B8 " + q.name) { ctl.open(q.dev, q.path) } }
-        Prefs.favs().forEach { q -> add("\u2605 " + q.name + (if (q.dn.isNotEmpty()) "  (" + q.dn + ")" else "")) { ctl.open(q.dev, q.path) } }
-        Prefs.history().take(15).forEach { q -> add("\u21BA " + q.name + (if (q.dev != "local") "  (" + devName(q.dev) + ")" else "")) { ctl.open(q.dev, q.path) } }
-        AlertDialog.Builder(this).setTitle("Go to").setItems(labels.toTypedArray()) { _, i -> acts[i]() }.show()
+    // ---------------------------------------------------------------- device strip
+    private class DevInfo(val id: String, val name: String, val ok: Boolean, val via: String)
+
+    private fun peerList(): List<DevInfo> {
+        val out = ArrayList<DevInfo>()
+        try { Core.discOrNull()?.list()?.forEach { out.add(DevInfo(it.id, it.name, it.ok, viaOf(it.ip))) } } catch (_: Throwable) { }
+        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty()) out.add(DevInfo(id, s.optString("name").ifEmpty { id }, true, "SMB")) } } catch (_: Throwable) { }
+        return out
+    }
+
+    private fun chip(label: String, on: Boolean, lead: View? = null, f: () -> Unit): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(14), 0)
+        background = android.graphics.drawable.GradientDrawable().also { it.cornerRadius = dp(16).toFloat(); it.setColor(if (on) c.sel else c.cont) }
+        isClickable = true; setOnClickListener { f() }
+        if (lead != null) addView(lead, LinearLayout.LayoutParams(dp(8), dp(8)).also { it.rightMargin = dp(8) })
+        addView(text(label, 13f, if (on) c.ac else c.fg, true).apply { maxLines = 1 })
+    }
+
+    private fun renderDevices() {
+        val peers = peerList()
+        val cur = peers.firstOrNull { it.id == ctl.dev }
+        val sig = ctl.dev + "|" + peers.joinToString(";") { it.id + it.name + it.ok + it.via } + "|" + CoreCfg.name
+        if (sig == devSig) return
+        devSig = sig
+        deviceRow.removeAllViews()
+        fun dot(warn: Boolean) = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().also { it.shape = android.graphics.drawable.GradientDrawable.OVAL; it.setColor(if (warn) c.warn else 0xFF2E7D32.toInt()) }
+        }
+        val lp = { LinearLayout.LayoutParams(-2, dp(32)).also { it.rightMargin = dp(8) } }
+        // only the open device is a chip; every other device lives behind "Devices"
+        if (ctl.dev == "local") deviceRow.addView(chip("This device", true) { }, lp())
+        else deviceRow.addView(chip(cur?.name ?: devName(ctl.dev), true, dot(cur?.ok == false)) { }, lp())
+        val others = peers.filter { it.id != ctl.dev }
+        val nOther = others.size + (if (ctl.dev != "local") 1 else 0)
+        if (nOther > 0) deviceRow.addView(chip("Devices  $nOther", false) { devPicker() }, lp())
+        deviceRow.addView(chip("\uFF0B IP", false) { askAddIp() }, lp())
+        deviceRow.addView(chip("\u21BB", false) { onToast("Scanning\u2026", false); Thread { try { Core.rescan() } catch (_: Throwable) { } }.start() }, lp())
+        if (peers.isEmpty()) deviceRow.addView(text("Searching for devices\u2026 tap \u21BB or + IP", 12f, c.mut).apply { setPadding(dp(4), 0, dp(8), 0) })
+    }
+
+    /** Re-draw the open drawer when the device list changed (the strip already compared its own signature). */
+    private var drSig = ""
+    private fun drawerSig() {
+        if (!drawer.isOpen) return
+        val s = peerList().joinToString(";") { it.id + it.ok }
+        if (s != drSig) { drSig = s; drawer.refresh() }
+    }
+
+    private fun devPicker() {
+        val ids = ArrayList<String>(); val labels = ArrayList<String>()
+        if (ctl.dev != "local") { ids.add("local"); labels.add(CoreCfg.name + "  (this device)") }
+        peerList().filter { it.id != ctl.dev }.forEach {
+            ids.add(it.id)
+            labels.add(it.name + (if (it.via.isNotEmpty()) "  \u00b7 " + it.via else "") + (if (!it.ok) "  \u00b7 offline" else ""))
+        }
+        if (ids.isEmpty()) { onToast("No other devices yet", false); return }
+        AlertDialog.Builder(this).setTitle("Devices").setItems(labels.toTypedArray()) { _, i -> ctl.openDev(ids[i]) }
+            .setNegativeButton("Cancel", null).show()
     }
 
     // ---------------------------------------------------------------- adapter + thumbnails

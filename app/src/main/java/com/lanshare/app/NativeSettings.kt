@@ -108,7 +108,7 @@ class NativeSettings(
     }
 
     // ---------------------------------------------------------------- SMB (PC drives)
-    private fun smb() {
+    fun smb() {
         val col = box()
         col.addView(tv("Add a PC or NAS: enter its IP address (e.g. 192.168.1.20) and a Windows account on it. All its drives (C\$, D\$ \u2026) and shared folders are listed; the PC appears next to your devices at the top. Drives like C\$ need an administrator account.",
             13f, c.mut).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
