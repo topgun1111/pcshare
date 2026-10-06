@@ -153,6 +153,10 @@ class TextEditorActivity : Activity() {
     private lateinit var locTv: TextView
     private lateinit var titleEt: EditText
     private lateinit var body: EditText
+    private lateinit var preview: TextView      // formatted Markdown view (read-only), swaps places with [body]
+    private lateinit var modeBtn: TextView
+    private var previewOn = false
+    private var autoPrev = true                 // first load of a .md file opens in preview
     private lateinit var banner: TextView
     private lateinit var bar: LinearLayout
     private lateinit var status: TextView
@@ -325,10 +329,13 @@ class TextEditorActivity : Activity() {
                 }
             })
         }
+        preview = TextView(this).apply {
+            visibility = View.GONE; setTextIsSelectable(true); setPadding(0, dp(4), 0, dp(24)); setLineSpacing(0f, 1.2f)
+        }
         column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(2), dp(20), dp(8))
-            addView(locTv); addView(titleEt); addView(body)
-            setOnClickListener { if (!readOnly) { body.requestFocus(); body.setSelection(body.length()); (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(body, 0) } }
+            addView(locTv); addView(titleEt); addView(body); addView(preview)
+            setOnClickListener { if (!readOnly && !previewOn) { body.requestFocus(); body.setSelection(body.length()); (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(body, 0) } }
         }
         scroll = ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = false; addView(column, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -338,13 +345,14 @@ class TextEditorActivity : Activity() {
         sizeBtn = tvBtn("Aa", 17f).apply { typeface = Fnt.semi(); setOnClickListener { sizeMenu(it) } }
         undoBtn = tvBtn("↶", 22f).apply { setOnClickListener { doUndo() } }
         redoBtn = tvBtn("↷", 22f).apply { setOnClickListener { doRedo() } }
+        modeBtn = tvBtn("\uD83D\uDC41", 20f).apply { setOnClickListener { setPreview(!previewOn) }; visibility = View.GONE }
         status = TextView(this).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = Fnt.med(); gravity = Gravity.CENTER_VERTICAL or Gravity.END
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), 0, dp(12), 0)
         }
         bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(2), dp(4), dp(2))
-            addView(palBtn); addView(sizeBtn); addView(undoBtn); addView(redoBtn)
+            addView(palBtn); addView(sizeBtn); addView(undoBtn); addView(redoBtn); addView(modeBtn)
             addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -358,6 +366,33 @@ class TextEditorActivity : Activity() {
         body.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
         body.setLineSpacing(0f, if (mono) 1.05f else 1.15f)
         titleEt.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp + 6f)
+        preview.typeface = face
+        preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        if (previewOn) refreshPreview()
+    }
+
+    private fun isMd(): Boolean { val p = path?.lowercase() ?: return false; return p.endsWith(".md") || p.endsWith(".markdown") || p.endsWith(".mdx") }
+
+    private fun refreshPreview() {
+        preview.setTextColor(textColor)
+        preview.text = MdRender.render(body.text.toString(), textColor, night, resources.displayMetrics.density)
+    }
+
+    /** Formatted (Markdown) view of the note instead of the raw text. The raw text stays in [body]; nothing is changed or saved by this. */
+    private fun setPreview(on: Boolean) {
+        if (on && !loaded) return
+        previewOn = on
+        if (on) {
+            hideFind()
+            try { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(body.windowToken, 0) } catch (_: Throwable) {}
+            refreshPreview()
+            preview.visibility = View.VISIBLE; body.visibility = View.GONE
+            modeBtn.text = "\u270E"
+        } else {
+            preview.visibility = View.GONE; body.visibility = View.VISIBLE
+            modeBtn.text = "\uD83D\uDC41"
+        }
+        updateButtons()
     }
 
     private fun applyTheme() {
@@ -370,7 +405,7 @@ class TextEditorActivity : Activity() {
         window.statusBarColor = bg; window.navigationBarColor = bg
         val light = ColorUtils.calculateLuminance(bg) > 0.5
         WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
-        for (t in listOf(back, saveBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn)) t.setTextColor(textColor)
+        for (t in listOf(back, saveBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
         for (t in listOf(locTv, status, findCount)) t.setTextColor(sub)
         banner.setTextColor(textColor)
@@ -378,6 +413,7 @@ class TextEditorActivity : Activity() {
         findBox.setBackgroundColor(ColorUtils.setAlphaComponent(textColor, 18))
         replBtn.setTextColor(textColor)
         spin.indeterminateTintList = android.content.res.ColorStateList.valueOf(textColor)
+        if (previewOn) refreshPreview()
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -386,8 +422,9 @@ class TextEditorActivity : Activity() {
     private fun updateButtons() {
         saveBtn.visibility = if (dirty && !readOnly && loaded) View.VISIBLE else View.GONE
         val ed = !readOnly && loaded
-        undoBtn.visibility = if (ed) View.VISIBLE else View.GONE
-        redoBtn.visibility = if (ed) View.VISIBLE else View.GONE
+        undoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
+        redoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
+        modeBtn.visibility = if (loaded) View.VISIBLE else View.GONE
         undoBtn.alpha = if (undo.isNotEmpty() || snapPending) 1f else 0.3f
         redoBtn.alpha = if (redo.isNotEmpty()) 1f else 0.3f
     }
@@ -484,6 +521,7 @@ class TextEditorActivity : Activity() {
                     dirty = false
                     if (readOnly) makeReadOnly()
                     updateStatus(); updateButtons()
+                    if (autoPrev) { autoPrev = false; if (isMd()) setPreview(true) } else if (previewOn) refreshPreview()
                 }
             } catch (x: Throwable) {
                 ui.post { if (!isDestroyed) { busy(false); failLoad("Cannot open: ${errText(x)}") } }
@@ -722,6 +760,7 @@ class TextEditorActivity : Activity() {
 
     // ---------------------------------------------------------------- find & replace
     private fun showFind() {
+        if (previewOn) setPreview(false)
         findBox.visibility = View.VISIBLE
         (findBox.getChildAt(1)).visibility = if (readOnly) View.GONE else View.VISIBLE
         val sel = body.selectionStart; val e = body.selectionEnd
