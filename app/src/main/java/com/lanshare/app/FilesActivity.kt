@@ -56,7 +56,7 @@ import com.lanshare.app.core.Cfg as CoreCfg
 /**
  * The fully native file browser: plain Android views + FsController (state, navigation, selection, file operations) + Prefs + the
  * existing leaf row views (NlRowView / NlGridView) and the row pipeline (NlModel). No WebView, no JS bridge, no overlay.
- * Started from the second launcher icon "LANShare Native" while the WebView app still exists next to it.
+ * Main launcher screen ("LANShare", .NativeAlias); the old WebView app and ui.html are gone.
  *
  * Done: browsing (this phone, other LANShare devices, SMB, archives), list / compact / grid / large thumbnails, sort, hidden files,
  * selection, copy / cut / paste / delete / rename / new folder / zip / extract / details / open with, progress + cancel, viewers
@@ -64,10 +64,12 @@ import com.lanshare.app.core.Cfg as CoreCfg
  * Print (see NativePrint / NativePrintPc / PrintPv): "Print on..." picker with device badges, this phone / Wi-Fi printer / PC, options dialogs with live
  * page preview, job progress, documents printed from other apps (PcPrintService -> ACTION_PRINT_SHARED), "Printers" entry in Go to.
  * Also done since: search, printing (PC and Wi-Fi printers share the FinePrint-style dialog; the phone lays out for Wi-Fi), settings, SMB dialog,
- * "Send to...", share-sheet print intake. Not yet: Add IP, split screen, share-sheet "LANShare Send" entry.
+ * "Send to...", share-sheet print intake. Add IP: "Go to" > Add IP. Not yet: split screen.
  * NOT compiled / NOT device-tested.
  */
 class FilesActivity : Activity(), FsController.Listener {
+    companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
+
     private val d: Float by lazy { resources.displayMetrics.density }
     private fun dp(v: Int) = Math.round(v * d)
 
@@ -172,7 +174,7 @@ class FilesActivity : Activity(), FsController.Listener {
      */
     private fun handleIntent(i: Intent?) {
         if (i == null) return
-        if (i.action == MainActivity.ACTION_PRINT_SHARED) {
+        if (i.action == ACTION_PRINT_SHARED) {
             val names = i.getStringArrayExtra("names")?.toList().orEmpty()
             try { getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0)) } catch (_: Throwable) { }
             i.action = null
@@ -180,6 +182,7 @@ class FilesActivity : Activity(), FsController.Listener {
             return
         }
         if (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE) return
+        val sendEntry = i.component?.className?.endsWith("SendShareAlias") == true   // "LANShare Send" = pick a device; "LANShare" = print
         @Suppress("DEPRECATION")
         val uris: List<Uri> = if (i.action == Intent.ACTION_SEND) listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
@@ -200,7 +203,9 @@ class FilesActivity : Activity(), FsController.Listener {
             } catch (_: Exception) { }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
-                if (names.isNotEmpty()) printer.startShared(names) else onToast("Could not read the shared file(s)", true)
+                if (names.isEmpty()) onToast("Could not read the shared file(s)", true)
+                else if (sendEntry) askSendShared(names)
+                else printer.startShared(names)
             }
         }.also { it.isDaemon = true }.start()
     }
@@ -506,12 +511,37 @@ class FilesActivity : Activity(), FsController.Listener {
     /** "Send to...": the selection goes to the other device's storage root (its INBOX), same job + progress as copy. */
     private fun askSend() {
         if (ctl.selItems().isEmpty()) return
-        val ids = ArrayList<String>(); val names = ArrayList<String>()
-        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty() && id != ctl.dev) { ids.add(id); names.add(s.optString("name").ifEmpty { id } + "  (SMB share)") } } } catch (_: Throwable) { }
-        try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok && p.id != ctl.dev) { ids.add(p.id); names.add(p.name) } } } catch (_: Throwable) { }
+        val (ids, names) = sendTargets()
         if (ids.isEmpty()) { onToast("No other devices found yet - open the same app on the other phone / PC on this Wi-Fi", true); return }
         AlertDialog.Builder(this).setTitle("Send to\u2026").setItems(names.toTypedArray()) { _, i -> ctl.send(ids[i]) }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    /** The other devices a file can be sent to: SMB shares and LANShare devices that answer (never the open device itself). */
+    private fun sendTargets(): Pair<List<String>, List<String>> {
+        val ids = ArrayList<String>(); val names = ArrayList<String>()
+        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty() && id != ctl.dev) { ids.add(id); names.add(s.optString("name").ifEmpty { id } + "  (SMB share)") } } } catch (_: Throwable) { }
+        try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok && p.id != ctl.dev) { ids.add(p.id); names.add(p.name) } } } catch (_: Throwable) { }
+        return ids to names
+    }
+
+    /**
+     * Share-sheet entry "LANShare Send": the shared files were copied to /LANShare Shared (handleIntent); the device picker opens at once
+     * and the files go to the chosen device's INBOX like any "Send to...". The copies are deleted when the job has ended (or the picker is cancelled).
+     */
+    private fun askSendShared(names: List<String>) {
+        val dir = "/LANShare Shared"
+        fun cleanup() { Thread { names.forEach { try { java.io.File(Environment.getExternalStorageDirectory(), "LANShare Shared/$it").delete() } catch (_: Throwable) { } } }.also { it.isDaemon = true }.start() }
+        val (ids, labels) = sendTargets()
+        if (ids.isEmpty()) {
+            onToast("No other devices found yet - open the same app on the other phone / PC on this Wi-Fi", true)
+            cleanup(); return
+        }
+        AlertDialog.Builder(this).setTitle(if (names.size == 1) "Send " + names[0] + " to\u2026" else "Send " + names.size + " files to\u2026")
+            .setItems(labels.toTypedArray()) { _, i -> ctl.sendPaths("local", names.map { "$dir/$it" }, ids[i]) { cleanup() } }
+            .setNegativeButton("Cancel") { _, _ -> cleanup() }
+            .setOnCancelListener { cleanup() }
+            .show()
     }
 
     // ---------------------------------------------------------------- dialogs
@@ -522,6 +552,35 @@ class FilesActivity : Activity(), FsController.Listener {
             .setPositiveButton(ok) { _, _ -> val t = et.text.toString().trim(); if (t.isNotEmpty()) f(t) }.create()
         dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
         dlg.show()
+    }
+
+    /** "Add IP" (ui.html addIp): ip or ip:port of another LANShare device; Discovery.addIp probes it and pins it if it is off-subnet. */
+    private fun askAddIp() {
+        val et = EditText(this).apply {
+            hint = "e.g. 192.168.43.1"; setSingleLine()
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        val box = FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(et) }
+        val dlg = AlertDialog.Builder(this).setTitle("Add another LANShare device")
+            .setMessage("IP address of the other device running LANShare")
+            .setView(box).setNegativeButton("Cancel", null)
+            .setPositiveButton("Connect") { _, _ ->
+                val ip = et.text.toString().trim()
+                if (ip.isNotEmpty()) addIp(ip)
+            }.create()
+        dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dlg.show()
+    }
+
+    private fun addIp(ip: String) {
+        onToast("Connecting to $ip\u2026", false)
+        Thread {
+            val msg = try {
+                val d = Core.discOrNull() ?: throw IllegalStateException("device discovery is not running yet")
+                if (d.addIp(ip)) "Found it!" else "\u26A0 no LANShare device found at that address"
+            } catch (e: Throwable) { "\u26A0 " + (e.message ?: "failed") }
+            ui.post { onToast(msg, true) }
+        }.start()
     }
 
     private fun askRename(old: String) = input("Rename", old, "Rename", true) { ctl.rename(old, it) }
@@ -597,6 +656,7 @@ class FilesActivity : Activity(), FsController.Listener {
     private fun places() {
         val labels = ArrayList<String>(); val acts = ArrayList<() -> Unit>()
         fun add(l: String, f: () -> Unit) { labels.add(l); acts.add(f) }
+        add("\uFF0B Add IP") { askAddIp() }
         add("\uD83D\uDDA8 Printers") { printer.showPrinters() }   // view-only, like the drawer entry of ui.html
         add("\u25A3 This device (" + CoreCfg.name + ")") { ctl.openDev("local") }
         try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok) add("\u25A3 " + p.name) { ctl.openDev(p.id) } } } catch (_: Throwable) { }

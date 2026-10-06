@@ -20,7 +20,6 @@ object Core {
     /** Scratch space for files extracted from archives (cleared at every start, size-capped while running). */
     @Volatile var cacheDir: File = File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp", "lsarc")
     lateinit var disc: Discovery
-    lateinit var page: ByteArray
     private var started = false
     private var server: MiniHttp? = null
     private val held = ArrayList<Any>()   // wake/wifi/multicast locks - kept referenced for the life of the process
@@ -44,7 +43,6 @@ object Core {
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
-            page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             var srv: MiniHttp? = null
             var port = BASE_PORT

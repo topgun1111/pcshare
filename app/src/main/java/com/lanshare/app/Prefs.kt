@@ -7,10 +7,9 @@ import org.json.JSONObject
 
 /**
  * Native home of everything ui.html kept in the WebView's localStorage: view / sort per folder and global, hidden files, theme,
- * favourites, quick folders, history, drawer tab, split screen. The JSON shapes are the same as ui.html's, so [migrate] copies the raw strings.
+ * favourites, quick folders, history, drawer tab, split screen.
  *
- * Migration: ui.html calls LSAndroid.lsMigrate(json) once after its first load (lsMig()); only the first call wins, so the native store
- * is never overwritten later. Until FilesActivity is the only screen, the WebView keeps writing to localStorage and nothing flows back.
+ * (The WebView app and its localStorage migration no longer exist.)
  *
  * NOT compiled / NOT device-tested.
  */
@@ -18,20 +17,6 @@ object Prefs {
     private var sp: SharedPreferences? = null
     fun init(c: Context) { if (sp == null) sp = c.applicationContext.getSharedPreferences("lanshare_ui", Context.MODE_PRIVATE) }
     private fun s(): SharedPreferences = sp ?: throw IllegalStateException("Prefs.init(context) first")
-
-    private val KEYS = listOf("ls_g", "ls_pf", "ls_fav", "ls_qf", "ls_his", "ls_hidden", "ls_sort", "ls_asc", "ls_view", "ls_theme", "ls_dtab", "ls_dual", "ls_used")
-
-    /** [json] = {"ls_g": "<raw localStorage string>", ...}. First call copies the known keys, later calls do nothing. */
-    @Synchronized fun migrate(json: String) {
-        val p = s()
-        if (p.getBoolean("migrated", false)) return
-        try {
-            val o = JSONObject(json)
-            val e = p.edit()
-            for (k in KEYS) if (o.has(k)) e.putString(k, o.optString(k))
-            e.putBoolean("migrated", true).apply()
-        } catch (_: Throwable) { }
-    }
 
     // ---------------------------------------------------------------- simple values
     var hidden: Boolean

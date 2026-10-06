@@ -16,7 +16,7 @@ object Routes {
             when {
                 p == "/p/hello" -> ex.json(Core.disc.hello())
                 p.startsWith("/p/") -> peer(ex, p.substring(3))
-                p == "/" -> ex.reply(200, Core.page, "text/html; charset=utf-8")
+                p == "/" -> ex.reply(200, "LANShare is running. Open the LANShare app to browse files.".toByteArray(), "text/plain; charset=utf-8")
                 p.startsWith("/api/") -> api(ex, p.substring(5))
                 else -> ex.reply(404, "not found".toByteArray(), "text/plain")
             }

@@ -253,6 +253,12 @@ class FsController(private val ui: Listener) {
         job({ Jobs.start(d, ps, toDev, INBOX, false, "Sending") }) { clearSel() }
     }
 
+    /** Send an explicit file list of device [srcDev] to [toDev]'s INBOX (share-sheet "LANShare Send": files copied to /LANShare Shared). [done] runs once the job has ended. */
+    fun sendPaths(srcDev: String, paths: List<String>, toDev: String, done: () -> Unit = {}) {
+        if (paths.isEmpty()) return
+        job({ Jobs.start(srcDev, paths, toDev, INBOX, false, "Sending") }) { done() }
+    }
+
     /** Selected files only (folders are skipped): what "Print on this phone" and the print dialogs list. */
     fun selFiles(): List<Item> = selItems().filter { !it.dir }
 

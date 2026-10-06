@@ -15,13 +15,6 @@
     <application android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.LANShare">
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
         <!-- Share-sheet entry "LANShare" = print: opens the fully native screen (FilesActivity) with its print flow -->
         <activity-alias android:name=".PrintShareAlias" android:targetActivity=".FilesActivity" android:exported="true"
             android:label="LANShare" android:icon="@mipmap/ic_launcher">
@@ -32,8 +25,8 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity-alias>
-        <!-- Second share-sheet entry "LANShare Send": files shared through this one open the "Send to..." device picker of the WebView app -->
-        <activity-alias android:name=".SendShareAlias" android:targetActivity=".MainActivity" android:exported="true"
+        <!-- Second share-sheet entry "LANShare Send": files shared through this one open the native "Send to..." device picker (FilesActivity tells the two aliases apart by the intent's component name) -->
+        <activity-alias android:name=".SendShareAlias" android:targetActivity=".FilesActivity" android:exported="true"
             android:label="LANShare Send" android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
@@ -42,11 +35,11 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity-alias>
-        <!-- Fully native file browser (no WebView). Second launcher icon while the WebView app still exists. -->
+        <!-- Fully native file browser (no WebView). Main launcher icon. -->
         <activity android:name=".FilesActivity" android:exported="false" android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboardHidden"/>
         <activity-alias android:name=".NativeAlias" android:targetActivity=".FilesActivity" android:exported="true"
-            android:label="LANShare Native" android:icon="@mipmap/ic_launcher">
+            android:label="LANShare" android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
