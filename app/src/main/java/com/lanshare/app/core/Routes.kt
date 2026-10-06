@@ -156,7 +156,7 @@ object Routes {
                 if (Clip.isEmpty()) throw BadReq("clipboard is empty")
                 val cut = Clip.op == "cut"
                 ex.json(JSONObject().put("job", Jobs.start(Clip.dev!!, Clip.paths, b.getString("dev"), b.getString("dir"), cut,
-                    if (cut) "Moving" else "Copying")))
+                    if (cut) "Moving" else "Copying", b.optString("conflict", "rename"))))
             }
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
@@ -168,7 +168,7 @@ object Routes {
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"
                 val dev = b.getString("dev")
                 val ps = b.getJSONArray("paths").strings().map { vnorm(it) }.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
-                ex.json(JSONObject().put("job", Jobs.start(dev, ps, dev, b.getString("dir"), false, "Extracting")))
+                ex.json(JSONObject().put("job", Jobs.start(dev, ps, dev, b.getString("dir"), false, "Extracting", b.optString("conflict", "rename"))))
             }
             "addip" -> {
                 if (!d.addIp(b.getString("ip").trim())) throw IOException("no LANShare device found at that address")

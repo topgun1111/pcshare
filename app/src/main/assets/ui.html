@@ -1283,7 +1283,7 @@ function doDownload(){
   f.forEach((i,k)=>setTimeout(()=>{const a=document.createElement('a');a.href='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))+'&dl=1';a.download=i.name;document.body.append(a);a.click();a.remove()},k*600))}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
-async function doPaste(){try{const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path});
+async function doPaste(){try{const cf=await askConflicts(S.dev,S.path,(S.clip&&S.clip.paths)||[],S.clip&&S.clip.dev);if(!cf)return;const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path,conflict:cf});
   watchJob(r.job);if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
 function pickDevice(f,t,extra,after){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',t||'Send to…'));
@@ -1996,14 +1996,28 @@ function pickExtractDir(start){return new Promise(res=>{
     const row=E('div','');row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:8px;position:sticky;bottom:0;background:var(--cont);padding-top:4px';
     const c=E('button','tbtn','Cancel');c.onclick=()=>fin(null);const ok=E('button','tbtn fill','Extract here');ok.onclick=()=>fin(cur);row.append(c,ok);card.append(row);o.append(card)};
   draw(cur)})}
+/* Name clash at the destination: Replace / Keep both / Skip. Resolves 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
+const cdest=p=>{let b=p.split('/').filter(Boolean).pop()||'';if(b.endsWith('!')){b=b.slice(0,-1);const i=b.lastIndexOf('.');if(i>0)b=b.slice(0,i)}return b};
+async function askConflicts(dev,dir,paths,srcDev){
+  let have;try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(dir));have=new Set((r.items||[]).map(i=>i.name))}catch(e){return 'rename'}
+  const hit=[...new Set(paths.filter(p=>!(srcDev===dev&&pdir(p)===dir)).map(cdest).filter(n=>n&&have.has(n)))];
+  if(!hit.length)return 'rename';
+  return new Promise(res=>{
+    const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');
+    card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
+    const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' in this folder. Replace them?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
+    const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+    [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
+    o.append(card)})}
 async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
   let paths,dir;
   if(inArc()){const ar=arcRoot();dir=pdir(ar.slice(0,-1));paths=m===2?[ar]:selPaths()}
   else{dir=S.path;paths=selItems().filter(isArcF).map(i=>jn(S.path,i.name))}
   if(!paths.length)return;
   const to=await pickExtractDir(dir);if(!to)return;dir=to;   // ask where to extract (starts in the archive's own folder)
+  const cf=await askConflicts(S.dev,dir,paths,S.dev);if(!cf)return;   // same name already there: replace / keep both / skip
   const inside=inArc();S.sel.clear();render();
-  try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir});watchJob(r.job);
+  try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir,conflict:cf});watchJob(r.job);
     if(await track(r.job)&&!inside)load()}catch(e){toast('\u26a0 '+e.message,5000)}}
 $('#fab').onclick=()=>inArc()?doExtract(2):doMkdir();
 $('#xsel').onclick=()=>{S.sel.clear();render()};

@@ -40,7 +40,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
 class MainActivity : Activity() {
-    companion object { const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED" }
+    companion object {
+        const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED"
+        const val SHARED_KEEP_DAYS = 7L   // age after which files in "LANShare Shared" are deleted
+    }
     private lateinit var web: WebView
     private lateinit var nl: NativeList
     private lateinit var chrome: NlChrome
@@ -192,6 +195,7 @@ class MainActivity : Activity() {
         askPermissions()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         loadWhenReady()
+        cleanShared()
         handleShare(intent)
     }
 
@@ -246,6 +250,17 @@ class MainActivity : Activity() {
 
     private var pendingOpen: String? = null
 
+    /** Files copied into "LANShare Shared" (shared-in / opened archives) are deleted after [SHARED_KEEP_DAYS] days; runs at every start. */
+    private fun cleanShared() {
+        Thread {
+            try {
+                val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
+                val cut = System.currentTimeMillis() - SHARED_KEEP_DAYS * 86_400_000L
+                dir.listFiles()?.forEach { if (it.isFile && it.lastModified() < cut) it.delete() }
+            } catch (_: Throwable) { }
+        }.start()
+    }
+
     /** "Open with LANShare" on a zip / rar: browse it in the app's own file browser (path + "!"). Files already on the shared storage are opened in place, anything else is copied to "LANShare Shared" first. */
     private fun handleView(i: Intent) {
         val u = i.data ?: return
@@ -271,7 +286,8 @@ class MainActivity : Activity() {
                     }
                     val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared").apply { mkdirs() }
                     var f = File(dir, name.replace("/", "_")); var k = 1
-                    if (!(f.isFile && size > 0 && f.length() == size)) {   // same name and size already copied: reuse it
+                    if (f.isFile && size > 0 && f.length() == size) f.setLastModified(System.currentTimeMillis())   // reused: keep it for another SHARED_KEEP_DAYS
+                    else {   // not copied yet
                         while (f.exists()) { f = File(dir, "${f.nameWithoutExtension} ($k)${if (f.extension.isEmpty()) "" else "." + f.extension}"); k++ }
                         contentResolver.openInputStream(u)?.use { ins -> f.outputStream().use { ins.copyTo(it) } }
                     }

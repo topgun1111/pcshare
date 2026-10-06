@@ -518,7 +518,7 @@ object Jobs {
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 
-    fun start(srcId: String, paths: List<String>, dstId: String, ddir: String, cut: Boolean, label: String): String {
+    fun start(srcId: String, paths: List<String>, dstId: String, ddir: String, cut: Boolean, label: String, conflict: String = "rename"): String {   // conflict: what to do when the name exists at the destination - rename ("name (1)") | replace | skip
         val src = ep(srcId)
         val dst = ep(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
@@ -526,11 +526,11 @@ object Jobs {
         val job = Job(label)
         all[jid] = job
         val cutOk = cut && paths.none { arcSplit(it) != null }   // nothing can be moved out of an archive: it is copied
-        Thread({ work(job, src, dst, srcId, paths, ddir, cutOk) }, "job-$jid").also { it.isDaemon = true }.start()
+        Thread({ work(job, src, dst, srcId, paths, ddir, cutOk, conflict) }, "job-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
-    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean) {
+    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename") {
         var dest: String? = null
         val same = src.id == dst.id
         val fails = ArrayList<String>()   // what went wrong, one line each (first 50)
@@ -555,9 +555,18 @@ object Jobs {
             for ((p, walked) in plan) {
                 if (job.cancel) throw Cancelled()
                 val isDir = walked?.firstOrNull()?.dir ?: false
-                val nn = uniqueName(destName(p), taken, isDir)
+                val dn = destName(p)
+                val clash = dn in taken
+                if (clash && conflict == "skip") { job.done += if (walked != null) walked.sumOf { it.size } else 1L; continue }   // keep what is there
+                val selfHit = same && vjoin(ddirN, dn) == p                      // never replace an item with itself
+                val repl = clash && conflict == "replace" && !selfHit
+                val nn = if (repl) dn else uniqueName(dn, taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
+                if (repl) {
+                    try { dst.remove(d) } catch (e: Cancelled) { throw e }
+                    catch (e: Exception) { fail(vbase(p), IOException("could not replace the existing item: ${errText(e)}")); job.done += if (walked != null) walked.sumOf { it.size } else 1L; continue }
+                }
                 dest = d
                 if (same && cut) {
                     try { src.move(p, d) } catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }
