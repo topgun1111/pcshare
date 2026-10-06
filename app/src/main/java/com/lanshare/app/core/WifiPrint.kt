@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import com.lanshare.app.PrintLayout
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -55,9 +56,11 @@ object WifiPrint {
 
             // several pictures + several pages per sheet: all pictures share the sheets
             val nup0 = (opts?.optInt("nup", 1) ?: 1).takeIf { it in LAY } ?: 1
-            val allPics = files.size > 1 && files.all { (sp, _) -> vbase(sp).substringAfterLast('.', "").lowercase().let { it in IMG || it in PrintPrep.PICS } }
-            val merge = nup0 > 1 && allPics
-            if (merge) mergeImages(job, src, p, files, jo, nup0, (opts?.optInt("border", 0) ?: 0) == 1, dir, failed)
+            val sheetMode = WifiCompose.str(opts, "sheet") == "1"   // the dialog's picture mode: pictures only, shared sheets, margins, turns
+            val allPics = (files.size > 1 || sheetMode) && files.all { (sp, _) -> vbase(sp).substringAfterLast('.', "").lowercase().let { it in IMG || it in PrintPrep.PICS } }
+            val merge = (nup0 > 1 || sheetMode) && allPics
+            val paperKey = WifiCompose.str(opts, "paper").takeIf { it in DIMS } ?: (PAPER.entries.firstOrNull { it.value == jo.media }?.key ?: "A4")
+            if (merge) mergeImages(job, src, p, files, jo, opts, paperKey, dir, failed)
 
             for ((i, f0) in (if (merge) emptyList<Pair<String, Long>>() else files).withIndex()) {
                 if (job.cancel) throw Cancelled()
@@ -102,16 +105,16 @@ object WifiPrint {
                         } catch (x: Cancelled) { throw x
                         } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     }
+                    var isTxt = false
                     if (kind == PrintPrep.Kind.TEXT || cext in TXT) {
-                        cur = textToPdf(cur).also { temps.add(it) }; cext = "pdf"
+                        cur = textToPdf(cur, opts, paperKey).also { temps.add(it) }; cext = "pdf"; isTxt = true
                     }
                     var joUse = jo
-                    val nup = (opts?.optInt("nup", 1) ?: 1).takeIf { it in LAY } ?: 1
-                    if (nup > 1 && (cext == "pdf" || cext == "jpg" || cext == "jpeg")) {   // several pages on one sheet: laid out here, then sent as a normal PDF
+                    if (opts != null && WifiCompose.needed(opts, isTxt) && (cext == "pdf" || cext == "jpg" || cext == "jpeg")) {
+                        // the layout of the FinePrint-style dialog (pages per sheet, booklet, odd / even, margins, watermark ...) is done here, then sent as a normal PDF
                         if (cext != "pdf") { cur = imageToPdf(cur).also { temps.add(it) }; cext = "pdf" }
-                        val pk = PAPER.entries.firstOrNull { it.value == jo.media }?.key ?: "A4"
-                        cur = nupPdf(job, cur, nup, (opts?.optInt("border", 0) ?: 0) == 1, jo.ranges, pk).also { temps.add(it) }
-                        joUse = Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling)   // page range was applied while laying out
+                        cur = WifiCompose.compose(job, cur, opts, name, isTxt, paperKey).also { temps.add(it) }
+                        joUse = Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, "none")   // page range + scaling were applied while laying out
                     }
                     when (cext) {
                         "pdf" -> sendPdf(p, job, cur, name, joUse, temps)
@@ -243,13 +246,16 @@ object WifiPrint {
     }
 
     /** Downloads every picture, turns it into JPEG and prints them together on shared sheets. */
-    private fun mergeImages(job: Job, src: Endpoint, p: WifiPrinters.P, files: List<Pair<String, Long>>, jo: Ipp.JobOpts, nup: Int,
-                            border: Boolean, dir: File, failed: MutableList<String>) {
+    private fun mergeImages(job: Job, src: Endpoint, p: WifiPrinters.P, files: List<Pair<String, Long>>, jo: Ipp.JobOpts, opts: JSONObject?,
+                            paperKey: String, dir: File, failed: MutableList<String>) {
         val temps = ArrayList<File>()
         try {
             job.label = "Merging ${files.size} pictures for ${p.name}"
             val jpgs = ArrayList<File>()
-            for ((sp, _) in files) {
+            val rotsIn = opts?.optJSONArray("rots")
+            val rotList = ArrayList<Int>()
+            for ((fi, f1) in files.withIndex()) {
+                val sp = f1.first
                 if (job.cancel) throw Cancelled()
                 val nm = vbase(sp)
                 val t = File(dir, "w-" + System.nanoTime().toString(36)).also { temps.add(it) }
@@ -266,14 +272,15 @@ object WifiPrint {
                 }
                 try {
                     val out = PrintPrep.convert(PrintPrep.Kind.PIC, t, nm)
-                    temps.add(out.file); jpgs.add(out.file)
+                    temps.add(out.file); jpgs.add(out.file); rotList.add(rotsIn?.optInt(fi, 0) ?: 0)
                 } catch (x: Cancelled) { throw x
                 } catch (x: Throwable) { failed.add("$nm: could not be read (" + errText(x) + ")") }
             }
             if (jpgs.isEmpty()) return
-            val pk = PAPER.entries.firstOrNull { it.value == jo.media }?.key ?: "A4"
-            val pdf = picturesToSheets(job, jpgs, nup, border, pk).also { temps.add(it) }
-            sendPdf(p, job, pdf, "pictures", Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling), temps)
+            val pdf = try { WifiCompose.pictureSheets(job, jpgs, rotList.toIntArray(), opts, paperKey) } catch (x: Cancelled) { throw x
+            } catch (x: Throwable) { throw PrintFail("could not lay out the pictures (" + errText(x) + ")") }
+            temps.add(pdf)
+            sendPdf(p, job, pdf, "pictures", Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, "none"), temps)
         } catch (e: PrintFail) { failed.add("pictures: ${errText(e)}")
         } catch (e: IOException) { failed.add("pictures: ${errText(e)}")
         } finally { temps.forEach { try { it.delete() } catch (_: Exception) {} } }
@@ -402,44 +409,23 @@ object WifiPrint {
         } finally { doc.close(); bmp.recycle() }
     }
 
-    private fun textToPdf(f: File): File {
+    private fun textToPdf(f: File, o: JSONObject?, paperKey: String): File {
         if (f.length() > 4L shl 20) throw PrintFail("the text file is too large for Wi-Fi printing (max 4 MB)")
         val raw = f.readBytes()
         var s = String(raw, Charsets.UTF_8)
         if (s.indexOf('\uFFFD') >= 0) s = String(raw, Charset.forName("windows-1254"))
         s = s.removePrefix("\uFEFF")
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; textSize = 9f; color = Color.BLACK }
-        val pw = 595
-        val ph = 842
-        val m = 40f
-        val width = pw - 2 * m
-        val lead = 11.5f
-        val per = ((ph - 2 * m) / lead).toInt()
-        val lines = ArrayList<String>()
-        for (l0 in s.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
-            var l = l0.replace("\t", "    ")
-            if (l.isEmpty()) { lines.add(""); continue }
-            while (l.isNotEmpty()) {
-                val n = paint.breakText(l, true, width, null).coerceAtLeast(1)
-                lines.add(l.substring(0, n)); l = l.substring(n)
-            }
-            if (lines.size > 30000) break
-        }
+        // same wrapping as the preview and pcprint.py txt_to_pdf: Courier 10 pt (custom scale = font size), 0.6 em per character, margin = page margin
+        val tp = PrintLayout.textPages(s, mapOf("paper" to paperKey, "margin" to WifiCompose.str(o, "margin"), "scale" to WifiCompose.str(o, "scale")))
+        val pd = PrintLayout.paper(paperKey)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; textSize = tp.size.toFloat(); color = Color.BLACK }
         val doc = PdfDocument()
         try {
-            var i = 0
-            var pn = 1
-            while (true) {
-                val page = doc.startPage(PdfDocument.PageInfo.Builder(pw, ph, pn).create())
-                var y = m + 9f
-                for (k in 0 until per) {
-                    if (i >= lines.size) break
-                    page.canvas.drawText(lines[i], m, y, paint)
-                    y += lead; i++
-                }
+            for ((pn, lines) in tp.pages.withIndex()) {
+                val page = doc.startPage(PdfDocument.PageInfo.Builder(Math.round(pd[0]).toInt(), Math.round(pd[1]).toInt(), pn + 1).create())
+                for ((l, line) in lines.withIndex()) if (line.isNotEmpty())
+                    page.canvas.drawText(line, tp.mm.toFloat(), (tp.mm + tp.size + l * tp.lead).toFloat(), paint)
                 doc.finishPage(page)
-                pn++
-                if (i >= lines.size) break
             }
             val out = File(f.parentFile, f.name + ".txt.pdf")
             FileOutputStream(out).use { doc.writeTo(it) }

@@ -261,7 +261,7 @@ class NativePrint(
         when (t.kind) {
             PHONE -> printHere(set)
             PC -> pcDlg.show(t.id, t.name, set)   // full dialog: printer, presets, booklet, odd/even, margins, scale, watermark, header/footer ...
-            else -> options(t, set)               // Wi-Fi printer (IPP): the simple dialog
+            else -> pcDlg.show(t.id, t.name, set, true)   // Wi-Fi printer (IPP): the same full dialog; the phone lays the sheets out (WifiCompose)
         }
     }
 

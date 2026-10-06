@@ -86,19 +86,20 @@ class NativePrintPc(
 
     // ---------------------------------------------------------------- dialog
     /** [devId] = the PC (LANShare peer or SMB share id), [name] = its display name. The files are the current selection of [ctl]. */
-    fun show(devId: String, name: String, set: PrintSet = PrintSet(ctl.dev, ctl.path, ctl.selFiles()) { ctl.clearSel() }) {
+    fun show(devId: String, name: String, set: PrintSet = PrintSet(ctl.dev, ctl.path, ctl.selFiles()) { ctl.clearSel() }, wifi: Boolean = false) {
         val files = set.files
         if (files.isEmpty()) return
         val exts = files.map { it.name.substringAfterLast('.', "").lowercase() }
         val imgMode = exts.all { it in PICS }          // only pictures: laid out together on shared sheets (ui.html imgMode)
         val officeSel = exts.any { it in OFFICE }      // Word / Excel / PowerPoint: needs a converter on the PC for layout options
 
+        val optKey = if (wifi) "wifiopts" else "pcopts"   // a Wi-Fi printer remembers its own last choice
         val st = HashMap<String, String>(DEF)
         try {
-            val prev = JSONObject(sp.getString("pcopts", "") ?: "")
+            val prev = JSONObject(sp.getString(optKey, "") ?: "")
             for (k in DEF.keys) if (k !in SESSION && prev.has(k)) st[k] = prev.optString(k, DEF[k]!!)
         } catch (_: Throwable) { }
-        st["printer"] = sp.getString("pcprinter:$devId", "") ?: ""
+        st["printer"] = if (wifi) "" else (sp.getString("pcprinter:$devId", "") ?: "")
         if (imgMode) { st["booklet"] = "0"; st["noauto"] = "0" }
 
         var dialog: AlertDialog? = null
@@ -112,7 +113,7 @@ class NativePrintPc(
         val info = tv("Checking printer\u2026", 12f, c.mut)
         col.addView(info)
         // live preview of the layout (pages per sheet, booklet, page selection, watermark, header / footer, sides, colour)
-        pv = PrintPv(act, c, set, devId, false, st, rots, imgMode, { refresh() }, { officeOk })
+        pv = PrintPv(act, c, set, devId, false, st, rots, imgMode, { refresh() }, { officeOk }, wifi)
         col.addView(pv!!.view, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
 
         fun section(title: String, vararg kids: View): View {
@@ -224,7 +225,28 @@ class NativePrintPc(
         val hint = tv("", 12f, c.mut).apply { visibility = View.GONE; setPadding(0, dp(8), 0, 0) }
 
         var gen = 0
+        var sidesSec: View? = null; var colourSec: View? = null
         fun status() {
+            if (wifi) {   // a printer on this Wi-Fi: status over IPP, no PC service; hide what the printer cannot do
+                val gw = ++gen
+                info.text = "Checking printer\u2026"; info.setTextColor(c.mut)
+                Thread {
+                    val r: JSONObject? = try { Jobs.printerStatus(devId) } catch (_: Throwable) { null }
+                    act.runOnUiThread {
+                        if (gw != gen || dialog?.isShowing != true) return@runOnUiThread
+                        if (r == null) { info.text = "Printer status unavailable"; info.setTextColor(c.mut); return@runOnUiThread }
+                        if (!r.optBoolean("ok", false)) {
+                            info.text = "Printer not reachable - is it on and on this Wi-Fi?"; info.setTextColor(c.warn); return@runOnUiThread
+                        }
+                        val problem = if (r.isNull("problem")) "" else r.optString("problem", "")
+                        if (problem.isNotEmpty()) { info.text = name + " \u00b7 " + problem; info.setTextColor(c.warn) }
+                        else { info.text = name + " \u00b7 ready \u00b7 Wi-Fi"; info.setTextColor(GREEN) }
+                        if (r.has("duplex") && !r.isNull("duplex") && !r.optBoolean("duplex", true)) sidesSec?.visibility = View.GONE
+                        if (r.has("color") && !r.isNull("color") && !r.optBoolean("color", true)) colourSec?.visibility = View.GONE
+                    }
+                }.also { it.isDaemon = true }.start()
+                return
+            }
             val g = ++gen
             info.text = "Checking printer\u2026"; info.setTextColor(c.mut)
             val chosen = st["printer"] ?: ""
@@ -290,8 +312,8 @@ class NativePrintPc(
             addView(minus, LinearLayout.LayoutParams(-2, dp(36))); addView(cnt); addView(plus, LinearLayout.LayoutParams(-2, dp(36)))
         })
 
-        section("Sides", seg("duplex", listOf("" to "Printer default", "off" to "One-sided", "long" to "Long edge", "short" to "Short edge")))
-        section("Colour", seg("color", listOf("" to "Default", "color" to "Colour", "mono" to "Black & white")))
+        sidesSec = section("Sides", seg("duplex", listOf("" to "Printer default", "off" to "One-sided", "long" to "Long edge", "short" to "Short edge")))
+        colourSec = section("Colour", seg("color", listOf("" to "Default", "color" to "Colour", "mono" to "Black & white")))
         if (imgMode) {
             section("Pictures per sheet", seg("nup", listOf("1" to "1", "2" to "2", "4" to "4", "6" to "6", "9" to "9")), sw("border", "Border around each picture"))
             section("Order", sw("reverse", "Reverse order"))
@@ -336,7 +358,10 @@ class NativePrintPc(
             section("Header and footer", field("hdr", "Header: left | centre | right"), field("ftr", "Footer: left | centre | right"))
             col.addView(tv("Header / footer and watermark can use {page} {pages} {date} {time} {file}.", 12f, c.mut).apply { setPadding(0, dp(4), 0, 0) })
         }
-        col.addView(tv("Layout and fitting work for PDF, image and text files; other files get printer and copies only.", 12f, c.mut).apply { setPadding(0, dp(12), 0, 0) })
+        col.addView(tv(
+            if (wifi) "The layout is done on this phone and sent to the printer as a PDF. Word / Excel / PowerPoint files are converted first by a PC running pcprint.py."
+            else "Layout and fitting work for PDF, image and text files; other files get printer and copies only.",
+            12f, c.mut).apply { setPadding(0, dp(12), 0, 0) })
         col.addView(hint)
 
         // ---- submit: only what differs from the defaults is sent (ui.html `k.onclick`)
@@ -359,7 +384,9 @@ class NativePrintPc(
                 out.put("rots", JSONArray(rots.toList()))
                 for (k in listOf("booklet", "range", "pages", "scale", "align", "autorot")) out.remove(k)
             } else if (st["booklet"] == "1" && (st["duplex"] ?: "").isEmpty()) out.put("duplex", "short")
-            sp.edit().putString("pcopts", keep.toString()).putString("pcprinter:$devId", st["printer"] ?: "").apply()
+            val ed = sp.edit().putString(optKey, keep.toString())
+            if (!wifi) ed.putString("pcprinter:$devId", st["printer"] ?: "")
+            ed.apply()
             ctl.printPaths(set.dev, set.paths(), devId, out) { set.after() }
         }
 

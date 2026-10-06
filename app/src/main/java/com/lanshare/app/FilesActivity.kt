@@ -63,8 +63,8 @@ import com.lanshare.app.core.Cfg as CoreCfg
  * (video / pictures / PDF), places (quick folders, favourites, recent, devices), theme.
  * Print (see NativePrint / NativePrintPc / PrintPv): "Print on..." picker with device badges, this phone / Wi-Fi printer / PC, options dialogs with live
  * page preview, job progress, documents printed from other apps (PcPrintService -> ACTION_PRINT_SHARED), "Printers" entry in Go to.
- * Not yet: search, print part B (FinePrint PC dialog, page preview, shared-document intake), settings, SMB dialog, split screen,
- * "send to", share-sheet intake, video gallery.
+ * Also done since: search, printing (PC and Wi-Fi printers share the FinePrint-style dialog; the phone lays out for Wi-Fi), settings, SMB dialog,
+ * "Send to...", share-sheet print intake. Not yet: Add IP, split screen, share-sheet "LANShare Send" entry.
  * NOT compiled / NOT device-tested.
  */
 class FilesActivity : Activity(), FsController.Listener {

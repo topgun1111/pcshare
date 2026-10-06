@@ -64,7 +64,8 @@ class PrintPv(
     private val rots: IntArray,
     private val picMode: Boolean,
     private val onTurn: () -> Unit,
-    private val officeOk: () -> Boolean = { false }
+    private val officeOk: () -> Boolean = { false },
+    private val toWifi: Boolean = false   // the target is a Wi-Fi printer (full layout done on the phone): only changes the Office message
 ) {
     private class Info(val kind: String, val pages: Int, val pw: Int, val ph: Int, val id: String?, val img: Bitmap?, val text: String?, val why: String)
 
@@ -372,7 +373,8 @@ class PrintPv(
         if (info == null) { cap.text = "Loading preview\u2026"; return }
         if (!wifi) {
             if (info.kind == "office" && !officeOk()) {
-                cap.text = "Printed by the PC\u2019s own app (Word, Excel ...): only printer and copies apply. Install LibreOffice (or Microsoft Office) on the PC and run the new pcprint.py to unlock layout options"
+                cap.text = if (toWifi) "Word / Excel / PowerPoint files need a PC running the new pcprint.py (with Microsoft Office or LibreOffice) to be converted for the Wi-Fi printer - none answered"
+                    else "Printed by the PC\u2019s own app (Word, Excel ...): only printer and copies apply. Install LibreOffice (or Microsoft Office) on the PC and run the new pcprint.py to unlock layout options"
                 return
             }
             if (info.kind == "none") { cap.text = info.why.ifEmpty { "No layout preview for this file type" } + " - only printer and copies apply"; return }
