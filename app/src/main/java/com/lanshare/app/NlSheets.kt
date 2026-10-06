@@ -80,7 +80,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
 
     private fun tv(t: String, sp: Float, col: Int, medium: Boolean = false): TextView = TextView(act).apply {
         text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); setTextColor(col)
-        if (medium) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        if (medium) typeface = Fnt.med()
     }
 
     private fun ripple(v: View) {

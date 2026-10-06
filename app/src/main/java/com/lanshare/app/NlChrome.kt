@@ -57,9 +57,8 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     private var downY = 0f
     private val slop = ViewConfiguration.get(c).scaledTouchSlop
 
-    protected val med: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    protected val semi: Typeface =
-        if (Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), 600, false) else Typeface.DEFAULT_BOLD
+    protected val med: Typeface = Fnt.med()
+    protected val semi: Typeface = Fnt.semi()
 
     protected fun tp(sizeDp: Float, tf: Typeface): TextPaint =
         TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d }

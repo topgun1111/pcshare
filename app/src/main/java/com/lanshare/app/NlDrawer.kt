@@ -69,10 +69,10 @@ private class DrView(c: Context, private val d: Float) : View(c) {
     private var dy0 = 0f
     private val slop = ViewConfiguration.get(c).scaledTouchSlop
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val med: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    private val bold: Typeface = Typeface.create("sans-serif", Typeface.BOLD)
+    private val med: Typeface = Fnt.med()
+    private val bold: Typeface = Fnt.semi()
 
-    private fun tf(wt: Int): Typeface = if (wt >= 600) bold else if (wt >= 500) med else Typeface.DEFAULT
+    private fun tf(wt: Int): Typeface = if (wt >= 600) bold else med
 
     override fun onMeasure(w: Int, h: Int) {
         setMeasuredDimension(MeasureSpec.getSize(w), Math.round((reg?.h ?: 0f) * d))

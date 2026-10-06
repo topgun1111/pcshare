@@ -55,16 +55,16 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private var pendingEnd = true     // crumb strip starts scrolled to its end, like ui.html's cr.scrollLeft=cr.scrollWidth
 
     // ---- paints ----
-    private val med: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    private val w600: Typeface = if (Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), 600, false) else Typeface.DEFAULT_BOLD
+    private val med: Typeface = Fnt.med()
+    private val w600: Typeface = Fnt.semi()
     private val fillP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val crumbP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 14f * d }
-    private val curP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD; textSize = 14f * d }
+    private val curP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 14f * d }
     private val sumBP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d }
     private val sumSP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d }
     private val newP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d }
     private val sortP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d }
-    private val pillP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD; textSize = 12f * d; letterSpacing = 0.2f / 12f }
+    private val pillP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 12f * d; letterSpacing = 0.2f / 12f }
     private val rf = RectF()
 
     // ---- icons (ui.html IC / HOME / DRIVE; arc flags written with spaces) ----
