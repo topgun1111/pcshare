@@ -680,12 +680,13 @@ class TextEditorActivity : Activity() {
     private fun pickColor() {
         val dlg = Dialog(this)
         val grid = GridLayout(this).apply { columnCount = 6; setPadding(dp(16), dp(16), dp(16), dp(16)) }
+        val sel = color   // GradientDrawable.apply has its own 'color' (ColorStateList?)
         PALS.forEachIndexed { i, p ->
             val c = if (night) p.dark else p.light
             val v = TextView(this).apply {
-                gravity = Gravity.CENTER; text = if (i == color) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
+                gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == color) 0xFF1565C0.toInt() else 0x33000000) }
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) 0xFF1565C0.toInt() else 0x33000000) }
                 layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(6), dp(6), dp(6), dp(6)) }
                 setOnClickListener { color = i; prefs.edit().putInt("color", i).apply(); applyTheme(); dlg.dismiss() }
             }
