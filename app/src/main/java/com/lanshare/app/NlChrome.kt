@@ -39,6 +39,7 @@ class NlCp(private val j: JSONObject) {
     val bar = c("bar"); val onbar = c("onbar"); val barmut = c("barmut"); val cont = c("cont"); val bd = c("bd")
     val sel = c("sel"); val onsel = c("onsel"); val ac = c("ac"); val onac = c("onac"); val hov = c("hov")
     val err = c("err"); val fg = c("fg"); val mut = c("mut")
+    val fab = c("fab"); val onfab = c("onfab")
 }
 
 /** Base: custom-drawn view with tap targets. A touch that starts outside every target is NOT consumed (it falls through to the page). */
@@ -164,7 +165,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         if (bw <= 0f) return
         fillP.shader = null
         fillP.style = Paint.Style.FILL
-        fillP.color = if (sel) 0xFF243A5E.toInt() else p.bar
+        fillP.color = if (sel) p.sel else p.bar
         cv.drawRect(0f, 0f, bw, bh, fillP)
         // press feedback: round 40 dp highlight like .ibtn:active
         val pr = pressed
@@ -173,11 +174,11 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             if (r != null) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; cv.drawCircle(r.centerX(), r.centerY(), 20f * d, fillP) }
         }
         if (sel) {
-            btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 24f, p.onbar) }
-            btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 24f, p.onbar) }
+            btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 24f, p.onsel) }
+            btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 24f, p.onsel) }
             val x = 4f * d + 40f * d + 4f * d
             val right = (btn["allsel"]?.left ?: bw) - 4f * d
-            cntP.color = p.onbar
+            cntP.color = p.onsel
             cv.drawText(fit(cnt, cntP, right - x), x, ty(bh / 2f, cntP), cntP)
             return
         }
@@ -215,7 +216,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, 12f * d); o.setAlpha(1f) }
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, 16f * d); o.setAlpha(1f) }
         }
     }
 
@@ -229,10 +230,11 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         if (pal == null || bw <= 0f) return
         cv.save()
         if (pressed != null) cv.scale(0.96f, 0.96f, bw / 2f, bh / 2f)
-        fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = 0xFFE2AC5F.toInt()
-        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 12f * d, 12f * d, fillP)
-        glyph(cv, ik, 16f * d + 12f * d, bh / 2f, 24f, 0xFF3A2600.toInt())
-        lbP.color = 0xFF3A2600.toInt()
+        fillP.shader = null; fillP.style = Paint.Style.FILL; val fp = pal ?: return
+        fillP.color = fp.fab
+        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
+        glyph(cv, ik, 16f * d + 12f * d, bh / 2f, 24f, fp.onfab)
+        lbP.color = fp.onfab
         cv.drawText(fit(lb, lbP, bw - (16f + 24f + 12f + 20f) * d), (16f + 24f + 12f) * d, ty(bh / 2f, lbP), lbP)
         cv.restore()
     }

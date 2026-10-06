@@ -215,7 +215,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
             val r = w - 8f * d; val l = r - pillW
             rf.set(l + line / 2f, cy - 14f * d + line / 2f, r - line / 2f, cy + 14f * d - line / 2f)
             fillP.style = Paint.Style.STROKE; fillP.strokeWidth = line; fillP.color = p.mut
-            cv.drawRoundRect(rf, 6f * d, 6f * d, fillP)
+            cv.drawRoundRect(rf, 14f * d, 14f * d, fillP)
             val ccx = l + line + 9f * d + 7f * d
             fillP.style = Paint.Style.FILL; fillP.color = p.bd; cv.drawCircle(ccx, cy, 7f * d, fillP)
             fillP.color = p.fg; rf.set(ccx - 7f * d, cy - 7f * d, ccx + 7f * d, cy + 7f * d)

@@ -75,6 +75,17 @@ class MainActivity : Activity() {
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
+        /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */
+        @JavascriptInterface fun bars(color: String, light: Boolean) {
+            runOnUiThread {
+                try {
+                    val c = Color.parseColor(color)
+                    window.statusBarColor = c; window.navigationBarColor = c
+                    val ic = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                    ic.isAppearanceLightStatusBars = light; ic.isAppearanceLightNavigationBars = light
+                } catch (_: Throwable) { }
+            }
+        }
         @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {

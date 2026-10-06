@@ -65,7 +65,7 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
 
     fun setPal(p: NlPal) {
         pal = p
-        setBackgroundColor(p.card)
+        background = android.graphics.drawable.GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(24f).toFloat() }
         et.setTextColor(p.fg); et.setHintTextColor(p.mut)
         line.color = p.bd
         back.removeAllViews(); clr.removeAllViews()
@@ -95,6 +95,5 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
 
     override fun dispatchDraw(cv: Canvas) {
         super.dispatchDraw(cv)
-        cv.drawRect(0f, height - d, width.toFloat(), height.toFloat(), line)      // 1 css px bottom border
     }
 }

@@ -186,10 +186,10 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         } else if (r.dir) {
             val fw = (if (c) 34f else if (lg) 68f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else 34f) * d
             cv.save(); cv.translate(lcx - fw / 2f, cy - fh / 2f); val s = fw / 56f; cv.scale(s, s)
-            p.color = 0xFFD49B45.toInt(); cv.drawPath(NlIcons.foldBack, p)
-            p.color = 0xFFF7F2EA.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
-            p.color = 0xFFDCD3C3.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
-            p.color = 0xFFE2AC5F.toInt(); cv.drawPath(NlIcons.foldFront, p)
+            p.color = 0xFF669DF6.toInt(); cv.drawPath(NlIcons.foldBack, p)
+            p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
+            p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
+            p.color = 0xFF8AB4F8.toInt(); cv.drawPath(NlIcons.foldFront, p)
             cv.restore()
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
@@ -336,8 +336,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val r = row ?: return
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
-        p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 12f * d, 12f * d, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 11.5f * d, 11.5f * d, p)
+        p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 16f * d, 16f * d, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 15.5f * d, 15.5f * d, p)
         p.style = Paint.Style.FILL
         val s = w - 14f * d; val lx = 7f * d; val ly = 7f * d
         val cx = lx + s / 2f; val cy = ly + s / 2f
@@ -345,10 +345,10 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         if (r.dir) {
             val fw = 0.4f * s; val fh = fw * 48f / 56f
             cv.save(); cv.translate(cx - fw / 2f, cy - fh / 2f); val sc = fw / 56f; cv.scale(sc, sc)
-            p.color = 0xFFD49B45.toInt(); cv.drawPath(NlIcons.foldBack, p)
-            p.color = 0xFFF7F2EA.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
-            p.color = 0xFFDCD3C3.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
-            p.color = 0xFFE2AC5F.toInt(); cv.drawPath(NlIcons.foldFront, p)
+            p.color = 0xFF669DF6.toInt(); cv.drawPath(NlIcons.foldBack, p)
+            p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
+            p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
+            p.color = 0xFF8AB4F8.toInt(); cv.drawPath(NlIcons.foldFront, p)
             cv.restore()
             r.badge?.let { g ->
                 val bs = 24f * d; val bi = 16f * d
@@ -364,7 +364,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 val sw = (s / sc).toInt(); val sh = (s / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - sh) / 2, (bm.width - sw) / 2 + sw, (bm.height - sh) / 2 + sh)
                 rf.set(lx, ly, lx + s, ly + s)
-                clip.reset(); clip.addRoundRect(rf, 8f * d, 8f * d, Path.Direction.CW)
+                clip.reset(); clip.addRoundRect(rf, 12f * d, 12f * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
