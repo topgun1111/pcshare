@@ -777,7 +777,80 @@ window.nlCh=(ev,x)=>{
   if(ev==='paste'){const b=$('#clip .tbtn');if(b)b.click();return}
   if(ev==='clipx'){const b=$('#clip .ibtn');if(b)b.click();return}
   if(ev==='dlx'){const c=DLS[x];if(c&&c.cx)c.cx.click()}};
-if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush()},150);
+/* ---- native side drawer (Kotlin NlDrawer.kt). The HTML drawer (#dwr) stays UNCHANGED: drawerRender() still builds every row and owns every handler.
+   Each region (#dtabs, every #dbody child, #dfoot) is MIRRORED here into flat draw lists (rects, svg paths, text with the browser's own computed geometry / colours / opacity);
+   Kotlin only paints them and sends a tap back as nlDr(kind,row,j,ver), which click()s the same HTML element.  Kill switches: localStorage ls_nld='0' or NlDrawer.ENABLED=false. */
+const NLDR=(()=>{try{return !!NL&&!KID&&!!NL.nlDrawer&&!!NL.nlDrawerOk&&NL.nlDrawerOk()&&localStorage.getItem('ls_nld')!=='0'}catch(e){return false}})();
+let NLDRJ='',NLDRV=0,NLDRQ=0,NLDRK='0';
+const nlQ2=v=>Math.round(v*100)/100;
+const nlRgb=(s,op)=>{const m=/rgba?\(([^)]+)\)/.exec(s||'');if(!m)return 0;const p=m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+  const a=Math.round(255*(p.length>3?p[3]:1)*(op==null?1:op));return a>0?a*16777216+((p[0]|0)<<16)+((p[1]|0)<<8)+(p[2]|0):0};
+const nlDrRel=(e,r)=>{const a=r.getBoundingClientRect(),b=e.getBoundingClientRect();return[nlQ2(b.left-a.left),nlQ2(b.top-a.top),nlQ2(b.width),nlQ2(b.height)]};
+function nlDrFlat(root){
+  const R=root.getBoundingClientRect(),it=[],q=nlQ2;
+  const geo=b=>[q(b.left-R.left),q(b.top-R.top),q(b.width),q(b.height)];
+  const rad=(cs,b)=>{const v=cs.borderTopLeftRadius||'0';return v.indexOf('%')>0?Math.min(b.width,b.height)*parseFloat(v)/100:(parseFloat(v)||0)};
+  const svgIt=(e,b,op)=>{const vb=e.viewBox&&e.viewBox.baseVal&&e.viewBox.baseVal.width?e.viewBox.baseVal:{x:0,y:0,width:24,height:24},ps=[];
+    e.querySelectorAll('path,rect').forEach(n=>{const cs=getComputedStyle(n);
+      const f=cs.fill==='none'?0:nlRgb(cs.fill,op*(parseFloat(cs.fillOpacity)||1)),sk=cs.stroke==='none'?0:nlRgb(cs.stroke,op);let d;
+      if(n.tagName.toLowerCase()==='rect'){const x=+n.getAttribute('x')||0,y=+n.getAttribute('y')||0,w=+n.getAttribute('width'),h=+n.getAttribute('height'),r=Math.min(+n.getAttribute('rx')||0,w/2,h/2);
+        d=r?`M${x+r} ${y}h${w-2*r}a${r} ${r} 0 0 1 ${r} ${r}v${h-2*r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w-2*r)}a${r} ${r} 0 0 1 ${-r} ${-r}v${-(h-2*r)}a${r} ${r} 0 0 1 ${r} ${-r}z`:`M${x} ${y}h${w}v${h}h${-w}z`}
+      else d=nlNormPath(n.getAttribute('d')||'');
+      if(f||sk)ps.push({d,f,s:sk,w:parseFloat(cs.strokeWidth)||0})});
+    it.push({t:'s',g:geo(b),vb:[vb.x,vb.y,vb.width,vb.height],p:ps})};
+  const visit=(e,op)=>{
+    const cs=getComputedStyle(e);if(cs.display==='none'||cs.visibility==='hidden')return;
+    op*=(parseFloat(cs.opacity)||0);const b=e.getBoundingClientRect();if(!(b.width>0&&b.height>0))return;
+    if(e.tagName.toLowerCase()==='svg'){svgIt(e,b,op);return}
+    const g=geo(b),bg=nlRgb(cs.backgroundColor,op);
+    if(bg)it.push({t:'r',g,c:bg,r:q(rad(cs,b))});
+    const bw=parseFloat(cs.borderBottomWidth)||0;
+    if(bw>0&&cs.borderBottomStyle!=='none'){const bc=nlRgb(cs.borderBottomColor,op);if(bc)it.push({t:'r',g:[g[0],q(g[1]+g[3]-bw),g[2],bw],c:bc,r:0})}
+    const bt=parseFloat(cs.borderTopWidth)||0;
+    if(bt>0&&cs.borderTopStyle!=='none'){const bc=nlRgb(cs.borderTopColor,op);if(bc)it.push({t:'r',g:[g[0],g[1],g[2],bt],c:bc,r:0})}
+    if(!e.children.length){const s0=e.textContent;
+      if(s0&&s0.trim()){const fs=parseFloat(cs.fontSize)||14,pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0,ta=cs.textAlign;
+        const h=g[3]-pt-pb;
+        it.push({t:'t',g:[q(g[0]+pl),q(g[1]+pt),q(g[2]-pl-pr),q(h)],s:cs.textTransform==='uppercase'?s0.toUpperCase():s0,sz:fs,wt:parseInt(cs.fontWeight)||400,c:nlRgb(cs.color,op),
+          ls:parseFloat(cs.letterSpacing)||0,al:ta==='center'?1:(ta==='right'||ta==='end')?2:0,ml:h>fs*1.9?1:0})}}
+    else for(const c of e.children)visit(c,op)};
+  visit(root,1);return{h:q(R.height),it}}
+function nlDrBuild(){
+  const dw=$('#dwr'),bd=$('#dbody'),tb=$('#dtabs'),ft=$('#dfoot'),cs=getComputedStyle(dw),q=nlQ2;
+  const pr=document.createElement('i');pr.style.cssText='position:absolute;visibility:hidden;color:var(--hov)';document.body.append(pr);const hov=nlRgb(getComputedStyle(pr).color,1);pr.remove();
+  const T=nlDrFlat(tb);T.hit=[];[...tb.children].forEach((b,j)=>{const g=nlDrRel(b,tb);T.hit.push({k:'t',j,g});if(j===DRW.tab)T.it.push({t:'r',g:[g[0],q(g[1]+g[3]-3),g[2],3],c:0xFF0D8F7E,r:0})});
+  const rows=[...bd.children].map((c,i)=>{const f=nlDrFlat(c),hs=[],R=c.getBoundingClientRect();
+    if(c.classList.contains('di')){c.querySelectorAll('.dx').forEach((x,j)=>{if(!x.disabled)hs.push({k:'x',j,g:nlDrRel(x,c)})});hs.push({k:'r',j:0,g:[0,0,q(R.width),q(R.height)]})}
+    else{const b=c.querySelector(':scope>button');if(b)hs.push({k:'b',j:0,g:nlDrRel(b,c)})}
+    f.hit=hs;return f});
+  const F=nlDrFlat(ft);F.hit=[...ft.children].map((b,j)=>({k:'f',j,g:nlDrRel(b,ft)}));
+  return{w:dw.offsetWidth,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
+function nlDrState(){if(!document.body.classList.contains('dopen'))return'0';
+  const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
+  return(vis($('#sheet'))||vis($('#dlg')))?'h':'o'}      // a page dialog / bottom sheet opened from the drawer (rename shortcut ...) must show above it
+function nlDrTick(){if(!NLDR)return;const k=nlDrState();if(k===NLDRK)return;NLDRK=k;
+  if(k==='0'){if(NLDRJ!=='0'){NLDRJ='0';NL.nlDrawer('0')}}
+  else if(k==='h'){NLDRJ='h';NL.nlDrawer('h')}
+  else{NLDRJ='';nlDrPush()}}
+function nlDrPush(){NLDRQ=0;if(!NLDR)return;
+  if(nlDrState()!=='o'){nlDrTick();return}
+  NLDRK='o';const o=nlDrBuild(),j=JSON.stringify(o);if(j===NLDRJ)return;NLDRJ=j;o.v=++NLDRV;NL.nlDrawer(JSON.stringify(o))}
+const nlDrSched=()=>{if(NLDR&&!NLDRQ)NLDRQ=requestAnimationFrame(nlDrPush)};
+if(NLDR){const mo=new MutationObserver(nlDrSched);
+  ['#dbody','#dtabs','#dfoot'].forEach(q=>mo.observe($(q),{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','style']}));
+  new MutationObserver(nlDrSched).observe(document.body,{attributes:true,attributeFilter:['class']});
+  new MutationObserver(nlDrSched).observe(document.documentElement,{attributes:true})}
+// a tap on the native drawer: click the HTML twin (r = row, x = row action button j, b = section button, t = tab j, f = footer button j); stale taps (page rebuilt meanwhile) are ignored
+window.nlDr=(k,i,j,v)=>{
+  if(k==='close'){drawerClose();return}
+  if(v!==NLDRV)return;
+  const c=$('#dbody').children[i];
+  if(k==='r'){if(c)c.click()}
+  else if(k==='x'){const x=c&&c.querySelectorAll('.dx')[j];if(x)x.click()}
+  else if(k==='b'){const b=c&&c.querySelector(':scope>button');if(b)b.click()}
+  else if(k==='t'){const b=$('#dtabs').children[j];if(b)b.click()}
+  else if(k==='f'){const b=$('#dfoot').children[j];if(b)b.click()}};
+if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
 function render(){
   applyPrefs();
   const AR=inArc();
