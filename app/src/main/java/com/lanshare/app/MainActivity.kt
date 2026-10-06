@@ -74,6 +74,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun viewPdf(json: String) {
             runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java)) }
         }
+        /** Text / code file tapped, or "New note": open the Keep-style editor. [json] = {dev, path} or {dev, dir, isNew:true} */
+        @JavascriptInterface fun editText(json: String) {
+            runOnUiThread { try { startActivity(TextEditorActivity.intent(this@MainActivity, json)) } catch (_: Throwable) { } }
+        }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
@@ -204,6 +208,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
+        if (::web.isInitialized && TextEditorActivity.consumeChanged()) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file: refresh the list
     }
 
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleShare(i) }

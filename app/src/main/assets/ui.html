@@ -734,7 +734,7 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='long'){S.sel.add(i.name);renderBar();return}
   if(ev==='tap'){const k=kind(i);
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);renderBar()}
-    else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)}};
+    else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isEd(i))editFile(i);else openFile(i)}};
 /* native app chrome (Kotlin: NlChrome.kt): top bar / selection bar, New-folder button, bottom dock + clipboard strip, snackbar, download cards.
    Same scheme as the path bar: the HTML elements stay underneath and keep all behaviour; Kotlin draws on top of their exact rects and a tap comes back as nlCh() which clicks the HTML twin.
    Hidden (so the page's own look shows) while a dialog / sheet / drawer / viewer / split screen is up. Kill switches: localStorage ls_nlc='0' or NlChrome.ENABLED=false. */
@@ -868,7 +868,7 @@ if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
 function render(){
   applyPrefs();
   const AR=inArc();
-  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR?'extract':'newfolder'),document.createTextNode(AR?'Extract all':'New folder'))}
+  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR?'extract':'newfolder'),document.createTextNode(AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')))}
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
@@ -906,7 +906,7 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isEd(i))editFile(i);else openFile(i)};
     holdMenu(r,i);
     if(i.dir)r.addEventListener('pointerdown',()=>prefetch(S.dev,jn(P0,i.name)));
     return r};
@@ -946,6 +946,15 @@ $('#newb').onclick=()=>{S.newest=!S.newest;S.sel.clear();render()};
 /* Tap on a file: in the Android app fetch it and open it with an installed app (text editor for source files); in a browser let it handle the URL */
 function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
+/* Android app: text / code files open in the native Keep-style editor (this phone, other devices, SMB shares; inside archives read-only) */
+const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log'];
+const isEd=i=>{if(i.dir||!(window.LSAndroid&&LSAndroid.editText))return false;const e=(i.name.split('.').pop()||'').toLowerCase();return PV_TXT.includes(e)||ED_MORE.includes(e)};
+function editFile(i){try{LSAndroid.editText(JSON.stringify({dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){openFile(i);return false}}
+function doNewNote(){
+  if(S.dev!=='local'&&S.path==='/'){toast('\u26a0 Open a folder first',3000);return}
+  try{LSAndroid.editText(JSON.stringify({dev:S.dev,dir:S.path,isNew:true}))}catch(e){toast('\u26a0 '+e.message,4000)}}
+/* the editor saved something: reload the open folder */
+window.lsRefresh=()=>{try{load()}catch(e){}};
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});
 function mediaList(){return shown().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
@@ -1265,6 +1274,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',doDetails);
+    if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A)btn('del','Delete',doDelete,'dng')
   }
@@ -1758,16 +1768,71 @@ function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(l
 function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return Math.round(s/5)*5+' s';
   if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
   const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h+' h'+(m?' '+m+' min':'')}
+/* ---- live view of a copy / extract that merges into existing folders: every replaced / new / skipped file as it happens,
+   and the question "replace this file?" one file at a time (Replace / Skip / Replace all / Skip all) ---- */
+let LVS=null;
+const LVK={R:['\u21bb','Replaced','#E65100'],N:['\uff0b','New','#2E7D32'],S:['\u21b7','Skipped','var(--mut)']};
+function lvShow(){const L=LVS;if(!L)return;const o=$('#sheet');
+  if(!L.card.isConnected||o.style.display!=='flex'){o.textContent='';o.append(L.card);o.style.display='flex';o.onclick=e=>{if(e.target===o)lvHide()}}
+  L.hidden=false}
+function lvHide(){const o=$('#sheet');if(LVS)LVS.hidden=true;o.style.display='none';o.onclick=null}
+function lvMake(id){
+  const card=E('div','card'),h=E('h3','','Working\u2026'),bar=E('div'),fill=E('div'),sum=E('div'),askBox=E('div'),list=E('div'),row=E('div');
+  bar.style.cssText='height:6px;border-radius:3px;background:var(--bd);overflow:hidden;margin:2px 0 8px';
+  fill.style.cssText='height:100%;width:0;background:var(--ac);transition:width .3s';bar.append(fill);
+  sum.style.cssText='font-size:13px;color:var(--mut);margin-bottom:6px';
+  askBox.style.cssText='display:none;border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0 8px';
+  list.style.cssText='max-height:32vh;overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px';
+  row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:10px';
+  const hide=E('button','tbtn','Hide'),cx=E('button','tbtn','Cancel');
+  hide.onclick=lvHide;cx.onclick=()=>{api('POST','/api/jobcancel?id='+id).catch(()=>{});cx.disabled=true};
+  row.append(hide,cx);card.append(E('div','handle'),h,bar,sum,askBox,list,row);
+  return{id,card,h,fill,sum,askBox,list,row,hide,cx,n:0,lines:0,answered:-1,curq:-1,hidden:false}}
+function lvLine(L,k,nm){const m=LVK[k]||LVK.N,d=E('div');d.style.color=m[2];d.textContent=m[0]+' '+nm;d.title=m[1];L.list.append(d);
+  if(++L.lines>500){L.list.firstChild.remove();L.lines--}}
+function lvFeed(id,j){
+  if(!LVS||LVS.id!==id){LVS=lvMake(id);lvShow()}
+  const L=LVS,pct=Math.floor(j.done*100/Math.max(j.total,1));
+  const near=L.list.scrollHeight-L.list.scrollTop-L.list.clientHeight<40;
+  (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));
+  if(j.logn!=null)L.n=j.logn;
+  if(near)L.list.scrollTop=L.list.scrollHeight;
+  L.h.textContent=(j.label||'Working')+'\u2026 '+pct+'%';L.fill.style.width=pct+'%';
+  L.sum.textContent='\u21bb '+j.cR+' replaced  \u00b7  \uff0b '+j.cN+' new  \u00b7  \u21b7 '+j.cS+' skipped';
+  const a=j.ask;
+  if(a&&a.q!==L.answered){
+    if(L.curq!==a.q){L.curq=a.q;L.askBox.textContent='';
+      const nm=E('div','',a.name);nm.style.cssText='font-weight:600;word-break:break-all;margin-bottom:6px';
+      const dt=m=>m?new Date(m*1000).toLocaleString():'?';
+      const same=a.srcSize===a.dstSize&&a.srcMtime&&a.dstMtime&&Math.abs(a.srcMtime-a.dstMtime)<=2;
+      const info=E('div','','Existing: '+fmt(a.dstSize)+' \u00b7 '+dt(a.dstMtime)+'\nNew: '+fmt(a.srcSize)+' \u00b7 '+dt(a.srcMtime)+(same?'\nIdentical size and date':''));
+      info.style.cssText='white-space:pre-line;font-size:13px;color:var(--mut);margin-bottom:8px';
+      const g=E('div');g.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
+      [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Replace all','replace_all','tbtn'],['Skip all','skip_all','tbtn']].forEach(x=>{
+        const b=E('button',x[2],x[0]);b.onclick=()=>{L.answered=a.q;L.askBox.style.display='none';
+          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('\u26a0 '+e.message,4000))};g.append(b)});
+      L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
+    L.askBox.style.display='block';if(L.hidden)lvShow();
+  }else L.askBox.style.display='none'}
+function lvEnd(j){const L=LVS;if(!L)return;LVS=null;
+  const last=j.log||[];last.forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
+  L.askBox.style.display='none';
+  L.h.textContent=j.state==='done'?'\u2705 Done':j.state==='cancel'?'Cancelled':'\u26a0 '+(j.error||'Failed');
+  L.fill.style.width=(j.state==='done'?100:L.fill.style.width.replace('%','')||0)+'%';
+  if(j.cR!=null)L.sum.textContent='\u21bb '+j.cR+' replaced  \u00b7  \uff0b '+j.cN+' new  \u00b7  \u21b7 '+j.cS+' skipped';
+  L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
+  if(L.hidden&&j.state==='done')return;lvShow()}
 let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 let trk=0;
 async function track(id){
-  let ok=false,jf=0;curJob=id;trk++;
+  let ok=false,jf=0;curJob=id;trk++;LVS=null;
   for(;;){
-    let j;try{j=await api('GET','/api/job?id='+id,null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
-    if(j.state==='error'){toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
-    if(j.state==='cancel'){toast('Cancelled',2500);break}
-    if(j.state==='done'){toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
+    let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
+    if(j.live)lvFeed(id,j);
+    if(j.state==='error'){lvEnd(j);toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
+    if(j.state==='cancel'){lvEnd(j);toast('Cancelled',2500);break}
+    if(j.state==='done'){lvEnd(j);toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
     const pct=Math.floor(j.done*100/j.total);
     const sp=[];if(j.speed>0)sp.push(fmt(j.speed)+'/s');if(j.eta>0)sp.push('about '+etaTxt(j.eta)+' left');
     toast((j.label||'Working')+'\u2026 '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total)+(sp.length?'  \u00b7 '+sp.join(' \u00b7 '):''),0,pct);
@@ -1996,7 +2061,7 @@ function pickExtractDir(start){return new Promise(res=>{
     const row=E('div','');row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:8px;position:sticky;bottom:0;background:var(--cont);padding-top:4px';
     const c=E('button','tbtn','Cancel');c.onclick=()=>fin(null);const ok=E('button','tbtn fill','Extract here');ok.onclick=()=>fin(cur);row.append(c,ok);card.append(row);o.append(card)};
   draw(cur)})}
-/* Name clash at the destination: Replace / Keep both / Skip. Resolves 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
+/* Name clash at the destination: Ask for each file / Replace all / Skip existing. Resolves 'ask' | 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
 const cdest=p=>{let b=p.split('/').filter(Boolean).pop()||'';if(b.endsWith('!')){b=b.slice(0,-1);const i=b.lastIndexOf('.');if(i>0)b=b.slice(0,i)}return b};
 async function askConflicts(dev,dir,paths,srcDev){
   let have;try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(dir));have=new Set((r.items||[]).map(i=>i.name))}catch(e){return 'rename'}
@@ -2005,9 +2070,9 @@ async function askConflicts(dev,dir,paths,srcDev){
   return new Promise(res=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
-    const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' in this folder. Replace them?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
+    const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-    [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
+    [['Ask for each file','ask','tbtn fill'],['Replace all','replace','tbtn'],['Skip existing','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
     o.append(card)})}
 async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
   let paths,dir;
@@ -2019,7 +2084,14 @@ async function doExtract(m){  // 0: archives selected in a folder, 1: items sele
   const inside=inArc();S.sel.clear();render();
   try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir,conflict:cf});watchJob(r.job);
     if(await track(r.job)&&!inside)load()}catch(e){toast('\u26a0 '+e.message,5000)}}
-$('#fab').onclick=()=>inArc()?doExtract(2):doMkdir();
+function doNew(){
+  if(!(window.LSAndroid&&LSAndroid.editText))return doMkdir();
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Create new'));
+  const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
+  const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
+  opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
+$('#fab').onclick=()=>inArc()?doExtract(2):doNew();
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{S.sel=new Set(shown().map(i=>i.name));render()};
 $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');

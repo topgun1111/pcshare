@@ -137,7 +137,11 @@ object Routes {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true
                 return ok(ex)
             }
-            "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson())
+            "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson(ex.query["since"]?.toIntOrNull() ?: -1))
+            "jobanswer" -> {   // the user answered "replace this file?" of a running copy
+                (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).give(ex.q("q").toIntOrNull() ?: -1, ex.q("ans"))
+                return ok(ex)
+            }
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "smbscan" -> return ex.json(d.smbScan())

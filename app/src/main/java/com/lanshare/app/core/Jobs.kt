@@ -31,6 +31,48 @@ class Job(@Volatile var label: String) {
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
 
+    // live view of a copy that merges into existing folders: what was replaced / added / skipped, and the open question ("replace this file?")
+    @Volatile var live = false
+    @Volatile var cR = 0
+    @Volatile var cN = 0
+    @Volatile var cS = 0
+    @Volatile var ask: JSONObject? = null
+    @Volatile var answer: String? = null
+    private var askSeq = 0
+    private val logBuf = ArrayList<String>()
+    private var logBase = 0
+
+    /** kind: R = replaced, N = new, S = skipped (kept what was there). */
+    @Synchronized fun addLog(kind: String, name: String) {
+        when (kind) { "R" -> cR++; "N" -> cN++; else -> cS++ }
+        logBuf.add("$kind|$name")
+        if (logBuf.size > 400) { logBuf.subList(0, 100).clear(); logBase += 100 }
+    }
+
+    @Synchronized private fun logSince(i: Int): Pair<Int, List<String>> {
+        val from = maxOf(i, logBase)
+        val end = logBase + logBuf.size
+        return end to (if (from >= end) emptyList() else logBuf.subList(from - logBase, end - logBase).toList())
+    }
+
+    /** Pauses the job until the user answers in the UI: replace | skip | replace_all | skip_all. Cancelling the job ends the wait. */
+    fun waitAnswer(q: JSONObject): String {
+        answer = null
+        synchronized(this) { askSeq++; q.put("q", askSeq) }
+        ask = q
+        try {
+            while (true) {
+                if (cancel) throw Cancelled()
+                val a = answer
+                if (a != null) return a
+                Thread.sleep(120)
+            }
+        } finally { ask = null; answer = null }
+    }
+
+    /** The answer only counts for the question that is open right now (a late double tap must not answer the next one). */
+    fun give(q: Int, a: String) { if (ask?.optInt("q", -1) == q) answer = a }
+
     private val startedAt = System.currentTimeMillis()
     private var sampleT = startedAt
     private var sampleDone = 0L
@@ -49,11 +91,16 @@ class Job(@Volatile var label: String) {
         return rate
     }
 
-    fun toJson(): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
+    fun toJson(since: Int = -1): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
         .put("error", error ?: JSONObject.NULL).put("label", label).also {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
             note?.let { n -> it.put("note", n) }
+            if (live) {
+                it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
+                ask?.let { a -> it.put("ask", a) }
+                if (since >= 0) { val (n, l) = logSince(since); it.put("logn", n).put("log", org.json.JSONArray(l)) }
+            }
             if (state == "run") {
                 val r = rateNow()
                 val warm = System.currentTimeMillis() - startedAt >= 2000   // a few seconds of data before promising anything
@@ -552,59 +599,103 @@ object Jobs {
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
             if (!(same && cut)) pinArchives(job, src, plan)
             val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
+            // SAFETY: nothing that already exists at the destination is ever deleted to make room. Folders are merged; only files with the
+            // same name are replaced - one by one as the user decides (conflict "ask"), or all / none ("replace" / "skip").
+            val dstDirs = HashMap<String, Map<String, Item>>()
+            fun listing(dir: String): Map<String, Item> = dstDirs.getOrPut(dir) {
+                try { dst.ls(dir).associateBy { it.name } } catch (e: Cancelled) { throw e } catch (_: Exception) { emptyMap() }
+            }
+            var sticky: String? = null   // "replace" / "skip" once the user answered "all"
+            var kept = 0                 // files the user chose to skip while moving: their originals stay
             for ((p, walked) in plan) {
                 if (job.cancel) throw Cancelled()
                 val isDir = walked?.firstOrNull()?.dir ?: false
                 val dn = destName(p)
                 val clash = dn in taken
-                if (clash && conflict == "skip") { job.done += if (walked != null) walked.sumOf { it.size } else 1L; continue }   // keep what is there
-                val selfHit = same && vjoin(ddirN, dn) == p                      // never replace an item with itself
-                val repl = clash && conflict == "replace" && !selfHit
-                val nn = if (repl) dn else uniqueName(dn, taken, isDir)
+                val selfHit = same && vjoin(ddirN, dn) == p                      // never merge an item into itself: keep both instead
+                val merge = clash && !selfHit && conflict != "rename"
+                val nn = if (merge) dn else uniqueName(dn, taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
-                if (repl) {
-                    try { dst.remove(d) } catch (e: Cancelled) { throw e }
-                    catch (e: Exception) { fail(vbase(p), IOException("could not replace the existing item: ${errText(e)}")); job.done += if (walked != null) walked.sumOf { it.size } else 1L; continue }
-                }
-                dest = d
-                if (same && cut) {
+                val fastMove = same && cut && !merge
+                if (merge) job.live = true
+                dest = if (merge) null else d   // a cancel removes only what this job created itself
+                if (fastMove) {
                     try { src.move(p, d) } catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }
                     job.done += 1
                     continue
                 }
+                val wl: List<WalkItem> = walked ?: src.walk(p)   // a move onto an existing name is done as copy + delete of the original
+                val counting = !(same && cut)
                 var bad = 0
                 var skipped = 0
-                for (w in walked!!) {
+                var keptHere = 0
+                for (w in wl) {
                     if (job.cancel) throw Cancelled()
                     if (w.skip) { skipped++; continue }   // link / unreadable folder: not copied
                     val target = if (w.rel.isEmpty()) d else d + "/" + w.rel
+                    val shown = if (w.rel.isEmpty()) nn else nn + "/" + w.rel
                     try {
-                        if (w.dir) { dst.mkdir(target); continue }
+                        if (w.dir) {
+                            if (merge) {
+                                val ex = listing(vdir(target))[vbase(target)]
+                                if (ex != null) { if (!ex.dir) throw IOException("a file with this name is in the way"); continue }
+                            }
+                            dst.mkdir(target); continue
+                        }
                         val sp = if (w.rel.isEmpty()) p else p + "/" + w.rel
-                        copyFile(job, src, dst, sp, target)
+                        var existed = false
+                        if (merge) {
+                            val ex = listing(vdir(target))[vbase(target)]
+                            if (ex != null) {
+                                if (ex.dir) throw IOException("a folder with this name is in the way")
+                                existed = true
+                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; else -> null }
+                                if (act == null) {
+                                    val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
+                                    try { q.put("srcMtime", src.stat(sp).optLong("mtime")) } catch (_: Exception) {}
+                                    act = job.waitAnswer(q)
+                                    if (act == "replace_all") { sticky = "replace"; act = "replace" }
+                                    else if (act == "skip_all") { sticky = "skip"; act = "skip" }
+                                }
+                                if (act == "skip") {
+                                    if (counting) job.done += w.size
+                                    keptHere++; job.addLog("S", shown)
+                                    continue
+                                }
+                            }
+                        }
+                        copyFile(job, src, dst, sp, target, counting)   // an existing file is overwritten through a temp file: never half-written
+                        if (merge) dstDirs.remove(vdir(target))
+                        job.addLog(if (existed) "R" else "N", shown)
                     } catch (e: Cancelled) { throw e
                     } catch (e: Exception) {
                         bad++
                         fail(if (w.rel.isEmpty()) vbase(p) else vbase(p) + "/" + w.rel, e)
-                        job.done += w.size   // keep the progress bar moving
+                        if (counting) job.done += w.size   // keep the progress bar moving
+                        if (w.rel.isEmpty() && w.dir) break   // the top folder itself could not be used: its content has no place to go
                     }
                 }
                 skippedTotal += skipped
+                kept += keptHere
+                if (!counting) job.done += 1
                 if (cut) {
                     // SAFETY: the original is removed only when every single thing in it was copied
-                    if (bad == 0 && skipped == 0) {
+                    if (bad == 0 && skipped == 0 && keptHere == 0) {
                         try { src.remove(p) } catch (e: Cancelled) { throw e }
                         catch (e: Exception) { fail(vbase(p), IOException("copied, but the original could not be removed: ${errText(e)}")) }
+                    } else if (bad == 0 && skipped == 0) {
+                        // the user kept some files: the original stays so nothing is lost
                     } else if (bad == 0) {
                         failCount++; if (fails.size < 50) fails.add("${vbase(p)}: copied, but $skipped item(s) (links or unreadable folders) could not be copied, so the original was kept")
                     } else if (fails.size < 50) fails.add("${vbase(p)}: not moved - the original was kept")
                 }
             }
+            if (job.live) job.note = "Done - ${job.cR} replaced, ${job.cN} new, ${job.cS} skipped" + (if (kept > 0) " (originals of skipped files were kept)" else "")
             job.done = job.total
             if (failCount == 0) {
                 job.state = "done"
-                if (skippedTotal > 0) job.note = "Done - $skippedTotal item(s) (links or unreadable folders) were skipped"
+                if (skippedTotal > 0 && !job.live) job.note = "Done - $skippedTotal item(s) (links or unreadable folders) were skipped"
                 if (cut && Clip.paths.isNotEmpty() && Clip.dev == srcId) Clip.clear()
             } else {
                 job.error = (if (failCount == 1) fails[0] else "$failCount problems - " + fails.take(3).joinToString("; ") + (if (failCount > 3) "; ..." else ""))
@@ -623,7 +714,7 @@ object Jobs {
         }
     }
 
-    private fun copyFile(job: Job, src: Endpoint, dst: Endpoint, sp: String, target: String) {
+    private fun copyFile(job: Job, src: Endpoint, dst: Endpoint, sp: String, target: String, count: Boolean = true) {
         for (attempt in 0..3) {
             var sent = 0L
             try {
@@ -632,18 +723,18 @@ object Jobs {
                     dst.write(target, f, f.size) { n ->
                         if (job.cancel) throw Cancelled()
                         sent += n
-                        job.done += n
+                        if (count) job.done += n
                     }
                 } finally { f.close() }
                 return
             } catch (e: Cancelled) { throw e
-            } catch (e: NotFound) { job.done -= sent; throw e
-            } catch (e: Denied) { job.done -= sent; throw e
-            } catch (e: Exists) { job.done -= sent; throw e
-            } catch (e: BadReq) { job.done -= sent; throw e
-            } catch (e: Full) { job.done -= sent; throw e   // retrying cannot create space
+            } catch (e: NotFound) { if (count) job.done -= sent; throw e
+            } catch (e: Denied) { if (count) job.done -= sent; throw e
+            } catch (e: Exists) { if (count) job.done -= sent; throw e
+            } catch (e: BadReq) { if (count) job.done -= sent; throw e
+            } catch (e: Full) { if (count) job.done -= sent; throw e   // retrying cannot create space
             } catch (e: Exception) {   // IOException or a raw library error: retry a few times
-                job.done -= sent
+                if (count) job.done -= sent
                 if (attempt == 3) throw IOException(errText(e))
                 if (job.cancel) throw Cancelled()
                 Thread.sleep(1500L * (attempt + 1))
