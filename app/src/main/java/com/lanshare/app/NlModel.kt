@@ -104,7 +104,7 @@ object NlModel {
     fun headSum(items: List<Item>, hid: Boolean): Pair<String, String> {
         var n = 0; var fo = 0; var fi = 0; var sz = 0L
         for (i in items) {
-            if (!hid && i.name.isNotEmpty() && i.name[0] == '.') continue
+            if (!hid && (i.hid || (i.name.isNotEmpty() && i.name[0] == '.'))) continue
             n++; if (i.dir) fo++ else { fi++; sz += i.size }
         }
         val b = n.toString() + (if (n == 1) " item" else " items") + (if (fi > 0) " \u00b7 " + fmt(sz) else "")
@@ -119,7 +119,7 @@ object NlModel {
         val coll = Collator.getInstance()                          // Intl.Collator(undefined,{numeric:true,sensitivity:'base'})
         (coll as? RuleBasedCollator)?.setNumericCollation(true)
         coll.setStrength(Collator.PRIMARY)
-        val vis = if (cfg.hid) items else items.filter { it.name.isEmpty() || it.name[0] != '.' }
+        val vis = if (cfg.hid) items else items.filter { !it.hid && (it.name.isEmpty() || it.name[0] != '.') }
         val d = if (cfg.asc) 1 else -1
         val num = { i: Item -> if (cfg.sort == "date") i.mtime else if (i.dir) (i.n ?: 0).toLong() else i.size }
         val v: List<Item> = if (cfg.sort == "none") vis else vis.sortedWith(Comparator<Item> { a, b ->

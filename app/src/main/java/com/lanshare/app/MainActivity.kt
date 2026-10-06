@@ -155,7 +155,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runPrint() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runPrint(); runOpen() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -213,6 +213,7 @@ class MainActivity : Activity() {
             if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
             return
         }
+        if (i != null && i.action == Intent.ACTION_VIEW && i.data != null) { handleView(i); return }   // "Open with" on an archive
         if (i == null || (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE)) return
         @Suppress("DEPRECATION")
         val uris: List<Uri> = if (i.action == Intent.ACTION_SEND)
@@ -241,6 +242,54 @@ class MainActivity : Activity() {
                 else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
             }
         }.start()
+    }
+
+    private var pendingOpen: String? = null
+
+    /** "Open with LANShare" on a zip / rar: browse it in the app's own file browser (path + "!"). Files already on the shared storage are opened in place, anything else is copied to "LANShare Shared" first. */
+    private fun handleView(i: Intent) {
+        val u = i.data ?: return
+        i.action = null   // consume once
+        Thread {
+            var rel: String? = null
+            try {
+                val root = Environment.getExternalStorageDirectory().absolutePath
+                var real: File? = null
+                if (u.scheme == "file") real = u.path?.let { File(it) }
+                else if (u.authority == "com.android.externalstorage.documents") {   // file managers: primary:Download/a.zip -> /storage/emulated/0/Download/a.zip
+                    val id = android.provider.DocumentsContract.getDocumentId(u)
+                    if (id.startsWith("primary:")) real = File(root, id.substring(8))
+                }
+                if (real != null && real.isFile && real.absolutePath.startsWith("$root/")) rel = real.absolutePath.substring(root.length)
+                if (rel == null) {
+                    var name = "opened_" + System.currentTimeMillis() + ".zip"; var size = -1L
+                    contentResolver.query(u, null, null, null, null)?.use { c ->
+                        if (c.moveToFirst()) {
+                            c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { name = c.getString(it) ?: name }
+                            c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { size = c.getLong(it) }
+                        }
+                    }
+                    val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared").apply { mkdirs() }
+                    var f = File(dir, name.replace("/", "_")); var k = 1
+                    if (!(f.isFile && size > 0 && f.length() == size)) {   // same name and size already copied: reuse it
+                        while (f.exists()) { f = File(dir, "${f.nameWithoutExtension} ($k)${if (f.extension.isEmpty()) "" else "." + f.extension}"); k++ }
+                        contentResolver.openInputStream(u)?.use { ins -> f.outputStream().use { ins.copyTo(it) } }
+                    }
+                    if (f.isFile) rel = "/LANShare Shared/" + f.name
+                }
+            } catch (_: Exception) {}
+            runOnUiThread {
+                if (rel != null) { pendingOpen = rel; runOpen() }
+                else Toast.makeText(this, "Could not open the archive", Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+
+    private fun runOpen() {
+        val p = pendingOpen ?: return
+        if (!pageReady) return
+        pendingOpen = null
+        web.postDelayed({ web.evaluateJavascript("window.lsOpenArc&&lsOpenArc(" + JSONObject.quote(p) + ")", null) }, 800)
     }
 
     /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */

@@ -4,10 +4,12 @@ import org.json.JSONObject
 import java.io.InputStream
 
 data class Item(val name: String, val dir: Boolean, val size: Long, val mtime: Long,
-                val n: Int? = null, val path: String? = null) {
+                val n: Int? = null, val path: String? = null,
+                val hid: Boolean = false) {   // hidden like a dot-folder: cache folders ("thumbnails", or holding a .nomedia file)
     fun toJson(): JSONObject = JSONObject().put("name", name).put("dir", dir).put("size", size).put("mtime", mtime).also {
         if (n != null) it.put("n", n)
         if (path != null) it.put("path", path)
+        if (hid) it.put("hid", true)
     }
 
     companion object {

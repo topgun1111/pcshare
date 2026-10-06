@@ -27,6 +27,49 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
+            <!-- "Open with" for archives (zip / rar / cbz / cbr): the archive opens inside LANShare's own browser -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:mimeType="application/zip"/>
+                <data android:mimeType="application/x-zip-compressed"/>
+                <data android:mimeType="application/x-zip"/>
+                <data android:mimeType="application/vnd.rar"/>
+                <data android:mimeType="application/x-rar-compressed"/>
+                <data android:mimeType="application/x-rar"/>
+                <data android:mimeType="application/vnd.comicbook+zip"/>
+                <data android:mimeType="application/vnd.comicbook-rar"/>
+                <data android:mimeType="application/x-cbz"/>
+                <data android:mimeType="application/x-cbr"/>
+            </intent-filter>
+            <!-- same, for apps that hand over the file with a generic type: matched by the file name -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content" android:host="*" android:mimeType="*/*"/>
+                <data android:pathPattern=".*\\.zip"/>
+                <data android:pathPattern=".*\\.rar"/>
+                <data android:pathPattern=".*\\.cbz"/>
+                <data android:pathPattern=".*\\.cbr"/>
+                <data android:pathPattern=".*\\.ZIP"/>
+                <data android:pathPattern=".*\\.RAR"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="file" android:mimeType="*/*"/>
+                <data android:pathPattern=".*\\.zip"/>
+                <data android:pathPattern=".*\\.rar"/>
+                <data android:pathPattern=".*\\.cbz"/>
+                <data android:pathPattern=".*\\.cbr"/>
+                <data android:pathPattern=".*\\.ZIP"/>
+                <data android:pathPattern=".*\\.RAR"/>
+            </intent-filter>
         </activity>
         <!-- Second share-sheet entry: the plain "LANShare" share entry opens the print dialog; files shared through this one open the "Send to..." device picker -->
         <activity-alias android:name=".SendShareAlias" android:targetActivity=".MainActivity" android:exported="true"
