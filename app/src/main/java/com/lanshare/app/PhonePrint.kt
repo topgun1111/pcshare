@@ -69,25 +69,41 @@ class PhonePrint(private val act: Activity) {
     private class ImgPg(val files: List<File>) : Pg()
     private class TxtPg(val lay: StaticLayout, val from: Int, val to: Int) : Pg()
 
+    /** One file to print: display [name] + a way to read its bytes (runs on a worker thread). Used by the native browser (no local HTTP round-trip). */
+    class Src(val name: String, val open: () -> java.io.InputStream)
+
     /** json = {items:[{name, url}]}; urls must point at the app's own local server. */
     fun start(json: String) {
         pool.execute {
-            try { prepare(json) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+            try {
+                val arr = JSONObject(json).getJSONArray("items")
+                val l = ArrayList<Src>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val url = o.getString("url")
+                    val host = URL(url).host
+                    if (host != "127.0.0.1" && host != "localhost") throw IOException("bad address")
+                    l.add(Src(o.optString("name", "file")) { URL(url).openStream() })
+                }
+                prepare(l)
+            } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
         }
     }
 
-    private fun prepare(json: String) {
-        val arr = JSONObject(json).getJSONArray("items")
+    /** Native entry: print these files as ONE Android print job (same rules as [start]). Safe to call from the main thread. */
+    fun startSources(items: List<Src>) {
+        pool.execute {
+            try { prepare(items) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+        }
+    }
+
+    private fun prepare(srcs: List<Src>) {
         val dir = File(act.cacheDir, "print").apply { mkdirs() }
         dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
         val ins = ArrayList<In>()
         val skipped = ArrayList<String>()
-        for (i in 0 until minOf(arr.length(), 60)) {
-            val o = arr.getJSONObject(i)
-            val url = o.getString("url")
-            val name = o.optString("name", "file")
-            val host = URL(url).host
-            if (host != "127.0.0.1" && host != "localhost") throw IOException("bad address")
+        for (i in 0 until minOf(srcs.size, 60)) {
+            val name = srcs[i].name
             val ext = name.substringAfterLast('.', "").lowercase()
             val kind = when (ext) {
                 "pdf" -> "pdf"
@@ -96,7 +112,7 @@ class PhonePrint(private val act: Activity) {
                 else -> { skipped.add(".$ext"); continue }
             }
             val f = File(dir, "${System.nanoTime()}_${i}_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-            URL(url).openStream().use { s -> f.outputStream().use { out -> s.copyTo(out) } }
+            srcs[i].open().use { s -> f.outputStream().use { out -> s.copyTo(out) } }
             ins.add(In(name, f, kind))
         }
         if (skipped.isNotEmpty())

@@ -38,6 +38,16 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity-alias>
+        <!-- Fully native file browser (no WebView). Second launcher icon while the WebView app still exists. -->
+        <activity android:name=".FilesActivity" android:exported="false" android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboardHidden"/>
+        <activity-alias android:name=".NativeAlias" android:targetActivity=".FilesActivity" android:exported="true"
+            android:label="LANShare Native" android:icon="@mipmap/ic_launcher">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <activity android:name=".PlayerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true"
             android:supportsPictureInPicture="true" android:resizeableActivity="true"

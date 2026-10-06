@@ -1,0 +1,566 @@
+package com.lanshare.app
+
+import android.Manifest
+import android.app.Activity
+import android.app.AlertDialog
+import android.app.NotificationManager
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.StateListDrawable
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.os.Parcelable
+import android.provider.Settings
+import android.util.LruCache
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.PopupMenu
+import android.widget.ProgressBar
+import android.widget.TextView
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.lanshare.app.core.Clip
+import com.lanshare.app.core.Core
+import com.lanshare.app.core.Jobs
+import com.lanshare.app.core.RemoteThumbs
+import com.lanshare.app.core.Smb
+import com.lanshare.app.core.Thumbs
+import com.lanshare.app.core.VideoThumbs
+import com.lanshare.app.core.errText
+import com.lanshare.app.core.isArcName
+import com.lanshare.app.core.vjoin
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import com.lanshare.app.core.Cfg as CoreCfg
+
+/**
+ * The fully native file browser: plain Android views + FsController (state, navigation, selection, file operations) + Prefs + the
+ * existing leaf row views (NlRowView / NlGridView) and the row pipeline (NlModel). No WebView, no JS bridge, no overlay.
+ * Started from the second launcher icon "LANShare Native" while the WebView app still exists next to it.
+ *
+ * Done: browsing (this phone, other LANShare devices, SMB, archives), list / compact / grid / large thumbnails, sort, hidden files,
+ * selection, copy / cut / paste / delete / rename / new folder / zip / extract / details / open with, progress + cancel, viewers
+ * (video / pictures / PDF), places (quick folders, favourites, recent, devices), theme.
+ * Print (see NativePrint / NativePrintPc / PrintPv): "Print on..." picker with device badges, this phone / Wi-Fi printer / PC, options dialogs with live
+ * page preview, job progress, documents printed from other apps (PcPrintService -> ACTION_PRINT_SHARED), "Printers" entry in Go to.
+ * Not yet: search, print part B (FinePrint PC dialog, page preview, shared-document intake), settings, SMB dialog, split screen,
+ * "send to", share-sheet intake, video gallery.
+ * NOT compiled / NOT device-tested.
+ */
+class FilesActivity : Activity(), FsController.Listener {
+    private val d: Float by lazy { resources.displayMetrics.density }
+    private fun dp(v: Int) = Math.round(v * d)
+
+    private lateinit var ctl: FsController
+    private lateinit var c: NlTheme.Cols
+    private lateinit var pal: NlPal
+    private val ui = Handler(Looper.getMainLooper())
+
+    // ---- views
+    private lateinit var barFrame: FrameLayout
+    private lateinit var topBar: LinearLayout
+    private lateinit var selBar: LinearLayout
+    private lateinit var btnUp: TextView
+    private lateinit var tvTitle: TextView
+    private lateinit var tvSub: TextView
+    private lateinit var tvSel: TextView
+    private lateinit var crumbs: LinearLayout
+    private lateinit var crumbScroll: HorizontalScrollView
+    private lateinit var tvSum: TextView
+    private lateinit var srl: SwipeRefreshLayout
+    private lateinit var rv: RecyclerView
+    private lateinit var tvEmpty: TextView
+    private lateinit var toastBar: LinearLayout
+    private lateinit var tvToast: TextView
+    private lateinit var tvCancel: TextView
+    private lateinit var progress: ProgressBar
+    private lateinit var clipBar: LinearLayout
+    private lateinit var tvClip: TextView
+    private lateinit var dock: HorizontalScrollView
+    private lateinit var dockRow: LinearLayout
+
+    // ---- list model
+    private var rows: List<NlRow> = emptyList()
+    private var vp = Prefs.ViewPref("list", "name", true, "s")
+    private var gridOn = false
+    private var spanN = 2
+    private var applyAll = false
+    private var curKey = ""
+    private val saved = HashMap<String, Parcelable>()   // scroll position per folder
+    private val ad = Ad()
+    private val printer by lazy { NativePrint(this, ctl, c) { msg -> onToast(msg, false) } }
+
+    // ---- thumbnails
+    private class Th(val bm: Bitmap, val dur: String?)
+    private val pool = Executors.newFixedThreadPool(3) { r -> Thread(r, "fth").also { it.isDaemon = true } }
+    private val thumbs = object : LruCache<String, Th>((Runtime.getRuntime().maxMemory() / 8).toInt().coerceAtLeast(4 * 1024 * 1024)) {
+        override fun sizeOf(k: String, v: Th) = v.bm.byteCount
+    }
+    private val failed = HashSet<String>()
+
+    // ---------------------------------------------------------------- lifecycle
+    override fun onCreate(b: Bundle?) {
+        super.onCreate(b)
+        Prefs.init(this)
+        val dark = when (Prefs.theme) {
+            "dark" -> true
+            "auto" -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+        c = NlTheme.cols(dark); pal = NlTheme.pal(dark)
+        window.statusBarColor = if (dark) Color.BLACK else 0xFF1C1C1E.toInt()
+        window.navigationBarColor = c.cont
+        ctl = FsController(this)
+        build()
+        askPermissions()
+        ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
+        showEmpty("Starting\u2026")
+        Thread {
+            var err: String? = null
+            var ok = false
+            val t0 = System.currentTimeMillis()
+            while (!ok && err == null && System.currentTimeMillis() - t0 < 40_000) {
+                ok = Core.url != null
+                err = Core.error
+                if (!ok && err == null) Thread.sleep(25)
+            }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (ok) { ctl.go("/"); handlePrintIntent(intent) } else showEmpty("Server did not start. Close and reopen the app.\n" + (err ?: "timeout"))
+            }
+        }.also { it.isDaemon = true }.start()
+    }
+
+    @Deprecated("ok")
+    override fun onBackPressed() { if (!ctl.back()) finish() }
+
+    override fun onResume() {
+        super.onResume()
+        getSharedPreferences("ls_print_ui", MODE_PRIVATE).edit().putBoolean("nativeLast", true).apply()   // PcPrintService opens the screen that was used last
+    }
+
+    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handlePrintIntent(i) }
+
+    /** A document printed from another app through Android's print dialog (PcPrintService): open the print flow for it. */
+    private fun handlePrintIntent(i: Intent?) {
+        if (i == null || i.action != MainActivity.ACTION_PRINT_SHARED) return
+        val names = i.getStringArrayExtra("names")?.toList().orEmpty()
+        try { getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0)) } catch (_: Throwable) { }
+        i.action = null
+        if (names.isNotEmpty()) printer.startShared(names)
+    }
+
+    override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
+
+    private fun askPermissions() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager())
+                startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+            else if (Build.VERSION.SDK_INT < 30) requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 2)
+        } catch (_: Throwable) { }
+    }
+
+    // ---------------------------------------------------------------- views
+    private fun pressed(): StateListDrawable = StateListDrawable().also {
+        it.addState(intArrayOf(android.R.attr.state_pressed), ColorDrawable(c.cont))
+        it.addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+    }
+
+    private fun text(t: String, sp: Float, col: Int, bold: Boolean = false): TextView = TextView(this).apply {
+        text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); setTextColor(col)
+        if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
+
+    private fun button(t: String, col: Int = c.fg, sp: Float = 15f, f: () -> Unit): TextView = text(t, sp, col, true).apply {
+        gravity = Gravity.CENTER; minWidth = dp(44); setPadding(dp(12), 0, dp(12), 0); background = pressed()
+        isClickable = true; setOnClickListener { f() }
+    }
+
+    private fun build() {
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(c.bg) }
+
+        // top bar / selection bar share one frame
+        barFrame = FrameLayout(this)
+        topBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        btnUp = button("\u2190", sp = 22f) { ctl.up() }
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        tvTitle = text("", 18f, c.fg, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        tvSub = text("", 12f, c.mut).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        titles.addView(tvTitle); titles.addView(tvSub)
+        topBar.addView(btnUp, LinearLayout.LayoutParams(-2, -1))
+        topBar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
+        topBar.addView(button("\u2605") { places() }, LinearLayout.LayoutParams(-2, -1))
+        topBar.addView(button("\u21C5") { sortDialog() }, LinearLayout.LayoutParams(-2, -1))
+        topBar.addView(button("\u25A6") { viewDialog() }, LinearLayout.LayoutParams(-2, -1))
+        val more = button("\u22EE", sp = 22f) { }
+        more.setOnClickListener { moreMenu(it) }
+        topBar.addView(more, LinearLayout.LayoutParams(-2, -1))
+        selBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setBackgroundColor(c.sel) }
+        tvSel = text("", 17f, c.fg, true)
+        selBar.addView(button("\u2715", sp = 20f) { ctl.clearSel() }, LinearLayout.LayoutParams(-2, -1))
+        selBar.addView(tvSel, LinearLayout.LayoutParams(0, -2, 1f))
+        selBar.addView(button("Select all", c.ac, 14f) { ctl.selectOnly(rows.map { it.nm }) }, LinearLayout.LayoutParams(-2, -1))
+        barFrame.addView(topBar, FrameLayout.LayoutParams(-1, -1))
+        barFrame.addView(selBar, FrameLayout.LayoutParams(-1, -1))
+        root.addView(barFrame, LinearLayout.LayoutParams(-1, dp(56)))
+
+        // breadcrumbs + summary
+        val pathRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        crumbScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        crumbs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        crumbScroll.addView(crumbs)
+        tvSum = text("", 12f, c.mut).apply { setPadding(dp(8), 0, dp(14), 0) }
+        pathRow.addView(crumbScroll, LinearLayout.LayoutParams(0, -1, 1f))
+        pathRow.addView(tvSum, LinearLayout.LayoutParams(-2, -2))
+        root.addView(pathRow, LinearLayout.LayoutParams(-1, dp(36)))
+
+        // list + empty text + snackbar
+        val body = FrameLayout(this)
+        rv = RecyclerView(this).apply { setBackgroundColor(pal.card); adapter = ad; layoutManager = LinearLayoutManager(this@FilesActivity); clipToPadding = false; setPadding(0, 0, 0, dp(80)) }
+        srl = SwipeRefreshLayout(this).apply {
+            addView(rv); setProgressBackgroundColorSchemeColor(c.cont); setColorSchemeColors(c.ac)
+            setOnRefreshListener { ctl.refresh() }
+        }
+        tvEmpty = text("", 15f, c.mut).apply { gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24)) }
+        toastBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = android.graphics.drawable.GradientDrawable().also { it.setColor(0xFF323232.toInt()); it.cornerRadius = dp(8).toFloat() }
+        }
+        tvToast = text("", 14f, Color.WHITE)
+        tvCancel = text("CANCEL", 13f, 0xFF8AB4F8.toInt(), true).apply { setPadding(dp(14), dp(4), 0, dp(4)); visibility = View.GONE; setOnClickListener { ctl.cancelJob() } }
+        val trow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        trow.addView(tvToast, LinearLayout.LayoutParams(0, -2, 1f)); trow.addView(tvCancel)
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
+        toastBar.addView(trow); toastBar.addView(progress, LinearLayout.LayoutParams(-1, dp(6)).also { it.topMargin = dp(6) })
+        body.addView(srl, FrameLayout.LayoutParams(-1, -1))
+        body.addView(tvEmpty, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        body.addView(toastBar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).also { it.setMargins(dp(12), 0, dp(12), dp(12)) })
+        root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // clipboard bar + action dock
+        clipBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE; setBackgroundColor(c.cont); setPadding(dp(14), 0, 0, 0) }
+        tvClip = text("", 13f, c.fg).apply { maxLines = 2 }
+        clipBar.addView(tvClip, LinearLayout.LayoutParams(0, -2, 1f))
+        clipBar.addView(button("Paste here", c.ac, 14f) { ctl.paste() }, LinearLayout.LayoutParams(-2, dp(48)))
+        clipBar.addView(button("\u2715", sp = 18f) { ctl.clearClip() }, LinearLayout.LayoutParams(-2, dp(48)))
+        root.addView(clipBar, LinearLayout.LayoutParams(-1, -2))
+        dock = HorizontalScrollView(this).apply { visibility = View.GONE; setBackgroundColor(c.cont); isHorizontalScrollBarEnabled = false }
+        dockRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        dock.addView(dockRow)
+        root.addView(dock, LinearLayout.LayoutParams(-1, dp(52)))
+        setContentView(root)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+    }
+
+    private fun showEmpty(msg: String?) { tvEmpty.text = msg ?: ""; tvEmpty.visibility = if (msg == null) View.GONE else View.VISIBLE }
+
+    // ---------------------------------------------------------------- FsController.Listener
+    override fun onList() {
+        val key = ctl.dev + "|" + ctl.path
+        if (key != curKey) {
+            if (curKey.isNotEmpty()) rv.layoutManager?.onSaveInstanceState()?.let { saved[curKey] = it }
+            if (ctl.err == null) { Prefs.histPush(ctl.dev, ctl.path); if (ctl.dev == "local") Prefs.used = ctl.used }
+        }
+        rebuild()
+        if (key != curKey) {
+            curKey = key
+            val st = saved[key]
+            if (st != null) rv.layoutManager?.onRestoreInstanceState(st) else rv.scrollToPosition(0)
+        }
+        srl.isRefreshing = false
+        showEmpty(if (rows.isNotEmpty()) null else if (ctl.err != null) "\u26A0 " + ctl.err + "\nRetrying\u2026" else "This folder is empty")
+        header()
+    }
+
+    override fun onSelection() {
+        val s = ctl.selItems()
+        selBar.visibility = if (s.isEmpty()) View.GONE else View.VISIBLE
+        val sz = s.filter { !it.dir }.sumOf { it.size }
+        tvSel.text = s.size.toString() + " selected" + (if (sz > 0) " \u00b7 " + NlModel.fmt(sz) else "")
+        ad.notifyDataSetChanged()
+        renderDock()
+    }
+
+    override fun onClip() = renderDock()
+
+    private val hideToast = Runnable { toastBar.visibility = View.GONE }
+
+    override fun onToast(msg: String, long: Boolean) {
+        tvToast.text = msg; progress.visibility = View.GONE; tvCancel.visibility = View.GONE; toastBar.visibility = View.VISIBLE
+        ui.removeCallbacks(hideToast); ui.postDelayed(hideToast, if (long) 4500L else 2800L)
+    }
+
+    override fun onProgress(label: String, pct: Int?, state: String) {
+        if (state != "run") return   // the closing message comes through onToast
+        ui.removeCallbacks(hideToast)
+        tvToast.text = label + (if (pct != null) " $pct%" else "\u2026")
+        progress.isIndeterminate = pct == null
+        if (pct != null) progress.progress = pct
+        progress.visibility = View.VISIBLE; tvCancel.visibility = View.VISIBLE; toastBar.visibility = View.VISIBLE
+    }
+
+    // ---------------------------------------------------------------- rows
+    private fun rebuild() {
+        val items = ctl.items
+        val files = items.filter { !it.dir }
+        val media = files.count { val k = NlModel.kind(it.name, false); k == "img" || k == "vid" }
+        vp = Prefs.viewFor(ctl.dev, ctl.path, files.isNotEmpty() && media * 2 >= files.size)
+        val cfg = NlModel.Cfg(vp.sort, vp.asc, Prefs.hidden, false, vp.view, vp.thumb)
+        val rs: List<NlRow> = (try { NlModel.rows(items, ctl.path, cfg) } catch (_: Throwable) { null }) ?: emptyList()
+        rows = if (ctl.dev == "local") rs else rs.map { NlRow(it.nm, it.dir, it.k, it.a, it.b, it.badge, it.badgeCol, it.dup, it.path, it.size, it.mtime, false, ctl.dev, false) }
+        val grid = vp.view == "grid"
+        val span = if (resources.configuration.screenWidthDp >= 600) 4 else 2
+        if (grid != gridOn || (grid && span != spanN) || rv.layoutManager == null) {
+            gridOn = grid; spanN = span
+            rv.layoutManager = if (grid) GridLayoutManager(this, span) else LinearLayoutManager(this)
+            rv.setPadding(if (grid) dp(4) else 0, if (grid) dp(4) else 0, if (grid) dp(4) else 0, dp(80))
+        }
+        ad.notifyDataSetChanged()
+    }
+
+    private fun applyPref(v: Prefs.ViewPref) {
+        Prefs.setView(ctl.dev, ctl.path, v, applyAll)
+        rebuild(); header()
+    }
+
+    private fun tap(r: NlRow) {
+        if (ctl.sel.isNotEmpty()) { ctl.toggle(r.nm); return }
+        if (r.dir) { ctl.go(vjoin(ctl.path, r.nm)); return }
+        if (isArcName(r.nm)) { ctl.go(vjoin(ctl.path, r.nm) + "!"); return }
+        if (FileOpen.viewer(this, ctl.dev, ctl.path, rows, r)) return
+        FileOpen.external(this, ctl.dev, vjoin(ctl.path, r.nm), r.nm)
+    }
+
+    // ---------------------------------------------------------------- header, breadcrumbs, dock
+    private fun devName(dev: String): String {
+        if (dev == "local") return CoreCfg.name
+        try { Core.discOrNull()?.list()?.firstOrNull { it.id == dev }?.let { return it.name } } catch (_: Throwable) { }
+        try { Smb.peers().firstOrNull { it.optString("id") == dev }?.let { return it.optString("name").ifEmpty { dev } } } catch (_: Throwable) { }
+        return dev
+    }
+
+    private fun header() {
+        val p = ctl.path
+        val dn = devName(ctl.dev)
+        tvTitle.text = if (p == "/") dn else Prefs.baseName(p)
+        tvSub.text = if (p == "/") "" else dn
+        tvSub.visibility = if (p == "/") View.GONE else View.VISIBLE
+        btnUp.visibility = if (p == "/") View.INVISIBLE else View.VISIBLE
+        crumbs.removeAllViews()
+        val segs = p.split('/').filter { it.isNotEmpty() }
+        crumbs.addView(button(dn, c.ac, 13f) { ctl.go("/") }, LinearLayout.LayoutParams(-2, -1))
+        for ((i, sg) in segs.withIndex()) {
+            crumbs.addView(text("\u203A", 14f, c.mut))
+            val target = "/" + segs.take(i + 1).joinToString("/")
+            crumbs.addView(button(sg.removeSuffix("!"), if (i == segs.size - 1) c.fg else c.ac, 13f) { ctl.go(target) }, LinearLayout.LayoutParams(-2, -1))
+        }
+        crumbScroll.post { crumbScroll.fullScroll(View.FOCUS_RIGHT) }
+        val sum = NlModel.headSum(ctl.items, Prefs.hidden).first
+        val u = ctl.used
+        tvSum.text = sum + (if (u != null) " \u00b7 $u% used" else "")
+    }
+
+    private fun renderDock() {
+        dockRow.removeAllViews()
+        val sel = ctl.selItems()
+        val arch = ctl.inArchive()
+        val hasClip = !Clip.isEmpty()
+        fun b(label: String, danger: Boolean = false, f: () -> Unit) {
+            dockRow.addView(button(label, if (danger) 0xFFB3261E.toInt() else c.fg, 14f, f), LinearLayout.LayoutParams(-2, -1))
+        }
+        if (sel.isNotEmpty()) {
+            if (arch || sel.any { ctl.isArc(it) }) b("Extract") { ctl.extract() }
+            b("Copy") { ctl.copy(false) }
+            if (!arch) { b("Cut") { ctl.copy(true) }; b("Zip") { askZip() } }
+            if (hasClip && !arch) b("Paste") { ctl.paste() }
+            if (sel.size == 1 && !arch) b("Rename") { askRename(sel[0].name) }
+            if (sel.size == 1) b("Details") { details(sel[0].name) }
+            if (sel.size == 1 && !sel[0].dir) b("Open with") { FileOpen.external(this, ctl.dev, vjoin(ctl.path, sel[0].name), sel[0].name, true) }
+            if (sel.none { it.dir }) b("Print") { printer.start() }   // files only, like ui.html
+            if (!arch) b("Delete", true) { askDelete(sel.size) }
+        }
+        dock.visibility = if (sel.isEmpty()) View.GONE else View.VISIBLE
+        val showClip = hasClip && sel.isEmpty() && !arch
+        clipBar.visibility = if (showClip) View.VISIBLE else View.GONE
+        if (showClip) tvClip.text = (if (Clip.op == "cut") "Cut " else "Copied ") + Clip.paths.size + " item(s) from " + devName(Clip.dev ?: "local")
+    }
+
+    // ---------------------------------------------------------------- dialogs
+    private fun input(title: String, init: String, ok: String, selectBase: Boolean = false, f: (String) -> Unit) {
+        val et = EditText(this).apply { setText(init); setSingleLine(); if (selectBase) setSelection(0, init.lastIndexOf('.').let { if (it > 0) it else init.length }) else setSelection(init.length) }
+        val box = FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(et) }
+        val dlg = AlertDialog.Builder(this).setTitle(title).setView(box).setNegativeButton("Cancel", null)
+            .setPositiveButton(ok) { _, _ -> val t = et.text.toString().trim(); if (t.isNotEmpty()) f(t) }.create()
+        dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dlg.show()
+    }
+
+    private fun askRename(old: String) = input("Rename", old, "Rename", true) { ctl.rename(old, it) }
+    private fun askMkdir() = input("New folder", "", "Create") { ctl.mkdir(it) }
+    private fun askZip() {
+        val s = ctl.selItems()
+        val base = if (s.size == 1) s[0].name.substringBeforeLast('.', s[0].name) else Prefs.baseName(ctl.path).ifEmpty { "Archive" }
+        input("Zip", "$base.zip", "Zip") { ctl.zip(it) }
+    }
+    private fun askDelete(n: Int) {
+        AlertDialog.Builder(this).setTitle("Delete").setMessage("Delete $n item(s)? This cannot be undone.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Delete") { _, _ -> ctl.delete() }.show()
+    }
+
+    private fun details(name: String) {
+        val dev = ctl.dev; val p = vjoin(ctl.path, name)
+        Thread {
+            val msg = try {
+                val o = Jobs.ep(dev).stat(p)
+                o.keys().asSequence().joinToString("\n") { k -> k + ": " + o.opt(k) }
+            } catch (e: Throwable) { "\u26A0 " + errText(e) }
+            runOnUiThread { if (!isFinishing) AlertDialog.Builder(this).setTitle(name).setMessage(msg).setPositiveButton("OK", null).show() }
+        }.also { it.isDaemon = true }.start()
+    }
+
+    private fun sortDialog() {
+        val keys = arrayOf("name", "date", "size", "type", "none")
+        val names = arrayOf("Name", "Date modified", "Size", "Type", "No sort")
+        val labels = Array(keys.size) { i -> names[i] + (if (keys[i] == vp.sort && keys[i] != "none") (if (vp.asc) "   \u2191" else "   \u2193") else "") }
+        AlertDialog.Builder(this).setTitle("Sort by").setSingleChoiceItems(labels, keys.indexOf(vp.sort)) { dlg, which ->
+            val k = keys[which]
+            val asc = if (k == vp.sort && k != "none") !vp.asc else k != "date" && k != "size"   // a new date / size sort starts newest / largest first
+            applyPref(Prefs.ViewPref(vp.view, k, asc, vp.thumb)); dlg.dismiss()
+        }.show()
+    }
+
+    private fun viewDialog() {
+        fun onoff(b: Boolean) = if (b) "on" else "off"
+        val labels = arrayOf("List", "Compact", "Grid", "Large thumbnails: " + onoff(vp.thumb == "l"), "Show hidden files: " + onoff(Prefs.hidden), "Apply to all folders: " + onoff(applyAll))
+        AlertDialog.Builder(this).setTitle("View").setItems(labels) { _, i ->
+            when (i) {
+                0 -> applyPref(Prefs.ViewPref("list", vp.sort, vp.asc, vp.thumb))
+                1 -> applyPref(Prefs.ViewPref("compact", vp.sort, vp.asc, vp.thumb))
+                2 -> applyPref(Prefs.ViewPref("grid", vp.sort, vp.asc, vp.thumb))
+                3 -> applyPref(Prefs.ViewPref(vp.view, vp.sort, vp.asc, if (vp.thumb == "l") "s" else "l"))
+                4 -> { Prefs.hidden = !Prefs.hidden; rebuild(); header() }
+                5 -> applyAll = !applyAll
+            }
+        }.show()
+    }
+
+    private fun moreMenu(anchor: View) {
+        val m = PopupMenu(this, anchor)
+        m.menu.add(0, 1, 0, "New folder")
+        m.menu.add(0, 2, 1, "Refresh")
+        m.menu.add(0, 3, 2, if (Prefs.isFav(ctl.dev, ctl.path)) "Remove from favourites" else "Add to favourites")
+        m.menu.add(0, 4, 3, "Theme: " + Prefs.theme)
+        m.setOnMenuItemClickListener {
+            when (it.itemId) {
+                1 -> askMkdir()
+                2 -> ctl.refresh()
+                3 -> Prefs.toggleFav(ctl.dev, ctl.path, devName(ctl.dev))
+                4 -> { Prefs.theme = when (Prefs.theme) { "light" -> "dark"; "dark" -> "auto"; else -> "light" }; recreate() }
+            }
+            true
+        }
+        m.show()
+    }
+
+    /** Devices, quick folders, favourites and recent folders in one list (stands in for the side drawer). */
+    private fun places() {
+        val labels = ArrayList<String>(); val acts = ArrayList<() -> Unit>()
+        fun add(l: String, f: () -> Unit) { labels.add(l); acts.add(f) }
+        add("\uD83D\uDDA8 Printers") { printer.showPrinters() }   // view-only, like the drawer entry of ui.html
+        add("\u25A3 This device (" + CoreCfg.name + ")") { ctl.openDev("local") }
+        try { Core.discOrNull()?.list()?.forEach { p -> if (p.ok) add("\u25A3 " + p.name) { ctl.openDev(p.id) } } } catch (_: Throwable) { }
+        try { Smb.peers().forEach { s -> val id = s.optString("id"); if (id.isNotEmpty()) add("\u25A3 " + s.optString("name").ifEmpty { id }) { ctl.openDev(id) } } } catch (_: Throwable) { }
+        Prefs.quick().forEach { q -> add("\u25B8 " + q.name) { ctl.open(q.dev, q.path) } }
+        Prefs.favs().forEach { q -> add("\u2605 " + q.name + (if (q.dn.isNotEmpty()) "  (" + q.dn + ")" else "")) { ctl.open(q.dev, q.path) } }
+        Prefs.history().take(15).forEach { q -> add("\u21BA " + q.name + (if (q.dev != "local") "  (" + devName(q.dev) + ")" else "")) { ctl.open(q.dev, q.path) } }
+        AlertDialog.Builder(this).setTitle("Go to").setItems(labels.toTypedArray()) { _, i -> acts[i]() }.show()
+    }
+
+    // ---------------------------------------------------------------- adapter + thumbnails
+    private class VH(val v: View) : RecyclerView.ViewHolder(v) { var job: Future<*>? = null; var key: String? = null }
+
+    private inner class Ad : RecyclerView.Adapter<VH>() {
+        override fun getItemCount() = rows.size
+        override fun getItemViewType(position: Int) = if (gridOn) 1 else 0
+        override fun onCreateViewHolder(parent: ViewGroup, t: Int): VH {
+            val v: View = if (t == 1) NlGridView(parent.context, d) else NlRowView(parent.context, d)
+            val lp = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            if (t == 1) lp.setMargins(dp(4), dp(4), dp(4), dp(4))
+            v.layoutParams = lp
+            v.isClickable = true; v.isLongClickable = true
+            val h = VH(v)
+            v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0 && i < rows.size) tap(rows[i]) }
+            v.setOnLongClickListener {
+                val i = h.bindingAdapterPosition
+                if (i >= 0 && i < rows.size) { it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); ctl.select(rows[i].nm); true } else false
+            }
+            return h
+        }
+
+        override fun onBindViewHolder(h: VH, pos: Int) {
+            val r = rows[pos]
+            h.job?.cancel(false); h.job = null; h.key = null
+            val sel = r.nm in ctl.sel
+            val hv = h.v
+            if (hv is NlGridView) hv.bind(r, pal, sel, ctl.sel.isNotEmpty())
+            else (hv as NlRowView).bind(r, pal, sel, vp.view == "compact", vp.view == "list" && vp.thumb == "l")
+            val key = r.thumbKey ?: return
+            val hit = thumbs.get(key)
+            if (hit != null) { setThumb(hv, hit); return }
+            if (synchronized(failed) { failed.contains(key) }) return
+            h.key = key
+            h.job = loadTh(r, key, { h.key == key }) { th -> setThumb(h.v, th) }
+        }
+
+        override fun onViewRecycled(h: VH) { h.job?.cancel(false); h.job = null; h.key = null }
+    }
+
+    private fun setThumb(v: View, t: Th) {
+        if (v is NlGridView) { v.thumb = t.bm; v.dur = t.dur } else if (v is NlRowView) { v.thumb = t.bm; v.dur = t.dur }
+        v.invalidate()
+    }
+
+    private fun fmtDur(ms: Long): String {
+        val s = Math.round(ms / 1000.0); val h = s / 3600; val m = (s % 3600) / 60; val c = s % 60
+        return if (h > 0) String.format("%d:%02d:%02d", h, m, c) else String.format("%d:%02d", m, c)
+    }
+
+    /** Decode one thumbnail on the pool (this phone: files; other devices / SMB: through the endpoint, disk cached); [ok] is checked on the UI thread. */
+    private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
+        val th: Th? = try {
+            if (r.dev != "local") {
+                val (data, ms) = RemoteThumbs.make(r.dev, r.path!!, r.size, r.mtime, r.k == "vid")
+                BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) }
+            } else if (r.k == "vid") {
+                val (data, ms) = VideoThumbs.make(Core.local.open(r.path!!))
+                BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) }
+            } else {
+                val data = Thumbs.make(Core.local.real(r.path!!))
+                BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, null) }
+            }
+        } catch (_: Throwable) { null }
+        if (th != null) { thumbs.put(key, th); runOnUiThread { if (ok()) done(th) } }
+        else synchronized(failed) { failed.add(key) }
+    })
+}

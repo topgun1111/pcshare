@@ -73,6 +73,8 @@ class MainActivity : Activity() {
         }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
+        /** One-time copy of the page's localStorage (view / sort / favourites ...) into the native Prefs store (ui.html lsMig). */
+        @JavascriptInterface fun lsMigrate(json: String) { Prefs.migrate(json) }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
@@ -121,6 +123,7 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        Prefs.init(this)
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -187,6 +190,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        getSharedPreferences("ls_print_ui", MODE_PRIVATE).edit().putBoolean("nativeLast", false).apply()   // PcPrintService opens the screen that was used last
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
     }
 

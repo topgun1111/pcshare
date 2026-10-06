@@ -582,7 +582,10 @@ async function fillCounts(dev,path){if(dev!=='local')return;
     let any=false;const ch=new Set();S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;ch.add(i);if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});if(any&&window.nlPatch)nlPatch(ch);
     const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
     if(any&&S.sort==='size')render()}catch(e){}}
-async function load(){try{return await loadMain()}finally{if(window.nlBoot)nlBoot()}}   // first finished load = the native start picture can go
+function lsMig(){try{if(window.__lsm||!window.LSAndroid||!LSAndroid.lsMigrate)return;window.__lsm=1;const o={};
+  ['ls_g','ls_pf','ls_fav','ls_qf','ls_his','ls_hidden','ls_sort','ls_asc','ls_view','ls_theme','ls_dtab','ls_dual','ls_used'].forEach(k=>{const v=localStorage.getItem(k);if(v!=null)o[k]=v});
+  LSAndroid.lsMigrate(JSON.stringify(o))}catch(e){}}   // once per page load: the native Prefs keeps the first copy (FilesActivity)
+async function load(){try{return await loadMain()}finally{if(window.nlBoot)nlBoot();lsMig()}}   // first finished load = the native start picture can go
 async function loadMain(){
   clearTimeout(loadT);const dev=S.dev,path=S.path,ck=dev+'|'+path,hit=useLSC&&path.indexOf('!')<0?LSC.get(ck):null;useLSC=false;
   if(hit){S.items=hit.items;S.used=hit.used;S.err='';S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
