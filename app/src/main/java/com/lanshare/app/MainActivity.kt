@@ -208,6 +208,7 @@ class MainActivity : Activity() {
         loadWhenReady()
         cleanShared()
         handleShare(intent)
+        if (b == null) UpdateCheck.run(this)   // cold start: look for a newer GitHub release
     }
 
     override fun onPause() { super.onPause(); if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
