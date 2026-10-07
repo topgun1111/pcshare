@@ -919,7 +919,7 @@ function mkAlbum(i,P0){
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
 let GALA=null,GALT=0,GALP=null;
 function galFetch(){if(GALP)return;
-  GALP=api('GET','/api/albums').then(r=>{const a=(r&&r.albums)||[],sig=a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;GALA={a:a,sig:sig};GALT=Date.now();return ch}).catch(()=>false).then(ch=>{GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+  GALP=api('GET','/api/albums').then(r=>{const a=(r&&r.albums)||[],sig=a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;GALA={a:a,sig:sig};GALT=Date.now();return ch}).catch(e=>{try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return false}).then(ch=>{GALP=null;if(ch&&galRoot()&&!inArc())render()})}
 function mkAlbumX(a,P0,V){
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
   c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));

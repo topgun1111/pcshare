@@ -1,5 +1,6 @@
 package com.lanshare.app.core
 
+import android.os.Environment
 import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,9 +30,11 @@ object Albums {
         val rootFile = Core.local.root
         val root = rootFile.path.trimEnd('/')
         val map = LinkedHashMap<String, A>()
+        // MediaStore may spell the storage root differently from the canonical path the app uses
+        val roots = listOf(root, "/storage/emulated/0", "/sdcard", try { Environment.getExternalStorageDirectory().path.trimEnd('/') } catch (_: Exception) { root }).distinct()
         fun add(path: String, size: Long, mt: Long) {
-            if (!path.startsWith("$root/")) return
-            val rel = path.removePrefix(root)
+            val pre = roots.firstOrNull { path.startsWith("$it/") } ?: return
+            val rel = path.removePrefix(pre)
             val dir = rel.substringBeforeLast('/')
             if (skip(dir)) return
             val a = map.getOrPut(dir) { A() }

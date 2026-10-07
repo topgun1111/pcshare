@@ -43,7 +43,6 @@ object Routes {
         when (route) {
             "ping" -> ok(ex)
             "ls" -> ex.json(jarr(L.ls(ex.q("path")).map { it.toJson() }))
-            "albums" -> return ex.json(Albums.json())
             "stat" -> ex.json(L.stat(ex.q("path")))
             "space" -> ex.json(spaceJson(L.space(ex.q("path"))))
             "walk" -> ex.json(jarr(L.walk(ex.q("path")).map { it.toJson() }))
@@ -106,6 +105,7 @@ object Routes {
                 return ex.json(JSONObject().put("path", path).put("items", jarr(items.map { it.toJson() })).put("used", used))
             }
             "search" -> return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
+            "albums" -> return ex.json(Albums.json())
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
