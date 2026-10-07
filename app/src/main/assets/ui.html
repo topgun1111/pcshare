@@ -341,6 +341,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const IC={
+dup:'M10 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h5v2h2V1h-2v2zm0 15H5l5-6v6zm9-15h-5v2h5v13l-5-6v9h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
 folder:'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
 file:'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z',
 doc:'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
@@ -1182,8 +1183,62 @@ function openSettings(){
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
     rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  const rc=E('button','set'),tc=E('div','t'),sc=E('small','','Google Drive \u00b7 not connected');rc.style.width='100%';rc.style.textAlign='left';tc.append(E('b','','Cloud storage'),sc);rc.append(tc);
+  rc.onclick=()=>{close();openCloud()};card.append(rc);
+  api('GET','/api/gdrive').then(g=>{if(g.connected)sc.textContent='Google Drive \u00b7 '+(g.email||'connected')}).catch(()=>{});
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+async function openCloud(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  let alive=true;const close=()=>{alive=false;o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Cloud storage'));
+  const box=E('div');card.append(box);o.append(card);
+  const refresh=()=>{S.sig='';pollPeers()};
+  let st={};
+  const draw=()=>{box.textContent='';
+    const r=E('div','set'),t=E('div','t');
+    t.append(E('b','','Google Drive'),E('small','',st.connected?'Signed in'+(st.email?' · '+st.email:''):st.configured?'Not signed in':'Needs a Google client ID'));r.append(t);box.append(r);
+    const act=E('div','dact');
+    const done=E('button','tbtn','Done');done.onclick=()=>{close();openSettings()};
+    const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';
+    const info=E('p','','Sign in opens your default browser. One-time setup: Google Cloud Console > new project > enable Google Drive API > OAuth consent screen (add your account as test user) > Credentials > OAuth client ID, type Desktop app. Paste its Client ID and secret here. Tip: publish the app (In production) or the sign-in expires every 7 days.');
+    info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';
+    const F={};[['id','Client ID (...apps.googleusercontent.com)','text'],['secret','Client secret','password']].forEach(([k,ph,ty])=>{
+      const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
+    if(st.client_id)F.id.value=st.client_id;
+    const saveId=E('button','tbtn fill','Save');
+    saveId.onclick=async()=>{if(!F.id.value.trim()){toast('Enter the client ID',3000);return}
+      saveId.disabled=true;
+      try{st=await api('POST','/api/gdrive',{op:'client',id:F.id.value,secret:F.secret.value});draw();refresh()}catch(e){toast('⚠ '+e.message,5000)}
+      saveId.disabled=false};
+    const chg=E('button','tbtn','Change client ID');chg.onclick=()=>{form.style.display='flex';chg.style.display='none';F.id.focus()};
+    if(st.connected){
+      const open=E('button','tbtn fill','Open');open.onclick=()=>{close();openLoc('gdrive:main','/')};
+      const out=E('button','tbtn dng','Sign out');
+      out.onclick=async()=>{try{st=await api('POST','/api/gdrive',{op:'logout'});if(S.dev==='gdrive:main')await openDev('local');refresh();draw();toast('Signed out',2000)}catch(e){toast('⚠ '+e.message,4000)}};
+      act.append(out,open)}
+    else if(st.configured){
+      const login=E('button','tbtn fill','Sign in with Google');
+      login.onclick=async()=>{login.disabled=true;login.textContent='Waiting for the browser…';
+        try{const r=await api('POST','/api/gdrive',{op:'login'});
+          let opened=false;try{opened=!!(window.LSAndroid&&LSAndroid.openBrowser&&LSAndroid.openBrowser(r.url))}catch(e){}
+          if(!opened){try{await navigator.clipboard.writeText(r.url);toast('Link copied - open it in your browser',5000)}catch(e){window.open(r.url,'_blank')}}
+          const t0=Date.now();
+          while(alive&&Date.now()-t0<600000){
+            await new Promise(z=>setTimeout(z,1500));
+            let g;try{g=await api('GET','/api/gdrive')}catch(e){continue}
+            if(g.pending==='ok'){st=g;toast('Google Drive connected',2500);refresh();if(alive)draw();return}
+            if(g.pending==='err'){toast('⚠ '+(g.error||'sign-in failed'),6000);break}
+            if(g.pending===''){break}}
+        }catch(e){toast('⚠ '+e.message,5000)}
+        if(alive){try{await api('POST','/api/gdrive',{op:'cancel'})}catch(e){}login.disabled=false;login.textContent='Sign in with Google'}};
+      act.append(login)}
+    form.append(saveId);saveId.style.alignSelf='flex-end';
+    if(!st.configured){form.style.display='flex';box.append(info,form)}
+    else if(!st.builtin){box.append(form);act.prepend(chg)}
+    act.prepend(done);box.append(act)};
+  try{st=await api('GET','/api/gdrive')}catch(e){toast('⚠ '+e.message,4000)}
+  draw()}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1287,6 +1342,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1)btn('info','Details',doDetails);
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
+    if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
     if(!A)btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
@@ -1693,7 +1749,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
 async function doPrint(preset){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
-  const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
+  const pcs=S.peers.filter(p=>!p.cloud&&p.smb).concat(S.peers.filter(p=>!p.cloud&&!p.smb));
   await loadWifi();
   const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
@@ -1732,6 +1788,52 @@ window.lsPrintShared=async names=>{
     const opts=await printOptions(to,pvf,true);if(!opts)return;
     const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});watchJob(r.job);track(r.job)
   }catch(e){toast('\u26a0 '+e.message,5000)}};
+
+/* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
+async function doDups(){
+  const dev=S.dev,paths=selPaths();
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  let jid=null,stop=false;
+  const close=()=>{stop=true;o.style.display='none';o.onclick=null};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Duplicate finder'));
+  const msg=E('p','','Starting…');msg.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;word-break:break-all';
+  const box=E('div');box.style.cssText='max-height:55vh;overflow:auto';
+  const row=E('div','set');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  const cb=E('button','tbtn','Cancel');
+  cb.onclick=async()=>{if(jid&&!stop&&cb.textContent==='Cancel'){try{await api('POST','/api/jobcancel?id='+jid)}catch(e){}}close()};
+  row.append(cb);card.append(msg,box,row);o.append(card);
+  o.onclick=e=>{if(e.target===o&&cb.textContent!=='Cancel')close()};
+  try{jid=(await api('POST','/api/dups',{dev:dev,paths:paths})).job}catch(e){msg.textContent='⚠ '+e.message;cb.textContent='Close';return}
+  let j;
+  for(;;){
+    if(stop)return;
+    try{j=await api('GET','/api/job?id='+jid,null,10000)}catch(e){msg.textContent='⚠ '+e.message;cb.textContent='Close';return}
+    if(j.state!=='run')break;
+    msg.textContent=Math.floor(j.done*100/Math.max(j.total,1))+'% · '+j.label;
+    await new Promise(r=>setTimeout(r,600))}
+  cb.textContent='Close';
+  if(j.state==='error'){msg.textContent='⚠ '+j.error;return}
+  if(j.state==='cancel'){msg.textContent='Cancelled';return}
+  const R=j.result;msg.textContent=j.note||'Done';
+  if(!R||!R.groups.length)return;
+  const chk=new Set();   // paths marked for deletion: every file except the first of each group
+  R.groups.forEach(g=>g.files.forEach((f,i)=>{if(i>0)chk.add(f)}));
+  const del=E('button','tbtn fill dng');
+  const upd=()=>{del.textContent='Delete '+chk.size+' selected';del.disabled=!chk.size};
+  R.groups.forEach(g=>{
+    const h=E('div','set'),ht=E('div','t');ht.append(E('b','',vbase0(g.files[0])),E('small','',g.files.length+' identical files · '+fmt(g.size)+' each'));h.append(ht);box.append(h);
+    g.files.forEach(f=>{const r=E('label','set'),t=E('div','t'),sw=E('span','sw'),c=E('input');c.type='checkbox';c.checked=chk.has(f);
+      c.onchange=()=>{c.checked?chk.add(f):chk.delete(f);upd()};
+      t.append(E('b','',vbase0(f)),E('small','',f.slice(0,f.lastIndexOf('/'))||'/'));sw.append(c,E('i'));r.append(t,sw);box.append(r)})});
+  if(R.total>R.groups.length)box.append(E('div','dnote','Showing the '+R.groups.length+' largest of '+R.total+' groups'));
+  upd();
+  del.onclick=async()=>{
+    if(!chk.size)return;
+    if(!await dlg({title:'Delete '+chk.size+' file'+(chk.size>1?'s':'')+'?',msg:'The ones left unticked in each group are kept. This can\'t be undone.',ok:'Delete',danger:true}))return;
+    try{const r=await api('POST','/api/rm',{dev:dev,paths:[...chk]});close();S.sel.clear();render();toast('Deleting…',0,0);watchJob(r.job);track(r.job)}
+    catch(e){toast('⚠ '+e.message,9000)}};
+  row.prepend(del)}
+const vbase0=p=>p.slice(p.lastIndexOf('/')+1);
 async function doDelete(){
   const n=S.sel.size;
   if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
@@ -2001,7 +2103,8 @@ function drawerRender(){
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
-    ft.append(add,smb,st);
+    const cl=E('button');cl.append(ic('pc'),E('span','','Cloud'));cl.onclick=()=>{drawerClose();openCloud()};
+    ft.append(add,smb,cl,st);
   }
   else if(DRW.tab===1){
     const cur=isFav(S.dev,S.path);

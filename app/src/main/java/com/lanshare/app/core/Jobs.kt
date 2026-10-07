@@ -30,6 +30,7 @@ class Job(@Volatile var label: String) {
     @Volatile var cancel = false
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
+    @Volatile var result: JSONObject? = null   // structured result (duplicate finder)
 
     // live view of a copy that merges into existing folders: what was replaced / added / skipped, and the open question ("replace this file?")
     @Volatile var live = false
@@ -96,6 +97,7 @@ class Job(@Volatile var label: String) {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
             note?.let { n -> it.put("note", n) }
+            result?.let { r -> it.put("result", r) }
             if (live) {
                 it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
                 ask?.let { a -> it.put("ask", a) }
@@ -562,6 +564,7 @@ object Jobs {
     fun ep(dev: String): Endpoint = ArcEp(when {   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
         dev == "local" -> Core.local
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
+        dev.startsWith("gdrive:") -> Gdrive.ep()
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 

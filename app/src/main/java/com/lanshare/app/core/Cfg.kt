@@ -35,6 +35,10 @@ object Cfg {
     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }
 
+    /** Google Drive: client_id, client_secret, refresh, email (kopya döner; değiştirdikten sonra setGdrive + save). */
+    @Synchronized fun gdrive(): JSONObject = JSONObject(obj.optJSONObject("gdrive")?.toString() ?: "{}")
+    @Synchronized fun setGdrive(o: JSONObject) { obj.put("gdrive", o) }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy
