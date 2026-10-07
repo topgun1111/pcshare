@@ -30,6 +30,7 @@ class Job(@Volatile var label: String) {
     @Volatile var cancel = false
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
+    @Volatile var result: JSONObject? = null   // structured result (duplicate finder)
 
     // live view of a copy that merges into existing folders: what was replaced / added / skipped, and the open question ("replace this file?")
     @Volatile var live = false
@@ -96,6 +97,7 @@ class Job(@Volatile var label: String) {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
             note?.let { n -> it.put("note", n) }
+            result?.let { r -> it.put("result", r) }
             if (live) {
                 it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
                 ask?.let { a -> it.put("ask", a) }

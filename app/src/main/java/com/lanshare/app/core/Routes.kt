@@ -167,6 +167,7 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
+            "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings())))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"))))
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"
