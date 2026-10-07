@@ -150,7 +150,7 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.textZoom = UiScale.text(this)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
+            settings.textZoom = UiScale.text(this@MainActivity)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
             addJavascriptInterface(Bridge(), "LSAndroid")
             webViewClient = object : WebViewClient() {
                 // window.open('/api/dl?...') and <a download> navigations -> save to Downloads
