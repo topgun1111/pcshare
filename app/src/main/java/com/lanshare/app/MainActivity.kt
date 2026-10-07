@@ -1,5 +1,6 @@
 package com.lanshare.app
 
+import android.content.Context
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -80,6 +81,9 @@ class MainActivity : Activity() {
         }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
+        /** Settings -> display size: "interface%,text%". */
+        @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
+        @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */
@@ -137,6 +141,8 @@ class MainActivity : Activity() {
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Fnt.init(applicationContext)
@@ -144,7 +150,7 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.textZoom = 100   // ignore the system font-size slider so every device renders the same sizes
+            settings.textZoom = UiScale.text(this)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
             addJavascriptInterface(Bridge(), "LSAndroid")
             webViewClient = object : WebViewClient() {
                 // window.open('/api/dl?...') and <a download> navigations -> save to Downloads

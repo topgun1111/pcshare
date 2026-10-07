@@ -125,6 +125,8 @@ class PdfViewerActivity : Activity() {
     private fun gap() = dp(GAP_DP)
     private fun bgColor() = if (night) 0xFF1A1A1A.toInt() else 0xFF3C3C3C.toInt()
 
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Build.VERSION.SDK_INT >= 28)

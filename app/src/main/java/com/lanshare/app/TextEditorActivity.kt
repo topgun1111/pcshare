@@ -177,6 +177,8 @@ class TextEditorActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ---------------------------------------------------------------- lifecycle
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Fnt.init(this)

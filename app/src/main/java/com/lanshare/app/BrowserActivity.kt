@@ -149,6 +149,8 @@ class BrowserActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Core.url == null) { Toast.makeText(this, "LANShare is still starting - try again in a moment", Toast.LENGTH_LONG).show(); finish(); return }
