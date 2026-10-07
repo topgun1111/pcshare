@@ -1,5 +1,6 @@
 package com.lanshare.app
 
+import android.content.Context
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -103,6 +104,8 @@ class PlayerActivity : Activity() {
     private val hideHud = Runnable { hud.visibility = View.GONE }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
