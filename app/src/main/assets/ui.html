@@ -1183,8 +1183,62 @@ function openSettings(){
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
     rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  const rc=E('button','set'),tc=E('div','t'),sc=E('small','','Google Drive \u00b7 not connected');rc.style.width='100%';rc.style.textAlign='left';tc.append(E('b','','Cloud storage'),sc);rc.append(tc);
+  rc.onclick=()=>{close();openCloud()};card.append(rc);
+  api('GET','/api/gdrive').then(g=>{if(g.connected)sc.textContent='Google Drive \u00b7 '+(g.email||'connected')}).catch(()=>{});
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+async function openCloud(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  let alive=true;const close=()=>{alive=false;o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Cloud storage'));
+  const box=E('div');card.append(box);o.append(card);
+  const refresh=()=>{S.sig='';pollPeers()};
+  let st={};
+  const draw=()=>{box.textContent='';
+    const r=E('div','set'),t=E('div','t');
+    t.append(E('b','','Google Drive'),E('small','',st.connected?'Signed in'+(st.email?' · '+st.email:''):st.configured?'Not signed in':'Needs a Google client ID'));r.append(t);box.append(r);
+    const act=E('div','dact');
+    const done=E('button','tbtn','Done');done.onclick=()=>{close();openSettings()};
+    const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';
+    const info=E('p','','Sign in opens your default browser. One-time setup: Google Cloud Console > new project > enable Google Drive API > OAuth consent screen (add your account as test user) > Credentials > OAuth client ID, type Desktop app. Paste its Client ID and secret here. Tip: publish the app (In production) or the sign-in expires every 7 days.');
+    info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';
+    const F={};[['id','Client ID (...apps.googleusercontent.com)','text'],['secret','Client secret','password']].forEach(([k,ph,ty])=>{
+      const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
+    if(st.client_id)F.id.value=st.client_id;
+    const saveId=E('button','tbtn fill','Save');
+    saveId.onclick=async()=>{if(!F.id.value.trim()){toast('Enter the client ID',3000);return}
+      saveId.disabled=true;
+      try{st=await api('POST','/api/gdrive',{op:'client',id:F.id.value,secret:F.secret.value});draw();refresh()}catch(e){toast('⚠ '+e.message,5000)}
+      saveId.disabled=false};
+    const chg=E('button','tbtn','Change client ID');chg.onclick=()=>{form.style.display='flex';chg.style.display='none';F.id.focus()};
+    if(st.connected){
+      const open=E('button','tbtn fill','Open');open.onclick=()=>{close();openLoc('gdrive:main','/')};
+      const out=E('button','tbtn dng','Sign out');
+      out.onclick=async()=>{try{st=await api('POST','/api/gdrive',{op:'logout'});if(S.dev==='gdrive:main')await openDev('local');refresh();draw();toast('Signed out',2000)}catch(e){toast('⚠ '+e.message,4000)}};
+      act.append(out,open)}
+    else if(st.configured){
+      const login=E('button','tbtn fill','Sign in with Google');
+      login.onclick=async()=>{login.disabled=true;login.textContent='Waiting for the browser…';
+        try{const r=await api('POST','/api/gdrive',{op:'login'});
+          let opened=false;try{opened=!!(window.LSAndroid&&LSAndroid.openBrowser&&LSAndroid.openBrowser(r.url))}catch(e){}
+          if(!opened){try{await navigator.clipboard.writeText(r.url);toast('Link copied - open it in your browser',5000)}catch(e){window.open(r.url,'_blank')}}
+          const t0=Date.now();
+          while(alive&&Date.now()-t0<600000){
+            await new Promise(z=>setTimeout(z,1500));
+            let g;try{g=await api('GET','/api/gdrive')}catch(e){continue}
+            if(g.pending==='ok'){st=g;toast('Google Drive connected',2500);refresh();if(alive)draw();return}
+            if(g.pending==='err'){toast('⚠ '+(g.error||'sign-in failed'),6000);break}
+            if(g.pending===''){break}}
+        }catch(e){toast('⚠ '+e.message,5000)}
+        if(alive){try{await api('POST','/api/gdrive',{op:'cancel'})}catch(e){}login.disabled=false;login.textContent='Sign in with Google'}};
+      act.append(login)}
+    form.append(saveId);saveId.style.alignSelf='flex-end';
+    if(!st.configured){form.style.display='flex';box.append(info,form)}
+    else if(!st.builtin){box.append(form);act.prepend(chg)}
+    act.prepend(done);box.append(act)};
+  try{st=await api('GET','/api/gdrive')}catch(e){toast('⚠ '+e.message,4000)}
+  draw()}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1695,7 +1749,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
 async function doPrint(preset){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
-  const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
+  const pcs=S.peers.filter(p=>!p.cloud&&p.smb).concat(S.peers.filter(p=>!p.cloud&&!p.smb));
   await loadWifi();
   const all=here.concat(WIFI,pcs);
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
@@ -2049,7 +2103,8 @@ function drawerRender(){
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
-    ft.append(add,smb,st);
+    const cl=E('button');cl.append(ic('pc'),E('span','','Cloud'));cl.onclick=()=>{drawerClose();openCloud()};
+    ft.append(add,smb,cl,st);
   }
   else if(DRW.tab===1){
     const cur=isFav(S.dev,S.path);
