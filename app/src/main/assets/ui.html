@@ -146,6 +146,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc:active{filter:brightness(.88)}
 #gal .gd{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 #gal .ge{grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--mut)}
+.galt{grid-column:1/-1;justify-self:center;padding:8px 16px;border-radius:18px;color:var(--ac);font-weight:600;font-size:13.5px}
 .galh{grid-column:1/-1;padding:10px 16px 4px;font-size:13px;font-weight:600;color:var(--mut)}
 /* banner */
 #banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
@@ -930,6 +931,7 @@ function mkAlbum(i,P0){
   holdMenu(c,i);
   return c}
 /* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
+const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>a.n<=1||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
 function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o._for=null;GCX=null}
@@ -1035,8 +1037,11 @@ function render(){
     if(sent){window._rIO=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))more()},{rootMargin:'1500px'});window._rIO.observe(sent)}}
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
-  if(GALM){const ab=E('div','albums');
-    if(GALA&&GALA.a.length)GALA.a.forEach(a=>ab.append(mkAlbumX(a,P0,V)));else AL.forEach(i=>ab.append(mkAlbum(i,P0)));
+  if(GALM){const ab=E('div','albums'),hideOn=LD('ls_galhide','1')==='1';   // small albums (1 file) and Android resource folders (mipmap-*, drawable-* ...) are hidden unless switched on
+    if(GALA&&GALA.a.length){const hid=GALA.a.filter(galJunk);
+      GALA.a.forEach(a=>{if(!(hideOn&&galJunk(a)))ab.append(mkAlbumX(a,P0,V))});
+      if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' hidden album'+(hid.length===1?'':'s'):'Hide small albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
+    else AL.forEach(i=>{if(!(hideOn&&galJunkName(i.name)))ab.append(mkAlbum(i,P0))});
     if(ab.children.length){l.insertBefore(ab,l.firstChild);const em=l.querySelector('#empty');if(em)em.remove();
       if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
     if(!GALA||Date.now()-GALT>15000)galFetch()}
