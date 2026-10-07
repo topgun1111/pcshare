@@ -36,7 +36,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
-import com.lanshare.app.core.ImgAi
 import com.lanshare.app.core.mimeFor
 import org.json.JSONObject
 import java.io.File
@@ -148,10 +147,8 @@ class ImageViewerActivity : Activity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         slideBtn = tv("\u25B6", 18f).apply { setOnClickListener { setSlide(!slide) } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
-        val ocrBtn = tv("Aa", 16f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD); setOnClickListener { ocr() } }   // read the text in this picture (on-device)
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(ocrBtn)
         top.addView(slideBtn)
         top.addView(share)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
@@ -337,45 +334,6 @@ class ImageViewerActivity : Activity() {
                 runOnUiThread { Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
             }
         }.start()
-    }
-
-    // ---------------------------------------------------------------- text in the picture (ML Kit, on-device, no network)
-    private var ocrBusy = false
-
-    private fun ocr() {
-        if (ocrBusy) return
-        val bm = cache.get(pager.currentItem)
-        if (bm == null || bm.isRecycled) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
-        ocrBusy = true
-        Toast.makeText(this, "Reading text...", Toast.LENGTH_SHORT).show()
-        ImgAi.ocr(bm) { text, err ->
-            ocrBusy = false
-            if (!isFinishing && !isDestroyed) when {
-                err != null -> Toast.makeText(this, "Text recognition failed: $err", Toast.LENGTH_LONG).show()
-                text.isNullOrBlank() -> Toast.makeText(this, "No text found in this picture", Toast.LENGTH_SHORT).show()
-                else -> showText(text.trim())
-            }
-        }
-    }
-
-    private fun showText(t: String) {
-        val tv = TextView(this).apply {
-            text = t; setTextIsSelectable(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setPadding(dp(20), dp(12), dp(20), dp(4))
-        }
-        android.app.AlertDialog.Builder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("Text in picture")
-            .setView(android.widget.ScrollView(this).apply { addView(tv) })
-            .setPositiveButton("Copy") { _, _ ->
-                (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText("text", t))
-                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
-            }
-            .setNeutralButton("Share") { _, _ ->
-                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share"))
-            }
-            .setNegativeButton("Close", null)
-            .show()
     }
 
     // ---------------------------------------------------------------- pager pages

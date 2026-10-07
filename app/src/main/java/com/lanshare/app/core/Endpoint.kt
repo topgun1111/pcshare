@@ -5,19 +5,16 @@ import java.io.InputStream
 
 data class Item(val name: String, val dir: Boolean, val size: Long, val mtime: Long,
                 val n: Int? = null, val path: String? = null,
-                val hid: Boolean = false,   // hidden like a dot-folder: cache folders ("thumbnails", or holding a .nomedia file)
-                val lb: String? = null) {   // search only: the picture label that matched ("dog") when the NAME did not
+                val hid: Boolean = false) {   // hidden like a dot-folder: cache folders ("thumbnails", or holding a .nomedia file)
     fun toJson(): JSONObject = JSONObject().put("name", name).put("dir", dir).put("size", size).put("mtime", mtime).also {
         if (n != null) it.put("n", n)
         if (path != null) it.put("path", path)
         if (hid) it.put("hid", true)
-        if (lb != null) it.put("lb", lb)
     }
 
     companion object {
         fun fromJson(o: JSONObject) = Item(o.getString("name"), o.optBoolean("dir"), o.optLong("size"), o.optLong("mtime"),
-            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null,
-            lb = if (o.has("lb")) o.optString("lb") else null)
+            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null)
     }
 }
 

@@ -88,51 +88,33 @@ class LocalFs(rootPath: String) : Endpoint {
         return res
     }
 
-    /**
-     * Recursive search below folder v (case-insensitive substring) over file names AND, for pictures, what they show
-     * (on-device labels, see [ImgAi]: "dog" finds dog photos). Capped by count and time. [labels]: analyse pictures that are
-     * not cached yet while there is time (the rest is finished in the background, so the next search is complete);
-     * false = use only labels that are already cached (search from the storage root must not analyse the whole phone).
-     */
-    fun search(v: String, q: String, limit: Int = 300, secs: Int = 15, labels: Boolean = false): SearchResult {
+    /** Recursive name search below folder v (case-insensitive substring). Capped by count and time. */
+    fun search(v: String, q: String, limit: Int = 300, secs: Int = 15): SearchResult {
         val ql = q.lowercase()
-        val terms = if (ql.length >= 3) ImgAi.terms(ql) else emptyList()
         val out = ArrayList<Item>()
         val end = System.currentTimeMillis() + secs * 1000L
-        val todo = ArrayList<File>()
         val stack = ArrayDeque<Pair<File, String>>()
         stack.addLast(real(v) to vnorm(v))
-        var late = false
         while (stack.isNotEmpty()) {
             val (dir, vdir) = stack.removeLast()
             val kids = dir.listFiles() ?: emptyArray()
             val dirs = kids.filter { it.isDirectory }
             for (f in dirs + kids.filter { !it.isDirectory }) {   // like os.walk: folders first, then files
+                if (!f.name.lowercase().contains(ql)) continue
                 val d = f.isDirectory
-                var lb: String? = null
-                if (!f.name.lowercase().contains(ql)) {
-                    if (d || terms.isEmpty() || !ImgAi.worth(f)) continue
-                    val have = ImgAi.cached(f)
-                    val ls = if (have != null) have
-                             else if (labels && System.currentTimeMillis() < end) ImgAi.labelsOf(f, true)
-                             else null
-                    if (ls == null) { if (labels) { todo.add(f); late = true }; continue }
-                    lb = ImgAi.match(ls, terms) ?: continue
-                }
-                out.add(Item(f.name, d, if (d) 0L else f.length(), f.lastModified() / 1000, null, vjoin(vdir, f.name), lb = lb))
-                if (out.size >= limit) { if (todo.isNotEmpty()) ImgAi.indexAsync(todo); return SearchResult(out, true) }
+                out.add(Item(f.name, d, if (d) 0L else f.length(), f.lastModified() / 1000, null, vjoin(vdir, f.name)))
+                if (out.size >= limit) return SearchResult(out, true)
             }
             for (d in dirs.reversed()) if (!isLink(d)) stack.addLast(d to vjoin(vdir, d.name))
-            if (System.currentTimeMillis() > end) { if (todo.isNotEmpty()) ImgAi.indexAsync(todo); return SearchResult(out, true) }
+            if (System.currentTimeMillis() > end) return SearchResult(out, true)
         }
-        if (todo.isNotEmpty()) ImgAi.indexAsync(todo)
         out.sortWith(compareBy<Item>({ !it.dir }, { it.name.lowercase() }))
-        return SearchResult(out, late)
+        return SearchResult(out, false)
     }
 
     /** Started at the storage root = "search everything": far higher result and time limits than a search inside one folder. */
     override fun search(v: String, q: String) =
-        if (vnorm(v) == "/") search(v, q, 20_000, 80, false) else search(v, q, 300, 25, true)
+        if (vnorm(v) == "/") search(v, q, 20_000, 80) else search(v, q, 300, 15)
 
     override fun names(v: String): MutableSet<String> =
         try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
