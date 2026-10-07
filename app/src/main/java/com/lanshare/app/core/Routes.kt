@@ -17,6 +17,7 @@ object Routes {
                 p == "/p/hello" -> ex.json(Core.disc.hello())
                 p.startsWith("/p/") -> peer(ex, p.substring(3))
                 p == "/" -> ex.reply(200, Core.page, "text/html; charset=utf-8")
+                p == "/oauth/google" -> Gdrive.callback(ex)   // tarayıcı Google girişinden buraya döner
                 p.startsWith("/api/") -> api(ex, p.substring(5))
                 else -> ex.reply(404, "not found".toByteArray(), "text/plain")
             }
@@ -79,6 +80,7 @@ object Routes {
                 for (p in d.list()) a.put(JSONObject().put("id", p.id).put("name", p.name).put("ip", p.ip).put("ok", p.ok)
                     .put("seen", p.seen / 1000.0).put("via", viaOf(p.ip)))
                 for (s in Smb.peers()) a.put(s.put("via", viaOf(Smb.split(s.optString("ip")).first)))
+                Gdrive.peer()?.let { a.put(it) }
                 return ex.json(a)
             }
             "diag" -> return ex.json(JSONObject().put("me", Cfg.name).put("id", Cfg.id).put("port", d.port)
@@ -145,6 +147,7 @@ object Routes {
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "smbscan" -> return ex.json(d.smbScan())
+            "gdrive" -> if (ex.method == "GET") return ex.json(Gdrive.status())
         }
         val b = ex.bodyJson()
         when (route) {
@@ -168,6 +171,7 @@ object Routes {
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings())))
+            "gdrive" -> ex.json(Gdrive.update(b))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"))))
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"

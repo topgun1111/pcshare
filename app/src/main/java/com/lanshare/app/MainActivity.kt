@@ -57,6 +57,12 @@ class MainActivity : Activity() {
 
     inner class Bridge {
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
+        /** Google girişi: adresi telefonun VARSAYILAN tarayıcısında açar (yalnızca accounts.google.com). */
+        @JavascriptInterface fun openBrowser(url: String): Boolean {
+            if (!url.startsWith("https://accounts.google.com/")) return false
+            runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {} }
+            return true
+        }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
         /** Tap on a file: fetch it to cache, then hand it to an app that can open it. */

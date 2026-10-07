@@ -368,6 +368,7 @@ class BrowserActivity : Activity() {
         l.add(Dev("local", "This phone", true, "local"))
         try { Core.discOrNull()?.list()?.forEach { l.add(Dev(it.id, it.name, it.ok, "peer")) } } catch (_: Exception) {}
         try { Smb.peers().forEach { l.add(Dev(it.getString("id"), it.getString("name"), it.optBoolean("ok", true), "smb")) } } catch (_: Exception) {}
+        try { Gdrive.peer()?.let { l.add(Dev(it.getString("id"), it.getString("name"), it.optBoolean("ok", true), "cloud")) } } catch (_: Exception) {}
         val sig = l.joinToString(";") { "${it.id}|${it.name}|${it.ok}" } + "#" + dev
         devs = l
         if (sig == devSig) return
@@ -388,7 +389,7 @@ class BrowserActivity : Activity() {
         devRow.removeAllViews()
         fun add(v: View) = devRow.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
         for (d in devs) {
-            val prefix = when (d.kind) { "smb" -> "🖥 "; "peer" -> "📱 "; else -> "" }
+            val prefix = when (d.kind) { "smb" -> "🖥 "; "peer" -> "📱 "; "cloud" -> "☁ "; else -> "" }
             add(chip(prefix + d.name, d.id == dev, d.ok, { switchDev(d.id) },
                 if (d.kind == "smb") ({ confirmRemoveSmb(d) }) else null))
         }
