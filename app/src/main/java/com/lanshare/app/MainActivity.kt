@@ -141,7 +141,7 @@ class MainActivity : Activity() {
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b, false))
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -150,6 +150,7 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
+            if (UiScale.iface(this@MainActivity) != 100) { settings.useWideViewPort = true; settings.loadWithOverviewMode = false }   // the page rewrites its viewport meta to scale itself (ui.html head)
             settings.textZoom = UiScale.text(this@MainActivity)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
             addJavascriptInterface(Bridge(), "LSAndroid")
             webViewClient = object : WebViewClient() {

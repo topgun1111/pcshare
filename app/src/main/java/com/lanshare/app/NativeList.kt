@@ -588,7 +588,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         fun parseSel(json: String): Set<Int> { val a = JSONArray(json); val s = HashSet<Int>(); for (i in 0 until a.length()) s.add(a.getInt(i)); return s }
     }
 
-    private val d = act.resources.displayMetrics.density
+    private val d = UiScale.dens(act)
     val overlay = NlOverlay(act, web)
     private val srl = SwipeRefreshLayout(act)
     private val rv = RecyclerView(act)

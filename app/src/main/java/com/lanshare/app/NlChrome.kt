@@ -465,7 +465,7 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
         const val ENABLED = true
     }
 
-    private val d = act.resources.displayMetrics.density
+    private val d = UiScale.dens(act)
     val layer = FrameLayout(act)
     private val bar = NlBarView(act, d)
     private val dock = NlDockView(act, d)

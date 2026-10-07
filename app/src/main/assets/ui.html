@@ -1,5 +1,9 @@
 <!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>/* Settings -> Interface size: scale the whole page by a viewport (layout width = screen / f) */
+(function fit(){try{if(!(window.LSAndroid&&LSAndroid.uiGet))return;var f=LSAndroid.uiGet().split(',')[0]/100;if(!f||f===1)return;
+var w=Math.round((window.screen.width||innerWidth)/f);document.querySelector('meta[name=viewport]').setAttribute('content','width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover');
+window.addEventListener('orientationchange',function(){setTimeout(fit,300)})}catch(e){}})();</script>
 <meta name=theme-color content="#1c1c1e">
 <title>LANShare</title>
 <style>
