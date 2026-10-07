@@ -67,8 +67,8 @@ object NlIcons {
     val foldFront: Path = PathParser.createPathFromPathData("M2 21a4 4 0 0 1 4-4h44a4 4 0 0 1 4 4v19a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z")
 }
 
-/** "New" = modified within the last 24 h (twin of ui.html NEWSEC / isNew). Drawn as a red dot on the row's lead. */
-const val NL_NEW_SEC = 86400L
+/** "New" = modified within the last 60 s (twin of ui.html NEWSEC / isNew). Drawn as a red dot on the row's lead. */
+const val NL_NEW_SEC = 60L
 fun nlIsNew(mtimeSec: Long): Boolean = mtimeSec > 0 && (System.currentTimeMillis() / 1000 - mtimeSec) < NL_NEW_SEC
 
 private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: Int, d: Float) {
@@ -84,7 +84,7 @@ class NlRow(
     val gal: Boolean = false,           // video-gallery cell (drawn by NlGalView, several per adapter row)
     val dev: String = "local",          // endpoint the row belongs to ("local", a peer id, "smb:...")
     val hit: Boolean = false,           // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
-    val fresh: Boolean = false          // modified within the last 24 h: red dot on the lead (ui.html isNew / `w`)
+    val fresh: Boolean = false          // modified within the last 60 s: red dot on the lead (ui.html isNew / `w`)
 ) {
     val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }

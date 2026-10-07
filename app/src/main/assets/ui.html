@@ -120,6 +120,19 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .nm{display:none}
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
+/* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
+.albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
+@media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
+.alb{display:flex;flex-direction:column;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.alb .acv{position:relative;width:100%;aspect-ratio:1/1;border-radius:20px;overflow:hidden;background:var(--hov);display:grid;place-items:center;margin-bottom:6px}
+.alb .acv img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
+.alb .acv svg{width:38%;height:auto;opacity:.55}
+.alb:active .acv{filter:brightness(.9)}
+.alb.sel .acv{outline:3px solid currentColor;outline-offset:-3px}
+.alb b{font-size:15px;font-weight:600;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.alb small{font-size:12.5px;color:var(--mut);padding:0 4px;min-height:16px}
+.galh{grid-column:1/-1;padding:10px 16px 4px;font-size:13px;font-weight:600;color:var(--mut)}
 /* banner */
 #banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
 /* list */
@@ -657,7 +670,9 @@ function srRows(){  // subfolder-search hits as native rows: header + hits (same
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
 const nlUse=n=>!!NL&&NLON&&n>0&&(S.view==='list'||S.view==='compact'||S.view==='grid');
 // right-hand / second text of a folder or file row (shared by nlRender and the late folder-count patch)
-const NEWSEC=86400,isNew=i=>!!i.mtime&&(Date.now()/1000-i.mtime)<NEWSEC;   // modified in the last 24 h: red dot (Kotlin twin: nlIsNew)
+const NEWSEC=60,isNew=i=>!!i.mtime&&(Date.now()/1000-i.mtime)<NEWSEC;   // modified in the last 60 s: red dot (Kotlin twin: nlIsNew)
+/* the dot goes away by itself: when a file's minute is over, redraw once */
+let NEWN=-1;setInterval(()=>{try{if(!S.items)return;const n=S.items.filter(isNew).length;if(NEWN>0&&n<NEWN)render();NEWN=n}catch(e){}},10000);
 const nlA=(i,CP)=>{const dt=CP&&i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'';
   const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);return CP?(S.sort==='date'&&dt?dt:sz):sz};
 function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effects). Kotlin twin: NlModel.rows()
@@ -878,6 +893,29 @@ window.nlDr=(k,i,j,v)=>{
   else if(k==='t'){const b=$('#dtabs').children[j];if(b)b.click()}
   else if(k==='f'){const b=$('#dfoot').children[j];if(b)b.click()}};
 if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
+/* ---- gallery albums: the Pictures folder shows its sub-folders as big cover cards ---- */
+const galRoot=()=>S.dev==='local'&&/^\/pictures\/?$/i.test(S.path);
+const GALC={};
+function galInfo(dev,path,mt){const k=dev+'|'+path+'|'+mt;if(GALC[k])return GALC[k];
+  return GALC[k]=api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(path)).then(r=>{
+    const all=r.items||[],fl=all.filter(x=>!x.dir&&x.name[0]!=='.'),
+      im=fl.filter(x=>kind(x)==='img'&&!NOTH.test(x.name)&&x.size<30e6).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+    return{cover:im[0]||null,n:fl.filter(x=>kind(x)==='img'||kind(x)==='vid').length,sub:all.filter(x=>x.dir).length}
+  }).catch(()=>{delete GALC[k];return{cover:null,n:0,sub:0}})}
+function mkAlbum(i,P0){
+  const c=E('div','alb'+(S.sel.has(i.name)?' sel':'')),cv=E('div','acv'),pth=jn(P0,i.name),sb=E('small','','\u00a0');
+  cv.append(raw(FOLD,'fold'));c.append(cv,E('b','',i.name),sb);
+  galInfo(S.dev,pth,i.mtime||0).then(inf=>{
+    sb.textContent=inf.n?inf.n+(inf.n===1?' item':' items'):(inf.sub?inf.sub+(inf.sub===1?' folder':' folders'):'Empty');
+    if(!inf.cover)return;
+    const show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)},
+      key='v2|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
+    if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
+  c.onclick=()=>{if(c._lp){c._lp=false;return}
+    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else go(pth)};
+  holdMenu(c,i);
+  c.addEventListener('pointerdown',()=>prefetch(S.dev,pth));
+  return c}
 function render(){
   applyPrefs();
   const AR=inArc();
@@ -897,10 +935,11 @@ function render(){
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
-  const LIST=GV.length?V.filter(i=>GV.indexOf(i)<0):V;
+  const AL=!AR&&!S.q&&!S.newest&&galRoot()?V.filter(i=>i.dir):[];   // Pictures: folders become album cards
+  const LIST=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V;
   {const f=LIST.filter(i=>!i.dir),n=f.filter(i=>kind(i)==='img').length;l.classList.toggle('imgf',S.view==='grid'&&!AR&&n>0&&n*2>=f.length)}   // image folder: see #list.imgf
   const SR=srRows();
-  if(nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
+  if(!AL.length&&nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
   if(NLL){NLL=null;NLSEL='';NLLAY='';NL.nlHide();$('#top').classList.toggle('el',(window.scrollY||0)>4)}
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(k==='img'&&!i.dir?' im':'')+(S.sel.has(i.name)?' sel':''));
@@ -937,6 +976,8 @@ function render(){
     if(sent){window._rIO=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))more()},{rootMargin:'1500px'});window._rIO.observe(sent)}}
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
+  if(AL.length){const ab=E('div','albums');AL.forEach(i=>ab.append(mkAlbum(i,P0)));l.insertBefore(ab,l.firstChild);
+    if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
   renderSR(l);
   if(GV.length){const g=E('div','gal');
     GV.forEach(i=>{
@@ -1749,7 +1790,7 @@ window.lsPrintShared=async names=>{
 
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
 async function doDups(){
-  const dev=S.dev,paths=selPaths();
+  const dev=S.dev,paths=selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   let jid=null,stop=false;
   const close=()=>{stop=true;o.style.display='none';o.onclick=null};
@@ -2008,6 +2049,9 @@ function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, m
 const QF0=()=>['Download','DCIM','Movies','Pictures','Music','Documents'].map(n=>({dev:'local',path:'/'+n,name:n}));
 let QF=JL('ls_qf',null);if(!Array.isArray(QF))QF=QF0();
 function qfSave(){try{localStorage.setItem('ls_qf',JSON.stringify(QF))}catch(e){}}
+/* Pictures is a permanent shortcut: always present (re-added on every start if missing) and cannot be removed */
+const qfPerm=q=>!!q&&q.dev==='local'&&String(q.path).toLowerCase()==='/pictures';
+QF=QF.filter(q=>q&&q.path);if(!QF.some(qfPerm)){QF.push({dev:'local',path:'/Pictures',name:'Pictures'});qfSave()}
 Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z'});
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
@@ -2053,7 +2097,7 @@ function drawerRender(){
         o.onclick=async()=>{const nn=await dlg({title:'Rename shortcut',input:{value:q.name,label:'Name'},ok:'Save'});if(nn&&nn.trim()){q.name=nn.trim().slice(0,40);qfSave();drawerRender()}};
         o.xs=[{icon:'up2',label:'Move up',off:n===0,fn:()=>{QF.splice(n-1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
               {icon:'dn2',label:'Move down',off:n===QF.length-1,fn:()=>{QF.splice(n+1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
-              {icon:'close',label:'Remove',fn:()=>{QF.splice(n,1);qfSave();drawerRender()}}]}
+              {icon:'close',label:'Remove',off:qfPerm(q),fn:()=>{if(qfPerm(q))return;QF.splice(n,1);qfSave();drawerRender()}}]}
       bd.append(dItem(o))});
     if(DRW.edit){
       const dup=QF.some(q=>sameLoc(q,{dev:S.dev,path:S.path}));

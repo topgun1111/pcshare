@@ -6,7 +6,7 @@ import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * Exact duplicate finder: files of equal size, equal hash of the first 64 KB, then equal SHA-256 of the whole content (byte-identical).
+ * Exact duplicate finder (only inside the selected folders and their subfolders, never the rest of the disk): files of equal size, equal hash of the first 64 KB, then equal SHA-256 of the whole content (byte-identical).
  * Runs as a [Job] ("Finding duplicates"); the groups come back in the job's `result`.
  */
 object DupFinder {
@@ -44,12 +44,14 @@ object DupFinder {
     private fun work(job: Job, e: Endpoint, paths: List<String>) {
         try {
             val files = ArrayList<F>()
-            for ((i, p0) in paths.withIndex()) {
+            // only the selected folders: root (= whole disk) refused, duplicates and folders nested in another selected folder dropped (else files would match themselves)
+            val dirs = paths.map { vnorm(it) }.filter { it != "/" }.distinct().let { l -> l.filter { p -> l.none { it != p && p.startsWith(it + "/") } } }
+            for ((i, p) in dirs.withIndex()) {
                 if (job.cancel) throw Cancelled()
-                val p = vnorm(p0)
-                job.label = "Scanning folders ${i + 1}/${paths.size}: ${vbase(p)} (${files.size} files)"
+                job.label = "Scanning folders ${i + 1}/${dirs.size}: ${vbase(p)} (${files.size} files)"
                 for (w in e.walk(p)) {
                     if (w.dir || w.skip || w.size <= 0) continue
+                    if (w.rel.isEmpty()) continue   // a selected file itself: only the contents of the selected folders are compared
                     files.add(F(if (w.rel.isEmpty()) p else vnorm(p + "/" + w.rel), w.size))
                 }
             }

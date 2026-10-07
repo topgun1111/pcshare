@@ -38,6 +38,7 @@ object WifiPrint {
     fun work(job: Job, src: Endpoint, p: WifiPrinters.P, paths: List<String>, opts: JSONObject?) {
         val dir = File(Core.appCtx?.cacheDir ?: Core.cacheDir, "wprint").apply { mkdirs() }
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
+        warns.set(ArrayList())
         try {
             val st = WifiPrinters.status(p.id)
             if (!st.optBoolean("ok")) throw IOException("${p.name} is not reachable - is it switched on and on this Wi-Fi? (${st.optString("why")})")
@@ -136,7 +137,7 @@ object WifiPrint {
             }
             if (failed.isEmpty()) {
                 job.label = "Sent ${files.size} file${if (files.size > 1) "s" else ""} to ${p.name} (Wi-Fi)"
-                job.note = job.label
+                job.note = job.label + (warns.get()?.distinct()?.takeIf { it.isNotEmpty() }?.let { " - " + it.joinToString("; ") } ?: "")
                 job.state = "done"
             } else {
                 job.label = "Print problem on ${p.name}"
@@ -187,13 +188,35 @@ object WifiPrint {
         if (lo < 1 || hi < lo) null else intArrayOf(lo, hi)
     }
 
+    /** Warnings collected while one job runs (each job has its own thread); shown with the "Sent ..." note. */
+    private val warns = ThreadLocal<ArrayList<String>>()
+
+    /**
+     * Sends one job. When the printer rejects an option, options are dropped one at a time and two-sided printing ("sides") is dropped LAST,
+     * so a printer that dislikes e.g. print-scaling or print-color-mode still prints on both sides. If sides had to go, the user is told.
+     */
     private fun submit(p: WifiPrinters.P, f: File, mime: String, name: String, jo: Ipp.JobOpts) {
-        var r = Ipp.printJob(p, name, mime, jo, f)
-        if (!r.ok && (r.status == 0x040B || r.status == 0x040E))   // an option was rejected: drop scaling / colour / sides first, keep paper + copies
-            r = Ipp.printJob(p, name, mime, Ipp.JobOpts(copies = jo.copies, media = jo.media, ranges = jo.ranges), f)
-        if (!r.ok && (r.status == 0x040B || r.status == 0x040E))
-            r = Ipp.printJob(p, name, mime, Ipp.JobOpts(copies = jo.copies), f)
-        if (!r.ok) throw PrintFail(Ipp.statusText(r.status))
+        fun rejected(r: Ipp.Resp) = !r.ok && (r.status == 0x040B || r.status == 0x040E)
+        val tries = listOf(
+            jo,
+            Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, null, jo.ranges),   // 1: no print-scaling
+            Ipp.JobOpts(jo.copies, jo.sides, null, jo.media, null, jo.ranges),       // 2: no colour mode either
+            Ipp.JobOpts(jo.copies, null, null, jo.media, null, jo.ranges),           // 3: no sides (last resort, keeps paper + range)
+            Ipp.JobOpts(copies = jo.copies)                                          // 4: bare job
+        )
+        var last: Ipp.JobOpts? = null
+        var r: Ipp.Resp? = null
+        for (t in tries) {
+            val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}"
+            if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}") continue   // nothing new to try
+            last = t
+            r = Ipp.printJob(p, name, mime, t, f)
+            if (!rejected(r)) {
+                if (r.ok && jo.sides != null && t.sides == null) warns.get()?.add("two-sided printing was refused by the printer, printed one-sided")
+                break
+            }
+        }
+        if (r == null || !r.ok) throw PrintFail(Ipp.statusText(r?.status ?: 0x0400))
     }
 
     private fun fmtList(p: WifiPrinters.P) = p.formats.filter { !it.contains("octet") }.take(4).joinToString(", ")
