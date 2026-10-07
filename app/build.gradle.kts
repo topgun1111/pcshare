@@ -70,4 +70,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")         // native file browser (BrowserActivity)
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0") // pull-to-refresh in BrowserActivity
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
+    implementation("com.google.mlkit:text-recognition:16.0.1")          // on-device OCR (Latin incl. Turkish), model bundled, no network / API key
+    implementation("com.google.mlkit:image-labeling:17.0.9")            // on-device image labels ("dog", "car"...), model bundled, for folder search
+    implementation("com.google.android.gms:play-services-tasks:18.2.0") // Tasks.await() for the ML Kit calls
 }

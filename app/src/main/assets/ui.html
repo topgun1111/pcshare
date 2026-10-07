@@ -645,9 +645,9 @@ function nlPal(){const cs=getComputedStyle(document.documentElement),g=n=>nlCol(
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>(par(i.path)!==here||i.lb)&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
   if(!items.length&&S.sr.items&&!S.sr.err)return null;
-  return[{_hd:1,name:S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…'}].concat(items.map(i=>Object.assign({_h:1},i)))}
+  return[{_hd:1,name:S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?(items.some(i=>i.lb)?'In pictures & subfolders (':'In subfolders (')+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…'}].concat(items.map(i=>Object.assign({_h:1},i)))}
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
 const nlUse=n=>!!NL&&NLON&&n>0&&(S.view==='list'||S.view==='compact'||S.view==='grid');
 // right-hand / second text of a folder or file row (shared by nlRender and the late folder-count patch)
@@ -656,7 +656,7 @@ const nlA=(i,CP)=>{const dt=CP&&i.mtime?new Date(i.mtime*1000).toLocaleDateStrin
 function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effects). Kotlin twin: NlModel.rows()
   const CP=S.view==='compact';
   const dt=i=>i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(CP?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
-  const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h)return{n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1};
+  const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h)return{n:i.name,k:kind(i),d:i.dir?1:0,a:(i.lb?'\u{1F4F7} '+i.lb+' \u00b7 ':'')+(i.path.slice(0,i.path.lastIndexOf('/'))||'/'),b:'',h:1};
     const k=kind(i),o={n:i.name,k:k,a:nlA(i,CP),b:CP?'':dt(i)};
     if(x>=GN)o.v=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}}
@@ -885,7 +885,7 @@ function render(){
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   showFree();
   const V=shown();renderTools(V);
-  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
+  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?(srOK()&&(S.sr.items||[]).some(i=>i.lb)?'No name matches':'No matches'):S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
@@ -1246,15 +1246,15 @@ function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
 function renderSR(l){
   if(!S.q||S.q.length<2||!srOK())return;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>(par(i.path)!==here||i.lb)&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
   if(!items.length&&S.sr.items&&!S.sr.err)return;
   const h=E('div');h.style.cssText='padding:14px 16px 6px;font-size:13px;color:var(--mut);grid-column:1/-1';
-  h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
+  h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?(items.some(i=>i.lb)?'In pictures & subfolders (':'In subfolders (')+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
   l.append(h);
   items.forEach(i=>{
     const k=kind(i),r=E('div','row'),lead=E('div','lead k-'+k);
     if(i.dir)lead.append(raw(FOLD,'fold'));else lead.append(ic(k,'kd'));
-    const nm=E('div','nm'),sub=E('small');sub.append(E('span','',par(i.path)));
+    const nm=E('div','nm'),sub=E('small');sub.append(E('span','',(i.lb?'\u{1F4F7} '+i.lb+' \u00b7 ':'')+par(i.path)));
     nm.append(E('b','',i.name),sub);r.append(lead,nm);
     r.onclick=()=>i.dir?go(i.path):goFind(par(i.path),i.name);
     l.append(r)})}
