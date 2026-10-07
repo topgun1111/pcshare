@@ -15,7 +15,8 @@ object UpdateCheck {
     private const val PREFS = "update_check"
     private const val MIN_INTERVAL_MS = 6L * 60 * 60 * 1000
 
-    fun run(a: Activity, force: Boolean = false) {
+    /** [onMsg] (manual check only) gets a short status when no dialog is shown: up to date / failed. */
+    fun run(a: Activity, force: Boolean = false, onMsg: ((String) -> Unit)? = null) {
         val sp = a.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (!force && now - sp.getLong("last", 0L) < MIN_INTERVAL_MS) return
@@ -28,7 +29,7 @@ object UpdateCheck {
                 sp.edit().putLong("last", now).apply()
                 val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                if (!isNewer(tag, cur)) return@Thread
+                if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
                 var url = j.getString("html_url")
@@ -49,7 +50,7 @@ object UpdateCheck {
                         .setNeutralButton("Bu sürümü atla") { _, _ -> sp.edit().putString("skip", tag).apply() }
                         .show()
                 }
-            } catch (_: Throwable) { }   // offline / rate-limited: stay silent
+            } catch (_: Throwable) { onMsg?.invoke("Kontrol edilemedi (internet / GitHub)") }   // automatic check stays silent
         }.start()
     }
 

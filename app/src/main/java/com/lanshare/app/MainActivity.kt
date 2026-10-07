@@ -57,6 +57,7 @@ class MainActivity : Activity() {
 
     inner class Bridge {
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
+        @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
         /** Tap on a file: fetch it to cache, then hand it to an app that can open it. */
