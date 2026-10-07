@@ -80,7 +80,7 @@ object NlModel {
         return out
     }
 
-    private val NOTHUMB = Regex("\\.(svg|heic|heif)$", RegexOption.IGNORE_CASE)
+    private val NOTHUMB = if (android.os.Build.VERSION.SDK_INT >= 28) Regex("\\.svg$", RegexOption.IGNORE_CASE) else Regex("\\.(svg|heic|heif)$", RegexOption.IGNORE_CASE)   // HEIC/HEIF decode natively from API 28
 
     /** List this phone's folder [path] and build the rows exactly as ui.html would. Never throws. [maxItems]: give up on bigger folders. */
     fun build(path: String, cfgS: String, maxItems: Int = Int.MAX_VALUE): Result {

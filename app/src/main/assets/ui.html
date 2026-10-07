@@ -429,7 +429,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid);
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
@@ -656,7 +656,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
     if(x>=GN)o.v=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
-      if(!inArc()&&(k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
+      if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
 const nlCfg=()=>[S.sort,S.asc?1:0,S.hid?1:0,S.gal?1:0,S.view,S.thumb].join(',');
@@ -894,7 +894,7 @@ function render(){
     const lead=E('div','lead k-'+k);
     if(i.dir){lead.append(raw(FOLD,'fold'));const bd=BADGE[i.name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
-      if(!AR&&(k==='img'||k==='vid')&&!/\.(svg|heic|heif)$/i.test(i.name)&&(k==='vid'||i.size<30e6)){
+      if(!AR&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
         const key=thKey(i),pth0=jn(S.path,i.name);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
