@@ -132,6 +132,20 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 .alb.sel .acv{outline:3px solid currentColor;outline-offset:-3px}
 .alb b{font-size:15px;font-weight:600;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .alb small{font-size:12.5px;color:var(--mut);padding:0 4px;min-height:16px}
+#gal{display:none;position:fixed;inset:0;z-index:9;background:var(--bg);flex-direction:column}
+#gal .gh{display:flex;align-items:center;gap:4px;padding:calc(6px + env(safe-area-inset-top)) 6px 6px;flex:none}
+#gal .gt{flex:1;min-width:0;display:flex;flex-direction:column;padding-left:4px}
+#gal .gt b{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gal .gt small{font-size:12.5px;color:var(--mut)}
+#gal .gs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
+#gal .gg{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+@media(min-width:600px){#gal .gg{grid-template-columns:repeat(5,1fr)}}
+@media(min-width:900px){#gal .gg{grid-template-columns:repeat(7,1fr)}}
+#gal .gc{position:relative;aspect-ratio:1/1;background:var(--hov);overflow:hidden;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#gal .gc img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
+#gal .gc:active{filter:brightness(.88)}
+#gal .gd{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+#gal .ge{grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--mut)}
 .galh{grid-column:1/-1;padding:10px 16px 4px;font-size:13px;font-weight:600;color:var(--mut)}
 /* banner */
 #banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
@@ -355,7 +369,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 <button id=fab><span data-i=newfolder></span>New folder</button>
 <div id=dock><div id=clip></div><div id=bar></div></div>
 <div id=dedge></div><div id=dscrim></div><aside id=dwr aria-label="Navigation"><div id=dtabs></div><div id=dbody></div><div id=dfoot></div></aside>
-<div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=dlg></div>
+<div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=gal></div><div id=dlg></div>
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -712,7 +726,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   const r=$('#list').getBoundingClientRect(),dh=parseFloat(getComputedStyle(document.body).getPropertyValue('--dockh'))||0;
   const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
-  const full=vis($('#pv'))||vis($('#dual'));                       // full-screen viewers: hide the native list
+  const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
   ['#fab','#toast','#dlw'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
@@ -738,7 +752,7 @@ function nlSrPush(){if(!NLSR)return;
   if(!document.body.classList.contains('srch')){if(NLSRJ!=='0'){NLSRJ='0';NL.nlSearch('0')}return}
   const e=$('#srow');if(!e)return;const b=e.getBoundingClientRect();if(!(b.width>0&&b.height>0))return;
   const vis=x=>{if(!x)return false;const c=getComputedStyle(x);return c.display!=='none'&&c.visibility!=='hidden'};
-  let hid=0;['#sheet','#dlg','#pv','#dual'].forEach(q=>{if(vis($(q)))hid=1});
+  let hid=0;['#sheet','#dlg','#pv','#dual','#gal'].forEach(q=>{if(vis($(q)))hid=1});
   const sc=$('#dscrim');if(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0)hid=1;
   const q=v=>Math.round(v*100)/100,o={r:[q(b.left),q(b.top),q(b.width),q(b.height)],h:hid,p:JSON.parse(nlPal())};
   if(S.q!==NLSRQ)o.x=$('#sq').value;
@@ -790,7 +804,7 @@ function nlChPush(){if(!NLCH)return;
   const rc=e=>{if(!vis(e))return null;const b=e.getBoundingClientRect();return(b.width>0&&b.height>0)?[q2(b.left),q2(b.top),q2(b.width),q2(b.height)]:null};
   let modal=0,all=0;
   ['#sheet','#dlg'].forEach(q=>{if(vis($(q)))modal=1});
-  ['#pv','#dual'].forEach(q=>{if(vis($(q)))all=1});
+  ['#pv','#dual','#gal'].forEach(q=>{if(vis($(q)))all=1});
   const sc=$('#dscrim');if(document.body.classList.contains('dopen')||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
   if(all){if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
   const sel=document.body.classList.contains('selm'),o={p:nlChPal(),ic:{}};
@@ -912,10 +926,39 @@ function mkAlbum(i,P0){
       key='v2|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
     if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
-    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else go(pth)};
+    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0})};
   holdMenu(c,i);
-  c.addEventListener('pointerdown',()=>prefetch(S.dev,pth));
   return c}
+/* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
+let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
+const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
+function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o._for=null;GCX=null}
+function galView(a){
+  const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
+  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
+  bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
+  tw.append(tt,sb);hd.append(bk,tw);sc.append(gg);o.append(hd,sc);
+  api('GET','/api/ls?dev=local&path='+enc(a.path)).then(r=>{
+    if(o._for!==tok)return;
+    const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(kind(x)==='img'||kind(x)==='vid')).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
+    GCX={dev:'local',path:a.path,list:it,all:all.filter(x=>!x.dir)};
+    sb.textContent=it.length+(it.length===1?' item':' items');
+    if(!it.length){gg.append(E('div','ge','Nothing here'));return}
+    const mk=m=>{const k=kind(m),c=E('div','gc');
+      if(k==='vid')c.append(E('span','gd','\u25B6'));
+      if(!NOTH.test(m.name)&&(k==='vid'||m.size<30e6)){
+        const key='v2|local|'+jn(a.path,m.name)+'|'+m.size+'|'+(m.mtime||0),
+          show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;c.insertBefore(im,c.firstChild);
+            if(k==='vid'&&t.d>0){const g=c.querySelector('.gd');if(g)g.textContent='\u25B6 '+fmtDur(t.d)}},
+          hit=thGet(key);
+        if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name)),done:show}))}
+      c.onclick=()=>{if(k==='vid')playVid(m);else viewImg(m)};
+      return c};
+    let n=0;const CH=300,sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';
+    const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment();for(;n<end;n++)fr.append(mk(it[n]));gg.insertBefore(fr,sent);if(n>=it.length)sent.remove()};
+    gg.append(sent);more();
+    if(n<it.length){if(window.IntersectionObserver){const io=new IntersectionObserver(es=>{if(!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}
+  }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
 let GALA=null,GALT=0,GALP=null;
 function galFetch(){if(GALP)return;
@@ -928,9 +971,8 @@ function mkAlbumX(a,P0,V){
   if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
   c.onclick=()=>{if(c._lp){c._lp=false;return}
-    if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else go(a.path)};
+    if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
   if(own){if(S.sel.has(own.name))c.classList.add('sel');holdMenu(c,own)}
-  c.addEventListener('pointerdown',()=>prefetch('local',a.path));
   return c}
 function render(){
   applyPrefs();
@@ -1033,15 +1075,15 @@ function doNewNote(){
 window.lsRefresh=()=>{try{load()}catch(e){}};
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});
-function mediaList(){return shown().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
+function mediaList(){return cxl().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
 /* Android app: pictures open in the dedicated native viewer (folder = gallery); animated GIF / SVG and browsers keep the built-in viewer */
 function nativeImg(i){
   if(!(window.LSAndroid&&LSAndroid.viewImages))return false;
   const heicOk=!!(LSAndroid.sdk&&LSAndroid.sdk()>=28);
   const okImg=x=>!x.dir&&kind(x)==='img'&&!/\.(svg|gif)$/i.test(x.name)&&(heicOk||!/\.(heic|heif)$/i.test(x.name));
   if(!okImg(i))return false;
-  const V=shown().filter(okImg);if(!V.length)return false;
-  const url=m=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
+  const V=cxl().filter(okImg);if(!V.length)return false;
+  const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(jn(cxp(),m.name));
   const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0}));
   const at=Math.max(0,V.findIndex(m=>m.name===i.name));
   try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
@@ -1055,11 +1097,11 @@ function viewPdf(i){if(!nativePdf(i))openFile(i)}
 /* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
 function nativePlay(i){
   if(!(window.LSAndroid&&LSAndroid.play))return false;
-  const V=shown().filter(x=>!x.dir&&kind(x)==='vid');if(!V.length)return false;
-  const subs=vis().filter(x=>!x.dir&&/\.(srt|vtt|ass|ssa)$/i.test(x.name));
-  const url=m=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
+  const V=cxl().filter(x=>!x.dir&&kind(x)==='vid');if(!V.length)return false;
+  const subs=(GCX?GCX.all:vis()).filter(x=>!x.dir&&/\.(srt|vtt|ass|ssa)$/i.test(x.name));
+  const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(jn(cxp(),m.name));
   const base=n=>n.replace(/\.[^.]+$/,'').toLowerCase();
-  const items=V.map(m=>{const b=base(m.name);return{name:m.name,url:url(m),key:S.dev+'|'+S.path+'/'+m.name+'|'+(m.size||0),
+  const items=V.map(m=>{const b=base(m.name);return{name:m.name,url:url(m),key:cxd()+'|'+cxp()+'/'+m.name+'|'+(m.size||0),
     subs:subs.filter(s=>{const c=base(s.name);return c===b||c.indexOf(b+'.')===0}).map(s=>({name:s.name,url:url(s)}))}});
   const at=Math.max(0,V.findIndex(m=>m.name===i.name));
   try{LSAndroid.play(JSON.stringify({start:at,items}));return true}catch(e){return false}}
@@ -1067,7 +1109,7 @@ function playVid(i){if(!nativePlay(i))openMedia(i)}
 function openMedia(first){
   const o=$('#pv'),L=mediaList();if(!L.length)return;
   let idx=Math.max(0,L.findIndex(m=>m.name===first.name)),cur=null,hideT=0,rate=1;
-  const U=m=>'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,m.name));
+  const U=m=>'/api/dl?dev='+enc(cxd())+'&path='+enc(jn(cxp(),m.name));
   o.textContent='';o.style.display='flex';o.className='ui';
   const stage=E('div','pst'),hd=E('div','ph2'),x=E('button','ibtn'),tw=E('div','pt'),ttl=E('b'),sub=E('small'),dl=E('button','ibtn'),np=E('button','ibtn');
   x.append(ic('close'));dl.append(ic('download'));np.append(ic('play'));x.style.color=dl.style.color=np.style.color='#fff';np.style.display='none';
@@ -1130,7 +1172,7 @@ function openMedia(first){
     cur={key:e=>{if(e.key==='+'||e.key==='='){Z.zoomAt(innerWidth/2,innerHeight/2,Z.sc*1.5);return 1}
       if(e.key==='-'){Z.zoomAt(innerWidth/2,innerHeight/2,Z.sc/1.5);return 1}if(e.key==='0'){Z.sc=1;Z.tx=Z.ty=0;Z.fix();return 1}}}}
   function mkVideo(pane,m){
-    const v=E('video','pvid'),key='ls_pos:'+S.dev+'|'+S.path+'/'+m.name+'|'+(m.size||0);
+    const v=E('video','pvid'),key='ls_pos:'+cxd()+'|'+cxp()+'/'+m.name+'|'+(m.size||0);
     v.playsInline=true;v.autoplay=true;v.preload='auto';v.setAttribute('playsinline','');v.defaultPlaybackRate=v.playbackRate=rate;
     const sp=E('div','pspin'),er=E('div','pe'),fl=E('div','pfl');
     const ctl=E('div','pctl'),pp=E('button','pcb'),tm=E('span','ptm','0:00'),rg=E('input','prg'),du=E('span','ptm','0:00'),spd=E('button','pcb ptx',rate+'x'),mu=E('button','pcb');
@@ -1979,7 +2021,7 @@ async function track(id){
   const reset=()=>{box.style.transition='height .2s';setH(0);box.classList.remove('go');setTimeout(()=>box.style.transition='',220)};
   const modal=()=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex';
   window.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1||!atTop()||modal())return;
-    if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#sheet,#dlg,#top,button'))return;
+    if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#gal,#sheet,#dlg,#top,button'))return;
     y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
   window.addEventListener('touchmove',e=>{if(!on)return;dy=e.touches[0].clientY-y0;
     if(dy<=0||!atTop()){if(dy<=0){on=false;setH(0)}return}
@@ -1996,7 +2038,7 @@ async function track(id){
 /* swipe left anywhere = next device (to the right in the chip bar), swipe right = previous; the list follows the finger and slides out/in; keep sliding to go further */
 (()=>{let x0=0,y0=0,mode=0,busy=false;const STEP=50;  // mode: 0 undecided, 1 horizontal (ours), 2 ignore
   const L=()=>$('#list');
-  const blocked=t=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex'||$('#pv').style.display==='flex'||
+  const blocked=t=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex'||$('#pv').style.display==='flex'||$('#gal').style.display==='flex'||
     /^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'')||(t&&t.closest&&t.closest('#peers,#crumbs'));
   const tx=(x,o,ms)=>{const l=L();l.style.transition=ms?'transform '+ms+'ms ease-out,opacity '+ms+'ms ease-out':'none';l.style.transform=x?'translateX('+x+')':'';l.style.opacity=o}
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -2024,6 +2066,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
 function lsBack(){
   if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
+  if($('#gal').style.display==='flex'){galClose();return true}
   for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
   if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
   if(document.body.classList.contains('srch')){clearQ();render();return true}
