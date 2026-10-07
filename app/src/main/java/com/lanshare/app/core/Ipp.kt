@@ -20,6 +20,8 @@ object Ipp {
         fun strs(n: String): List<String> = attrs[n]?.map { String(it.v, Charsets.UTF_8) } ?: emptyList()
         fun int(n: String): Int? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int }
         fun bool(n: String): Boolean? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 1 }?.let { it[0].toInt() != 0 }
+        /** resolution values (9 bytes: x, y, unit) -> the x dpi of each */
+        fun dpis(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 9 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
     }
 
     /** What the user asked for; null / empty = leave it to the printer. [ranges] = list of [from, to] (1-based). */
@@ -56,7 +58,8 @@ object Ipp {
         val rq = Req(OP_GET_PRINTER_ATTRS, p.uri)
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
-            "media-ready", "media-default", "media-supported"))
+            "media-ready", "media-default", "media-supported",
+            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
 

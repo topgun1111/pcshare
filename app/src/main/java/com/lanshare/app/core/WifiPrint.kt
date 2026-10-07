@@ -3,6 +3,7 @@ package com.lanshare.app.core
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -10,9 +11,12 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
+import java.nio.ByteBuffer
 import java.nio.charset.Charset
 
 /**
@@ -224,8 +228,13 @@ object WifiPrint {
     private fun sendPdf(p: WifiPrinters.P, job: Job, pdf: File, name: String, jo: Ipp.JobOpts, temps: MutableList<File>) {
         val fm = p.formats
         if (fm.isEmpty() || "application/pdf" in fm) { submit(p, pdf, "application/pdf", name, jo); return }
+        if ("image/pwg-raster" in fm) {   // no PDF, but PWG raster: ALL pages go in ONE job, so two-sided printing works (one JPEG per job cannot)
+            val ras = pwgRaster(job, pdf, jo, p).also { temps.add(it) }
+            submit(p, ras, "image/pwg-raster", name, Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, "none"))
+            return
+        }
         if ("image/jpeg" !in fm) throw PrintFail("this printer only accepts ${fmtList(p)} - print through a PC instead")
-        // no PDF support (typical for AirPrint-only printers): one JPEG per page
+        // no PDF, no raster: one JPEG per page - every page is its own job, so two-sided printing cannot work here
         val fd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
         val rr = PdfRenderer(fd)
         try {
@@ -255,6 +264,117 @@ object WifiPrint {
                 }
             }
         } finally { try { rr.close() } catch (_: Exception) {}; try { fd.close() } catch (_: Exception) {} }
+    }
+
+    /** Resolution to render at: 300 dpi when the printer takes it (150-ish for pages bigger than A4 so the bitmap stays small). */
+    private fun rasterDpi(p: WifiPrinters.P, big: Boolean): Int {
+        val l = p.rasterDpi.sorted()
+        if (l.isEmpty()) return if (big) 150 else 300
+        val want = if (big) 150 else 300
+        return l.filter { it <= want }.maxOrNull() ?: l.first()
+    }
+
+    /**
+     * PDF -> one PWG raster (RaS2) file with every page (page range applied). A landscape page is turned 90 degrees (raster pages are
+     * portrait, in paper-feed direction). On two-sided jobs the back sides get the transform the printer asks for (sheet-back).
+     */
+    private fun pwgRaster(job: Job, pdf: File, jo: Ipp.JobOpts, p: WifiPrinters.P): File {
+        val out = File(pdf.parentFile, "ras-" + System.nanoTime().toString(36) + ".pwg")
+        val fd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
+        val rr = PdfRenderer(fd)
+        try {
+            val n = rr.pageCount
+            val pages = (0 until n).filter { i -> jo.ranges.isEmpty() || jo.ranges.any { (i + 1) >= it[0] && (i + 1) <= it[1] } }
+            if (pages.isEmpty()) throw PrintFail("the page range selects no pages")
+            val duplex = jo.sides?.startsWith("two-sided") == true
+            val tumble = jo.sides == "two-sided-short-edge"
+            BufferedOutputStream(FileOutputStream(out), 256 * 1024).use { os ->
+                os.write("RaS2".toByteArray(Charsets.US_ASCII))
+                for ((k, i) in pages.withIndex()) {
+                    if (job.cancel) throw Cancelled()
+                    job.label = "Preparing page ${k + 1}/${pages.size} for ${p.name}"
+                    val pg = rr.openPage(i)
+                    var bmp: Bitmap? = null
+                    try {
+                        val ptW = pg.width; val ptH = pg.height
+                        val land = ptW > ptH
+                        val dpi = rasterDpi(p, maxOf(ptW, ptH) > 845)
+                        val sc = dpi / 72f
+                        val rw = Math.round((if (land) ptH else ptW) * sc).coerceAtLeast(1)   // raster size (portrait when the page is landscape)
+                        val rh = Math.round((if (land) ptW else ptH) * sc).coerceAtLeast(1)
+                        bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.ARGB_8888)
+                        bmp.eraseColor(Color.WHITE)
+                        val m = Matrix()
+                        if (land) { m.postRotate(90f); m.postTranslate(ptH.toFloat(), 0f) }   // clockwise
+                        m.postScale(sc, sc)
+                        pg.render(bmp, null, m, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                        // back side of a sheet: what the printer expects (same rules as CUPS rastertopwg)
+                        var flipX = false; var flipY = false
+                        if (duplex && k % 2 == 1) when (p.sheetBack) {
+                            "flipped" -> if (tumble) flipX = true else flipY = true
+                            "manual-tumble" -> if (tumble) { flipX = true; flipY = true }
+                            "rotated" -> if (!tumble) { flipX = true; flipY = true }
+                        }
+                        val h = ByteBuffer.allocate(1796)
+                        h.position(0); h.put("PwgRaster".toByteArray(Charsets.US_ASCII))
+                        h.putInt(272, if (duplex) 1 else 0)
+                        h.putInt(276, dpi); h.putInt(280, dpi)
+                        h.putInt(340, 1)
+                        h.putInt(352, if (land) ptH else ptW); h.putInt(356, if (land) ptW else ptH)
+                        h.putInt(368, if (tumble) 1 else 0)
+                        h.putInt(372, rw); h.putInt(376, rh)
+                        h.putInt(384, 8); h.putInt(388, 24); h.putInt(392, rw * 3)
+                        h.putInt(396, 0); h.putInt(400, 19)   // chunky, sRGB
+                        h.putInt(420, 3)
+                        h.putInt(452, pages.size)
+                        h.putInt(456, if (flipX) -1 else 1); h.putInt(460, if (flipY) -1 else 1)
+                        h.putInt(464, 0); h.putInt(468, 0); h.putInt(472, rw); h.putInt(476, rh)
+                        h.putInt(480, 0x00FFFFFF)
+                        os.write(h.array())
+                        writeRasterPixels(os, bmp, flipX, flipY, job)
+                    } finally { bmp?.recycle(); pg.close() }
+                }
+            }
+            return out
+        } catch (e: Throwable) { try { out.delete() } catch (_: Exception) {}; throw e
+        } finally { try { rr.close() } catch (_: Exception) {}; try { fd.close() } catch (_: Exception) {} }
+    }
+
+    /** One page of 24-bit sRGB, PWG raster packing: per line a repeat byte (line count - 1), then runs (n-1, pixel) or literals (257-n, n pixels). */
+    private fun writeRasterPixels(os: OutputStream, bmp: Bitmap, flipX: Boolean, flipY: Boolean, job: Job) {
+        val w = bmp.width; val h = bmp.height
+        val px = IntArray(w)
+        var cur = ByteArray(w * 3); var prev = ByteArray(w * 3)
+        var have = false; var rep = 0
+        fun flush() {
+            os.write(rep - 1)
+            var i = 0
+            fun same(a: Int, b: Int) = prev[a * 3] == prev[b * 3] && prev[a * 3 + 1] == prev[b * 3 + 1] && prev[a * 3 + 2] == prev[b * 3 + 2]
+            while (i < w) {
+                var run = 1
+                while (i + run < w && run < 128 && same(i, i + run)) run++
+                if (run > 1) { os.write(run - 1); os.write(prev, i * 3, 3); i += run }
+                else {
+                    var lit = 1
+                    while (i + lit < w && lit < 128 && !(i + lit + 1 < w && same(i + lit, i + lit + 1))) lit++
+                    os.write((257 - lit) and 0xFF)
+                    os.write(prev, i * 3, lit * 3); i += lit
+                }
+            }
+        }
+        for (r in 0 until h) {
+            if (r % 256 == 0 && job.cancel) throw Cancelled()
+            bmp.getPixels(px, 0, w, 0, if (flipY) h - 1 - r else r, w, 1)
+            for (x in 0 until w) {
+                val c = px[if (flipX) w - 1 - x else x]
+                cur[x * 3] = (c shr 16).toByte(); cur[x * 3 + 1] = (c shr 8).toByte(); cur[x * 3 + 2] = c.toByte()
+            }
+            if (have && rep < 256 && java.util.Arrays.equals(cur, prev)) { rep++; continue }
+            if (have) flush()
+            val t = prev; prev = cur; cur = t
+            have = true; rep = 1
+        }
+        if (have) flush()
     }
 
     private fun sendJpeg(p: WifiPrinters.P, jpg: File, name: String, jo: Ipp.JobOpts, temps: MutableList<File>) {
