@@ -55,7 +55,7 @@ private class NlRadio(c: Context, private val on: Boolean, private val ring: Int
  * {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kill switch: localStorage ls_nls='0' (page keeps its own HTML sheets).
  */
 class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Unit) {
-    private val d = act.resources.displayMetrics.density
+    private val d = UiScale.dens(act)
     private fun dp(v: Float) = Math.round(v * d)
     private var dlg: Dialog? = null
 

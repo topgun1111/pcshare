@@ -235,7 +235,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         const val ENABLED = true
     }
 
-    private val d = act.resources.displayMetrics.density
+    private val d = UiScale.dens(act)
     private val pathCache = HashMap<String, Path?>()
     private var hov = 0
     private var ver = 0
