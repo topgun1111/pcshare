@@ -67,13 +67,24 @@ object NlIcons {
     val foldFront: Path = PathParser.createPathFromPathData("M2 21a4 4 0 0 1 4-4h44a4 4 0 0 1 4 4v19a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z")
 }
 
+/** "New" = modified within the last 24 h (twin of ui.html NEWSEC / isNew). Drawn as a red dot on the row's lead. */
+const val NL_NEW_SEC = 86400L
+fun nlIsNew(mtimeSec: Long): Boolean = mtimeSec > 0 && (System.currentTimeMillis() / 1000 - mtimeSec) < NL_NEW_SEC
+
+private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: Int, d: Float) {
+    p.style = Paint.Style.FILL; p.shader = null
+    p.color = ring; cv.drawCircle(cx, cy, r + 1.5f * d, p)
+    p.color = 0xFFFF3B30.toInt(); cv.drawCircle(cx, cy, r, p)
+}
+
 class NlRow(
     val nm: String, val dir: Boolean, val k: String, var a: String, val b: String,
     val badge: String?, val badgeCol: Int, val dup: Boolean,
     val path: String?, val size: Long, val mtime: Long,
     val gal: Boolean = false,           // video-gallery cell (drawn by NlGalView, several per adapter row)
     val dev: String = "local",          // endpoint the row belongs to ("local", a peer id, "smb:...")
-    val hit: Boolean = false            // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
+    val hit: Boolean = false,           // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
+    val fresh: Boolean = false          // modified within the last 24 h: red dot on the lead (ui.html isNew / `w`)
 ) {
     val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }
@@ -224,6 +235,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 icon(r.k, lcx - ico / 2f, cy - ico / 2f, ico, kc, cv)
             }
         }
+        if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
         // ---- texts ----
         val xr = w - 14f * d
         nameP.textSize = (if (c) 15f else 16f) * d
@@ -384,6 +396,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 icon(r.k, cx - t / 2f, cy - t / 2f, t, kc, cv)
             }
         }
+        if (r.fresh) nlDot(cv, p, lx + 9f * d, ly + 9f * d, 5.5f * d, Color.WHITE, d)
         // ---- check circle (top 5, right 5, 24px) ----
         val kx = lx + s - 5f * d - 12f * d; val ky = ly + 5f * d + 12f * d
         if (isSel) {
@@ -527,10 +540,11 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             p.shader = LinearGradient(0f, y, 0f, y + 32f * d, 0x99000000.toInt(), 0x00000000, Shader.TileMode.CLAMP)
             rf.set(x, y, x + cs, y + 32f * d); cv.drawRect(rf, p); p.shader = null
             nameP.color = Color.WHITE
-            val tw = cs - 6f * d - (if (selMode) 34f else 6f) * d
+            val tw = cs - (if (r.fresh) 18f else 6f) * d - (if (selMode) 34f else 6f) * d
             val fm = nameP.fontMetrics
             val txt = TextUtils.ellipsize(r.nm, nameP, Math.max(0f, tw), TextUtils.TruncateAt.END).toString()
-            cv.drawText(txt, x + 6f * d, y + 14f * d + 7f * d - (fm.ascent + fm.descent) / 2f, nameP)
+            cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + 7f * d - (fm.ascent + fm.descent) / 2f, nameP)
+            if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d)
             // play dot
             p.style = Paint.Style.FILL; p.color = 0x99000000.toInt()
             cv.drawCircle(x + 6f * d + 11f * d, y + cs - 6f * d - 11f * d, 11f * d, p)
@@ -581,7 +595,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 val o = a.getJSONObject(i)
                 out.add(NlRow(o.getString("n"), o.optInt("d") == 1, o.optString("k", "file"), o.optString("a"), o.optString("b"),
                     if (o.has("g")) o.getString("g") else null, o.optLong("gc").toInt(), o.optInt("u") == 1,
-                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1))
+                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1, o.optInt("w") == 1))
             }
             return out
         }

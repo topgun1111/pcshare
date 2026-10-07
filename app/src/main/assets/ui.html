@@ -130,6 +130,12 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 .lead{position:relative;width:56px;height:50px;display:grid;place-items:center;flex:none}
 .row .lead .kd{width:40px;height:40px;padding:8px;border-radius:8px;background:var(--b);color:var(--c)}
 .fold svg{width:56px;height:48px;fill:none}
+.lead .nw,.vc .nw{position:absolute;width:10px;height:10px;border-radius:50%;background:#ff3b30;box-shadow:0 0 0 2px var(--bg);z-index:2;pointer-events:none}
+.lead .nw{left:2px;top:0}.row.sel .lead .nw{display:none}
+#list.v-compact .lead .nw{width:8px;height:8px;left:1px;top:1px}
+#list.t-lg:not(.v-grid):not(.v-compact) .lead .nw{left:4px;top:0}
+#list.v-grid .lead .nw{width:11px;height:11px;left:4px;top:4px;box-shadow:0 0 0 2px #fff}
+.vc .nw{width:9px;height:9px;left:6px;top:17px;box-shadow:0 0 0 2px #fff}.vc.nwc .vn{padding-left:18px}
 .bdg{position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);width:24px;height:24px;border-radius:5px;background:#fff;display:grid;place-items:center;box-shadow:0 0 0 1px #0003}.bdg svg{width:16px;height:16px}
 .lead .ck{display:none;width:40px;height:40px;padding:8px;border-radius:50%;background:var(--ac);color:var(--onac)}
 .row.sel .lead .ck{display:block}#list:not(.v-grid) .row.sel .lead .kd,#list:not(.v-grid) .row.sel .lead .fold,#list:not(.v-grid) .row.sel .lead .bdg{display:none}
@@ -651,6 +657,7 @@ function srRows(){  // subfolder-search hits as native rows: header + hits (same
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
 const nlUse=n=>!!NL&&NLON&&n>0&&(S.view==='list'||S.view==='compact'||S.view==='grid');
 // right-hand / second text of a folder or file row (shared by nlRender and the late folder-count patch)
+const NEWSEC=86400,isNew=i=>!!i.mtime&&(Date.now()/1000-i.mtime)<NEWSEC;   // modified in the last 24 h: red dot (Kotlin twin: nlIsNew)
 const nlA=(i,CP)=>{const dt=CP&&i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'';
   const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);return CP?(S.sort==='date'&&dt?dt:sz):sz};
 function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effects). Kotlin twin: NlModel.rows()
@@ -659,6 +666,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
   const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h)return{n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1};
     const k=kind(i),o={n:i.name,k:k,a:nlA(i,CP),b:CP?'':dt(i)};
     if(x>=GN)o.v=1;
+    if(isNew(i))o.w=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
       if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
@@ -905,6 +913,7 @@ function render(){
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
         const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth0),done:showR}))}}
     lead.append(ic('check','ck'));
+    if(isNew(i))lead.append(E('span','nw'));
     const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(S.view==='compact'?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
     if(S.view==='compact'){const sp=E('span','',S.sort==='date'&&dt?dt:sz);if(i.dir&&!(S.sort==='date'&&dt))i._sz=sp;sub.append(sp)}else{const sp=E('span','',sz);if(i.dir)i._sz=sp;sub.append(sp,E('span','',dt))}
@@ -937,6 +946,7 @@ function render(){
       const pl=E('span','pl');pl.append(ic('play'));c.append(pl);
       const du=E('span','du');du.style.display='none';c.append(du);
       const ck=ic('check','ck');c.append(ck);
+      if(isNew(i)){c.classList.add('nwc');c.append(E('span','nw'))}
       const show=t=>{if(!t)return;if(t.u){const im=E('img');im.src=t.u;im.alt='';c.insertBefore(im,ph);ph.style.display='none'}
         if(t.d){du.textContent=fmtDur(t.d);du.style.display=''}};
       const hit=thGet(key);if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'vid',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth),done:show}));
@@ -1978,7 +1988,7 @@ function favToggle(dev,path){
   if(isFav(dev,path))FAV=FAV.filter(f=>!sameLoc(f,{dev,path}));
   else FAV.push({dev,path,name:baseName(dev,path),dn:dev==='local'?'':devName(dev)});
   favSave();drawerRender()}
-function drawerOpen(){document.body.classList.add('dopen');drawerRender()}
+function drawerOpen(){document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)

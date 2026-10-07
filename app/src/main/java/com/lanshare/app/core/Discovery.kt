@@ -49,6 +49,7 @@ class Discovery(val port: Int) {
     private fun msg() = hello().toString().toByteArray(Charsets.UTF_8)
 
     fun start() {
+        loadCache()
         for ((n, fn) in listOf<Pair<String, () -> Unit>>("listen" to ::listen, "beacon" to ::beacon, "tcp" to ::tcpLoop, "live" to ::liveLoop))
             Thread({
                 while (true) {   // a crashed loop is restarted (an Error here would otherwise end discovery silently, or kill the app)
@@ -63,11 +64,15 @@ class Discovery(val port: Int) {
     // ---- peer table
     fun add(pid: String, ip: String, port: Int, name: String, ips: List<String> = emptyList()): Boolean {
         val now = System.currentTimeMillis()
+        var save = false
+        val isNew: Boolean
         synchronized(lock) {
             var p = peers[pid]
-            val isNew = p == null
+            isNew = p == null
             if (p == null) { p = Peer(pid, ip, port, name.take(40), now, emptyList(), true); peers[pid] = p }
             else if (!p.ok) p.ip = ip   // last address failed - try the newest one
+            val c = cacheSeen[pid]
+            if (isNew || c == null || p.port != port || p.name != name.take(40) || p.ip != ip || now - c > 3_600_000L) save = true
             p.port = port; p.name = name.take(40); p.seen = now
             val all = HashSet<String>(p.ips)
             all.add(ip)
@@ -75,8 +80,45 @@ class Discovery(val port: Int) {
             all.removeAll(ownIps)
             for (i in all) if (viaOf(i) == "Tailscale") Cfg.addPin(i)   // remember tailnet addresses: reachable from any network later
             p.ips = all.sorted().take(8)
-            return isNew
+            if (save) cacheSeen[pid] = now
         }
+        if (save) saveCache()
+        return isNew
+    }
+
+    // ---- peer cache: devices seen before are listed at once (not ok until a live check answers), like the printer cache
+    private val cacheSeen = HashMap<String, Long>()   // id -> time of the last cache write / entry age
+    private val cacheOld = ArrayList<JSONObject>()    // entries loaded from disk (kept even while the device is away)
+
+    private fun loadCache() {
+        try {
+            val a = Cfg.peerCache(); val now = System.currentTimeMillis()
+            synchronized(lock) {
+                for (i in 0 until a.length()) {
+                    val o = a.optJSONObject(i) ?: continue
+                    val id = o.optString("id"); val seen = o.optLong("seen")
+                    if (id.isEmpty() || id == Cfg.id || now - seen > 14L * 86_400_000L) continue
+                    val ips = o.optJSONArray("ips").strings()
+                    peers[id] = Peer(id, o.optString("ip"), o.optInt("port", BASE_PORT), o.optString("name"), now, ips, false)
+                    cacheSeen[id] = seen
+                    cacheOld.add(o)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun saveCache() {
+        try {
+            val m = LinkedHashMap<String, JSONObject>()
+            synchronized(lock) {
+                for (o in cacheOld) m[o.optString("id")] = o
+                for (p in peers.values) m[p.id] = JSONObject().put("id", p.id).put("ip", p.ip).put("port", p.port).put("name", p.name)
+                    .put("ips", JSONArray(p.ips)).put("seen", cacheSeen[p.id] ?: System.currentTimeMillis())
+            }
+            val a = JSONArray()
+            m.values.sortedByDescending { it.optLong("seen") }.take(24).forEach { a.put(it) }
+            Cfg.setPeerCache(a)
+        } catch (_: Exception) {}
     }
 
     fun get(pid: String): Peer? = synchronized(lock) { peers[pid]?.snapshot() }
@@ -326,8 +368,8 @@ class Discovery(val port: Int) {
 
     private fun liveLoop() {
         while (true) {
-            Thread.sleep(3000)
             try { probePool.invokeAll(list().map { p -> Callable { probe(p) } }) } catch (_: Exception) {}
+            Thread.sleep(if (synchronized(lock) { peers.values.any { !it.ok } }) 1500 else 3000)   // not-yet-verified (cached) devices are re-checked quickly
         }
     }
 

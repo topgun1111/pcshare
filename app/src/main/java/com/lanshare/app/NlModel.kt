@@ -158,7 +158,7 @@ object NlModel {
                     path = (if (p0 == "/") "" else p0) + "/" + i.name; size = i.size; mt = i.mtime
                 }
             }
-            out.add(NlRow(i.name, i.dir, k, a, b, badge, badgeCol, dup, path, size, mt, isGal, "local", false))
+            out.add(NlRow(i.name, i.dir, k, a, b, badge, badgeCol, dup, path, size, mt, isGal, "local", false, nlIsNew(i.mtime)))
         }
         for (i in list) add(i, false)
         for (i in gv) add(i, true)
@@ -168,7 +168,7 @@ object NlModel {
     /** Content signature of a row list: equal rows = equal signature, whoever built them (page JSON or this object). */
     fun sig(rows: List<NlRow>): Int {
         var h = 1
-        for (r in rows) h = 31 * h + Objects.hash(r.nm, r.dir, r.k, r.a, r.b, r.badge, r.badgeCol, r.dup, r.path, r.size, r.mtime, r.gal, r.dev, r.hit)
+        for (r in rows) h = 31 * h + Objects.hash(r.nm, r.dir, r.k, r.a, r.b, r.badge, r.badgeCol, r.dup, r.path, r.size, r.mtime, r.gal, r.dev, r.hit, r.fresh)
         return h
     }
 }

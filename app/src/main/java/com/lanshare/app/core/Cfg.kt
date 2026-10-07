@@ -35,6 +35,10 @@ object Cfg {
     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }
 
+    /** LANShare devices this one has seen (kept across restarts, so the Devices list is filled at once; liveLoop then verifies them). */
+    @Synchronized fun peerCache(): JSONArray = obj.optJSONArray("peer_cache") ?: JSONArray()
+    @Synchronized fun setPeerCache(a: JSONArray) { obj.put("peer_cache", a); save() }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy
