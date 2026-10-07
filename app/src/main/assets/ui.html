@@ -916,6 +916,22 @@ function mkAlbum(i,P0){
   holdMenu(c,i);
   c.addEventListener('pointerdown',()=>prefetch(S.dev,pth));
   return c}
+/* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
+let GALA=null,GALT=0,GALP=null;
+function galFetch(){if(GALP)return;
+  GALP=api('GET','/api/albums').then(r=>{const a=(r&&r.albums)||[],sig=a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;GALA={a:a,sig:sig};GALT=Date.now();return ch}).catch(()=>false).then(ch=>{GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+function mkAlbumX(a,P0,V){
+  const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
+  c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));
+  const key='v2|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
+    show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
+  if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
+  const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
+  c.onclick=()=>{if(c._lp){c._lp=false;return}
+    if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else go(a.path)};
+  if(own){if(S.sel.has(own.name))c.classList.add('sel');holdMenu(c,own)}
+  c.addEventListener('pointerdown',()=>prefetch('local',a.path));
+  return c}
 function render(){
   applyPrefs();
   const AR=inArc();
@@ -935,11 +951,12 @@ function render(){
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
-  const AL=!AR&&!S.q&&!S.newest&&galRoot()?V.filter(i=>i.dir):[];   // Pictures: folders become album cards
+  const GALM=!AR&&!S.q&&!S.newest&&galRoot();   // Pictures: every picture folder of the phone as album cards
+  const AL=GALM?V.filter(i=>i.dir):[];
   const LIST=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V;
   {const f=LIST.filter(i=>!i.dir),n=f.filter(i=>kind(i)==='img').length;l.classList.toggle('imgf',S.view==='grid'&&!AR&&n>0&&n*2>=f.length)}   // image folder: see #list.imgf
   const SR=srRows();
-  if(!AL.length&&nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
+  if(!GALM&&nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
   if(NLL){NLL=null;NLSEL='';NLLAY='';NL.nlHide();$('#top').classList.toggle('el',(window.scrollY||0)>4)}
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(k==='img'&&!i.dir?' im':'')+(S.sel.has(i.name)?' sel':''));
@@ -976,8 +993,11 @@ function render(){
     if(sent){window._rIO=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))more()},{rootMargin:'1500px'});window._rIO.observe(sent)}}
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
-  if(AL.length){const ab=E('div','albums');AL.forEach(i=>ab.append(mkAlbum(i,P0)));l.insertBefore(ab,l.firstChild);
-    if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
+  if(GALM){const ab=E('div','albums');
+    if(GALA&&GALA.a.length)GALA.a.forEach(a=>ab.append(mkAlbumX(a,P0,V)));else AL.forEach(i=>ab.append(mkAlbum(i,P0)));
+    if(ab.children.length){l.insertBefore(ab,l.firstChild);const em=l.querySelector('#empty');if(em)em.remove();
+      if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
+    if(!GALA||Date.now()-GALT>15000)galFetch()}
   renderSR(l);
   if(GV.length){const g=E('div','gal');
     GV.forEach(i=>{

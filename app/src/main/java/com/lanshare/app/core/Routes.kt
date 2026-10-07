@@ -43,6 +43,7 @@ object Routes {
         when (route) {
             "ping" -> ok(ex)
             "ls" -> ex.json(jarr(L.ls(ex.q("path")).map { it.toJson() }))
+            "albums" -> return ex.json(Albums.json())
             "stat" -> ex.json(L.stat(ex.q("path")))
             "space" -> ex.json(spaceJson(L.space(ex.q("path"))))
             "walk" -> ex.json(jarr(L.walk(ex.q("path")).map { it.toJson() }))
