@@ -931,6 +931,8 @@ function albHold(c,path,name){
   holdMenu(c,{name:name},()=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
     const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+    const d=E('button','li'),dl=E('div','lt');dl.append(E('span','','Find duplicates'),E('small','','Identical pictures in this album'));d.append(dl);
+    d.onclick=()=>{fin();doDups([path])};card.append(d);
     const b=E('button','li'),lt=E('div','lt');lt.append(E('span','','Hide from gallery'),E('small','','Unhide it in Settings \u203a Gallery settings'));b.append(lt);
     b.onclick=()=>{fin();galHideSet(path,true)};card.append(b);
     const x=E('button','tbtn','Cancel');x.style.alignSelf='flex-end';x.onclick=fin;card.append(x);o.append(card)})}
@@ -1896,8 +1898,8 @@ window.lsPrintShared=async names=>{
   }catch(e){toast('\u26a0 '+e.message,5000)}};
 
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
-async function doDups(){
-  const dev=S.dev,paths=selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
+async function doDups(ps){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders
+  const dev=ps?'local':S.dev,paths=ps||selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   let jid=null,stop=false;
   const close=()=>{stop=true;o.style.display='none';o.onclick=null};
