@@ -146,6 +146,13 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc:active{filter:brightness(.88)}
 #gal .gd{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 #gal .ge{grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--mut)}
+#gal .gh.sl{display:none;background:var(--sel);color:var(--onsel)}#gal.selm .gh{display:none}#gal.selm .gh.sl{display:flex}
+#gal .gh.sl h2{flex:1;font-size:18px;font-weight:600;margin:0 0 0 4px}
+#gal .gc .ck{display:none;position:absolute;top:5px;right:5px;width:24px;height:24px;padding:4px;border-radius:50%;background:var(--ac);color:var(--onac);box-shadow:0 0 0 2px #fff,0 1px 4px #0006;z-index:2}
+#gal .gc.sel .ck{display:block}#gal .gc.sel::before{content:'';position:absolute;inset:0;background:#0003;z-index:1;pointer-events:none}
+#gal.selm .gc:not(.sel)::after{content:'';position:absolute;top:5px;right:5px;width:24px;height:24px;box-sizing:border-box;border-radius:50%;border:2px solid #fff;background:#0003;box-shadow:0 0 3px #0008;z-index:2;pointer-events:none}
+#gal .gb{display:none;flex:none;background:var(--cont);border-top:1px solid var(--bd);box-shadow:0 -2px 8px #0002;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
+#gal.selm .gb{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:2px 0}
 .galt{grid-column:1/-1;justify-self:center;padding:8px 16px;border-radius:18px;color:var(--ac);font-weight:600;font-size:13.5px}
 .galh{grid-column:1/-1;padding:10px 16px 4px;font-size:13px;font-weight:600;color:var(--mut)}
 /* banner */
@@ -953,19 +960,43 @@ function mkAlbum(i,P0){
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
-function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o._for=null;GCX=null}
+function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;GCX=null}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
-  tw.append(tt,sb);hd.append(bk,tw);sc.append(gg);o.append(hd,sc);
+  tw.append(tt,sb);hd.append(bk,tw);sc.append(gg);
+  // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
+  const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
+  sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
+  o.append(hd,sh,sc,gb);
+  let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>LIST.filter(m=>GS.has(m.name));
+  const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
+  sx.onclick=clr;sa.onclick=()=>{LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
+  const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
+  const upd=()=>{
+    o.classList.toggle('selm',GS.size>0);gb.textContent='';
+    const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
+    if(!GS.size)return;
+    const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+    const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:'local',paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
+    btn('copy','Copy',()=>clip('copy'));btn('cut','Cut',()=>clip('cut'));
+    btn('download','Download',()=>{const f=gi();clr();f.forEach((m,k)=>setTimeout(()=>{const l=document.createElement('a');l.href='/api/dl?dev=local&path='+enc(jn(a.path,m.name))+'&dl=1';l.download=m.name;document.body.append(l);l.click();l.remove()},k*600))});
+    if(GS.size===1){const m=gi()[0];
+      btn('info','Details',()=>doDetails(m,jn(a.path,m.name)));
+      btn('openw','Open with',()=>{const u='/api/dl?dev=local&path='+enc(jn(a.path,m.name));if(window.LSAndroid&&LSAndroid.openWith){LSAndroid.openWith(location.origin+u);clr()}else window.open(u,'_blank')})}
+    btn('del','Delete',async()=>{const n=GS.size;
+      if(!await dlg({title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:gp()});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if(o._for===tok)reload()}
+      catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
+    gb.style.setProperty('--cols',gb.children.length<=5?gb.children.length:Math.ceil(gb.children.length/2))};
   api('GET','/api/ls?dev=local&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
     const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid'))).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
-    GCX={dev:'local',path:a.path,list:it,all:all.filter(x=>!x.dir)};
+    GCX={dev:'local',path:a.path,list:it,all:all.filter(x=>!x.dir)};LIST=it;
     sb.textContent=it.length+(it.length===1?' item':' items');
     if(!it.length){gg.append(E('div','ge','Nothing here'));return}
-    const mk=m=>{const k=kind(m),c=E('div','gc');
+    const mk=m=>{const k=kind(m),c=E('div','gc'+(GS.has(m.name)?' sel':''));els.set(m.name,c);c.append(ic('check','ck'));
       if(k==='vid')c.append(E('span','gd','\u25B6'));
       if(!NOTH.test(m.name)&&(k==='vid'||m.size<30e6)){
         const key='v2|local|'+jn(a.path,m.name)+'|'+m.size+'|'+(m.mtime||0),
@@ -973,7 +1004,10 @@ function galView(a){
             if(k==='vid'&&t.d>0){const g=c.querySelector('.gd');if(g)g.textContent='\u25B6 '+fmtDur(t.d)}},
           hit=thGet(key);
         if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name)),done:show}))}
-      c.onclick=()=>{if(k==='vid')playVid(m);else viewImg(m)};
+      c.onclick=()=>{if(c._lp){c._lp=false;return}
+        if(GS.size){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
+        else if(k==='vid')playVid(m);else viewImg(m)};
+      holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
     let n=0;const CH=300,sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';
     const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment();for(;n<end;n++)fr.append(mk(it[n]));gg.insertBefore(fr,sent);if(n>=it.length)sent.remove()};
@@ -1449,7 +1483,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(files)btn('download','Download',doDownload);
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
-    if(S.sel.size===1)btn('info','Details',doDetails);
+    if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
@@ -1974,8 +2008,8 @@ async function openBin(){
       eb.onclick=async()=>{if(await dlg({title:'Empty the Recycle bin?',msg:r.items.length+' item'+(r.items.length>1?'s':'')+' will be deleted forever.',ok:'Empty',danger:true}))run('empty',[])};foot.append(eb)}
     const cb=E('button','tbtn','Close');cb.onclick=close;foot.append(cb)}
   await draw()}
-async function doDetails(){
-  const i=selItems()[0];if(!i)return;const dev=S.dev,pth=jn(S.path,i.name);
+async function doDetails(it,pth0){
+  const i=(it&&it.name?it:null)||selItems()[0];if(!i)return;const dev=S.dev,pth=pth0||jn(S.path,i.name);
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card'),box=E('div','det');card.append(E('div','handle'),E('h3','',i.name),box);
@@ -2139,7 +2173,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
 function lsBack(){
   if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
-  if($('#gal').style.display==='flex'){galClose();return true}
+  if($('#gal').style.display==='flex'){const g=$('#gal');if(g._sel&&g._sel())return true;galClose();return true}
   for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
   if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
   if(document.body.classList.contains('srch')){clearQ();render();return true}
