@@ -92,7 +92,7 @@
         <activity android:name=".ImageEditActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="standard" android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
-        <activity android:name=".PdfViewerActivity"android:exported="false" android:theme="@style/Theme.LANShare.Player"
+        <activity android:name=".PdfViewerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTop" android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <activity android:name=".TextEditorActivity" android:exported="false" android:theme="@style/Theme.LANShare"
