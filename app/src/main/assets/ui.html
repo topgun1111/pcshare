@@ -973,7 +973,7 @@ function galView(a){
     const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:'local',paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
     btn('copy','Copy',()=>clip('copy'));btn('cut','Cut',()=>clip('cut'));
-    if(CAN_PRINT||S.peers.length){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
+    if(!a.v&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;

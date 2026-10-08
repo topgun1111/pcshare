@@ -1,3 +1,5 @@
+> **2026-10-08:** Print hidden in the video gallery (Movies albums, `a.v`) hold bar.
+
 > **2026-10-08 narrow list rows:** `NlRowView` second line (count left, date right) no longer overlaps in split-screen: date loses its time, then is ellipsized, then hidden; left text ellipsized; compact view caps the right text at 45%. Native only.
 
 > **2026-10-08 cleanup:** removed orphan `BrowserActivity.kt`, unused JS `doSend` / `printInfo`, their dead CSS (`.dprh .dprg .pdw .pdot .poff`), `MainActivity.toastUi`, `Jobs` `bid`, color `brand_dark`, 16 unused imports. Not compiled.
