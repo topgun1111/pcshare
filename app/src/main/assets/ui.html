@@ -121,6 +121,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
+.alb.ghd{opacity:.5}
 .albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
@@ -918,6 +919,19 @@ function galInfo(dev,path,mt){const k=dev+'|'+path+'|'+mt;if(GALC[k])return GALC
       im=fl.filter(x=>kind(x)==='img'&&!NOTH.test(x.name)&&x.size<30e6).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
     return{cover:im[0]||null,n:fl.filter(x=>kind(x)==='img'||kind(x)==='vid').length,sub:all.filter(x=>x.dir).length}
   }).catch(()=>{delete GALC[k];return{cover:null,n:0,sub:0}})}
+/* albums the user hid from the gallery (press and hold an album card): kept in this browser, shown again with "Show N hidden albums" */
+let HGAL=[];try{HGAL=JSON.parse(localStorage.getItem('ls_galhid')||'[]')}catch(e){}if(!Array.isArray(HGAL))HGAL=[];
+const galHidden=p=>HGAL.indexOf(p)>=0;
+function galHideSet(p,on){HGAL=HGAL.filter(x=>x!==p);if(on)HGAL.push(p);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}render()}
+function albHold(c,path,name,own){
+  holdMenu(c,own||{name:name},()=>{
+    const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
+    const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+    const row=(t,fn)=>{const b=E('button','li'),lt=E('div','lt');lt.append(E('span','',t));b.append(lt);b.onclick=()=>{fin();fn()};card.append(b)};
+    const h=galHidden(path);
+    row(h?'Show in gallery':'Hide from gallery',()=>galHideSet(path,!h));
+    if(own&&S.dev==='local')row('Select',()=>{S.sel.add(own.name);c.classList.add('sel');renderBar()});
+    const x=E('button','tbtn','Cancel');x.style.alignSelf='flex-end';x.onclick=fin;card.append(x);o.append(card)})}
 function mkAlbum(i,P0){
   const c=E('div','alb'+(S.sel.has(i.name)?' sel':'')),cv=E('div','acv'),pth=jn(P0,i.name),sb=E('small','','\u00a0');
   cv.append(raw(FOLD,'fold'));c.append(cv,E('b','',i.name),sb);
@@ -929,7 +943,7 @@ function mkAlbum(i,P0){
     if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0})};
-  holdMenu(c,i);
+  if(galHidden(pth))c.classList.add('ghd');albHold(c,pth,i.name,i);
   return c}
 /* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>a.n<=1||galJunkName(a.name);
@@ -975,7 +989,7 @@ function mkAlbumX(a,P0,V){
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
-  if(own){if(S.sel.has(own.name))c.classList.add('sel');holdMenu(c,own)}
+  if(own&&S.sel.has(own.name))c.classList.add('sel');if(galHidden(a.path))c.classList.add('ghd');albHold(c,a.path,a.name,own);
   return c}
 function render(){
   applyPrefs();
@@ -1039,10 +1053,10 @@ function render(){
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
   if(GALM){const ab=E('div','albums'),hideOn=LD('ls_galhide','1')==='1';   // small albums (1 file) and Android resource folders (mipmap-*, drawable-* ...) are hidden unless switched on
-    if(GALA&&GALA.a.length){const hid=GALA.a.filter(galJunk);
-      GALA.a.forEach(a=>{if(!(hideOn&&galJunk(a)))ab.append(mkAlbumX(a,P0,V))});
-      if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' hidden album'+(hid.length===1?'':'s'):'Hide small albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
-    else AL.forEach(i=>{if(!(hideOn&&galJunkName(i.name)))ab.append(mkAlbum(i,P0))});
+    if(GALA&&GALA.a.length){const gh=a=>galJunk(a)||galHidden(a.path),hid=GALA.a.filter(gh);
+      GALA.a.forEach(a=>{if(!(hideOn&&gh(a)))ab.append(mkAlbumX(a,P0,V))});
+      if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' hidden album'+(hid.length===1?'':'s'):'Hide hidden albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
+    else AL.forEach(i=>{if(!(hideOn&&(galJunkName(i.name)||galHidden(jn(P0,i.name)))))ab.append(mkAlbum(i,P0))});
     if(ab.children.length){l.insertBefore(ab,l.firstChild);const em=l.querySelector('#empty');if(em)em.remove();
       if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
     if(!GALA||Date.now()-GALT>15000)galFetch()}
@@ -1349,10 +1363,10 @@ async function openSmb(){
     catch(e){toast('\u26a0 '+e.message,5000)}
     save.disabled=false;save.textContent='Connect'};
   const act=E('div','dact');act.append(d,add,save);card.append(act);o.append(card);scan()}
-function holdMenu(r,i){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
+function holdMenu(r,i,cb){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
   let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
-    S.sel.add(i.name);r.classList.add('sel');renderBar()};  // no re-render, so the release tap is still swallowed by _lp
+    if(cb)return cb();S.sel.add(i.name);r.classList.add('sel');renderBar()};  // no re-render, so the release tap is still swallowed by _lp
   r.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;r._lp=false;x0=e.touches[0].clientX;y0=e.touches[0].clientY;
     stop();t=setTimeout(()=>{t=0;pick()},450)},{passive:true});
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
