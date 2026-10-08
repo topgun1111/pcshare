@@ -121,7 +121,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
-.alb.ghd{opacity:.5}
+.alb.ghd small::after{content:' \u00b7 hidden'}
 .albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
@@ -926,11 +926,19 @@ const galHidden=p=>HGAL.indexOf(p)>=0;
 function galHideSet(p,on){galHideMany([p],on)}
 function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}render()}
 function albHold(c,path,name,own){
-  if(own)return holdMenu(c,own);   // hold selects it; "Hide from gallery" is in the bottom bar with the other actions
-  holdMenu(c,{name:name},()=>{   // an album whose folder is not shown here cannot be selected: hold offers the one action directly
+  if(own)return holdMenu(c,own);   // hold selects it; Hide / Delete / Copy ... are in the bottom bar
+  holdMenu(c,{name:name},()=>{   // this album's folder is not listed here, so it cannot be selected: hold offers the main actions in a sheet
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
     const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
-    const h=galHidden(path),b=E('button','li'),lt=E('div','lt');lt.append(E('span','',h?'Show in gallery':'Hide from gallery'));b.append(lt);b.onclick=()=>{fin();galHideSet(path,!h)};card.append(b);
+    const row=(t,fn,cls)=>{const b=E('button','li'+(cls?' '+cls:'')),lt=E('div','lt');lt.append(E('span','',t));b.append(lt);b.onclick=()=>{fin();fn()};card.append(b)};
+    const h=galHidden(path);
+    row('Open',()=>galView({name:name,path:path,n:0}));
+    row(h?'Show in gallery':'Hide from gallery',()=>galHideSet(path,!h));
+    row('Go to folder',()=>go(path));
+    row('Delete',async()=>{
+      if(!await dlg({title:'Move "'+name+'" to the Recycle bin?',msg:'You can restore it from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:[path]});GALT=0;toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}
+      catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
     const x=E('button','tbtn','Cancel');x.style.alignSelf='flex-end';x.onclick=fin;card.append(x);o.append(card)})}
 function mkAlbum(i,P0){
   const c=E('div','alb'+(S.sel.has(i.name)?' sel':'')),cv=E('div','acv'),pth=jn(P0,i.name),sb=E('small','','\u00a0');
