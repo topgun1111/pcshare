@@ -262,7 +262,7 @@ body.dual #dual{display:flex}
 .li.dng{color:#d9534f}
 .li .lead{width:40px;height:40px;border-radius:50%;background:var(--sel);color:var(--onsel)}
 .set{display:flex;align-items:center;gap:16px;padding:12px 8px;min-height:64px}
-.set .t{flex:1}.set .t b{display:block;font-weight:500;font-size:16px}.set .t small{color:var(--mut);font-size:13px}
+.set .t{flex:1;min-width:0}.set .t b{display:block;font-weight:500;font-size:16px;overflow-wrap:anywhere;word-break:break-all}.set .t small{display:block;color:var(--mut);font-size:13px;overflow-wrap:anywhere;word-break:break-all}
 .sw{position:relative;width:52px;height:32px;flex:none}
 .sw input{position:absolute;inset:0;opacity:0;margin:0;width:100%;height:100%;z-index:1}
 .sw i{position:absolute;inset:0;border-radius:16px;border:2px solid var(--mut);background:var(--cont);transition:.2s}
@@ -913,7 +913,7 @@ window.nlDr=(k,i,j,v)=>{
   else if(k==='f'){const b=$('#dfoot').children[j];if(b)b.click()}};
 if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
 /* ---- gallery albums: the Pictures folder shows its sub-folders as big cover cards ---- */
-const galRoot=()=>S.dev==='local'&&/^\/pictures\/?$/i.test(S.path);
+const galRoot=()=>S.dev==='local'&&/^\/(pictures|movies)\/?$/i.test(S.path),galVid=()=>/^\/movies\/?$/i.test(S.path);   // Pictures = albums of pictures, Movies = the same with videos
 const GALC={};
 function galInfo(dev,path,mt){const k=dev+'|'+path+'|'+mt;if(GALC[k])return GALC[k];
   return GALC[k]=api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(path)).then(r=>{
@@ -931,7 +931,7 @@ function albHold(c,path,name){
   holdMenu(c,{name:name},()=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
     const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
-    const d=E('button','li'),dl=E('div','lt');dl.append(E('span','','Find duplicates'),E('small','','Identical pictures in this album'));d.append(dl);
+    const d=E('button','li'),dl=E('div','lt');dl.append(E('span','','Find duplicates'),E('small','',galVid()?'Identical videos in this album':'Identical pictures in this album'));d.append(dl);
     d.onclick=()=>{fin();doDups([path])};card.append(d);
     const b=E('button','li'),lt=E('div','lt');lt.append(E('span','','Hide from gallery'),E('small','','Unhide it in Settings \u203a Gallery settings'));b.append(lt);
     b.onclick=()=>{fin();galHideSet(path,true)};card.append(b);
@@ -950,7 +950,7 @@ function mkAlbum(i,P0){
   albHold(c,pth,i.name);
   return c}
 /* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
-const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>a.n<=1||galJunkName(a.name);
+const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
 function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o._for=null;GCX=null}
@@ -981,15 +981,15 @@ function galView(a){
     if(n<it.length){if(window.IntersectionObserver){const io=new IntersectionObserver(es=>{if(!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
-let GALA=null,GALT=0,GALP=null;
-function galFetch(){if(GALP)return;
-  GALP=api('GET','/api/albums').then(r=>{const a=(r&&r.albums)||[],sig=a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;GALA={a:a,sig:sig};GALT=Date.now();return ch}).catch(e=>{try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return false}).then(ch=>{GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+let GALA=null,GALT=0,GALP=null,GALPK=null;   // GALA.k = 'vid' | 'img': which kind of albums it holds
+function galFetch(){const gk=galVid()?'vid':'img';if(GALP&&GALPK===gk)return;GALPK=gk;
+  GALP=api('GET','/api/albums'+(gk==='vid'?'?kind=vid':'')).then(r=>{const a=((r&&r.albums)||[]).map(x=>{x.v=gk==='vid';return x}),sig=gk+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===gk){GALA={a:a,sig:sig,k:gk};GALT=Date.now()}return ch&&GALPK===gk}).catch(e=>{try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return false}).then(ch=>{if(GALPK===gk)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
 function mkAlbumX(a,P0,V){
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
   c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));
   const key='v2|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
     show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
-  if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
+  if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:a.v?'vid':'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
@@ -1015,7 +1015,7 @@ function render(){
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
-  const GALM=!AR&&!S.q&&!S.newest&&galRoot();   // Pictures: every picture folder of the phone as album cards
+  const GALM=!AR&&!S.q&&!S.newest&&galRoot();   // Pictures / Movies: every folder of the phone with pictures / videos as album cards
   const AL=GALM?V.filter(i=>i.dir):[];
   const LIST=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V;
   {const f=LIST.filter(i=>!i.dir),n=f.filter(i=>kind(i)==='img').length;l.classList.toggle('imgf',S.view==='grid'&&!AR&&n>0&&n*2>=f.length)}   // image folder: see #list.imgf
@@ -1058,13 +1058,14 @@ function render(){
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
   if(GALM){const ab=E('div','albums'),hideOn=LD('ls_galhide','1')==='1';   // small albums (1 file) and Android resource folders (mipmap-*, drawable-* ...) are hidden unless switched on
-    if(GALA&&GALA.a.length){const vis=GALA.a.filter(a=>!galHidden(a.path)),hid=vis.filter(galJunk);   // albums hidden by the user are never drawn and never counted
+    const gk=galVid()?'vid':'img',GA=GALA&&GALA.k===gk?GALA:null;   // albums of the other kind (Pictures <-> Movies) are not reused
+    if(GA&&GA.a.length){const vis=GA.a.filter(a=>!galHidden(a.path)),hid=vis.filter(galJunk);   // albums hidden by the user are never drawn and never counted
       vis.forEach(a=>{if(!(hideOn&&galJunk(a)))ab.append(mkAlbumX(a,P0,V))});
       if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' small album'+(hid.length===1?'':'s'):'Hide small albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
     else AL.forEach(i=>{if(!galHidden(jn(P0,i.name))&&!(hideOn&&galJunkName(i.name)))ab.append(mkAlbum(i,P0))});
     if(ab.children.length){l.insertBefore(ab,l.firstChild);const em=l.querySelector('#empty');if(em)em.remove();
-      if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
-    if(!GALA||Date.now()-GALT>15000)galFetch()}
+      if(LIST.length){const h=E('div','galh',galVid()?'Videos':'Photos');l.insertBefore(h,ab.nextSibling)}}
+    if(!GA||Date.now()-GALT>15000)galFetch()}
   renderSR(l);
   if(GV.length){const g=E('div','gal');
     GV.forEach(i=>{
@@ -1905,7 +1906,7 @@ async function doDups(ps){   // ps: explicit folder paths on this phone (gallery
   const close=()=>{stop=true;o.style.display='none';o.onclick=null};
   const card=E('div','card');card.append(E('div','handle'),E('h3','','Duplicate finder'));
   const msg=E('p','','Starting…');msg.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;word-break:break-all';
-  const box=E('div');box.style.cssText='max-height:55vh;overflow:auto';
+  const box=E('div');box.style.cssText='max-height:55vh;overflow-y:auto;overflow-x:hidden';
   const row=E('div','set');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
   const cb=E('button','tbtn','Cancel');
   cb.onclick=async()=>{if(jid&&!stop&&cb.textContent==='Cancel'){try{await api('POST','/api/jobcancel?id='+jid)}catch(e){}}close()};

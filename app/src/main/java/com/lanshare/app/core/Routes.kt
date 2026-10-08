@@ -106,7 +106,7 @@ object Routes {
             }
             "search" -> return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
             "bin" -> return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("items", jarr(Bin.list().map { it.toJson() })))
-            "albums" -> return ex.json(Albums.json())
+            "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
