@@ -254,6 +254,11 @@ object Jobs {
         return jid
     }
 
+    /** A delete the user asked for: this phone's own files go to the recycle bin, everything else is deleted for good. */
+    fun removeUser(e: Endpoint, p: String, progress: ((String) -> Unit)? = null) {
+        if (((e as? ArcEp)?.base ?: e) is LocalFs && Bin.canTrash(p)) Bin.trash(p, progress) else e.remove(p, progress)
+    }
+
     private fun deleteWork(job: Job, e: Endpoint, paths: List<String>) {
         val fails = ArrayList<String>()
         var failCount = 0
@@ -265,7 +270,7 @@ object Jobs {
                 val top = vbase(p)
                 job.label = "Deleting ${i + 1}/${paths.size}: $top" + (if (removed > 0) " ($removed items removed)" else "")
                 try {
-                    e.remove(p) { n ->
+                    removeUser(e, p) { n ->
                         if (job.cancel) throw Cancelled()
                         removed++
                         job.label = "Deleting ${i + 1}/${paths.size}: $top - $removed items removed" + (if (n != top) " (now: $n)" else "")

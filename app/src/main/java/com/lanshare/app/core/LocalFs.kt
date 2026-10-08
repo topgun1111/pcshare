@@ -39,7 +39,7 @@ class LocalFs(rootPath: String) : Endpoint {
         return try { RandomAccessFile(f, "r").use { it.length() } } catch (_: IOException) { 0L }
     }
 
-    private fun isLink(f: File): Boolean =
+    fun isLink(f: File): Boolean =
         if (Build.VERSION.SDK_INT >= 26) Files.isSymbolicLink(f.toPath())
         else try { val par = f.parentFile; par != null && File(par.canonicalFile, f.name).let { it.canonicalPath != it.absolutePath } }
         catch (_: IOException) { false }

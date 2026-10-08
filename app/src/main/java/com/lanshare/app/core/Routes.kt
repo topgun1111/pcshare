@@ -105,6 +105,7 @@ object Routes {
                 return ex.json(JSONObject().put("path", path).put("items", jarr(items.map { it.toJson() })).put("used", used))
             }
             "search" -> return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
+            "bin" -> return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("items", jarr(Bin.list().map { it.toJson() })))
             "albums" -> return ex.json(Albums.json())
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
@@ -165,6 +166,19 @@ object Routes {
             }
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
+            "bin" -> {
+                val ids = b.optJSONArray("ids")?.strings() ?: emptyList()
+                val res = ArrayList<String>()
+                var n = 0
+                val errs = ArrayList<String>()
+                when (b.getString("op")) {
+                    "restore" -> for (id in ids) try { res.add(Bin.restore(id)); n++ } catch (x: Exception) { errs.add(errText(x)) }
+                    "purge" -> for (id in ids) try { Bin.purge(id); n++ } catch (x: Exception) { errs.add(errText(x)) }
+                    "empty" -> n = Bin.empty()
+                    else -> throw BadReq("unknown bin op")
+                }
+                ex.json(JSONObject().put("n", n).put("paths", JSONArray(res)).put("errors", JSONArray(errs)))
+            }
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
@@ -195,7 +209,7 @@ object Routes {
                     "rm" -> {   // delete everything that can be deleted; report what could not instead of stopping at the first problem
                         val ps = b.getJSONArray("paths").strings()
                         val errs = ArrayList<Exception>()
-                        for (p in ps) try { e.remove(vnorm(p)) } catch (x: Exception) { errs.add(x) }
+                        for (p in ps) try { Jobs.removeUser(e, vnorm(p)) } catch (x: Exception) { errs.add(x) }
                         if (errs.size == 1 && ps.size == 1) throw errs[0]
                         if (errs.isNotEmpty()) throw IOException("${errs.size} of ${ps.size} items not deleted - " + errs.take(3).joinToString("; ") { errText(it) })
                     }

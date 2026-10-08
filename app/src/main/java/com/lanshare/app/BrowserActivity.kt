@@ -657,16 +657,44 @@ class BrowserActivity : Activity() {
         m.menu.add(0, 2, 1, "Refresh")
         m.menu.add(0, 3, 2, if (showHidden) "Hide hidden files" else "Show hidden files")
         m.menu.add(0, 4, 3, "Full app (web UI)")
+        if (dev == "local") m.menu.add(0, 5, 4, "Recycle bin")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> newFolder()
                 2 -> { if (searching) refreshAfter() else { cache.remove(ck(cur)); Core.rescan(); load(cur) } }
                 3 -> { showHidden = !showHidden; prefs.edit().putBoolean("hidden", showHidden).apply(); relist(); updateChrome() }
                 4 -> finish()
+                5 -> showBin()
             }
             true
         }
         m.show()
+    }
+
+    private fun showBin() {
+        io.execute {
+            val items = try { Bin.list() } catch (_: Exception) { emptyList() }
+            ui.post {
+                if (items.isEmpty()) { toast("Recycle bin is empty"); return@post }
+                val labels = items.map { (if (it.dir) "📁 " else "") + it.name + "\n" + it.from }.toTypedArray()
+                val on = BooleanArray(items.size)
+                fun act(op: String) {
+                    val ids = items.filterIndexed { i, _ -> on[i] }.map { it.id }
+                    if (ids.isEmpty() && op != "empty") return
+                    io.execute {
+                        var err: String? = null; var n = 0
+                        if (op == "empty") n = Bin.empty() else for (id in ids) try { if (op == "restore") Bin.restore(id) else Bin.purge(id); n++ } catch (e: Exception) { err = errText(e) }
+                        ui.post { toast(err ?: (if (op == "restore") "Restored $n" else "Deleted $n")); cache.evictAll(); refreshAfter() }
+                    }
+                }
+                AlertDialog.Builder(this).setTitle("Recycle bin (${items.size})")
+                    .setMultiChoiceItems(labels, on) { _, i, c -> on[i] = c }
+                    .setPositiveButton("Restore") { _, _ -> act("restore") }
+                    .setNeutralButton("Delete") { _, _ -> act("purge") }
+                    .setNegativeButton("Empty bin") { _, _ -> AlertDialog.Builder(this).setTitle("Empty the Recycle bin?").setMessage("Deleted forever.").setPositiveButton("Empty") { _, _ -> act("empty") }.setNegativeButton("Cancel", null).show() }
+                    .show()
+            }
+        }
     }
 
     private fun sortMenu() {
@@ -736,7 +764,7 @@ class BrowserActivity : Activity() {
         val paths = selectedItems().map { pathOf(it) }
         if (paths.isEmpty()) return
         AlertDialog.Builder(this).setTitle("Delete ${paths.size} item${if (paths.size == 1) "" else "s"}?")
-            .setMessage(if (d == "local") "This cannot be undone." else "This deletes them on ${devName(d)} and cannot be undone.")
+            .setMessage(if (d == "local") (if (paths.any { Bin.canTrash(it) }) "Moved to the Recycle bin (menu ▸ Recycle bin). Kept ${Bin.KEEP_DAYS} days." else "This cannot be undone.") else "This deletes them on ${devName(d)} and cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
                 sel.clear(); updateChrome(); ad.notifyDataSetChanged()
                 io.execute {

@@ -46,6 +46,7 @@ object Core {
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
+            Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             var srv: MiniHttp? = null
             var port = BASE_PORT
             for (p in BASE_PORT until BASE_PORT + 20) {
