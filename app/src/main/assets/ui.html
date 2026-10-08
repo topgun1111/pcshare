@@ -558,6 +558,7 @@ function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45
   if(d<3600)return Math.max(1,Math.round(d/60))+' min ago';if(d<86400)return Math.round(d/3600)+' h ago';return Math.round(d/86400)+' d ago'}
 function peerSub(p){const via=p.via||'',ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
   return {via:via,t:[via,ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
+const peerLive=p=>p.ok!==false||p.id===S.dev;   // offline devices are not listed (the open one stays)
 function renderPeers(){
   const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;if(typeof drawerRefresh==='function')drawerRefresh();
   const box=$('#peers');box.textContent='';
@@ -571,7 +572,7 @@ function renderPeers(){
   if(S.dev==='local')mk('This device','local');
   else if(cur)mk(cur.name,cur.id,cur.ok===false,cur);
   else mk(S.known[S.dev]||'device',S.dev,true);
-  const nOther=S.peers.filter(p=>p.id!==S.dev).length+(S.dev!=='local'?1:0);
+  const nOther=S.peers.filter(p=>p.id!==S.dev&&peerLive(p)).length+(S.dev!=='local'?1:0);
   if(nOther){const db=E('button','chip');db.append(ic('phone'),E('span','','Devices'),E('small','',String(nOther)));db.onclick=devPicker;box.append(db)}
   const add=E('button','chip add');add.append(ic('add'),E('span','','IP'));add.onclick=addIp;box.append(add);
   $('#hint').textContent=S.peers.length?'':'Searching for devices\u2026 tap refresh or + IP'+(S.ips?' \u00b7 This device: '+S.ips:'')}
@@ -584,7 +585,7 @@ function devPicker(){
     lt.append(nr);if(p&&p.ok===false){const sm=E('small','','offline'+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}
     b.append(ld,lt);b.onclick=()=>{fin();openDev(id)};card.append(b)};
   if(S.dev!=='local')row('This device','local');
-  S.peers.filter(p=>p.id!==S.dev).forEach(p=>row(p.name,p.id,p));
+  S.peers.filter(p=>p.id!==S.dev&&peerLive(p)).forEach(p=>row(p.name,p.id,p));
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=fin;card.append(c);o.append(card)}
 let pollGen=0,pollTimer;
 async function pollPeers(){
@@ -2177,9 +2178,9 @@ function drawerRender(){
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     bd.append(E('div','dsep'));
     bd.append(E('div','dsec','Devices'));
-    S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+    S.peers.filter(peerLive).forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
       bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
-    if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
+    if(!S.peers.some(peerLive))bd.append(E('div','dnone','Searching for devices\u2026'));
     drawerPrinters(bd);
     bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}

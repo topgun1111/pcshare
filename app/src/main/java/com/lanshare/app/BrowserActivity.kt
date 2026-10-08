@@ -366,7 +366,7 @@ class BrowserActivity : Activity() {
     private fun refreshDevices() {
         val l = ArrayList<Dev>()
         l.add(Dev("local", "This phone", true, "local"))
-        try { Core.discOrNull()?.list()?.forEach { l.add(Dev(it.id, it.name, it.ok, "peer")) } } catch (_: Exception) {}
+        try { Core.discOrNull()?.list()?.forEach { if (it.ok || it.id == dev) l.add(Dev(it.id, it.name, it.ok, "peer")) } } catch (_: Exception) {}
         try { Smb.peers().forEach { l.add(Dev(it.getString("id"), it.getString("name"), it.optBoolean("ok", true), "smb")) } } catch (_: Exception) {}
         val sig = l.joinToString(";") { "${it.id}|${it.name}|${it.ok}" } + "#" + dev
         devs = l
