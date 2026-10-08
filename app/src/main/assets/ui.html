@@ -1895,17 +1895,41 @@ async function doDups(){
   upd();
   del.onclick=async()=>{
     if(!chk.size)return;
-    if(!await dlg({title:'Delete '+chk.size+' file'+(chk.size>1?'s':'')+'?',msg:'The ones left unticked in each group are kept. This can\'t be undone.',ok:'Delete',danger:true}))return;
+    if(!await dlg({title:'Delete '+chk.size+' file'+(chk.size>1?'s':'')+'?',msg:'The ones left unticked in each group are kept.'+(dev==='local'?' Deleted files go to the Recycle bin.':' This can\'t be undone.'),ok:'Delete',danger:dev!=='local'}))return;
     try{const r=await api('POST','/api/rm',{dev:dev,paths:[...chk]});close();S.sel.clear();render();toast('Deleting…',0,0);watchJob(r.job);track(r.job)}
     catch(e){toast('⚠ '+e.message,9000)}};
   row.prepend(del)}
 const vbase0=p=>p.slice(p.lastIndexOf('/')+1);
 async function doDelete(){
   const n=S.sel.size;
-  if(!await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+'?',msg:'From '+devName(S.dev)+'. This can\'t be undone.',ok:'Delete',danger:true}))return;
+  const L=S.dev==='local'&&!inArc();
+  if(!await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L}))return;
   try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+async function openBin(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),box=E('div','det'),foot=E('div','dact');
+  card.append(E('div','handle'),E('h3','','Recycle bin'),box,foot);o.append(card);
+  const run=async(op,ids)=>{try{const r=await api('POST','/api/bin',{op:op,ids:ids});
+      if(r.errors&&r.errors.length)toast('\u26a0 '+r.errors[0],6000);else if(op==='restore')toast('Restored'+(r.paths&&r.paths[0]?' to '+r.paths[0].slice(0,r.paths[0].lastIndexOf('/'))||'/':''),3500);
+      if(op==='restore'&&S.dev==='local')load();await draw()}catch(e){toast('\u26a0 '+e.message,6000)}};
+  async function draw(){
+    let r;try{r=await api('GET','/api/bin')}catch(e){box.textContent='';box.append(E('div','dnote w','\u26a0 '+e.message));return}
+    if(o.style.display!=='flex')return;
+    box.textContent='';foot.textContent='';
+    if(!r.items.length)box.append(E('div','dnote','Empty. Deleted items are kept '+r.days+' days, then removed.'));
+    r.items.forEach(i=>{const row=E('div','set'),t=E('div','t'),dir=i.from.slice(0,i.from.lastIndexOf('/'))||'/';
+      t.append(E('b','',i.name),E('small','',(i.dir?'Folder':fmt(i.size))+' \u00b7 from '+dir+' \u00b7 '+fmtDT(i.at/1000)));
+      const rb=E('button','tbtn','Restore'),db=E('button','tbtn dng','Delete');
+      rb.onclick=()=>run('restore',[i.id]);
+      db.onclick=async()=>{if(await dlg({title:'Delete "'+i.name+'" forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))run('purge',[i.id])};
+      row.append(t,rb,db);box.append(row)});
+    if(r.items.length){const eb=E('button','tbtn dng','Empty bin');
+      eb.onclick=async()=>{if(await dlg({title:'Empty the Recycle bin?',msg:r.items.length+' item'+(r.items.length>1?'s':'')+' will be deleted forever.',ok:'Empty',danger:true}))run('empty',[])};foot.append(eb)}
+    const cb=E('button','tbtn','Close');cb.onclick=close;foot.append(cb)}
+  await draw()}
 async function doDetails(){
   const i=selItems()[0];if(!i)return;const dev=S.dev,pth=jn(S.path,i.name);
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -2150,6 +2174,7 @@ function drawerRender(){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
     bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
     bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
+    bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     bd.append(E('div','dsep'));
     bd.append(E('div','dsec','Devices'));
     S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
