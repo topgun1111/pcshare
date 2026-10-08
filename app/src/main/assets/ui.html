@@ -915,11 +915,11 @@ if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
 /* ---- gallery albums: the Pictures folder shows its sub-folders as big cover cards ---- */
 const galRoot=()=>S.dev==='local'&&/^\/(pictures|movies)\/?$/i.test(S.path),galVid=()=>/^\/movies\/?$/i.test(S.path);   // Pictures = albums of pictures, Movies = the same with videos
 const GALC={};
-function galInfo(dev,path,mt){const k=dev+'|'+path+'|'+mt;if(GALC[k])return GALC[k];
+function galInfo(dev,path,mt){const gv=galVid(),k=gv+'|'+dev+'|'+path+'|'+mt;if(GALC[k])return GALC[k];
   return GALC[k]=api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(path)).then(r=>{
     const all=r.items||[],fl=all.filter(x=>!x.dir&&x.name[0]!=='.'),
-      im=fl.filter(x=>kind(x)==='img'&&!NOTH.test(x.name)&&x.size<30e6).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-    return{cover:im[0]||null,n:fl.filter(x=>kind(x)==='img'||kind(x)==='vid').length,sub:all.filter(x=>x.dir).length}
+      im=fl.filter(x=>kind(x)===(gv?'vid':'img')&&!NOTH.test(x.name)&&(gv||x.size<30e6)).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+    return{cover:im[0]||null,n:fl.filter(x=>gv?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid')).length,sub:all.filter(x=>x.dir).length}
   }).catch(()=>{delete GALC[k];return{cover:null,n:0,sub:0}})}
 /* albums the user hid from the gallery (press and hold an album card): kept in this browser, shown again with "Show N hidden albums" */
 let HGAL=[];try{HGAL=JSON.parse(localStorage.getItem('ls_galhid')||'[]')}catch(e){}if(!Array.isArray(HGAL))HGAL=[];
@@ -944,9 +944,9 @@ function mkAlbum(i,P0){
     if(!inf.cover)return;
     const show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)},
       key='v2|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
-    if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
+    if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:galVid()?'vid':'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
-    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0})};
+    if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0,v:galVid()})};
   albHold(c,pth,i.name);
   return c}
 /* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
@@ -961,7 +961,7 @@ function galView(a){
   tw.append(tt,sb);hd.append(bk,tw);sc.append(gg);o.append(hd,sc);
   api('GET','/api/ls?dev=local&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
-    const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(kind(x)==='img'||kind(x)==='vid')).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
+    const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid'))).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
     GCX={dev:'local',path:a.path,list:it,all:all.filter(x=>!x.dir)};
     sb.textContent=it.length+(it.length===1?' item':' items');
     if(!it.length){gg.append(E('div','ge','Nothing here'));return}
@@ -1017,7 +1017,8 @@ function render(){
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const GALM=!AR&&!S.q&&!S.newest&&galRoot();   // Pictures / Movies: every folder of the phone with pictures / videos as album cards
   const AL=GALM?V.filter(i=>i.dir):[];
-  const LIST=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V;
+  const LIST0=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V,
+    LIST=GALM&&galVid()?LIST0.filter(i=>!i.dir&&kind(i)==='vid'):LIST0;   // Movies: no pictures / php / other files between the albums and the videos
   {const f=LIST.filter(i=>!i.dir),n=f.filter(i=>kind(i)==='img').length;l.classList.toggle('imgf',S.view==='grid'&&!AR&&n>0&&n*2>=f.length)}   // image folder: see #list.imgf
   const SR=srRows();
   if(!GALM&&nlUse(LIST.length+GV.length)){const HR=SR||[];nlHeadPush(V);nlRender(LIST.concat(HR,GV),P0,LIST.length+HR.length);S.rg++;THQ.length=0;renderBar();return}
