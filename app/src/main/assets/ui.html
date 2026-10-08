@@ -2192,15 +2192,14 @@ Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.4
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
-/* Printers: plain item under Devices. Tapping it closes the drawer and opens the same "Print on…" picker as the toolbar Print button (view-only, nothing is printed from here). */
+/* Printers: a single item under Devices (found printers are no longer listed one by one here). Tapping it closes the drawer and opens the same "Print on…" picker as the toolbar Print button (view-only, nothing is printed from here). */
 /* printers are fetched in the background whenever the drawer opens, so they are already listed here (no need to tap Printers first) */
 let WIFI_BUSY=false,WIFI_T=0;
 function warmWifi(force){if(WIFI_BUSY||(!force&&Date.now()-WIFI_T<15000))return;WIFI_BUSY=true;drawerRefresh();
   loadWifi().finally(()=>{WIFI_BUSY=false;WIFI_T=Date.now();drawerRefresh()})}
 function drawerPrinters(bd){
   const open=()=>{drawerClose();showPrinters()},n=WIFI.length;
-  bd.append(dItem({lead:ic('print','s24'),title:'Printers',sub:n?n+' found':(WIFI_BUSY?'Searching for printers\u2026':'None found yet \u00b7 tap to search'),onclick:open}));
-  WIFI.forEach(w=>bd.append(dItem({lead:E('span','ddot'),title:w.name,sub:w.viaId?(w.tag||'Wi-Fi'):'Wi-Fi printer',onclick:open})))}
+  bd.append(dItem({lead:ic('print','s24'),title:'Printers',sub:n?n+' found':(WIFI_BUSY?'Searching for printers\u2026':'None found yet \u00b7 tap to search'),onclick:open}))}
 /* view-only: shows the "Print on…" picker (devices, printers, Search for printers); choosing a printer here prints nothing */
 async function showPrinters(){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
