@@ -1,3 +1,5 @@
+> **2026-10-08 gallery hold theme:** selected thumbnails shrink into a rounded tile with an accent check (top-left), rounded selection header, floating rounded action bar with tonal icon buttons (Delete tinted red), slide animations. CSS only (`#gal .gb`, `.gh.sl`, `.gc.sel`).
+
 > **2026-10-08 gallery share:** gallery hold bar: "Open with" replaced by "Share" (any number of files). New `LSAndroid.shareFiles({items:[{name,url,size}]})` -> `MainActivity.shareFilesImpl` fetches all into `cache/open` (one progress notification, cancellable) then `shareFileList` opens the system chooser (ACTION_SEND / SEND_MULTIPLE via FileProvider). Not compiled / not tested on a device.
 
 > **2026-10-08 gallery hold bar:** Download removed, Print added (`doPrint(preset,cx)` now takes an explicit `{items,path,done}` context; without it it still uses the file browser selection).
