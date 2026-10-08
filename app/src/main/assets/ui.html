@@ -954,6 +954,19 @@ const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
 function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o._for=null;GCX=null}
+/* press-and-hold on a thumbnail inside an album: same file actions as the browser's selection bar, as a sheet (the bar sits under #gal) */
+function galHold(c,m,a){
+  holdMenu(c,{name:m.name},()=>{
+    const o=$('#sheet'),pth=jn(a.path,m.name),fin=()=>{o.style.display='none';o.onclick=null},re=()=>galView(a);
+    o.textContent='';o.style.display='flex';o.onclick=e=>{if(e.target===o)fin()};
+    const card=E('div','card');card.append(E('div','handle'),E('h3','',m.name));
+    const row=(t,f,cl)=>{const b=E('button','li'+(cl?' '+cl:''));b.append(E('div','lt',t));b.onclick=()=>{fin();f()};card.append(b)};
+    row('Details',()=>{const p=[S.path,S.items,S.sel];S.path=a.path;S.items=[m];S.sel=new Set([m.name]);try{doDetails()}finally{[S.path,S.items,S.sel]=p}});  // doDetails reads S synchronously, then runs on its own captures
+    if(kind(m)==='img'&&(CAN_PRINT||S.peers.length))row('Print',async()=>{const p=[S.dev,S.path,S.items,S.sel];S.dev='local';S.path=a.path;S.items=[m];S.sel=new Set([m.name]);
+      try{await doPrint()}finally{[S.dev,S.path,S.items,S.sel]=p;render()}});  // doPrint reads S after awaits: keep the swap until it ends
+    row('Delete',async()=>{if(!await dlg({title:'Move 1 item to the Recycle bin?',msg:'You can restore it from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:[pth]});toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if($('#gal')._for)re()}catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
+    const x=E('button','tbtn','Cancel');x.style.alignSelf='flex-end';x.onclick=fin;card.append(x);o.append(card)})}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
@@ -973,7 +986,7 @@ function galView(a){
             if(k==='vid'&&t.d>0){const g=c.querySelector('.gd');if(g)g.textContent='\u25B6 '+fmtDur(t.d)}},
           hit=thGet(key);
         if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name)),done:show}))}
-      c.onclick=()=>{if(k==='vid')playVid(m);else viewImg(m)};
+      c.onclick=()=>{if(c._lp){c._lp=false;return}if(k==='vid')playVid(m);else viewImg(m)};galHold(c,m,a);
       return c};
     let n=0;const CH=300,sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';
     const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment();for(;n<end;n++)fr.append(mk(it[n]));gg.insertBefore(fr,sent);if(n>=it.length)sent.remove()};
