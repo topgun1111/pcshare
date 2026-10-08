@@ -1,3 +1,5 @@
+> **2026-10-08 gallery share:** gallery hold bar: "Open with" replaced by "Share" (any number of files). New `LSAndroid.shareFiles({items:[{name,url,size}]})` -> `MainActivity.shareFilesImpl` fetches all into `cache/open` (one progress notification, cancellable) then `shareFileList` opens the system chooser (ACTION_SEND / SEND_MULTIPLE via FileProvider). Not compiled / not tested on a device.
+
 > **2026-10-08 gallery hold bar:** Download removed, Print added (`doPrint(preset,cx)` now takes an explicit `{items,path,done}` context; without it it still uses the file browser selection).
 
 > **2026-10-08 gallery hold menu:** inside an album (`galView`, `#gal`) press-and-hold (`holdMenu`) on a thumbnail now selects it like in the file browser: header turns into a count bar (close / select all), tap toggles while selecting, bottom bar `#gal .gb` shows Copy, Cut, Download, Details + Open with (1 item), Delete (-> Recycle bin). Selection `GS` is local to the album; back clears it first (`o._sel` in `lsBack`). `doDetails(it,pth)` takes an explicit item. Not tested on a device.

@@ -64,6 +64,8 @@ class MainActivity : Activity() {
         @JavascriptInterface fun open(url: String) { saveToDownloads(url, null, true) }
         /** Same, but always shows the system "Open with" app chooser. */
         @JavascriptInterface fun openWith(url: String) { saveToDownloads(url, null, true, true) }
+        /** Share one or more LANShare files: fetched to cache/open, then the system share sheet. [json] = {items:[{name,url,size}]} */
+        @JavascriptInterface fun shareFiles(json: String) { shareFilesImpl(json) }
         /** Video tapped: open the dedicated player (Media3) with the folder's videos as a playlist. [json] = {start, items:[{name,url,key,subs}]} */
         @JavascriptInterface fun play(json: String) {
             runOnUiThread { PlayerActivity.pending = json; startActivity(Intent(this@MainActivity, PlayerActivity::class.java)) }
@@ -473,6 +475,71 @@ class MainActivity : Activity() {
                 f?.delete(); dlUi(id, name, 0, 0, 0.0, "err", e.message ?: e.javaClass.simpleName)
             }
         }.start()
+    }
+
+    /** Fetch the given files into cache/open (FileProvider path) and open the system share sheet with all of them. */
+    private fun shareFilesImpl(json: String) {
+        val items = try { JSONObject(json).getJSONArray("items") } catch (e: Exception) { return }
+        if (items.length() == 0) return
+        val id = dlSeq.incrementAndGet()
+        Thread {
+            val out = ArrayList<File>()
+            val label = if (items.length() == 1) items.getJSONObject(0).optString("name", "file") else "${items.length()} files"
+            try {
+                val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }
+                var total = 0L; for (k in 0 until items.length()) total += items.getJSONObject(k).optLong("size", 0)
+                var done = 0L; var speed = 0.0; var lastT = System.nanoTime(); var lastD = 0L
+                dlUi(id, label, 0, total, 0.0, "run")
+                for (k in 0 until items.length()) {
+                    val ob = items.getJSONObject(k)
+                    var t = File(dir, ob.optString("name", "file$k").replace("/", "_"))
+                    var n = 1
+                    while (t.exists()) { t = File(dir, "${t.nameWithoutExtension} ($n)${if (t.extension.isEmpty()) "" else "." + t.extension}"); n++ }
+                    out.add(t)
+                    val c = URL(ob.getString("url")).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
+                    c.getInputStream().use { i -> t.outputStream().use { o ->
+                        val buf = ByteArray(1 shl 16)
+                        while (true) {
+                            if (dlCancel.remove(id)) throw InterruptedException()
+                            val r = i.read(buf); if (r < 0) break
+                            o.write(buf, 0, r); done += r
+                            val now = System.nanoTime()
+                            if (now - lastT >= 500_000_000L) {
+                                val inst = (done - lastD) * 1e9 / (now - lastT)
+                                speed = if (speed == 0.0) inst else speed * 0.6 + inst * 0.4
+                                lastT = now; lastD = done
+                                dlUi(id, label, done, maxOf(total, done), speed, "run")
+                            }
+                        }
+                    } }
+                }
+                dlUi(id, label, done, done, speed, "done", "Sharing\u2026")
+                runOnUiThread { shareFileList(out) }
+            } catch (e: InterruptedException) {
+                out.forEach { it.delete() }; dlUi(id, label, 0, 0, 0.0, "cancel")
+            } catch (e: Exception) {
+                out.forEach { it.delete() }; dlUi(id, label, 0, 0, 0.0, "err", e.message ?: e.javaClass.simpleName)
+            }
+        }.start()
+    }
+
+    private fun shareFileList(files: List<File>) {
+        try {
+            val uris = ArrayList<Uri>(files.map { FileProvider.getUriForFile(this, "$packageName.fileprovider", it) })
+            val mimes = files.map { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it.extension.lowercase()) ?: "*/*" }.distinct()
+            val mime = when {
+                mimes.size == 1 -> mimes[0]
+                mimes.all { it.startsWith("image/") } -> "image/*"
+                mimes.all { it.startsWith("video/") } -> "video/*"
+                else -> "*/*"
+            }
+            val send = if (uris.size == 1) Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris[0])
+                       else Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            send.setType(mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val cd = android.content.ClipData.newRawUri("", uris[0]); for (k in 1 until uris.size) cd.addItem(android.content.ClipData.Item(uris[k]))
+            send.clipData = cd
+            startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) { Toast.makeText(this, "Cannot share: ${e.message}", Toast.LENGTH_LONG).show() }
     }
 
     private val TEXT_EXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",
