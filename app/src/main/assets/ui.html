@@ -121,7 +121,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
-.alb.ghd{opacity:.5}
+.alb.ghd .acv{position:relative}.alb.ghd .acv:after{content:'\1F6AB';position:absolute;right:8px;top:8px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:26px;text-align:center}
 .albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
@@ -986,7 +986,7 @@ function mkAlbumX(a,P0,V){
   const key='v2|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
     show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
   if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
-  const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
+  const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par.toLowerCase()===p0.toLowerCase()?(V.find(x=>x.dir&&x.name===a.name)||S.items.find(x=>x.dir&&x.name===a.name)||null):null;
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
   if(own&&S.sel.has(own.name))c.classList.add('sel');if(galHidden(a.path))c.classList.add('ghd');albHold(c,a.path,a.name,own);
