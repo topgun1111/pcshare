@@ -58,11 +58,12 @@ object PrintPreview {
         val lock = synchronized(busy) { busy.getOrPut(id) { Any() } }
         synchronized(lock) {
             synchronized(docs) { docs[id] }?.let { d -> d.used = System.currentTimeMillis(); synchronized(busy) { busy.remove(id) }; return json(d) }
-            if (size > MAX_SRC) { synchronized(busy) { busy.remove(id) }; throw IOException("too large for a preview") }
+            // PDF auf diesem Telefon: direkt aus der echten Datei rendern (PdfRenderer braucht nur einen fd) - keine Kopie, kein Größenlimit
+            val direct: File? = if (dev == "local" && ext == "pdf") try { Core.local.real(path).takeIf { it.isFile && it.canRead() } } catch (_: Exception) { null } else null
+            if (size > MAX_SRC && direct == null) { synchronized(busy) { busy.remove(id) }; throw IOException("too large for a preview") }
             val dir = File(root(), id).also { it.deleteRecursively(); it.mkdirs() }
             try {
-                val raw = File(dir, "src.bin")
-                src(ep, path, raw)
+                val raw = direct ?: File(dir, "src.bin").also { src(ep, path, it) }
                 var f = raw
                 var e = ext
                 var kind = PrintPrep.kind(e)
