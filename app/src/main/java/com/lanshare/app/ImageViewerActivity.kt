@@ -57,6 +57,7 @@ class ImageViewerActivity : Activity() {
         @Volatile var pending: String? = null
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
+        private const val REQ_EDIT = 41
     }
 
     private class Item(val name: String, val url: String, val size: Long)
@@ -147,9 +148,11 @@ class ImageViewerActivity : Activity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         slideBtn = tv("\u25B6", 18f).apply { setOnClickListener { setSlide(!slide) } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
+        val edit = tv("\u270e", 20f).apply { setOnClickListener { edit() } }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(slideBtn)
+        top.addView(edit)
         top.addView(share)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -334,6 +337,35 @@ class ImageViewerActivity : Activity() {
                 runOnUiThread { Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
             }
         }.start()
+    }
+
+    // ---------------------------------------------------------------- düzenle (döndür / kırp / boyutlandır)
+    private fun edit() {
+        val pos = pager.currentItem
+        val it = items.getOrNull(pos) ?: return
+        val src = File(File(cacheDir, "img"), "$pos.bin")
+        if (!src.isFile) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (slide) setSlide(false)
+        val u = android.net.Uri.parse(it.url)
+        startActivityForResult(
+            Intent(this, ImageEditActivity::class.java)
+                .putExtra(ImageEditActivity.X_SRC, src.path)
+                .putExtra(ImageEditActivity.X_DEV, u.getQueryParameter("dev") ?: "local")
+                .putExtra(ImageEditActivity.X_PATH, u.getQueryParameter("path") ?: "")
+                .putExtra(ImageEditActivity.X_NAME, it.name), REQ_EDIT)
+    }
+
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req != REQ_EDIT || res != RESULT_OK || data == null || !data.getBooleanExtra(ImageEditActivity.R_REPLACED, false)) return
+        // özgün dosyanın üstüne yazıldı: bu sayfanın önbelleğini at, yeniden yükle
+        val pos = pager.currentItem
+        val old = items.getOrNull(pos) ?: return
+        items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
+        File(File(cacheDir, "img"), "$pos.bin").delete()
+        cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos)
+        holder(pos)?.let { h -> h.iv.setBmp(null); h.show(pos) }
+        updateTitle(pos)
     }
 
     // ---------------------------------------------------------------- pager pages
