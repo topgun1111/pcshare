@@ -121,7 +121,6 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
-.alb.ghd small::after{content:' \u00b7 hidden'}
 .albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
@@ -926,20 +925,13 @@ let HGAL=[];try{HGAL=JSON.parse(localStorage.getItem('ls_galhid')||'[]')}catch(e
 const galHidden=p=>HGAL.indexOf(p)>=0;
 function galHideSet(p,on){galHideMany([p],on)}
 function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}render()}
-function albHold(c,path,name,own){
-  if(own)return holdMenu(c,own);   // hold selects it; Hide / Delete / Copy ... are in the bottom bar
-  holdMenu(c,{name:name},()=>{   // this album's folder is not listed here, so it cannot be selected: hold offers the main actions in a sheet
+/* the gallery's own press-and-hold menu (separate from the file browser's selection bar); the file actions that duplicate it are left out for now */
+function albHold(c,path,name){
+  holdMenu(c,{name:name},()=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
     const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
-    const row=(t,fn,cls)=>{const b=E('button','li'+(cls?' '+cls:'')),lt=E('div','lt');lt.append(E('span','',t));b.append(lt);b.onclick=()=>{fin();fn()};card.append(b)};
-    const h=galHidden(path);
-    row('Open',()=>galView({name:name,path:path,n:0}));
-    row(h?'Show in gallery':'Hide from gallery',()=>galHideSet(path,!h));
-    row('Go to folder',()=>go(path));
-    row('Delete',async()=>{
-      if(!await dlg({title:'Move "'+name+'" to the Recycle bin?',msg:'You can restore it from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin'}))return;
-      try{const r=await api('POST','/api/rm',{dev:'local',paths:[path]});GALT=0;toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}
-      catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
+    const b=E('button','li'),lt=E('div','lt');lt.append(E('span','','Hide from gallery'),E('small','','Unhide it in Settings \u203a Gallery settings'));b.append(lt);
+    b.onclick=()=>{fin();galHideSet(path,true)};card.append(b);
     const x=E('button','tbtn','Cancel');x.style.alignSelf='flex-end';x.onclick=fin;card.append(x);o.append(card)})}
 function mkAlbum(i,P0){
   const c=E('div','alb'+(S.sel.has(i.name)?' sel':'')),cv=E('div','acv'),pth=jn(P0,i.name),sb=E('small','','\u00a0');
@@ -952,7 +944,7 @@ function mkAlbum(i,P0){
     if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0})};
-  if(galHidden(pth))c.classList.add('ghd');albHold(c,pth,i.name,i);
+  albHold(c,pth,i.name);
   return c}
 /* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>a.n<=1||galJunkName(a.name);
@@ -998,7 +990,8 @@ function mkAlbumX(a,P0,V){
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
-  if(own&&S.sel.has(own.name))c.classList.add('sel');if(galHidden(a.path))c.classList.add('ghd');albHold(c,a.path,a.name,own);
+  if(own&&S.sel.has(own.name))c.classList.add('sel');
+  albHold(c,a.path,a.name);
   return c}
 function render(){
   applyPrefs();
@@ -1062,10 +1055,10 @@ function render(){
   else{while(nShown<LIST.length)more()}
   S.rg++;THQ.length=0;
   if(GALM){const ab=E('div','albums'),hideOn=LD('ls_galhide','1')==='1';   // small albums (1 file) and Android resource folders (mipmap-*, drawable-* ...) are hidden unless switched on
-    if(GALA&&GALA.a.length){const gh=a=>galJunk(a)||galHidden(a.path),hid=GALA.a.filter(gh);
-      GALA.a.forEach(a=>{if(!(hideOn&&gh(a)))ab.append(mkAlbumX(a,P0,V))});
-      if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' hidden album'+(hid.length===1?'':'s'):'Hide hidden albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
-    else AL.forEach(i=>{if(!(hideOn&&(galJunkName(i.name)||galHidden(jn(P0,i.name)))))ab.append(mkAlbum(i,P0))});
+    if(GALA&&GALA.a.length){const vis=GALA.a.filter(a=>!galHidden(a.path)),hid=vis.filter(galJunk);   // albums hidden by the user are never drawn and never counted
+      vis.forEach(a=>{if(!(hideOn&&galJunk(a)))ab.append(mkAlbumX(a,P0,V))});
+      if(hid.length){const t=E('button','galt',hideOn?'Show '+hid.length+' small album'+(hid.length===1?'':'s'):'Hide small albums');t.onclick=()=>{try{localStorage.setItem('ls_galhide',hideOn?'0':'1')}catch(e){}render()};ab.append(t)}}
+    else AL.forEach(i=>{if(!galHidden(jn(P0,i.name))&&!(hideOn&&galJunkName(i.name)))ab.append(mkAlbum(i,P0))});
     if(ab.children.length){l.insertBefore(ab,l.firstChild);const em=l.querySelector('#empty');if(em)em.remove();
       if(LIST.length){const h=E('div','galh','Photos');l.insertBefore(h,ab.nextSibling)}}
     if(!GALA||Date.now()-GALT>15000)galFetch()}
@@ -1318,6 +1311,8 @@ function openSettings(){
   const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
   rb.onclick=()=>{close();openSmb()};card.append(rb);
   api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
+  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
+  rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
   if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
     const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
       s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
@@ -1328,6 +1323,26 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function openGallerySettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Gallery settings'));
+  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=LD('ls_galhide','1')==='1';
+  t.append(E('b','','Hide small albums'),E('small','','Albums with a single item and Android resource folders'));
+  cb.onchange=()=>{try{localStorage.setItem('ls_galhide',cb.checked?'1':'0')}catch(e){}if(galRoot())render()};
+  sw.append(cb,E('i'));row.append(t,sw);card.append(row);
+  card.append(E('div','dsec','Hidden albums'));
+  const list=E('div');card.append(list);
+  const draw=()=>{list.textContent='';
+    if(!HGAL.length){const e=E('div','set'),t2=E('div','t');t2.append(E('small','','None. Press and hold an album in the gallery to hide it.'));e.append(t2);list.append(e);return}
+    HGAL.forEach(p=>{const r=E('div','set'),t2=E('div','t'),ub=E('button','tbtn','Unhide');
+      t2.append(E('b','',p.slice(p.lastIndexOf('/')+1)||p),E('small','',p));
+      ub.onclick=()=>{HGAL=HGAL.filter(x=>x!==p);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}draw();if(galRoot())render()};
+      r.append(t2,ub);list.append(r)});
+    if(HGAL.length>1){const r=E('div','set');r.style.cssText='display:flex;justify-content:flex-end';const ua=E('button','tbtn','Unhide all');
+      ua.onclick=()=>{HGAL=[];try{localStorage.setItem('ls_galhid','[]')}catch(e){}draw();if(galRoot())render()};r.append(ua);list.append(r)}};
+  draw();
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -1433,8 +1448,6 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
-    if(!A&&galRoot()&&it.every(i=>i.dir)){const ps=it.map(i=>jn(S.path,i.name)),sh=ps.every(galHidden);
-      btn('hide',sh?'Show in gallery':'Hide from gallery',()=>{S.sel.clear();galHideMany(ps,!sh)})}
     if(!A)btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
