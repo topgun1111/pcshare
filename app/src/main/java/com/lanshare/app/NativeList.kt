@@ -248,7 +248,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         if (c) {
             // compact: one line  [name .......... small]   (name flex 1, small flex none, gap 10)
             val x0 = 54f * d
-            val sw = smallP.measureText(r.a)
+            val aTxt = TextUtils.ellipsize(r.a, smallP, Math.max(40f * d, (xr - x0) * 0.45f), TextUtils.TruncateAt.END).toString()
+            val sw = smallP.measureText(aTxt)
             val avail = xr - x0 - sw - 10f * d - (if (r.dup) dupW + 6f * d else 0f)
             if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, avail, TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
             cv.drawText(ell!!, x0, cy - (fn.ascent + fn.descent) / 2f, nameP)
@@ -258,7 +259,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 val fd = dupP.fontMetrics
                 cv.drawText("duplicate?", bx + 6f * d, cy - (fd.ascent + fd.descent) / 2f, dupP)
             }
-            cv.drawText(r.a, xr - sw, cy - (fs.ascent + fs.descent) / 2f, smallP)
+            cv.drawText(aTxt, xr - sw, cy - (fs.ascent + fs.descent) / 2f, smallP)
             return
         }
         val x0 = (if (lg) 98f else 70f) * d
@@ -274,8 +275,17 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             cv.drawText("duplicate?", bx + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
         val base2 = top + 22.4f * d + (18.2f * d - (fs.descent - fs.ascent)) / 2f - fs.ascent
-        cv.drawText(r.a, x0, base2, smallP)
-        if (r.b.isNotEmpty()) cv.drawText(r.b, xr - smallP.measureText(r.b), base2, smallP)
+        val line = xr - x0
+        val aTxt = TextUtils.ellipsize(r.a, smallP, line, TextUtils.TruncateAt.END).toString()
+        cv.drawText(aTxt, x0, base2, smallP)
+        if (r.b.isNotEmpty()) {
+            // narrow window: drop the time ("May 12, 2026, 06:54 PM" -> "May 12, 2026"), then ellipsize, then hide
+            val room = line - smallP.measureText(aTxt) - 12f * d
+            var b = r.b
+            if (smallP.measureText(b) > room) b = b.substringBeforeLast(", ", b)
+            if (smallP.measureText(b) > room) b = if (room < 28f * d) "" else TextUtils.ellipsize(b, smallP, room, TextUtils.TruncateAt.END).toString()
+            if (b.isNotEmpty()) cv.drawText(b, xr - smallP.measureText(b), base2, smallP)
+        }
     }
 }
 

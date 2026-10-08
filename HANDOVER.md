@@ -1,3 +1,5 @@
+> **2026-10-08 narrow list rows:** `NlRowView` second line (count left, date right) no longer overlaps in split-screen: date loses its time, then is ellipsized, then hidden; left text ellipsized; compact view caps the right text at 45%. Native only.
+
 > **2026-10-08 cleanup:** removed orphan `BrowserActivity.kt`, unused JS `doSend` / `printInfo`, their dead CSS (`.dprh .dprg .pdw .pdot .poff`), `MainActivity.toastUi`, `Jobs` `bid`, color `brand_dark`, 16 unused imports. Not compiled.
 
 > **2026-10-08 gallery hold theme:** selected thumbnails shrink into a rounded tile with an accent check (top-left), rounded selection header, floating rounded action bar with tonal icon buttons (Delete tinted red), slide animations. CSS only (`#gal .gb`, `.gh.sl`, `.gc.sel`).
