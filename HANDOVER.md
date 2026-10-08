@@ -1,3 +1,5 @@
+> **2026-10-08 image edit:** image viewer top bar has a new pencil button -> `ImageEditActivity.kt` (rotate left/right, drag-to-crop, resize by px or 100/75/50/25 %). Preview is a 2048 px bitmap; on Save the operations are applied once to the original file at full resolution (`ImgEdit.render`, EXIF orientation -> rotation -> crop -> scale, one Canvas pass). Save as copy (`name (edited).ext` next to the original; for peers / SMB / archive entries into `Pictures/LANShare Edited`) or replace the original (this phone, jpg/png/webp only); the viewer reloads the page after a replace. **Not compiled / not tested on a device.**
+
 > **2026-10-08 gallery move:** hold bar "Cut" replaced by "Move": `galPick(a)` sheet lists the other albums (same kind) + "New album" (mkdir under /Pictures or /Movies), then clip(cut) + /api/paste into it and the album reloads.
 
 > **2026-10-08:** Print hidden in the video gallery (Movies albums, `a.v`) hold bar.
