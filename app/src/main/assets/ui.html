@@ -981,7 +981,7 @@ function galView(a){
     const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:'local',paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
     btn('copy','Copy',()=>clip('copy'));btn('cut','Cut',()=>clip('cut'));
-    btn('download','Download',()=>{const f=gi();clr();f.forEach((m,k)=>setTimeout(()=>{const l=document.createElement('a');l.href='/api/dl?dev=local&path='+enc(jn(a.path,m.name))+'&dl=1';l.download=m.name;document.body.append(l);l.click();l.remove()},k*600))});
+    if(CAN_PRINT||S.peers.length){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
     if(GS.size===1){const m=gi()[0];
       btn('info','Details',()=>doDetails(m,jn(a.path,m.name)));
       btn('openw','Open with',()=>{const u='/api/dl?dev=local&path='+enc(jn(a.path,m.name));if(window.LSAndroid&&LSAndroid.openWith){LSAndroid.openWith(location.origin+u);clr()}else window.open(u,'_blank')})}
@@ -1891,7 +1891,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     else if(st.booklet&&!st.duplex)out.duplex='short';
     const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
-async function doPrint(preset){
+async function doPrint(preset,cx){
+  const IT=()=>cx?cx.items:selItems(),PP=cx?cx.path:S.path,N=cx?cx.items.length:S.sel.size,PS=()=>IT().map(i=>jn(PP,i.name)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}};
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
   await loadWifi();
@@ -1899,23 +1900,23 @@ async function doPrint(preset){
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
   let to=preset||await choosePrinter(here);
   if(!to)return;
-  if(!S.sel.size)return toast('Select files first, then pick a printer',3000);
+  if(!N)return toast('Select files first, then pick a printer',3000);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
-    const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
+    const f=IT().filter(i=>!i.dir);done();
     if(!f.length)return toast('Select files to print');
-    const urlOf=i=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+    const urlOf=i=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name));
     if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   if(to.wifi){
-    const wf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(S.path,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
+    const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(PP,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name))}));
     const wo=await wifiOptions(to,wf);if(!wo)return;
-    try{const r=await api('POST','/api/print',{dev:S.dev,paths:selPaths(),to:to.id,opts:wo});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+    try{const r=await api('POST','/api/print',{dev:S.dev,paths:PS(),to:to.id,opts:wo});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
-  const pvf=selItems().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(S.path,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}));
-  const opts=await printOptions(to,pvf,pvf.length===S.sel.size);if(!opts)return;
-  try{const r=await api('POST','/api/print',{dev:S.dev,paths:opts.sheet?pvf.map(p=>p.path):selPaths(),to:to.id,opts});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
+  const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(PP,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name))}));
+  const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
+  try{const r=await api('POST','/api/print',{dev:S.dev,paths:opts.sheet?pvf.map(p=>p.path):PS(),to:to.id,opts});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async names=>{
