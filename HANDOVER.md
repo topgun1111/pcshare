@@ -1,3 +1,5 @@
+> **2026-10-08 gallery move:** hold bar "Cut" replaced by "Move": `galPick(a)` sheet lists the other albums (same kind) + "New album" (mkdir under /Pictures or /Movies), then clip(cut) + /api/paste into it and the album reloads.
+
 > **2026-10-08:** Print hidden in the video gallery (Movies albums, `a.v`) hold bar.
 
 > **2026-10-08 narrow list rows:** `NlRowView` second line (count left, date right) no longer overlaps in split-screen: date loses its time, then is ellipsized, then hidden; left text ellipsized; compact view caps the right text at 45%. Native only.

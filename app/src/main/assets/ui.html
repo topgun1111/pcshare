@@ -953,6 +953,18 @@ const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
 function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;GCX=null}
+/* move-to-album picker: existing albums of the same kind (pictures / videos) + "New album"; resolves the target folder path or null */
+function galPick(a){return new Promise(async res=>{
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Move to album'));
+  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  const row=(t,sub,k,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));if(sub)lt.append(E('small','',sub));b.append(ld,lt);b.onclick=f;card.append(b)};
+  row('New album','Creates a folder in '+(a.v?'Movies':'Pictures'),'newfolder',async()=>{
+    const n=await dlg({title:'New album',input:{label:'Album name'},ok:'Create'});if(!n||!n.trim()){fin(null);return}
+    const path=(a.v?'/Movies/':'/Pictures/')+n.trim().replace(/[\\/]/g,'_');
+    try{await api('POST','/api/op',{dev:'local',op:'mkdir',path});fin(path)}catch(e){toast('\u26a0 '+e.message,4000);fin(null)}});
+  let al=[];try{const r=await api('GET','/api/albums'+(a.v?'?kind=vid':''));al=(r&&r.albums)||[]}catch(e){}
+  al.filter(x=>x.path!==a.path&&!galJunkName(x.name)).sort((x,y)=>x.name.localeCompare(y.name)).forEach(x=>row(x.name,x.n+(x.n===1?' item':' items'),'folder',()=>fin(x.path)));
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
@@ -972,7 +984,14 @@ function galView(a){
     if(!GS.size)return;
     const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:'local',paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
-    btn('copy','Copy',()=>clip('copy'));btn('cut','Cut',()=>clip('cut'));
+    btn('copy','Copy',()=>clip('copy'));
+    btn('cut','Move',async()=>{const ps=gp(),n=ps.length,dir=await galPick(a);if(!dir)return;
+      try{const cf=await askConflicts('local',dir,ps,'local');if(!cf)return;
+        await api('POST','/api/clip',{op:'cut',dev:'local',paths:ps});clr();
+        const r=await api('POST','/api/paste',{dev:'local',dir,conflict:cf});watchJob(r.job);
+        if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
+        if(o._for===tok)reload()}
+      catch(e){toast('\u26a0 '+e.message,5000)}});
     if(!a.v&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
