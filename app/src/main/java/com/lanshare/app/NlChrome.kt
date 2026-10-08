@@ -10,7 +10,6 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
-import android.os.Build
 import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout

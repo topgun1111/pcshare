@@ -2,7 +2,6 @@ package com.lanshare.app
 
 import android.content.Context
 import android.graphics.*
-import android.os.Build
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.MotionEvent

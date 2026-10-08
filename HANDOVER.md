@@ -1,3 +1,5 @@
+> **2026-10-08 cleanup:** removed orphan `BrowserActivity.kt`, unused JS `doSend` / `printInfo`, their dead CSS (`.dprh .dprg .pdw .pdot .poff`), `MainActivity.toastUi`, `Jobs` `bid`, color `brand_dark`, 16 unused imports. Not compiled.
+
 > **2026-10-08 gallery hold theme:** selected thumbnails shrink into a rounded tile with an accent check (top-left), rounded selection header, floating rounded action bar with tonal icon buttons (Delete tinted red), slide animations. CSS only (`#gal .gb`, `.gh.sl`, `.gc.sel`).
 
 > **2026-10-08 gallery share:** gallery hold bar: "Open with" replaced by "Share" (any number of files). New `LSAndroid.shareFiles({items:[{name,url,size}]})` -> `MainActivity.shareFilesImpl` fetches all into `cache/open` (one progress notification, cancellable) then `shareFileList` opens the system chooser (ACTION_SEND / SEND_MULTIPLE via FileProvider). Not compiled / not tested on a device.

@@ -17,14 +17,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.*
 import android.graphics.*
-import android.graphics.pdf.PdfDocument
-import android.os.CancellationSignal
-import android.os.ParcelFileDescriptor
 import android.print.*
-import android.text.TextUtils
-import java.io.FileOutputStream
-import java.io.IOException
-import java.util.concurrent.Executors
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -32,7 +25,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.lanshare.app.core.Core
 import com.lanshare.app.core.InProc
-import java.io.ByteArrayInputStream
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
@@ -564,7 +556,6 @@ class MainActivity : Activity() {
     }
 
     // ---- print on this phone (Android print framework: Wi-Fi/Mopria/vendor plugins/Save as PDF) ----
-    private fun toastUi(t: String) = runOnUiThread { Toast.makeText(this, t, Toast.LENGTH_LONG).show() }
 
     @SuppressLint("BatteryLife")
     private fun askPermissions() {

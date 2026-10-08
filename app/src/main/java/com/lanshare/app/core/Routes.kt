@@ -5,7 +5,6 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.FileNotFoundException
 import java.io.IOException
-import java.util.UUID
 
 // HTTP routing: the /p/ routes are what other devices call, the /api/ routes are what this device's own UI calls. Mirrors the Python H class.
 object Routes {

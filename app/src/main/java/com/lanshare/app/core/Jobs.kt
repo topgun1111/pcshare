@@ -331,7 +331,6 @@ object Jobs {
             val failed = ArrayList<String>()
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
-            val bid = java.lang.Long.toString(System.nanoTime(), 36)
             val rots = opts?.optJSONArray("rots")
             for ((i, f0) in files.withIndex()) {
                 val (sp, size) = f0

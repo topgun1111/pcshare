@@ -350,18 +350,6 @@ body.dopen{overflow:hidden}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
-.dprh .dchev{flex:none;width:40px;height:40px;display:grid;place-items:center;color:var(--mut);transition:transform .2s}.dprh .dchev svg{width:24px;height:24px}
-.dprh.open .dchev{transform:rotate(180deg)}
-.dprg{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease}.dprg.open{grid-template-rows:1fr}
-.dprg>div{overflow-y:auto;overflow-x:hidden;min-height:0;max-height:38vh;overscroll-behavior:contain}
-.dprg .di{padding-left:32px;min-height:48px;background:var(--bg)}.dprg .di .dl{width:28px;height:28px}
-.dprg .dnone{padding:12px 24px;font-size:13px}
-.dprg .pmore{justify-content:center;min-height:40px;color:var(--ac);font-size:13px;font-weight:700;padding-left:16px}
-.pdw{position:relative;display:block;width:28px;height:28px}.pdw svg{width:24px;height:24px;margin:2px}
-.pdot{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid var(--bg);background:#9e9e9e}
-.pdot.ok{background:var(--ok)}.pdot.wn{background:var(--warn,#e0a100)}.pdot.ck{animation:pdk 1s ease-in-out infinite}
-@keyframes pdk{50%{opacity:.35}}
-.di.poff{opacity:.55}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
@@ -1553,9 +1541,6 @@ function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.openWith){LSAndroid.openWith(location.origin+u);S.sel.clear();render()}
   else window.open(u,'_blank')}
-async function doSend(){
-  const p=await pickDevice();if(!p)return;
-  try{const r=await api('POST','/api/send',{dev:S.dev,paths:selPaths(),to:p.id});S.sel.clear();render();watchJob(r.job);track(r.job)}catch(e){toast('⚠ '+e.message,5000)}}
 /* Print: either on this phone itself (Android print system: any printer the phone knows) or on a PC running pcprint.py.
    The files can come from any connected device (this phone, another phone, a PC / SMB share). */
 const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
@@ -1655,11 +1640,6 @@ function wifiOptions(pr,files){return new Promise(res=>{
     if(r.color===false)colour.style.display='none'
   }).catch(()=>{info.textContent='Printer status unavailable'})})}
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
-function printInfo(p,el){api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
-  if(!r.ok){el.textContent='Print service not reachable';el.className='bad';return}
-  if(!r.printer){el.textContent='No default printer set on the PC';el.className='bad';return}
-  if(r.problem){el.textContent=r.printer+' \u00b7 '+r.problem;el.className='bad';return}
-  el.textContent=r.printer+' \u00b7 ready';el.className='good'}).catch(()=>{el.textContent='Printer status unavailable';el.className=''})}
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
 const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};

@@ -35,7 +35,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.graphics.ColorUtils
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.lanshare.app.core.Endpoint
 import com.lanshare.app.core.Jobs
