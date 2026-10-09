@@ -35,6 +35,10 @@ object Cfg {
     @Synchronized fun imgExcluded(): List<String> { val a = obj.optJSONArray("img_excl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
     @Synchronized fun setImgExcluded(l: List<String>) { obj.put("img_excl", JSONArray(l)); save() }
 
+    /** Folders (virtual paths) the picture scan is limited to; empty = scan everything (minus excluded). */
+    @Synchronized fun imgIncluded(): List<String> { val a = obj.optJSONArray("img_incl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+    @Synchronized fun setImgIncluded(l: List<String>) { obj.put("img_incl", JSONArray(l)); save() }
+
     /** Wi-Fi printers this device has found (kept across restarts / sleep, so they are still offered when mDNS is silent with the screen off). */
     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }
