@@ -1716,6 +1716,7 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
   if(!lan.length)card.append(E('p','',peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.'));
   const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
   sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
+  if(lsGet('printHist',[]).length){const rb=E('button','tbtn','Recent prints');rb.style.alignSelf='flex-start';rb.onclick=()=>fin({recent:1});card.append(rb)}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 /* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
 async function choosePrinter(here){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers);if(!(to&&to.rescan))return to}return null}
@@ -1911,9 +1912,12 @@ async function pvInfoOld(f){
     return{kind:'doc',pages:Math.max(1,Math.ceil(lines/61))}}
   catch(e){return{kind:'doc',pages:0}}finally{clearTimeout(tm)}}
 function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res=>{
-  const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;if(pc.pn)st.printer=pc.pn;
+  /* options are remembered per PC + printer ('printOptsBy'); a printer used for the first time starts from the last options used anywhere */
+  const pBy=()=>lsGet('printOptsBy',{}),pk=()=>pc.id+'|'+(st.printer||''),p0=pc.pn||lsGet('printOptsLast',{})[pc.id]||'';
+  const st=Object.assign({},PRN_DEF,pBy()[pc.id+'|'+p0]||lsGet('printOpts',{}));st.printer=p0;st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
+  const here=pc.id==='__here';   /* this phone: Android's own print dialog sets copies / sides / colour / printer */
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -2023,10 +2027,11 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   drawPresets();sec('Presets',pr);
   // printer
   const sel=E('select','tf');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);
-  sel.onchange=()=>{st.printer=sel.value;status()};
+  sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
   const pw=sec('Printer',sel);pw.style.display='none';
   const hint=E('div','sub');hint.style.cssText='font-size:12px;color:var(--mut);margin-top:4px;display:none';
-  const status=()=>{info.textContent='Checking printer\u2026';info.className='sub';
+  const status=()=>{if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
+    info.textContent='Checking printer\u2026';info.className='sub';
     api('GET','/api/printer?dev='+enc(pc.id)+(st.printer?'&printer='+enc(st.printer):''),null,12000).then(r=>{
       if(!r.ok){info.textContent='Print service not reachable on this PC';info.style.color='var(--err)';return}
       if(r.printers&&r.printers.length){pw.style.display='flex';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
@@ -2040,9 +2045,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   // copies
   const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
   mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
-  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);sec('Copies',cp);
+  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);
+  if(!here){sec('Copies',cp);
   sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
-  sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
+  sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]))}
   sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
   if(!imgMode&&files.length>1)sec('Files',sw('join','Print all files as one job (pages joined, laid out together)'));
   if(imgMode)sec('Order',sw('reverse','Reverse order'));
@@ -2060,8 +2066,27 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
     if(imgMode||files.length<2)delete out.join;
-    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
+    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep));
+      const by=pBy();delete by[pk()];by[pk()]=keep;const ks=Object.keys(by);while(ks.length>40)delete by[ks.shift()];localStorage.setItem('printOptsBy',JSON.stringify(by));
+      const lp=lsGet('printOptsLast',{});lp[pc.id]=st.printer||'';localStorage.setItem('printOptsLast',JSON.stringify(lp))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
+/* recent prints (kept on the phone): what was sent where with which options, so it can be printed again with one tap */
+function phAdd(h){if(!h.paths||!h.paths.length||h.paths.length>150)return null;const a=lsGet('printHist',[]);h.id=String(Date.now());h.t=Date.now();h.ok=null;a.unshift(h);a.length=Math.min(a.length,12);
+  try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}return h.id}
+function phMark(id,ok){if(!id)return;const a=lsGet('printHist',[]),h=a.find(x=>x.id===id);if(h){h.ok=ok;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}}}
+async function phGo(h){try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
+  const id=phAdd({dev:h.dev,paths:h.paths,to:h.to,toName:h.toName,opts:h.opts,names:h.names});watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
+function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent='';o.style.display='flex';
+  const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+  card.append(E('div','handle'),E('h3','','Recent prints'));
+  if(!a.length)card.append(E('p','','Nothing printed yet.'));
+  a.forEach(h=>{const b=E('button','tbtn'),nm=(h.names||[]).length>2?h.names.slice(0,2).join(', ')+' +'+(h.names.length-2):(h.names||[]).join(', ');
+    b.style.cssText='display:block;width:100%;text-align:left;margin:6px 0';
+    const bits=[h.toName||'',new Date(h.t).toLocaleString()],op=h.opts||{};if(op.copies>1)bits.push(op.copies+' copies');if(op.nup>1)bits.push(op.nup+' per sheet');if(op.duplex&&op.duplex!=='off')bits.push('two-sided');
+    const sm=E('small','',bits.filter(Boolean).join(' \u00b7 '));sm.style.cssText='display:block;font-size:12px;color:var(--mut);margin-top:2px';
+    b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)});
+  const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
+  cl.onclick=()=>{try{localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
@@ -2071,24 +2096,31 @@ async function doPrint(preset,cx){
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
   let to=preset||await choosePrinter(here);
   if(!to)return;
+  if(to.recent)return printRecent();
   if(!N)return toast('No printable files selected',3000);
   if(N<ALL.length)toast((ALL.length-N)+' file(s) that cannot be printed were skipped',3500);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
-    const f=IT().filter(i=>!i.dir);done();
+    const f=IT().filter(i=>!i.dir);
     if(!f.length)return toast('Select files to print');
     const urlOf=i=>location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i));
-    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
+    /* only pictures: the same sheet dialog as for a PC (pictures per sheet, preview, turn each one, margins); everything else prints with defaults */
+    let opts=null;
+    if(f.every(i=>PV_IMG.includes((i.name.split('.').pop()||'').toLowerCase()))){opts=await printOptions(to,f.map(i=>({name:i.name,path:PF(i),url:urlOf(i)})),true);if(!opts)return}
+    done();
+    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)})),opts}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   if(to.wifi){
     const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
     const wo=await wifiOptions(to,wf);if(!wo)return;
-    try{const r=await api('POST','/api/print',{dev:DV,paths:PS(),to:to.id,opts:wo});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+    try{const ps=PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts:wo});done();
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
   const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
-  try{const r=await api('POST','/api/print',{dev:DV,paths:opts.sheet?pvf.map(p=>p.path):PS(),to:to.id,opts});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
+  try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
+    const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async names=>{
@@ -2099,11 +2131,13 @@ window.lsPrintShared=async names=>{
     const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
     const to=await choosePrinter([]);
     if(!to)return;
+    if(to.recent)return printRecent();
     try{localStorage.setItem('printTo',to.id)}catch(e){}
+    const clean=r=>{watchJob(r.job);track(r.job).then(ok=>{if(ok)api('POST','/api/sharedclean',{names}).catch(()=>{})})};   /* printed fine: the copy in LANShare Shared is not needed any more */
     const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
-    if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});watchJob(rw.job);track(rw.job);return}
+    if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});clean(rw);return}
     const opts=await printOptions(to,pvf,true);if(!opts)return;
-    const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});watchJob(r.job);track(r.job)
+    const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});clean(r)
   }catch(e){toast('\u26a0 '+e.message,5000)}};
 
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
@@ -2346,7 +2380,10 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   lvProblems(L,j);
   L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
   L.hide.onclick=()=>{const o=$('#sheet');o.style.display='none';o.onclick=null};
-  const bad=(j.problems||[]).length>1;
+  if(j.state==='error'&&j.retry>0){const rb=E('button','tbtn fill','Retry failed ('+j.retry+')');
+    rb.onclick=async()=>{rb.disabled=true;try{const r=await api('POST','/api/printretry?id='+id);L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rb.disabled=false;toast('\u26a0 '+e.message,5000)}};
+    L.hide.className='tbtn';L.row.insertBefore(rb,L.hide)}
+  const bad=(j.problems||[]).length>1||j.retry>0;
   if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
   if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}

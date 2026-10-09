@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "16"
+VERSION = "17"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -296,6 +296,13 @@ def neutral_fit(o):
     return dict(o, margin=-1, scale=0, align="center", autorot=False, fit="shrink")
 
 
+def eff_margin(o, default):
+    """Sheet margin in points: the chosen one, but never less than the printer's hard margin (it cannot print closer to the edge anyway).
+    Not chosen (-1) = the built-in default for that kind of file."""
+    m = o["margin"]
+    return default if m < 0 else max(float(m), o.get("hard", 0.0))
+
+
 def fit_cell(w, h, cw, ch, o, per):
     """One page of size w x h in a cell of cw x ch -> (scale, turned 90 degrees, shown width, shown height)."""
     best = None
@@ -495,8 +502,67 @@ def pil_jpeg(path, o, flat=False):
         return None
 
 
+MAX_FRAMES = 300   # frames printed from one multi-page TIFF
+
+
+def tiff_frames(path, o):
+    """Multi-page TIFF -> one JPEG file per frame (in the queue folder). [] = not a TIFF, one frame only, or no Pillow (the first frame is then used)."""
+    if os.path.splitext(path)[1].lower() not in (".tif", ".tiff") or not have_pil():
+        return []
+    try:
+        from PIL import Image, ImageSequence
+        Image.MAX_IMAGE_PIXELS = None
+        im = Image.open(path)
+        if getattr(im, "n_frames", 1) < 2:
+            return []
+        tp, base, out = target_px(o), os.path.splitext(os.path.basename(path))[0], []
+        for i, fr in enumerate(ImageSequence.Iterator(im)):
+            if i >= MAX_FRAMES:
+                log(f"{os.path.basename(path)}: only the first {MAX_FRAMES} frames are printed")
+                break
+            try:
+                if fr.mode.startswith("I;16") or fr.mode in ("I", "F"):
+                    fr = fr.point(lambda v: v / 256.0).convert("L")
+                elif fr.mode in ("RGBA", "LA") or (fr.mode == "P" and "transparency" in fr.info):
+                    fr = fr.convert("RGBA")
+                    bg = Image.new("RGB", fr.size, (255, 255, 255))
+                    bg.paste(fr, mask=fr.getchannel("A"))
+                    fr = bg
+                elif fr.mode not in ("RGB", "L"):
+                    fr = fr.convert("RGB")
+                else:
+                    fr = fr.copy()
+                if max(fr.size) > tp:
+                    fr.thumbnail((tp, tp), Image.LANCZOS)
+                dest = os.path.join(INBOX, f"{base}.f{i + 1:03d}.jpg")
+                fr.save(dest, "JPEG", quality=90)
+                out.append(dest)
+            except Exception as e:
+                log(f"{os.path.basename(path)}: frame {i + 1} skipped: {e}")
+        return out if len(out) > 1 else out[:0]
+    except Exception as e:
+        log(f"TIFF frames of {os.path.basename(path)} could not be read: {e}")
+        return []
+
+
+def merge_pdfs(parts, dest):
+    from pypdf import PdfReader, PdfWriter
+    wr, keep = PdfWriter(), []
+    for p in parts:
+        rd = PdfReader(p)
+        keep.append(rd)
+        for pg in rd.pages:
+            wr.add_page(pg)
+    with open(dest, "wb") as f:
+        wr.write(f)
+    return dest
+
+
 def img_to_pdf(path, o, exact=False):
-    """Image -> one-page PDF (paper size from the options, EXIF rotation applied, fit with a margin)."""
+    """Image -> one-page PDF (paper size from the options, EXIF rotation applied, fit with a margin). A multi-page TIFF -> one page per frame."""
+    fr = tiff_frames(path, o) if need_pypdf() else []
+    if fr:
+        return merge_pdfs([img_to_pdf(f, o, exact) for f in fr], out_pdf(path, "img"))
     data = open(path, "rb").read()
     ext = os.path.splitext(path)[1].lower()
     jpg = pil_jpeg(path, o, True)
@@ -523,7 +589,7 @@ def img_to_pdf(path, o, exact=False):
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
     if iw > ih:
         pw, ph = ph, pw
-    m = o["margin"] if o["margin"] >= 0 else 28
+    m = eff_margin(o, 28)
     if exact:   # page = the picture itself (joined jobs): the sheet layout then fits it like any other page
         kk = 842.0 / max(iw, ih)
         pw, ph, m = iw * kk, ih * kk, 0
@@ -546,7 +612,7 @@ def txt_to_pdf(path, o):
         except UnicodeDecodeError:
             pass
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
-    mm = o["margin"] if o["margin"] >= 0 else 50
+    mm = eff_margin(o, 50)
     size = max(4.0, min(40.0, 10.0 * (o["scale"] / 100.0 if o["scale"] else 1.0)))   # custom scale = font size
     lead = size * 1.2
     cpl, lpp = max(1, int((pw - 2 * mm) / (0.6 * size))), max(1, int((ph - 2 * mm) / lead))
@@ -693,7 +759,7 @@ def process_pdf(src, o, name):
     wr = PdfWriter()
     sheets, rects, clips = [], [], []
     fitting = needs_fitting(o)
-    M = max(o["margin"], 0) if fitting else 0   # sheet margin in points
+    M = eff_margin(o, 0) if fitting else 0   # sheet margin in points (not less than the printer's hard margin)
     first = next(i for i in order if i is not None)
     if per == 1 and not fitting and all(box(pages[i])[:2] == (0.0, 0.0) for i in idx):
         for i in order:
@@ -946,6 +1012,11 @@ def prep_image(path, tag, o=None):
 def images_to_sheets(items, o, name):
     """items = [(file, rotation 0/90/180/270 clockwise)] -> (pdf path, sheets). Mirrors the preview in the app (ui.html pvSheets)."""
     imgs = []
+    exp = []
+    for p, rot in items:   # every frame of a multi-page TIFF is a picture of its own
+        fr = tiff_frames(p, o)
+        exp.extend([(f, rot) for f in fr] if fr else [(p, rot)])
+    items = exp
     for n, (p, rot) in enumerate(items):
         d, rw, rh, comps, base = prep_image(p, n, o)
         ew, eh = (rh, rw) if base in (90, 270) else (rw, rh)   # size as the picture looks after EXIF
@@ -956,7 +1027,7 @@ def images_to_sheets(items, o, name):
         im["n"] = n
     per = o["nup"]
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
-    M, G = (o["margin"] if o["margin"] >= 0 else SHEET_MARGIN), SHEET_GAP
+    M, G = eff_margin(o, SHEET_MARGIN), SHEET_GAP
     fill = o["fit"] == "fill"   # cover the whole cell and crop what sticks out
 
     def plan(portrait):
@@ -1020,7 +1091,7 @@ def join_to_pdf(paths, o, notes):
         try:
             if ext == ".pdf": src = p
             elif ext in IMAGES: src = img_to_pdf(p, o, exact=True)
-            elif ext in TEXT_EXT: src = txt_to_pdf(p, dict(o, scale=0, margin=0 if o["margin"] >= 0 else -1))   # sheet margin comes from the layout step
+            elif ext in TEXT_EXT: src = txt_to_pdf(p, dict(o, scale=0, hard=0.0, margin=0 if o["margin"] >= 0 else -1))   # sheet margin comes from the layout step
             elif ext in OFFICE_EXT: src = office_to_pdf(p)
             else: raise RuntimeError("type not supported")
             rd = PdfReader(src)
@@ -1087,7 +1158,47 @@ def run_retry(cmd, printer=None, **kw):
         subprocess.run(cmd, check=True, **kw)
 
 
+SWAP_FILE = os.path.join(APP, "duplex_swap.txt")   # printer names (one per line, # = comment, * = every printer) whose landscape sheets come out upside down on the back
+
+
+def duplex_swap(pr):
+    try:
+        with open(SWAP_FILE, encoding="utf-8") as f:
+            names = [l.strip().lower() for l in f if l.strip() and not l.lstrip().startswith("#")]
+    except OSError:
+        return False
+    return "*" in names or (pr or "").lower() in names
+
+
+def hard_margin(pr):
+    """The printer's hard margin in points (it cannot print closer to the edge; 0 = unknown / not Windows)."""
+    if not WIN:
+        return 0.0
+    try:
+        info = printer_info(pr or None, max_age=600)
+        v = max(float((info or {}).get("hx") or 0), float((info or {}).get("hy") or 0)) * 0.72   # hundredths of an inch -> points
+        return min(36.0, math.ceil(v * 2) / 2.0)
+    except Exception:
+        return 0.0
+
+
+def swap_duplex(pdf, o, pr):
+    """Printers that turn the back of landscape sheets upside down: long <-> short edge for those sheets (switch: duplex_swap.txt)."""
+    if o["duplex"] not in ("long", "short") or not duplex_swap(pr or DEFAULT_PRINTER[0]) or not have_pypdf():
+        return o
+    try:
+        from pypdf import PdfReader
+        pg = PdfReader(pdf).pages[0]
+        if float(pg.cropbox.width) > float(pg.cropbox.height):
+            log(f"landscape sheets: duplex {o['duplex']} edge sent as {'short' if o['duplex'] == 'long' else 'long'} edge (duplex_swap.txt)")
+            return dict(o, duplex="short" if o["duplex"] == "long" else "long")
+    except Exception as e:
+        log(f"duplex swap skipped: {e}")
+    return o
+
+
 def send_pdf(pdf, o, pr, sm, notes):
+    o = swap_duplex(pdf, o, pr)
     if not WIN:
         cmd = ["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"])]
         sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
@@ -1108,6 +1219,10 @@ def print_file(path, o):
     notes = []
     pr = o["printer"] or None
     sm = find_sumatra() if WIN else None
+    if o["margin"] >= 0:
+        o = dict(o, hard=hard_margin(pr))   # margin "None" = as close to the edge as this printer can print
+        if o["hard"] > o["margin"]:
+            log(f"margin {o['margin']}pt raised to the printer's hard margin {o['hard']:g}pt")
     if isinstance(path, JoinJob):   # mixed files sent as one job: join the pages, then lay out once
         pdf = join_to_pdf(path, o, notes)
         if needs_layout(o) or needs_fitting(o):
@@ -1192,7 +1307,9 @@ $d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Na
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
   $j = @(Get-PrintJob -PrinterName $d.Name -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.JobStatus })
-  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j } | ConvertTo-Json -Compress
+  $hx = 0; $hy = 0
+  try { Add-Type -AssemblyName System.Drawing; $ps = New-Object System.Drawing.Printing.PrinterSettings; $ps.PrinterName = $d.Name; $hx = [double]$ps.DefaultPageSettings.HardMarginX; $hy = [double]$ps.DefaultPageSettings.HardMarginY } catch { }
+  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j; hx=$hx; hy=$hy } | ConvertTo-Json -Compress
 }
 """
 STATUS_TEXT = {   # Get-Printer PrinterStatus -> plain words

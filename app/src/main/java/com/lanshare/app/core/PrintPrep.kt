@@ -79,6 +79,79 @@ object PrintPrep {
         return Out(o, name)
     }
 
+    /** Markdown -> PDF (WebView print, no scripts / network): headings, lists, quotes, code, tables, bold / italic / strike / links. */
+    fun md(f: File, base: String): Out {
+        val ctx = Core.appCtx ?: throw IOException("app not ready")
+        if (f.length() > 8L shl 20) throw IOException("the file is too large to convert")
+        val o = tmp(f, ".md.pdf")
+        WebPdf.render(ctx, mdHtml(decode(f.readBytes()).removePrefix("\uFEFF")), o, 400)
+        return Out(o, "$base.pdf")
+    }
+
+    private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private fun inline(t0: String): String {
+        var t = esc(t0)
+        t = Regex("`([^`]+)`").replace(t) { "<code>" + it.groupValues[1] + "</code>" }
+        t = Regex("!?\\[([^\\]]*)\\]\\(([^)\\s]+)[^)]*\\)").replace(t) { it.groupValues[1] }   // links / images: the text only (no network)
+        t = Regex("\\*\\*(.+?)\\*\\*|__(.+?)__").replace(t) { "<b>" + it.groupValues[1] + it.groupValues[2] + "</b>" }
+        t = Regex("~~(.+?)~~").replace(t) { "<s>" + it.groupValues[1] + "</s>" }
+        t = Regex("\\*(?!\\s)([^*]+?)(?<!\\s)\\*|(?<!\\w)_(?!\\s)([^_]+?)(?<!\\s)_(?!\\w)").replace(t) { "<i>" + it.groupValues[1] + it.groupValues[2] + "</i>" }
+        return t
+    }
+
+    private fun mdHtml(src: String): String {
+        val sb = StringBuilder("<html><head><meta charset=\"utf-8\"><style>" +
+            "body{font-family:sans-serif;font-size:11pt;line-height:1.45;color:#000}h1,h2,h3,h4{margin:.9em 0 .3em}h1{font-size:20pt}h2{font-size:16pt}h3{font-size:13pt}" +
+            "pre{background:#f1f1f1;padding:8px;white-space:pre-wrap;font-size:9.5pt}code{background:#f1f1f1;font-family:monospace}" +
+            "blockquote{border-left:3px solid #999;margin:.5em 0;padding-left:10px;color:#444}table{border-collapse:collapse}td,th{border:1px solid #999;padding:3px 7px}" +
+            "hr{border:0;border-top:1px solid #999}</style></head><body>")
+        val lines = src.replace("\r\n", "\n").replace('\r', '\n').split('\n')
+        var i = 0
+        var list = ""   // "ul" / "ol" while a list is open
+        fun closeList() { if (list.isNotEmpty()) { sb.append("</$list>"); list = "" } }
+        val table = Regex("^\\s*\\|?.*\\|.*$")
+        val sep = Regex("^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?\\s*$")
+        while (i < lines.size) {
+            val ln = lines[i]
+            val t = ln.trim()
+            when {
+                t.startsWith("```") || t.startsWith("~~~") -> {
+                    closeList(); i++
+                    sb.append("<pre>")
+                    while (i < lines.size && !lines[i].trim().startsWith("```") && !lines[i].trim().startsWith("~~~")) { sb.append(esc(lines[i])).append('\n'); i++ }
+                    sb.append("</pre>")
+                }
+                t.isEmpty() -> closeList()
+                Regex("^(-\\s*){3,}$|^(\\*\\s*){3,}$|^(_\\s*){3,}$").matches(t) -> { closeList(); sb.append("<hr>") }
+                Regex("^#{1,6}\\s+.*").matches(t) -> {
+                    closeList()
+                    val n = t.takeWhile { it == '#' }.length
+                    sb.append("<h$n>").append(inline(t.substring(n).trim().trimEnd('#').trim())).append("</h$n>")
+                }
+                t.startsWith(">") -> { closeList(); sb.append("<blockquote>").append(inline(t.removePrefix(">").trim())).append("</blockquote>") }
+                Regex("^([-*+]|\\d+[.)])\\s+.*").matches(t) -> {
+                    val kind = if (t[0].isDigit()) "ol" else "ul"
+                    if (list != kind) { closeList(); sb.append("<$kind>"); list = kind }
+                    sb.append("<li>").append(inline(t.replaceFirst(Regex("^([-*+]|\\d+[.)])\\s+"), ""))).append("</li>")
+                }
+                i + 1 < lines.size && table.matches(ln) && sep.matches(lines[i + 1]) -> {
+                    closeList()
+                    fun cells(r: String) = r.trim().trim('|').split('|').map { inline(it.trim()) }
+                    sb.append("<table><tr>").append(cells(ln).joinToString("") { "<th>$it</th>" }).append("</tr>")
+                    i += 2
+                    while (i < lines.size && lines[i].contains('|') && lines[i].isNotBlank()) { sb.append("<tr>").append(cells(lines[i]).joinToString("") { "<td>$it</td>" }).append("</tr>"); i++ }
+                    sb.append("</table>")
+                    continue
+                }
+                else -> { closeList(); sb.append("<p>").append(inline(t)).append("</p>") }
+            }
+            i++
+        }
+        closeList()
+        return sb.append("</body></html>").toString()
+    }
+
     private fun tmp(f: File, suffix: String) = File(f.parentFile, f.name + suffix)
 
     private fun jpeg(f: File, base: String): Out {

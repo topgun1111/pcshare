@@ -20,7 +20,11 @@ object Clip {
         else JSONObject().put("op", op).put("dev", dev).put("paths", org.json.JSONArray(paths))
 }
 
+/** What a failed print job needs to be started again for its failed files only (see [Jobs.retryPrint]). */
+class PrintReq(val src: String, val dst: String, val paths: List<String>, val opts: JSONObject?)
+
 class Job(@Volatile var label: String) {
+    @Volatile var retry: PrintReq? = null   // print job that ended with failed files: sending only those again
     @Volatile var id = ""            // set for jobs that are registered in [Jobs.all] by someone else than [Jobs.start]
     @Volatile var state = "run"      // run | done | cancel | error
     @Volatile var done = 0L
@@ -116,6 +120,7 @@ class Job(@Volatile var label: String) {
             if (failed > 0) it.put("failed", failed).put("problems", problemsJson())
             dest?.let { d -> it.put("dest", d) }
             note?.let { n -> it.put("note", n) }
+            retry?.let { r -> it.put("retry", r.paths.size) }
             result?.let { r -> it.put("result", r) }
             if (live) {
                 it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
@@ -256,7 +261,7 @@ object Jobs {
         prune()
         val job = Job("Printing on $pcName")
         all[jid] = job
-        Thread({ printWork(job, src, ip, pcName, paths, opts) }, "print-$jid").also { it.isDaemon = true }.start()
+        Thread({ printWork(job, src, ip, pcName, paths, opts, srcId, dstId) }, "print-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -322,7 +327,27 @@ object Jobs {
         }
     }
 
-    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?) {
+    /** "Retry failed only": starts a new print job for the files of [id] that failed on the phone / PC (files that were sent are not touched). */
+    fun retryPrint(id: String): String {
+        val j = all[id] ?: throw NotFound("unknown job")
+        val r = j.retry ?: throw BadReq("nothing to retry")
+        j.retry = null   // a second tap must not print the failed files twice
+        return startPrint(r.src, r.paths, r.dst, r.opts)
+    }
+
+    /** Deletes files in "LANShare Shared" (documents handed over by Android's print dialog) after they were printed. Names only, never paths. */
+    fun cleanShared(names: List<String>): Int {
+        val dir = File(android.os.Environment.getExternalStorageDirectory(), "LANShare Shared")
+        var n = 0
+        for (nm in names) {
+            if (nm.isEmpty() || nm == "." || nm == ".." || nm.contains('/') || nm.contains('\\')) continue
+            val f = File(dir, nm)
+            if (f.isFile && f.delete()) n++
+        }
+        return n
+    }
+
+    private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?, srcId: String, dstId: String) {
         try {
             val chosen = opts?.optString("printer").orEmpty()
             val notes = LinkedHashSet<String>()   // things the PC could not honour (e.g. layout options on a .docx)
@@ -343,15 +368,24 @@ object Jobs {
             }
             val dest = if (printer.isNotEmpty()) "$pcName ($printer)" else pcName
             val files = ArrayList<Pair<String, Long>>()
+            var skippedInDirs = 0   // files found inside selected folders that can never be printed (videos, archives, apps ...): skipped, not an error
             for (p0 in paths) {
                 val p = vnorm(p0)
-                for (w in src.walk(p)) if (!w.dir) files.add((if (w.rel.isEmpty()) p else p + "/" + w.rel) to w.size)
+                for (w in src.walk(p)) if (!w.dir) {
+                    if (w.rel.isNotEmpty()) {
+                        val k = PrintPrep.kind(w.rel.substringAfterLast('.', "").lowercase())
+                        if (k == PrintPrep.Kind.NO || (k == PrintPrep.Kind.SNIFF && w.size > PrintPrep.SNIFF_MAX)) { skippedInDirs++; continue }
+                    }
+                    files.add((if (w.rel.isEmpty()) p else p + "/" + w.rel) to w.size)
+                }
             }
-            if (files.isEmpty()) throw BadReq("nothing to print")
+            if (files.isEmpty()) throw BadReq(if (skippedInDirs > 0) "none of the $skippedInDirs files in the folder can be printed" else "nothing to print")
+            if (skippedInDirs > 0) notes.add("$skippedInDirs file${if (skippedInDirs > 1) "s" else ""} in folders can't be printed - skipped")
             job.total = maxOf(files.sumOf { it.second }, 1L)
             job.filesTotal = files.size
             job.dest = dest
             val failed = ArrayList<String>()
+            val retryPaths = ArrayList<String>()   // files that did not reach the printer (the ones printed with a warning are NOT in here)
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
             // opts.join: files of any kind printed as ONE job (pcprint.py joins their pages in this order, then lays them out once)
@@ -419,6 +453,7 @@ object Jobs {
                     } finally { r.close() }
                 } catch (e: PrintFail) {
                     failed.add("$name: ${errText(e)}")
+                    retryPaths.add(sp)
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
                     if (join) try {   // a joined job prints the other files; this empty request only keeps pcprint.py's count right (the last file may be the one that failed)
@@ -436,6 +471,9 @@ object Jobs {
             } else {
                 job.label = "Print problem on $dest"
                 job.error = "Problem on $dest ($ok of ${files.size} OK) - " + failed.joinToString("; ")
+                // an incomplete set of sheets was not printed at all: it has to be sent again as a whole
+                val again = if (sheet && retryPaths.isNotEmpty()) files.map { it.first } else retryPaths.toList()
+                if (again.isNotEmpty()) job.retry = PrintReq(srcId, dstId, again, opts)
                 job.state = "error"
             }
         } catch (e: Cancelled) {
