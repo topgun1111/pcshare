@@ -459,29 +459,34 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
     override fun names(v: String): MutableSet<String> =
         try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
 
-    override fun walk(v: String): List<WalkItem> = op(v) { s, rv ->
-        val st = s.getFileInformation(rel(rv)).standardInformation
-        if (!st.isDirectory) return@op listOf(WalkItem("", false, st.endOfFile))
-        val res = arrayListOf(WalkItem("", true, 0))
-        val stack = ArrayDeque<String>()
-        stack.addLast("")
-        while (stack.isNotEmpty()) {   // a folder's entries are added before its children: mkdir always precedes its files
-            val r0 = stack.removeLast()
-            val kids = try { s.list(rel(if (r0.isEmpty()) rv else vjoin(rv, r0))) }
-                       catch (e: SMBApiException) { if (stale(e)) throw e; res.add(WalkItem(if (r0.isEmpty()) "(folder)" else r0, false, 0, true)); continue }   // unreadable folder: skipped, flagged
-            for (c in kids) {
-                val n = c.fileName
-                if (n == "." || n == "..") continue
-                val r = if (r0.isEmpty()) n else r0 + "/" + n
-                val a = c.fileAttributes
-                when {
-                    isReparse(a) -> res.add(WalkItem(r, false, 0, true))   // junctions/symlinks are never followed (loops, broken targets)
-                    isDir(a) -> { res.add(WalkItem(r, true, 0)); stack.addLast(r) }
-                    else -> res.add(WalkItem(r, false, c.endOfFile))
+    override fun walk(v: String): List<WalkItem> { val res = ArrayList<WalkItem>(); walkEach(v) { res.add(it) }; return res }
+
+    override fun walkEach(v: String, visit: (WalkItem) -> Unit) {
+        val sent = HashSet<String>()   // after a transparent reconnect the walk restarts: what was already handed over is not handed over twice
+        val out: (WalkItem) -> Unit = { w -> if (sent.add((if (w.skip) "!" else if (w.dir) "d" else "f") + w.rel)) visit(w) }
+        op(v) { s, rv ->
+            val st = s.getFileInformation(rel(rv)).standardInformation
+            if (!st.isDirectory) { out(WalkItem("", false, st.endOfFile)); return@op }
+            out(WalkItem("", true, 0))
+            val stack = ArrayDeque<String>()
+            stack.addLast("")
+            while (stack.isNotEmpty()) {   // a folder's entries are added before its children: mkdir always precedes its files
+                val r0 = stack.removeLast()
+                val kids = try { s.list(rel(if (r0.isEmpty()) rv else vjoin(rv, r0))) }
+                           catch (e: SMBApiException) { if (stale(e)) throw e; out(WalkItem(if (r0.isEmpty()) "(folder)" else r0, false, 0, true)); continue }   // unreadable folder: skipped, flagged
+                for (c in kids) {
+                    val n = c.fileName
+                    if (n == "." || n == "..") continue
+                    val r = if (r0.isEmpty()) n else r0 + "/" + n
+                    val a = c.fileAttributes
+                    when {
+                        isReparse(a) -> out(WalkItem(r, false, 0, true))   // junctions/symlinks are never followed (loops, broken targets)
+                        isDir(a) -> { out(WalkItem(r, true, 0)); stack.addLast(r) }
+                        else -> out(WalkItem(r, false, c.endOfFile))
+                    }
                 }
             }
         }
-        res
     }
 
     /** Files / folders / bytes below [rv], stopping after [secs] seconds or [cap] entries. Junctions and links are not followed. */

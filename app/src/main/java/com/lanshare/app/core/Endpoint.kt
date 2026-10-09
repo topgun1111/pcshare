@@ -35,6 +35,8 @@ interface Endpoint {
     fun search(v: String, q: String): SearchResult
     fun names(v: String): MutableSet<String>
     fun walk(v: String): List<WalkItem>
+    /** Same entries as [walk], handed over one by one while the tree is read (progress, cancel): [visit] may throw [Cancelled]. */
+    fun walkEach(v: String, visit: (WalkItem) -> Unit) { for (w in walk(v)) visit(w) }
     fun open(v: String): Source
     fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)? = null)
     fun mkdir(v: String)

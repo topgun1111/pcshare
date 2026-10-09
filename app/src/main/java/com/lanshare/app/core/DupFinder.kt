@@ -49,11 +49,17 @@ object DupFinder {
             for ((i, p) in dirs.withIndex()) {
                 if (job.cancel) throw Cancelled()
                 job.label = "Scanning folders ${i + 1}/${dirs.size}: ${vbase(p)} (${files.size} files)"
-                for (w in e.walk(p)) {
-                    if (w.dir || w.skip || w.size <= 0) continue
-                    if (w.rel.isEmpty()) continue   // a selected file itself: only the contents of the selected folders are compared
-                    files.add(F(if (w.rel.isEmpty()) p else vnorm(p + "/" + w.rel), w.size))
+                val label = "Scanning folders ${i + 1}/${dirs.size}: ${vbase(p)}"
+                var tick = 0L
+                e.walkEach(p) { w ->
+                    if (job.cancel) throw Cancelled()
+                    if (w.dir || w.skip || w.size <= 0) return@walkEach
+                    if (w.rel.isEmpty()) return@walkEach   // a selected file itself: only the contents of the selected folders are compared
+                    files.add(F(vnorm(p + "/" + w.rel), w.size))
+                    val now = System.currentTimeMillis()
+                    if (now - tick > 300) { tick = now; job.label = "$label (${files.size} files)" }
                 }
+                job.label = "$label (${files.size} files)"
             }
             val bySize = files.groupBy { it.size }.filter { it.value.size > 1 }
             val cand = bySize.values.sumOf { g -> g.sumOf { it.size } }
