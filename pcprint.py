@@ -18,6 +18,7 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v14: console tools (ipconfig, netstat, PowerShell...) are decoded safely: a Turkish-Windows OEM-code-page byte no longer crashes a thread.
 v13: the log is written next to the pcprint.py you ran (pcprint.log), not in the app folder.
 v12: sturdier service (worker that survives any error, idle-socket timeout, queue / disk limits, hourly clean-up, no PowerShell races,
 cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
@@ -28,7 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "13"
+VERSION = "14"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -82,6 +83,30 @@ def log(msg):
     if sys.stdout:
         try: print(line)
         except Exception: pass
+
+
+def _decode(b):
+    """Console tools answer in the OEM code page (cp857 on Turkish Windows), not the one `text=True` assumes (cp1254): decoding there
+    crashed subprocess's reader thread ('charmap codec can't decode byte 0x8d') and the whole output of that call was lost."""
+    if b is None:
+        return ""
+    if isinstance(b, str):
+        return b
+    try:
+        return b.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return b.decode("cp%d" % ctypes.windll.kernel32.GetOEMCP() if WIN else "latin-1", "replace")
+    except (LookupError, AttributeError, OSError):
+        return b.decode("latin-1", "replace")
+
+
+def run_text(cmd, **kw):
+    """subprocess.run that captures stdout / stderr as text and can never fail on the encoding."""
+    r = subprocess.run(cmd, capture_output=True, **kw)
+    r.stdout, r.stderr = _decode(r.stdout), _decode(r.stderr)
+    return r
 
 
 _PSLOCK = threading.Lock()
@@ -148,7 +173,7 @@ def print_image(path, printer="", copies=1):
     if printer:
         cmd += ["-Printer", printer]
     cmd += ["-Copies", str(copies)]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+    r = run_text(cmd, timeout=120, creationflags=0x08000000)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or f"exit {r.returncode}").strip()[:300])
 
@@ -428,8 +453,8 @@ def img_to_pdf(path, o):
         if not WIN:
             raise RuntimeError("this image type can only be converted on Windows")
         ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv.jpg")
-        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
-                           capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+        r = run_text(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
+                           timeout=120, creationflags=0x08000000)
         if r.returncode != 0 or not os.path.isfile(tmp):
             raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
         data = open(tmp, "rb").read()
@@ -745,8 +770,8 @@ def office_to_pdf(path):
         except OSError:
             pass
         try:
-            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, dst],
-                               capture_output=True, text=True, timeout=180, creationflags=CF)
+            r = run_text(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, dst],
+                               timeout=180, creationflags=CF)
             if r.returncode == 0 and os.path.isfile(dst) and os.path.getsize(dst) > 0:
                 return dst
             errs.append("Microsoft Office: " + ((r.stderr or r.stdout or "").strip().splitlines() or ["exit %d" % r.returncode])[0][:150])
@@ -764,8 +789,8 @@ def office_to_pdf(path):
         try:
             from pathlib import Path
             prof = Path(APP, "lo-profile").resolve().as_uri()   # own profile: works while the user has LibreOffice open
-            r = subprocess.run([so, "-env:UserInstallation=" + prof, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", outdir, path],
-                               capture_output=True, text=True, timeout=180, creationflags=CF)
+            r = run_text([so, "-env:UserInstallation=" + prof, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", outdir, path],
+                               timeout=180, creationflags=CF)
             if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
                 os.replace(tmp, dst)
                 return dst
@@ -792,8 +817,8 @@ def prep_image(path, tag):
     if not WIN:
         raise RuntimeError("this image type can only be converted on Windows")
     ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv%s.jpg" % tag)
-    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
-                       capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+    r = run_text(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
+                       timeout=120, creationflags=0x08000000)
     if r.returncode != 0 or not os.path.isfile(tmp):
         raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
     try:
@@ -953,8 +978,8 @@ def print_file(path, o):
     for _ in range(min(o["copies"], 10)):
         if pr:
             ps1 = ps_script("printto.ps1", PS_PRINTTO)
-            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, pr],
-                               capture_output=True, text=True, timeout=120, creationflags=0x08000000)
+            r = run_text(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, pr],
+                               timeout=120, creationflags=0x08000000)
             if r.returncode != 0:
                 raise RuntimeError(f"no app on the PC can print {ext} files to a chosen printer - choose the default printer")
         else:
@@ -973,6 +998,7 @@ PRINTER_PROBLEM = [None]   # e.g. "paper jam" (None = nothing reported)
 # One PowerShell call: default printer + its status + the states of the jobs waiting in its Windows queue.
 PS_STATE = r"""
 param([string]$Name)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false   # printer names with Turkish letters survive the pipe
 $d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Name } } else { Get-CimInstance Win32_Printer | Where-Object { $_.Default } }
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
@@ -1015,12 +1041,12 @@ PRINTERS = []   # names of all printers installed on the PC
 def list_printers():
     if not WIN:
         try:
-            return [l.split()[1] for l in subprocess.run(["lpstat", "-a"], capture_output=True, text=True, timeout=10).stdout.splitlines() if l.strip()]
+            return [l.split()[1] for l in run_text(["lpstat", "-a"], timeout=10).stdout.splitlines() if l.strip()]
         except Exception:
             return []
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
-                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
+        out = run_text(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
+                             timeout=30, creationflags=0x08000000).stdout.strip()
         v = json.loads(out) if out else []
         return [v] if isinstance(v, str) else [str(x) for x in v]
     except Exception:
@@ -1052,8 +1078,8 @@ def printer_info(name=None, max_age=0):
 def _printer_info(name=None):
     try:
         ps1 = ps_script("pstate.ps1", PS_STATE)
-        out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
-                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
+        out = run_text(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
+                             timeout=30, creationflags=0x08000000).stdout.strip()
         info = json.loads(out) if out else None
         if info:
             if isinstance(info.get("jobs"), str):
@@ -1073,7 +1099,7 @@ def refresh_printer():
                 DEFAULT_PRINTER[0] = info["name"] if info else None
                 PRINTER_PROBLEM[0] = describe_problem(info)
             else:
-                out = subprocess.run(["lpstat", "-d"], capture_output=True, text=True, timeout=10).stdout.split(":")[-1].strip()
+                out = run_text(["lpstat", "-d"], timeout=10).stdout.split(":")[-1].strip()
                 DEFAULT_PRINTER[0] = out or None
         except Exception:
             DEFAULT_PRINTER[0] = None
@@ -1420,7 +1446,7 @@ def pc_addresses():
         pass
     if WIN:   # getaddrinfo often misses the Tailscale adapter
         try:
-            out = subprocess.run(["ipconfig"], capture_output=True, text=True, creationflags=0x08000000).stdout
+            out = run_text(["ipconfig"], creationflags=0x08000000).stdout
             found |= set(re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b", out))
         except Exception:
             pass
@@ -1498,7 +1524,7 @@ def stop_service():
         if not is_running(): return True
         time.sleep(0.3)
     if WIN:   # old version without /stop: kill whatever listens on the port
-        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, creationflags=0x08000000).stdout
+        out = run_text(["netstat", "-ano", "-p", "TCP"], creationflags=0x08000000).stdout
         for line in out.splitlines():
             c = line.split()
             if len(c) >= 5 and c[3] == "LISTENING" and c[1].endswith(f":{PORT}"):
@@ -1527,8 +1553,8 @@ def is_admin():
 
 
 def fw_rule_exists():
-    r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE}"],
-                       capture_output=True, text=True, creationflags=0x08000000)
+    r = run_text(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE}"],
+                       creationflags=0x08000000)
     return r.returncode == 0 and FW_RULE in r.stdout
 
 
