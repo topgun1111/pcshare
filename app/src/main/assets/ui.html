@@ -1508,7 +1508,6 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.some(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&!A)btn('paste','Paste',doPaste,'pri');
-    if(files)btn('download','Download',doDownload);
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
