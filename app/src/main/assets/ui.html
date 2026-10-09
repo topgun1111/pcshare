@@ -1824,7 +1824,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
   }).catch(()=>{info.textContent='Printer status unavailable'})})}
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
-const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0};
+const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
@@ -2044,6 +2044,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
   sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
   sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
+  if(!imgMode&&files.length>1)sec('Files',sw('join','Print all files as one job (pages joined, laid out together)'));
   if(imgMode)sec('Order',sw('reverse','Reverse order'));
   else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
   sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
@@ -2058,7 +2059,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   k.onclick=()=>{const out={};Object.keys(PRN_DEF).forEach(n=>{if(st[n]!==PRN_DEF[n]&&st[n]!==''&&st[n]!==0)out[n]=st[n]});
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
-    const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
+    if(imgMode||files.length<2)delete out.join;
+    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);

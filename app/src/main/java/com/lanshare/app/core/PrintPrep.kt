@@ -60,6 +60,25 @@ object PrintPrep {
         }
     }
 
+    /** JPEGs bigger than this are looked at and, if their pixels exceed what the sheet needs, shrunk before the upload (pcprint.py does the same with Pillow). */
+    const val SHRINK_MIN = 1_500_000L
+
+    /** Longest side (about 300 dpi for one cell of the sheet) that a picture needs: 1 / 2-4 / 6-9 pictures per sheet. */
+    fun printPx(nup: Int, paper: String): Int {
+        val base = if (nup >= 6) 1754 else if (nup >= 2) 2480 else 3508
+        val k = when (paper) { "A3" -> 1.41; "A5" -> 0.71; else -> 1.0 }
+        return (base * k).toInt()
+    }
+
+    /** A big JPEG [f] -> smaller JPEG with the EXIF turn applied; [f] itself when it is not larger than needed. */
+    fun shrink(f: File, name: String, maxPx: Int): Out {
+        val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(f.path, it) }
+        if (maxOf(b.outWidth, b.outHeight) <= maxPx * 1.15) return Out(f, name)
+        val o = tmp(f, ".s.jpg")
+        o.writeBytes(Thumbs.forPrintMax(f, maxPx))
+        return Out(o, name)
+    }
+
     private fun tmp(f: File, suffix: String) = File(f.parentFile, f.name + suffix)
 
     private fun jpeg(f: File, base: String): Out {

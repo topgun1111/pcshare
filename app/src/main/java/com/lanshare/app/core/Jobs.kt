@@ -354,6 +354,8 @@ object Jobs {
             val failed = ArrayList<String>()
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
+            // opts.join: files of any kind printed as ONE job (pcprint.py joins their pages in this order, then lays them out once)
+            val join = !sheet && files.size > 1 && opts?.optString("join") == "1"
             val bid = java.lang.Long.toString(System.nanoTime(), 36)
             val kb = java.lang.Long.toString(System.nanoTime(), 36)   // one key per file of this job: pcprint.py ignores a request whose key it has already printed
             val rots = opts?.optJSONArray("rots")
@@ -375,7 +377,8 @@ object Jobs {
                     var sendName = name
                     val kind = PrintPrep.kind(ext)
                     if (kind == PrintPrep.Kind.NO || (kind == PrintPrep.Kind.SNIFF && size > PrintPrep.SNIFF_MAX)) throw PrintFail(if (ext.isEmpty()) "this file type cannot be printed" else "$ext files cannot be printed")
-                    if (kind == PrintPrep.Kind.PIC || kind == PrintPrep.Kind.WEB || kind == PrintPrep.Kind.SNIFF) {
+                    val shrinkJpg = kind == PrintPrep.Kind.PASS && (ext == "jpg" || ext == "jpeg") && size > PrintPrep.SHRINK_MIN
+                    if (kind == PrintPrep.Kind.PIC || kind == PrintPrep.Kind.WEB || kind == PrintPrep.Kind.SNIFF || shrinkJpg) {
                         try {
                             Core.cacheDir.mkdirs()
                             val t = java.io.File(Core.cacheDir, "print-" + System.nanoTime().toString(36)).also { tmp = it }
@@ -388,14 +391,21 @@ object Jobs {
                                     o.write(buf, 0, n); sent += n; job.done += n
                                 }
                             }
-                            val out = PrintPrep.convert(kind, t, name).also { if (it.file != t) tmp2 = it.file }
+                            val out = (if (shrinkJpg) {   // a failed shrink is no reason to fail the print: the original goes
+                                try { PrintPrep.shrink(t, name, PrintPrep.printPx(opts?.optString("nup")?.toIntOrNull() ?: 1, opts?.optString("paper").orEmpty())) }
+                                catch (_: Exception) { PrintPrep.Out(t, name) }
+                            } else PrintPrep.convert(kind, t, name)).also { if (it.file != t) tmp2 = it.file }
                             val ins = out.file.inputStream(); opened = ins; body = ins; bodyLen = out.file.length()
                             sendName = out.name
                         } catch (x: Cancelled) { throw x
                         } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     } else if (kind == PrintPrep.Kind.TEXT) sendName = name.substringBeforeLast('.') + ".txt"
                     val counted = body === f   // converted pictures were already counted while they were read
-                    val extra = "&key=$kb-$i" + if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
+                    val extra = "&key=$kb-$i" + when {
+                        sheet -> "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}"
+                        join -> "&batch=$bid&idx=$i&n=${files.size}&join=1"
+                        else -> ""
+                    }
                     val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
                         120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
                     try {
@@ -411,6 +421,10 @@ object Jobs {
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
+                    if (join) try {   // a joined job prints the other files; this empty request only keeps pcprint.py's count right (the last file may be the one that failed)
+                        Http.request(ip, PRINT_PORT, "POST", printQuery("skipped.txt", opts, "&key=$kb-$i-s&batch=$bid&idx=$i&n=${files.size}&join=1&skip=1"),
+                            emptyMap(), 30_000, java.io.ByteArrayInputStream(ByteArray(0)), 0L).close()
+                    } catch (_: Exception) {}
                 } finally { f.close(); try { opened?.close() } catch (_: Exception) {}; try { tmp?.delete() } catch (_: Exception) {}; try { tmp2?.delete() } catch (_: Exception) {} }
             }
             job.done = job.total
