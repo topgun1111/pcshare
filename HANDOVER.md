@@ -288,3 +288,22 @@ Delete `BrowserActivity.kt`, the `<activity .BrowserActivity>` line, the `native
 - **Recent prints:** `printHist` in `localStorage` (12 entries: dev, paths, target, opts, names, ok flag set when the job ends). "Recent prints" button in the printer picker -> list -> tap = same files, same printer, same options, sent again (no dialog). Not stored: jobs over 150 paths, "This phone" prints, shared-file prints. The PC `/jobs` endpoint is still not used (the phone's own list also covers Wi-Fi printers).
 - **Shared files:** after a fully successful print started from Android's print dialog (`lsPrintShared`), the copies in `LANShare Shared` are deleted (`POST /api/sharedclean {names}` -> `Jobs.cleanShared`, names only, no paths). A job with any failure keeps them (7-day cleanup as before).
 - Not done: the notification path in `MainActivity.runShare` is "send", not print, so unchanged.
+
+## Batch E - Android print service (PcPrintService)
+- **No "All files access" needed for the hand-over:** `PcPrintService` writes the PDF to `<cacheDir>/print-in/` (files older than 1 day removed). `LocalFs.real()` serves it as the virtual folder `/.print-in/` (`PRINT_IN`). The intent carries `priv=true`; `MainActivity.runPrint` calls `lsPrintShared(names, priv)`; `ui.html` uses `/.print-in/` instead of `/LANShare Shared/`; `POST /api/sharedclean` takes `priv` and `Jobs.cleanShared(names, priv)` deletes from that folder.
+- `job.complete()` is now called after `openInApp` (notification + app start), printer description says that on Android 10+ the notification opens the app.
+- Not done: the optional "each PC / Wi-Fi printer as its own printer entry". `job.block()` was not used: the job cannot be tracked back to LANShare's own job, so it is completed once handed over.
+- Not tested: Kotlin not compiled, ui.html only `node --check`ed.
+
+## Batch F - Wi-Fi printer feedback
+- **Real IPP job status:** `Ipp.jobStatus` (Get-Job-Attributes). `WifiPrint.submit` records the printer's `job-id`; after sending, `waitForJobs` polls up to ~90 s (completed = ok; cancelled / aborted / held-or-stopped with a paper / ink / jam reason = reported as "sent, but ..."). A printer that cannot answer falls back to the old 2.5 s wait + status check.
+- **Ink / toner:** `Ipp.printerAttrs` also asks for `marker-*`; `WifiPrinters.status` returns `ink: [{name, level, color}]` (only 0-100 values); the Wi-Fi print dialog shows them in "Checking printer..." and turns red at <= 10 %.
+- **Retry / resume:** `Ipp.printJob` retries a POST that broke while the file was still being sent (3 tries, no extra copy possible: the printer drops an incomplete job). If every byte was already sent and the answer was lost it does NOT retry (may be printing) and says so. True byte-resume does not exist in IPP.
+- **Plain-language errors:** `friendlyErr()` (Util.kt) rewrites known technical messages (pcprint.py / port 8799 / firewall, printer unreachable, refused job codes, timeouts, lost connection); `Job.toJson` sends `error` (friendly) and `detail` (original); `lvEnd` shows a "Details" button.
+
+## Batch G (part)
+- **PhonePrint, PDF pages per sheet:** a multi-page PDF printed on "This phone" (no pictures in the selection) asks 1/2/4/6/9 per sheet (`askPdfPer`, `ImgOpts.pdfPer`, `PdfSheetPg`, `drawPdfSheet`; grid table = pictures' `GRID`, sheet orientation like the PC path). 1 per sheet keeps the old direct copy of the PDF.
+- **Per-page auto-rotate:** single pages whose orientation does not match the sheet are turned 90 degrees when that makes them > 15 % larger (`drawPdfCell`; only in the re-drawn path).
+- **Text on the phone:** CSV / TSV printed as an aligned table (font shrinks down to 5.5 pt before wrapping); a toast when a text file is cut at 4 MB.
+- NOT done: PDF page ranges as vectors (needs PdfBox / pdfium dependency, cannot be added or checked here), enlarge-to-fit (changes actual-size printing; no UI for it), font size / line numbers / header-footer options for text, Wi-Fi "one job" join, PWG raster over IPP on the PC (only if a real print fails), duplex-swap switch in the app.
+- Not tested: Kotlin not compiled; ui.html only `node --check`ed.

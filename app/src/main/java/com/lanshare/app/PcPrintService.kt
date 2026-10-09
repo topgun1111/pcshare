@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
-import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.print.PrintAttributes
 import android.print.PrinterCapabilitiesInfo
@@ -20,7 +19,7 @@ import java.io.IOException
 
 /**
  * Makes LANShare show up as a printer ("LANShare - print on PC") in Android's own print dialog, so
- * "Print" in ANY app / file manager can pick it. The finished PDF is copied to <storage>/LANShare Shared/
+ * "Print" in ANY app / file manager can pick it. The finished PDF is copied to the app's private cache (print-in/)
  * and MainActivity opens LANShare's own print dialog (PC picker, layout options, preview) for it.
  *
  * The user has to switch the service on once: Settings > Connected devices > Printing > LANShare.
@@ -49,7 +48,7 @@ class PcPrintService : PrintService() {
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
         return PrinterInfo.Builder(id, "LANShare - print on PC", PrinterInfo.STATUS_IDLE)
-            .setDescription("Choose the PC and options in LANShare")
+            .setDescription("Opens LANShare to pick the printer (Android 10+: tap the notification)")
             .setCapabilities(caps)
             .build()
     }
@@ -60,16 +59,17 @@ class PcPrintService : PrintService() {
         Thread {
             try {
                 job.start()
-                val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
-                if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No storage access - allow \"All files access\" for LANShare")
+                val dir = File(cacheDir, "print-in")   // private: no storage permission needed (LocalFs serves it as /.print-in/)
+                if (!dir.isDirectory && !dir.mkdirs()) throw IOException("LANShare could not create its print folder")
+                dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
                 var base = (job.info.label ?: "document").replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(80).ifEmpty { "document" }
                 if (!base.lowercase().endsWith(".pdf")) base += ".pdf"
                 var f = File(dir, base); var k = 1
                 while (f.exists()) { f = File(dir, "${base.removeSuffix(".pdf")} ($k).pdf"); k++ }
                 val pfd: ParcelFileDescriptor = job.document.data ?: throw IOException("No document data")
                 ParcelFileDescriptor.AutoCloseInputStream(pfd).use { ins -> f.outputStream().use { ins.copyTo(it) } }
-                job.complete()
                 openInApp(f.name)
+                job.complete()   // the PDF is handed over; the print itself continues in LANShare (notification / app opens)
             } catch (e: Exception) {
                 try { job.fail(e.message ?: "LANShare could not read the document") } catch (_: Exception) {}
             }
@@ -81,7 +81,7 @@ class PcPrintService : PrintService() {
         val nid = 7000 + (name.hashCode() and 0xFFF)
         val i = Intent(this, MainActivity::class.java)
             .setAction(MainActivity.ACTION_PRINT_SHARED)
-            .putExtra("names", arrayOf(name)).putExtra("nid", nid)
+            .putExtra("names", arrayOf(name)).putExtra("priv", true).putExtra("nid", nid)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         try {
             val nm = getSystemService(NotificationManager::class.java)

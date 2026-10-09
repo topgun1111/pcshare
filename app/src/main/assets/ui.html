@@ -1819,12 +1819,15 @@ function wifiOptions(pr,files){return new Promise(res=>{
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());
   api('GET','/api/printer?dev='+enc(pr.id),null,12000).then(r=>{
     if(!r.ok){info.textContent='Printer not reachable - is it on and on this Wi-Fi?';info.style.color='var(--err)';return}
-    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi';info.style.color='var(--ok)'}
+    const ik=inkTxt(r);
+    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi'+(ik?' \u00b7 '+ik.t+(ik.low?' (low!)':''):'');info.style.color=ik&&ik.low?'var(--err)':'var(--ok)'}
+    if(r.problem&&ik)info.textContent+=' \u00b7 '+ik.t
     if(r.duplex===false)sides.style.display='none';
     if(r.color===false)colour.style.display='none'
   }).catch(()=>{info.textContent='Printer status unavailable'})})}
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
+function inkTxt(r){const a=(r&&r.ink)||[];if(!a.length)return null;return{t:a.map(i=>((i.name||'Ink').replace(/\s*(ink|toner|cartridge)s?\b/ig,'').trim()||'Ink')+' '+i.level+'%').join(' \u00b7 '),low:a.some(i=>i.level<=10)}}
 const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
@@ -2123,7 +2126,7 @@ async function doPrint(preset,cx){
     const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
-window.lsPrintShared=async names=>{
+window.lsPrintShared=async(names,priv)=>{
   try{
     await loadWifi();
     const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
@@ -2133,8 +2136,8 @@ window.lsPrintShared=async names=>{
     if(!to)return;
     if(to.recent)return printRecent();
     try{localStorage.setItem('printTo',to.id)}catch(e){}
-    const clean=r=>{watchJob(r.job);track(r.job).then(ok=>{if(ok)api('POST','/api/sharedclean',{names}).catch(()=>{})})};   /* printed fine: the copy in LANShare Shared is not needed any more */
-    const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
+    const clean=r=>{watchJob(r.job);track(r.job).then(ok=>{if(ok)api('POST','/api/sharedclean',{names,priv:!!priv}).catch(()=>{})})};   /* printed fine: the copy in LANShare Shared is not needed any more */
+    const pvf=names.map(n=>{const path=(priv?'/.print-in/':'/LANShare Shared/')+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
     if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});clean(rw);return}
     const opts=await printOptions(to,pvf,true);if(!opts)return;
     const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});clean(r)
@@ -2374,6 +2377,7 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   L.pc.textContent=ok?'100%':L.pc.textContent;L.now.style.display='none';
   L.sub.style.display='';L.sub.textContent=ok?(j.note||'')+(j.bytes&&el>=1&&j.total>1?(j.note?' · ':'')+fmt(j.total)+' in '+durTxt(el)+' · avg '+fmt(j.total/el)+'/s':(j.note?'':'Finished in '+durTxt(el))):(j.error||'');
   if(!ok&&j.state==='error')L.sub.style.color='var(--err)';
+  if(!ok&&j.detail){const bx=E('div','');bx.style.cssText='margin:2px 0 6px';const tg=E('button','tbtn','Details');tg.style.cssText='font-size:12px;padding:2px 10px';const pre=E('div','');pre.style.cssText='display:none;font-size:11.5px;color:var(--mut);word-break:break-word;margin-top:4px;white-space:pre-wrap;user-select:text';pre.textContent=j.detail;tg.onclick=()=>{pre.style.display=pre.style.display==='none'?'block':'none'};bx.append(tg,pre);L.sub.after(bx)}
   lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(ok?j.total:j.done)+' of '+fmt(j.total):j.done+' of '+j.total],['s','Speed',''],['e','Time left',''],
     ['u','Elapsed',durTxt(el)],['f',j.filesTotal>0?'Files':'Items removed',j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'')],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.cR!=null&&j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}

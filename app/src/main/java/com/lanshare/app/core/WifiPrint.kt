@@ -43,6 +43,7 @@ object WifiPrint {
         val dir = File(Core.appCtx?.cacheDir ?: Core.cacheDir, "wprint").apply { mkdirs() }
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
         warns.set(ArrayList())
+        jids.set(ArrayList())
         try {
             val st = WifiPrinters.status(p.id)
             if (!st.optBoolean("ok")) throw IOException("${p.name} is not reachable - is it switched on and on this Wi-Fi? (${st.optString("why")})")
@@ -133,8 +134,10 @@ object WifiPrint {
                 } finally { temps.forEach { try { it.delete() } catch (_: Exception) {} } }
             }
             job.done = job.total
-            if (failed.isEmpty()) {   // sent: look once more whether the printer complains (jam, out of paper ...)
-                try { Thread.sleep(2500) } catch (_: InterruptedException) {}
+            if (failed.isEmpty()) {   // sent: ask the printer what became of each job (up to ~90 s), then look once more whether it complains (jam, out of paper ...)
+                val ids = jids.get().orEmpty().distinct().take(20)
+                val asked = if (ids.isEmpty()) false else waitForJobs(job, p, ids, failed)
+                if (!asked) try { Thread.sleep(2500) } catch (_: InterruptedException) {}
                 val after = WifiPrinters.status(p.id)
                 val w = if (after.optBoolean("ok") && !after.isNull("problem")) after.optString("problem") else ""
                 if (w.isNotEmpty()) failed.add("sent, but the printer reports $w")
@@ -193,7 +196,47 @@ object WifiPrint {
     }
 
     /** Warnings collected while one job runs (each job has its own thread); shown with the "Sent ..." note. */
+    /** Polls Get-Job-Attributes. Returns false when the printer cannot answer (old firmware): the caller falls back to the short wait. */
+    private fun waitForJobs(job: Job, p: WifiPrinters.P, ids: List<Int>, failed: MutableList<String>): Boolean {
+        fun why(r: Ipp.Resp): String {
+            val rs = r.strs("job-state-reasons").filter { it != "none" && !it.startsWith("job-") }.map { it.replace('-', ' ') }
+            val m = r.strs("job-state-message").firstOrNull().orEmpty()
+            val t = (rs + listOfNotNull(m.ifEmpty { null })).distinct().joinToString(", ")
+            return if (t.isEmpty()) "" else " ($t)"
+        }
+        val open = ids.toMutableList()
+        var answered = false
+        val t0 = System.currentTimeMillis()
+        var tick = 0
+        while (open.isNotEmpty() && System.currentTimeMillis() - t0 < 90_000 && !job.cancel) {
+            val it = open.iterator()
+            while (it.hasNext()) {
+                val id = it.next()
+                val r = try { Ipp.jobStatus(p, id) } catch (_: Exception) { null }
+                if (r == null || !r.ok || r.int("job-state") == null) { it.remove(); continue }   // this printer cannot tell: stop asking about it
+                answered = true
+                when (r.int("job-state")) {
+                    9 -> it.remove()
+                    7 -> { failed.add("sent, but the printer cancelled the job" + why(r)); it.remove() }
+                    8 -> { failed.add("sent, but the printer aborted the job" + why(r)); it.remove() }
+                    4, 6 -> {   // held / stopped: usually paper, ink or a jam - the job waits inside the printer
+                        val w = why(r)
+                        if (w.isNotEmpty() && r.strs("job-state-reasons").any { x -> x.contains("media") || x.contains("toner") || x.contains("ink") || x.contains("jam") || x.endsWith("-error") || x.contains("stopped") }) {
+                            failed.add("sent, but the job is waiting in the printer$w"); it.remove()
+                        }
+                    }
+                }
+            }
+            if (open.isEmpty()) break
+            job.label = "Waiting for ${p.name} to print" + (if (++tick > 3) " (${(System.currentTimeMillis() - t0) / 1000} s)" else "") + "\u2026"
+            try { Thread.sleep(1500) } catch (_: InterruptedException) { break }
+        }
+        if (open.isNotEmpty() && answered && !job.cancel) warns.get()?.add("the printer was still working when LANShare stopped waiting")
+        return answered
+    }
+
     private val warns = ThreadLocal<ArrayList<String>>()
+    private val jids = ThreadLocal<ArrayList<Int>>()   // job-ids the printer gave us for what was sent in this job
 
     /**
      * Sends one job. When the printer rejects an option, options are dropped one at a time and two-sided printing ("sides") is dropped LAST,
@@ -221,6 +264,7 @@ object WifiPrint {
             }
         }
         if (r == null || !r.ok) throw PrintFail(Ipp.statusText(r?.status ?: 0x0400))
+        r.int("job-id")?.let { jids.get()?.add(it) }
     }
 
     private fun fmtList(p: WifiPrinters.P) = p.formats.filter { !it.contains("octet") }.take(4).joinToString(", ")

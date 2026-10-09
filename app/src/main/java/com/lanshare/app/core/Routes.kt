@@ -176,7 +176,7 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
-            "sharedclean" -> ex.json(JSONObject().put("deleted", Jobs.cleanShared(b.getJSONArray("names").strings())))
+            "sharedclean" -> ex.json(JSONObject().put("deleted", Jobs.cleanShared(b.getJSONArray("names").strings(), b.optBoolean("priv"))))
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }

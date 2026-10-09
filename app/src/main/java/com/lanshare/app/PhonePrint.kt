@@ -70,6 +70,7 @@ class PhonePrint(private val act: Activity) {
     private class PdfPg(val src: PdfSrc, val idx: Int) : Pg()
     private class ImgPg(val items: List<Pair<File, Int>>) : Pg()
     private class TxtPg(val lay: StaticLayout, val from: Int, val to: Int) : Pg()
+    private class PdfSheetPg(val items: List<PdfPg>) : Pg()   // several PDF pages on one sheet
 
     /** json = {items:[{name, url}]}; urls must point at the app's own local server. */
     fun start(json: String) {
@@ -159,7 +160,11 @@ class PhonePrint(private val act: Activity) {
         if (failed.isNotEmpty()) toast("Can't print " + failed.joinToString("; "))
         if (ins.isEmpty()) { all.forEach { it.delete() }; return }
         val imgs = ins.count { it.kind == "img" }
-        if (imgs == 0 || given != null) build(ins, all, given ?: ImgOpts())
+        val multi = imgs == 0 && given == null && ins.any { it.kind == "pdf" && pdfPages(it.file) > 1 }
+        if (multi) act.runOnUiThread {   // multi-page PDF / document: one small question, 1 per sheet is preselected
+            askPdfPer { n -> pool.execute { try { build(ins, all, ImgOpts(pdfPer = n)) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) } } }
+        }
+        else if (imgs == 0 || given != null) build(ins, all, given ?: ImgOpts())
         else act.runOnUiThread {
             askLayout(imgs) { opts ->
                 pool.execute {
@@ -171,7 +176,8 @@ class PhonePrint(private val act: Activity) {
 
     /** Options of the picture-sheet dialog (ui.html printOptions): pictures per sheet, fill, margin, border, per-picture turn, order. */
     private class ImgOpts(val per: Int = 1, val fill: Boolean = false, val margin: Float = 0f, val border: Boolean = false,
-                          val rots: List<Int> = emptyList(), val reverse: Boolean = false, val noauto: Boolean = true, val paper: String = "")
+                          val rots: List<Int> = emptyList(), val reverse: Boolean = false, val noauto: Boolean = true, val paper: String = "",
+                          val pdfPer: Int = 1)   // pages per sheet for PDF / document pages (pictures use [per])
 
     private fun parseOpts(o: JSONObject?): ImgOpts? {
         if (o == null) return null
@@ -183,6 +189,32 @@ class PhonePrint(private val act: Activity) {
             margin = o.optString("margin").toFloatOrNull()?.coerceIn(0f, 72f) ?: 14f,
             border = on("border"), rots = if (r == null) emptyList() else List(r.length()) { (r.optInt(it, 0) % 360 + 360) % 360 },
             reverse = on("reverse"), noauto = on("noauto"), paper = o.optString("paper"))
+    }
+
+    private fun pdfPages(f: File): Int {
+        var fd: ParcelFileDescriptor? = null
+        var r: PdfRenderer? = null
+        return try {
+            fd = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY)
+            r = PdfRenderer(fd)
+            r.pageCount
+        } catch (_: Exception) { 1 } finally {
+            try { r?.close() } catch (_: Exception) {}
+            try { fd?.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun askPdfPer(done: (Int) -> Unit) {
+        val prefs = act.getSharedPreferences("ls_print", Context.MODE_PRIVATE)
+        val vals = intArrayOf(1, 2, 4, 6, 9)
+        val labels = arrayOf("1 page per sheet", "2 pages per sheet", "4 pages per sheet", "6 pages per sheet", "9 pages per sheet")
+        var sel = 0   // always starts at 1 per sheet: n-up is a choice for this print only
+        AlertDialog.Builder(act)
+            .setTitle("Pages per sheet")
+            .setSingleChoiceItems(labels, sel) { _, w -> sel = w }
+            .setPositiveButton("Print") { _, _ -> prefs.edit().putInt("pdfper", vals[sel]).apply(); done(vals[sel]) }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun askLayout(n: Int, done: (ImgOpts) -> Unit) {   // pictures mixed with other files: the small question (all pictures: the full dialog in ui.html)
@@ -241,7 +273,10 @@ class PhonePrint(private val act: Activity) {
 
         fun firstIsLandscape(): Boolean {
             return when (val p = parts[0]) {
-                is PdfPart -> { val pg = p.src.r.openPage(0); try { pg.width > pg.height } finally { pg.close() } }
+                is PdfPart -> { val pg = p.src.r.openPage(0); try {
+                    val land = pg.width > pg.height
+                    if (op.pdfPer == 2 || op.pdfPer == 6) !land else land   // 2 / 6 per sheet: portrait pages sit best on a landscape sheet (same table as the PC path)
+                } finally { pg.close() } }
                 is ImgPart -> imgLandscape(p)
                 is TxtPart -> false
             }
@@ -271,7 +306,11 @@ class PhonePrint(private val act: Activity) {
                     val list = ArrayList<Pg>()
                     for (p in parts) {
                         when (p) {
-                            is PdfPart -> for (k in 0 until p.src.count) list.add(PdfPg(p.src, k))
+                            is PdfPart -> {
+                                val n = op.pdfPer
+                                if (n <= 1) for (k in 0 until p.src.count) list.add(PdfPg(p.src, k))
+                                else { var k = 0; while (k < p.src.count) { list.add(PdfSheetPg((k until minOf(k + n, p.src.count)).map { PdfPg(p.src, it) })); k += n } }
+                            }
                             is ImgPart -> { val n = op.per; var k = 0; while (k < p.items.size) { list.add(ImgPg(p.items.subList(k, minOf(k + n, p.items.size)))); k += n } }
                             is TxtPart -> paginate(p.file, cw, ch, list)
                         }
@@ -295,7 +334,7 @@ class PhonePrint(private val act: Activity) {
                     val a = attrs ?: throw IOException("no layout")
                     val sel = selected(range, list.size)
                     val only = if (parts.size == 1) parts[0] as? PdfPart else null
-                    if (only != null && sel.size == list.size) {
+                    if (only != null && op.pdfPer <= 1 && sel.size == list.size) {
                         FileOutputStream(out.fileDescriptor).use { o -> only.src.file.inputStream().use { it.copyTo(o) } }
                     } else {
                         val doc = PrintedPdfDocument(act, a)
@@ -329,6 +368,7 @@ class PhonePrint(private val act: Activity) {
         private fun drawPage(c: Canvas, box: Rect, pg: Pg) {
             when (pg) {
                 is PdfPg -> drawPdf(c, box, pg)
+                is PdfSheetPg -> drawPdfSheet(c, box, pg)
                 is ImgPg -> drawSheet(c, box, pg)
                 is TxtPg -> {
                     if (pg.lay.lineCount == 0) return
@@ -344,12 +384,36 @@ class PhonePrint(private val act: Activity) {
             }
         }
 
-        private fun drawPdf(c: Canvas, box: Rect, pg: PdfPg) {
+        private fun drawPdf(c: Canvas, box: Rect, pg: PdfPg) = drawPdfCell(c, RectF(box), pg, true)
+
+        /** Several PDF pages on one sheet: grid from the same table as the pictures, chosen by the sheet's orientation. */
+        private fun drawPdfSheet(c: Canvas, box: Rect, pg: PdfSheetPg) {
+            val g = GRID[op.pdfPer] ?: GRID[1]!!
+            val (cols, rows) = if (box.width() > box.height()) g.second else g.first
+            val m = if (op.pdfPer >= 6) 6f else 10f
+            val cw = (box.width() - 2 * m - (cols - 1) * GAP) / cols
+            val ch = (box.height() - 2 * m - (rows - 1) * GAP) / rows
+            val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.6f; color = Color.BLACK }
+            pg.items.forEachIndexed { i, it ->
+                val col = i % cols; val row = i / cols
+                if (row >= rows) return
+                val l = box.left + m + col * (cw + GAP); val t = box.top + m + row * (ch + GAP)
+                val cell = RectF(l, t, l + cw, t + ch)
+                drawPdfCell(c, cell, it, false)
+                if (op.border) c.drawRect(cell, line)
+            }
+        }
+
+        /** One PDF page into [cell]: shrunk to fit, never enlarged. [rotate] = single page per sheet: a page whose orientation does not match the sheet is turned 90 degrees when that makes it clearly bigger. */
+        private fun drawPdfCell(c: Canvas, cell: RectF, pg: PdfPg, rotate: Boolean) {
             val page = pg.src.r.openPage(pg.idx)
             try {
                 val pw = page.width.toFloat()
                 val ph = page.height.toFloat()
-                val k = minOf(box.width() / pw, box.height() / ph, 1f)   // fit into the printable area, never enlarge
+                val kn = minOf(cell.width() / pw, cell.height() / ph, 1f)
+                val kr = minOf(cell.width() / ph, cell.height() / pw, 1f)
+                val turn = rotate && kr > kn * 1.15f
+                val k = if (turn) kr else kn
                 val dw = pw * k
                 val dh = ph * k
                 var bw = dw * DPI / 72f
@@ -359,9 +423,11 @@ class PhonePrint(private val act: Activity) {
                 val bmp = Bitmap.createBitmap(maxOf(bw.toInt(), 1), maxOf(bh.toInt(), 1), Bitmap.Config.ARGB_8888)
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                val l = box.left + (box.width() - dw) / 2f
-                val t = box.top + (box.height() - dh) / 2f
-                c.drawBitmap(bmp, null, RectF(l, t, l + dw, t + dh), paint)
+                c.save()
+                c.translate(cell.centerX(), cell.centerY())
+                if (turn) c.rotate(90f)
+                c.drawBitmap(bmp, null, RectF(-dw / 2f, -dh / 2f, dw / 2f, dh / 2f), paint)
+                c.restore()
                 bmp.recycle()
             } finally { page.close() }
         }
@@ -471,9 +537,17 @@ class PhonePrint(private val act: Activity) {
 
         // -------------------------------------------------------------- text
         private fun paginate(f: File, cw: Int, ch: Int, out: MutableList<Pg>) {
-            val txt = readText(f).replace("\t", "    ")
-            val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 9.5f; typeface = Typeface.MONOSPACE; color = Color.BLACK }
+            val raw = readText(f)
+            val low = f.name.lowercase()
+            val table = low.endsWith(".csv") || low.endsWith(".tsv")
+            val txt = (if (table) csvTable(raw, if (low.endsWith(".tsv")) '\t' else null) else raw).replace("\t", "    ")
             val w = maxOf(cw - 2 * PAD, 100)
+            var fs = 9.5f
+            if (table) {   // wide tables: a smaller font (down to 5.5 pt) before lines wrap
+                val chars = txt.lineSequence().maxOfOrNull { it.length } ?: 1
+                fs = (w / (chars * 0.6f)).coerceIn(5.5f, 9.5f)
+            }
+            val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = fs; typeface = Typeface.MONOSPACE; color = Color.BLACK }
             val lay = StaticLayout.Builder.obtain(txt, 0, txt.length, tp, w).setIncludePad(false).build()
             val avail = ch - 2 * PAD
             val n = lay.lineCount
@@ -487,6 +561,41 @@ class PhonePrint(private val act: Activity) {
                 out.add(TxtPg(lay, line, end))
                 line = end
             }
+        }
+
+        /** CSV / TSV as an aligned table (columns padded to their widest cell, at most 40 characters each; quoted cells and "" are understood). [sep] null = comma or semicolon, whichever the first line uses more. */
+        private fun csvTable(src: String, sep: Char?): String {
+            val first = src.lineSequence().firstOrNull().orEmpty()
+            val d = sep ?: if (first.count { it == ';' } > first.count { it == ',' }) ';' else ','
+            val rows = ArrayList<List<String>>()
+            var row = ArrayList<String>(); val cell = StringBuilder(); var q = false; var i = 0
+            while (i < src.length && rows.size < 20000) {
+                val ch = src[i]
+                when {
+                    q && ch == '"' && i + 1 < src.length && src[i + 1] == '"' -> { cell.append('"'); i++ }
+                    ch == '"' -> q = !q
+                    !q && ch == d -> { row.add(cell.toString()); cell.setLength(0) }
+                    !q && (ch == '\n' || ch == '\r') -> {
+                        if (ch == '\r' && i + 1 < src.length && src[i + 1] == '\n') i++
+                        row.add(cell.toString()); cell.setLength(0); rows.add(row); row = ArrayList()
+                    }
+                    else -> cell.append(if (q && (ch == '\n' || ch == '\r')) ' ' else ch)
+                }
+                i++
+            }
+            if (cell.isNotEmpty() || row.isNotEmpty()) { row.add(cell.toString()); rows.add(row) }
+            val n = rows.maxOfOrNull { it.size } ?: 0
+            val wid = IntArray(n)
+            for (r in rows) r.forEachIndexed { k, v -> wid[k] = minOf(40, maxOf(wid[k], v.length)) }
+            val sb = StringBuilder()
+            for (r in rows) {
+                for (k in 0 until n) {
+                    val v = (r.getOrNull(k) ?: "").let { if (it.length > 40) it.take(39) + "…" else it }
+                    if (k < n - 1) sb.append(v.padEnd(wid[k])).append("  ") else sb.append(v)
+                }
+                sb.append('\n')
+            }
+            return sb.toString()
         }
 
         /** UTF-8 (with or without BOM), otherwise the Turkish Windows code page; at most 4 MB are read. */
@@ -504,6 +613,7 @@ class PhonePrint(private val act: Activity) {
             val outb = CharBuffer.allocate(b.size + 1)
             val res = dec.decode(inb, outb, !all)
             val s = if (res.isError) String(b, Charset.forName("windows-1254")) else { outb.flip(); outb.toString() }
+            if (all) toast("This text file is bigger than 4 MB: only the first 4 MB are printed")
             return s.removePrefix("\uFEFF")
         }
     }

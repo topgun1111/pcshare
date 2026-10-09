@@ -111,7 +111,8 @@ class Job(@Volatile var label: String) {
     }
 
     fun toJson(since: Int = -1): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
-        .put("error", error ?: JSONObject.NULL).put("label", label).also {
+        .put("error", friendlyErr(error).first ?: JSONObject.NULL).put("label", label).also {
+            friendlyErr(error).second?.let { d -> it.put("detail", d) }
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
             it.put("elapsed", ((if (end > 0) end else System.currentTimeMillis()) - startedAt) / 1000.0)
@@ -336,8 +337,8 @@ object Jobs {
     }
 
     /** Deletes files in "LANShare Shared" (documents handed over by Android's print dialog) after they were printed. Names only, never paths. */
-    fun cleanShared(names: List<String>): Int {
-        val dir = File(android.os.Environment.getExternalStorageDirectory(), "LANShare Shared")
+    fun cleanShared(names: List<String>, priv: Boolean = false): Int {
+        val dir = if (priv) File(Core.appCtx?.cacheDir ?: return 0, "print-in") else File(android.os.Environment.getExternalStorageDirectory(), "LANShare Shared")
         var n = 0
         for (nm in names) {
             if (nm.isEmpty() || nm == "." || nm == ".." || nm.contains('/') || nm.contains('\\')) continue

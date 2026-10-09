@@ -11,6 +11,7 @@ import java.nio.ByteBuffer
 /** Minimal IPP 1.1 client (RFC 8010 / 8011): Get-Printer-Attributes and Print-Job over plain HTTP, for Wi-Fi printers found by [WifiPrinters]. */
 object Ipp {
     private const val OP_PRINT_JOB = 0x0002
+    private const val OP_GET_JOB_ATTRS = 0x0009
     private const val OP_GET_PRINTER_ATTRS = 0x000B
 
     class Attr(val tag: Int, val v: ByteArray)
@@ -19,6 +20,7 @@ object Ipp {
         val ok: Boolean get() = status < 0x100
         fun strs(n: String): List<String> = attrs[n]?.map { String(it.v, Charsets.UTF_8) } ?: emptyList()
         fun int(n: String): Int? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int }
+        fun ints(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
         fun bool(n: String): Boolean? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 1 }?.let { it[0].toInt() != 0 }
         /** resolution values (9 bytes: x, y, unit) -> the x dpi of each */
         fun dpis(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 9 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
@@ -59,8 +61,17 @@ object Ipp {
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
             "media-ready", "media-default", "media-supported",
-            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back"))
+            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back",
+            "marker-levels", "marker-names", "marker-types", "marker-colors", "printer-state-message"))
         return call(p, rq.finish(), null, 0, 8000, null)
+    }
+
+    /** Get-Job-Attributes: the printer's own view of a job we sent (job-state 3 pending, 4 held, 5 processing, 6 stopped, 7 cancelled, 8 aborted, 9 completed). */
+    fun jobStatus(p: WifiPrinters.P, jobId: Int): Resp {
+        val rq = Req(OP_GET_JOB_ATTRS, p.uri)
+        rq.int("job-id", jobId)
+        rq.strs(0x44, "requested-attributes", listOf("job-state", "job-state-reasons", "job-state-message", "job-impressions-completed", "job-media-sheets-completed"))
+        return call(p, rq.finish(), null, 0, 6000, null)
     }
 
     /** Sends [file] as one job. [mime] = application/pdf or image/jpeg. */
@@ -81,7 +92,20 @@ object Ipp {
             }
         }
         val head = rq.finish()
-        return file.inputStream().use { call(p, head, it, file.length(), 180_000, onSent) }
+        // A dropped connection while the file is still being sent is retried (the printer throws away an incomplete job, so no extra copy can come out).
+        // Once every byte has left the phone a lost answer is NOT retried: the printer may already be printing.
+        var attempt = 0
+        while (true) {
+            var sent = 0L
+            val total = head.size + file.length()
+            try {
+                return file.inputStream().use { call(p, head, it, file.length(), 180_000) { n -> sent += n; onSent?.invoke(n) } }
+            } catch (e: IOException) {
+                if (sent >= total) throw IOException("the printer did not answer after the file was sent - it may still print it, check the printer before sending again (" + (e.message ?: e.javaClass.simpleName) + ")")
+                if (++attempt >= 3) throw e
+                try { Thread.sleep(2000L * attempt) } catch (_: InterruptedException) { throw e }
+            }
+        }
     }
 
     private fun call(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
