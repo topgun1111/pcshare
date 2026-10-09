@@ -2198,6 +2198,7 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
   L.hide.onclick=()=>{const o=$('#sheet');o.style.display='none';o.onclick=null};
   const bad=(j.problems||[]).length>1;
+  if(ok&&el<1.5&&!bad&&!j.live&&!L.min&&!L.hidden){const o=$('#sheet');o.style.display='none';o.onclick=null;return false}   // tiny job: card was only a flash, close it and let the toast say it
   if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
   if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}
@@ -2207,6 +2208,7 @@ $('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('
 let trk=0;
 async function track(id){
   let ok=false,jf=0;curJob=id;trk++;
+  if(!LVS&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){LVS=lvMake(id);LVS.auto=true;lvShow()}   // card opens at once, before the first poll
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
     if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
