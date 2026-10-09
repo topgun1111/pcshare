@@ -25,6 +25,8 @@ android {
         targetSdk = 34
         versionCode = buildCode
         versionName = "$baseVersion.$commitCount" + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
+        // Image search libraries (ONNX Runtime, ML Kit) ship native code per CPU type; keep only 64-bit ARM (all current phones) to cut the APK by ~3/4 of that.
+        ndk { abiFilters += "arm64-v8a" }
     }
     // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.
     // CI secret'ları (KEYSTORE_FILE...) verilirse onlar, yoksa depodaki app/lanshare.jks kullanılır.
