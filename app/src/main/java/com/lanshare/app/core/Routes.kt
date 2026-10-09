@@ -181,6 +181,7 @@ object Routes {
                 "selftest" -> ClipEngine.selfTest()   // first device test: tokenizer ids + text vector sanity + timings
                 "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false), dir = b.optString("dir", "")); ImgSearch.status() }
                 "cancel" -> { ImgSearch.cancel(); ImgSearch.status() }
+                "auto" -> { if (b.has("charging")) ImgSearch.setAutoCharging(b.optBoolean("charging", false)); if (b.has("on")) ImgSearch.setAuto(b.optBoolean("on", true)); ImgSearch.status() }   // scan new pictures by itself (default on)
                 "included" -> { ImgSearch.setIncluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan is limited to (empty = all)
                 "excluded" -> { ImgSearch.setExcluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan skips
                 "clear" -> { ImgSearch.clear(); ImgSearch.status() }

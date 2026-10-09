@@ -1,5 +1,13 @@
 package com.lanshare.app.core
 
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.database.ContentObserver
+import android.os.BatteryManager
+import android.os.Handler
+import android.os.HandlerThread
+import android.provider.MediaStore
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -227,13 +235,13 @@ object ImgSearch {
     fun setExcluded(list: List<String>) { Cfg.setImgExcluded(cleanList(list)); exclCache = null; prune() }
     fun setIncluded(list: List<String>) { Cfg.setImgIncluded(cleanList(list)); inclCache = null; prune() }
 
-    private fun discover(only: String = ""): List<Found> {
+    private fun discover(only: String = "", honorCancel: Boolean = true): List<Found> {
         val root = Core.local.root
         val rp = root.path.trimEnd('/')
         val out = ArrayList<Found>()
         val budget = intArrayOf(200000)   // directories
         fun walk(d: File, rel: String) {
-            if (budget[0]-- <= 0 || cancel) return
+            if (budget[0]-- <= 0 || (honorCancel && cancel)) return
             val fs = d.listFiles() ?: return
             for (f in fs) {
                 if (f.name.startsWith(".")) continue
@@ -263,7 +271,7 @@ object ImgSearch {
             .put("engine", e?.id ?: JSONObject.NULL).put("ocr", e?.canOcr ?: false)
             .put("total", total).put("done", done)
             .put("indexed", withVec).put("withText", withText).put("failed", failed).put("count", items.size)
-            .put("excluded", JSONArray(Cfg.imgExcluded())).put("included", JSONArray(Cfg.imgIncluded())).put("msg", msg).put("error", err ?: JSONObject.NULL).put("saveError", saveErr ?: JSONObject.NULL).put("msPerPic", msPerPic)
+            .put("excluded", JSONArray(Cfg.imgExcluded())).put("included", JSONArray(Cfg.imgIncluded())).put("msg", msg).put("error", err ?: JSONObject.NULL).put("saveError", saveErr ?: JSONObject.NULL).put("msPerPic", msPerPic).put("auto", Cfg.imgAuto()).put("autoCharging", Cfg.imgAutoCharging())
             .put("model", ClipEngine.state())   // {installed, installing, msg, error, bytes, totalBytes}: the one-time model download
     }
 
@@ -381,6 +389,95 @@ object ImgSearch {
         markCur(null)
         if (done > 0) msPerPic = (System.currentTimeMillis() - t0) / done
         if (!cancel) msg = notice ?: "Ready"
+    }
+
+
+    // ---------------------------------------------------------------- automatic scan of new pictures
+    // A MediaStore observer (camera, screenshots, downloads, anything the system indexes) + a slow poll (files that arrive without a
+    // MediaStore entry, e.g. received over LANShare) call [autoTick]. It runs the normal incremental scan, which only touches new /
+    // changed pictures. Not before the user has done a first scan (the index is empty until then), not while the battery is low.
+    private const val AUTO_DEBOUNCE = 20_000L      // let the camera finish writing the file / a burst of changes settle
+    private const val AUTO_POLL = 10 * 60_000L     // fallback when no change notification comes
+    private const val AUTO_BUSY = 30_000L          // a scan is running: look again afterwards
+    private const val AUTO_LOWBAT = 15 * 60_000L   // power rules say wait
+    @Volatile private var autoStarted = false
+    @Volatile private var autoH: Handler? = null
+    @Volatile private var autoCtx: Context? = null
+    private val autoRun = Runnable { autoTick() }
+
+    fun autoEnabled(): Boolean = Cfg.imgAuto()
+
+    fun setAuto(on: Boolean) {
+        Cfg.setImgAuto(on)
+        if (on) autoPoke(3_000) else autoH?.removeCallbacks(autoRun)
+    }
+
+    /** Call once at app start (Core.start). Safe to call again. */
+    fun startAutoWatch(ctx: Context) {
+        synchronized(this) { if (autoStarted) return; autoStarted = true }
+        try {
+            autoCtx = ctx.applicationContext
+            val t = HandlerThread("imgsearch-auto").also { it.isDaemon = true; it.start() }
+            val h = Handler(t.looper); autoH = h
+            val obs = object : ContentObserver(h) {
+                override fun onChange(selfChange: Boolean) { if (Cfg.imgAuto()) autoPoke(AUTO_DEBOUNCE) }
+            }
+            try { ctx.contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, obs) } catch (_: Throwable) {}
+            autoPoke(60_000)   // shortly after start: pictures that arrived while the app was not running
+        } catch (t: Throwable) { Log.w("ImgSearch", "auto watch failed: " + errText(t)) }
+    }
+
+    private fun autoPoke(delayMs: Long) { val h = autoH ?: return; h.removeCallbacks(autoRun); h.postDelayed(autoRun, delayMs) }
+
+    /** (battery percent or -1, charging). */
+    private fun power(): Pair<Int, Boolean> = try {
+        val i = autoCtx?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val lvl = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1; val sc = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val st = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        (if (lvl >= 0 && sc > 0) lvl * 100 / sc else -1) to (st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL)
+    } catch (_: Throwable) { -1 to false }
+
+    /** True when the power rules say: not now (only while charging, or battery < 20 % and not charging). */
+    private fun powerBlocks(): Boolean { val (lvl, chg) = power(); return !chg && (Cfg.imgAutoCharging() || (lvl in 0..19)) }
+
+    /** Cheap check, no writes: is there any picture the incremental scan would still have to analyse? Only lists folders. */
+    private fun hasNew(ocr: Boolean): Boolean {
+        val found = discover("", false)
+        synchronized(lock) {
+            for (f in found) {
+                val e = items[f.path] ?: return true
+                if (e.m != f.m || e.s != f.s) return true
+                if (!e.failed && (e.vec == null || (ocr && e.text == null))) return true
+            }
+        }
+        return false
+    }
+
+    fun setAutoCharging(on: Boolean) { Cfg.setImgAutoCharging(on); if (Cfg.imgAuto()) autoPoke(3_000) }
+
+    private fun autoTick() {
+        var next = AUTO_POLL
+        try {
+            if (!Cfg.imgAuto()) return                       // switched off: setAuto(true) re-arms
+            val eng = engine
+            if (eng == null || Core.storageOk == false) {
+                // nothing to do now; poll again later
+            } else if (running) {
+                next = AUTO_BUSY
+            } else {
+                ensureLoaded()
+                val (empty, withText) = synchronized(lock) { items.isEmpty() to items.values.any { !it.text.isNullOrEmpty() } }
+                if (empty) {
+                    // no first scan yet: the user starts that one
+                } else if (powerBlocks()) {
+                    next = AUTO_LOWBAT
+                } else {
+                    val ocr = withText && eng.canOcr         // keeps the mode the existing index was built with
+                    if (hasNew(ocr)) start(ocr, false)       // nothing new = no scan, no index rewrite, no notification
+                }
+            }
+        } catch (_: Throwable) {
+        } finally { if (Cfg.imgAuto()) autoPoke(next) }
     }
 
     // ---------------------------------------------------------------- search

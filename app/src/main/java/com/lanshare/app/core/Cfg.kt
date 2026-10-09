@@ -39,6 +39,13 @@ object Cfg {
     @Synchronized fun imgIncluded(): List<String> { val a = obj.optJSONArray("img_incl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
     @Synchronized fun setImgIncluded(l: List<String>) { obj.put("img_incl", JSONArray(l)); save() }
 
+    /** Picture scan runs by itself when new pictures show up (default on; only once a first scan has been done). */
+    @Synchronized fun imgAuto(): Boolean = obj.optBoolean("img_auto", true)
+    @Synchronized fun setImgAuto(v: Boolean) { obj.put("img_auto", v); save() }
+    /** Automatic picture scans only while the phone is charging (default off). */
+    @Synchronized fun imgAutoCharging(): Boolean = obj.optBoolean("img_auto_chg", false)
+    @Synchronized fun setImgAutoCharging(v: Boolean) { obj.put("img_auto_chg", v); save() }
+
     /** Wi-Fi printers this device has found (kept across restarts / sleep, so they are still offered when mDNS is silent with the screen off). */
     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }

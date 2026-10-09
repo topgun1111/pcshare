@@ -1482,6 +1482,14 @@ function openSettings(){
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
     rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
+    const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
+    api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
+    ra.onclick=async()=>{if(ra._on===undefined)return;try{const r=await api('POST','/api/imgs',{op:'auto',on:!ra._on});ra._on=r.auto!==false;sa.textContent=txt(ra._on)}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(ra)}
+  {const rc=E('button','set'),tc=E('div','t'),sc=E('small','','Checking\u2026');rc.style.width='100%';rc.style.textAlign='left';tc.append(E('b','','Auto-scan only while charging'),sc);rc.append(tc);
+    const txt=on=>on?'On - new pictures wait until the charger is connected':'Off - scans also run on battery (paused below 20%)';
+    api('GET','/api/imgs').then(r=>{rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}).catch(()=>{sc.textContent=''});
+    rc.onclick=async()=>{if(rc._on===undefined)return;try{const r=await api('POST','/api/imgs',{op:'auto',charging:!rc._on});rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rc)}
   {const rm=E('button','set'),tm=E('div','t'),sm2=E('small','','Search model for Image search');rm.style.width='100%';rm.style.textAlign='left';tm.append(E('b','','Image search model'),sm2);rm.append(tm);
     api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
     rm.onclick=async()=>{if(!rm._ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;

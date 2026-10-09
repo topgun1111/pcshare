@@ -47,6 +47,7 @@ object Core {
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
             try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
+            try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             var srv: MiniHttp? = null
             var port = BASE_PORT
