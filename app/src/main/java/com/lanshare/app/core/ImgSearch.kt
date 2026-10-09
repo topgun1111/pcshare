@@ -251,6 +251,9 @@ object ImgSearch {
 
     fun isRunning() = running
 
+    /** For the foreground notification: (running, done, total). total is 0 while folders are still being listed. */
+    fun progress(): Triple<Boolean, Int, Int> = Triple(running, done, total)
+
     private fun scan(eng: Engine, ocr: Boolean, force: Boolean) {
         val found = discover()
         if (cancel) { msg = "Cancelled"; return }
