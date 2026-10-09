@@ -36,7 +36,7 @@ object MdRender {
     fun render(src: String, textColor: Int, night: Boolean, density: Float): CharSequence {
         val cut = src.length > MAX_CHARS
         val lines = (if (cut) src.substring(0, MAX_CHARS) else src).replace("\r\n", "\n").replace('\r', '\n').split('\n')
-        val c = Ctx(ColorUtils.setAlphaComponent(textColor, 150), if (night) 0xFF8AB4F8.toInt() else 0xFF1A5FB4.toInt(),
+        val c = Ctx(ColorUtils.setAlphaComponent(textColor, 150), if (night) 0xFFFFB77C.toInt() else 0xFFC25100.toInt(),
             ColorUtils.setAlphaComponent(textColor, 32), density)
         val sb = SpannableStringBuilder()
         var inCode = false

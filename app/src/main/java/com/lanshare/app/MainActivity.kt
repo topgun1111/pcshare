@@ -570,7 +570,7 @@ class MainActivity : Activity() {
     }
 
     private fun page(msg: String, extra: String = "") =
-        "<html><body style='background:#1565C0;color:#fff;font-family:sans-serif;text-align:center;padding:30% 8% 0'>" +
+        "<html><body style='background:#E65100;color:#fff;font-family:sans-serif;text-align:center;padding:30% 8% 0'>" +
         "<h2>LANShare</h2><p>$msg</p><pre style='text-align:left;white-space:pre-wrap;font-size:11px'>$extra</pre></body></html>"
 
     private fun loadWhenReady() {

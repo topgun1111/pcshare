@@ -1,5 +1,6 @@
 <resources>
-    <color name="brand">#1565C0</color>
+    <color name="brand">#E65100</color>
+    <color name="accent">#C25100</color>
     <color name="bar">#FFFFFF</color>
     <color name="white">#FFFFFF</color>
 </resources>

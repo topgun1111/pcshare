@@ -5,6 +5,9 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowBackground">@color/white</item>
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorControlActivated">@color/accent</item>
     </style>
     <style name="Theme.LANShare.Player" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>

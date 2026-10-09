@@ -45,9 +45,9 @@ object NlModel {
 
     private class Badge(val icon: String, val color: Int)
     private val BADGE: Map<String, Badge> = mapOf(
-        "dcim" to Badge("camera", col(0x333333)), "download" to Badge("download", col(0x2f9bd8)), "downloads" to Badge("download", col(0x2f9bd8)),
+        "dcim" to Badge("camera", col(0x333333)), "download" to Badge("download", col(0xe65100)), "downloads" to Badge("download", col(0xe65100)),
         "movies" to Badge("vid", col(0xb3261e)), "music" to Badge("aud", col(0x0f8a6d)), "pictures" to Badge("img", col(0x2e7d32)),
-        "documents" to Badge("doc", col(0x1a6fd1))
+        "documents" to Badge("doc", col(0x8d4b00))
     )
 
     // ui.html kind(): the extension is whatever follows the last '.', or the whole name when there is no dot (same quirk)

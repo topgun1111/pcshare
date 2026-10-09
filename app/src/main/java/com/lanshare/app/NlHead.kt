@@ -162,7 +162,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFF5F5F5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.STROKE; fillP.strokeWidth = 1f; fillP.color = 0xFFB5B5B5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFE53935.toInt(); cv.drawPath(hm2, fillP)
-        fillP.color = 0xFF3D8FD6.toInt(); cv.drawPath(hm3, fillP)
+        fillP.color = 0xFFFB8C00.toInt(); cv.drawPath(hm3, fillP)
         cv.restore()
     }
 

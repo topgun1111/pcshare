@@ -56,7 +56,7 @@ class ImageEditActivity : Activity() {
         private const val PREVIEW = 2048
         private const val MAX_SIDE = 8192
         private const val MAX_PIX = 64_000_000L
-        private const val ACCENT = 0xFF0D8F7E.toInt()
+        private const val ACCENT = 0xFFFF8F00.toInt()
     }
 
     private lateinit var src: File
