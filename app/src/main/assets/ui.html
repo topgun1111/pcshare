@@ -2180,7 +2180,7 @@ function lvFeed(id,j){
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden)lvShow();
   }else L.askBox.style.display='none';
-  return !L.hidden}
+  return !L.hidden||(!L.min&&!(j.elapsed>=2.6))}   // also true during the first ~2 s (card about to open): keeps the old bottom bar from flashing
 /* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
 function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
