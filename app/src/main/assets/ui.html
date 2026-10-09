@@ -2117,7 +2117,7 @@ function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return
   if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
   const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h+' h'+(m?' '+m+' min':'')}
 /* ---- progress card for every background job (copy / move / send / extract / zip / delete / print): what is happening now, counts, speed, time,
-   problems as they happen. Opens by itself when a job runs longer than 2 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
+   problems as they happen. Opens by itself when a job runs longer than 0.4 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
    Copies that merge into existing folders also show every replaced / new / skipped file and ask "replace this file?" one file at a time. ---- */
 let LVS=null;
 const LVK={R:['↻','Replaced','#E65100'],N:['＋','New','#2E7D32'],S:['↷','Skipped','var(--mut)']};
@@ -2164,7 +2164,7 @@ function lvFeed(id,j){
     ['f',j.filesTotal>0?'Files':(j.label&&/^Delet/.test(j.label)?'Items removed':'Files'),fl],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
   lvProblems(L,j);
-  if(j.elapsed>=2&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
+  if(j.elapsed>=0.4&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
   const a=j.ask;
   if(a&&a.q!==L.answered){
     if(L.curq!==a.q){L.curq=a.q;L.askBox.textContent='';
@@ -2180,7 +2180,7 @@ function lvFeed(id,j){
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden)lvShow();
   }else L.askBox.style.display='none';
-  return !L.hidden||(!L.min&&!(j.elapsed>=2.6))}   // also true during the first ~2 s (card about to open): keeps the old bottom bar from flashing
+  return !L.hidden||(!L.min&&!(j.elapsed>=1))}   // also true during the first ~0.4 s (card about to open): keeps the old bottom bar from flashing
 /* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
 function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
