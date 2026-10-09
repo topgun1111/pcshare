@@ -957,6 +957,8 @@ function albHold(c,path,name){
   holdMenu(c,{name:name},()=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',name));
     const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+    if(!galVid()){const ai=E('button','li'),al=E('div','lt');al.append(E('span','','AI search'),E('small','','Search only in this folder'));ai.append(al);
+      ai.onclick=()=>{fin();isView(path,name)};card.append(ai)}
     const d=E('button','li'),dl=E('div','lt');dl.append(E('span','','Find duplicates'),E('small','',galVid()?'Identical videos in this album':'Identical pictures in this album'));d.append(dl);
     d.onclick=()=>{fin();doDups([path])};card.append(d);
     const b=E('button','li'),lt=E('div','lt');lt.append(E('span','','Hide from gallery'),E('small','','Unhide it in Settings \u203a Gallery settings'));b.append(lt);
@@ -1052,9 +1054,9 @@ function galView(a){
     if(n<it.length){if(window.IntersectionObserver){const io=new IntersectionObserver(es=>{if(!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- image search (on-device CLIP + OCR): overlay #gal is reused so back / hide-list logic keeps working; backend = /api/imgs (ImgSearch.kt, ClipEngine.kt) ---- */
-function isView(){
+function isView(sdir,sname){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
-  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','','Image search'),sb=E('small','','\u00a0'),sc=E('div','gs'),bd=E('div','isb'),gg=E('div','gg');
+  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',sdir?'AI search \u00b7 '+(sname||sdir):'Image search'),sb=E('small','','\u00a0'),sc=E('div','gs'),bd=E('div','isb'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;tw.append(tt,sb);hd.append(bk,tw);
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
@@ -1077,7 +1079,7 @@ function isView(){
   const setMode=()=>{tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');chips.style.display=mode==='t'?'flex':'none';
     cw.classList.toggle('fill',whole);cp.classList.toggle('fill',!whole);
     inp.placeholder=mode==='v'?'Describe the picture, e.g. a red car':'Word or part of a word in the picture';
-    hint.textContent=mode==='v'?'Works best with English words.':'Reads the text in your pictures (Turkish and English).'};
+    hint.textContent=(mode==='v'?'Works best with English words.':'Reads the text in your pictures (Turkish and English).')+(sdir?' Only in: '+(sname||sdir)+'.':'')};
   tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};
   cw.onclick=()=>{whole=true;SV('ls_iswhole','1');setMode()};cp.onclick=()=>{whole=false;SV('ls_iswhole','0');setMode()};
   bd.append(card,tabs,sq,chips,hint);sc.append(bd,gg);o.append(hd,sh,sc,gb);setMode();
@@ -1133,7 +1135,7 @@ function isView(){
     if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}
     if(!(ST.indexed>0)&&ST.state!=='running'){toast('Scan your pictures first',3000);return}
     inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
-    try{const r=await api('POST','/api/imgs',mode==='v'?{op:'visual',q}:{op:'text',q,mode:whole?'word':'part'});
+    try{const r=await api('POST','/api/imgs',mode==='v'?{op:'visual',q,dir:sdir||''}:{op:'text',q,mode:whole?'word':'part',dir:sdir||''});
       if(!live())return;show((r&&r.results)||[],q)}
     catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
   go.onclick=run;inp.addEventListener('keydown',e=>{if(e.key==='Enter')run()});
@@ -1477,6 +1479,9 @@ function openSettings(){
   api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
   const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
   rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
+  {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
+    api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
+    rx.onclick=()=>{close();openExcluded()};card.append(rx)}
   if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
     const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
       s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
@@ -1492,6 +1497,29 @@ function openSettings(){
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function openExcluded(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Image search folders'));
+  const info=E('p','','Only these folders: Image search scans just them (none = the whole phone). Skip these folders: never scanned, even inside the ones above. Pictures that fall out leave the results at once.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const ST={included:[],excluded:[]};
+  const sec=(key,head,none,pt,pb)=>{card.append(E('div','dsec',head));const list=E('div');card.append(list);
+    const draw=()=>{list.textContent='';const cur=ST[key];
+      if(!cur.length){const e=E('div','set'),t=E('div','t');t.append(E('small','',none));e.append(t);list.append(e)}
+      cur.forEach(p=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
+        t.append(E('b','',p.slice(p.lastIndexOf('/')+1)||p),E('small','',p));
+        rm.onclick=()=>save(key,cur.filter(x=>x!==p));r.append(t,rm);list.append(r)})};
+    const ad=E('button','tbtn','Add folder');ad.style.alignSelf='flex-end';
+    ad.onclick=async()=>{const p=await pickExtractDir('/',pt,pb,'local');
+      if(p&&p!=='/'&&!ST[key].includes(p))await save(key,ST[key].concat(p));else if(p==='/')toast('Pick a folder, not the whole storage',3000);openExcluded()};
+    card.append(ad);return draw};
+  const dI=sec('included','Only these folders','None: the whole phone is scanned.','Scan only\u2026','Scan this folder');
+  const dE=sec('excluded','Skip these folders','None.','Exclude folder\u2026','Exclude this folder');
+  const draw=()=>{dI();dE()};
+  const save=async(key,l)=>{try{const r=await api('POST','/api/imgs',{op:key,paths:l});ST.included=r.included||[];ST.excluded=r.excluded||[];draw()}catch(e){toast('\u26a0 '+e.message,4000)}};
+  api('GET','/api/imgs').then(r=>{ST.included=(r&&r.included)||[];ST.excluded=(r&&r.excluded)||[];draw()}).catch(draw);
+  const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -2539,19 +2567,19 @@ async function doZip(){   // pack the selected files / folders into a new .zip n
   const paths=selPaths();S.sel.clear();render();
   try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:S.path,name:n.trim()});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
-function pickExtractDir(start){return new Promise(res=>{
-  const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;
+function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
+  const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;dev=dev||S.dev;
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const draw=async(p)=>{const my=++tk;let items=[],err='';
-    try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>i.dir&&(S.hid||(i.name[0]!=='.'&&!i.hid)))}catch(e){if(my!==tk)return;err=e.message}
-    cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','','Extract to\u2026'));
+    try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>i.dir&&(S.hid||(i.name[0]!=='.'&&!i.hid)))}catch(e){if(my!==tk)return;err=e.message}
+    cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','',title||'Extract to\u2026'));
     const loc=E('small','',p);loc.style.cssText='color:var(--mut);margin:-4px 0 6px;word-break:break-all';card.append(loc);
     if(p!=='/'){const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('back'));lt.append(E('span','','..'));b.append(ld,lt);b.onclick=()=>draw(pdir(p));card.append(b)}
     if(err)card.append(E('p','','\u26a0 '+err));
     else if(!items.length)card.append(E('p','','No sub-folders here.'));
     items.forEach(i=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('folder'));lt.append(E('span','',i.name));b.append(ld,lt);b.onclick=()=>draw(jn(p,i.name));card.append(b)});
     const row=E('div','');row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:8px;position:sticky;bottom:0;background:var(--cont);padding-top:4px';
-    const c=E('button','tbtn','Cancel');c.onclick=()=>fin(null);const ok=E('button','tbtn fill','Extract here');ok.onclick=()=>fin(cur);row.append(c,ok);card.append(row);o.append(card)};
+    const c=E('button','tbtn','Cancel');c.onclick=()=>fin(null);const ok=E('button','tbtn fill',okLbl||'Extract here');ok.onclick=()=>fin(cur);row.append(c,ok);card.append(row);o.append(card)};
   draw(cur)})}
 /* Name clash at the destination: Ask for each file / Replace all / Skip existing. Resolves 'ask' | 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
 const cdest=p=>{let b=p.split('/').filter(Boolean).pop()||'';if(b.endsWith('!')){b=b.slice(0,-1);const i=b.lastIndexOf('.');if(i>0)b=b.slice(0,i)}return b};

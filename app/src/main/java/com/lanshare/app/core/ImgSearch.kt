@@ -193,6 +193,40 @@ object ImgSearch {
 
     private fun skipDir(rel: String) = rel.startsWith("/Android/") || rel.split('/').any { it.length > 1 && it.startsWith(".") }
 
+    // ---- folder filters (Settings): "included" limits the scan to those folders (empty = everything), "excluded" is skipped; both also filter the index and every search result ----
+    @Volatile private var exclCache: List<String>? = null
+    @Volatile private var inclCache: List<String>? = null
+    private fun excl(): List<String> = exclCache ?: Cfg.imgExcluded().map { it.lowercase(Locale.ROOT) }.also { exclCache = it }
+    private fun incl(): List<String> = inclCache ?: Cfg.imgIncluded().map { it.lowercase(Locale.ROOT) }.also { inclCache = it }
+
+    private fun under(p: String, l: List<String>) = l.any { p == it || p.startsWith("$it/") }
+
+    /** [path] is one of the excluded folders or lies below one (case-insensitive, whole path segments only). */
+    private fun isExcluded(path: String): Boolean { val l = excl(); return l.isNotEmpty() && under(path.lowercase(Locale.ROOT), l) }
+
+    /** Out of scope: excluded, or an include list exists and the picture is not inside it. */
+    private fun isOut(path: String): Boolean {
+        val p = path.lowercase(Locale.ROOT)
+        if (under(p, excl())) return true
+        val i = incl(); return i.isNotEmpty() && !under(p, i)
+    }
+
+    fun excluded(): List<String> = Cfg.imgExcluded()
+    fun included(): List<String> = Cfg.imgIncluded()
+
+    private fun cleanList(list: List<String>) = list.map { vnorm(it).trimEnd('/') }.filter { it.isNotEmpty() && it != "/" }.distinct().take(200)
+
+    /** Pictures that fall out of scope leave the index at once (the saved index is rewritten); widening the scope needs a new scan to bring pictures back. */
+    private fun prune() {
+        if (running) return
+        ensureLoaded()
+        val n = synchronized(lock) { val b = items.size; items.keys.removeAll { isOut(it) }; b - items.size }
+        if (n > 0) save()
+    }
+
+    fun setExcluded(list: List<String>) { Cfg.setImgExcluded(cleanList(list)); exclCache = null; prune() }
+    fun setIncluded(list: List<String>) { Cfg.setImgIncluded(cleanList(list)); inclCache = null; prune() }
+
     private fun discover(): List<Found> {
         val root = Core.local.root
         val rp = root.path.trimEnd('/')
@@ -204,11 +238,16 @@ object ImgSearch {
             for (f in fs) {
                 if (f.name.startsWith(".")) continue
                 val r = "$rel/${f.name}"
-                if (f.isDirectory) { if (!skipDir("$r/")) walk(f, r) }
+                if (f.isDirectory) { if (!skipDir("$r/") && !isExcluded(r)) walk(f, r) }
                 else if (f.extension.lowercase(Locale.ROOT) in EXT) out.add(Found(r, f.lastModified(), f.length()))
             }
         }
-        walk(File(rp), "")
+        val inc = Cfg.imgIncluded().map { vnorm(it).trimEnd('/') }.filter { it.isNotEmpty() && it != "/" }.distinct()
+        if (inc.isEmpty()) walk(File(rp), "")
+        else for (r in inc.filter { a -> inc.none { it != a && a.startsWith("$it/") } }) {   // only the chosen folders (a folder inside another chosen one is covered by it)
+            if (isExcluded(r)) continue
+            val d = File(rp + r); if (d.isDirectory) walk(d, r)
+        }
         return out
     }
 
@@ -223,7 +262,7 @@ object ImgSearch {
             .put("engine", e?.id ?: JSONObject.NULL).put("ocr", e?.canOcr ?: false)
             .put("total", total).put("done", done)
             .put("indexed", withVec).put("withText", withText).put("failed", failed).put("count", items.size)
-            .put("msg", msg).put("error", err ?: JSONObject.NULL).put("saveError", saveErr ?: JSONObject.NULL).put("msPerPic", msPerPic)
+            .put("excluded", JSONArray(Cfg.imgExcluded())).put("included", JSONArray(Cfg.imgIncluded())).put("msg", msg).put("error", err ?: JSONObject.NULL).put("saveError", saveErr ?: JSONObject.NULL).put("msPerPic", msPerPic)
             .put("model", ClipEngine.state())   // {installed, installing, msg, error, bytes, totalBytes}: the one-time model download
     }
 
@@ -272,6 +311,7 @@ object ImgSearch {
         synchronized(lock) {
             if (storedEngineId.isNotEmpty() && storedEngineId != eng.id) { items.clear() }   // vectors of another model are useless
             storedEngineId = eng.id
+            items.keys.removeAll { isOut(it) }   // left the scope after they were indexed: gone for good, not "card removed"
             val keep = HashSet<String>(found.size * 2)
             for (f in found) {
                 keep.add(f.path)
@@ -332,14 +372,23 @@ object ImgSearch {
     }
 
     // ---------------------------------------------------------------- search
+    /** Search limited to one folder (gallery album): [dir] itself and everything below it; "" = no limit. */
+    private fun inDir(path: String, dir: String): Boolean {
+        if (dir.isEmpty()) return true
+        val d = vnorm(dir).trimEnd('/').lowercase(Locale.ROOT)
+        if (d.isEmpty()) return true
+        val p = path.lowercase(Locale.ROOT)
+        return p == d || p.startsWith("$d/")
+    }
+
     private fun hit(path: String, score: Float) = JSONObject().put("path", path).put("score", score.toDouble())
 
     /** CLIP visual search. Needs [engine] (text tower) and at least one stored vector. */
-    fun visual(query: String, top: Int = TOP_N, threshold: Float = THRESHOLD): JSONObject {
+    fun visual(query: String, top: Int = TOP_N, threshold: Float = THRESHOLD, dir: String = ""): JSONObject {
         val eng = engine ?: throw BadReq("image search engine is not installed yet")
         ensureLoaded()
         val q = eng.embedText(query)
-        val snap = synchronized(lock) { items.values.filter { it.vec != null } }
+        val snap = synchronized(lock) { items.values.filter { it.vec != null && !isOut(it.path) && inDir(it.path, dir) } }
         val res = ArrayList<Pair<String, Float>>()
         for (e in snap) {
             val v = e.vec ?: continue
@@ -354,13 +403,13 @@ object ImgSearch {
     private fun fold(s: String) = s.lowercase(Locale("tr", "TR")).replace('ı', 'i')
 
     /** OCR text search. [whole] = whole word ("Tam kelime"), else substring ("Heceyi iceren"). Works without an engine (uses stored text). */
-    fun text(query: String, whole: Boolean): JSONObject {
+    fun text(query: String, whole: Boolean, dir: String = ""): JSONObject {
         ensureLoaded()
         val q = fold(query.trim())
         if (q.isEmpty()) throw BadReq("empty query")
         val esc = q.split(Regex("\\s+")).joinToString("\\s+") { w -> Regex.escape(w) }   // any run of blanks matches any run of blanks
         val re = Regex(if (whole) "(?<![\\p{L}\\p{N}])$esc(?![\\p{L}\\p{N}])" else esc)
-        val snap = synchronized(lock) { items.values.filter { !it.text.isNullOrEmpty() } }
+        val snap = synchronized(lock) { items.values.filter { !it.text.isNullOrEmpty() && !isOut(it.path) && inDir(it.path, dir) } }
         val res = snap.filter { re.containsMatchIn(fold(it.text!!)) }
         return JSONObject().put("q", query).put("total", snap.size)
             .put("results", jarr(res.map { hit(it.path, 1f) }))

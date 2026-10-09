@@ -181,9 +181,11 @@ object Routes {
                 "selftest" -> ClipEngine.selfTest()   // first device test: tokenizer ids + text vector sanity + timings
                 "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false)); ImgSearch.status() }
                 "cancel" -> { ImgSearch.cancel(); ImgSearch.status() }
+                "included" -> { ImgSearch.setIncluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan is limited to (empty = all)
+                "excluded" -> { ImgSearch.setExcluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan skips
                 "clear" -> { ImgSearch.clear(); ImgSearch.status() }
-                "visual" -> ImgSearch.visual(b.getString("q").trim().ifEmpty { throw BadReq("empty query") })
-                "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part")
+                "visual" -> ImgSearch.visual(b.getString("q").trim().ifEmpty { throw BadReq("empty query") }, dir = b.optString("dir", ""))
+                "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part", b.optString("dir", ""))
                 else -> throw BadReq("unknown op")
             })
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings())))
