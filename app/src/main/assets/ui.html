@@ -1364,29 +1364,10 @@ function lsDl(id,name,done,total,speed,st,msg){
   else{c.el.classList.add('ind');c.info.textContent=done?fmt(done)+' · '+(speed>0?fmt(speed)+'/s':'…'):'Connecting…'}}
 function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
   S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
-function openSettings(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Settings'));
-  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
-  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
-  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
-  sw.append(cb,E('i'));row.append(t,sw);card.append(row);
-  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
-  rb.onclick=()=>{close();openSmb()};card.append(rb);
-  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
-  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
-  rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
-  const ri=E('button','set'),ti=E('div','t');ri.style.width='100%';ri.style.textAlign='left';ti.append(E('b','','Interface settings'),E('small','','Theme, interface size, text size'));ri.append(ti);
-  ri.onclick=()=>{close();openInterfaceSettings()};card.append(ri);
-  if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
-    ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
-  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
-function openInterfaceSettings(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Interface settings'));
+/* ---- Settings are grouped in categories. The top sheet only lists categories; each opens its own sheet.
+   To add a setting: put it in the build() of the matching category below (or add a new entry to SETCATS). `open` = category that has its own sheet. ---- */
+const setBtn=(title,sub,fn)=>{const r=E('button','set'),t=E('div','t'),sm=E('small','',sub);r.style.width='100%';r.style.textAlign='left';t.append(E('b','',title),sm);r.append(t);r.onclick=fn;return{r,sm}};
+function setInterface(card){
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sysBars();sm.textContent=THN[S.theme]};card.append(rt);
@@ -1396,8 +1377,33 @@ function openInterfaceSettings(){
     const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
-    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}}
+function setFiles(card){
+  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
+  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
+  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
+  sw.append(cb,E('i'));row.append(t,sw);card.append(row)}
+function setNetwork(card,close){
+  const b=setBtn('SMB shares','Browse all drives of a PC or NAS',()=>{close();openSmb()});card.append(b.r);
+  api('GET','/api/smb').then(l=>{if(l.length)b.sm.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
+  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}}
+function setAbout(card){
+  if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
+    ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}}
+const SETCATS=[
+  {title:'Interface',sub:()=>'Theme, interface size, text size',build:setInterface},
+  {title:'Files',sub:()=>'Hidden files',build:setFiles},
+  {title:'Gallery',sub:()=>HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums',open:()=>openGallerySettings()},
+  {title:'Network',sub:()=>'SMB shares, this device',build:setNetwork},
+  {title:'About',sub:()=>'Updates',build:setAbout,show:()=>!!(window.LSAndroid&&LSAndroid.checkUpdate)}];
+function settingsSheet(title,fill,back){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','',title));fill(card,close);
+  const d=E('button','tbtn fill',back?'Back':'Done');d.style.alignSelf='flex-end';d.onclick=back?()=>{close();openSettings()}:close;card.append(d);o.append(card)}
+function openSettings(){
+  settingsSheet('Settings',(card,close)=>SETCATS.forEach(c=>{if(c.show&&!c.show())return;
+    card.append(setBtn(c.title,c.sub(),()=>{if(c.open){close();c.open()}else settingsSheet(c.title,c.build,true)}).r)}),false)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1417,7 +1423,7 @@ function openGallerySettings(){
     if(HGAL.length>1){const r=E('div','set');r.style.cssText='display:flex;justify-content:flex-end';const ua=E('button','tbtn','Unhide all');
       ua.onclick=()=>{HGAL=[];try{localStorage.setItem('ls_galhid','[]')}catch(e){}draw();if(galRoot())render()};r.append(ua);list.append(r)}};
   draw();
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
