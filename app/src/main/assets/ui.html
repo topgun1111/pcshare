@@ -2040,6 +2040,7 @@ async function openBin(){
     cx.onclick=()=>{cx.disabled=true;api('POST','/api/bin',{op:'cancel'}).catch(()=>{})};
     const w=E('div','bw');w.append(tx,bp);pg.append(w,cx)}
   async function follow(t){   // poll the background task until it ends, then reconcile with the real list
+    if(!t||typeof t!=='object'){toast('\u26a0 Unexpected answer from the phone',5000);return draw()}
     busy=t;bars();prog(t);
     try{while(t.running&&live()){await new Promise(r=>setTimeout(r,350));
         const r=await api('GET','/api/bin?items=0',null,8000);t=r.task||{running:false,done:0,total:0,errors:[],paths:[],op:t.op};if(live()){busy=t.running?t:busy;prog(t)}}}
