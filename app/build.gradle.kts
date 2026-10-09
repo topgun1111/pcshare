@@ -25,7 +25,7 @@ android {
         targetSdk = 34
         versionCode = buildCode
         versionName = "$baseVersion.$commitCount" + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
-        // Image search libraries (ONNX Runtime, ML Kit) ship native code per CPU type; keep only 64-bit ARM (all current phones) to cut the APK by ~3/4 of that.
+        // Image search libraries (ONNX Runtime) ship native code per CPU type; keep only 64-bit ARM (all current phones) to cut the APK by ~3/4 of that.
         ndk { abiFilters += "arm64-v8a" }
     }
     // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.
@@ -73,5 +73,5 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0") // pull-to-refresh in BrowserActivity
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") // image search: CLIP ONNX models (core/ClipEngine.kt)
-    implementation("com.google.mlkit:text-recognition:16.0.0")         // image search: OCR, bundled Latin model, offline (core/ClipEngine.kt)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1") // image search: OCR via Google Play Services; model downloads on first use, then offline (core/ClipEngine.kt)
 }

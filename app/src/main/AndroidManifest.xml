@@ -16,6 +16,8 @@
     <application android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.LANShare">
+        <!-- Ask Play Services to fetch the OCR model at install time (otherwise it downloads on first OCR use) -->
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr"/>
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden">
             <intent-filter>

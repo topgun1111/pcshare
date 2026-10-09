@@ -260,7 +260,7 @@ object ClipEngine {
             return out
         }
 
-        // ---- OCR (ML Kit, bundled Latin model; Turkish letters c g i o s u still to be verified on a device) ----
+        // ---- OCR (ML Kit via Google Play Services, Latin model downloaded on first use; Turkish letters c g i o s u still to be verified on a device) ----
         @Synchronized private fun recogniser() = ocrRec ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also { ocrRec = it }
 
         override fun ocr(file: File): String {
