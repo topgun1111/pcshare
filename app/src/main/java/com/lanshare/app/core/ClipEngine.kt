@@ -228,7 +228,7 @@ object ClipEngine {
         private var tok: ClipTokenizer? = null
         private var ocrRec: com.google.mlkit.vision.text.TextRecognizer? = null
 
-        private fun opts() = OrtSession.SessionOptions().apply { setIntraOpNumThreads(2) }   // background scan: be gentle with the phone
+        private fun opts() = OrtSession.SessionOptions().apply { setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4)) }   // 4 threads on big phones: the scan is the slow part
 
         @Synchronized private fun visSession() = vis ?: env.createSession(File(d, "vision.onnx").path, opts()).also { vis = it }
         @Synchronized private fun txtSession() = txt ?: env.createSession(File(d, "text.onnx").path, opts()).also { txt = it }

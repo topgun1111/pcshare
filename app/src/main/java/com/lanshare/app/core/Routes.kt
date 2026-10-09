@@ -179,7 +179,7 @@ object Routes {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }
                 "selftest" -> ClipEngine.selfTest()   // first device test: tokenizer ids + text vector sanity + timings
-                "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false)); ImgSearch.status() }
+                "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false), dir = b.optString("dir", "")); ImgSearch.status() }
                 "cancel" -> { ImgSearch.cancel(); ImgSearch.status() }
                 "included" -> { ImgSearch.setIncluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan is limited to (empty = all)
                 "excluded" -> { ImgSearch.setExcluded(b.optJSONArray("paths")?.strings() ?: emptyList()); ImgSearch.status() }   // folders the picture scan skips

@@ -227,7 +227,7 @@ object ImgSearch {
     fun setExcluded(list: List<String>) { Cfg.setImgExcluded(cleanList(list)); exclCache = null; prune() }
     fun setIncluded(list: List<String>) { Cfg.setImgIncluded(cleanList(list)); inclCache = null; prune() }
 
-    private fun discover(): List<Found> {
+    private fun discover(only: String = ""): List<Found> {
         val root = Core.local.root
         val rp = root.path.trimEnd('/')
         val out = ArrayList<Found>()
@@ -242,7 +242,8 @@ object ImgSearch {
                 else if (f.extension.lowercase(Locale.ROOT) in EXT) out.add(Found(r, f.lastModified(), f.length()))
             }
         }
-        val inc = Cfg.imgIncluded().map { vnorm(it).trimEnd('/') }.filter { it.isNotEmpty() && it != "/" }.distinct()
+        val one = vnorm(only).trimEnd('/')
+        val inc = if (one.isNotEmpty() && one != "/") listOf(one) else Cfg.imgIncluded().map { vnorm(it).trimEnd('/') }.filter { it.isNotEmpty() && it != "/" }.distinct()
         if (inc.isEmpty()) walk(File(rp), "")
         else for (r in inc.filter { a -> inc.none { it != a && a.startsWith("$it/") } }) {   // only the chosen folders (a folder inside another chosen one is covered by it)
             if (isExcluded(r)) continue
@@ -268,7 +269,7 @@ object ImgSearch {
 
     /** Starts (or ignores, when one is running) an incremental scan. [ocr] also reads the text inside the pictures. [force] retries unreadable ones. */
     @Synchronized
-    fun start(ocr: Boolean, force: Boolean, resumed: Boolean = false) {
+    fun start(ocr: Boolean, force: Boolean, resumed: Boolean = false, dir: String = "") {
         if (running) return
         val eng = engine ?: throw BadReq("image search engine is not installed yet")
         ensureLoaded()
@@ -276,13 +277,13 @@ object ImgSearch {
         resumeTries = if (resumed) resumeTries + 1 else 0
         scanOcrActive = ocr && eng.canOcr
         worker = Thread({
-            try { scan(eng, ocr && eng.canOcr, force) } catch (t: Throwable) { err = errText(t) }
+            try { scan(eng, ocr && eng.canOcr, force, dir) } catch (t: Throwable) { err = errText(t) }
             finally {
                 running = false
                 scanOcrActive = null; synchronized(lock) { resumeOcr = null; resumeTries = 0 }   // finished, cancelled or failed with a message: nothing to resume
                 markCur(null); save(); try { eng.release() } catch (_: Throwable) {}
             }
-        }, "imgsearch").also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY; it.start() }
+        }, "imgsearch").also { it.isDaemon = true; it.priority = Thread.NORM_PRIORITY; it.start() }
         save()   // the "scan running" flag is on disk from the first second
     }
 
@@ -293,11 +294,11 @@ object ImgSearch {
     /** For the foreground notification: (running, done, total). total is 0 while folders are still being listed. */
     fun progress(): Triple<Boolean, Int, Int> = Triple(running, done, total)
 
-    private fun scan(eng: Engine, ocr: Boolean, force: Boolean) {
-        val found = discover()
+    private fun scan(eng: Engine, ocr: Boolean, force: Boolean, only: String = "") {
+        val found = discover(only)
         if (cancel) { msg = "Cancelled"; return }
         // Never wipe the index because the storage looked empty (permission lost, SD card unmounted): keep everything and say so.
-        if (found.isEmpty() && synchronized(lock) { items.isNotEmpty() })
+        if (found.isEmpty() && only.isEmpty() && synchronized(lock) { items.isNotEmpty() })
             throw IOException("No pictures were found (is storage access allowed / the card inserted?). The saved index was left untouched.")
         var useOcr = ocr
         var notice: String? = null
@@ -321,9 +322,9 @@ object ImgSearch {
                 if (force) e.failed = false
                 if (!e.failed && (e.vec == null || (useOcr && e.text == null))) todo.add(e to f)
             }
-            val gone = items.keys.count { it !in keep }
+            val gone = items.keys.count { it !in keep && inDir(it, only) }
             if (gone > 20 && gone * 2 > items.size) notice = "Many pictures were not found (card removed?). They stay in the index; use Rescan to clean up."
-            else items.keys.retainAll(keep)   // deleted / moved pictures drop out of the index
+            else items.keys.removeAll { it !in keep && inDir(it, only) }   // deleted / moved pictures drop out of the index (only inside the scanned folder)
         }
         total = todo.size; done = 0
         msg = if (todo.isEmpty()) "Up to date" else "Analysing ${todo.size} pictures…"
@@ -333,13 +334,23 @@ object ImgSearch {
         var ocrFails = 0
         var lastSave = System.currentTimeMillis()
         val t0 = lastSave
+        // Decoding + resizing the picture (Thumbs.make) is independent of the model: do it on 2 helper threads a few pictures ahead.
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2) { r -> Thread(r, "imgsearch-thumb").also { it.isDaemon = true } }
+        val ahead = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.Future<ByteArray>>()
+        fun queue(i: Int) { if (i < todo.size && !ahead.containsKey(i) && todo[i].first.vec == null) ahead[i] = pool.submit(java.util.concurrent.Callable { Thumbs.make(Core.local.real(todo[i].second.path)) }) }
+        for (k in 0 until 6) queue(k)
+        var idx = -1
+        try {
         for ((e, f) in todo) {
+            idx++
+            queue(idx + 6)
             if (cancel) { msg = "Cancelled"; break }
             val file = Core.local.real(f.path)
             markCur(f.path)
             try {
                 if (e.vec == null) {
-                    val v = eng.embedImage(Thumbs.make(file))
+                    val jpeg = try { ahead.remove(idx)?.get() } catch (x: java.util.concurrent.ExecutionException) { throw (x.cause as? Exception) ?: x } ?: Thumbs.make(file)
+                    val v = eng.embedImage(jpeg)
                     if (v.size != DIM) throw IllegalStateException("engine returned ${v.size} floats, expected $DIM")
                     synchronized(lock) { e.vec = v }
                 }
@@ -366,6 +377,7 @@ object ImgSearch {
                 Log.i("ImgSearch", "$done/${todo.size} pictures, ${(now - t0) / done} ms per picture (ocr=$useOcr)")
             }
         }
+        } finally { pool.shutdownNow() }
         markCur(null)
         if (done > 0) msPerPic = (System.currentTimeMillis() - t0) / done
         if (!cancel) msg = notice ?: "Ready"

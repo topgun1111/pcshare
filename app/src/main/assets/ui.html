@@ -1098,11 +1098,12 @@ function isView(sdir,sname){
       else{
         if(ST.state==='error'&&ST.error)card.append(E('small','','\u26a0 '+ST.error));
         if(!(ST.indexed>0)||(tot>0&&dn<tot))card.append(E('small','',(ST.indexed>0?'Scan not finished.':'Pictures are not scanned yet. The first scan can take a while: keep the phone charging.')));
-        addBtn((ST.indexed>0)?'Scan new pictures':'Scan pictures',()=>act('start',{ocr:true,force:false}),!(ST.indexed>0));
-        if(ST.indexed>0)addBtn('Rescan all',async()=>{if(await dlg({title:'Rescan all pictures?',msg:'Starts from scratch. This can take a long time.',ok:'Rescan'})){await api('POST','/api/imgs',{op:'clear'}).catch(()=>{});act('start',{ocr:true,force:true})}});
+        addBtn((ST.indexed>0)?'Scan new pictures':(sdir?'Scan this album':'Scan pictures'),()=>act('start',{ocr:mode==='t',force:false,dir:sdir||''}),!(ST.indexed>0));
+        if(ST.indexed>0&&mode==='t')addBtn('Read text',()=>act('start',{ocr:true,force:false,dir:sdir||''}));   // text reading is the slow part: only on request
+        if(ST.indexed>0&&!sdir)addBtn('Rescan all',async()=>{if(await dlg({title:'Rescan all pictures?',msg:'Starts from scratch. This can take a long time.',ok:'Rescan'})){await api('POST','/api/imgs',{op:'clear'}).catch(()=>{});act('start',{ocr:mode==='t',force:true})}});
         card.append(btnRow)}
     }
-    if(wasInst&&!m.installing&&m.installed&&ST.state!=='running'&&!(ST.indexed>0)){wasInst=false;act('start',{ocr:true,force:false})}   // model just arrived: start the first scan by itself
+    if(wasInst&&!m.installing&&m.installed&&ST.state!=='running'&&!(ST.indexed>0)){wasInst=false;act('start',{ocr:mode==='t',force:false,dir:sdir||''})}   // model just arrived: start the first scan by itself
     wasInst=!!m.installing;
   }
   function poll(){clearTimeout(timer);if(!live())return;
