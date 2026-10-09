@@ -146,6 +146,7 @@ object Routes {
                 return ok(ex)
             }
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
+            "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "smbscan" -> return ex.json(d.smbScan())
         }
@@ -174,6 +175,17 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
+            "imgs" -> ex.json(when (b.getString("op")) {
+                "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
+                "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }
+                "selftest" -> ClipEngine.selfTest()   // first device test: tokenizer ids + text vector sanity + timings
+                "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false)); ImgSearch.status() }
+                "cancel" -> { ImgSearch.cancel(); ImgSearch.status() }
+                "clear" -> { ImgSearch.clear(); ImgSearch.status() }
+                "visual" -> ImgSearch.visual(b.getString("q").trim().ifEmpty { throw BadReq("empty query") })
+                "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part")
+                else -> throw BadReq("unknown op")
+            })
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings())))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"))))

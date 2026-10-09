@@ -156,6 +156,15 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gb{display:none;flex:none;margin:8px 10px calc(10px + env(safe-area-inset-bottom));padding:6px 4px;background:var(--cont);border:1px solid var(--bd);border-radius:26px;box-shadow:0 6px 24px #0005}
 #gal.selm .gb{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:2px 0;animation:gbup .18s ease-out}
 #gal .gb .ib{padding:4px 0 2px}#gal .gb .ib .ii{background:var(--hov)}#gal .gb .ib.dng .ii{background:color-mix(in srgb,var(--err) 16%,transparent)}
+#gal .isb{padding:4px 12px 10px;display:flex;flex-direction:column;gap:10px}
+#gal .isc{background:var(--cont);border:1px solid var(--bd);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+#gal .isc b{font-size:15px;font-weight:600}#gal .isc small{color:var(--mut);font-size:12.5px;overflow-wrap:anywhere}
+#gal .ist{display:flex;gap:6px}#gal .ist button{flex:1;height:36px;border-radius:18px;border:1px solid var(--bd);font-weight:600;font-size:14px;color:var(--mut)}#gal .ist button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
+#gal .isq{display:flex;gap:8px}#gal .isq input{flex:1;min-width:0;height:44px;border-radius:22px;border:1px solid var(--bd);background:var(--bg);color:inherit;padding:0 16px;font-size:16px}
+#gal .isq button{height:44px;padding:0 18px;border-radius:22px;background:var(--ac);color:var(--onac);font-weight:600}
+#gal .isp{height:6px;border-radius:3px;background:var(--bd);overflow:hidden}#gal .isp i{display:block;height:100%;width:0;background:var(--ac);transition:width .4s}
+#gal .isr{display:flex;gap:8px;flex-wrap:wrap}
+#gal .gp{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 @keyframes gbup{from{transform:translateY(18px);opacity:0}}@keyframes gbdn{from{transform:translateY(-14px);opacity:0}}@keyframes gbpop{from{transform:scale(.4)}}
 .galt{grid-column:1/-1;justify-self:center;padding:8px 16px;border-radius:18px;color:var(--ac);font-weight:600;font-size:13.5px}
 .galh{grid-column:1/-1;padding:10px 16px 4px;font-size:13px;font-weight:600;color:var(--mut)}
@@ -1042,6 +1051,94 @@ function galView(a){
     gg.append(sent);more();
     if(n<it.length){if(window.IntersectionObserver){const io=new IntersectionObserver(es=>{if(!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
+/* ---- image search (on-device CLIP + OCR): overlay #gal is reused so back / hide-list logic keeps working; backend = /api/imgs (ImgSearch.kt, ClipEngine.kt) ---- */
+function isView(){
+  const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
+  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','','Image search'),sb=E('small','','\u00a0'),sc=E('div','gs'),bd=E('div','isb'),gg=E('div','gg');
+  bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;tw.append(tt,sb);hd.append(bk,tw);
+  const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
+  sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
+  let LIST=[],mode=LD('ls_ismode','v')==='t'?'t':'v',whole=LD('ls_iswhole','1')==='1',ST=null,timer=0,wasInst=false;
+  const live=()=>o._for===tok&&o.style.display==='flex';
+  const pth=m=>m.p,gp=()=>[...GS].map(n=>LIST.find(m=>m.name+'\u0000'+m.p===n).p),gi=()=>LIST.filter(m=>GS.has(m.name+'\u0000'+m.p)),key=m=>m.name+'\u0000'+m.p;
+  const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
+  sx.onclick=clr;sa.onclick=()=>{LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
+  const upd=()=>{o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
+    const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+    btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
+    btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
+    if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
+    gb.style.setProperty('--cols',gb.children.length)};
+  // --- status card (model download / scan progress) ---
+  const card=E('div','isc'),sq=E('div','isq'),inp=E('input'),go=E('button','','Search'),tabs=E('div','ist'),chips=E('div','isr'),hint=E('small','');
+  inp.type='search';inp.enterKeyHint='search';inp.autocomplete='off';inp.setAttribute('autocapitalize','off');sq.append(inp,go);
+  const tv=E('button','','Visual'),tx=E('button','','Text in pictures');tabs.append(tv,tx);
+  const cw=E('button','tbtn','Whole word'),cp=E('button','tbtn','Contains');chips.append(cw,cp);
+  const setMode=()=>{tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');chips.style.display=mode==='t'?'flex':'none';
+    cw.classList.toggle('fill',whole);cp.classList.toggle('fill',!whole);
+    inp.placeholder=mode==='v'?'Describe the picture, e.g. a red car':'Word or part of a word in the picture';
+    hint.textContent=mode==='v'?'Works best with English words.':'Reads the text in your pictures (Turkish and English).'};
+  tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};
+  cw.onclick=()=>{whole=true;SV('ls_iswhole','1');setMode()};cp.onclick=()=>{whole=false;SV('ls_iswhole','0');setMode()};
+  bd.append(card,tabs,sq,chips,hint);sc.append(bd,gg);o.append(hd,sh,sc,gb);setMode();
+  const act=(op,x)=>api('POST','/api/imgs',Object.assign({op},x||{})).then(r=>{ST=r;draw();poll();return r}).catch(e=>{toast('\u26a0 '+e.message,5000)});
+  const mb=n=>(n/1048576).toFixed(n>1e8?0:1)+' MB';
+  function draw(){
+    card.textContent='';const m=(ST&&ST.model)||{},btnRow=E('div','isr');
+    const addBtn=(t,f,fill)=>{const b=E('button','tbtn'+(fill?' fill':''),t);b.onclick=f;btnRow.append(b);return b};
+    if(!ST){card.append(E('small','','Loading\u2026'));sb.textContent='\u00a0';return}
+    if(m.installing){
+      card.append(E('b','','Downloading the search model'),E('small','',m.msg||'Please wait\u2026'));
+      const pg=E('div','isp'),pi=E('i');pg.append(pi);pi.style.width=(m.totalBytes>0?Math.min(100,Math.round(m.bytes*100/m.totalBytes)):0)+'%';card.append(pg);
+      if(m.totalBytes>0)card.append(E('small','',mb(m.bytes)+' of '+mb(m.totalBytes)));
+      sb.textContent='Downloading model\u2026';
+    }else if(!m.installed){
+      card.append(E('b','','One-time download needed'),E('small','','The search model is about 150 MB (Wi-Fi recommended). It stays on this phone; pictures never leave it.'));
+      if(m.error)card.append(E('small','','\u26a0 '+m.error));
+      addBtn('Download',()=>act('install'),true);card.append(btnRow);sb.textContent='Model not installed';
+    }else{
+      const run=ST.state==='running',tot=ST.total||0,dn=ST.done||0;
+      sb.textContent=run?('Scanning '+dn+' of '+tot):((ST.indexed||0)+' pictures searchable'+(ST.withText?' \u00b7 '+ST.withText+' with text':''));
+      if(run){const pg=E('div','isp'),pi=E('i');pg.append(pi);pi.style.width=(tot>0?Math.round(dn*100/tot):0)+'%';
+        card.append(E('b','','Scanning your pictures'),E('small','',ST.msg||'You can search what is already done.'),pg);addBtn('Stop',()=>act('cancel'));card.append(btnRow)}
+      else{
+        if(ST.state==='error'&&ST.error)card.append(E('small','','\u26a0 '+ST.error));
+        if(!(ST.indexed>0)||(tot>0&&dn<tot))card.append(E('small','',(ST.indexed>0?'Scan not finished.':'Pictures are not scanned yet. The first scan can take a while: keep the phone charging.')));
+        addBtn((ST.indexed>0)?'Scan new pictures':'Scan pictures',()=>act('start',{ocr:true,force:false}),!(ST.indexed>0));
+        if(ST.indexed>0)addBtn('Rescan all',async()=>{if(await dlg({title:'Rescan all pictures?',msg:'Starts from scratch. This can take a long time.',ok:'Rescan'})){await api('POST','/api/imgs',{op:'clear'}).catch(()=>{});act('start',{ocr:true,force:true})}});
+        card.append(btnRow)}
+    }
+    if(wasInst&&!m.installing&&m.installed&&ST.state!=='running'&&!(ST.indexed>0)){wasInst=false;act('start',{ocr:true,force:false})}   // model just arrived: start the first scan by itself
+    wasInst=!!m.installing;
+  }
+  function poll(){clearTimeout(timer);if(!live())return;
+    const busy=ST&&(ST.state==='running'||(ST.model&&ST.model.installing));
+    if(ST&&!busy)return;
+    timer=setTimeout(()=>{api('GET','/api/imgs').then(r=>{if(!live())return;ST=r;draw();poll()}).catch(()=>{if(live())poll()})},1000)}
+  // --- search + results ---
+  const bn=p=>p.replace(/^.*\//,'');
+  function show(res,q){
+    gg.textContent='';els.clear();GS.clear();upd();
+    LIST=res.map(r=>({name:bn(r.path),p:r.path,score:r.score,size:0,mtime:0}));
+    GCX={dev:'local',path:'/',list:LIST,all:LIST};
+    if(!LIST.length){gg.append(E('div','ge','Nothing found for \u201c'+q+'\u201d'));return}
+    sb.textContent=LIST.length+(LIST.length===1?' result':' results');
+    LIST.forEach(m=>{const c=E('div','gc'),im=E('img');els.set(key(m),c);c.append(ic('check','ck'));
+      im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p);c.append(im);
+      if(mode==='v')c.append(E('span','gp',Math.round((m.score||0)*100)+'%'));
+      c.onclick=()=>{if(c._lp){c._lp=false;return}
+        if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
+      holdMenu(c,m,()=>{GS.add(key(m));c.classList.add('sel');upd()});gg.append(c)})}
+  async function run(){const q=inp.value.trim();if(!q)return;
+    if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}
+    if(!(ST.indexed>0)&&ST.state!=='running'){toast('Scan your pictures first',3000);return}
+    inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
+    try{const r=await api('POST','/api/imgs',mode==='v'?{op:'visual',q}:{op:'text',q,mode:whole?'word':'part'});
+      if(!live())return;show((r&&r.results)||[],q)}
+    catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
+  go.onclick=run;inp.addEventListener('keydown',e=>{if(e.key==='Enter')run()});
+  api('GET','/api/imgs').then(r=>{if(!live())return;ST=r;wasInst=!!(r.model&&r.model.installing);draw();poll()}).catch(e=>{if(live()){card.textContent='';card.append(E('small','','\u26a0 '+e.message))}});
+  draw()}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
 let GALA=null,GALT=0,GALP=null,GALPK=null;   // GALA.k = 'vid' | 'img': which kind of albums it holds
 function galFetch(){const gk=galVid()?'vid':'img';if(GALP&&GALPK===gk)return;GALPK=gk;
@@ -1172,9 +1269,9 @@ function nativeImg(i){
   const okImg=x=>!x.dir&&kind(x)==='img'&&!/\.(svg|gif)$/i.test(x.name)&&(heicOk||!/\.(heic|heif)$/i.test(x.name));
   if(!okImg(i))return false;
   const V=cxl().filter(okImg);if(!V.length)return false;
-  const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(jn(cxp(),m.name));
+  const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(m.p||jn(cxp(),m.name));   // m.p = full path (image search results come from many folders)
   const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0}));
-  const at=Math.max(0,V.findIndex(m=>m.name===i.name));
+  const at=Math.max(0,V.findIndex(m=>(m.p||m.name)===(i.p||i.name)));
   try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
 function viewImg(i){if(!nativeImg(i))openMedia(i)}
 /* Android app: PDFs open in the dedicated native reader (PdfRenderer, works for local / other device / SMB / inside archives); browsers keep their own PDF handling */
@@ -1364,46 +1461,37 @@ function lsDl(id,name,done,total,speed,st,msg){
   else{c.el.classList.add('ind');c.info.textContent=done?fmt(done)+' · '+(speed>0?fmt(speed)+'/s':'…'):'Connecting…'}}
 function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
   S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
-/* ---- Settings are grouped in categories. The top sheet only lists categories; each opens its own sheet.
-   To add a setting: put it in the build() of the matching category below (or add a new entry to SETCATS). `open` = category that has its own sheet. ---- */
-const setBtn=(title,sub,fn)=>{const r=E('button','set'),t=E('div','t'),sm=E('small','',sub);r.style.width='100%';r.style.textAlign='left';t.append(E('b','',title),sm);r.append(t);r.onclick=fn;return{r,sm}};
-function setInterface(card){
+function openSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Settings'));
+  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
+  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
+  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
+  sw.append(cb,E('i'));row.append(t,sw);card.append(row);
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sysBars();sm.textContent=THN[S.theme]};card.append(rt);
+  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
+  rb.onclick=()=>{close();openSmb()};card.append(rb);
+  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
+  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
+  rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
   if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
     const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
       s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
     const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
-    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}}
-function setFiles(card){
-  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
-  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
-  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
-  sw.append(cb,E('i'));row.append(t,sw);card.append(row)}
-function setNetwork(card,close){
-  const b=setBtn('SMB shares','Browse all drives of a PC or NAS',()=>{close();openSmb()});card.append(b.r);
-  api('GET','/api/smb').then(l=>{if(l.length)b.sm.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
-  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}}
-function setAbout(card){
+    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  {const rm=E('button','set'),tm=E('div','t'),sm2=E('small','','Search model for Image search');rm.style.width='100%';rm.style.textAlign='left';tm.append(E('b','','Image search model'),sm2);rm.append(tm);
+    api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
+    rm.onclick=async()=>{if(!rm._ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;
+      try{await api('POST','/api/imgs',{op:'uninstall'});rm._ok=false;sm2.textContent='Not installed';toast('Model files deleted')}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rm)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
-    ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}}
-const SETCATS=[
-  {title:'Interface',sub:()=>'Theme, interface size, text size',build:setInterface},
-  {title:'Files',sub:()=>'Hidden files',build:setFiles},
-  {title:'Gallery',sub:()=>HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums',open:()=>openGallerySettings()},
-  {title:'Network',sub:()=>'SMB shares, this device',build:setNetwork},
-  {title:'About',sub:()=>'Updates',build:setAbout,show:()=>!!(window.LSAndroid&&LSAndroid.checkUpdate)}];
-function settingsSheet(title,fill,back){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','',title));fill(card,close);
-  const d=E('button','tbtn fill',back?'Back':'Done');d.style.alignSelf='flex-end';d.onclick=back?()=>{close();openSettings()}:close;card.append(d);o.append(card)}
-function openSettings(){
-  settingsSheet('Settings',(card,close)=>SETCATS.forEach(c=>{if(c.show&&!c.show())return;
-    card.append(setBtn(c.title,c.sub(),()=>{if(c.open){close();c.open()}else settingsSheet(c.title,c.build,true)}).r)}),false)}
+    ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
+  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1423,7 +1511,7 @@ function openGallerySettings(){
     if(HGAL.length>1){const r=E('div','set');r.style.cssText='display:flex;justify-content:flex-end';const ua=E('button','tbtn','Unhide all');
       ua.onclick=()=>{HGAL=[];try{localStorage.setItem('ls_galhid','[]')}catch(e){}draw();if(galRoot())render()};r.append(ua);list.append(r)}};
   draw();
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1521,6 +1609,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.some(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&!A)btn('paste','Paste',doPaste,'pri');
+    if(files)btn('download','Download',doDownload);
     if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
@@ -2129,7 +2218,7 @@ function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return
   if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
   const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h+' h'+(m?' '+m+' min':'')}
 /* ---- progress card for every background job (copy / move / send / extract / zip / delete / print): what is happening now, counts, speed, time,
-   problems as they happen. Opens by itself when a job runs longer than 0.4 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
+   problems as they happen. Opens by itself when a job runs longer than 2 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
    Copies that merge into existing folders also show every replaced / new / skipped file and ask "replace this file?" one file at a time. ---- */
 let LVS=null;
 const LVK={R:['↻','Replaced','#E65100'],N:['＋','New','#2E7D32'],S:['↷','Skipped','var(--mut)']};
@@ -2176,7 +2265,7 @@ function lvFeed(id,j){
     ['f',j.filesTotal>0?'Files':(j.label&&/^Delet/.test(j.label)?'Items removed':'Files'),fl],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
   lvProblems(L,j);
-  if(j.elapsed>=0.4&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
+  if(j.elapsed>=2&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
   const a=j.ask;
   if(a&&a.q!==L.answered){
     if(L.curq!==a.q){L.curq=a.q;L.askBox.textContent='';
@@ -2192,7 +2281,7 @@ function lvFeed(id,j){
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden)lvShow();
   }else L.askBox.style.display='none';
-  return !L.hidden||(!L.min&&!(j.elapsed>=1))}   // also true during the first ~0.4 s (card about to open): keeps the old bottom bar from flashing
+  return !L.hidden}
 /* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
 function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
@@ -2210,7 +2299,6 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
   L.hide.onclick=()=>{const o=$('#sheet');o.style.display='none';o.onclick=null};
   const bad=(j.problems||[]).length>1;
-  if(ok&&el<1.5&&!bad&&!j.live&&!L.min&&!L.hidden){const o=$('#sheet');o.style.display='none';o.onclick=null;return false}   // tiny job: card was only a flash, close it and let the toast say it
   if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
   if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}
@@ -2220,7 +2308,6 @@ $('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('
 let trk=0;
 async function track(id){
   let ok=false,jf=0;curJob=id;trk++;
-  if(!LVS&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){LVS=lvMake(id);LVS.auto=true;lvShow()}   // card opens at once, before the first poll
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
     if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
@@ -2366,6 +2453,7 @@ function drawerRender(){
     bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
     bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
+    bd.append(dItem({lead:ic('search','s24'),title:'Image search',sub:'Find pictures by what is in them',onclick:()=>{drawerClose();isView()}}));
     bd.append(E('div','dsep'));
     bd.append(E('div','dsec','Devices'));
     peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);

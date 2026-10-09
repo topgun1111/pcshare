@@ -70,4 +70,6 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")         // native file browser (BrowserActivity)
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0") // pull-to-refresh in BrowserActivity
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") // image search: CLIP ONNX models (core/ClipEngine.kt)
+    implementation("com.google.mlkit:text-recognition:16.0.0")         // image search: OCR, bundled Latin model, offline (core/ClipEngine.kt)
 }

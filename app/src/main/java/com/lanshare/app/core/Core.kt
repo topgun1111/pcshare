@@ -46,6 +46,7 @@ object Core {
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
+            try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             var srv: MiniHttp? = null
             var port = BASE_PORT
