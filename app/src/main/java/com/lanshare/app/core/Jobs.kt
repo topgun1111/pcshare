@@ -32,6 +32,20 @@ class Job(@Volatile var label: String) {
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
     @Volatile var result: JSONObject? = null   // structured result (duplicate finder)
 
+    // details for the progress card: the file being handled now, file counts, problems so far, where it is going
+    @Volatile var cur = ""
+    @Volatile var curDone = 0L
+    @Volatile var curTotal = 0L
+    @Volatile var files = 0
+    @Volatile var filesTotal = 0
+    @Volatile var failed = 0
+    @Volatile var dest: String? = null
+    private val problems = ArrayList<String>()
+    @Synchronized fun addProblem(s: String) { if (problems.size < 30) problems.add(s) }
+    @Synchronized private fun problemsJson() = org.json.JSONArray(problems.toList())
+    /** A new file starts: the card shows its name and its own progress bar. */
+    fun begin(name: String, size: Long) { cur = name; curDone = 0L; curTotal = size }
+
     // live view of a copy that merges into existing folders: what was replaced / added / skipped, and the open question ("replace this file?")
     @Volatile var live = false
     @Volatile var cR = 0
@@ -96,6 +110,11 @@ class Job(@Volatile var label: String) {
         .put("error", error ?: JSONObject.NULL).put("label", label).also {
             if (cancel) it.put("cancel", true)
             if (end > 0) it.put("end", end / 1000.0)
+            it.put("elapsed", ((if (end > 0) end else System.currentTimeMillis()) - startedAt) / 1000.0)
+            if (cur.isNotEmpty()) it.put("cur", cur).put("curDone", curDone).put("curTotal", curTotal)
+            if (files > 0 || filesTotal > 0) it.put("files", files).put("filesTotal", filesTotal)
+            if (failed > 0) it.put("failed", failed).put("problems", problemsJson())
+            dest?.let { d -> it.put("dest", d) }
             note?.let { n -> it.put("note", n) }
             result?.let { r -> it.put("result", r) }
             if (live) {
@@ -249,6 +268,7 @@ object Jobs {
         val job = Job("Deleting")
         job.bytes = false
         job.total = maxOf(paths.size, 1).toLong()
+        job.filesTotal = 0
         all[jid] = job
         Thread({ deleteWork(job, e, paths) }, "del-$jid").also { it.isDaemon = true }.start()
         return jid
@@ -273,10 +293,11 @@ object Jobs {
                     removeUser(e, p) { n ->
                         if (job.cancel) throw Cancelled()
                         removed++
+                        job.files = removed; job.cur = top
                         job.label = "Deleting ${i + 1}/${paths.size}: $top - $removed items removed" + (if (n != top) " (now: $n)" else "")
                     }
                 } catch (x: Cancelled) { throw x
-                } catch (x: Exception) { failCount++; if (fails.size < 50) fails.add("$top: ${errText(x)}") }
+                } catch (x: Exception) { failCount++; job.failed = failCount; job.addProblem("$top: ${errText(x)}"); if (fails.size < 50) fails.add("$top: ${errText(x)}") }
                 job.done = (i + 1).toLong()
             }
             job.done = job.total
@@ -328,6 +349,8 @@ object Jobs {
             }
             if (files.isEmpty()) throw BadReq("nothing to print")
             job.total = maxOf(files.sumOf { it.second }, 1L)
+            job.filesTotal = files.size
+            job.dest = dest
             val failed = ArrayList<String>()
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
@@ -338,6 +361,7 @@ object Jobs {
                 if (job.cancel) throw Cancelled()
                 job.label = "Printing ${i + 1}/${files.size} on $dest" + (if (problem.isNotEmpty()) " (printer reports: $problem)" else "")
                 val name = vbase(sp)
+                job.files = i; job.begin(name, size)
                 var sent = 0L
                 val f = src.open(sp)
                 var tmp: java.io.File? = null
@@ -514,12 +538,14 @@ object Jobs {
             job.total = maxOf(total, 1L)
             job.done = 0
             job.label = "Zipping $finalName"
+            job.filesTotal = items.count { !it.dir }
             val buf = ByteArray(1 shl 16)
             Zip64Writer(out.outputStream().buffered(1 shl 16)).use { zw ->   // no 4 GB / 65,535-entry limit (ZIP64 where needed)
                 for (item in items) {
                     if (job.cancel) throw Cancelled()
                     if (item.dir) { zw.putDir(item.entry); continue }
                     try {
+                        job.begin(item.entry, item.size)
                         zw.beginFile(item.entry, item.size, item.entry.substringAfterLast('.', "").lowercase() in STORE_EXT)
                         e.open(item.src).use { s ->
                             while (true) {
@@ -527,10 +553,10 @@ object Jobs {
                                 val n = s.read(buf)
                                 if (n < 0) break
                                 zw.write(buf, 0, n)
-                                job.done += n
+                                job.done += n; job.curDone += n
                             }
                         }
-                        zw.endFile()
+                        zw.endFile(); job.files++
                     } catch (x: Cancelled) { throw x
                     } catch (x: Exception) { throw IOException(item.entry + ": " + errText(x)) }
                 }
@@ -590,9 +616,10 @@ object Jobs {
         val fails = ArrayList<String>()   // what went wrong, one line each (first 50)
         var failCount = 0
         var skippedTotal = 0
-        fun fail(what: String, e: Throwable) { failCount++; if (fails.size < 50) fails.add("$what: ${errText(e)}") }
+        fun fail(what: String, e: Throwable) { failCount++; job.failed = failCount; job.addProblem("$what: ${errText(e)}"); if (fails.size < 50) fails.add("$what: ${errText(e)}") }
         try {
             val ddirN = vnorm(ddir)
+            job.dest = dst.name + " \u203a " + ddirN
             val plan = ArrayList<Pair<String, List<WalkItem>?>>()
             for (p0 in paths) {
                 val p = vnorm(p0)
@@ -604,6 +631,7 @@ object Jobs {
             }
             if (same && cut) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
+            job.filesTotal = if (same && cut) plan.size else plan.sumOf { (_, w) -> w!!.count { !it.dir && !it.skip } }
             if (!(same && cut)) pinArchives(job, src, plan)
             val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
             // SAFETY: nothing that already exists at the destination is ever deleted to make room. Folders are merged; only files with the
@@ -629,7 +657,7 @@ object Jobs {
                 dest = if (merge) null else d   // a cancel removes only what this job created itself
                 if (fastMove) {
                     try { src.move(p, d) } catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }
-                    job.done += 1
+                    job.done += 1; job.files++
                     continue
                 }
                 val wl: List<WalkItem> = walked ?: src.walk(p)   // a move onto an existing name is done as copy + delete of the original
@@ -666,6 +694,7 @@ object Jobs {
                                     else if (act == "skip_all") { sticky = "skip"; act = "skip" }
                                 }
                                 if (act == "skip") {
+                                    job.files++
                                     if (counting) job.done += w.size
                                     keptHere++; job.addLog("S", shown)
                                     continue
@@ -679,13 +708,14 @@ object Jobs {
                     } catch (e: Exception) {
                         bad++
                         fail(if (w.rel.isEmpty()) vbase(p) else vbase(p) + "/" + w.rel, e)
+                        job.files++
                         if (counting) job.done += w.size   // keep the progress bar moving
                         if (w.rel.isEmpty() && w.dir) break   // the top folder itself could not be used: its content has no place to go
                     }
                 }
                 skippedTotal += skipped
                 kept += keptHere
-                if (!counting) job.done += 1
+                if (!counting) { job.done += 1; job.files++ }
                 if (cut) {
                     // SAFETY: the original is removed only when every single thing in it was copied
                     if (bad == 0 && skipped == 0 && keptHere == 0) {
@@ -727,12 +757,15 @@ object Jobs {
             try {
                 val f = src.open(sp)
                 try {
+                    job.begin(vbase(sp), f.size)
                     dst.write(target, f, f.size) { n ->
                         if (job.cancel) throw Cancelled()
                         sent += n
+                        job.curDone += n
                         if (count) job.done += n
                     }
                 } finally { f.close() }
+                if (count) job.files++
                 return
             } catch (e: Cancelled) { throw e
             } catch (e: NotFound) { if (count) job.done -= sent; throw e

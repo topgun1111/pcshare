@@ -276,6 +276,14 @@ body.dual #dual{display:flex}
 .bn .br{display:flex;align-items:center;gap:14px;padding:10px 6px;min-height:56px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-tap-highlight-color:transparent}.bn .br.sel{background:color-mix(in srgb,var(--ac) 12%,transparent)}
 .bn .br .t{flex:1;min-width:0}.bn .br .t b{display:block;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bn .br .t small{display:block;color:var(--mut);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bn .bk{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--mut);box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:transparent}.bn .bk svg{width:16px;height:16px;fill:currentColor}.bn .br.sel .bk{background:var(--ac);border-color:var(--ac);color:var(--onac)}
+.pj .pjh{display:flex;align-items:baseline;gap:8px}.pj .pjh h3{flex:1;margin:0}.pj .pjp{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ac)}
+.pj .pjs{color:var(--mut);font-size:13px;margin:2px 0 8px;overflow-wrap:anywhere}.pj .pjb{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:0 0 10px}.pj .pjb i{display:block;height:100%;width:0;background:var(--ac);border-radius:4px;transition:width .3s}
+.pj .pjn{background:var(--bg);border-radius:12px;padding:10px 12px;margin-bottom:10px}.pj .pjnn{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pj .pjnb{height:3px;border-radius:2px;background:var(--bd);overflow:hidden;margin:6px 0 4px}.pj .pjnb i{display:block;height:100%;width:0;background:var(--ac);transition:width .3s}.pj .pjn small{color:var(--mut);font-size:12px}
+.pj .pjg{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:8px}.pj .pjc{min-width:0}.pj .pjc small{display:block;color:var(--mut);font-size:12px}.pj .pjc b{display:block;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pj .pjc b.pjbad{color:var(--err)}
+.pj .pjm{font-size:13px;color:var(--mut);margin-bottom:6px}.pj .pja{border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0 8px}
+.pj .pjr{border-radius:12px;padding:8px 10px;margin:4px 0 8px;background:color-mix(in srgb,var(--err) 10%,transparent);font-size:12px;overflow-wrap:anywhere}.pj .pjr b{display:block;color:var(--err);font-size:13px;margin-bottom:2px}.pj .pjr small{color:var(--mut)}
+.pj .pjl{max-height:26vh;overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px}.pj .dact{margin-top:10px}
+#toast{cursor:pointer}
 .handle{width:32px;height:4px;border-radius:2px;background:var(--mut);opacity:.5;margin:4px auto 12px}
 #sheet h3,.dcard h3{margin:0 0 8px;font-size:22px;font-weight:500}
 .li{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px;border-radius:16px;text-align:left;width:100%}.li:active{background:var(--hov)}
@@ -2108,74 +2116,107 @@ function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(l
 function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return Math.round(s/5)*5+' s';
   if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
   const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h+' h'+(m?' '+m+' min':'')}
-/* ---- live view of a copy / extract that merges into existing folders: every replaced / new / skipped file as it happens,
-   and the question "replace this file?" one file at a time (Replace / Skip / Replace all / Skip all) ---- */
+/* ---- progress card for every background job (copy / move / send / extract / zip / delete / print): what is happening now, counts, speed, time,
+   problems as they happen. Opens by itself when a job runs longer than 2 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
+   Copies that merge into existing folders also show every replaced / new / skipped file and ask "replace this file?" one file at a time. ---- */
 let LVS=null;
-const LVK={R:['\u21bb','Replaced','#E65100'],N:['\uff0b','New','#2E7D32'],S:['\u21b7','Skipped','var(--mut)']};
+const LVK={R:['↻','Replaced','#E65100'],N:['＋','New','#2E7D32'],S:['↷','Skipped','var(--mut)']};
+const durTxt=s=>{s=Math.max(0,Math.round(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>(n<10?'0':'')+n;return h?h+':'+p(m)+':'+p(x):m+':'+p(x)};
 function lvShow(){const L=LVS;if(!L)return;const o=$('#sheet');
   if(!L.card.isConnected||o.style.display!=='flex'){o.textContent='';o.append(L.card);o.style.display='flex';o.onclick=e=>{if(e.target===o)lvHide()}}
-  L.hidden=false}
-function lvHide(){const o=$('#sheet');if(LVS)LVS.hidden=true;o.style.display='none';o.onclick=null}
+  L.hidden=false;$('#toast').style.display='none'}
+function lvHide(){const o=$('#sheet');if(LVS){LVS.hidden=true;LVS.min=true}o.style.display='none';o.onclick=null}
 function lvMake(id){
-  const card=E('div','card'),h=E('h3','','Working\u2026'),bar=E('div'),fill=E('div'),sum=E('div'),askBox=E('div'),list=E('div'),row=E('div');
-  bar.style.cssText='height:6px;border-radius:3px;background:var(--bd);overflow:hidden;margin:2px 0 8px';
-  fill.style.cssText='height:100%;width:0;background:var(--ac);transition:width .3s';bar.append(fill);
-  sum.style.cssText='font-size:13px;color:var(--mut);margin-bottom:6px';
-  askBox.style.cssText='display:none;border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0 8px';
-  list.style.cssText='max-height:32vh;overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px';
-  row.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:10px';
-  const hide=E('button','tbtn','Hide'),cx=E('button','tbtn','Cancel');
-  hide.onclick=lvHide;cx.onclick=()=>{api('POST','/api/jobcancel?id='+id).catch(()=>{});cx.disabled=true};
-  row.append(hide,cx);card.append(E('div','handle'),h,bar,sum,askBox,list,row);
-  return{id,card,h,fill,sum,askBox,list,row,hide,cx,n:0,lines:0,answered:-1,curq:-1,hidden:false}}
-function lvLine(L,k,nm){const m=LVK[k]||LVK.N,d=E('div');d.style.color=m[2];d.textContent=m[0]+' '+nm;d.title=m[1];L.list.append(d);
+  const card=E('div','card pj'),hd=E('div','pjh'),h=E('h3','','Working…'),pc=E('b','pjp','0%'),sub=E('div','pjs'),
+    bar=E('div','pjb'),fill=E('i'),now=E('div','pjn'),nn=E('div','pjnn'),nb=E('div','pjnb'),nf=E('i'),ns=E('small'),
+    grid=E('div','pjg'),sum=E('div','pjm'),askBox=E('div','pja'),pr=E('div','pjr'),list=E('div','pjl'),row=E('div','dact');
+  hd.append(h,pc);bar.append(fill);nb.append(nf);now.append(nn,nb,ns);now.style.display='none';
+  askBox.style.display='none';pr.style.display='none';list.style.display='none';sum.style.display='none';
+  const hide=E('button','tbtn','Minimize'),cx=E('button','tbtn','Cancel');
+  hide.onclick=lvHide;cx.onclick=()=>{api('POST','/api/jobcancel?id='+id).catch(()=>{});cx.disabled=true;cx.textContent='Cancelling…'};
+  row.append(hide,cx);card.append(E('div','handle'),hd,sub,bar,now,grid,sum,askBox,pr,list,row);
+  return{id,card,h,pc,sub,fill,now,nn,nf,ns,nb,grid,sum,askBox,pr,list,row,hide,cx,n:0,lines:0,answered:-1,curq:-1,hidden:true,min:false,auto:false,cells:{}}}
+function lvLine(L,k,nm){const m=LVK[k]||LVK.N,d=E('div');d.style.color=m[2];d.textContent=m[0]+' '+nm;d.title=m[1];L.list.style.display='block';L.list.append(d);
   if(++L.lines>500){L.list.firstChild.remove();L.lines--}}
+function lvCells(L,arr){   // arr: [key,label,value,cls]; cells are created once and then only their text changes
+  arr.forEach(c=>{let e=L.cells[c[0]];
+    if(!c[2]){if(e)e.box.style.display='none';return}
+    if(!e){const box=E('div','pjc'),l=E('small','',c[1]),v=E('b');box.append(l,v);L.grid.append(box);e=L.cells[c[0]]={box,v}}
+    e.box.style.display='';e.v.textContent=c[2];e.v.className=c[3]||''})}
+function lvProblems(L,j){const ps=j.problems||[];if(!ps.length){L.pr.style.display='none';return}
+  L.pr.style.display='block';L.pr.textContent='';L.pr.append(E('b','','⚠ '+(j.failed||ps.length)+' problem'+((j.failed||ps.length)===1?'':'s')));
+  ps.slice(-4).forEach(t=>L.pr.append(E('div','',t)));if((j.failed||0)>4)L.pr.append(E('small','','… '+((j.failed)-4)+' more'))}
 function lvFeed(id,j){
-  if(!LVS||LVS.id!==id){LVS=lvMake(id);lvShow()}
-  const L=LVS,pct=Math.floor(j.done*100/Math.max(j.total,1));
-  const near=L.list.scrollHeight-L.list.scrollTop-L.list.clientHeight<40;
+  if(!LVS)LVS=lvMake(id);
+  const L=LVS;if(L.id!==id)return false;   // another job already owns the card: this one only uses the bottom bar
+  const pct=Math.floor(j.done*100/Math.max(j.total,1)),verb=((j.label||'Working').split(/[\s:]/)[0]||'Working');
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));
   if(j.logn!=null)L.n=j.logn;
-  if(near)L.list.scrollTop=L.list.scrollHeight;
-  L.h.textContent=(j.label||'Working')+'\u2026 '+pct+'%';L.fill.style.width=pct+'%';
-  L.sum.textContent='\u21bb '+j.cR+' replaced  \u00b7  \uff0b '+j.cN+' new  \u00b7  \u21b7 '+j.cS+' skipped';
+  const near=L.list.scrollHeight-L.list.scrollTop-L.list.clientHeight<40;if(near)L.list.scrollTop=L.list.scrollHeight;
+  L.h.textContent=verb;L.pc.textContent=pct+'%';L.fill.style.width=pct+'%';
+  L.sub.textContent=j.dest?(j.dest):(j.label&&j.label!==verb?j.label:'');L.sub.style.display=L.sub.textContent?'':'none';
+  if(j.cur){L.now.style.display='';L.nn.textContent=j.cur;
+    if(j.bytes&&j.curTotal>0){L.nb.style.display='';L.nf.style.width=Math.min(100,Math.floor(j.curDone*100/j.curTotal))+'%';L.ns.textContent=fmt(j.curDone)+' of '+fmt(j.curTotal)}
+    else{L.nb.style.display='none';L.ns.textContent=''}}
+  const fl=j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'');
+  lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(j.done)+' of '+fmt(j.total):j.done+' of '+j.total],
+    ['s','Speed',j.speed>0?fmt(j.speed)+'/s':''],['e','Time left',j.eta>0?etaTxt(j.eta):''],['u','Elapsed',durTxt(j.elapsed)],
+    ['f',j.filesTotal>0?'Files':(j.label&&/^Delet/.test(j.label)?'Items removed':'Files'),fl],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
+  if(j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
+  lvProblems(L,j);
+  if(j.elapsed>=2&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
   const a=j.ask;
   if(a&&a.q!==L.answered){
     if(L.curq!==a.q){L.curq=a.q;L.askBox.textContent='';
       const nm=E('div','',a.name);nm.style.cssText='font-weight:600;word-break:break-all;margin-bottom:6px';
       const dt=m=>m?new Date(m*1000).toLocaleString():'?';
       const same=a.srcSize===a.dstSize&&a.srcMtime&&a.dstMtime&&Math.abs(a.srcMtime-a.dstMtime)<=2;
-      const info=E('div','','Existing: '+fmt(a.dstSize)+' \u00b7 '+dt(a.dstMtime)+'\nNew: '+fmt(a.srcSize)+' \u00b7 '+dt(a.srcMtime)+(same?'\nIdentical size and date':''));
+      const info=E('div','','Existing: '+fmt(a.dstSize)+' · '+dt(a.dstMtime)+'\nNew: '+fmt(a.srcSize)+' · '+dt(a.srcMtime)+(same?'\nIdentical size and date':''));
       info.style.cssText='white-space:pre-line;font-size:13px;color:var(--mut);margin-bottom:8px';
       const g=E('div');g.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
       [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Replace all','replace_all','tbtn'],['Skip all','skip_all','tbtn']].forEach(x=>{
         const b=E('button',x[2],x[0]);b.onclick=()=>{L.answered=a.q;L.askBox.style.display='none';
-          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('\u26a0 '+e.message,4000))};g.append(b)});
+          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden)lvShow();
-  }else L.askBox.style.display='none'}
-function lvEnd(j){const L=LVS;if(!L)return;LVS=null;
-  const last=j.log||[];last.forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
+  }else L.askBox.style.display='none';
+  return !L.hidden}
+/* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
+function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
+  (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
   L.askBox.style.display='none';
-  L.h.textContent=j.state==='done'?'\u2705 Done':j.state==='cancel'?'Cancelled':'\u26a0 '+(j.error||'Failed');
-  L.fill.style.width=(j.state==='done'?100:L.fill.style.width.replace('%','')||0)+'%';
-  if(j.cR!=null)L.sum.textContent='\u21bb '+j.cR+' replaced  \u00b7  \uff0b '+j.cN+' new  \u00b7  \u21b7 '+j.cS+' skipped';
+  const ok=j.state==='done',el=j.elapsed||0;
+  L.h.textContent=ok?'✅ Done':j.state==='cancel'?'Cancelled':'⚠ Failed';
+  L.fill.style.width=(ok?100:L.fill.style.width.replace('%','')||0)+'%';if(!ok)L.fill.style.background=j.state==='cancel'?'var(--mut)':'var(--err)';
+  L.pc.textContent=ok?'100%':L.pc.textContent;L.now.style.display='none';
+  L.sub.style.display='';L.sub.textContent=ok?(j.note||'')+(j.bytes&&el>=1&&j.total>1?(j.note?' · ':'')+fmt(j.total)+' in '+durTxt(el)+' · avg '+fmt(j.total/el)+'/s':(j.note?'':'Finished in '+durTxt(el))):(j.error||'');
+  if(!ok&&j.state==='error')L.sub.style.color='var(--err)';
+  lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(ok?j.total:j.done)+' of '+fmt(j.total):j.done+' of '+j.total],['s','Speed',''],['e','Time left',''],
+    ['u','Elapsed',durTxt(el)],['f',j.filesTotal>0?'Files':'Items removed',j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'')],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
+  if(j.cR!=null&&j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
+  lvProblems(L,j);
   L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
-  if(L.hidden&&j.state==='done')return;lvShow()}
+  L.hide.onclick=()=>{const o=$('#sheet');o.style.display='none';o.onclick=null};
+  const bad=(j.problems||[]).length>1;
+  if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
+  if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
+  lvShow();return true}
 let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
+$('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#tc'))return;if(LVS&&LVS.id===curJob)lvShow()});
 let trk=0;
 async function track(id){
-  let ok=false,jf=0;curJob=id;trk++;LVS=null;
+  let ok=false,jf=0;curJob=id;trk++;
   for(;;){
-    let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
-    if(j.live)lvFeed(id,j);
-    if(j.state==='error'){lvEnd(j);toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
-    if(j.state==='cancel'){lvEnd(j);toast('Cancelled',2500);break}
-    if(j.state==='done'){lvEnd(j);toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
+    let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
+    if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
+    if(j.state==='cancel'){const c=lvEnd(id,j);if(!c)toast('Cancelled',2500);break}
+    if(j.state==='done'){const c=lvEnd(id,j);if(!c)toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
+    const card=lvFeed(id,j);
     const pct=Math.floor(j.done*100/j.total);
-    const sp=[];if(j.speed>0)sp.push(fmt(j.speed)+'/s');if(j.eta>0)sp.push('about '+etaTxt(j.eta)+' left');
-    toast((j.label||'Working')+'\u2026 '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total)+(sp.length?'  \u00b7 '+sp.join(' \u00b7 '):''),0,pct);
+    if(card)$('#toast').style.display='none';
+    else{const sp=[];if(j.speed>0)sp.push(fmt(j.speed)+'/s');if(j.eta>0)sp.push('about '+etaTxt(j.eta)+' left');
+      toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total)+(sp.length?'  · '+sp.join(' · '):'')+'  ›',0,pct)}
     await new Promise(r=>setTimeout(r,400))}
   trk--;Object.keys(SP).forEach(k=>delete SP[k]);
   await refreshClip();load();return ok}
