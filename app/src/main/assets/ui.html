@@ -1013,7 +1013,7 @@ function galView(a){
         if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
         if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,5000)}});
-    if(!a.v&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
+    if(!a.v&&gi().some(pvOK)&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;
@@ -1061,7 +1061,7 @@ function isView(sdir,sname){
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
-    if(CAN_PRINT||S.peers.length)btn('print','Print',()=>doPrint(null,{items:gi(),dev:'local',full:1,path:'/',done:clr}));
+    if(gi().some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint(null,{items:gi(),dev:'local',full:1,path:'/',done:clr}));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
     gb.style.setProperty('--cols',gb.children.length)};
   // --- status card (model download / scan progress) ---
@@ -1477,13 +1477,9 @@ function openSettings(){
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
-  if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
-    const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
-      s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
-    const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
-    const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
-    const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
-    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
+    {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
+    tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
   {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
     const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
     api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
@@ -1523,6 +1519,18 @@ function openExcluded(){
   const save=async(key,l)=>{try{const r=await api('POST','/api/imgs',{op:key,paths:l});ST.included=r.included||[];ST.excluded=r.excluded||[];draw()}catch(e){toast('\u26a0 '+e.message,4000)}};
   api('GET','/api/imgs').then(r=>{ST.included=(r&&r.included)||[];ST.excluded=(r&&r.excluded)||[];draw()}).catch(draw);
   const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+function openInterfaceSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Interface settings'));
+  if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
+    const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
+      s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
+    const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
+    const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+    const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
+    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+  const d=E('button','tbtn fill','Back');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1641,7 +1649,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&!A)btn('paste','Paste',doPaste,'pri');
     if(files)btn('download','Download',doDownload);
-    if(files&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
+    if(files&&it.some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
@@ -2050,7 +2058,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
 async function doPrint(preset,cx){
-  const IT=()=>cx?cx.items:selItems(),PP=cx?cx.path:S.path,N=cx?cx.items.length:S.sel.size,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
+  const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
   await loadWifi();
@@ -2058,7 +2066,8 @@ async function doPrint(preset,cx){
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
   let to=preset||await choosePrinter(here);
   if(!to)return;
-  if(!N)return toast('Select files first, then pick a printer',3000);
+  if(!N)return toast('No printable files selected',3000);
+  if(N<ALL.length)toast((ALL.length-N)+' file(s) that cannot be printed were skipped',3500);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
     const f=IT().filter(i=>!i.dir);done();
