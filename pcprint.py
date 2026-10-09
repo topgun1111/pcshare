@@ -18,6 +18,8 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v13: no double prints - the app sends a key with every file and a repeated key / a late picture of a finished batch is ignored; a failed print
+command is retried only if it failed at once and left nothing in the print queue.
 v12: sturdier service (worker that survives any error, idle-socket timeout, queue / disk limits, hourly clean-up, no PowerShell races,
 cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
 Queue folder, Open log.
@@ -27,7 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "12"
+VERSION = "13"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -762,6 +764,10 @@ SHEET_GRID = {1: ((1, 1), (1, 1)), 2: ((1, 2), (2, 1)), 4: ((2, 2), (2, 2)), 6: 
 SHEET_MARGIN, SHEET_GAP = 14.0, 8.0   # points
 BATCHES = {}   # batch id -> {"t": time, "items": {index: (file, rotation)}}   (the app sends each picture as its own request)
 BATCH_LOCK = threading.Lock()   # every request runs in its own thread
+FINISHED_BATCHES = {}   # batch id -> time its sheets were queued: a picture of that batch that arrives again is ignored (it would print alone)
+SEEN = {}               # request key -> {"t", "evt", "res"}: the app sends a key with every file; the same key again = the same file, never printed twice
+SEEN_LOCK = threading.Lock()
+SEEN_KEEP = 900         # seconds a key / finished batch is remembered
 
 
 def prep_image(path, tag):
@@ -850,13 +856,47 @@ def images_to_sheets(items, o, name):
     return dest, len(pages)
 
 
-def run_retry(cmd, **kw):
-    """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment).
-    A timeout is NOT retried: the job may already be in the queue and would print twice."""
+PS_SPOOL = r"""
+param([string]$Printer)
+try { @(Get-PrintJob -PrinterName $Printer -ErrorAction Stop).Count } catch { 'x' }
+"""
+RETRY_FAST = 4.0   # seconds: a print command that fails later than this was already busy printing / spooling
+
+
+def spool_count(printer):
+    """Number of jobs waiting in the PC's queue for that printer (None = cannot tell). Used to see whether a failed command left a job behind."""
+    try:
+        if WIN:
+            if not printer:
+                return None
+            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_script("spool.ps1", PS_SPOOL), printer],
+                               capture_output=True, text=True, timeout=10, creationflags=CF)
+            t = (r.stdout or "").strip()
+            return int(t) if t.isdigit() else None
+        r = subprocess.run(["lpstat", "-o"] + ([printer] if printer else []), capture_output=True, text=True, timeout=10)
+        return len([l for l in (r.stdout or "").splitlines() if l.strip()])
+    except Exception:
+        return None
+
+
+def run_retry(cmd, printer=None, **kw):
+    """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment) - but ONLY when
+    it failed straight away and left nothing in the print queue. A command that ran for a while, or that left a new job in the queue, may
+    already have sent the document: trying again would print it twice. A timeout is never retried either."""
+    n0 = spool_count(printer)
+    t0 = time.time()
     try:
         subprocess.run(cmd, check=True, **kw)
     except subprocess.CalledProcessError as e:
-        log(f"print command failed (exit {e.returncode}), trying once more")
+        took = time.time() - t0
+        n1 = spool_count(printer)
+        if n0 is not None and n1 is not None and n1 > n0:
+            log(f"print command exited with {e.returncode}, but the job is in the queue - not sending it again")
+            return
+        if took > RETRY_FAST:
+            log(f"print command failed after {took:.0f}s (exit {e.returncode}) - not retried, it may have printed")
+            raise
+        log(f"print command failed at once (exit {e.returncode}), trying once more")
         time.sleep(3)
         subprocess.run(cmd, check=True, **kw)
 
@@ -867,9 +907,9 @@ def send_pdf(pdf, o, pr, sm, notes):
         sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
         if sides: cmd += ["-o", "sides=" + sides]
         if o["color"] == "mono": cmd += ["-o", "print-color-mode=monochrome"]
-        run_retry(cmd + [pdf], timeout=120)
+        run_retry(cmd + [pdf], printer=pr or DEFAULT_PRINTER[0], timeout=120)
     elif sm:
-        run_retry(sumatra_args(sm, pdf, o, pr), timeout=300, creationflags=0x08000000)
+        run_retry(sumatra_args(sm, pdf, o, pr), printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
     else:
         if pr or o["duplex"] or o["color"]:
             notes.append("printer / duplex / colour ignored: SumatraPDF is not installed")
@@ -1365,15 +1405,50 @@ class H(BaseHTTPRequestHandler):
         evt, res = threading.Event(), {}
         qs = parse_qs(u.query)
         bid = re.sub(r"[^0-9A-Za-z]", "", (qs.get("batch") or [""])[0])[:20]
+        key = re.sub(r"[^0-9A-Za-z_-]", "", (qs.get("key") or [""])[0])[:60]
         job = dest
+
+        def drop_dest():
+            try: os.remove(dest)
+            except OSError: pass
+
+        def answer(ev, rs):
+            if not ev.wait(90):   # still waiting in the queue: the phone treats this as sent
+                return self.reply(200, {"ok": True, "queued": True})
+            if "error" in rs:
+                return self.reply(500, {"error": rs["error"]})   # the phone shows the reason
+            self.reply(200, {"ok": True, "printed": True, "printer": rs.get("printer"), "warning": rs.get("warning"), "note": rs.get("note")})
+
+        ent = None
+        if key:   # the same file arriving again (an app retry, a reconnect over Tailscale ...) must not print twice
+            with SEEN_LOCK:
+                for k in [k for k, v in SEEN.items() if time.time() - v["t"] > SEEN_KEEP]:
+                    SEEN.pop(k, None)
+                old = SEEN.get(key)
+                if old is None:
+                    ent = SEEN[key] = {"t": time.time(), "evt": None, "res": None}
+            if old is not None:
+                drop_dest()
+                log(f"repeated request ignored: {name} (key {key})")
+                if old["evt"] is not None:
+                    return answer(old["evt"], old["res"])   # same answer as the first one gets
+                return self.reply(200, {"ok": True, "duplicate": True, "batched": bool(bid)})
         if bid and ext in IMAGES:   # several pictures for one set of sheets: wait for the last one
             gq = lambda k: (qs.get(k) or [""])[0]
             idx, cnt, rot = _int(gq("idx"), 0, 0, 999), _int(gq("n"), 1, 1, 1000), _int(gq("rot"), 0, 0, 359) // 90 * 90 % 360
             with BATCH_LOCK:
-                for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > 900]:
+                for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > SEEN_KEEP]:
                     BATCHES.pop(k, None)
-                bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
-                bt["items"][idx] = (dest, rot)
+                for k in [k for k, t in FINISHED_BATCHES.items() if time.time() - t > SEEN_KEEP]:
+                    FINISHED_BATCHES.pop(k, None)
+                finished = bid in FINISHED_BATCHES
+                if not finished:
+                    bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
+                    bt["items"][idx] = (dest, rot)
+            if finished:   # this set of sheets is already queued: a late or repeated picture would print alone on a sheet
+                drop_dest()
+                log(f"picture of an already finished batch ignored: {name}")
+                return self.reply(200, {"ok": True, "duplicate": True, "batched": True})
             if idx < cnt - 1:
                 return self.reply(200, {"ok": True, "batched": True})
             end = time.time() + 6   # pictures that arrive out of order (parallel uploads): give the stragglers a moment
@@ -1385,12 +1460,11 @@ class H(BaseHTTPRequestHandler):
             with BATCH_LOCK:
                 job = [bt["items"][k] for k in sorted(bt["items"])]
                 BATCHES.pop(bid, None)
+                FINISHED_BATCHES[bid] = time.time()
+        if ent is not None:
+            ent["evt"], ent["res"] = evt, res
         PRINTQ.put((job, evt, res, o))
-        if not evt.wait(90):   # still waiting in the queue: the phone treats this as sent
-            return self.reply(200, {"ok": True, "queued": True})
-        if "error" in res:
-            return self.reply(500, {"error": res["error"]})   # the phone shows the reason
-        self.reply(200, {"ok": True, "printed": True, "printer": res.get("printer"), "warning": res.get("warning"), "note": res.get("note")})
+        answer(evt, res)
 
 
 def pc_addresses():

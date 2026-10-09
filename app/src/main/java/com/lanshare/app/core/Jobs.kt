@@ -355,6 +355,7 @@ object Jobs {
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
             val bid = java.lang.Long.toString(System.nanoTime(), 36)
+            val kb = java.lang.Long.toString(System.nanoTime(), 36)   // one key per file of this job: pcprint.py ignores a request whose key it has already printed
             val rots = opts?.optJSONArray("rots")
             for ((i, f0) in files.withIndex()) {
                 val (sp, size) = f0
@@ -394,7 +395,7 @@ object Jobs {
                         } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     } else if (kind == PrintPrep.Kind.TEXT) sendName = name.substringBeforeLast('.') + ".txt"
                     val counted = body === f   // converted pictures were already counted while they were read
-                    val extra = if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
+                    val extra = "&key=$kb-$i" + if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
                     val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
                         120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
                     try {
