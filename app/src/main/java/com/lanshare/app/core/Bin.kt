@@ -47,27 +47,30 @@ object Bin {
         progress?.invoke(src.name)
     }
 
-    @Synchronized fun list(): List<Entry> {
+    /** Entries (newest first). Folders starting with "." (being deleted) are skipped. Not locked: a long delete never blocks the list. */
+    fun list(): List<Entry> {
         val out = ArrayList<Entry>()
         root().listFiles()?.forEach { box ->
-            if (!box.isDirectory) return@forEach
+            if (!box.isDirectory || box.name.startsWith(".")) return@forEach
             try {
                 val m = JSONObject(File(box, META).readText())
                 val name = m.getString("name")
-                if (!File(box, name).exists()) { box.deleteRecursively(); return@forEach }
+                if (!File(box, name).exists() && !Core.local.isLink(File(box, name))) return@forEach
                 out.add(Entry(box.name, name, m.optBoolean("dir"), m.optLong("size"), m.optString("from", "/$name"), m.optLong("at")))
             } catch (_: Exception) {}
         }
         return out.sortedByDescending { it.at }
     }
 
+    private val restoreLock = Any()
+
     /** Puts the item back where it came from (missing folders are recreated; a taken name becomes "name (1)"). Returns the path it ended up at. */
-    @Synchronized fun restore(id: String): String {
+    fun restore(id: String): String = synchronized(restoreLock) {
         val box = entryDir(id)
         val m = JSONObject(File(box, META).readText())
         val name = m.getString("name")
         val item = File(box, name)
-        if (!item.exists()) throw NotFound("Item is gone from the recycle bin")
+        if (!item.exists() && !Core.local.isLink(item)) throw NotFound("Item is gone from the recycle bin")
         val from = vnorm(m.optString("from", "/$name"))
         val parentV = vdir(from)
         val parent = Core.local.real(parentV)
@@ -78,17 +81,68 @@ object Bin {
         while (target.exists() || Core.local.isLink(target)) { target = File(parent, name.substring(0, dot) + " ($n)" + name.substring(dot)); n++ }
         if (!item.renameTo(target)) throw IOException("could not restore $name")
         box.deleteRecursively()
-        return vjoin(parentV, target.name)
+        vjoin(parentV, target.name)
     }
 
-    @Synchronized fun purge(id: String) { val box = entryDir(id); if (!deleteTree(box)) throw IOException("could not delete everything in this item") }
+    /**
+     * Takes the entry out of the bin at once (an atomic rename to ".del-<id>", so it vanishes from [list] immediately)
+     * and returns the folder that still has to be deleted - see [wipe]. Falls back to the entry itself when the rename fails.
+     */
+    private fun detach(id: String): File {
+        val box = entryDir(id)
+        val gone = File(root(), ".del-$id")
+        return if (box.renameTo(gone)) gone else box
+    }
 
-    @Synchronized fun empty(): Int { var n = 0; root().listFiles()?.forEach { if (deleteTree(it)) n++ }; return n }
+    private fun wipe(f: File) { if (!deleteTree(f)) throw IOException("could not delete everything in ${f.name}") }
+
+    fun purge(id: String) = wipe(detach(id))
+
+    /** Removes the leftovers of an interrupted delete. */
+    fun sweepDeleted() { try { root().listFiles()?.forEach { if (it.name.startsWith(".del-")) deleteTree(it) } } catch (_: Exception) {} }
+
+    // ---- background task: restore / delete / empty run on their own thread, the UI polls [status] and shows the progress
+    class Task(val op: String, val total: Int) {
+        @Volatile var done = 0
+        @Volatile var running = true
+        @Volatile var cancel = false
+        val errors = java.util.Collections.synchronizedList(ArrayList<String>())
+        val paths = java.util.Collections.synchronizedList(ArrayList<String>())
+        fun toJson(): JSONObject = JSONObject().put("op", op).put("total", total).put("done", done).put("running", running)
+            .put("errors", org.json.JSONArray(errors.toList())).put("paths", org.json.JSONArray(paths.toList()))
+    }
+    @Volatile private var task: Task? = null
+
+    fun status(): JSONObject? = task?.toJson()
+
+    fun cancelTask() { task?.cancel = true }
+
+    /** op = restore | purge | empty (ids ignored for empty). Throws when another bin task is still running. */
+    @Synchronized fun start(op: String, ids0: List<String>): Task {
+        if (task?.running == true) throw BadReq("the recycle bin is busy - wait for the current action to finish")
+        if (op != "restore" && op != "purge" && op != "empty") throw BadReq("unknown bin op")
+        val ids = if (op == "empty") (root().listFiles()?.filter { it.isDirectory && !it.name.startsWith(".del-") }?.map { it.name } ?: emptyList()) else ids0
+        val t = Task(op, ids.size)
+        task = t
+        Thread({
+            try {
+                for (id in ids) {
+                    if (t.cancel) break
+                    try {
+                        if (op == "restore") t.paths.add(restore(id)) else purge(id)
+                    } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
+                    t.done++
+                }
+            } finally { t.running = false }
+        }, "bin-$op").also { it.isDaemon = true; it.start() }
+        return t
+    }
 
     /** Start-up sweep: drops entries older than [KEEP_DAYS]. */
     fun autoPurge() {
         try {
             val cut = System.currentTimeMillis() - KEEP_DAYS * 86_400_000L
+            sweepDeleted()
             list().filter { it.at in 1 until cut }.forEach { try { purge(it.id) } catch (_: Exception) {} }
         } catch (_: Exception) {}
     }

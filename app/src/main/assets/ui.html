@@ -267,6 +267,15 @@ body.dual #dual{display:flex}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
 #sheet .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
 #sheet .card>*{flex-shrink:0}
+#sheet .card.bn{height:85vh;height:85dvh;overflow:hidden;padding-bottom:0}
+.bn .bh{display:flex;align-items:center;gap:4px}.bn .bh h3{flex:1;margin:0}.bn .bh .tbtn:disabled{opacity:.4}
+.bn .bs{color:var(--mut);font-size:13px;margin:0 4px 2px;min-height:0}.bn .bs:empty{display:none}
+.bn .bt{display:flex;align-items:center;gap:4px;padding:4px 0 8px;border-bottom:1px solid var(--bd);overflow-x:auto}.bn .bt:empty{display:none}.bn .bn1{flex:1;min-width:84px;font-size:14px;font-weight:600;padding-left:4px}
+.bn .bpg{display:none;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bd)}.bn .bw{flex:1;min-width:0;font-size:13px}.bn .bp{height:4px;border-radius:2px;background:var(--hov);overflow:hidden;margin-top:6px}.bn .bp i{display:block;height:100%;background:var(--ac);transition:width .25s}
+#sheet .card.bn>.bl{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+.bn .br{display:flex;align-items:center;gap:14px;padding:10px 6px;min-height:56px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-tap-highlight-color:transparent}.bn .br.sel{background:color-mix(in srgb,var(--ac) 12%,transparent)}
+.bn .br .t{flex:1;min-width:0}.bn .br .t b{display:block;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bn .br .t small{display:block;color:var(--mut);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bn .bk{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--mut);box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:transparent}.bn .bk svg{width:16px;height:16px;fill:currentColor}.bn .br.sel .bk{background:var(--ac);border-color:var(--ac);color:var(--onac)}
 .handle{width:32px;height:4px;border-radius:2px;background:var(--mut);opacity:.5;margin:4px auto 12px}
 #sheet h3,.dcard h3{margin:0 0 8px;font-size:22px;font-weight:500}
 .li{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px;border-radius:16px;text-align:left;width:100%}.li:active{background:var(--hov)}
@@ -1992,28 +2001,70 @@ async function doDelete(){
   try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+/* ---- Recycle bin: sticky top bar (Empty bin / select / Restore / Delete), rows drawn in chunks while scrolling, restore / delete run as a background task on the phone with a progress bar */
+let BINTOK=null;
 async function openBin(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const tok=BINTOK={};const live=()=>BINTOK===tok;
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card'),box=E('div','det'),foot=E('div','dact');
-  card.append(E('div','handle'),E('h3','','Recycle bin'),box,foot);o.append(card);
-  const run=async(op,ids)=>{try{const r=await api('POST','/api/bin',{op:op,ids:ids});
-      if(r.errors&&r.errors.length)toast('\u26a0 '+r.errors[0],6000);else if(op==='restore')toast('Restored'+(r.paths&&r.paths[0]?' to '+r.paths[0].slice(0,r.paths[0].lastIndexOf('/'))||'/':''),3500);
-      if(op==='restore'&&S.dev==='local')load();await draw()}catch(e){toast('\u26a0 '+e.message,6000)}};
+  const card=E('div','card bn'),hd=E('div','bh'),sub=E('div','bs'),bar=E('div','bt'),pg=E('div','bpg'),list=E('div','bl');
+  const ttl=E('h3','','Recycle bin'),eb=E('button','tbtn dng','Empty bin'),xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Close');xb.onclick=close;
+  hd.append(ttl,eb,xb);card.append(E('div','handle'),hd,sub,bar,pg,list);o.append(card);
+  let items=[],days=30,sel=new Set(),shown=0,busy=null;const rows=new Map(),CH=80;
+  const plural=n=>n+' item'+(n===1?'':'s');
+  const dateTxt=t=>new Date(t).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  function rowFor(i){
+    const row=E('div','br'+(sel.has(i.id)?' sel':'')),k=E('span','bk'),t=E('div','t'),left=Math.max(0,days-Math.floor((Date.now()-i.at)/86400000));
+    const dir=i.from.slice(0,i.from.lastIndexOf('/'))||'/';
+    k.append(ic('done'));t.append(E('b','',i.name),E('small','',(i.dir?'Folder':fmt(i.size))+' · from '+dir+' · '+dateTxt(i.at)+' · '+left+'d left'));
+    row.append(k,t);row.onclick=()=>{if(busy)return;if(sel.has(i.id)){sel.delete(i.id);row.classList.remove('sel')}else{sel.add(i.id);row.classList.add('sel')}bars()};
+    rows.set(i.id,row);return row}
+  function more(){if(shown>=items.length)return;const f=document.createDocumentFragment();
+    items.slice(shown,shown+CH).forEach(i=>f.append(rowFor(i)));shown=Math.min(items.length,shown+CH);list.append(f)}
+  list.onscroll=()=>{if(list.scrollTop+list.clientHeight>list.scrollHeight-600)more()};
+  function bars(){
+    bar.textContent='';sub.textContent=items.length?plural(items.length)+' · kept '+days+' days · tap to select':'';
+    eb.style.display=items.length?'':'none';eb.disabled=!!busy;
+    if(busy||!items.length)return;
+    const n=sel.size;
+    if(n){const c=E('b','bn1',n+' selected'),rs=E('button','tbtn fill','Restore'),dl=E('button','tbtn dng','Delete'),cl=E('button','tbtn','Clear');
+      rs.onclick=()=>go('restore',[...sel]);dl.onclick=async()=>{if(await dlg({title:'Delete '+plural(n)+' forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))go('purge',[...sel])};
+      cl.onclick=()=>{sel.clear();rows.forEach(r=>r.classList.remove('sel'));bars()};bar.append(c,rs,dl,cl)}
+    else{const all=E('button','tbtn','Select all');all.onclick=()=>{items.forEach(i=>sel.add(i.id));rows.forEach(r=>r.classList.add('sel'));bars()};bar.append(all)}}
+  eb.onclick=async()=>{if(busy||!items.length)return;
+    if(await dlg({title:'Empty the Recycle bin?',msg:plural(items.length)+' will be deleted forever.',ok:'Empty',danger:true}))go('empty',[])};
+  function prog(t){pg.textContent='';if(!t||!t.running){pg.style.display='none';return}
+    pg.style.display='flex';const bp=E('div','bp'),f=E('i'),tx=E('span','',''),cx=E('button','tbtn','Cancel');
+    f.style.width=(t.total?Math.round(t.done*100/t.total):0)+'%';bp.append(f);
+    tx.textContent=({restore:'Restoring',purge:'Deleting',empty:'Emptying'}[t.op]||'Working')+' '+t.done+' / '+t.total+'…';
+    cx.onclick=()=>{cx.disabled=true;api('POST','/api/bin',{op:'cancel'}).catch(()=>{})};
+    const w=E('div','bw');w.append(tx,bp);pg.append(w,cx)}
+  async function follow(t){   // poll the background task until it ends, then reconcile with the real list
+    busy=t;bars();prog(t);
+    try{while(t.running&&live()){await new Promise(r=>setTimeout(r,350));
+        const r=await api('GET','/api/bin?items=0',null,8000);t=r.task||{running:false,done:0,total:0,errors:[],paths:[],op:t.op};if(live()){busy=t.running?t:busy;prog(t)}}}
+    catch(e){if(live())toast('⚠ '+e.message,5000)}
+    busy=null;if(!live())return;prog(null);
+    if(t.errors&&t.errors.length)toast('⚠ '+t.errors.length+' failed: '+t.errors[0],7000);
+    else if(t.op==='restore')toast('Restored '+plural(t.done)+(t.paths&&t.paths.length===1?' to '+(t.paths[0].slice(0,t.paths[0].lastIndexOf('/'))||'/'):''),3500);
+    else toast('Deleted '+plural(t.done),2500);
+    if(t.op==='restore'&&S.dev==='local')load();
+    await draw()}
+  async function go(op,ids){
+    try{const r=await api('POST','/api/bin',{op:op,ids:ids},15000);
+      const gone=op==='empty'?new Set(items.map(i=>i.id)):new Set(ids);   // rows disappear at once, the real result is checked when the task ends
+      items=items.filter(i=>!gone.has(i.id));gone.forEach(id=>{const r=rows.get(id);if(r){r.remove();rows.delete(id)}sel.delete(id)});
+      if(!items.length)list.textContent='';
+      await follow(r.task)}
+    catch(e){toast('⚠ '+e.message,6000);draw()}}
   async function draw(){
-    let r;try{r=await api('GET','/api/bin')}catch(e){box.textContent='';box.append(E('div','dnote w','\u26a0 '+e.message));return}
-    if(o.style.display!=='flex')return;
-    box.textContent='';foot.textContent='';
-    if(!r.items.length)box.append(E('div','dnote','Empty. Deleted items are kept '+r.days+' days, then removed.'));
-    r.items.forEach(i=>{const row=E('div','set'),t=E('div','t'),dir=i.from.slice(0,i.from.lastIndexOf('/'))||'/';
-      t.append(E('b','',i.name),E('small','',(i.dir?'Folder':fmt(i.size))+' \u00b7 from '+dir+' \u00b7 '+fmtDT(i.at/1000)));
-      const rb=E('button','tbtn','Restore'),db=E('button','tbtn dng','Delete');
-      rb.onclick=()=>run('restore',[i.id]);
-      db.onclick=async()=>{if(await dlg({title:'Delete "'+i.name+'" forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))run('purge',[i.id])};
-      row.append(t,rb,db);box.append(row)});
-    if(r.items.length){const eb=E('button','tbtn dng','Empty bin');
-      eb.onclick=async()=>{if(await dlg({title:'Empty the Recycle bin?',msg:r.items.length+' item'+(r.items.length>1?'s':'')+' will be deleted forever.',ok:'Empty',danger:true}))run('empty',[])};foot.append(eb)}
-    const cb=E('button','tbtn','Close');cb.onclick=close;foot.append(cb)}
+    let r;try{r=await api('GET','/api/bin',null,30000)}catch(e){if(!live())return;list.textContent='';list.append(E('div','dnote w','⚠ '+e.message));return}
+    if(!live()||o.style.display!=='flex')return;
+    items=r.items||[];days=r.days||30;rows.clear();shown=0;list.textContent='';list.scrollTop=0;
+    const ids=new Set(items.map(i=>i.id));[...sel].forEach(id=>{if(!ids.has(id))sel.delete(id)});
+    if(!items.length)list.append(E('div','dnote','Empty. Deleted items are kept '+days+' days, then removed.'));else more();
+    bars();
+    if(r.task&&r.task.running&&!busy)follow(r.task)}
   await draw()}
 async function doDetails(it,pth0){
   const i=(it&&it.name?it:null)||selItems()[0];if(!i)return;const dev=S.dev,pth=pth0||jn(S.path,i.name);
