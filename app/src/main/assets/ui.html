@@ -1061,6 +1061,7 @@ function isView(sdir,sname){
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
+    if(CAN_PRINT||S.peers.length)btn('print','Print',()=>doPrint(null,{items:gi(),dev:'local',full:1,path:'/',done:clr}));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
     gb.style.setProperty('--cols',gb.children.length)};
   // --- status card (model download / scan progress) ---
@@ -2049,7 +2050,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
 async function doPrint(preset,cx){
-  const IT=()=>cx?cx.items:selItems(),PP=cx?cx.path:S.path,N=cx?cx.items.length:S.sel.size,PS=()=>IT().map(i=>jn(PP,i.name)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}};
+  const IT=()=>cx?cx.items:selItems(),PP=cx?cx.path:S.path,N=cx?cx.items.length:S.sel.size,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
   await loadWifi();
@@ -2062,18 +2063,18 @@ async function doPrint(preset,cx){
   if(to.id==='__here'){
     const f=IT().filter(i=>!i.dir);done();
     if(!f.length)return toast('Select files to print');
-    const urlOf=i=>location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name));
+    const urlOf=i=>location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i));
     if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   if(to.wifi){
-    const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(PP,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name))}));
+    const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
     const wo=await wifiOptions(to,wf);if(!wo)return;
-    try{const r=await api('POST','/api/print',{dev:S.dev,paths:PS(),to:to.id,opts:wo});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+    try{const r=await api('POST','/api/print',{dev:DV,paths:PS(),to:to.id,opts:wo});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
-  const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:jn(PP,i.name),url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(PP,i.name))}));
+  const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
   const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
-  try{const r=await api('POST','/api/print',{dev:S.dev,paths:opts.sheet?pvf.map(p=>p.path):PS(),to:to.id,opts});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
+  try{const r=await api('POST','/api/print',{dev:DV,paths:opts.sheet?pvf.map(p=>p.path):PS(),to:to.id,opts});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async names=>{
