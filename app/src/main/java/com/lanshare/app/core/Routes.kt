@@ -76,8 +76,9 @@ object Routes {
             "peers" -> {
                 val a = JSONArray()
                 for (p in d.list()) a.put(JSONObject().put("id", p.id).put("name", p.name).put("ip", p.ip).put("ok", p.ok)
-                    .put("seen", p.seen / 1000.0).put("via", viaOf(p.ip)))
-                for (s in Smb.peers()) a.put(s.put("via", viaOf(Smb.split(s.optString("ip")).first)))
+                    .put("seen", p.seen / 1000.0).put("via", viaOf(p.ip)).put("kind", "LANShare")
+                    .put("vias", JSONArray((listOf(p.ip) + p.ips).map { viaOf(it) }.distinct())))
+                for (s in Smb.peers()) { val v = viaOf(Smb.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "SMB").put("vias", JSONArray(listOf(v)))) }
                 return ex.json(a)
             }
             "diag" -> return ex.json(JSONObject().put("me", Cfg.name).put("id", Cfg.id).put("port", d.port)

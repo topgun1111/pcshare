@@ -35,6 +35,38 @@ import com.hierynomus.smbj.share.File as SmbFile
 object Smb {
     val state = java.util.concurrent.ConcurrentHashMap<String, Boolean>()   // share id -> did the last operation work?
 
+    /** share id -> does the PC's SMB port answer right now? (checked in the background, so the Devices list shows the real state) */
+    val reach = ConcurrentHashMap<String, Boolean>()
+    @Volatile private var probing = false
+
+    fun startProbe() {
+        if (probing) return
+        probing = true
+        Thread {
+            while (true) {
+                try { probeAll() } catch (_: Throwable) {}
+                try { Thread.sleep(3000) } catch (_: InterruptedException) {}
+            }
+        }.also { it.isDaemon = true; it.name = "smb-probe" }.start()
+    }
+
+    private fun probeAll() {
+        val a = Cfg.smb()
+        val ids = HashSet<String>()
+        val ts = (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { c ->
+            val id = c.optString("id"); ids.add(id)
+            Thread {
+                val (h, p) = split(c.optString("host"))
+                val s = Net.newSocket(h)
+                try { s.connect(java.net.InetSocketAddress(h, p), 2500); reach[id] = true }
+                catch (_: Exception) { reach[id] = false }
+                finally { try { s.close() } catch (_: Exception) {} }
+            }.also { t -> t.isDaemon = true; t.start() }
+        }
+        ts.forEach { try { it.join(3500) } catch (_: InterruptedException) {} }
+        reach.keys.removeAll { it !in ids }
+    }
+
     fun cfg(sid: String): JSONObject? {
         val a = Cfg.smb()
         for (i in 0 until a.length()) if (a.getJSONObject(i).optString("id") == sid) return a.getJSONObject(i)
@@ -85,7 +117,7 @@ object Smb {
         (0 until a.length()).map {
             val c = a.getJSONObject(it)
             JSONObject().put("id", c.getString("id")).put("name", c.getString("name")).put("ip", c.getString("host"))
-                .put("ok", state[c.getString("id")] ?: true).put("smb", true)
+                .put("ok", reach[c.getString("id")] ?: false).put("smb", true)
         }
     }
 

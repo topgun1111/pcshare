@@ -558,8 +558,10 @@ function dlg(o){return new Promise(res=>{
 
 function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
   if(d<3600)return Math.max(1,Math.round(d/60))+' min ago';if(d<86400)return Math.round(d/3600)+' h ago';return Math.round(d/86400)+' d ago'}
-function peerSub(p){const via=p.via||'',ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
-  return {via:via,t:[via,ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
+const connTxt=p=>{if(!p.via)return '';const v=(p.vias&&p.vias.length?p.vias:[p.via]).map(x=>x==='LAN'?'Wi-Fi':x);return (p.kind?p.kind+' \u00b7 ':'')+v.join(' + ')};   // e.g. "LANShare \u00b7 Wi-Fi + Tailscale", "SMB \u00b7 Tailscale"
+function peerSub(p){const via=connTxt(p),ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
+  return {via:via,t:[via,p.ok===false?'offline':'',ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
+const peersSorted=()=>S.peers.slice().sort((a,b)=>((a.ok===false)-(b.ok===false))||String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()));   // every saved device is listed; online ones first
 function renderPeers(){
   const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;if(typeof drawerRefresh==='function')drawerRefresh();
   const box=$('#peers');box.textContent='';
@@ -582,11 +584,11 @@ function devPicker(){
   const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
   const row=(label,id,p)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(id==='local'?ic('phone'):E('i','dot'+(p&&p.ok===false?' wn':'')));
     const nr=E('div','');nr.append(E('span','',label));
-    if(p&&p.via){const tb=E('em','',p.via);tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+(p.via==='Tailscale'?'rgba(106,27,154,.15);color:#6A1B9A':'rgba(46,125,50,.15);color:#2E7D32');nr.append(tb)}
+    if(p&&p.via){const tb=E('em','',connTxt(p));tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+(p.via==='Tailscale'?'rgba(106,27,154,.15);color:#6A1B9A':'rgba(46,125,50,.15);color:#2E7D32');nr.append(tb)}
     lt.append(nr);if(p&&p.ok===false){const sm=E('small','','offline'+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}
     b.append(ld,lt);b.onclick=()=>{fin();openDev(id)};card.append(b)};
   if(S.dev!=='local')row('This device','local');
-  S.peers.filter(p=>p.id!==S.dev).forEach(p=>row(p.name,p.id,p));
+  peersSorted().filter(p=>p.id!==S.dev).forEach(p=>row(p.name,p.id,p));
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=fin;card.append(c);o.append(card)}
 let pollGen=0,pollTimer;
 async function pollPeers(){
@@ -2259,8 +2261,8 @@ function drawerRender(){
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     bd.append(E('div','dsep'));
     bd.append(E('div','dsec','Devices'));
-    S.peers.forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
-      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||(p.ok===false?'not answering':'online')),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
+    peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
     if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
     drawerPrinters(bd);
     bd.append(E('div','dsep'));

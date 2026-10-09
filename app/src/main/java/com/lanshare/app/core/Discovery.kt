@@ -50,6 +50,7 @@ class Discovery(val port: Int) {
 
     fun start() {
         loadCache()
+        Smb.startProbe()
         for ((n, fn) in listOf<Pair<String, () -> Unit>>("listen" to ::listen, "beacon" to ::beacon, "tcp" to ::tcpLoop, "live" to ::liveLoop))
             Thread({
                 while (true) {   // a crashed loop is restarted (an Error here would otherwise end discovery silently, or kill the app)
@@ -99,7 +100,7 @@ class Discovery(val port: Int) {
                     val id = o.optString("id"); val seen = o.optLong("seen")
                     if (id.isEmpty() || id == Cfg.id || now - seen > 14L * 86_400_000L) continue
                     val ips = o.optJSONArray("ips").strings()
-                    peers[id] = Peer(id, o.optString("ip"), o.optInt("port", BASE_PORT), o.optString("name"), now, ips, false)
+                    peers[id] = Peer(id, o.optString("ip"), o.optInt("port", BASE_PORT), o.optString("name"), seen, ips, false)
                     cacheSeen[id] = seen
                     cacheOld.add(o)
                 }
@@ -126,9 +127,7 @@ class Discovery(val port: Int) {
     fun setPeerIp(pid: String, ip: String) { synchronized(lock) { peers[pid]?.let { it.ip = ip } } }
 
     fun list(): List<Peer> {
-        val now = System.currentTimeMillis()
         synchronized(lock) {
-            peers.entries.removeAll { now - it.value.seen > PEER_TTL }
             return peers.values.map { it.snapshot() }.sortedBy { it.name.lowercase() }
         }
     }
@@ -198,8 +197,7 @@ class Discovery(val port: Int) {
     private fun resumed() {
         gen++
         refreshIfaces()
-        val now = System.currentTimeMillis()
-        synchronized(lock) { peers.values.forEach { it.seen = now; it.ok = false } }   // let liveLoop re-verify instead of expiring them
+        synchronized(lock) { peers.values.forEach { it.ok = false } }   // let liveLoop re-verify instead of expiring them
         Thread {
             repeat(6) {
                 try { refreshIfaces(); scanNow() } catch (_: Exception) {}
