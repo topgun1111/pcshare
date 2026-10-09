@@ -273,11 +273,6 @@ body.dual #dual{display:flex}
 /* bottom sheet + dialog */
 #sheet,#dlg{display:none;position:fixed;inset:0;background:#0000006b;z-index:10;animation:fade .2s}
 #sheet{align-items:flex-end}#dlg{align-items:center;justify-content:center;padding:24px;z-index:11}
-#apop{position:fixed;inset:0;z-index:12;background:#00000040;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;animation:fade .12s}
-#apop .apm{position:fixed;min-width:220px;max-width:calc(100vw - 16px);background:var(--cont);color:var(--fg);border-radius:16px;padding:6px;box-shadow:0 6px 24px #0006;display:flex;flex-direction:column;animation:fade .12s}
-#apop .api{display:flex;align-items:center;gap:14px;min-height:48px;padding:6px 14px;border-radius:12px;width:100%;text-align:left;font-size:15px;-webkit-user-select:none;user-select:none}
-#apop .api:active{background:var(--hov)}
-#apop .api svg{width:22px;height:22px;fill:currentColor;flex:none;color:var(--mut)}
 #sheet,#sheet *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #sheet input,#sheet textarea{-webkit-user-select:text;user-select:text}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
@@ -960,23 +955,7 @@ const galHidden=p=>HGAL.indexOf(p)>=0;
 function galHideSet(p,on){galHideMany([p],on)}
 function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}render()}
 /* the gallery's own press-and-hold menu (separate from the file browser's selection bar); the file actions that duplicate it are left out for now */
-function albPop(c,items){   // small popup menu next to the pressed album card (no title, no Cancel; tap outside closes it)
-  const old=document.getElementById('apop');if(old)old.remove();
-  const scr=E('div');scr.id='apop';const m=E('div','apm');
-  const fin=()=>scr.remove();scr.onclick=e=>{if(e.target===scr)fin()};scr.oncontextmenu=e=>{e.preventDefault();if(e.target===scr)fin()};
-  items.forEach(it=>{const b=E('button','api'),l=E('span','','');l.textContent=it[1];b.append(ic(it[0]),l);b.onclick=()=>{fin();it[2]()};m.append(b)});
-  scr.append(m);document.body.append(scr);
-  const r=c.getBoundingClientRect(),w=m.offsetWidth,h=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
-  let x=r.left+r.width/2-w/2,y=r.top+r.height/2-h/2;
-  x=Math.max(8,Math.min(vw-w-8,x));y=Math.max(8,Math.min(vh-h-8,y));
-  m.style.left=x+'px';m.style.top=y+'px'}
-function albHold(c,path,name){
-  holdMenu(c,{name:name},()=>{
-    const it=[];
-    if(!galVid())it.push(['search','AI search in this folder',()=>isView(path,name)]);
-    it.push(['dup','Find duplicates',()=>doDups([path])]);
-    it.push(['hide','Hide from gallery',()=>galHideSet(path,true)]);
-    albPop(c,it)})}
+function albHold(c,path,name){holdMenu(c,{name:name})}   // standard file-manager behaviour: press and hold selects the album, actions appear in the bottom bar
 function mkAlbum(i,P0){
   const c=E('div','alb'+(S.sel.has(i.name)?' sel':'')),cv=E('div','acv'),pth=jn(P0,i.name),sb=E('small','','\u00a0');
   cv.append(raw(FOLD,'fold'));c.append(cv,E('b','',i.name),sb);
@@ -1657,6 +1636,9 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
+    if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
+      if(!galVid()&&it.length===1)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.name)});
+      btn('hide','Hide',()=>{const ps=it.map(i=>jn(S.path,i.name));S.sel.clear();galHideMany(ps,true)})}
     if(!A)btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
