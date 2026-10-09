@@ -273,6 +273,8 @@ body.dual #dual{display:flex}
 /* bottom sheet + dialog */
 #sheet,#dlg{display:none;position:fixed;inset:0;background:#0000006b;z-index:10;animation:fade .2s}
 #sheet{align-items:flex-end}#dlg{align-items:center;justify-content:center;padding:24px;z-index:11}
+#dlg,#dlg *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#dlg input,#dlg textarea{-webkit-user-select:text;user-select:text}
 #sheet,#sheet *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #sheet input,#sheet textarea{-webkit-user-select:text;user-select:text}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
@@ -479,7 +481,8 @@ function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,t
 var NLSRQ='';   // last query typed in the NATIVE search box (see nlSr / nlSrPush)
 function clearQ(){S.q='';NLSRQ='';$('#sq').value='';document.body.classList.remove('srch')}
 const enc=encodeURIComponent;
-const jn=(a,b)=>(a==='/'?'':a)+'/'+b;
+const jn=(a,b)=>(b&&b.charCodeAt(0)===1)?b.slice(1):(a==='/'?'':a)+'/'+b;   // a name starting with \u0001 is a full path (gallery album that lives outside the open folder)
+const XM={};   // \u0001+path -> {name:key,disp,dir:true,path}
 async function api(m,u,b,ms){
   const ac=ms?new AbortController():null,tm=ms?setTimeout(()=>ac.abort(),ms):0;let r,t;
   try{for(let k=0;;k++){
@@ -1146,11 +1149,11 @@ function mkAlbumX(a,P0,V){
     show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
   if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:a.v?'vid':'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
+  const sk=own?own.name:'\u0001'+a.path;if(!own)XM[sk]={name:sk,disp:a.name,dir:true,path:a.path,size:0,v:a.v};
   c.onclick=()=>{if(c._lp){c._lp=false;return}
-    if(own&&S.sel.size){S.sel.has(own.name)?S.sel.delete(own.name):S.sel.add(own.name);c.classList.toggle('sel',S.sel.has(own.name));renderBar()}else galView(a)};
-  if(own&&S.sel.has(own.name))c.classList.add('sel');
-  if(own||a.v)albHold(c,a.path,a.name);   // album is a folder of the listing: normal selection + bottom bar (has AI search)
-  else holdMenu(c,{name:a.name},async()=>{if(await dlg({title:a.name,msg:'Search the pictures in this album with AI?',ok:'AI search'}))isView(a.path,a.name)});   // album lives elsewhere (DCIM/Camera, WhatsApp ...): not in the listing, so no bottom bar - a popup instead
+    if(S.sel.size){S.sel.has(sk)?S.sel.delete(sk):S.sel.add(sk);c.classList.toggle('sel',S.sel.has(sk));renderBar()}else galView(a)};
+  if(S.sel.has(sk))c.classList.add('sel');
+  holdMenu(c,{name:sk});   // every album, in the listing or not: press and hold selects it; the bottom bar (Copy, Cut, Zip, Rename, Details, Duplicates, AI search, Hide, Delete) acts on its real path
   return c}
 function render(){
   applyPrefs();
@@ -1632,7 +1635,7 @@ function doSearch(){
     .catch(e=>{if(S.sr&&S.sr.q===q){S.sr.items=[];S.sr.err=e.message;render()}})}
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
-const selItems=()=>S.items.filter(i=>S.sel.has(i.name));
+const selItems=()=>S.items.filter(i=>S.sel.has(i.name)).concat([...S.sel].filter(k=>XM[k]).map(k=>XM[k]));
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
@@ -1655,8 +1658,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
+    if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
-      if(!galVid()&&it.length===1)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.name)});
       btn('hide','Hide',()=>{const ps=it.map(i=>jn(S.path,i.name));S.sel.clear();galHideMany(ps,true)})}
     if(!A)btn('del','Delete',doDelete,'dng')
   }
@@ -2150,7 +2153,7 @@ async function doDelete(){
   const n=S.sel.size;
   const L=S.dev==='local'&&!inArc();
   if(!await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L}))return;
-  try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
+  try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 /* ---- Recycle bin: sticky top bar (Empty bin / select / Restore / Delete), rows drawn in chunks while scrolling, restore / delete run as a background task on the phone with a progress bar */
@@ -2223,7 +2226,7 @@ async function doDetails(it,pth0){
   const i=(it&&it.name?it:null)||selItems()[0];if(!i)return;const dev=S.dev,pth=pth0||jn(S.path,i.name);
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card'),box=E('div','det');card.append(E('div','handle'),E('h3','',i.name),box);
+  const card=E('div','card'),box=E('div','det');card.append(E('div','handle'),E('h3','',i.disp||i.name),box);
   const cb=E('button','tbtn','Close');cb.style.alignSelf='flex-end';cb.onclick=close;card.append(cb);o.append(card);
   box.append(E('div','dnote','Reading details\u2026'));
   let st,root='';
@@ -2250,7 +2253,7 @@ async function doDetails(it,pth0){
   if(st.readonly)box.append(E('div','dnote w','Read-only: renaming, deleting or overwriting this item may be refused ("access denied").'));
   if(st.link)box.append(E('div','dnote','Links and junctions are not followed, so they are skipped when copying and are not counted in folder totals.'))}
 async function doRename(){
-  const old=[...S.sel][0];const n=await dlg({title:'Rename',input:{value:old,label:'New name'},ok:'Rename'});if(!n||n===old)return;
+  const old=[...S.sel][0],shown=old.charCodeAt(0)===1?old.replace(/^.*\//,''):old;const n=await dlg({title:'Rename',input:{value:shown,label:'New name'},ok:'Rename'});if(!n||n===shown)return;GALT=0;
   try{await api('POST','/api/op',{dev:S.dev,op:'rename',path:jn(S.path,old),name:n});S.sel.clear();load()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doMkdir(){
   const n=await dlg({title:'New folder',input:{label:'Folder name'},ok:'Create'});if(!n)return;
@@ -2576,11 +2579,11 @@ setInterval(async()=>{
   arcBusy=false},600);
 async function doZip(){   // pack the selected files / folders into a new .zip next to them (on whichever device is open)
   const it=selItems();if(!it.length||inArc())return;
-  const base=it.length===1?(it[0].dir?it[0].name:it[0].name.replace(/\.[^.\/]+$/,'')):(S.path.split('/').filter(Boolean).pop()||'Archive');
+  const base=it.length===1?(it[0].dir?(it[0].disp||it[0].name):it[0].name.replace(/\.[^.\/]+$/,'')):(S.path.split('/').filter(Boolean).pop()||'Archive');
   const n=await dlg({title:'Create ZIP',msg:it.length+' item'+(it.length>1?'s':'')+' will be packed into a new .zip in this folder',input:{value:base,label:'File name'},ok:'Zip'});
   if(!n||!n.trim())return;
-  const paths=selPaths();S.sel.clear();render();
-  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:S.path,name:n.trim()});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
+  const paths=selPaths(),zdir=it[0].disp?(paths[0].replace(/\/[^\/]*$/,'')||'/'):S.path;S.sel.clear();GALT=0;render();
+  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim()});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
 function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
   const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;dev=dev||S.dev;
