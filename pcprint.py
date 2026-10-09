@@ -18,13 +18,16 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v12: sturdier service (worker that survives any error, idle-socket timeout, queue / disk limits, hourly clean-up, no PowerShell races,
+cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
+Queue folder, Open log.
 """
-import ctypes, importlib, io, ipaddress, json, math, os, queue, re, shutil, socket, subprocess, sys, threading, time, zlib
+import collections, ctypes, importlib, io, ipaddress, itertools, json, math, os, queue, re, shutil, socket, subprocess, sys, threading, time, traceback, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "11"
+VERSION = "12"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -41,19 +44,48 @@ TAILSCALE_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"}
 
 
+_LOGLOCK = threading.Lock()   # several threads log at once (HTTP handlers, print worker, printer watcher)
+MAX_QUEUE = 50                # waiting jobs; more are refused with 503 so a stuck printer cannot fill the disk
+MIN_FREE = 150 << 20          # keep this much disk free: uploads are refused below it
+INBOX_CAP = 1 << 30           # old files in the queue folder are deleted (oldest first) above this total size
+
+
 def log(msg):
     line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
-    try:
-        os.makedirs(APP, exist_ok=True)
-        with open(LOG, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-        if os.path.getsize(LOG) > 500_000:
-            os.replace(LOG, LOG + ".old")
-    except OSError:
-        pass
+    with _LOGLOCK:
+        try:
+            os.makedirs(APP, exist_ok=True)
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+            if os.path.getsize(LOG) > 500_000:
+                os.replace(LOG, LOG + ".old")
+        except OSError:
+            pass
     if sys.stdout:
         try: print(line)
         except Exception: pass
+
+
+_PSLOCK = threading.Lock()
+
+
+def ps_script(name, body):
+    """Path of a helper .ps1 in the app folder. Written only when missing or changed, atomically: several threads run PowerShell at
+    the same time, and rewriting a script that another PowerShell is reading made the status / print calls fail at random."""
+    path = os.path.join(APP, name)
+    with _PSLOCK:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                if f.read() == body:
+                    return path
+        except OSError:
+            pass
+        os.makedirs(APP, exist_ok=True)
+        tmp = path + ".%d.tmp" % os.getpid()
+        with open(tmp, "w", encoding="utf-8-sig") as f:
+            f.write(body)
+        os.replace(tmp, path)
+    return path
 
 
 # ------------------------------------------------------------------ printing
@@ -93,10 +125,8 @@ try {
 
 
 def print_image(path, printer="", copies=1):
-    ps1 = os.path.join(APP, "printimg.ps1")
-    with open(ps1, "w", encoding="utf-8-sig") as f:
-        f.write(PS_IMG)
-    cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path]
+    ps1 = ps_script("printimg.ps1", PS_IMG)
+    cmd =["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path]
     if printer:
         cmd += ["-Printer", printer]
     cmd += ["-Copies", str(copies)]
@@ -379,14 +409,14 @@ def img_to_pdf(path, o):
     if not jpg:
         if not WIN:
             raise RuntimeError("this image type can only be converted on Windows")
-        ps1, tmp = os.path.join(APP, "convimg.ps1"), os.path.join(APP, "conv.jpg")
-        with open(ps1, "w", encoding="utf-8-sig") as f:
-            f.write(PS_CONV)
+        ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv.jpg")
         r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
                            capture_output=True, text=True, timeout=120, creationflags=0x08000000)
         if r.returncode != 0 or not os.path.isfile(tmp):
             raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
         data = open(tmp, "rb").read()
+        try: os.remove(tmp)
+        except OSError: pass
         info = jpeg_info(data)
         if not info:
             raise RuntimeError("image conversion failed")
@@ -691,9 +721,7 @@ def office_to_pdf(path):
     dst = out_pdf(path, "office")
     errs = []
     if has_com(OFFICE_COM.get(ext, "")):
-        ps1 = os.path.join(APP, "office2pdf.ps1")
-        with open(ps1, "w", encoding="utf-8-sig") as f:
-            f.write(PS_OFFICE)
+        ps1 = ps_script("office2pdf.ps1", PS_OFFICE)
         try:
             os.remove(dst)
         except OSError:
@@ -733,6 +761,7 @@ def office_to_pdf(path):
 SHEET_GRID = {1: ((1, 1), (1, 1)), 2: ((1, 2), (2, 1)), 4: ((2, 2), (2, 2)), 6: ((2, 3), (3, 2)), 9: ((3, 3), (3, 3))}   # (cols, rows) on a portrait / landscape sheet
 SHEET_MARGIN, SHEET_GAP = 14.0, 8.0   # points
 BATCHES = {}   # batch id -> {"t": time, "items": {index: (file, rotation)}}   (the app sends each picture as its own request)
+BATCH_LOCK = threading.Lock()   # every request runs in its own thread
 
 
 def prep_image(path, tag):
@@ -744,9 +773,7 @@ def prep_image(path, tag):
             return data, info[0], info[1], info[2], {1: 0, 3: 180, 6: 90, 8: 270}[ori]   # embedded untouched, turned by the page matrix
     if not WIN:
         raise RuntimeError("this image type can only be converted on Windows")
-    ps1, tmp = os.path.join(APP, "convimg.ps1"), os.path.join(APP, "conv%s.jpg" % tag)
-    with open(ps1, "w", encoding="utf-8-sig") as f:
-        f.write(PS_CONV)
+    ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv%s.jpg" % tag)
     r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
                        capture_output=True, text=True, timeout=120, creationflags=0x08000000)
     if r.returncode != 0 or not os.path.isfile(tmp):
@@ -823,15 +850,26 @@ def images_to_sheets(items, o, name):
     return dest, len(pages)
 
 
+def run_retry(cmd, **kw):
+    """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment).
+    A timeout is NOT retried: the job may already be in the queue and would print twice."""
+    try:
+        subprocess.run(cmd, check=True, **kw)
+    except subprocess.CalledProcessError as e:
+        log(f"print command failed (exit {e.returncode}), trying once more")
+        time.sleep(3)
+        subprocess.run(cmd, check=True, **kw)
+
+
 def send_pdf(pdf, o, pr, sm, notes):
     if not WIN:
         cmd = ["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"])]
         sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
         if sides: cmd += ["-o", "sides=" + sides]
         if o["color"] == "mono": cmd += ["-o", "print-color-mode=monochrome"]
-        subprocess.run(cmd + [pdf], check=True, timeout=120)
+        run_retry(cmd + [pdf], timeout=120)
     elif sm:
-        subprocess.run(sumatra_args(sm, pdf, o, pr), check=True, timeout=300, creationflags=0x08000000)
+        run_retry(sumatra_args(sm, pdf, o, pr), timeout=300, creationflags=0x08000000)
     else:
         if pr or o["duplex"] or o["color"]:
             notes.append("printer / duplex / colour ignored: SumatraPDF is not installed")
@@ -896,9 +934,7 @@ def print_file(path, o):
         notes.append("duplex / colour only work for PDF, image and text files")
     for _ in range(min(o["copies"], 10)):
         if pr:
-            ps1 = os.path.join(APP, "printto.ps1")
-            with open(ps1, "w", encoding="utf-8-sig") as f:
-                f.write(PS_PRINTTO)
+            ps1 = ps_script("printto.ps1", PS_PRINTTO)
             r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, pr],
                                capture_output=True, text=True, timeout=120, creationflags=0x08000000)
             if r.returncode != 0:
@@ -910,6 +946,9 @@ def print_file(path, o):
 
 
 PRINTQ = queue.Queue()
+CURRENT = [None]                          # name of the job being printed right now
+HISTORY = collections.deque(maxlen=40)    # finished jobs, newest last: {t, name, ok, printer, note, warning, error}
+SEQ = itertools.count(1)                  # makes every received file name unique, even within the same second
 DEFAULT_PRINTER = [None]   # refreshed regularly; shown in the window and reported to the app
 PRINTER_PROBLEM = [None]   # e.g. "paper jam" (None = nothing reported)
 
@@ -970,13 +1009,31 @@ def list_printers():
         return []
 
 
-def printer_info(name=None):
+_PI_CACHE = {}   # printer name (None = default) -> (time, info)
+_PI_LOCK = threading.Lock()
+
+
+def printer_info(name=None, max_age=0):
+    """Printer state through PowerShell (1-3 s). max_age > 0 reuses an answer that young: the phone pings often and every ping
+    used to start its own PowerShell. The watcher after a print passes 0 (always fresh)."""
     if not WIN:
         return None
+    if max_age > 0:
+        with _PI_LOCK:
+            hit = _PI_CACHE.get(name)
+        if hit and time.time() - hit[0] < max_age:
+            return hit[1]
+    info = _printer_info(name)
+    with _PI_LOCK:
+        _PI_CACHE[name] = (time.time(), info)
+        if len(_PI_CACHE) > 20:
+            _PI_CACHE.pop(next(iter(_PI_CACHE)))
+    return info
+
+
+def _printer_info(name=None):
     try:
-        ps1 = os.path.join(APP, "pstate.ps1")
-        with open(ps1, "w", encoding="utf-8-sig") as f:
-            f.write(PS_STATE)
+        ps1 = ps_script("pstate.ps1", PS_STATE)
         out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
                              capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
         info = json.loads(out) if out else None
@@ -1034,44 +1091,103 @@ def friendly(e, name):
     return (str(e) or e.__class__.__name__)[:300]
 
 
+def record(name, res):
+    HISTORY.append(dict(t=time.strftime("%H:%M:%S"), name=name, ok="error" not in res, printer=res.get("printer"),
+                        note=res.get("note"), warning=res.get("warning"), error=res.get("error")))
+
+
+def print_one(path, evt, res, o):
+    name = f"{len(path)} pictures" if isinstance(path, list) else os.path.basename(path)
+    CURRENT[0] = name
+    try:
+        pr = o["printer"] or DEFAULT_PRINTER[0]
+        d = describe_opts(o)
+        log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else ""))
+        notes = print_file(path, o)
+        if notes:
+            res["note"] = "; ".join(notes)
+            log(f"NOTE {name}: {res['note']}")
+        warn = watch_printer(10, o["printer"] or None)
+        if warn:
+            log(f"WARNING {name}: printer reports {warn}")
+            res["warning"] = warn
+        else:
+            log("printed " + name)
+        res.update(ok=True, printer=pr)
+        record(name, res)
+        evt.set()   # tell the phone
+        time.sleep(4)   # let the spooler pick the file up before the next one starts
+    except Exception as e:
+        msg = friendly(e, name) if not isinstance(e, (RuntimeError, ValueError)) else str(e)[:300]
+        log(f"PRINT FAILED {name}: {msg}")
+        res["error"] = msg
+        record(name, res)
+        evt.set()
+    finally:
+        CURRENT[0] = None
+
+
 def print_worker():
+    """One job at a time. Whatever goes wrong with one job (even a bug), the loop survives: before, a crash here left the service
+    answering /ping as 'ready' while nothing was ever printed again."""
     while True:
-        path, evt, res, o = PRINTQ.get()
-        name = f"{len(path)} pictures" if isinstance(path, list) else os.path.basename(path)
         try:
-            pr = o["printer"] or DEFAULT_PRINTER[0]
-            d = describe_opts(o)
-            log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else ""))
-            notes = print_file(path, o)
-            if notes:
-                res["note"] = "; ".join(notes)
-                log(f"NOTE {name}: {res['note']}")
-            warn = watch_printer(10, o["printer"] or None)
-            if warn:
-                log(f"WARNING {name}: printer reports {warn}")
-                res["warning"] = warn
-            else:
-                log("printed " + name)
-            res.update(ok=True, printer=pr)
-            evt.set()   # tell the phone
-            time.sleep(4)   # let the spooler pick the file up before the next one starts
-        except Exception as e:
-            msg = friendly(e, name) if not isinstance(e, (RuntimeError, ValueError)) else str(e)[:300]
-            log(f"PRINT FAILED {name}: {msg}")
-            res["error"] = msg
+            path, evt, res, o = PRINTQ.get()
+        except Exception:
+            continue
+        try:
+            print_one(path, evt, res, o)
+        except BaseException as e:   # not reachable for normal errors (print_one handles them), this is the last line of defence
+            log(f"PRINT WORKER ERROR: {e!r}\n{traceback.format_exc()}")
+            res.setdefault("error", "internal error: " + str(e)[:200])
             evt.set()
-        PRINTQ.task_done()
+        finally:
+            PRINTQ.task_done()
 
 
 def cleanup_old(days=3):
+    """Deletes received files / generated PDFs older than `days`, then the oldest ones while the folder is above INBOX_CAP.
+    Runs at start and every hour (before: only at start, so a PC that stays on for weeks collected everything)."""
     cut = time.time() - days * 86400
-    try:
-        for n in os.listdir(INBOX):
-            p = os.path.join(INBOX, n)
-            if os.path.isfile(p) and os.path.getmtime(p) < cut:
-                os.remove(p)
-    except OSError:
-        pass
+    keep = []
+    for d in (INBOX, os.path.join(APP, "lo-out")):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            try:
+                if not os.path.isfile(p):
+                    continue
+                st = os.stat(p)
+                if st.st_mtime < cut:
+                    os.remove(p)
+                else:
+                    keep.append((st.st_mtime, st.st_size, p))
+            except OSError:
+                pass
+    total = sum(k[1] for k in keep)
+    for _, size, p in sorted(keep):
+        if total <= INBOX_CAP:
+            break
+        try:
+            os.remove(p)
+            total -= size
+        except OSError:
+            pass
+
+
+def housekeeping():
+    while True:
+        time.sleep(3600)
+        try:
+            cleanup_old()
+            for k in [k for k, v in list(BATCHES.items()) if time.time() - v["t"] > 900]:
+                with BATCH_LOCK:
+                    BATCHES.pop(k, None)
+        except Exception as e:
+            log(f"housekeeping: {e}")
 
 
 # ------------------------------------------------------------------ HTTP service
@@ -1084,6 +1200,7 @@ def safe_name(n):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "LANSharePrint/" + VERSION
+    timeout = 60   # idle socket limit: a phone that drops off Wi-Fi mid-upload used to keep its handler thread (and file) forever
 
     def log_message(self, *a):
         pass
@@ -1166,12 +1283,14 @@ class H(BaseHTTPRequestHandler):
             pr, prob = DEFAULT_PRINTER[0], PRINTER_PROBLEM[0]
             if want and want in PRINTERS:   # live state of the printer chosen in the app
                 pr = want
-                info = printer_info(want)
+                info = printer_info(want, max_age=6)
                 prob = describe_problem(info) or (job_problem(info) if info else None)
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
-                                    "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
+                                    "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
                                     "office": office_engine(), "convert": True})
+        if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
+            return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
 
     def do_POST(self):
@@ -1185,6 +1304,22 @@ class H(BaseHTTPRequestHandler):
             log("service stopped from the window")
             threading.Timer(0.3, lambda: os._exit(0)).start()
             return
+        if u.path == "/clear":   # drop every job that is still waiting (the one being printed right now is not interrupted)
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self.reply(403, {"error": "local only"})
+            dropped = 0
+            while True:
+                try:
+                    _, evt, res, _ = PRINTQ.get_nowait()
+                except queue.Empty:
+                    break
+                res["error"] = "cancelled on the PC"
+                evt.set()
+                PRINTQ.task_done()
+                dropped += 1
+            if dropped:
+                log(f"queue cleared from the window: {dropped} job{'s' if dropped != 1 else ''} dropped")
+            return self.reply(200, {"ok": True, "dropped": dropped})
         if u.path == "/convert":   # office file -> PDF, only so the app can show a real page preview (nothing is printed)
             return self.convert(u)
         if u.path != "/print":
@@ -1202,8 +1337,15 @@ class H(BaseHTTPRequestHandler):
         o = parse_opts(parse_qs(u.query))
         if o["printer"] and PRINTERS and o["printer"] not in PRINTERS:
             return self.reply(400, {"error": f"unknown printer '{o['printer']}'"})
+        if PRINTQ.qsize() >= MAX_QUEUE:
+            return self.reply(503, {"error": f"print queue is full ({MAX_QUEUE} waiting) - the printer is probably stuck"})
         os.makedirs(INBOX, exist_ok=True)
-        dest = os.path.join(INBOX, f"{time.strftime('%H%M%S')}_{name}")
+        try:
+            if shutil.disk_usage(INBOX).free < n + MIN_FREE:
+                return self.reply(507, {"error": "not enough free disk space on the PC"})
+        except OSError:
+            pass
+        dest = os.path.join(INBOX, f"{time.strftime('%H%M%S')}{next(SEQ) % 1000:03d}_{name}")   # unique even for two files in one second
         left = n
         try:
             with open(dest, "wb") as f:
@@ -1217,6 +1359,7 @@ class H(BaseHTTPRequestHandler):
             try: os.remove(dest)
             except OSError: pass
             log(f"upload failed {name}: {e}")
+            self.close_connection = True   # the rest of the body is unread: this connection cannot be reused
             return
         log(f"received {name} ({n} bytes) from {self.client_address[0]}")
         evt, res = threading.Event(), {}
@@ -1226,14 +1369,22 @@ class H(BaseHTTPRequestHandler):
         if bid and ext in IMAGES:   # several pictures for one set of sheets: wait for the last one
             gq = lambda k: (qs.get(k) or [""])[0]
             idx, cnt, rot = _int(gq("idx"), 0, 0, 999), _int(gq("n"), 1, 1, 1000), _int(gq("rot"), 0, 0, 359) // 90 * 90 % 360
-            for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > 900]:
-                BATCHES.pop(k, None)
-            bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
-            bt["items"][idx] = (dest, rot)
+            with BATCH_LOCK:
+                for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > 900]:
+                    BATCHES.pop(k, None)
+                bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
+                bt["items"][idx] = (dest, rot)
             if idx < cnt - 1:
                 return self.reply(200, {"ok": True, "batched": True})
-            job = [bt["items"][k] for k in sorted(bt["items"])]
-            BATCHES.pop(bid, None)
+            end = time.time() + 6   # pictures that arrive out of order (parallel uploads): give the stragglers a moment
+            while time.time() < end:
+                with BATCH_LOCK:
+                    if len(bt["items"]) >= cnt:
+                        break
+                time.sleep(0.25)
+            with BATCH_LOCK:
+                job = [bt["items"][k] for k in sorted(bt["items"])]
+                BATCHES.pop(bid, None)
         PRINTQ.put((job, evt, res, o))
         if not evt.wait(90):   # still waiting in the queue: the phone treats this as sent
             return self.reply(200, {"ok": True, "queued": True})
@@ -1268,15 +1419,31 @@ def pc_addresses():
     return ips, ts
 
 
+class Server(ThreadingHTTPServer):
+    request_queue_size = 32   # default 5: a phone sending a batch of pictures plus pings could get connection refused
+
+    def handle_error(self, request, client_address):   # a phone that vanished mid-request is normal: one short line, no traceback spam
+        e = sys.exc_info()[1]
+        if not isinstance(e, (ConnectionError, TimeoutError, socket.timeout)):
+            log(f"request from {client_address[0]} failed: {e!r}")
+
+
 def serve():
     os.makedirs(INBOX, exist_ok=True)
+    threading.excepthook = lambda a: log(f"THREAD CRASH in {getattr(a.thread, 'name', '?')}: {a.exc_value!r}\n"
+                                         + "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+    try:
+        srv = Server(("0.0.0.0", PORT), H)
+    except OSError as e:   # pythonw has no console: without this line a second copy / busy port just vanished silently
+        log(f"cannot listen on port {PORT}: {e}")
+        return
+    srv.daemon_threads = True
     cleanup_old()
-    threading.Thread(target=print_worker, daemon=True).start()
-    threading.Thread(target=refresh_printer, daemon=True).start()
+    threading.Thread(target=print_worker, daemon=True, name="print-worker").start()
+    threading.Thread(target=refresh_printer, daemon=True, name="printer-state").start()
+    threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
     if not have_pypdf():
         threading.Thread(target=ensure_pypdf, daemon=True).start()
-    srv = ThreadingHTTPServer(("0.0.0.0", PORT), H)
-    srv.daemon_threads = True
     ips, ts = pc_addresses()
     log(f"print service ready on port {PORT} (this PC: {', '.join(ips)}{'; Tailscale: ' + ts if ts else ''})")
     srv.serve_forever()
@@ -1412,6 +1579,36 @@ def setup_windows():
 
 
 # ------------------------------------------------------------------ window: live print log (viewer only)
+def test_page_pdf(info):
+    """A4 test page: printer / PC / version, a 20 pt frame (shows how much the printer clips), grey ramp and colour swatches."""
+    w, h = PAPERS["A4"]
+    lines = ["LANShare Print - test page", time.strftime("%Y-%m-%d %H:%M:%S"), "PC: " + socket.gethostname(),
+             "Printer: " + str((info or {}).get("printer") or "default printer"), "Service version: " + VERSION]
+    extra = {}
+    c = b"0.5 w 0 G 20 20 %.1f %.1f re S\n" % (w - 40, h - 40)
+    c += b"BT /F1 22 Tf 60 %.1f Td (%s) Tj ET\n" % (h - 90, enc_text(lines[0], extra))
+    for i, ln in enumerate(lines[1:]):
+        c += b"BT /F1 12 Tf 60 %.1f Td (%s) Tj ET\n" % (h - 130 - 20 * i, enc_text(ln, extra))
+    for i in range(11):
+        c += b"%.2f g %.1f %.1f 36 36 re f\n" % (i / 10.0, 60 + i * 40, h - 330)
+    for i, (r, g, b) in enumerate(((0, 1, 1), (1, 0, 1), (1, 1, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1))):
+        c += b"%d %d %d rg %.1f %.1f 60 36 re f\n" % (r, g, b, 60 + i * 80, h - 400)
+    return make_pdf([(w, h, c)], extra)
+
+
+def post_local(path, data=b"", timeout=15):
+    import urllib.request
+    return urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=data, method="POST"), timeout=timeout).read()
+
+
+def open_path(p):
+    try:
+        if WIN: os.startfile(p)
+        else: subprocess.Popen(["xdg-open" if sys.platform != "darwin" else "open", p])
+    except Exception as e:
+        log(f"cannot open {p}: {e}")
+
+
 def one_window():
     """Only one window at a time (Windows named mutex)."""
     h = ctypes.windll.kernel32.CreateMutexW(None, False, "LANSharePrintWindow")
@@ -1461,20 +1658,50 @@ def ui():
     bot.pack(fill="x", padx=10, pady=(4, 10))
     tk.Label(bot, text="Closing this window does not stop printing.", fg="#7d8aa3", bg=BG).pack(side="left")
 
+    stopped = [False]   # True after "Stop service": then the window must not restart it by itself
+    restarting = [False]
+
     def toggle():
         if is_running():
             if messagebox.askyesno("Stop print service", "Stop the print service?\nThe phone will not be able to print until you start it again or restart Windows."):
+                stopped[0] = True
                 stop_service()
         else:
+            stopped[0] = False
             start_service()
         refresh()
     btn = tk.Button(bot, text="Stop service", command=toggle, relief="flat", bg="#3a1d24", fg="#ffb3b3")
     btn.pack(side="right")
 
+    def test_page():
+        info = ping()
+        if not info:
+            messagebox.showwarning("Test page", "The print service is not running.")
+            return
+
+        def go():
+            try:
+                post_local("/print?name=test-page.pdf", test_page_pdf(info), 150)
+            except Exception as e:
+                log(f"test page failed: {e}")
+        threading.Thread(target=go, daemon=True).start()
+
+    def clear_queue():
+        try:
+            n = json.loads(post_local("/clear")).get("dropped", 0)
+        except Exception as e:
+            log(f"clear queue failed: {e}")
+            return
+        messagebox.showinfo("Clear queue", f"{n} waiting job{'s' if n != 1 else ''} cancelled." if n else "Nothing was waiting.")
+
+    for label, cmd in (("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
+                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page)):
+        tk.Button(bot, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(0, 6))
+
     pos = [0]
 
     def add(line):
-        tag = "fail" if "FAILED" in line or "WARNING" in line else "ok" if " printed " in line else "dim" if "ready" in line or "stopped" in line else ""
+        tag = "fail" if any(k in line for k in ("FAILED", "WARNING", "CRASH", "ERROR", "cannot listen")) else "ok" if " printed " in line else "dim" if "ready" in line or "stopped" in line else ""
         atend = txt.yview()[1] >= 0.999
         txt.configure(state="normal")
         txt.insert("end", line + "\n", tag)
@@ -1507,14 +1734,26 @@ def ui():
             pr = info.get("printer")
             prob = info.get("problem")
             dot.configure(fg="#fbbf24" if prob else "#4ade80")
-            status.configure(text=f"Running  \u00b7  {ips}  \u00b7  port {PORT}  \u00b7  " + (f"printer: {pr}" if pr else "NO DEFAULT PRINTER") + (f"  \u00b7  \u26a0 {prob}" if prob else "") + (f"  \u00b7  {q} printing" if q else ""))
+            busy = info.get("busy")
+            status.configure(text=f"Running  \u00b7  {ips}  \u00b7  port {PORT}  \u00b7  " + (f"printer: {pr}" if pr else "NO DEFAULT PRINTER") + (f"  \u00b7  \u26a0 {prob}" if prob else "")
+                             + (f"  \u00b7  printing {busy}" if busy else "") + (f"  \u00b7  {q} waiting" if q else ""))
         else:
             dot.configure(fg="#f87171")
             btn.configure(text="Start service", bg="#1d3a2a", fg="#b3ffd0")
-            status.configure(text="Stopped")
+            status.configure(text="Stopped" if stopped[0] else "Stopped  \u00b7  restarting...")
+        return info
+
+    def revive():
+        try:
+            start_service()
+        finally:
+            restarting[0] = False
 
     def tick():
-        refresh()
+        if refresh() is None and not stopped[0] and not restarting[0]:
+            restarting[0] = True   # the service died (crash, killed in Task Manager): bring it back unless the user stopped it here
+            log("print service was not running - restarting it")
+            threading.Thread(target=revive, daemon=True).start()
         root.after(3000, tick)
 
     def initial():   # last lines first
@@ -1566,4 +1805,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
+    except BaseException as e:   # pythonw hides tracebacks: the log is the only place a crash can be read
+        if not isinstance(e, SystemExit):
+            log(f"CRASH: {e!r}\n{traceback.format_exc()}")
+        raise
