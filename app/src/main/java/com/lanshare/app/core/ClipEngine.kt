@@ -10,18 +10,22 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -64,6 +68,7 @@ object ClipEngine {
     /** App start: when the files are already there, the engine is ready at once (sessions are created lazily on first use). */
     fun tryLoad(ctx: Context) {
         if (ImgSearch.engine == null && installed(ctx)) ImgSearch.engine = Impl(dir(ctx))
+        if (ImgSearch.engine != null) ImgSearch.resumeIfInterrupted()   // a scan the system killed goes on where it stopped
     }
 
     /** Downloads the model files in the background (progress in [state]), then sets [ImgSearch.engine]. Ignored when already running. */
@@ -80,12 +85,12 @@ object ClipEngine {
                 for ((local, remote) in FILES) {
                     n++
                     val dst = File(d, local)
-                    if (dst.length() > 0) continue
+                    if (dst.length() > 0) { bytesDone += dst.length(); bytesTotal += dst.length(); continue }   // finished in an earlier run
                     download(BASE + remote, dst, "Downloading model $n/${FILES.size}")
                 }
                 tryLoad(ctx)
                 msg = "Model ready"
-            } catch (t: Throwable) { err = "Download failed: " + errText(t); msg = "" }
+            } catch (t: Throwable) { err = "Download interrupted: " + errText(t) + ". What was already downloaded is kept - press Download again to continue where it stopped."; msg = "" }
             finally { installing = false }
         }, "clip-download").also { it.isDaemon = true; it.start() }
     }
@@ -120,39 +125,96 @@ object ClipEngine {
         msg = ""; err = null
     }
 
+    private class HttpErr(val code: Int, name: String) : IOException("HTTP $code for $name")
+    private class DiskFull(m: String) : IOException(m)
+
+    /**
+     * One model file, resumable: the partial data stays in <name>.part (+ <name>.part.size = the total it belongs to).
+     * A broken connection is retried up to 8 times with a growing pause; the next try asks the server only for the missing rest (HTTP Range).
+     * The final file appears only by renaming a COMPLETE, size-checked .part, so [installed] can never see a half file.
+     */
     private fun download(url: String, dst: File, label: String) {
-        val tmp = File(dst.path + ".part")
+        val tmp = File(dst.path + ".part"); val meta = File(dst.path + ".part.size")
+        val doneBase = bytesDone; val totalBase = bytesTotal
+        var attempt = 0
+        while (true) {
+            try { downloadOnce(url, dst, tmp, meta, label, doneBase, totalBase); return }
+            catch (t: Throwable) {
+                val retry = t is IOException && t !is DiskFull && !(t is HttpErr && t.code in 400..499 && t.code != 408 && t.code != 429)
+                if (!retry || ++attempt > 8) throw t
+                msg = "$label: connection lost, retrying ($attempt/8)…"
+                try { Thread.sleep(min(30000L, 1000L shl attempt)) } catch (_: InterruptedException) { throw t }
+            }
+        }
+    }
+
+    private fun downloadOnce(url: String, dst: File, tmp: File, meta: File, label: String, doneBase: Long, totalBase: Long) {
+        var have = if (tmp.isFile) tmp.length() else 0L
+        val knownTotal = try { meta.readText().trim().toLong() } catch (_: Exception) { -1L }
+        if (have > 0 && knownTotal <= 0) { tmp.delete(); have = 0 }   // cannot tell which file version these bytes belong to
+        bytesDone = doneBase + have
         var u = url
         var c: HttpURLConnection? = null
+        var code = 0
         for (hop in 0 until 6) {   // HttpURLConnection does not follow redirects that change host reliably: do it by hand
             c = (URL(u).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false; connectTimeout = 20000; readTimeout = 30000
                 setRequestProperty("User-Agent", "LANShare-Android"); setRequestProperty("Accept-Encoding", "identity")   // no transparent gzip: Content-Length must match the bytes we read
+                if (have > 0) setRequestProperty("Range", "bytes=$have-")
             }
-            val code = c.responseCode
+            code = c.responseCode
             if (code in 300..399) { u = URL(URL(u), c.getHeaderField("Location") ?: throw IOException("bad redirect")).toString(); c.disconnect(); continue }
-            if (code != 200) { c.disconnect(); throw IOException("HTTP $code for ${dst.name}") }
             break
         }
         val conn = c ?: throw IOException("no connection")
-        val len = conn.contentLengthLong
-        val before = bytesDone
-        if (len > 0) bytesTotal += len
+        if (code == 416) {   // asked for bytes beyond the end: the partial file is either complete or does not fit
+            val tot = conn.getHeaderField("Content-Range")?.substringAfter('/')?.trim()?.toLongOrNull()
+            conn.disconnect()
+            if (tot != null && tot == have) { finishFile(tmp, dst, meta); return }
+            tmp.delete(); meta.delete()
+            throw IOException("partial file did not match, starting again")
+        }
+        if (code != 200 && code != 206) { conn.disconnect(); throw HttpErr(code, dst.name) }
+        val resumed = code == 206
+        var total = -1L
+        if (resumed) {
+            val cr = conn.getHeaderField("Content-Range") ?: ""   // "bytes 1000-9999/10000"
+            val startAt = cr.substringAfter("bytes ", "").substringBefore('-').trim().toLongOrNull()
+            total = cr.substringAfter('/', "").trim().toLongOrNull() ?: -1L
+            if (startAt != have) { conn.disconnect(); tmp.delete(); meta.delete(); throw IOException("server resumed at the wrong place, starting again") }
+        } else {
+            total = conn.contentLengthLong
+            have = 0; bytesDone = doneBase   // server ignored Range: the whole file comes again
+        }
+        if (total > 0 && knownTotal > 0 && total != knownTotal) { conn.disconnect(); tmp.delete(); meta.delete(); throw IOException("the file changed on the server, starting again") }
+        if (total > 0) { bytesTotal = totalBase + total; try { meta.writeText(total.toString()) } catch (_: Exception) {} }
+        val need = if (total > 0) total - have else 0L
+        val free = (dst.parentFile ?: dst).usableSpace
+        if (need > 0 && free < need + (50L shl 20)) { conn.disconnect(); throw DiskFull("Not enough free storage: ${(need shr 20) + 50} MB needed, ${free shr 20} MB free") }
         var lastUi = 0L
-        conn.inputStream.use { ins ->
-            tmp.outputStream().use { out ->
-                val buf = ByteArray(64 * 1024)
-                while (true) {
-                    val r = ins.read(buf); if (r < 0) break
-                    out.write(buf, 0, r); bytesDone += r
-                    val now = System.currentTimeMillis()
-                    if (now - lastUi > 300) { lastUi = now; msg = "$label: ${(bytesDone) shr 20} MB" + (if (bytesTotal > 0) " / ${bytesTotal shr 20} MB" else "") }
+        try {
+            conn.inputStream.use { ins ->
+                FileOutputStream(tmp, resumed).use { fos ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val r = ins.read(buf); if (r < 0) break
+                        fos.write(buf, 0, r); bytesDone += r
+                        val now = System.currentTimeMillis()
+                        if (now - lastUi > 300) { lastUi = now; msg = "$label: ${bytesDone shr 20} MB" + (if (bytesTotal > 0) " / ${bytesTotal shr 20} MB" else "") }
+                    }
+                    fos.flush(); fos.fd.sync()   // bytes are on disk before we count them as kept
                 }
             }
-        }
-        conn.disconnect()
-        if (len > 0 && bytesDone - before != len) { tmp.delete(); throw IOException("${dst.name}: incomplete download") }
+        } finally { conn.disconnect() }
+        val got = tmp.length()
+        if (total > 0 && got < total) throw IOException("${dst.name}: connection ended early ($got of $total bytes)")   // .part is kept; the retry continues from here
+        if (total > 0 && got > total) { tmp.delete(); meta.delete(); throw IOException("${dst.name}: too many bytes, starting again") }
+        finishFile(tmp, dst, meta)
+    }
+
+    private fun finishFile(tmp: File, dst: File, meta: File) {
         if (!tmp.renameTo(dst)) { dst.delete(); if (!tmp.renameTo(dst)) throw IOException("cannot save ${dst.name}") }
+        meta.delete()
     }
 
     // ===================================================================== engine
@@ -258,6 +320,22 @@ object ClipEngine {
             if (scaled !== bm) scaled.recycle()
             if (cur !== bm && cur !== scaled) cur.recycle()
             return out
+        }
+
+        /** The OCR model lives in Google Play Services: make sure it is there (asks Play Services to download it and waits). False = scan without text. */
+        override fun prepareOcr(cancelled: () -> Boolean): Boolean {
+            return try {
+                val rec = recogniser()
+                val mi = ModuleInstall.getClient(Core.appCtx ?: return false)
+                if (Tasks.await(mi.areModulesAvailable(rec), 30, java.util.concurrent.TimeUnit.SECONDS).areModulesAvailable()) return true
+                Tasks.await(mi.installModules(ModuleInstallRequest.newBuilder().addApi(rec).build()), 30, java.util.concurrent.TimeUnit.SECONDS)
+                val end = System.currentTimeMillis() + 10 * 60_000L   // up to 10 minutes for the download; interrupted downloads are continued by Play Services itself
+                while (System.currentTimeMillis() < end && !cancelled()) {
+                    if (Tasks.await(mi.areModulesAvailable(rec), 30, java.util.concurrent.TimeUnit.SECONDS).areModulesAvailable()) return true
+                    Thread.sleep(3000)
+                }
+                false
+            } catch (_: Throwable) { false }
         }
 
         // ---- OCR (ML Kit via Google Play Services, Latin model downloaded on first use; Turkish letters c g i o s u still to be verified on a device) ----

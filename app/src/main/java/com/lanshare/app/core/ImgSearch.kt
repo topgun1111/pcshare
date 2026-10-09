@@ -3,7 +3,9 @@ package com.lanshare.app.core
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -42,6 +44,8 @@ object ImgSearch {
         fun ocr(file: File): String
         /** Called when a scan ends: free the heavy per-scan resources (vision session, OCR). Searching must keep working (the text tower may stay). */
         fun release() {}
+        /** Before a scan with text: make sure the OCR model is available (may download it). false = scan without text this time. */
+        fun prepareOcr(cancelled: () -> Boolean): Boolean = true
     }
 
     @Volatile var engine: Engine? = null
@@ -56,6 +60,12 @@ object ImgSearch {
     private val items = LinkedHashMap<String, E>()
     private var loaded = false
     private var storedEngineId = ""
+    private var resumeOcr: Boolean? = null    // a scan was running when the process died (true = with text); null = none
+    private var resumeTries = 0               // restarts of that scan without progress: stops crash loops
+    @Volatile private var scanOcrActive: Boolean? = null
+    private var curVec = ""                   // vector file of the current index.json
+    private var prevVec = ""                  // vector file of index.json.bak (the fallback)
+    @Volatile private var saveErr: String? = null
 
     // ---- progress of the running scan ----
     @Volatile private var running = false
@@ -70,59 +80,112 @@ object ImgSearch {
     private fun dir() = File(Cfg.dir ?: File("/data/local/tmp"), "imgsearch")
 
     // ---------------------------------------------------------------- persistence
-    private fun ensureLoaded() { synchronized(lock) {
-        if (loaded) return
-        loaded = true
+    // Every save writes a NEW vector file (vec-<time>.bin), then a new index.json that names it; the previous index.json is kept as
+    // index.json.bak together with its vector file. A kill at any moment therefore leaves at least one complete, matching pair.
+    private class Loaded(val items: LinkedHashMap<String, E>, val engineId: String, val vecName: String, val resumeOcr: Boolean?, val tries: Int)
+
+    private fun readIndex(mf: File, strict: Boolean): Loaded? {
         try {
-            val mf = File(dir(), "index.json"); val bf = File(dir(), "vec.bin")
-            if (!mf.isFile) return
+            if (!mf.isFile) return null
             val j = JSONObject(mf.readText())
-            if (j.optInt("dim") != DIM) return
-            storedEngineId = j.optString("engine")
-            val a = j.getJSONArray("items")
+            if (j.optInt("dim") != DIM) return null
+            val vecName = j.optString("vec", "vec.bin")
+            val bf = File(mf.parentFile, vecName)
             val bytes = if (bf.isFile) bf.readBytes() else ByteArray(0)
             val fb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            val a = j.getJSONArray("items")
+            val map = LinkedHashMap<String, E>()
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
                 val e = E(o.getString("p"), o.optLong("m"), o.optLong("s"))
                 e.failed = o.optBoolean("f", false)
                 if (o.has("t")) e.text = o.getString("t")
-                if (o.optBoolean("v", false) && (i + 1) * DIM <= fb.capacity()) {
-                    val v = FloatArray(DIM); fb.position(i * DIM); fb.get(v); e.vec = v
+                if (o.optBoolean("v", false)) {
+                    if ((i + 1) * DIM <= fb.capacity()) { val v = FloatArray(DIM); fb.position(i * DIM); fb.get(v); e.vec = v }
+                    else if (strict) return null   // vector file shorter than the manifest says: torn pair, use the backup
                 }
-                items[e.path] = e
+                map[e.path] = e
             }
-        } catch (_: Exception) { items.clear() }   // torn / old file: simply rebuild
+            val rs = j.optInt("scanOcr", -1)
+            return Loaded(map, j.optString("engine"), vecName, if (rs < 0) null else rs == 1, j.optInt("tries", 0))
+        } catch (_: Throwable) { return null }
+    }
+
+    private fun ensureLoaded() { synchronized(lock) {
+        if (loaded) return
+        loaded = true
+        val d = dir()
+        val r = readIndex(File(d, "index.json"), true) ?: readIndex(File(d, "index.json.bak"), true) ?: readIndex(File(d, "index.json"), false) ?: return
+        items.putAll(r.items); storedEngineId = r.engineId; curVec = r.vecName; resumeOcr = r.resumeOcr; resumeTries = r.tries
     } }
 
-    private fun save() = synchronized(lock) {
+    private fun save(): Boolean = synchronized(lock) {
         try {
             val d = dir(); d.mkdirs()
             val list = items.values.toList()
             val a = JSONArray()
-            val bb = ByteBuffer.allocate(list.size * DIM * 4).order(ByteOrder.LITTLE_ENDIAN)
-            for (e in list) {
-                val o = JSONObject().put("p", e.path).put("m", e.m).put("s", e.s)
-                if (e.failed) o.put("f", true)
-                e.text?.let { o.put("t", it) }
-                val v = e.vec
-                if (v != null) { o.put("v", true); for (x in v) bb.putFloat(x) } else for (k in 0 until DIM) bb.putFloat(0f)   // keep rows aligned
-                a.put(o)
+            val vecName = "vec-" + System.currentTimeMillis() + ".bin"
+            val bt = File(d, "$vecName.tmp")
+            FileOutputStream(bt).use { fos ->
+                val out = BufferedOutputStream(fos, 1 shl 16)
+                val row = ByteBuffer.allocate(DIM * 4).order(ByteOrder.LITTLE_ENDIAN)
+                for (e in list) {
+                    val o = JSONObject().put("p", e.path).put("m", e.m).put("s", e.s)
+                    if (e.failed) o.put("f", true)
+                    e.text?.let { o.put("t", it) }
+                    row.clear()
+                    val v = e.vec
+                    if (v != null) { o.put("v", true); for (x in v) row.putFloat(x) } else for (k in 0 until DIM) row.putFloat(0f)   // keep rows aligned
+                    out.write(row.array(), 0, DIM * 4)
+                    a.put(o)
+                }
+                out.flush(); fos.fd.sync()
             }
-            val j = JSONObject().put("dim", DIM).put("engine", engine?.id ?: storedEngineId).put("items", a)
-            val mt = File(d, "index.json.tmp"); val bt = File(d, "vec.bin.tmp")
-            bt.writeBytes(bb.array()); mt.writeText(j.toString())
-            val bf = File(d, "vec.bin"); val mf = File(d, "index.json")
-            if (!bt.renameTo(bf)) { bf.delete(); bt.renameTo(bf) }
-            if (!mt.renameTo(mf)) { mf.delete(); mt.renameTo(mf) }   // manifest last: it is what makes vec.bin valid
-        } catch (_: Exception) {}
+            if (!bt.renameTo(File(d, vecName))) throw IOException("cannot save vector file")
+            val j = JSONObject().put("dim", DIM).put("engine", engine?.id ?: storedEngineId).put("vec", vecName).put("items", a)
+            scanOcrActive?.let { j.put("scanOcr", if (it) 1 else 0).put("tries", resumeTries) }   // a scan is running: remember it, so a restart can go on
+            val mt = File(d, "index.json.tmp")
+            FileOutputStream(mt).use { fos -> fos.write(j.toString().toByteArray(Charsets.UTF_8)); fos.flush(); fos.fd.sync() }
+            val mf = File(d, "index.json")
+            if (mf.isFile) { try { mf.copyTo(File(d, "index.json.bak"), true) } catch (_: Exception) {} }
+            if (!mt.renameTo(mf)) { mf.delete(); if (!mt.renameTo(mf)) throw IOException("cannot save index") }
+            prevVec = curVec; curVec = vecName
+            d.listFiles()?.forEach { f -> val n = f.name
+                if (((n.startsWith("vec") && n.endsWith(".bin")) || n.endsWith(".tmp")) && n != curVec && n != prevVec) f.delete() }
+            saveErr = null
+            true
+        } catch (t: Throwable) {   // disk full etc.: the old files stay valid, the scan goes on and the next checkpoint tries again
+            saveErr = errText(t); Log.w("ImgSearch", "save failed: " + errText(t)); false
+        }
     }
 
     /** Wipes the index ("Yeniden Tara" in the web page). */
     fun clear() {
         if (running) throw BadReq("indexing is running")
-        synchronized(lock) { items.clear(); loaded = true; storedEngineId = "" }
-        File(dir(), "index.json").delete(); File(dir(), "vec.bin").delete()
+        synchronized(lock) { items.clear(); loaded = true; storedEngineId = ""; resumeOcr = null; resumeTries = 0; curVec = ""; prevVec = "" }
+        dir().listFiles()?.forEach { f -> val n = f.name; if (n.startsWith("index.json") || n.startsWith("vec") || n == "cur.txt") f.delete() }
+    }
+
+    /** The picture being analysed right now: if the process dies inside the native code, the next start knows the suspect. */
+    private fun markCur(path: String?) {
+        try { val f = File(dir(), "cur.txt"); if (path == null) f.delete() else { f.parentFile?.mkdirs(); f.writeText(path) } } catch (_: Exception) {}
+    }
+
+    /** App start: a scan that was running when the app was killed continues (what is already done stays done). Gives up after 3 restarts without progress. */
+    fun resumeIfInterrupted() {
+        try {
+            ensureLoaded()
+            val ocr = synchronized(lock) { resumeOcr } ?: return
+            if (engine == null || running) return
+            if (resumeTries >= 3) { synchronized(lock) { resumeOcr = null; resumeTries = 0 }; save(); return }
+            val cf = File(dir(), "cur.txt")
+            if (cf.isFile) {
+                val p = cf.readText()
+                synchronized(lock) { items[p]?.let { if (it.vec == null) it.failed = true } }   // not retried until it changes or "force"
+                cf.delete()
+            }
+            start(ocr, false, true)
+        } catch (_: Throwable) {}
     }
 
     // ---------------------------------------------------------------- discovery
@@ -160,19 +223,28 @@ object ImgSearch {
             .put("engine", e?.id ?: JSONObject.NULL).put("ocr", e?.canOcr ?: false)
             .put("total", total).put("done", done)
             .put("indexed", withVec).put("withText", withText).put("failed", failed).put("count", items.size)
-            .put("msg", msg).put("error", err ?: JSONObject.NULL).put("msPerPic", msPerPic)
+            .put("msg", msg).put("error", err ?: JSONObject.NULL).put("saveError", saveErr ?: JSONObject.NULL).put("msPerPic", msPerPic)
             .put("model", ClipEngine.state())   // {installed, installing, msg, error, bytes, totalBytes}: the one-time model download
     }
 
     /** Starts (or ignores, when one is running) an incremental scan. [ocr] also reads the text inside the pictures. [force] retries unreadable ones. */
     @Synchronized
-    fun start(ocr: Boolean, force: Boolean) {
+    fun start(ocr: Boolean, force: Boolean, resumed: Boolean = false) {
         if (running) return
         val eng = engine ?: throw BadReq("image search engine is not installed yet")
         ensureLoaded()
         err = null; cancel = false; running = true; done = 0; total = 0; msg = "Scanning folders…"
-        worker = Thread({ try { scan(eng, ocr && eng.canOcr, force) } catch (t: Throwable) { err = errText(t) } finally { running = false; save(); try { eng.release() } catch (_: Throwable) {} } }, "imgsearch")
-            .also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY; it.start() }
+        resumeTries = if (resumed) resumeTries + 1 else 0
+        scanOcrActive = ocr && eng.canOcr
+        worker = Thread({
+            try { scan(eng, ocr && eng.canOcr, force) } catch (t: Throwable) { err = errText(t) }
+            finally {
+                running = false
+                scanOcrActive = null; synchronized(lock) { resumeOcr = null; resumeTries = 0 }   // finished, cancelled or failed with a message: nothing to resume
+                markCur(null); save(); try { eng.release() } catch (_: Throwable) {}
+            }
+        }, "imgsearch").also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY; it.start() }
+        save()   // the "scan running" flag is on disk from the first second
     }
 
     fun cancel() { cancel = true }
@@ -182,6 +254,17 @@ object ImgSearch {
     private fun scan(eng: Engine, ocr: Boolean, force: Boolean) {
         val found = discover()
         if (cancel) { msg = "Cancelled"; return }
+        // Never wipe the index because the storage looked empty (permission lost, SD card unmounted): keep everything and say so.
+        if (found.isEmpty() && synchronized(lock) { items.isNotEmpty() })
+            throw IOException("No pictures were found (is storage access allowed / the card inserted?). The saved index was left untouched.")
+        var useOcr = ocr
+        var notice: String? = null
+        if (useOcr) {
+            msg = "Preparing text recognition…"
+            useOcr = try { eng.prepareOcr { cancel } } catch (_: Throwable) { false }
+            if (cancel) { msg = "Cancelled"; return }
+            if (!useOcr) notice = "Text recognition model is not available yet (Google Play Services). Scanned without text: run the scan again later to add it."
+        }
         val todo = ArrayList<Pair<E, Found>>()
         synchronized(lock) {
             if (storedEngineId.isNotEmpty() && storedEngineId != eng.id) { items.clear() }   // vectors of another model are useless
@@ -193,44 +276,56 @@ object ImgSearch {
                 val changed = e.m != f.m || e.s != f.s
                 if (changed) { e.m = f.m; e.s = f.s; e.vec = null; e.text = null; e.failed = false }
                 if (force) e.failed = false
-                if (!e.failed && (e.vec == null || (ocr && e.text == null))) todo.add(e to f)
+                if (!e.failed && (e.vec == null || (useOcr && e.text == null))) todo.add(e to f)
             }
-            items.keys.retainAll(keep)   // deleted / moved pictures drop out of the index
+            val gone = items.keys.count { it !in keep }
+            if (gone > 20 && gone * 2 > items.size) notice = "Many pictures were not found (card removed?). They stay in the index; use Rescan to clean up."
+            else items.keys.retainAll(keep)   // deleted / moved pictures drop out of the index
         }
         total = todo.size; done = 0
         msg = if (todo.isEmpty()) "Up to date" else "Analysing ${todo.size} pictures…"
         var sinceSave = 0
         var engineFails = 0          // consecutive failures that are NOT "this picture is bad" (model / runtime broken): abort instead of marking everything failed
-        val t0 = System.currentTimeMillis()
+        val recent = ArrayList<E>()  // pictures marked failed by those failures: restored when we abort
+        var ocrFails = 0
+        var lastSave = System.currentTimeMillis()
+        val t0 = lastSave
         for ((e, f) in todo) {
             if (cancel) { msg = "Cancelled"; break }
             val file = Core.local.real(f.path)
+            markCur(f.path)
             try {
                 if (e.vec == null) {
                     val v = eng.embedImage(Thumbs.make(file))
                     if (v.size != DIM) throw IllegalStateException("engine returned ${v.size} floats, expected $DIM")
                     synchronized(lock) { e.vec = v }
                 }
-                if (ocr && e.text == null) {
+                if (useOcr && e.text == null) {
                     val t = try { eng.ocr(file).replace(Regex("\\s+"), " ").trim() } catch (x: Exception) { null }   // OCR failing never blocks visual search
-                    if (t != null) synchronized(lock) { e.text = t }
+                    if (t != null) { synchronized(lock) { e.text = t }; ocrFails = 0 }
+                    else if (++ocrFails >= 5) { useOcr = false; notice = "Text recognition keeps failing (Google Play Services?). Continued without text; run the scan again later." }
                 }
-                engineFails = 0
+                engineFails = 0; recent.clear()
             } catch (x: IOException) { synchronized(lock) { e.failed = true } }   // "not an image" / cannot decode: do not retry every scan
             catch (x: OutOfMemoryError) { synchronized(lock) { e.failed = true } }
             catch (x: Exception) {   // ONNX Runtime (OrtException) and anything else
-                synchronized(lock) { e.failed = true }
+                synchronized(lock) { e.failed = true }; recent.add(e)
                 Log.w("ImgSearch", "embedding failed for ${f.path}: ${errText(x)}")
-                if (++engineFails >= 5) throw IOException("The search model keeps failing: " + errText(x) + ". Remove the model in Settings and download it again.")
+                if (++engineFails >= 5) {
+                    synchronized(lock) { for (r in recent) r.failed = false }   // the pictures were fine, the engine was not
+                    throw IOException("The search model keeps failing: " + errText(x) + ". Remove the model in Settings and download it again.")
+                }
             }
             done++
-            if (++sinceSave >= CHECKPOINT) {
-                sinceSave = 0; save()
-                Log.i("ImgSearch", "$done/${todo.size} pictures, ${(System.currentTimeMillis() - t0) / done} ms per picture (ocr=$ocr)")
+            val now = System.currentTimeMillis()
+            if (++sinceSave >= CHECKPOINT || now - lastSave > 60_000L) {   // every 100 pictures, or once a minute when pictures are slow
+                if (save()) { sinceSave = 0; lastSave = now; resumeTries = 0 }
+                Log.i("ImgSearch", "$done/${todo.size} pictures, ${(now - t0) / done} ms per picture (ocr=$useOcr)")
             }
         }
+        markCur(null)
         if (done > 0) msPerPic = (System.currentTimeMillis() - t0) / done
-        if (!cancel) msg = "Ready"
+        if (!cancel) msg = notice ?: "Ready"
     }
 
     // ---------------------------------------------------------------- search
