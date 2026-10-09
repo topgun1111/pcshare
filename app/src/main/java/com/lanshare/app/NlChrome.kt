@@ -380,14 +380,14 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
         lay?.let { cv.save(); cv.translate(16f * d, layY); it.draw(cv); cv.restore() }
         if (cancel) {
             if (pressed == "tc") { fillP.color = 0x22FFFFFF; cv.drawRoundRect(cancelR, 8f * d, 8f * d, fillP) }
-            cxP.color = 0xFFA8C7FA.toInt()
+            cxP.color = 0xFFFFB77C.toInt()
             cv.drawText("Cancel", cancelR.left + 12f * d, ty(cancelR.centerY(), cxP), cxP)
         }
         if (pct >= 0f) {
             val top = bh - 14f * d - 4f * d; val l = 16f * d; val r = bw - 16f * d
             fillP.color = 0x33FFFFFF; rf.set(l, top, r, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
             val w = (r - l) * Math.min(100f, pct) / 100f
-            if (w > 0f) { fillP.color = 0xFFA8C7FA.toInt(); rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP) }
+            if (w > 0f) { fillP.color = 0xFFFFB77C.toInt(); rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP) }
         }
     }
 }
@@ -429,13 +429,13 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
             cv.drawText(fit(k.n, nmP, right - 14f * d), 14f * d, ty(rowC, nmP), nmP)
             if (br != null) {
                 if (pressed == "dl:" + k.key) { fillP.color = 0x22FFFFFF; cv.drawRoundRect(br, 8f * d, 8f * d, fillP) }
-                cxP.color = 0xFFA8C7FA.toInt()
+                cxP.color = 0xFFFFB77C.toInt()
                 cv.drawText("Cancel", br.left + 8f * d, ty(br.centerY(), cxP), cxP)
             }
             val bt = y + 12f * d + 26.2f * d + 8f * d
             val l = 14f * d; val r = bw - 14f * d
             fillP.color = 0x33FFFFFF; rf.set(l, bt, r, bt + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
-            fillP.color = 0xFFA8C7FA.toInt()
+            fillP.color = 0xFFFFB77C.toInt()
             if (k.ind) {
                 anim = true
                 val ph = (SystemClock.uptimeMillis() % 1100L) / 1100f
