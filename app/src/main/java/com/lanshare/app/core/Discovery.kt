@@ -235,6 +235,7 @@ class Discovery(val port: Int) {
         val hosts = ArrayList<String>()
         val seen = HashSet<String>(ownIps)
         fun put(h: String) { if (seen.add(h)) hosts.add(h) }
+        try { val a = Cfg.smb(); for (k in 0 until a.length()) a.optJSONObject(k)?.optString("host")?.takeIf { it.isNotEmpty() }?.let { put(Smb.split(it).first) } } catch (_: Exception) {}   // saved PCs
         for (ip in Cfg.pins()) put(ip)   // remembered tailnet / remote devices are probed first and on every sweep
         for (ip in Net.arpNeighbors()) {
             put(ip)

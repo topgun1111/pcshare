@@ -23,7 +23,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.text.InputType
-import android.util.Log
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.GestureDetector
@@ -98,8 +97,7 @@ class PdfViewerActivity : Activity() {
     private var maxPx = 5_000_000
 
     private val inflight = HashMap<Int, Int>()         // UI thread only: page -> requested pixel width
-    private val failedPages = HashSet<Int>()           // UI thread only (given up after 3 tries)
-    private val failCount = HashMap<Int, Int>()        // UI thread only: page -> failed render attempts
+    private val failedPages = HashSet<Int>()           // UI thread only
     private val bound = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()   // pages currently bound to a view
     private lateinit var cache: LruCache<Int, Bitmap>
 
@@ -176,14 +174,6 @@ class PdfViewerActivity : Activity() {
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { onScrolledUi(dy != 0) }
                 override fun onScrollStateChanged(r: RecyclerView, newState: Int) { if (newState == RecyclerView.SCROLL_STATE_IDLE) refreshVisible() }
-            })
-            addOnChildAttachStateChangeListener(object : RecyclerView.OnChildAttachStateChangeListener {
-                override fun onChildViewAttachedToWindow(v: View) {
-                    // a view re-attached from RecyclerView's view cache is NOT re-bound: give it its page now
-                    val h = rv.getChildViewHolder(v) as? Pg ?: return
-                    if (h.pos >= 0) request(h.pos)
-                }
-                override fun onChildViewDetachedFromWindow(v: View) {}
             })
             addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
                 val w = r - l
@@ -309,7 +299,7 @@ class PdfViewerActivity : Activity() {
         gen++; rgen++
         closeDoc()
         ready = false; pageCount = 0; curPage = 0; pendingStart = null; zoomLevel = 1f
-        cache.evictAll(); inflight.clear(); failedPages.clear(); failCount.clear(); bound.clear()
+        cache.evictAll(); inflight.clear(); failedPages.clear(); bound.clear()
         zf.reset()
         pageAd.notifyDataSetChanged()
         name = o.optString("name").ifEmpty { "document.pdf" }
@@ -324,18 +314,6 @@ class PdfViewerActivity : Activity() {
         val out = File(dir, "doc.pdf")
         val tmp = File(dir, "doc.part")
         Thread {
-            // PDF on this phone: open the real file directly (no copy - matters for 100s of MB)
-            val direct: File? = try {
-                val q = Uri.parse(url)
-                if (q.getQueryParameter("dev") == "local")
-                    com.lanshare.app.core.Core.local.real(q.getQueryParameter("path").orEmpty()).takeIf { it.isFile && it.canRead() }
-                else null
-            } catch (_: Throwable) { null }
-            if (direct != null) {
-                ui.post { if (my == gen && !isDestroyed) { file = direct; setState("Preparing\u2026", null, false) } }
-                openDoc(my, direct)
-                return@Thread
-            }
             var err: String? = null
             try {
                 val c = URL(url).openConnection() as HttpURLConnection
@@ -429,7 +407,7 @@ class PdfViewerActivity : Activity() {
     private fun showPages(at: Int) {
         pendingStart = null
         rgen++
-        cache.evictAll(); inflight.clear(); failCount.clear(); failedPages.clear(); bound.clear()
+        cache.evictAll(); inflight.clear(); bound.clear()
         pageAd.notifyDataSetChanged()
         lm.scrollToPositionWithOffset(at.coerceIn(0, maxOf(pageCount - 1, 0)), 0)
         curPage = at.coerceIn(0, maxOf(pageCount - 1, 0))
@@ -542,12 +520,7 @@ class PdfViewerActivity : Activity() {
     private fun request(pos: Int) {
         if (!ready || viewW <= 0 || pos !in 0 until pageCount || failedPages.contains(pos)) return
         val (w, h) = renderSize(pos, (viewW * zoomLevel).toInt().coerceAtLeast(viewW))
-        val hv = holder(pos)?.v
-        val cached = cache.get(pos)
-        // the render may have finished while this view was detached (view cache): hand the bitmap over now,
-        // otherwise the page stays white although it is in the cache
-        if (cached != null && hv != null && hv.bmp == null) hv.bmp = cached
-        val have = cached ?: hv?.bmp
+        val have = cache.get(pos) ?: holder(pos)?.v?.bmp
         if (have != null && have.width >= w - 1) return
         val flying = inflight[pos]
         if (flying != null && flying >= w - 1) return
@@ -557,35 +530,24 @@ class PdfViewerActivity : Activity() {
             pool.execute {
                 var bm: Bitmap? = null
                 var tried = false
-                var err: Throwable? = null
                 if (my == rgen && bound.contains(pos)) {          // skipped when the page already scrolled away
                     tried = true
                     try {
                         bm = renderPage(pos, w, h)
                     } catch (e: OutOfMemoryError) {
-                        err = e
                         cache.evictAll()
-                        try { bm = renderPage(pos, maxOf(w / 2, 1), maxOf(h / 2, 1)) } catch (e2: Throwable) { err = e2 }
-                    } catch (e: Exception) { err = e }
+                        try { bm = renderPage(pos, maxOf(w / 2, 1), maxOf(h / 2, 1)) } catch (_: Throwable) { }
+                    } catch (_: Exception) { }
                 }
                 val rb = bm
                 val rf = tried && rb == null
-                if (rf) Log.w("PdfViewer", "page $pos render failed (${w}x$h)", err)
                 ui.post {
                     if (my != rgen || isDestroyed) return@post
                     inflight.remove(pos)
                     if (rb != null) {
-                        failCount.remove(pos)
                         cache.put(pos, rb)
                         holder(pos)?.v?.bmp = rb
-                    } else if (rf) {
-                        val n = (failCount[pos] ?: 0) + 1
-                        failCount[pos] = n
-                        if (n >= 3) failedPages.add(pos)
-                        else ui.postDelayed({ if (my == rgen && !isDestroyed && bound.contains(pos)) request(pos) }, 400L * n)
-                    } else if (bound.contains(pos)) {
-                        request(pos)       // task was skipped (page was off screen) but the page is visible again
-                    }
+                    } else if (rf) failedPages.add(pos)
                 }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) { inflight.remove(pos) }

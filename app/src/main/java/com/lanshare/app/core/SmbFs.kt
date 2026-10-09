@@ -65,6 +65,7 @@ object Smb {
         for (i in 0 until cur.length()) list.add(cur.getJSONObject(i))
         list.add(c)
         Cfg.setSmb(JSONArray(list.take(10)))
+        split(host).first.let { if (viaOf(it) == "Tailscale") Cfg.addPin(it) }   // tailnet PC: include it in every scan
         Cfg.save()
         return c.getString("id")
     }
