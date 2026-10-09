@@ -18,6 +18,7 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v13: the log is written next to the pcprint.py you ran (pcprint.log), not in the app folder.
 v12: sturdier service (worker that survives any error, idle-socket timeout, queue / disk limits, hourly clean-up, no PowerShell races,
 cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
 Queue folder, Open log.
@@ -27,13 +28,30 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "12"
+VERSION = "13"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
 INBOX = os.path.join(APP, "queue")
-LOG = os.path.join(APP, "log.txt")
+LOGDIR_FILE = os.path.join(APP, "logdir.txt")   # folder of the pcprint.py you ran last: the log is written next to it
 TARGET = os.path.join(APP, "pcprint.py")
+
+
+def log_path():
+    """pcprint.log in the folder you started pcprint.py from (remembered in logdir.txt, because the service itself runs from the
+    installed copy in the app folder). Falls back to the app folder when that folder is gone or not writable."""
+    try:
+        with open(LOGDIR_FILE, encoding="utf-8") as f:
+            d = f.read().strip()
+        if d and os.path.isdir(d) and os.access(d, os.W_OK):
+            return os.path.join(d, "pcprint.log")
+    except OSError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))   # not set up yet / Linux / macOS: next to this file
+    return os.path.join(here if os.access(here, os.W_OK) else APP, "pcprint.log")
+
+
+LOG = log_path()
 FW_RULE = "LANSharePrint-TS"   # v3 rule: LAN + Tailscale; the old "LANSharePrint" rule is removed
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 # only document/image types are printed: anything else is refused so the app can never make the PC run a program
@@ -1561,9 +1579,21 @@ def ensure_sumatra():
 
 def setup_windows():
     os.makedirs(INBOX, exist_ok=True)
+    global LOG
     me = os.path.abspath(__file__)
+    src = os.path.dirname(me)
     if os.path.normcase(me) != os.path.normcase(TARGET):
         shutil.copyfile(me, TARGET)   # always refresh the installed copy
+        if os.access(src, os.W_OK):   # the log goes next to the pcprint.py you ran (the service runs from the installed copy)
+            try:
+                with open(LOGDIR_FILE, "w", encoding="utf-8") as f:
+                    f.write(src)
+            except OSError:
+                pass
+    new_log = log_path()
+    if os.path.normcase(new_log) != os.path.normcase(LOG):
+        LOG = new_log
+        stop_service()   # a running service keeps writing to the old place until it is restarted
     fw = ensure_firewall()
     ensure_autostart()
     ensure_sumatra()
