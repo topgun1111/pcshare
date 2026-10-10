@@ -359,9 +359,9 @@ body.dual #dual{display:flex}
 .prow select{display:block;width:100%;height:24px;border:0;background:transparent;color:var(--fg);font:inherit;font-size:15px;font-weight:600;padding:0;margin:0;outline:0;-webkit-appearance:none;appearance:none;text-overflow:ellipsis}
 .prow .sub{font-size:12px;line-height:16px;color:var(--mut)}.prow .pch{flex:none;display:none}.prow .pch svg{width:20px;height:20px;fill:var(--mut)}
 .phint{margin:6px 20px 0;font-size:12px;color:var(--mut)}
-.pfx .ppv{position:static;margin:12px 16px 0;border:0;border-radius:16px;background:var(--cont);padding:6px 10px 8px}
-.ppre{display:flex;gap:8px;overflow-x:auto;padding:12px 16px 2px;scrollbar-width:none}.ppre::-webkit-scrollbar{display:none}.ppre .chip{flex:none;height:34px;border-radius:17px;padding:0 14px}
-.ptabs{display:flex;padding:6px 16px 0;margin-top:6px;border-bottom:1px solid var(--bd)}.ptabs button{flex:1;height:44px;font-size:14px;font-weight:600;color:var(--mut);border-bottom:3px solid transparent}.ptabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
+.pfx .ppv{position:static;margin:8px 16px 0;border:0;border-radius:16px;background:var(--cont);padding:4px 10px 6px}
+.ppre{display:flex;gap:8px;overflow-x:auto;padding:10px 0 2px;scrollbar-width:none}.ppre::-webkit-scrollbar{display:none}.ppre .chip{flex:none;height:34px;border-radius:17px;padding:0 14px}
+.ptabs{display:flex;padding:6px 16px 0;margin-top:6px;border-bottom:1px solid var(--bd)}.ptabs button{flex:1;height:40px;font-size:14px;font-weight:600;color:var(--mut);border-bottom:3px solid transparent}.ptabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
 .pbody{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 16px}.pbody .pf{margin:14px 0 0}.pbody .pf>b{margin-bottom:0}
 .pseg{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--cont)}.pseg .chip{flex:1;height:40px;justify-content:center;border:0;border-radius:10px;background:transparent;padding:0 2px;font-size:13px}.pseg .chip.on{background:var(--sel);color:var(--onsel)}
 .pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.pgrid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.pgrid.g5{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -2125,7 +2125,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull pfx'),redraw=[];
   /* preview size: as wide as the screen allows and up to ~45% of its height */
-  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(120,innerHeight*.24)];
+  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(110,innerHeight*.17)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   let lastPaper=null,lastLeast=false,renderSum=()=>{};const sumSet=(p,l)=>{lastPaper=p;lastLeast=!!l;renderSum()};
   {const hd=E('div','phd'),ht=E('div','pht'),px=E('button','px');ht.append(E('h3','',pdf?'Save as PDF':'Print'),E('small','',files.length?files[0].name+(files.length>1?' + '+(files.length-1)+' file'+(files.length>2?'s':''):''):''));
@@ -2257,11 +2257,11 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const a=E('button','chip add','+ Save');a.onclick=async()=>{const n=await dlg({title:'Save preset',msg:'Saves the options below under a name (press and hold a preset to delete it).',input:{label:'Preset name'},ok:'Save'});
       if(!n||!n.trim())return;const m=lsGet('printPresets',{}),c=Object.assign({},st);delete c.printer;delete c.range;m[n.trim().slice(0,24)]=c;try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};pr.append(a)};
   const rm=async n=>{if(!await dlg({title:'Delete preset "'+n+'"?',ok:'Delete',danger:true}))return;const m=lsGet('printPresets',{});delete m[n];try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};
-  drawPresets();card.append(pr);
+  drawPresets();
   const tb=E('div','ptabs'),body=E('div','pbody'),names=[['b','Basics'],['l','Layout'],['p','Pages']];
   const showT=k=>{names.forEach(([n],i)=>{tabs[n].style.display=n===k?'':'none';tbs[i].classList.toggle('on',n===k)});body.scrollTop=0};
   const tbs=names.map(([k,l])=>{const b=E('button','',l);b.onclick=()=>showT(k);tb.append(b);return b});
-  body.append(tabs.b,tabs.l,tabs.p);card.append(tb,body);
+  body.append(pr,tabs.b,tabs.l,tabs.p);card.append(tb,body);
   // printer: the list lives in the printer row at the top
   const sel=E('select');sel.setAttribute('aria-label','Printer');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);sel.style.display='none';pt.insertBefore(sel,info);
   sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
