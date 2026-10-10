@@ -17,16 +17,16 @@ import java.util.Objects
  * Keep in sync with ui.html: shown(), findDups(), kind(), fmt(), nlA(), nlBuild(), BADGE, COL.
  */
 object NlModel {
-    class Cfg(val sort: String, val asc: Boolean, val hid: Boolean, val gal: Boolean, val view: String, val thumb: String)
+    class Cfg(val sort: String, val asc: Boolean, val hid: Boolean, val gal: Boolean, val view: String, val thumb: String, val ff: Boolean = true)
 
     /** rows == null: not buildable here (page decides); count = number of entries read (for the "too big" memo). */
     class Result(val rows: List<NlRow>?, val count: Int, val sum: Pair<String, String>? = null)
 
-    /** ui.html nlCfg(): sort,asc,hid,gal,view,thumb */
+    /** ui.html nlCfg(): sort,asc,hid,gal,view,thumb,ff (ff = folders first, 1 / 0) */
     fun parseCfg(s: String): Cfg? {
         val p = s.split(',')
         if (p.size < 6) return null
-        return Cfg(p[0], p[1] == "1", p[2] == "1", p[3] == "1", p[4], p[5])
+        return Cfg(p[0], p[1] == "1", p[2] == "1", p[3] == "1", p[4], p[5], p.getOrNull(6) != "0")
     }
 
     private fun col(rgb: Int): Int = (0xFF000000L or rgb.toLong()).toInt()
@@ -121,9 +121,9 @@ object NlModel {
         coll.setStrength(Collator.PRIMARY)
         val vis = if (cfg.hid) items else items.filter { !it.hid && (it.name.isEmpty() || it.name[0] != '.') }
         val d = if (cfg.asc) 1 else -1
-        val num = { i: Item -> if (cfg.sort == "date") i.mtime else if (i.dir) (i.n ?: 0).toLong() else i.size }
+        val num = { i: Item -> if (cfg.sort == "date") i.mtime else if (i.dir) (if (cfg.ff) (i.n ?: 0).toLong() else 0L) else i.size }   // folders mixed in with files: no item count to compare with a byte size
         val v: List<Item> = if (cfg.sort == "none") vis else vis.sortedWith(Comparator<Item> { a, b ->
-            if (a.dir != b.dir) return@Comparator if (a.dir) -1 else 1
+            if (cfg.ff && a.dir != b.dir) return@Comparator if (a.dir) -1 else 1
             val c = when (cfg.sort) {
                 "name" -> coll.compare(a.name, b.name)
                 "type" -> if (a.dir) 0 else coll.compare(extOf(a.name), extOf(b.name))

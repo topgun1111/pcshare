@@ -81,6 +81,10 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #dlg .dcard.sd{--ac:var(--tl);max-width:360px;padding:24px 0 8px}.sd h3{padding:0 24px;font-weight:600}
 .sd .opt{border-radius:0;padding:6px 24px;min-height:54px}.sd .opt .t b{font-size:20px}.sd .opt.on .t b{color:inherit;font-weight:500}
 .sd .tbtn{color:var(--tl);text-transform:uppercase;letter-spacing:1px;margin:8px 16px 0 0}
+#list.t-md:not(.v-grid):not(.v-compact) .row{min-height:72px}
+#list.t-md:not(.v-grid):not(.v-compact) .lead{width:62px;height:56px}
+#list.t-md:not(.v-grid):not(.v-compact) .row .lead .kd{width:52px;height:52px;padding:11px}
+#list.t-md:not(.v-grid):not(.v-compact) .fold svg{width:54px;height:46px}
 #list.t-lg:not(.v-grid):not(.v-compact) .row{min-height:84px}
 #list.t-lg:not(.v-grid):not(.v-compact) .lead{width:76px;height:68px}
 #list.t-lg:not(.v-grid):not(.v-compact) .row .lead .kd{width:64px;height:64px;padding:14px}
@@ -120,6 +124,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .nm{display:none}
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
+#list.v-grid.gc2,#list.v-grid.imgf.gc2{grid-template-columns:repeat(2,1fr)}#list.v-grid.gc3,#list.v-grid.imgf.gc3{grid-template-columns:repeat(3,1fr)}#list.v-grid.gc4,#list.v-grid.imgf.gc4{grid-template-columns:repeat(4,1fr)}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
 .albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
@@ -462,19 +467,19 @@ const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Dat
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
 SORTS.none={t:'No Sort',l:'No Sort',a:'',d:''};
 if(!SORTS[S.sort])S.sort='name';if(!VIEWS[S.view])S.view='list';
-S.q='';S.aa=false;S.thumb='s';S.theme=LD('ls_theme','light');if(['light','dark','auto'].indexOf(S.theme)<0)S.theme='light';document.documentElement.dataset.theme=S.theme;
+S.q='';S.aa=false;S.thumb='s';S.cols=0;S.ff=true;S.theme=LD('ls_theme','light');if(['light','dark','auto'].indexOf(S.theme)<0)S.theme='light';document.documentElement.dataset.theme=S.theme;
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
 setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(sysBars,50))}catch(e){}
 // view/sort preferences: global default + per-folder overrides ("Apply to all folders" promotes to global)
-let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s'};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
+let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0,ff:1};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
 let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 const pfKey=()=>S.dev+'|'+S.path;
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
-  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s'}
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':(o.thumb==='m'?'m':'s');S.cols=(o.cols===2||o.cols===3||o.cols===4)?o.cols:0;S.ff=o.ff!==0&&o.ff!==false}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
-function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
+function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb,cols:S.cols,ff:S.ff?1:0},p);
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}
   render()}
@@ -505,23 +510,23 @@ const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(
 const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid);
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
-function shown(){  // visible items in the chosen order; folders always come first
+function shown(){  // visible items in the chosen order; folders come first unless "Folders first" is off (S.ff)
   if(S.newest){return vis().filter(i=>!i.dir&&(!S.q||i.name.toLowerCase().indexOf(S.q)>=0)).sort((a,b)=>(b.mtime||0)-(a.mtime||0)||COL.compare(a.name,b.name))}
   const d=S.asc?1:-1,k=S.sort;
-  const num=i=>k==='date'?(i.mtime||0):(i.dir?(i.n||0):(i.size||0));
+  const num=i=>k==='date'?(i.mtime||0):(i.dir?(S.ff?(i.n||0):0):(i.size||0));
   const qf=a=>S.q?a.filter(i=>i.name.toLowerCase().indexOf(S.q)>=0):a.slice();   // the filter keeps the order, so the sorted list is reused while typing a search
   if(k==='none')return qf(vis());
   let sorted;
-  if(k!=='size'&&SHC&&SHC.it===S.items&&SHC.n===S.items.length&&SHC.h===S.hid&&SHC.k===k&&SHC.d===d)sorted=SHC.v;   // size order depends on folder counts that arrive in place: never cached
+  if(k!=='size'&&SHC&&SHC.it===S.items&&SHC.n===S.items.length&&SHC.h===S.hid&&SHC.f===S.ff&&SHC.k===k&&SHC.d===d)sorted=SHC.v;   // size order depends on folder counts that arrive in place: never cached
   else{sorted=vis().slice().sort((a,b)=>{
-    if(a.dir!==b.dir)return a.dir?-1:1;
+    if(S.ff&&a.dir!==b.dir)return a.dir?-1:1;
     let c=0;
     if(k==='name')c=COL.compare(a.name,b.name);
     else if(k==='type')c=a.dir?0:COL.compare(extOf(a.name),extOf(b.name));
     else c=num(a)-num(b);
     if(c)return c*d;
     return COL.compare(a.name,b.name)*(k==='name'?d:1)});
-    if(k!=='size')SHC={it:S.items,n:S.items.length,h:S.hid,k:k,d:d,v:sorted}}
+    if(k!=='size')SHC={it:S.items,n:S.items.length,h:S.hid,f:S.ff,k:k,d:d,v:sorted}}
   return qf(sorted)}
 let SHC=null;
 let DUPS=new Set();
@@ -561,9 +566,11 @@ function openView(){
     const r1=E('div','vrad');
     ['list','grid','compact'].forEach(k=>{const b=E('button','rdo'+(S.view===k?' on':''));b.append(E('span','rd'),ic(VIEWS[k].i));b.setAttribute('aria-label',VIEWS[k].t);b.onclick=()=>{setPref({view:k});draw()};r1.append(b)});card.append(r1);
     const r2=E('div','vrad');
-    [['s','Small thumbnails',22],['l','Large thumbnails',32]].forEach(a=>{const b=E('button','rdo'+(S.thumb===a[0]?' on':'')),g=ic('img');g.style.width=g.style.height=a[2]+'px';b.append(E('span','rd'),g);b.setAttribute('aria-label',a[1]);b.onclick=()=>{setPref({thumb:a[0]});draw()};r2.append(b)});card.append(r2);
+    [['s','Small thumbnails',22],['m','Medium thumbnails',27],['l','Large thumbnails',32]].forEach(a=>{const b=E('button','rdo'+(S.thumb===a[0]?' on':'')),g=ic('img');g.style.width=g.style.height=a[2]+'px';b.append(E('span','rd'),g);b.setAttribute('aria-label',a[1]);b.onclick=()=>{setPref({thumb:a[0]});draw()};r2.append(b)});card.append(r2);
+    if(S.view==='grid'){const r3=E('div','vrad'),ec=S.cols||(innerWidth>=600?4:2);[2,3,4].forEach(n=>{const b=E('button','rdo'+(ec===n?' on':'')),t=E('span','vt',n+' columns');b.append(E('span','rd'),t);b.setAttribute('aria-label',n+' columns');b.onclick=()=>{setPref({cols:n});draw()};r3.append(b)});card.append(r3)}
     card.append(E('hr'),E('div','sh','Sort'));
     const sb=E('button','vrow');sb.append(E('span','vt',SORTS[S.sort].t+(S.sort==='none'?'':(S.asc?' \u25B2':' \u25BC'))));sb.onclick=()=>{close();openSort()};card.append(sb);
+    card.append(cbrow('Folders first',S.ff,v=>{setPref({ff:v?1:0});draw()}));
     card.append(E('hr'),E('div','sh','Others'),cbrow('Show hidden files',S.hid,()=>{toggleHidden(true);draw()}))};
   draw()}
 /* archives: a .zip/.rar opens like a folder; its virtual path is "/dir/a.zip!/inner" */
@@ -695,13 +702,13 @@ const NLON=(()=>{try{return localStorage.getItem('ls_nl')!=='0'}catch(e){return 
 /* native Sort / View sheets (Kotlin: NlSheets.kt) and native search box (NlSearch.kt). Kill switches: localStorage ls_nls='0' / ls_nlq='0', NativeList.SHEETS / NativeList.SEARCH = false. */
 const NLSH=(()=>{try{return !!NL&&!KID&&!!NL.nlSort&&!!NL.nlSheets&&NL.nlSheets()&&localStorage.getItem('ls_nls')!=='0'}catch(e){return false}})();
 const NLSR=(()=>{try{return !!NL&&!KID&&!!NL.nlSearch&&!!NL.nlSearchOk&&NL.nlSearchOk()&&localStorage.getItem('ls_nlq')!=='0'}catch(e){return false}})();
-function nlSheetState(){const o={view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:S.hid?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
+function nlSheetState(){const o={view:S.view,thumb:S.thumb,cols:S.cols,ec:innerWidth>=600?4:2,ff:S.ff?1:0,sort:S.sort,asc:S.asc?1:0,hid:S.hid?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
   Object.keys(SORTS).forEach(k=>o.lb[k]=SORTS[k].t);return JSON.stringify(o)}
-// a choice made in a native sheet: {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kotlin has already shown the re-built rows when it could; this applies the same preference (and persists it).
+// a choice made in a native sheet: {sort,asc} / {view} / {thumb} / {cols} / {ff} / {aa} / {hid}. Kotlin has already shown the re-built rows when it could; this applies the same preference (and persists it).
 window.nlPref=j=>{let p;try{p=JSON.parse(j)}catch(e){return}
   if('aa'in p)S.aa=!!p.aa;
   if('hid'in p){if(!!p.hid!==S.hid)toggleHidden(true);return}
-  const o={};if('view'in p)o.view=p.view;if('sort'in p)o.sort=p.sort;if('asc'in p)o.asc=!!p.asc;if('thumb'in p)o.thumb=p.thumb;
+  const o={};if('view'in p)o.view=p.view;if('sort'in p)o.sort=p.sort;if('asc'in p)o.asc=!!p.asc;if('thumb'in p)o.thumb=p.thumb;if('cols'in p)o.cols=p.cols;if('ff'in p)o.ff=p.ff;
   if(Object.keys(o).length||p.aa)setPref(o)};
 const nlCol=v=>{v=(v||'').trim();let m;
   if(m=/^#([0-9a-f]{3})$/i.exec(v)){const a=m[1];return 0xFF000000+parseInt(a[0]+a[0]+a[1]+a[1]+a[2]+a[2],16)}
@@ -737,7 +744,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
       if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
-const nlCfg=()=>[S.sort,S.asc?1:0,S.hid?1:0,S.gal?1:0,S.view,S.thumb].join(',');
+const nlCfg=()=>[S.sort,S.asc?1:0,S.hid?1:0,S.gal?1:0,S.view,S.thumb,S.ff?1:0].join(',');
 function nlRender(LIST,P0,GN){
   if(GN==null)GN=NLGN;NLL=LIST;NLP0=P0;NLGN=GN;   // LIST = folder rows followed by the video-gallery cells (index >= GN)
   const a=nlBuild(LIST,P0,GN);
@@ -745,7 +752,7 @@ function nlRender(LIST,P0,GN){
   const pal=nlPal();if(pal!==NLPAL){NLPAL=pal;NL.nlPalette(pal)}
   NL.nlCfg(nlCfg());
   if(NL.nlQ)NL.nlQ(S.q||'');
-  NL.nlItems(S.dev+'|'+S.view+(S.view==='list'&&S.thumb==='l'?'L':'')+'|'+(S.newest?'N:':'')+P0,JSON.stringify(a),NLSEL);
+  NL.nlItems(S.dev+'|'+S.view+(S.view==='list'&&S.thumb==='l'?'L':S.view==='list'&&S.thumb==='m'?'M':'')+'|'+(S.newest?'N:':'')+P0,JSON.stringify(a),NLSEL);
   window.scrollTo(0,0);nlLay(true)}
 /* native path bar + tool row (Kotlin: NlHead.kt). Same texts as render() / renderTools(); the HTML rows stay underneath unchanged.
    Kill switches: localStorage ls_nlh='0' or NativeList.HEAD=false. */
@@ -771,7 +778,7 @@ function nlLay(force){if(!NL||!NLL)return;
   if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
     if(vis(pr)&&vis(tr)){const a=pr.getBoundingClientRect(),b=tr.getBoundingClientRect(),q=v=>Math.round(v*100)/100;
       if(a.width>0&&a.height>0&&b.height>0)hd=[q(a.left),q(a.top),q(a.width),q(a.height),q(b.height)]}}
-  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
+  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0,md:S.view==='list'&&S.thumb==='m'?1:0,gc:S.view==='grid'?S.cols:0});
   if(force||j!==NLLAY){NLLAY=j;NL.nlLayout(j)}}
 /* Instant folder entry is done in Kotlin (NlModel + NativeList.tapRow): it builds the next folder's rows itself and shows them on tap;
    go() below still runs as usual and its rows replace them only if they differ. Nothing to do here but send nlCfg() with every render. */
@@ -1167,7 +1174,7 @@ function render(){
   $('#ht').textContent=S.dev==='local'?'Main storage':devName(S.dev);
   const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used'}else pl.style.display='none';
   cr.scrollLeft=cr.scrollWidth;
-  const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
+  const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':S.thumb==='m'?' t-md':'')+(S.view==='grid'&&S.cols?' gc'+S.cols:'');
   showFree();
   const V=shown();renderTools(V);
   if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':'This folder is empty')));l.append(e)}
@@ -1543,7 +1550,7 @@ function openOcrSettings(){
   const card=E('div','card');card.append(E('div','handle'),E('h3','','Text in pictures'));
   const para=(h,t)=>{const p=E('p');p.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;line-height:1.45';if(h){const b=E('b','',h+' ');b.style.color='var(--fg,inherit)';p.append(b)}p.append(t);card.append(p)};
   para('What it is','When you open a picture, the app can read the text in it, like Google Lens or Samsung Gallery. It happens on the phone: nothing is uploaded, and after the first use it works offline. The first time, the text model is downloaded through Google Play Services.');
-  para('How to use it','The T button in the picture viewer turns bright when text was found. Press T, or press and hold on the picture, to show the text. Tap a word to select it (double tap = line, triple tap = paragraph) and drag the blue handles. Then Copy, Search, Translate, Share, or Save. Long press T to search the text of all pictures that were read.');
+  para('How to use it','The T button in the picture viewer turns bright when text was found. Press T, or press and hold on the picture, to show the text. Tap a word to select it (double tap = line, triple tap = paragraph) and drag the blue handles. Then Copy, Search, Share, or Save. Long press T to search the text of all pictures that were read.');
   para('Background reading','The app reads a picture about a second after you open it, then the next and the previous one, so the text is ready when you press T. Results are kept on the phone for 30 days, so opening the picture again is instant. Reading uses some battery; choose when it may run:');
   const rows=[['Always','Pictures are read as soon as you look at them.'],['Only while charging','Background reading waits until the charger is connected. Pressing T still reads that picture at once.'],['Off','Nothing is read by itself. Pressing T reads that picture, which takes a few seconds.']];
   const draw=()=>{const cur=LSAndroid.ocrGet();list.textContent='';rows.forEach((r,i)=>{const b=E('button','set'),t=E('div','t');b.style.width='100%';b.style.textAlign='left';

@@ -136,6 +136,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     var dur: String? = null
     var compact = false
     var large = false      // big-thumbnail list (ui.html #list.t-lg): row 84, lead 76x68
+    var medium = false     // medium thumbnails (ui.html #list.t-md): row 72, lead 62x56
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 16f * d }
@@ -149,15 +150,15 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     private var ellFor: NlRow? = null
     private var ellW = -1f
 
-    fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean) {
-        if (cp != compact || lg != large) { compact = cp; large = lg; requestLayout() }
+    fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean, md: Boolean = false) {
+        if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; requestLayout() }
         if ((r.k == "hdr") != (row?.k == "hdr")) requestLayout()
         row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; invalidate()
     }
 
     override fun setPressed(pressed: Boolean) { super.setPressed(pressed); invalidate() }
 
-    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else 60f) * d)) }
+    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f) * d)) }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
         val path = NlIcons.path(k) ?: NlIcons.path("file") ?: return
@@ -183,19 +184,20 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 
         val c = compact
         val lg = large && !c
+        val md = medium && !c && !lg
         // list: row 60, lead 48x44 from x=10, tile/circle 40, icon 24 | compact: row 44, lead 36x36 from x=8, tile/circle 30, icon 20
-        val cy = (if (c) 21.5f else if (lg) 41.5f else 29.5f) * d                      // (pad + (row-2*pad-1)/2) dp
-        val lcx = (if (c) 26f else if (lg) 48f else 34f) * d
-        val tile = (if (c) 15f else if (lg) 32f else 20f) * d                        // half of the 40 / 30 tile
-        val ico = (if (c) 20f else if (lg) 36f else 24f) * d
-        val leadR = (if (c) 18f else if (lg) 38f else 24f) * d                       // half lead width
-        val leadB = (if (c) 18f else if (lg) 34f else 22f) * d                       // half lead height
+        val cy = (if (c) 21.5f else if (lg) 41.5f else if (md) 35.5f else 29.5f) * d                      // (pad + (row-2*pad-1)/2) dp
+        val lcx = (if (c) 26f else if (lg) 48f else if (md) 41f else 34f) * d
+        val tile = (if (c) 15f else if (lg) 32f else if (md) 26f else 20f) * d                        // half of the 40 / 30 tile
+        val ico = (if (c) 20f else if (lg) 36f else if (md) 30f else 24f) * d
+        val leadR = (if (c) 18f else if (lg) 38f else if (md) 31f else 24f) * d                       // half lead width
+        val leadB = (if (c) 18f else if (lg) 34f else if (md) 28f else 22f) * d                       // half lead height
         // ---- lead ----
         if (isSel) {
             p.color = pl.ac; cv.drawCircle(lcx, cy, tile, p)
             icon("check", lcx - ico / 2f, cy - ico / 2f, ico, pl.onac, cv)
         } else if (r.dir) {
-            val fw = (if (c) 34f else if (lg) 68f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else 34f) * d
+            val fw = (if (c) 34f else if (lg) 68f else if (md) 54f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else if (md) 46f else 34f) * d
             cv.save(); cv.translate(lcx - fw / 2f, cy - fh / 2f); val s = fw / 56f; cv.scale(s, s)
             p.color = 0xFFFB8C00.toInt(); cv.drawPath(NlIcons.foldBack, p)
             p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
@@ -212,7 +214,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         } else {
             val bm = thumb
             if (bm != null) {
-                val hw = (if (c) 14f else if (lg) 34f else 20f) * d; val hh = (if (c) 15f else if (lg) 31f else 19f) * d   // lead minus 8 / minus 6 px
+                val hw = (if (c) 14f else if (lg) 34f else if (md) 27f else 20f) * d; val hh = (if (c) 15f else if (lg) 31f else if (md) 25f else 19f) * d   // lead minus 8 / minus 6 px
                 val L = lcx - hw; val T = cy - hh; val R = lcx + hw; val B = cy + hh
                 val dw = R - L; val dh = B - T
                 val sc = Math.max(dw / bm.width, dh / bm.height)
@@ -262,7 +264,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             cv.drawText(aTxt, xr - sw, cy - (fs.ascent + fs.descent) / 2f, smallP)
             return
         }
-        val x0 = (if (lg) 98f else 70f) * d
+        val x0 = (if (lg) 98f else if (md) 84f else 70f) * d
         val top = cy - 20.3f * d                                    // block = 22.4 + 18.2 line heights, centred
         val avail = xr - x0 - (if (r.dup) dupW + 6f * d else 0f)
         if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, avail, TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
@@ -663,6 +665,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var navUntil = 0L           // while the page has not yet answered an instant entry, taps would hit the wrong row list
     private var compact = false
     private var large = false
+    private var medium = false
+    private var gcols = 0               // grid view: 0 = automatic (2, 4 from 600 dp), else 2 / 3 / 4 (the user's choice)
     private class Th(val bm: Bitmap, val dur: String?)
     private val thumbs = object : android.util.LruCache<String, Th>((Runtime.getRuntime().maxMemory() / 8L).toInt()) {
         override fun sizeOf(k: String, v: Th) = v.bm.byteCount
@@ -951,25 +955,27 @@ class NativeList(private val act: Activity, private val web: WebView) {
     // ================= native Sort / View =================
     /** A choice made in the native sheet. Sort / view / thumbnails: rows are re-built here at once for this phone's plain folders; in every case the page applies the same preference. */
     fun pref(o: JSONObject) {
+        try { if (o.has("cols")) { val n = o.optInt("cols"); gcols = if (n in 2..4) n else 0; if (gridOn) ensureMgr(true) } } catch (_: Throwable) { }
         try { instantPref(o) } catch (_: Throwable) { }
         web.evaluateJavascript("window.nlPref&&nlPref(" + JSONObject.quote(o.toString()) + ")", null)
     }
 
     private fun instantPref(o: JSONObject) {
-        if (!o.has("sort") && !o.has("view") && !o.has("thumb")) return
+        if (!o.has("sort") && !o.has("view") && !o.has("thumb") && !o.has("ff")) return
         val c = curCfg.split(',')
         val kp = curKey.split('|', limit = 3)
-        if (c.size != 6 || kp.size != 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return
+        if (c.size != 7 || kp.size != 3 || kp[0] != "local" || kp[2].startsWith("N:") || kp[2].contains('!')) return
         if (sel.isNotEmpty() || sqOn || searchOn || headData == null || overlay.visibility != View.VISIBLE || overlay.passAll) return
         val sort = o.optString("sort", c[0])
         val asc = if (o.has("asc")) o.optInt("asc") else (c[1].toIntOrNull() ?: 1)
         val view = o.optString("view", c[4])
         val thumb = o.optString("thumb", c[5])
-        if (sort !in setOf("none", "name", "size", "date", "type") || view !in setOf("list", "compact", "grid") || (thumb != "s" && thumb != "l")) return
-        val newCfg = listOf(sort, asc.toString(), c[2], c[3], view, thumb).joinToString(",")
+        val ff = if (o.has("ff")) o.optInt("ff") else (c[6].toIntOrNull() ?: 1)
+        if (sort !in setOf("none", "name", "size", "date", "type") || view !in setOf("list", "compact", "grid") || (thumb != "s" && thumb != "m" && thumb != "l")) return
+        val newCfg = listOf(sort, asc.toString(), c[2], c[3], view, thumb, ff.toString()).joinToString(",")
         if (newCfg == curCfg) return
         val oldKey = curKey
-        val key = kp[0] + "|" + view + (if (view == "list" && thumb == "l") "L" else "") + "|" + kp[2]
+        val key = kp[0] + "|" + view + (if (view == "list" && thumb == "l") "L" else if (view == "list" && thumb == "m") "M" else "") + "|" + kp[2]
         val path = kp[2]
         val gen = ++prefGen
         buildNow.execute {
@@ -979,7 +985,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 if (gen != prefGen || list == null || curKey != oldKey || sel.isNotEmpty()) return@runOnUiThread
                 built.clear(); baseRows = null
                 curCfg = newCfg
-                compact = view == "compact"; large = view == "list" && thumb == "l"
+                compact = view == "compact"; large = view == "list" && thumb == "l"; medium = view == "list" && thumb == "m"
                 applyItems(key, list, emptySet(), sg)
                 headData?.let { h ->
                     val lab = sheets.labels?.optString(sort, "") ?: ""
@@ -1001,7 +1007,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     /** List = LinearLayoutManager; grid view = GridLayoutManager (2 columns, 4 from 600 dp), cards 8 dp apart (rv padding 4 + item offset 4). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
+        val span = if (grid) (if (gcols in 2..4) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
@@ -1072,7 +1078,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         sqOn = j.optInt("sq") == 1
         val cp = j.optInt("cp") == 1
         val lg = j.optInt("lg") == 1
-        if (cp != compact || lg != large) { compact = cp; large = lg; ad.notifyDataSetChanged() }
+        val md = j.optInt("md") == 1
+        val gc = j.optInt("gc")
+        if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; ad.notifyDataSetChanged() }
+        gcols = if (gc in 2..4) gc else 0
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
         val hd = j.optJSONArray("hd")
@@ -1215,7 +1224,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             if (hv is NlGalView) { bindGal(h, hv, pos, p); return }
             val r = rows[pos]
             h.job?.cancel(false); h.job = null; h.key = null
-            if (hv is NlGridView) hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") else (hv as NlRowView).bind(r, p, pos in sel, compact, large)
+            if (hv is NlGridView) hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") else (hv as NlRowView).bind(r, p, pos in sel, compact, large, medium)
             val key = r.thumbKey ?: return
             val hit = thumbs.get(key)
             if (hit != null) { setThumb(hv, hit.bm, hit.dur); return }

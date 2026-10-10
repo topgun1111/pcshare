@@ -51,7 +51,7 @@ private class NlRadio(c: Context, private val on: Boolean, private val ring: Int
 /**
  * Native twins of ui.html openSort() (centered dialog) and openView() (bottom sheet).
  * ui.html sends the current state as JSON; every choice goes back through [onPref] as
- * {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kill switch: localStorage ls_nls='0' (page keeps its own HTML sheets).
+ * {sort,asc} / {view} / {thumb} / {cols} / {ff} / {aa} / {hid}. Kill switch: localStorage ls_nls='0' (page keeps its own HTML sheets).
  */
 class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Unit) {
     private val d = UiScale.dens(act)
@@ -66,6 +66,9 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val pal = NlPal(j.getJSONObject("p"))
         var view: String = j.optString("view", "list")
         var thumb: String = j.optString("thumb", "s")
+        var cols: Int = j.optInt("cols", 0)          // 0 = automatic
+        val autoCols: Int = j.optInt("ec", 2)        // what "automatic" means on this screen (2, or 4 from 600 dp)
+        var ff: Boolean = j.optInt("ff", 1) == 1     // folders first
         var sort: String = j.optString("sort", "name")
         var asc: Boolean = j.optInt("asc", 1) == 1
         var hid: Boolean = j.optInt("hid") == 1
@@ -191,10 +194,17 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             radioRow(views.map { (k, _) -> Triple(k.replaceFirstChar { c -> c.uppercase() }, s.view == k, { s.view = k; onPref(JSONObject().put("view", k)); draw() }) }) { n ->
                 NlGlyph(act, NlGlyph.parse(s.ic.optString(views[n].second)), p.fg, dp(24f))
             }
-            val thumbs = listOf("s" to 22f, "l" to 32f)
-            radioRow(thumbs.map { (k, _) -> Triple(if (k == "s") "Small thumbnails" else "Large thumbnails", s.thumb == k, { s.thumb = k; onPref(JSONObject().put("thumb", k)); draw() }) }) { n ->
+            val thumbs = listOf("s" to 22f, "m" to 27f, "l" to 32f)
+            radioRow(thumbs.map { (k, _) -> Triple(if (k == "s") "Small thumbnails" else if (k == "m") "Medium thumbnails" else "Large thumbnails", s.thumb == k, { s.thumb = k; onPref(JSONObject().put("thumb", k)); draw() }) }) { n ->
                 // the 24 box path scaled to 22 / 32 dp, like the page does
                 NlGlyph(act, NlGlyph.parse(s.ic.optString("img")), p.fg, dp(thumbs[n].second))
+            }
+            if (s.view == "grid") {
+                val shown = if (s.cols in 2..4) s.cols else s.autoCols
+                val cols = listOf(2, 3, 4)
+                radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
+                    tv("${cols[n]} columns", 16f, p.fg)
+                }
             }
             hr(); head("Sort")
             val sb = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(56f); setPadding(dp(4f), dp(6f), dp(4f), dp(6f)) }
@@ -202,6 +212,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             sb.addView(tv(s.label(s.sort) + (if (s.sort == "none") "" else if (s.asc) " \u25B2" else " \u25BC"), 18f, p.fg))
             sb.setOnClickListener { dl.dismiss(); sortFor(s) }
             col.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            cbRow("Folders first", s.ff) { v -> s.ff = v; onPref(JSONObject().put("ff", if (v) 1 else 0)); draw() }
             hr(); head("Others")
             cbRow("Show hidden files", s.hid) { v -> s.hid = v; onPref(JSONObject().put("hid", if (v) 1 else 0)); draw() }
         }

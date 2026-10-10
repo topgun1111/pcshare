@@ -14,7 +14,7 @@ import android.view.View
 
 /**
  * Text layer above the picture (see HANDOVER_OCR.md). Draws the selection, two drag handles, a floating toolbar
- * (Copy / Search / Translate / Share) and - while a handle is dragged - a magnifier. It only claims touches that start on a
+ * (Copy / Search / Share) and - while a handle is dragged - a magnifier. It only claims touches that start on a
  * handle or on the toolbar; everything else (pinch, pan, taps, page swipe) goes to the [ZoomImageView] below it.
  *
  * Word boxes are NOT drawn all the time: they flash for ~1.5 s when the layer is switched on, then only the words near the
@@ -25,7 +25,7 @@ import android.view.View
  */
 class OcrOverlayView(c: Context) : View(c) {
     var onSelection: ((String?) -> Unit)? = null
-    /** Toolbar button pressed: "copy", "search", "translate" or "share". */
+    /** Toolbar button pressed: "copy", "search" or "share". */
     var onAction: ((String) -> Unit)? = null
 
     private class W(val text: String, val box: RectF, val line: Int, val quad: FloatArray?)
@@ -65,9 +65,9 @@ class OcrOverlayView(c: Context) : View(c) {
     private val hintR = dp(120f)
 
     // floating toolbar
-    private val tbIds = arrayOf("copy", "search", "translate", "share")
-    private val tbLabels = arrayOf("Copy", "Search", "Translate", "Share")
-    private val tbRects = Array(4) { RectF() }
+    private val tbIds = arrayOf("copy", "search", "share")
+    private val tbLabels = arrayOf("Copy", "Search", "Share")
+    private val tbRects = Array(3) { RectF() }
     private val tbRect = RectF()
     private var tbShown = false
     private var tbDown = -1
@@ -313,7 +313,7 @@ class OcrOverlayView(c: Context) : View(c) {
 
     private fun drawToolbar(cv: Canvas) {
         var tw = 0f
-        val ws = FloatArray(4) { txtPaint.measureText(tbLabels[it]) + dp(28f) }
+        val ws = FloatArray(3) { txtPaint.measureText(tbLabels[it]) + dp(28f) }
         for (x in ws) tw += x
         val bh = dp(40f)
         var top = Float.MAX_VALUE
@@ -329,7 +329,7 @@ class OcrOverlayView(c: Context) : View(c) {
         cv.drawRoundRect(tbRect, bh / 2f, bh / 2f, tbPaint)
         var cx = x
         val fm = txtPaint.fontMetrics
-        for (i in 0 until 4) {
+        for (i in 0 until 3) {
             tbRects[i].set(cx, y, cx + ws[i], y + bh)
             if (tbDown == i) cv.drawRoundRect(tbRects[i], bh / 2f, bh / 2f, tbPress)
             cv.drawText(tbLabels[i], cx + ws[i] / 2f, y + bh / 2f - (fm.ascent + fm.descent) / 2f, txtPaint)
@@ -344,7 +344,7 @@ class OcrOverlayView(c: Context) : View(c) {
             MotionEvent.ACTION_DOWN -> {
                 if (selA < 0) return false
                 if (tbShown && tbRect.contains(e.x, e.y)) {
-                    tbDown = (0 until 4).firstOrNull { tbRects[it].contains(e.x, e.y) } ?: -1
+                    tbDown = (0 until 3).firstOrNull { tbRects[it].contains(e.x, e.y) } ?: -1
                     invalidate()
                     return true
                 }

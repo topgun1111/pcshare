@@ -102,8 +102,6 @@ class ImageViewerActivity : Activity() {
     private lateinit var selBar: LinearLayout
     private lateinit var smartBtn: TextView                   // shown only when links / phone numbers / e-mails were found in the (selected) text
     private lateinit var copyBtn: TextView
-    private val translator = OcrTranslate()
-    private var trBusy = false
 
     private val slideTick = object : Runnable {
         override fun run() {
@@ -199,7 +197,6 @@ class ImageViewerActivity : Activity() {
             visibility = View.GONE
             addView(copyBtn)
             addView(barBtn("Select all") { holder(pager.currentItem)?.ov?.selectAll() })
-            addView(barBtn("Translate") { translateOcr() })
             smartBtn = barBtn("Links") { smartOcr() }.apply { visibility = View.GONE }
             addView(smartBtn)
             addView(barBtn("Save") { saveOcr() })
@@ -693,37 +690,6 @@ class ImageViewerActivity : Activity() {
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share text"))
     }
 
-    /** Translates the selection (else all text of the picture): Turkish -> English, anything else -> Turkish; "Swap" reverses the pair. */
-    private fun translateOcr(text0: String? = null, pair: Pair<String, String>? = null) {
-        if (trBusy) return
-        val raw = text0 ?: ocrText() ?: return
-        val t = OcrTranslate.prep(raw)
-        if (t.isEmpty()) return
-        trBusy = true
-        Toast.makeText(this, "Translating... (the first time a language pack is downloaded)", Toast.LENGTH_SHORT).show()
-        translator.run(t, pair) { res ->
-            trBusy = false
-            if (isDestroyed || isFinishing) return@run
-            res.onSuccess { o -> showTranslation(raw, o) }
-                .onFailure { e -> Toast.makeText(this, e.message ?: "Cannot translate", Toast.LENGTH_LONG).show() }
-        }
-    }
-
-    private fun showTranslation(raw: String, o: OcrTranslate.Out) {
-        val tv = TextView(this).apply { text = o.text; setTextIsSelectable(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setPadding(dp(20), dp(8), dp(20), dp(8)) }
-        val sv = android.widget.ScrollView(this).apply { addView(tv) }
-        android.app.AlertDialog.Builder(this)
-            .setTitle(o.src.uppercase() + " \u2192 " + o.dst.uppercase())
-            .setView(sv)
-            .setPositiveButton("Copy") { _, _ ->
-                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("text", o.text))
-                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
-            }
-            .setNeutralButton("Swap") { _, _ -> translateOcr(raw, o.dst to o.src) }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
     // ---------------------------------------------------------------- düzenle (döndür / kırp / boyutlandır)
     private fun edit() {
         val pos = pager.currentItem
@@ -786,7 +752,7 @@ class ImageViewerActivity : Activity() {
             iv.onTextHit = { x, y -> ov.hitsWord(x, y) }                        // tap on a word selects it (1 = word, 2 = line, 3 = paragraph)
             iv.onTextTap = { x, y, n -> ov.tapSelect(x, y, n) }
             iv.onTouchAt = { x, y -> ov.touchHint(x, y) }                       // outlines the words around the finger
-            ov.onAction = { id -> when (id) { "copy" -> copyOcr(); "search" -> searchOcr(); "translate" -> translateOcr(); "share" -> shareOcr() } }
+            ov.onAction = { id -> when (id) { "copy" -> copyOcr(); "search" -> searchOcr(); "share" -> shareOcr() } }
             ov.onSelection = { _ -> updateOcrBar() }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
@@ -814,7 +780,6 @@ class ImageViewerActivity : Activity() {
         ui.removeCallbacksAndMessages(null)
         pool.shutdownNow()
         ocr.close()
-        translator.close()
         cache.evictAll()
         File(cacheDir, "img").deleteRecursively()
         super.onDestroy()
