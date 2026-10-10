@@ -351,6 +351,24 @@ body.dual #dual{display:flex}
 .pf .sr{display:flex;align-items:center;gap:12px}.pf .sr span{flex:1;font-size:15px}
 #sheet .card.pfull{height:100vh;height:100dvh;max-height:none;border-radius:0;padding-top:calc(8px + env(safe-area-inset-top))}
 .ppv{position:sticky;top:0;z-index:2;background:var(--cont);padding:4px 0 6px;border-bottom:1px solid var(--bd);margin-bottom:4px}
+#sheet .card.pfx{padding:calc(8px + env(safe-area-inset-top)) 0 0;gap:0;overflow:hidden;background:var(--card)}
+.phd{display:flex;align-items:center;gap:8px;padding:0 8px 0 20px}.phd .pht{flex:1;min-width:0}.phd h3{margin:0;font-size:22px;line-height:26px}.phd small{display:block;font-size:13px;line-height:18px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.px{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--fg);background:var(--cont)}.px:active{filter:brightness(.92)}.px svg{width:22px;height:22px;fill:currentColor}
+.prow{margin:10px 16px 0;display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;box-sizing:border-box;border:1px solid var(--bd);border-radius:16px;background:var(--cont)}
+.prow>svg{width:22px;height:22px;fill:var(--ac);flex:none}.prow .pt{flex:1;min-width:0}.prow .ptit{font-size:15px;font-weight:600;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow select{display:block;width:100%;height:24px;border:0;background:transparent;color:var(--fg);font:inherit;font-size:15px;font-weight:600;padding:0;margin:0;outline:0;-webkit-appearance:none;appearance:none;text-overflow:ellipsis}
+.prow .sub{font-size:12px;line-height:16px;color:var(--mut)}.prow .pch{flex:none;display:none}.prow .pch svg{width:20px;height:20px;fill:var(--mut)}
+.phint{margin:6px 20px 0;font-size:12px;color:var(--mut)}
+.pfx .ppv{position:static;margin:12px 16px 0;border:0;border-radius:16px;background:var(--cont);padding:6px 10px 8px}
+.ppre{display:flex;gap:8px;overflow-x:auto;padding:12px 16px 2px;scrollbar-width:none}.ppre::-webkit-scrollbar{display:none}.ppre .chip{flex:none;height:34px;border-radius:17px;padding:0 14px}
+.ptabs{display:flex;padding:6px 16px 0;margin-top:6px;border-bottom:1px solid var(--bd)}.ptabs button{flex:1;height:44px;font-size:14px;font-weight:600;color:var(--mut);border-bottom:3px solid transparent}.ptabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
+.pbody{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 16px}.pbody .pf{margin:14px 0 0}.pbody .pf>b{margin-bottom:0}
+.pseg{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--cont)}.pseg .chip{flex:1;height:40px;justify-content:center;border:0;border-radius:10px;background:transparent;padding:0 2px;font-size:13px}.pseg .chip.on{background:var(--sel);color:var(--onsel)}
+.pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.pgrid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.pgrid.g5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.pgrid .chip{height:44px;justify-content:center;border-radius:12px;padding:0 6px}.pgrid.g5 .chip{height:64px;flex-direction:column;gap:4px;padding:0}.pgrid.g5 .chip svg{width:26px;height:26px}
+.pduo{display:flex;gap:12px;margin-top:14px}.pduo>.pf{flex:1;min-width:0;margin:0!important}
+.pstep{display:flex;align-items:center;justify-content:space-between;height:52px;padding:4px;box-sizing:border-box;border-radius:14px;background:var(--cont)}.pstep .chip.n{width:44px;height:44px;min-width:44px;border-radius:10px;justify-content:center;padding:0}
+.ptg .sr{min-height:52px;border-bottom:1px solid var(--bd)}.ptg .sr:last-child{border-bottom:0}.pf .sr span small{display:block;font-size:12px;color:var(--mut)}
 .ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start;justify-content:safe center}
 .rtile{flex:none;width:64px;height:64px;position:relative;border:1px solid var(--bd);border-radius:6px;background:var(--card);overflow:hidden;padding:0}.rtile img{width:100%;height:100%;object-fit:contain;transition:transform .15s}.rtile span{position:absolute;right:3px;bottom:2px;font-size:11px;background:#000a;color:#fff;border-radius:3px;padding:0 4px}
 .ppv .pvcap{display:flex;align-items:center;gap:6px}.ppv .pvcap>div{flex:1;min-width:0}
@@ -358,6 +376,9 @@ body.dual #dual{display:flex}
 .pvrot.wide{width:auto;padding:0 14px 0 10px;border-radius:18px;grid-auto-flow:column;gap:6px;font-size:13px;margin-left:auto;align-self:center}
 .ppv .shp{flex:none;text-align:center;font-size:11px;color:var(--mut)}.ppv canvas{display:block;background:#fff;box-shadow:0 1px 3px #0006;margin-bottom:3px}
 .pact{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;position:sticky;bottom:-8px;background:var(--cont);padding:8px 0}
+.pfx .pact{display:flex;align-items:center;gap:14px;margin:0;position:static;border-top:1px solid var(--bd);background:var(--card);padding:12px 20px calc(12px + env(safe-area-inset-bottom))}
+.pfx .pact .ps{flex:1;min-width:0}.pfx .pact .ps b{display:block;font-size:16px;line-height:20px;font-weight:600}.pfx .pact .ps small{display:block;font-size:12px;line-height:16px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pfx .pact .tbtn.fill{flex:none;height:52px;padding:0 28px;border-radius:26px;font-size:16px}
 .dcard{background:var(--cont);width:100%;max-width:420px;border-radius:28px;padding:24px 24px 16px;animation:up .2s ease-out}
 .dcard p{margin:0 0 16px;color:var(--mut)}
 .tf{width:100%;height:56px;border:1px solid var(--mut);border-radius:12px;background:transparent;color:var(--fg);font:inherit;font-size:16px;padding:0 16px;margin-bottom:16px;outline:0}.tf:focus{border:2px solid var(--ac);padding:0 15px}
@@ -2102,12 +2123,16 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const card=E('div','card pfull'),redraw=[];
+  const card=E('div','card pfull pfx'),redraw=[];
   /* preview size: as wide as the screen allows and up to ~45% of its height */
-  const pvMax=()=>[Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45)];
+  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(120,innerHeight*.24)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-  card.append(E('div','handle'),E('h3','',pdf?'Save as PDF':'Print on '+pc.name));
-  const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
+  let lastPaper=null,lastLeast=false,renderSum=()=>{};const sumSet=(p,l)=>{lastPaper=p;lastLeast=!!l;renderSum()};
+  {const hd=E('div','phd'),ht=E('div','pht'),px=E('button','px');ht.append(E('h3','',pdf?'Save as PDF':'Print'),E('small','',files.length?files[0].name+(files.length>1?' + '+(files.length-1)+' file'+(files.length>2?'s':''):''):''));
+    px.setAttribute('aria-label','Close');px.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';px.onclick=()=>fin(null);hd.append(ht,px);card.append(E('div','handle'),hd)}
+  const prow=E('div','prow'),pt=E('div','pt'),ptit=E('div','ptit',pdf?'Save as PDF':pc.name),info=E('div','sub','Checking printer\u2026'),chev=E('span','pch');
+  prow.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
+  chev.innerHTML='<svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>';pt.append(ptit,info);prow.append(pt,chev);card.append(prow);
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
   let pvr=0;if(!imgMode)pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
   let pinfo=null,ptm=0,cur=null,hasOffice=false;
@@ -2128,7 +2153,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
         if(t.naturalWidth){const b=bbs[m.i],nw=t.naturalWidth,nh=t.naturalHeight;c.drawImage(t,b[0]*nw,b[1]*nh,(b[2]-b[0])*nw,(b[3]-b[1])*nh,-pw/2,-ph/2,pw,ph)}else{c.fillStyle='#ccc';c.fillRect(-pw/2,-ph/2,pw,ph)}c.restore();
         if(st.border){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(m.cx-m.w/2,m.cy-m.h/2,m.w,m.h)}});
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
-    const paper=two?Math.ceil(n/2):n;
+    const paper=two?Math.ceil(n/2):n;sumSet(paper);
     cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')+''}
   function drawPv(){drawPv1();const [mw,mh]=pvMax();pvTurn(strip,pvr,mw,mh)}
   function drawPv1(){
@@ -2182,7 +2207,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
         z.forEach((t,i2)=>{t=pvFill(t.trim(),s0,nSheets,name);if(!t)return;c.textAlign=['left','center','right'][i2];c.fillText(t,[28,sw/2,sw-28][i2],y)})};
       zone(st.hdr,22+fs*.6);zone(st.ftr,sh-14);
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
-    const paper=two?Math.ceil(nSheets/2):nSheets;
+    const paper=two?Math.ceil(nSheets/2):nSheets;sumSet(paper);
     cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(hardM>0?' \u00b7 red edge: the printer cannot print within '+(hardM*0.3528).toFixed(1)+' mm of the paper edge':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
   /* total over ALL selected files: pages -> sides -> sheets of paper (page counts of the other files are read in the background; Word / Excel files count as unknown) */
   const pcnt=new Map();let cntBusy=false;
@@ -2195,6 +2220,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const two=st.duplex==='long'||st.duplex==='short'||!!st.booklet;
     files.forEach((f,i)=>{const n=infoPages(pcnt.get(i));if(n==null){unk++;return}const k=nPages(n);pages+=k;if(!st.join){const s1=sd(k);sides+=s1;paper+=two?Math.ceil(s1/2):s1}});
     if(st.join){sides=sd(pages);paper=two?Math.ceil(sides/2):sides}
+    sumSet(paper,unk>0);
     const cp=Math.max(1,st.copies||1);
     tot.textContent='All '+files.length+' files: '+(unk?'at least ':'')+pages+' page'+(pages===1?'':'s')+' \u2192 '+sides+' side'+(sides===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(cp>1?' \u00d7 '+cp+' = '+paper*cp:'')+(unk?' ('+unk+' file'+(unk===1?'':'s')+' not counted: Word / Excel / unknown'+(files.length>12?', max 12 read':'')+')':'')+(st.join?' \u00b7 one job':'')};
   async function loadCounts(){if(cntBusy||imgMode||files.length<2)return;cntBusy=true;
@@ -2205,11 +2231,13 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     updateTotals();cntBusy=false}
   redraw.push(updateTotals);
   if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;pcnt.set(files.indexOf(pvFile()),i);updateTotals();drawPv();loadCounts()});else cap.textContent='Folders are expanded when printing - no preview';
-  const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
-  const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
-    redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
-  const sw=(key,label)=>{const r=E('div','sr'),w=E('label','sw'),i=E('input'),k=E('i');i.type='checkbox';i.onchange=()=>{st[key]=i.checked?1:0;redraw.forEach(f=>f())};
-    w.append(i,k);r.append(E('span','',label),w);redraw.push(()=>{i.checked=!!st[key]});return r};
+  const tabs={b:E('div','ptab'),l:E('div','ptab'),p:E('div','ptab')};let into=tabs.b;
+  const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));into.append(d);return d};
+  const seg=(key,opts,kind)=>{const r=E('div',kind==='g'?'pgrid':kind==='g2'?'pgrid g2':kind==='n'?'pgrid g5':'pseg');opts.forEach(([v,l])=>{const b=E('button','chip',l);
+    if(kind==='n'){const [c,rw]=PV_LAY[v]||PV_LAY[1],w=24/c-2.2,h=24/rw-2.2;let q='';for(let y=0;y<rw;y++)for(let x=0;x<c;x++)q+='<rect x="'+(1.1+x*24/c).toFixed(1)+'" y="'+(1.1+y*24/rw).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="1"/>';b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">'+q+'</svg><span>'+l+'</span>'}
+    b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
+  const sw=(key,label,sub)=>{const r=E('div','sr'),w=E('label','sw'),i=E('input'),k=E('i');i.type='checkbox';i.onchange=()=>{st[key]=i.checked?1:0;redraw.forEach(f=>f())};
+    w.append(i,k);const sp=E('span','',label);if(sub)sp.append(E('small','',sub));r.append(sp,w);redraw.push(()=>{i.checked=!!st[key]});return r};
   const txt=(key,ph)=>{const i=E('input','tf');i.placeholder=ph;i.autocomplete='off';i.oninput=()=>{st[key]=i.value;sched()};redraw.push(()=>{if(i.value!==st[key])i.value=st[key]});return i};
   if(imgMode){
     const row=E('div','cr rotrow');
@@ -2220,8 +2248,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const au=E('div','sr'),aw=E('label','sw'),ai=E('input'),ak=E('i');ai.type='checkbox';ai.onchange=()=>{st.noauto=ai.checked?0:1;if(ai.checked)st.rots=files.map(()=>0);redraw.forEach(g=>g())};aw.append(ai,ak);au.append(E('span','','Auto-turn pictures to fill the sheet'),aw);redraw.push(()=>{ai.checked=!st.noauto});
     sec('Turn pictures (tap = 90\u00b0 clockwise)',row,au);
   }
-  // presets
-  const pr=E('div','cr'),mine=lsGet('printPresets',{});
+  // presets: one scrolling chip row under the preview
+  const pr=E('div','ppre'),mine=lsGet('printPresets',{});
   const apply=p=>{const keep=st.printer;Object.assign(st,PRN_DEF,p);st.printer=keep;st.wm=st.hdr=st.ftr='';st.wm_under=0;redraw.forEach(f=>f())};
   const drawPresets=()=>{pr.textContent='';const all=Object.assign({},PRN_BUILTIN,lsGet('printPresets',{}));
     Object.keys(all).forEach(n=>{const b=E('button','chip',n);b.onclick=()=>apply(all[n]);
@@ -2229,17 +2257,20 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const a=E('button','chip add','+ Save');a.onclick=async()=>{const n=await dlg({title:'Save preset',msg:'Saves the options below under a name (press and hold a preset to delete it).',input:{label:'Preset name'},ok:'Save'});
       if(!n||!n.trim())return;const m=lsGet('printPresets',{}),c=Object.assign({},st);delete c.printer;delete c.range;m[n.trim().slice(0,24)]=c;try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};pr.append(a)};
   const rm=async n=>{if(!await dlg({title:'Delete preset "'+n+'"?',ok:'Delete',danger:true}))return;const m=lsGet('printPresets',{});delete m[n];try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};
-  drawPresets();sec('Presets',pr);
-  // printer
-  const sel=E('select','tf');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);
+  drawPresets();card.append(pr);
+  const tb=E('div','ptabs'),body=E('div','pbody'),names=[['b','Basics'],['l','Layout'],['p','Pages']];
+  const showT=k=>{names.forEach(([n],i)=>{tabs[n].style.display=n===k?'':'none';tbs[i].classList.toggle('on',n===k)});body.scrollTop=0};
+  const tbs=names.map(([k,l])=>{const b=E('button','',l);b.onclick=()=>showT(k);tb.append(b);return b});
+  body.append(tabs.b,tabs.l,tabs.p);card.append(tb,body);
+  // printer: the list lives in the printer row at the top
+  const sel=E('select');sel.setAttribute('aria-label','Printer');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);sel.style.display='none';pt.insertBefore(sel,info);
   sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
-  const pw=sec('Printer',sel);pw.style.display='none';
-  const hint=E('div','sub');hint.style.cssText='font-size:12px;color:var(--mut);margin-top:4px;display:none';
+  const hint=E('div','sub phint');hint.style.display='none';card.insertBefore(hint,pv);
   const status=()=>{if(pdf){info.textContent='Saved as a PDF file in "LANShare PDF" on this phone';info.style.color='';return}if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
     info.textContent='Checking printer\u2026';info.className='sub';
     api('GET','/api/printer?dev='+enc(pc.id)+(st.printer?'&printer='+enc(st.printer):''),null,12000).then(r=>{
       if(!r.ok){info.textContent='Print service not reachable on this PC';info.style.color='var(--err)';return}
-      if(r.printers&&r.printers.length){pw.style.display='flex';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
+      if(r.printers&&r.printers.length){sel.style.display='block';ptit.style.display='none';chev.style.display='block';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
       {const h=+r.hard||0;if(h!==hardM){hardM=h;redraw.forEach(f=>f())}}
       if(!r.printer){info.textContent='No default printer set on the PC';info.style.color='var(--err)'}
       else if(r.problem){info.textContent=r.printer+' \u00b7 '+r.problem;info.style.color='var(--err)'}
@@ -2249,26 +2280,33 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       if(!r.engine&&r.ok){hint.style.display='block';hint.textContent=(hint.textContent?hint.textContent+' ':'')+'SumatraPDF is missing on the PC: duplex, colour and paper size are ignored.'}
     }).catch(()=>{info.textContent='Printer status unavailable';info.style.color=''})};
   // copies
-  const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
+  const cp=E('div','pstep'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:18px;font-weight:600';
   mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
   redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);
-  if(!here&&!pdf){sec('Copies',cp);
-  sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
-  sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]))}
-  if(pdf)sec('Colour',seg('color',[['','Colour'],['mono','Black & white']]));
-  sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
-  if(!imgMode&&files.length>1)sec('Files',sw('join','Print all files as one job (pages joined, laid out together)'));
-  if(imgMode)sec('Order',sw('reverse','Reverse order'));
-  else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
-  sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
-  sec('Scaling',seg('fit',imgMode?[['shrink','Fit whole picture'],['fill','Fill page (crop)']].concat([['trim','Trim blank edges']]):[['shrink','Shrink to fit'],['fit','Fit'],['noscale','Actual size'],['fill','Fill (crop)']]),...(imgMode?[]:[txt('scale','Custom scale in %, e.g. 90 (overrides the above)')]));
-  sec('Margins',seg('margin',[['','Default'],['0','None'],['14','Small'],['28','Normal'],['42','Large']]));
-  const mnote=E('div','sub','None = edge to edge; most printers cannot print the last 3-5 mm of the paper.');mnote.style.cssText='font-size:12px;color:var(--mut);margin:-2px 0 4px';card.append(mnote);
+  // Basics
+  into=tabs.b;
+  if(!here&&!pdf){const duo=E('div','pduo');into=duo;sec('Copies',cp);sec('Colour',seg('color',[['','Auto'],['color','Colour'],['mono','B&W']]));tabs.b.append(duo);into=tabs.b;
+    sec('Sides',seg('duplex',[['','Auto'],['off','One-sided'],['long','Long edge'],['short','Short edge']]))}
+  if(pdf)sec('Colour',seg('color',[['','Colour'],['mono','B&W']]));
+  sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']],'g'));
+  // Layout
+  into=tabs.l;
+  sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'));
+  {const tg=E('div','ptg');tg.append(sw('border',imgMode?'Border around each picture':'Border around each page'));if(!imgMode)tg.append(sw('booklet','Booklet','Folded, two-sided on short edge'));if(imgMode)tg.append(sw('reverse','Reverse order'));sec('',tg)}
+  sec('Scaling',seg('fit',imgMode?[['shrink','Fit whole picture'],['fill','Fill page (crop)'],['trim','Trim blank edges']]:[['shrink','Shrink to fit'],['fit','Fit'],['noscale','Actual size'],['fill','Fill (crop)']],'g2'),...(imgMode?[]:[txt('scale','Custom scale in %, e.g. 90 (overrides the above)')]));
+  sec('Margins',seg('margin',[['','Default'],['0','None'],['14','Small'],['28','Normal'],['42','Large']]),E('div','sub','None = edge to edge; most printers cannot print the last 3-5 mm of the paper.'));
   if(!imgMode)sec('Position',seg('align',[['','Centre'],['top','Top'],['topleft','Top left']]),sw('autorot','Turn pages to fit the sheet'));
-  const tok=E('div','sub','Layout and fitting work for PDF, image and text files; other files get printer and copies only.');
-  tok.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(tok,hint);
-  const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill',pdf?'Save PDF':'Print');
-  c.onclick=()=>fin(null);
+  {const tok=E('div','sub','Layout and fitting work for PDF, image and text files; other files get printer and copies only.');tok.style.margin='14px 0 0';into.append(tok)}
+  // Pages
+  into=tabs.p;
+  if(imgMode)tbs[2].style.display='none';
+  else{sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
+    if(files.length>1)sec('Files',sw('join','Print all files as one job','Pages joined, laid out together'))}
+  // footer: sheet total + Print
+  const act=E('div','pact'),ps=E('div','ps'),pb=E('b'),psm=E('small'),k=E('button','tbtn fill',pdf?'Save PDF':'Print');ps.append(pb,psm);
+  renderSum=()=>{const c2=Math.max(1,st.copies||1),n=lastPaper==null?null:lastPaper*c2;pb.textContent=n==null?(pdf?'PDF file':'Print'):(lastLeast?'At least ':'')+n+' sheet'+(n===1?'':'s');
+    const q=[];if(!here&&!pdf){q.push(c2+(c2===1?' copy':' copies'));q.push(st.duplex==='long'||st.duplex==='short'||st.booklet?'2-sided':st.duplex==='off'?'1-sided':'');q.push(st.color==='mono'?'B&W':st.color==='color'?'Colour':'')}
+    if(st.booklet)q.push('booklet');else if(st.nup>1)q.push(st.nup+' per sheet');psm.textContent=q.filter(Boolean).join(' \u00b7 ')};redraw.push(renderSum);
   k.onclick=()=>{const out={};Object.keys(PRN_DEF).forEach(n=>{if(st[n]!==PRN_DEF[n]&&st[n]!==''&&st[n]!==0)out[n]=st[n]});
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();if(st.fit==='trim')out.crops=thumbs.map(t=>pvBBox(t));delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
@@ -2276,7 +2314,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep));
       const by=pBy();delete by[pk()];by[pk()]=keep;const ks=Object.keys(by);while(ks.length>40)delete by[ks.shift()];localStorage.setItem('printOptsBy',JSON.stringify(by));
       const lp=lsGet('printOptsLast',{});lp[pc.id]=st.printer||'';localStorage.setItem('printOptsLast',JSON.stringify(lp))}catch(e){}fin(out)};
-  act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
+  act.append(ps,k);card.append(act);o.append(card);showT('b');redraw.forEach(f=>f());status()})}
 /* recent prints (kept on the phone): what was sent where with which options, so it can be printed again with one tap */
 function phAdd(h){if(!h.paths||!h.paths.length||h.paths.length>150)return null;const a=lsGet('printHist',[]);h.id=String(Date.now());h.t=Date.now();h.ok=null;a.unshift(h);a.length=Math.min(a.length,12);
   try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}return h.id}
