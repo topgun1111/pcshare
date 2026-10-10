@@ -94,7 +94,7 @@ object Routes {
                 val o = JSONObject()
                 val sp = vnorm(q["path"] ?: "/")
                 if (ex.q("dev") == "local" && arcSplit(sp) == null) {
-                    val (n, b, part) = try { Core.local.stat(sp) } catch (_: Exception) { Triple(-1L, 0L, false) }
+                    val (n, b, part) = try { Core.local.stat(sp, 8) } catch (_: Exception) { Triple(-1L, 0L, false) }
                     if (n >= 0) o.put("files", n).put("bytes", b).put("partial", part)
                 }
                 return ex.json(o)
