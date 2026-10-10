@@ -121,9 +121,9 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
-.albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(var(--galc,2),1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
-@media(min-width:600px){.albums{grid-template-columns:repeat(var(--galc,3),1fr)}}
-@media(min-width:900px){.albums{grid-template-columns:repeat(var(--galc,4),1fr)}}
+.albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
+@media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
 .alb{display:flex;flex-direction:column;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .alb .acv{position:relative;width:100%;aspect-ratio:1/1;border-radius:20px;overflow:hidden;background:var(--hov);display:grid;place-items:center;margin-bottom:6px}
 .alb .acv img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
@@ -138,9 +138,9 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gt b{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #gal .gt small{font-size:12.5px;color:var(--mut)}
 #gal .gs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
-#gal .gg{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
-@media(min-width:600px){#gal .gg{grid-template-columns:repeat(5,1fr)}}
-@media(min-width:900px){#gal .gg{grid-template-columns:repeat(7,1fr)}}
+#gal .gg{display:grid;grid-template-columns:repeat(var(--pc,3),1fr);gap:2px}
+@media(min-width:600px){#gal .gg{grid-template-columns:repeat(var(--pc,5),1fr)}}
+@media(min-width:900px){#gal .gg{grid-template-columns:repeat(var(--pc,7),1fr)}}
 #gal .gc{position:relative;aspect-ratio:1/1;background:var(--hov);overflow:hidden;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #gal .gc img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
 #gal .gc:active{filter:brightness(.88)}
@@ -418,7 +418,6 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .ht.off{opacity:.5;pointer-events:none}
 @keyframes hmin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
-#galz{display:none;flex:none;width:36px;height:32px;border-radius:16px;align-items:center;justify-content:center;color:var(--ac)}#galz:active{background:var(--hov)}#galz svg{width:22px;height:22px}body.galm #galz{display:flex}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
 #gal .gmh:first-child{padding-top:8px}
 body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint{display:none}
@@ -430,7 +429,7 @@ body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hin
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div><div id=free></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
-  <div id=toolrow><div id=sum></div><button id=galz aria-label="Gallery size" data-i=vgrid></button><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
+  <div id=toolrow><div id=sum></div><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
 </header>
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
@@ -1024,11 +1023,31 @@ function galPick(a){return new Promise(async res=>{
   let al=[];try{const r=await api('GET','/api/albums'+(a.v?'?kind=vid':''));al=(r&&r.albums)||[]}catch(e){}
   al.filter(x=>x.path!==a.path&&!galJunkName(x.name)).sort((x,y)=>x.name.localeCompare(y.name)).forEach(x=>row(x.name,x.n+(x.n===1?' item':' items'),'folder',()=>fin(x.path)));
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
+/* photos inside an album: sort order and photos per row (both saved), opened from the button in the album header */
+const galSort=()=>{const v=LD('ls_galsort','new');return['new','old','az','za','big'].includes(v)?v:'new'};
+function galSortList(it){const m=galSort(),nc=(x,y)=>x.name.localeCompare(y.name,undefined,{numeric:true});
+  it.sort(m==='old'?(x,y)=>(x.mtime||0)-(y.mtime||0):m==='az'?nc:m==='za'?(x,y)=>nc(y,x):m==='big'?(x,y)=>(y.size||0)-(x.size||0):(x,y)=>(y.mtime||0)-(x.mtime||0))}
+function galOpts(gg,redraw){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Size and sort'),E('p','','Photos per row'));
+  const dflt=window.innerWidth>=900?7:window.innerWidth>=600?5:3;
+  const r1=E('div','');r1.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
+  const r2=E('div','');r2.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
+  const draw=()=>{r1.textContent='';r2.textContent='';const cur=+LD('ls_galpc','')||dflt;
+    [2,3,4,5,6].forEach(n=>{const b=E('button','tbtn'+(n===cur?' fill':''),String(n));b.style.minWidth='48px';
+      b.onclick=()=>{try{localStorage.setItem('ls_galpc',String(n))}catch(e){}gg.style.setProperty('--pc',n);draw()};r1.append(b)});
+    [['new','Newest first'],['old','Oldest first'],['az','Name A-Z'],['za','Name Z-A'],['big','Largest first']].forEach(a=>{const b=E('button','tbtn'+(galSort()===a[0]?' fill':''),a[1]);
+      b.onclick=()=>{try{localStorage.setItem('ls_galsort',a[0])}catch(e){}draw();redraw()};r2.append(b)})};
+  draw();card.append(r1,E('p','','Sort by'),r2);
+  const c=E('button','tbtn','Done');c.style.alignSelf='flex-end';c.onclick=close;card.append(c);o.append(card)}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
-  tw.append(tt,sb);hd.append(bk,tw);sc.append(gg);
+  const pcv=+LD('ls_galpc','')||0;if(pcv)gg.style.setProperty('--pc',pcv);
+  const tn=E('button','ibtn');tn.append(ic('tune'));tn.setAttribute('aria-label','Size and sort');tn.onclick=()=>galOpts(gg,()=>{if(o._redraw)o._redraw()});
+  tw.append(tt,sb);hd.append(bk,tw,tn);sc.append(gg);
   // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
@@ -1078,16 +1097,18 @@ function galView(a){
         else if(k==='vid')playVid(m);else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
-    let n=0;const CH=300,sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';
-    let mk0='';   // photos are grouped by month (newest first): a full-width heading before the first photo of each month
+    let n=0,sent=null,io=null,mk0='';const CH=300;
     const mlab=t=>{const d=new Date((t||0)*1000),now=new Date(),k=d.getFullYear()*12+d.getMonth();
       if(!t)return['0','Older'];if(k===now.getFullYear()*12+now.getMonth())return[k,'This month'];
       const nm=d.toLocaleString(undefined,{month:'long'});return[k,d.getFullYear()===now.getFullYear()?nm:nm+' '+d.getFullYear()]};
-    const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment();
-      for(;n<end;n++){const ml=mlab(it[n].mtime);if(ml[0]!==mk0){mk0=ml[0];fr.append(E('div','gmh',ml[1]))}fr.append(mk(it[n]))}
-      gg.insertBefore(fr,sent);if(n>=it.length)sent.remove()};
-    gg.append(sent);more();
-    if(n<it.length){if(window.IntersectionObserver){const io=new IntersectionObserver(es=>{if(!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}
+    const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment(),ds=galSort()==='new'||galSort()==='old';
+      for(;n<end;n++){if(ds){const ml=mlab(it[n].mtime);if(ml[0]!==mk0){mk0=ml[0];fr.append(E('div','gmh',ml[1]))}}fr.append(mk(it[n]))}   // month headings only while sorted by date
+      gg.insertBefore(fr,sent);if(n>=it.length&&sent){sent.remove();sent=null}};
+    const draw=()=>{if(io){io.disconnect();io=null}
+      gg.textContent='';els.clear();n=0;mk0='';galSortList(it);
+      sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';gg.append(sent);more();
+      if(n<it.length){if(window.IntersectionObserver){io=new IntersectionObserver(es=>{if(!sent||!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}};
+    o._redraw=draw;draw();
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- image search (on-device CLIP + OCR): overlay #gal is reused so back / hide-list logic keeps working; backend = /api/imgs (ImgSearch.kt, ClipEngine.kt) ---- */
 function isView(sdir,sname){
@@ -2705,20 +2726,6 @@ function drawerRender(){
     HIS.forEach(h=>bd.append(dItem({lead:folderLead(baseName(h.dev,h.path)),title:baseName(h.dev,h.path),sub:(h.dev==='local'?'This device':devName(h.dev))+' \u00b7 '+h.path,on:here(h.dev,h.path),onclick:()=>openLoc(h.dev,h.path),x:{icon:'close',label:'Remove',fn:()=>{HIS=HIS.filter(z=>!sameLoc(z,h));try{localStorage.setItem('ls_his',JSON.stringify(HIS))}catch(e){}drawerRender()}}})));
     if(HIS.length){const c=E('button');c.append(ic('del'),E('span','','Clear history'));c.onclick=()=>{HIS=[];try{localStorage.removeItem('ls_his')}catch(e){}drawerRender()};ft.append(c)}}
   bd.scrollTop=keep}
-/* Gallery / Videos: albums per row (bigger or smaller cards), saved; the button sits in the tool row and shows only on those screens */
-function galCols(n){try{if(n)localStorage.setItem('ls_galc',String(n))}catch(e){}const v=+LD('ls_galc','')||0;if(v>=1&&v<=6)document.documentElement.style.setProperty('--galc',v);else document.documentElement.style.removeProperty('--galc')}
-galCols();
-function openGalSize(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Gallery size'),E('p','','Albums per row'));
-  const row=E('div','');row.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
-  const cur=+LD('ls_galc','')||(window.innerWidth>=900?4:window.innerWidth>=600?3:2);
-  const draw=()=>{row.textContent='';[1,2,3,4,5].forEach(n=>{const b=E('button','tbtn'+(n===(+LD('ls_galc','')||cur)?' fill':''),String(n));b.style.minWidth='52px';
-    b.onclick=()=>{galCols(n);draw()};row.append(b)})};
-  draw();card.append(row);
-  const c=E('button','tbtn','Done');c.style.alignSelf='flex-end';c.onclick=close;card.append(c);o.append(card)}
-$('#galz').onclick=openGalSize;
 $('#menub').onclick=drawerOpen;
 $('#dscrim').onclick=drawerClose;
 // swipe: from the left edge opens, swipe left on the drawer closes
