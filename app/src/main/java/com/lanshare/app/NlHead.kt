@@ -113,7 +113,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private fun maxScroll() = Math.max(0f, contentW - (areaR - areaL))
 
     private fun crumbW(c: Cr): Float = when (c.kind) {
-        0 -> (5f + 28f + 5f) * d
+        0 -> (5f + 36f + 5f) * d   // home icon is 36 dp (drive icon 28 dp)
         1 -> (5f + 28f + 5f) * d + (if (c.text.isNotEmpty()) 6f * d + (if (c.cur) curP else crumbP).measureText(c.text) else 0f)
         else -> 10f * d + (if (c.cur) curP else crumbP).measureText(c.text)
     }
@@ -157,8 +157,8 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     }
 
     private fun home(cv: Canvas, x: Float, cy: Float) {
-        val s = 28f * d / 32f
-        cv.save(); cv.translate(x, cy - 14f * d); cv.scale(s, s)
+        val s = 36f * d / 32f
+        cv.save(); cv.translate(x, cy - 18f * d); cv.scale(s, s)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFF5F5F5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.STROKE; fillP.strokeWidth = 1f; fillP.color = 0xFFB5B5B5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFE53935.toInt(); cv.drawPath(hm2, fillP)

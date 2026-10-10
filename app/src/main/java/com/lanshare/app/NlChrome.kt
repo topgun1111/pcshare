@@ -148,14 +148,12 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         val l0 = 14f * d + s
         val r0 = btn["srch"]!!.left
         val tw = Math.max(0f, r0 - l0)
-        val nmFull = (if (nm.isNotEmpty()) nmP.measureText(nm) + 4f * d else 0f) + 12f * d
-        val nmWd = Math.min(nmFull, tw * 0.5f)
-        val gap = 10f * d
+        val nmWd = 0f   // the device name was removed from the top bar (rename it in Settings)
+        val gap = 0f
         tX = l0
         tW = Math.min(ttlP.measureText(ttl), Math.max(0f, tw - nmWd - gap))
         nX = tX + tW + gap
         nW = nmWd
-        hits.add(Hit("nm", RectF(nX - 6f * d, 0f, nX + nW + 6f * d, bh)))
     }
 
     override fun onDraw(cv: Canvas) {
@@ -195,11 +193,6 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 24f, p.onbar) }
         ttlP.color = p.onbar
         cv.drawText(fit(ttl, ttlP, tW), tX, ty(bh / 2f, ttlP), ttlP)
-        nmP.color = p.barmut
-        val nt = if (nm.isEmpty()) "" else fit(nm, nmP, Math.max(0f, nW - 4f * d - 12f * d))
-        if (nt.isNotEmpty()) cv.drawText(nt, nX, ty(bh / 2f, nmP), nmP)
-        val iconX = nX + (if (nt.isNotEmpty()) nmP.measureText(nt) + 4f * d else 0f) + 6f * d
-        glyph(cv, "edit", iconX, bh / 2f, 12f, p.barmut)
     }
 }
 

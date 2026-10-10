@@ -35,7 +35,7 @@ body{margin:0;font:500 15px/1.4 'Inter LS','Segoe UI','Segoe UI Variable Text',S
 body.selm .mainb{display:none}body.selm .selb{display:flex}
 .ttl{flex:1;min-width:0;display:flex;align-items:center;gap:10px}.bar .ibtn{width:40px;height:40px}
 .ttl h1{flex:0 1 auto;min-width:0;font-size:18px;line-height:24px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#nm{display:flex;align-items:center;gap:4px;color:var(--barmut);font-size:12px;line-height:16px;flex:0 1 auto;min-width:0;max-width:50%}
+#nm{display:none!important;align-items:center;gap:4px;color:var(--barmut);font-size:12px;line-height:16px;flex:0 1 auto;min-width:0;max-width:50%}
 #nm svg{width:12px;height:12px}#nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ibtn{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex:none;transition:background .15s}
 .ibtn:active,.ibtn.spin:active{background:var(--hov)}
@@ -59,7 +59,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 /* breadcrumbs */
 #crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;color:var(--mut)}#crumbs::-webkit-scrollbar{display:none}
 .crumb{flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 5px;border-radius:6px;font-size:16px;color:var(--mut);transition:background .15s}
-.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:28px;height:28px}
+.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:28px;height:28px}#crumbs>.crumb:first-child svg.cico{width:36px;height:36px}
 .crumb.cur{color:var(--fg);font-weight:700}
 #crumbs>svg{width:20px;height:20px;opacity:.6}
 /* sort / view toolbar */
@@ -882,7 +882,7 @@ function nlChPush(){if(!NLCH)return;
   if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
     const br=rc($(sel?'#top .selb':'#top .mainb'));
     if(br){['menu','search','tune','refresh','vsplit','settings','edit','close','selall'].forEach(need);
-      o.bar={r:br,sel:sel?1:0,t:$('#ht').textContent,nm:$('#nmt').textContent,du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
+      o.bar={r:br,sel:sel?1:0,t:$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
     const fr=rc($('#fab'));if(fr){const ik=inArc()?'extract':'newfolder';need(ik);o.fab={r:fr,l:$('#fab').textContent,k:ik}}
     const dr=rc($('#dock'));
     if(dr){NLACL.forEach(a=>need(a.k));need('close');
@@ -1542,6 +1542,8 @@ function openSettings(){
   t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
   cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
   sw.append(cb,E('i'));row.append(t,sw);card.append(row);
+  {const rn=E('button','set'),tn=E('div','t'),sn=E('small','',$('#nm').dataset.n||'');rn.style.width='100%';rn.style.textAlign='left';tn.append(E('b','','Device name'),sn);rn.append(tn);
+    rn.onclick=()=>{close();$('#nm').onclick()};card.append(rn)}
   const TH=['light','dark','auto'],THN={light:'Light',dark:'Dark',auto:'Follow system'};
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
   rt.onclick=()=>{S.theme=TH[(TH.indexOf(S.theme)+1)%3];SV('ls_theme',S.theme);document.documentElement.dataset.theme=S.theme;sysBars();sm.textContent=THN[S.theme]};card.append(rt);
