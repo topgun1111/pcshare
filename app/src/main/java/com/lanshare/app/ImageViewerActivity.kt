@@ -63,6 +63,7 @@ class ImageViewerActivity : Activity() {
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
         private const val REQ_EDIT = 41
+        private const val OCR_VER = 2          // bump when the reading method changes (TiledOcr = 2): older cached results are ignored
     }
 
     private class Item(val name: String, val url: String, val size: Long)
@@ -86,7 +87,7 @@ class ImageViewerActivity : Activity() {
     private var gen = 0
 
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
-    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
+    private val ocr: OcrEngine by lazy { TiledOcr(MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } }) }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
@@ -97,7 +98,10 @@ class ImageViewerActivity : Activity() {
     private val autoRun = Runnable { autoOcr() }
     private lateinit var ocrBtn: TextView
     private lateinit var selBar: LinearLayout
+    private lateinit var smartBtn: TextView                   // shown only when links / phone numbers / e-mails were found in the (selected) text
     private lateinit var copyBtn: TextView
+    private val translator = OcrTranslate()
+    private var trBusy = false
 
     private val slideTick = object : Runnable {
         override fun run() {
@@ -184,7 +188,7 @@ class ImageViewerActivity : Activity() {
         root.addView(top)
 
         // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
-        fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setOnClickListener { act() } }
+        fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setPadding(dp(9), dp(8), dp(9), dp(8)); setOnClickListener { act() } }
         copyBtn = barBtn("Copy all") { copyOcr() }
         selBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
@@ -193,7 +197,10 @@ class ImageViewerActivity : Activity() {
             visibility = View.GONE
             addView(copyBtn)
             addView(barBtn("Select all") { holder(pager.currentItem)?.ov?.selectAll() })
-            addView(barBtn("Search") { searchOcr() })
+            addView(barBtn("Translate") { translateOcr() })
+            smartBtn = barBtn("Links") { smartOcr() }.apply { visibility = View.GONE }
+            addView(smartBtn)
+            addView(barBtn("Save") { saveOcr() })
             addView(barBtn("Share") { shareOcr() })
             addView(barBtn("\u2715") { closeOcr() })
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) }
@@ -474,7 +481,7 @@ class ImageViewerActivity : Activity() {
                     for (x in l.words) wa.put(JSONObject().put("t", x.text).put("b", boxArr(x.box)))
                     ls.put(JSONObject().put("t", l.text).put("b", boxArr(l.box)).put("w", wa))
                 }
-                f.writeText(JSONObject().put("w", w).put("h", h).put("l", ls).toString())
+                f.writeText(JSONObject().put("v", OCR_VER).put("w", w).put("h", h).put("l", ls).toString())
             } catch (_: Exception) {}
         }
     }
@@ -484,7 +491,7 @@ class ImageViewerActivity : Activity() {
             val f = ocrFile(p)
             if (!f.isFile) return null
             val o = JSONObject(f.readText())
-            if (o.getInt("w") != bm.width || o.getInt("h") != bm.height) return null
+            if (o.optInt("v") != OCR_VER || o.getInt("w") != bm.width || o.getInt("h") != bm.height) return null   // other reading method / size: read again
             val ls = o.getJSONArray("l")
             val out = ArrayList<OcrLine>()
             for (i in 0 until ls.length()) {
@@ -533,6 +540,7 @@ class ImageViewerActivity : Activity() {
             else -> 0.8f
         }
         copyBtn.text = if (ov != null && ov.hasSelection()) "Copy" else "Copy all"
+        smartBtn.visibility = if (on && OcrSmart.find(ocrText() ?: "").isNotEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun ocrText(): String? { val ov = holder(pager.currentItem)?.ov ?: return null; return ov.selectedText() ?: ov.allText() }
@@ -551,9 +559,59 @@ class ImageViewerActivity : Activity() {
         catch (e: Exception) { Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show() }
     }
 
+    /** Links / phone numbers / e-mails found in the selection (else all text): pick one to open, dial or write to. */
+    private fun smartOcr() {
+        val hits = OcrSmart.find(ocrText() ?: return)
+        if (hits.isEmpty()) { Toast.makeText(this, "Nothing found", Toast.LENGTH_SHORT).show(); return }
+        android.app.AlertDialog.Builder(this)
+            .setItems(hits.map { it.label() }.toTypedArray()) { _, i ->
+                try { startActivity(hits[i].intent()) } catch (e: Exception) { Toast.makeText(this, "No app found", Toast.LENGTH_SHORT).show() }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Saves the selection (else all text) as a .txt file (Downloads on Android 10+). */
+    private fun saveOcr() {
+        val t = ocrText() ?: return
+        try { Toast.makeText(this, "Saved: " + OcrSmart.saveTxt(this, t), Toast.LENGTH_LONG).show() }
+        catch (e: Exception) { Toast.makeText(this, e.message ?: "Cannot save", Toast.LENGTH_LONG).show() }
+    }
+
     private fun shareOcr() {
         val t = ocrText() ?: return
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share text"))
+    }
+
+    /** Translates the selection (else all text of the picture): Turkish -> English, anything else -> Turkish; "Swap" reverses the pair. */
+    private fun translateOcr(text0: String? = null, pair: Pair<String, String>? = null) {
+        if (trBusy) return
+        val raw = text0 ?: ocrText() ?: return
+        val t = OcrTranslate.prep(raw)
+        if (t.isEmpty()) return
+        trBusy = true
+        Toast.makeText(this, "Translating... (the first time a language pack is downloaded)", Toast.LENGTH_SHORT).show()
+        translator.run(t, pair) { res ->
+            trBusy = false
+            if (isDestroyed || isFinishing) return@run
+            res.onSuccess { o -> showTranslation(raw, o) }
+                .onFailure { e -> Toast.makeText(this, e.message ?: "Cannot translate", Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun showTranslation(raw: String, o: OcrTranslate.Out) {
+        val tv = TextView(this).apply { text = o.text; setTextIsSelectable(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setPadding(dp(20), dp(8), dp(20), dp(8)) }
+        val sv = android.widget.ScrollView(this).apply { addView(tv) }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(o.src.uppercase() + " \u2192 " + o.dst.uppercase())
+            .setView(sv)
+            .setPositiveButton("Copy") { _, _ ->
+                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("text", o.text))
+                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Swap") { _, _ -> translateOcr(raw, o.dst to o.src) }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     // ---------------------------------------------------------------- düzenle (döndür / kırp / boyutlandır)
@@ -615,6 +673,10 @@ class ImageViewerActivity : Activity() {
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
             iv.onHold = { x, y -> ov.hasLines() && ov.selectWordAt(x, y) }
+            iv.onTextHit = { x, y -> ov.hitsWord(x, y) }                        // tap on a word selects it (1 = word, 2 = line, 3 = paragraph)
+            iv.onTextTap = { x, y, n -> ov.tapSelect(x, y, n) }
+            iv.onTouchAt = { x, y -> ov.touchHint(x, y) }                       // outlines the words around the finger
+            ov.onAction = { id -> when (id) { "copy" -> copyOcr(); "search" -> searchOcr(); "translate" -> translateOcr(); "share" -> shareOcr() } }
             ov.onSelection = { _ -> updateOcrBar() }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
@@ -642,6 +704,7 @@ class ImageViewerActivity : Activity() {
         ui.removeCallbacksAndMessages(null)
         pool.shutdownNow()
         ocr.close()
+        translator.close()
         cache.evictAll()
         File(cacheDir, "img").deleteRecursively()
         super.onDestroy()
@@ -660,7 +723,24 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     var onHold: ((Float, Float) -> Boolean)? = null
     /** Image px -> view px matrix changed (zoom / pan / new picture / resize). */
     var onMatrixChanged: ((Matrix) -> Unit)? = null
+    /** Is there a recognised word under this view point? Taps starting on a word go to [onTextTap] instead of hide-bars / double-tap zoom. */
+    var onTextHit: ((Float, Float) -> Boolean)? = null
+    /** Tap on a word: count 1 = word, 2 = line, 3 = paragraph (taps within 450 ms of each other). */
+    var onTextTap: ((Float, Float, Int) -> Unit)? = null
+    /** Finger position while it is down (single pointer) - for the outlines around the finger. */
+    var onTouchAt: ((Float, Float) -> Unit)? = null
     fun matrixNow() = Matrix(mx)
+    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
+    private var downOnWord = false
+    private var tapMoved = false
+    private var textTapUsed = false   // the last tap was used for text: swallow the delayed single-tap (hide bars)
+    private var downX = 0f
+    private var downY = 0f
+    private var downT = 0L
+    private var lastTapT = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+    private var taps = 0
     private var held = false          // long press was used for text selection: ignore the rest of this touch (no accidental pan)
 
     init { scaleType = ScaleType.MATRIX }
@@ -725,9 +805,10 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     private val gd = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
-        override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap?.invoke(); return true }
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean { if (textTapUsed) { textTapUsed = false; return true }; onTap?.invoke(); return true }
         override fun onLongPress(e: MotionEvent) { if (onHold?.invoke(e.x, e.y) == true) { held = true; performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } }
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (downOnWord) return true                       // double tap on a word selects the line, no zoom
             if (zoomed()) zoomTo(fit, e.x, e.y, true) else zoomTo(maxOf(fit * 2.5f, minOf(width / bw.toFloat(), 1f)), e.x, e.y, true)
             return true
         }
@@ -747,9 +828,29 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (bw == 0) return super.onTouchEvent(e)
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+            downOnWord = onTextHit?.invoke(e.x, e.y) == true   // must be known before the gesture detector sees a 2nd tap
+            tapMoved = false; textTapUsed = false
+            downX = e.x; downY = e.y; downT = e.eventTime
+        }
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
         if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> onTouchAt?.invoke(e.x, e.y)
+            MotionEvent.ACTION_MOVE -> {
+                if (e.pointerCount > 1 || Math.hypot((e.x - downX).toDouble(), (e.y - downY).toDouble()) > slop) tapMoved = true
+                if (e.pointerCount == 1) onTouchAt?.invoke(e.x, e.y)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> tapMoved = true
+            MotionEvent.ACTION_UP -> if (downOnWord && !tapMoved && !held && !sd.isInProgress && e.eventTime - downT < 400) {
+                taps = if (e.eventTime - lastTapT < 450 && Math.hypot((e.x - lastTapX).toDouble(), (e.y - lastTapY).toDouble()) < slop * 6) taps + 1 else 1
+                if (taps > 3) taps = 1
+                lastTapT = e.eventTime; lastTapX = e.x; lastTapY = e.y
+                textTapUsed = true
+                onTextTap?.invoke(e.x, e.y, taps)
+            }
+        }
         if (held) parent?.requestDisallowInterceptTouchEvent(true)
         if (e.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         return true

@@ -75,4 +75,6 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") // image search: CLIP ONNX models (core/ClipEngine.kt)
     implementation("com.google.android.gms:play-services-base:18.5.0")   // ModuleInstall: check / request the OCR model
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1") // image search: OCR via Google Play Services; model downloads on first use, then offline (core/ClipEngine.kt)
+    implementation("com.google.mlkit:translate:17.0.3")                  // viewer: offline translate of recognised text (OcrTranslate.kt); language packs ~30 MB download once
+    implementation("com.google.mlkit:language-id:17.0.6")                // viewer: detects the language of the recognised text (OcrTranslate.kt)
 }
