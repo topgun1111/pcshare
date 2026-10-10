@@ -73,14 +73,13 @@ class PcPrintService : PrintService() {
     /** The local "printer" that only writes a PDF file. Wide capability list so the system print dialog offers every option. */
     private fun pdfPrinter(): PrinterInfo {
         val id = generatePrinterId(ID_PDF)
-        val M = PrintAttributes.MediaSize
         val caps = PrinterCapabilitiesInfo.Builder(id)
-            .addMediaSize(M.ISO_A4, true)
-            .addMediaSize(M.ISO_A3, false).addMediaSize(M.ISO_A2, false).addMediaSize(M.ISO_A1, false).addMediaSize(M.ISO_A0, false)
-            .addMediaSize(M.ISO_A5, false).addMediaSize(M.ISO_A6, false)
-            .addMediaSize(M.ISO_B4, false).addMediaSize(M.ISO_B5, false)
-            .addMediaSize(M.NA_LETTER, false).addMediaSize(M.NA_LEGAL, false).addMediaSize(M.NA_TABLOID, false)
-            .addMediaSize(M.NA_GOVT_LETTER, false)
+            .addMediaSize(PrintAttributes.MediaSize.ISO_A4, true)
+            .addMediaSize(PrintAttributes.MediaSize.ISO_A3, false).addMediaSize(PrintAttributes.MediaSize.ISO_A2, false).addMediaSize(PrintAttributes.MediaSize.ISO_A1, false).addMediaSize(PrintAttributes.MediaSize.ISO_A0, false)
+            .addMediaSize(PrintAttributes.MediaSize.ISO_A5, false).addMediaSize(PrintAttributes.MediaSize.ISO_A6, false)
+            .addMediaSize(PrintAttributes.MediaSize.ISO_B4, false).addMediaSize(PrintAttributes.MediaSize.ISO_B5, false)
+            .addMediaSize(PrintAttributes.MediaSize.NA_LETTER, false).addMediaSize(PrintAttributes.MediaSize.NA_LEGAL, false).addMediaSize(PrintAttributes.MediaSize.NA_TABLOID, false)
+            .addMediaSize(PrintAttributes.MediaSize.NA_GOVT_LETTER, false)
             .addResolution(PrintAttributes.Resolution("r300", "300 dpi", 300, 300), true)
             .addResolution(PrintAttributes.Resolution("r600", "600 dpi", 600, 600), false)
             .addResolution(PrintAttributes.Resolution("r1200", "1200 dpi", 1200, 1200), false)
