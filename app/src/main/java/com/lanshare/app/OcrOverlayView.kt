@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.Build
 import android.os.SystemClock
@@ -27,7 +28,7 @@ class OcrOverlayView(c: Context) : View(c) {
     /** Toolbar button pressed: "copy", "search", "translate" or "share". */
     var onAction: ((String) -> Unit)? = null
 
-    private class W(val text: String, val box: RectF, val line: Int)
+    private class W(val text: String, val box: RectF, val line: Int, val quad: FloatArray?)
 
     private var words: List<W> = emptyList()
     private var lineText: List<String> = emptyList()   // all lines, also those without words
@@ -35,6 +36,8 @@ class OcrOverlayView(c: Context) : View(c) {
     private var lineFirst = IntArray(0)
     private var lineLast = IntArray(0)
     private var vb: Array<RectF> = emptyArray()        // word boxes in view pixels
+    private var vq: Array<FloatArray?> = emptyArray()  // corner polygons (8 floats) of tilted words in view pixels, null = upright
+    private val path = Path()
     private val mx = Matrix()
 
     private var selA = -1                              // anchor (fixed end while dragging)
@@ -91,7 +94,7 @@ class OcrOverlayView(c: Context) : View(c) {
             val idx = lb.size
             lb.add(RectF(ln.box))
             lf.add(ws.size)
-            for (w in ln.words) ws.add(W(w.text, RectF(w.box), idx))
+            for (w in ln.words) ws.add(W(w.text, RectF(w.box), idx, w.quad))
             ll.add(ws.size - 1)
         }
         words = ws; lineText = lt; lineBox = lb; lineFirst = lf.toIntArray(); lineLast = ll.toIntArray()
@@ -103,6 +106,7 @@ class OcrOverlayView(c: Context) : View(c) {
 
     private fun rebuild() {
         vb = Array(words.size) { i -> RectF(words[i].box).also { mx.mapRect(it) } }
+        vq = Array<FloatArray?>(words.size) { i -> words[i].quad?.let { q -> FloatArray(8).also { o -> mx.mapPoints(o, q) } } }
     }
 
     fun hasLines() = words.isNotEmpty()
@@ -169,6 +173,8 @@ class OcrOverlayView(c: Context) : View(c) {
         for (i in vb.indices) {
             val r = vb[i]
             if (x < r.left - slop || x > r.right + slop || y < r.top - slop || y > r.bottom + slop) continue
+            val q = vq[i]
+            if (q != null && !nearQuad(q, x, y, slop)) continue          // tilted word: its box is only a bounding rectangle
             val dx = x - r.centerX()
             val dy = y - r.centerY()
             val dd = dx * dx + dy * dy
@@ -176,6 +182,33 @@ class OcrOverlayView(c: Context) : View(c) {
         }
         return best
     }
+
+    /** Is the point inside the 4-corner polygon, or within [slop] of its edge? */
+    private fun nearQuad(q: FloatArray, x: Float, y: Float, slop: Float): Boolean {
+        var inside = false
+        var j = 3
+        for (i in 0..3) {
+            val xi = q[i * 2]; val yi = q[i * 2 + 1]; val xj = q[j * 2]; val yj = q[j * 2 + 1]
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside
+            if (segDist(x, y, xi, yi, xj, yj) <= slop) return true
+            j = i
+        }
+        return inside
+    }
+
+    private fun segDist(px: Float, py: Float, ax: Float, ay: Float, bx: Float, by: Float): Float {
+        val dx = bx - ax
+        val dy = by - ay
+        val l = dx * dx + dy * dy
+        val t = if (l == 0f) 0f else (((px - ax) * dx + (py - ay) * dy) / l).coerceIn(0f, 1f)
+        return dist(px, py, ax + t * dx, ay + t * dy)
+    }
+
+    // handle anchor points: bottom-left corner of the first selected word, bottom-right corner of the last (follow tilted text)
+    private fun sx(i: Int) = vq[i]?.get(6) ?: vb[i].left
+    private fun sy(i: Int) = vq[i]?.get(7) ?: vb[i].bottom
+    private fun ex(i: Int) = vq[i]?.get(4) ?: vb[i].right
+    private fun ey(i: Int) = vq[i]?.get(5) ?: vb[i].bottom
 
     /** Nearest word to a point (drag handles): distance to the box, vertical distance counts more so it stays on the line. */
     private fun nearest(x: Float, y: Float): Int {
@@ -223,9 +256,17 @@ class OcrOverlayView(c: Context) : View(c) {
                 val ln = words[i].line
                 var j = i
                 while (j < hi && words[j + 1].line == ln) j++
-                val r = RectF(vb[i].left, vb[i].top, vb[j].right, vb[i].bottom)
-                for (k in i..j) { r.top = minOf(r.top, vb[k].top); r.bottom = maxOf(r.bottom, vb[k].bottom) }
-                cv.drawRoundRect(r, dp(3f), dp(3f), fillPaint)
+                val q1 = vq[i]
+                val q2 = vq[j]
+                if (q1 != null && q2 != null) {                       // tilted line: polygon from the first word's left edge to the last word's right edge
+                    path.reset()
+                    path.moveTo(q1[0], q1[1]); path.lineTo(q2[2], q2[3]); path.lineTo(q2[4], q2[5]); path.lineTo(q1[6], q1[7]); path.close()
+                    cv.drawPath(path, fillPaint)
+                } else {
+                    val r = RectF(vb[i].left, vb[i].top, vb[j].right, vb[i].bottom)
+                    for (k in i..j) { r.top = minOf(r.top, vb[k].top); r.bottom = maxOf(r.bottom, vb[k].bottom) }
+                    cv.drawRoundRect(r, dp(3f), dp(3f), fillPaint)
+                }
                 i = j + 1
             }
         }
@@ -235,7 +276,8 @@ class OcrOverlayView(c: Context) : View(c) {
         val ha = if (hintT0 == 0L) 0f else (1f - (now - hintT0 - 1200) / 800f).coerceIn(0f, 1f)
         if (fa > 0f || ha > 0f) {
             animate = true
-            for (r in vb) {
+            for (wi in vb.indices) {
+                val r = vb[wi]
                 if (r.right < 0 || r.left > w || r.bottom < 0 || r.top > h) continue
                 var a = fa
                 if (ha > 0f) {
@@ -246,7 +288,12 @@ class OcrOverlayView(c: Context) : View(c) {
                 }
                 if (a < 0.03f) continue
                 boxPaint.alpha = (a * 150).toInt()
-                cv.drawRoundRect(r, dp(2f), dp(2f), boxPaint)
+                val q = vq[wi]
+                if (q != null) {
+                    path.reset()
+                    path.moveTo(q[0], q[1]); path.lineTo(q[2], q[3]); path.lineTo(q[4], q[5]); path.lineTo(q[6], q[7]); path.close()
+                    cv.drawPath(path, boxPaint)
+                } else cv.drawRoundRect(r, dp(2f), dp(2f), boxPaint)
             }
         }
 
@@ -254,12 +301,11 @@ class OcrOverlayView(c: Context) : View(c) {
         tbShown = false
         if (selA >= 0) {
             val hr = dp(9f)
-            val s = vb[lo]
-            val e = vb[hi]
-            cv.drawLine(s.left, s.bottom, s.left, s.bottom + dp(3f), stemPaint)
-            cv.drawCircle(s.left, s.bottom + dp(3f) + hr, hr, handlePaint)
-            cv.drawLine(e.right, e.bottom, e.right, e.bottom + dp(3f), stemPaint)
-            cv.drawCircle(e.right, e.bottom + dp(3f) + hr, hr, handlePaint)
+            val sx0 = sx(lo); val sy0 = sy(lo); val ex0 = ex(hi); val ey0 = ey(hi)
+            cv.drawLine(sx0, sy0, sx0, sy0 + dp(3f), stemPaint)
+            cv.drawCircle(sx0, sy0 + dp(3f) + hr, hr, handlePaint)
+            cv.drawLine(ex0, ey0, ex0, ey0 + dp(3f), stemPaint)
+            cv.drawCircle(ex0, ey0 + dp(3f) + hr, hr, handlePaint)
             if (!dragging) drawToolbar(cv)
         }
         if (animate) postInvalidateOnAnimation()
@@ -304,10 +350,8 @@ class OcrOverlayView(c: Context) : View(c) {
                 }
                 val hr = dp(9f)
                 val reach = dp(30f)
-                val s = vb[lo]
-                val en = vb[hi]
-                val ds = dist(e.x, e.y, s.left, s.bottom + dp(3f) + hr)
-                val de = dist(e.x, e.y, en.right, en.bottom + dp(3f) + hr)
+                val ds = dist(e.x, e.y, sx(lo), sy(lo) + dp(3f) + hr)
+                val de = dist(e.x, e.y, ex(hi), ey(hi) + dp(3f) + hr)
                 if (minOf(ds, de) > reach) return false
                 // dragging the start handle moves the lower index, the other handle stays fixed (and the other way round)
                 if (ds <= de) { selA = hi; selB = lo } else { selA = lo; selB = hi }

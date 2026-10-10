@@ -1483,6 +1483,8 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
+  if(window.LSAndroid&&LSAndroid.ocrGet){const ro=E('button','set'),to=E('div','t'),so=E('small','',OCRN[LSAndroid.ocrGet()]||'');ro.style.width='100%';ro.style.textAlign='left';
+    to.append(E('b','','Text in pictures'),so);ro.append(to);ro.onclick=()=>{close();openOcrSettings()};card.append(ro)}
   {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
     const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
     api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
@@ -1534,6 +1536,20 @@ function openInterfaceSettings(){
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
     rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
   const d=E('button','tbtn fill','Back');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+const OCRN=['Background reading: always','Background reading: only while charging','Background reading: off'];
+function openOcrSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Text in pictures'));
+  const para=(h,t)=>{const p=E('p');p.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;line-height:1.45';if(h){const b=E('b','',h+' ');b.style.color='var(--fg,inherit)';p.append(b)}p.append(t);card.append(p)};
+  para('What it is','When you open a picture, the app can read the text in it, like Google Lens or Samsung Gallery. It happens on the phone: nothing is uploaded, and after the first use it works offline. The first time, the text model is downloaded through Google Play Services.');
+  para('How to use it','The T button in the picture viewer turns bright when text was found. Press T, or press and hold on the picture, to show the text. Tap a word to select it (double tap = line, triple tap = paragraph) and drag the blue handles. Then Copy, Search, Translate, Share, or Save. Long press T to search the text of all pictures that were read.');
+  para('Background reading','The app reads a picture about a second after you open it, then the next and the previous one, so the text is ready when you press T. Results are kept on the phone for 30 days, so opening the picture again is instant. Reading uses some battery; choose when it may run:');
+  const rows=[['Always','Pictures are read as soon as you look at them.'],['Only while charging','Background reading waits until the charger is connected. Pressing T still reads that picture at once.'],['Off','Nothing is read by itself. Pressing T reads that picture, which takes a few seconds.']];
+  const draw=()=>{const cur=LSAndroid.ocrGet();list.textContent='';rows.forEach((r,i)=>{const b=E('button','set'),t=E('div','t');b.style.width='100%';b.style.textAlign='left';
+    t.append(E('b','',(i===cur?'\u2713 ':'')+r[0]),E('small','',r[1]));b.append(t);b.onclick=()=>{LSAndroid.ocrSet(i);draw()};list.append(b)})};
+  const list=E('div');card.append(list);if(window.LSAndroid&&LSAndroid.ocrGet)draw();
+  const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};

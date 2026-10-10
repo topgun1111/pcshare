@@ -2,6 +2,10 @@ package com.lanshare.app
 
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
+import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Accuracy wrapper around any [OcrEngine] (same contract, boxes are always in pixels of the bitmap that was passed in).
@@ -10,18 +14,26 @@ import android.graphics.RectF
  *    large text stays with the whole-picture pass; pieces of one row are joined; order follows the whole-picture pass.
  *  - small pictures (long side < [SMALL]): enlarged 2x first, boxes scaled back.
  *  - everything in between: passed straight through.
+ *  - [recognizeHi]: when the ORIGINAL file is much bigger than the bitmap (downscaled to fit memory), the tiles are cut from the
+ *    original at full resolution ([HiRes]) instead of from the bitmap; their boxes are scaled back to bitmap pixels.
  * Callbacks arrive on the main thread (the base engine's), the merge is cheap (a few hundred words).
  */
 class TiledOcr(private val base: OcrEngine) : OcrEngine {
     @Volatile private var closed = false
+    private val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ocr-tiles").also { it.isDaemon = true } }   // cuts tiles out of the original file
+    @Volatile private var openHi: HiRes? = null
 
     private class Tile(val x: Int, val y: Int, val w: Int, val h: Int, val core: RectF)
     private class Keyed(val key: Int, val line: OcrLine)
 
-    override fun recognize(bm: Bitmap, cb: (Result<List<OcrLine>>) -> Unit) {
+    override fun recognize(bm: Bitmap, cb: (Result<List<OcrLine>>) -> Unit) = recognizeHi(bm, null, cb)
+
+    /** Like [recognize]; [original] = the picture file [bm] was decoded from (same orientation rules), or null. */
+    fun recognizeHi(bm: Bitmap, original: File?, cb: (Result<List<OcrLine>>) -> Unit) {
         val side = maxOf(bm.width, bm.height)
         when {
-            side >= BIG -> whole(bm, cb)
+            side >= BIG -> whole(bm, original, cb)
             side < SMALL -> enlarged(bm, cb)
             else -> base.recognize(bm, cb)
         }
@@ -29,6 +41,8 @@ class TiledOcr(private val base: OcrEngine) : OcrEngine {
 
     override fun close() {
         closed = true
+        io.execute { openHi?.close(); openHi = null }
+        io.shutdown()
         base.close()
     }
 
@@ -38,39 +52,75 @@ class TiledOcr(private val base: OcrEngine) : OcrEngine {
         if (up == null) { base.recognize(bm, cb); return }
         base.recognize(up) { res ->
             try { up.recycle() } catch (_: Throwable) {}
-            cb(res.map { ls -> ls.map { l -> scaled(l, 0.5f) } })
+            cb(res.map { ls -> ls.map { l -> xf(l, 0.5f) } })
         }
     }
 
-    private fun sc(r: RectF, f: Float) = RectF(r.left * f, r.top * f, r.right * f, r.bottom * f)
-    private fun scaled(l: OcrLine, f: Float) = OcrLine(l.text, sc(l.box, f), l.words.map { w -> OcrWord(w.text, sc(w.box, f)) })
+    private fun xq(q: FloatArray?, f: Float, dx: Float, dy: Float): FloatArray? = q?.let { a -> FloatArray(8) { i -> a[i] * f + (if (i % 2 == 0) dx else dy) } }
+    private fun word(w: OcrWord, f: Float, dx: Float, dy: Float) =
+        OcrWord(w.text, RectF(w.box.left * f + dx, w.box.top * f + dy, w.box.right * f + dx, w.box.bottom * f + dy), xq(w.quad, f, dx, dy))
+    /** Line scaled by [f] (box, words and tilted corners). */
+    private fun xf(l: OcrLine, f: Float) = OcrLine(l.text, RectF(l.box.left * f, l.box.top * f, l.box.right * f, l.box.bottom * f), l.words.map { w -> word(w, f, 0f, 0f) })
 
     // ---------------------------------------------------------------- big pictures
-    private fun whole(bm: Bitmap, cb: (Result<List<OcrLine>>) -> Unit) {
+    private fun whole(bm: Bitmap, original: File?, cb: (Result<List<OcrLine>>) -> Unit) {
         base.recognize(bm) { res ->
             if (closed) return@recognize
             val full = res.getOrNull()
             if (full == null) { cb(res); return@recognize }          // the base engine failed (model missing ...): report it as it is
-            val tiles = tilesOf(bm.width, bm.height)
-            val got = ArrayList<OcrLine>()
-            nextTile(bm, tiles, 0, got) {
-                val merged = try { merge(full, got) } catch (e: Throwable) { full }
-                cb(Result.success(if (merged.isEmpty()) full else merged))
+            if (original == null) { tiles(bm, full, null, cb); return@recognize }
+            io.execute {
+                val hi = try { HiRes.open(original) } catch (e: Throwable) { null }
+                main.post {
+                    if (closed) { hi?.let { h -> closeHi(h) }; return@post }
+                    tiles(bm, full, hi, cb)
+                }
             }
         }
     }
 
+    /** Closes a decoder on the tile thread (it may still be cutting); directly when that thread is gone. */
+    private fun closeHi(h: HiRes) { try { io.execute { h.close() } } catch (e: Throwable) { h.close() } }
+
+    /** Tiles from the original ([hi0], full resolution) when it is clearly bigger than [bm], else from [bm] itself. */
+    private fun tiles(bm: Bitmap, full: List<OcrLine>, hi0: HiRes?, cb: (Result<List<OcrLine>>) -> Unit) {
+        val hi = if (hi0 != null && maxOf(hi0.w, hi0.h) >= maxOf(bm.width, bm.height) * 1.25f) hi0 else { hi0?.let { h -> closeHi(h) }; null }
+        openHi = hi
+        val sw = hi?.w ?: bm.width
+        val sh = hi?.h ?: bm.height
+        val f = bm.width.toFloat() / sw                           // tile space -> bitmap pixels (1 without the original)
+        val ts = tilesOf(sw, sh)
+        val got = ArrayList<OcrLine>()
+        fun cut(t: Tile, k: (Bitmap?) -> Unit) {
+            if (hi == null) { k(try { Bitmap.createBitmap(bm, t.x, t.y, t.w, t.h).takeIf { it !== bm } } catch (e: Throwable) { null }); return }
+            try {
+                io.execute {
+                    val c = try { hi.crop(t.x, t.y, t.w, t.h) } catch (e: Throwable) { null }
+                    main.post { k(c) }
+                }
+            } catch (e: Throwable) { k(null) }       // executor already shut down (closed)
+        }
+        nextTile(ts, 0, sw, sh, { t, k -> cut(t, k) }, got) {
+            if (hi != null) { if (openHi === hi) openHi = null; closeHi(hi) }
+            val tl = if (hi == null) got else got.map { l -> xf(l, f) }
+            val merged = try { merge(full, tl) } catch (e: Throwable) { full }
+            cb(Result.success(if (merged.isEmpty()) full else merged))
+        }
+    }
+
     /** One tile after the other (the engine reads one picture at a time); a tile that cannot be cut (memory) is skipped, the whole-picture pass covers it. */
-    private fun nextTile(bm: Bitmap, ts: List<Tile>, i: Int, got: ArrayList<OcrLine>, done: () -> Unit) {
+    private fun nextTile(ts: List<Tile>, i: Int, sw: Int, sh: Int, cut: (Tile, (Bitmap?) -> Unit) -> Unit, got: ArrayList<OcrLine>, done: () -> Unit) {
         if (closed) return
         if (i >= ts.size) { done(); return }
         val t = ts[i]
-        val crop = try { Bitmap.createBitmap(bm, t.x, t.y, t.w, t.h) } catch (e: Throwable) { null }
-        if (crop == null || crop === bm) { nextTile(bm, ts, i + 1, got, done); return }
-        base.recognize(crop) { res ->
-            try { crop.recycle() } catch (_: Throwable) {}
-            res.getOrNull()?.let { got.addAll(own(it, t, bm.width, bm.height)) }
-            nextTile(bm, ts, i + 1, got, done)
+        cut(t) { crop ->
+            if (closed) { try { crop?.recycle() } catch (_: Throwable) {} }
+            else if (crop == null) nextTile(ts, i + 1, sw, sh, cut, got, done)
+            else base.recognize(crop) { res ->
+                try { crop.recycle() } catch (_: Throwable) {}
+                res.getOrNull()?.let { got.addAll(own(it, t, sw, sh)) }
+                nextTile(ts, i + 1, sw, sh, cut, got, done)
+            }
         }
     }
 
@@ -111,9 +161,9 @@ class TiledOcr(private val base: OcrEngine) : OcrEngine {
                 if (t.y > 0 && b.top <= EDGE) continue
                 if (t.x + t.w < bw && b.right >= t.w - EDGE) continue
                 if (t.y + t.h < bh && b.bottom >= t.h - EDGE) continue
-                val g = RectF(b.left + t.x, b.top + t.y, b.right + t.x, b.bottom + t.y)
-                if (!t.core.contains(g.centerX(), g.centerY())) continue
-                ws.add(OcrWord(w.text, g))
+                val g = word(w, 1f, t.x.toFloat(), t.y.toFloat())
+                if (!t.core.contains(g.box.centerX(), g.box.centerY())) continue
+                ws.add(g)
             }
             if (ws.isNotEmpty()) out.add(lineOf(ws))
         }

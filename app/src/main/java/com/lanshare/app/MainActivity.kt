@@ -79,6 +79,9 @@ class MainActivity : Activity() {
         /** Settings -> display size: "interface%,text%". */
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
+        /** Settings -> Text in pictures: 0 always, 1 only while charging, 2 off (see OcrPrefs). */
+        @JavascriptInterface fun ocrGet(): Int = OcrPrefs.mode(this@MainActivity)
+        @JavascriptInterface fun ocrSet(m: Int) { OcrPrefs.setMode(this@MainActivity, m) }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */

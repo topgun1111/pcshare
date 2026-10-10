@@ -2,6 +2,8 @@ package com.lanshare.app
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Point
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
@@ -15,8 +17,11 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-/** One recognised word; [box] is in pixels of the bitmap that was recognised. */
-data class OcrWord(val text: String, val box: RectF)
+/**
+ * One recognised word; [box] is in pixels of the bitmap that was recognised (bounding rectangle).
+ * [quad] = the 4 corners x0,y0,...,x3,y3 (clockwise, starting at the top-left of the text) when the word is tilted by more than ~2 degrees, else null.
+ */
+data class OcrWord(val text: String, val box: RectF, val quad: FloatArray? = null)
 
 /** One recognised line (words in reading order); [text] = words joined by a space. */
 data class OcrLine(val text: String, val box: RectF, val words: List<OcrWord>)
@@ -77,6 +82,14 @@ class MlKitOcr(private val ctx: Context) : OcrEngine {
         throw IllegalStateException("Text model is not available (Google Play Services needed)")
     }
 
+    /** Corner polygon of a word, or null when it is (nearly) upright so the plain box is enough. */
+    private fun quadOf(p: Array<Point>?, r: Rect): FloatArray? {
+        if (p == null || p.size != 4) return null
+        val tilt = maxOf(Math.abs(p[1].y - p[0].y), Math.abs(p[0].x - p[3].x))
+        if (tilt <= 0.03f * maxOf(r.width(), r.height())) return null
+        return floatArrayOf(p[0].x.toFloat(), p[0].y.toFloat(), p[1].x.toFloat(), p[1].y.toFloat(), p[2].x.toFloat(), p[2].y.toFloat(), p[3].x.toFloat(), p[3].y.toFloat())
+    }
+
     private fun map(t: com.google.mlkit.vision.text.Text): List<OcrLine> {
         val out = ArrayList<OcrLine>()
         for (b in t.textBlocks) for (l in b.lines) {
@@ -84,7 +97,7 @@ class MlKitOcr(private val ctx: Context) : OcrEngine {
             for (e in l.elements) {
                 val r = e.boundingBox ?: continue
                 if (e.text.isBlank()) continue
-                ws.add(OcrWord(e.text, RectF(r)))
+                ws.add(OcrWord(e.text, RectF(r), quadOf(e.cornerPoints, r)))
             }
             if (ws.isEmpty()) continue
             val box = l.boundingBox?.let { RectF(it) } ?: RectF(ws[0].box).also { u -> for (w in ws) u.union(w.box) }
