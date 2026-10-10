@@ -1111,13 +1111,13 @@ function galView(a){
     o._redraw=draw;draw();
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- image search (on-device CLIP + OCR): overlay #gal is reused so back / hide-list logic keeps working; backend = /api/imgs (ImgSearch.kt, ClipEngine.kt) ---- */
-function isView(sdir,sname){
+function isView(sdir,sname,m0){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',sdir?'AI search \u00b7 '+(sname||sdir):'Image search'),sb=E('small','','\u00a0'),sc=E('div','gs'),bd=E('div','isb'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;tw.append(tt,sb);hd.append(bk,tw);
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
-  let LIST=[],mode=LD('ls_ismode','v')==='t'?'t':'v',whole=LD('ls_iswhole','1')==='1',ST=null,timer=0,wasInst=false;
+  let LIST=[],mode=m0||(LD('ls_ismode','v')==='t'?'t':'v'),whole=LD('ls_iswhole','1')==='1',ST=null,timer=0,wasInst=false;
   const live=()=>o._for===tok&&o.style.display==='flex';
   const pth=m=>m.p,gp=()=>[...GS].map(n=>LIST.find(m=>m.name+'\u0000'+m.p===n).p),gi=()=>LIST.filter(m=>GS.has(m.name+'\u0000'+m.p)),key=m=>m.name+'\u0000'+m.p;
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
@@ -1132,13 +1132,13 @@ function isView(sdir,sname){
   // --- status card (model download / scan progress) ---
   const card=E('div','isc'),sq=E('div','isq'),inp=E('input'),go=E('button','','Search'),tabs=E('div','ist'),chips=E('div','isr'),hint=E('small','');
   inp.type='search';inp.enterKeyHint='search';inp.autocomplete='off';inp.setAttribute('autocapitalize','off');sq.append(inp,go);
-  const tv=E('button','','Visual'),tx=E('button','','Text in pictures');tabs.append(tv,tx);
+  const tn=E('button','','Name'),tv=E('button','','Visual'),tx=E('button','','Text in pictures');tabs.append(tn,tv,tx);
   const cw=E('button','tbtn','Whole word'),cp=E('button','tbtn','Contains');chips.append(cw,cp);
-  const setMode=()=>{tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');chips.style.display=mode==='t'?'flex':'none';
+  const setMode=()=>{tn.classList.toggle('on',mode==='n');tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');chips.style.display=mode==='t'?'flex':'none';card.style.display=mode==='n'?'none':'';
     cw.classList.toggle('fill',whole);cp.classList.toggle('fill',!whole);
-    inp.placeholder=mode==='v'?'Describe the picture, e.g. a red car':'Word or part of a word in the picture';
-    hint.textContent=(mode==='v'?'Works best with English words.':'Reads the text in your pictures (Turkish and English).')+(sdir?' Only in: '+(sname||sdir)+'.':'')};
-  tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};
+    inp.placeholder=mode==='n'?'Part of the file name':mode==='v'?'Describe the picture, e.g. a red car':'Word or part of a word in the picture';
+    hint.textContent=(mode==='n'?'Looks at the names of pictures and videos.':mode==='v'?'Works best with English words.':'Reads the text in your pictures (Turkish and English).')+(sdir?' Only in: '+(sname||sdir)+'.':'')};
+  tn.onclick=()=>{mode='n';SV('ls_ismode','n');setMode()};tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};
   cw.onclick=()=>{whole=true;SV('ls_iswhole','1');setMode()};cp.onclick=()=>{whole=false;SV('ls_iswhole','0');setMode()};
   bd.append(card,tabs,sq,chips,hint);sc.append(bd,gg);o.append(hd,sh,sc,gb);setMode();
   const act=(op,x)=>api('POST','/api/imgs',Object.assign({op},x||{})).then(r=>{ST=r;draw();poll();return r}).catch(e=>{toast('\u26a0 '+e.message,5000)});
@@ -1191,6 +1191,15 @@ function isView(sdir,sname){
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(key(m));c.classList.add('sel');upd()});gg.append(c)})}
   async function run(){const q=inp.value.trim();if(!q)return;
+    if(mode==='n'){   // plain file-name search over the whole phone (or the album): pictures and videos only
+      if(q.length<2){toast('Type at least 2 letters',2500);return}
+      inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
+      try{const r=await api('GET','/api/search?dev=local&path='+enc(sdir||'/')+'&q='+enc(q),null,120000);
+        if(!live())return;
+        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+        show(it.map(i=>({path:i.path,score:0})),q)}
+      catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
+      return}
     if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}
     if(!(ST.indexed>0)&&ST.state!=='running'){toast('Scan your pictures first',3000);return}
     inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
@@ -2741,7 +2750,8 @@ $('#dscrim').onclick=drawerClose;
 $('#cog').onclick=openSettings;
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');if(NLSR){nlSrPush();NL.nlSrFocus()}else setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};
-$('#srch').onclick=()=>sOpen(!document.body.classList.contains('srch'));
+$('#srch').onclick=()=>{if(document.body.classList.contains('galm')){isView('','','n');setTimeout(()=>{const i=document.querySelector('#gal .isb input');if(i)i.focus()},150);return}   // Gallery / Videos: one search for names, picture content (AI) and text in pictures (OCR)
+  sOpen(!document.body.classList.contains('srch'))};
 $('#sback').onclick=()=>sOpen(false);
 $('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
 // events from the native search box (Kotlin NlSearch.kt): same work as the HTML input's oninput / clear / back
