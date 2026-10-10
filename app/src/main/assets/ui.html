@@ -387,29 +387,37 @@ body.dopen{overflow:hidden}
 #dfoot button:active{background:var(--hov)}#dfoot svg{width:20px;height:20px}
 #dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
 body.dual #dedge,body.selm #dedge{display:none}
-/* start menu (home): 3-column tile grid, spec in HANDOVER_HOME_MENU.md */
-#home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--hmb);--hmb:#FAFAFA;--hmc:#fff;--hmt:#161616;--hms:#5F5F5F;--hmd:#C9C9C9}
-:root[data-theme=dark] #home{--hmb:#18120d;--hmc:#241c15;--hmt:#e3e3e3;--hms:#c4c7c5;--hmd:#3a2e24}
-@media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hmb:#18120d;--hmc:#241c15;--hmt:#e3e3e3;--hms:#c4c7c5;--hmd:#3a2e24}}
-#home .hb{flex:none;height:calc(56px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 12px 0;background:#212121;display:flex;align-items:center;gap:20px;color:#fff}
-#home .hb b{flex:1;font-size:20px;font-weight:600}
-#home .hb button{width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#fff}
-#home .hb svg{width:26px;height:26px}
-#home .hg{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);column-gap:8px;row-gap:30px;padding:32px 14px calc(24px + env(safe-area-inset-bottom));align-content:start;align-items:start}
-#home .hb{background:linear-gradient(135deg,#2e2e2e,#1c1c1c);box-shadow:0 2px 10px #0003;position:relative;z-index:1}
-#home .hg{background:radial-gradient(120% 60% at 50% 0,color-mix(in srgb,var(--ac) 9%,transparent),transparent 70%)}
-#home .ht{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;min-width:0;-webkit-tap-highlight-color:transparent;cursor:pointer;animation:hmin .42s cubic-bezier(.2,.8,.25,1) both;animation-delay:calc(var(--i,0)*55ms);transition:transform .12s}
-#home .ht:active{transform:scale(.94)}
-#home .ht .tb{position:relative;width:96px;height:96px;border-radius:30px;background:var(--hmc);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px #0000001f,0 6px 16px -4px color-mix(in srgb,var(--c) 45%,transparent);overflow:hidden}
-#home .ht .tb::before{content:'';position:absolute;inset:0;background:linear-gradient(160deg,color-mix(in srgb,var(--c) 18%,transparent),color-mix(in srgb,var(--c) 5%,transparent))}
-#home .ht .tb::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--c) 28%,transparent)}
-#home .ht .tb svg{position:relative;width:54px;height:54px;filter:drop-shadow(0 2px 3px color-mix(in srgb,var(--c) 30%,transparent))}
-#home .ht .tt{margin-top:8px;font-size:15px;font-weight:650;color:var(--hmt);line-height:1.2;letter-spacing:.1px}
-#home .ht .ts{font-size:12px;color:var(--hms);line-height:1.25}
-#home .ht.off{opacity:.55;pointer-events:none;filter:grayscale(.6)}
-#home .ht.off .ts{font-style:italic}
-@keyframes hmin{from{opacity:0;transform:translateY(14px) scale(.92)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){#home .ht{animation:none}}
+/* start menu (home): Material 3 look built on the app's own theme tokens; spec history in HANDOVER_HOME_MENU.md */
+#home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--bg);color:var(--fg);--hc1:#8e24aa;--hc2:#d81b60;--hc3:#b7791f;--hc4:#546e7a;--hc5:#757575;--hc6:#00897b}
+:root[data-theme=dark] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4}
+@media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4}}
+#home .hb{flex:none;height:calc(64px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 4px 0;display:flex;align-items:center;gap:4px;background:var(--bg)}
+#home .hb h1{flex:1;margin:0 0 0 8px;font-size:22px;font-weight:500}
+#home .hb button{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--mut)}
+#home .hb button:active{background:var(--hov)}
+#home .hb svg{width:24px;height:24px}
+#home .hbd{flex:1;overflow-y:auto;padding:8px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:20px;-webkit-overflow-scrolling:touch}
+#home .hero{flex:none;background:var(--sel);color:var(--onsel);border-radius:28px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;cursor:pointer;animation:hmin .4s cubic-bezier(.2,.8,.25,1) both;-webkit-tap-highlight-color:transparent}
+#home .hero:active{filter:brightness(.96)}
+#home .hero .top{display:flex;align-items:center;gap:14px}
+#home .hero .ic{flex:none;width:52px;height:52px;border-radius:16px;background:var(--ac);color:var(--onac);display:flex;align-items:center;justify-content:center}
+#home .hero .ic svg{width:28px;height:28px;fill:currentColor}
+#home .hero b{display:block;font-size:18px;font-weight:500}
+#home .hero small{font-size:13px;opacity:.8}
+#home .meter{height:8px;border-radius:4px;background:color-mix(in srgb,var(--onsel) 18%,transparent);overflow:hidden}
+#home .meter i{display:block;height:100%;width:0;border-radius:4px;background:var(--ac);transition:width .5s ease}
+#home .hero .row{display:flex;justify-content:space-between;font-size:12px;font-variant-numeric:tabular-nums;min-height:15px}
+#home .sec{flex:none;font-size:14px;font-weight:500;color:var(--mut);padding-left:4px;margin-bottom:-8px}
+#home .hg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;flex:none}
+#home .ht{background:var(--cont);border-radius:24px;padding:14px 6px 12px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;cursor:pointer;animation:hmin .4s cubic-bezier(.2,.8,.25,1) both;animation-delay:calc(var(--i,0)*50ms);transition:transform .12s;-webkit-tap-highlight-color:transparent}
+#home .ht:active{transform:scale(.96);background:var(--hov)}
+#home .ht .tb{width:56px;height:56px;border-radius:18px;background:color-mix(in srgb,var(--c) 20%,var(--cont));color:var(--c);display:flex;align-items:center;justify-content:center}
+#home .ht .tb svg{width:28px;height:28px;fill:currentColor}
+#home .ht .tt{font-size:13px;font-weight:500;text-align:center;line-height:1.2}
+#home .ht .ts{font-size:11px;color:var(--mut);text-align:center;line-height:1.2}
+#home .ht.off{opacity:.5;pointer-events:none}
+@keyframes hmin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -1715,9 +1723,9 @@ function pickDevice(f,t,extra,after){return new Promise(res=>{
 /* Print target picker: one card per device with how it is connected (Wi-Fi / Mobile data / Tailscale), whether it gives printer access, and its printers as tap targets */
 const CHIPC={wifi:'rgba(46,125,50,.15);color:#2E7D32',ts:'rgba(106,27,154,.15);color:#6A1B9A',mob:'rgba(239,108,0,.16);color:#E65100',ok:'rgba(194,81,0,.15);color:#c25100',off:'rgba(120,120,120,.18);color:#757575',bad:'rgba(198,40,40,.14);color:#C62828'};
 const chip=(t,k)=>{const e=E('em','',t);e.style.cssText='font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+CHIPC[k];return e};
-function pickPrinter(here,wifi,peers){return new Promise(res=>{
-  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Print on…'));
-  const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');let shut=false;
+  const fin=v=>{shut=true;o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const last=localStorage.getItem('printTo');
   const dev=(name,conn,kind)=>{const box=E('div','');box.style.cssText='border:1px solid rgba(128,128,128,.28);border-radius:12px;padding:8px 10px;margin:6px 0';
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';const acc=E('span','');hd.append(ic('phone'),E('b','',name),chip(conn,kind),acc);box.append(hd);card.append(box);return{box,acc,n:0}};
@@ -1725,6 +1733,7 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
   const add=(d,t,label,tag)=>{d.n++;const b=E('button','tbtn'+(t.id===last?' fill':''));b.textContent=label;if(tag){const g=E('em','',' · '+tag);g.style.cssText='font-style:normal;font-size:11px;opacity:.75';b.append(g)}
     b.style.margin='6px 6px 0 0';b.onclick=()=>fin(t);d.box.append(b)};
   const cnt=d=>acc(d,d.n+' printer'+(d.n===1?'':'s'),'ok');
+  const draw=wifi=>{card.textContent='';card.append(E('div','handle'),E('h3','','Print on…'));
   if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
   peers.forEach(p=>{
     const ts=p.via==='Tailscale',d=dev(p.name,ts?'Tailscale':'Wi-Fi',ts?'ts':'wifi');
@@ -1740,9 +1749,15 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
   const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
   sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
   if(lsGet('printHist',[]).length){const rb=E('button','tbtn','Recent prints');rb.style.alignSelf='flex-start';rb.onclick=()=>fin({recent:1});card.append(rb)}
-  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c)};
+  /* busy = a printer search that is still running: the sheet opens at once with a note, then fills in when the search ends */
+  if(busy){card.append(E('div','handle'),E('h3','','Print on…'),E('p','','Searching printers\u2026'));
+    const cb=E('button','tbtn','Cancel');cb.style.alignSelf='flex-end';cb.onclick=()=>fin(null);card.append(cb);
+    busy.catch(()=>{}).then(()=>{if(!shut)draw(WIFI)})}
+  else draw(wifi);
+  o.append(card)})}
 /* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
-async function choosePrinter(here){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers);if(!(to&&to.rescan))return to}return null}
+async function choosePrinter(here,busy){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers,i?null:busy);if(!(to&&to.rescan))return to}return null}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
@@ -2519,33 +2534,46 @@ function lsBack(){
   return false}
 
 /* ---- start menu (home): tiles call the same functions as the drawer; Storage Analyzer is a disabled placeholder until its screen exists ---- */
-const HM_SVG={
- ms:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="9" y="8" width="30" height="32" rx="5" stroke="#3949AB" stroke-width="3.5"/><path d="M9 28h30" stroke="#3949AB" stroke-width="3.5"/><circle cx="31" cy="34" r="2" fill="#3949AB"/><path d="M16 17h10" stroke="#3949AB" stroke-width="3.5" stroke-linecap="round"/></svg>',
- gal:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="9" y="12" width="30" height="24" rx="4" stroke="#6A1B9A" stroke-width="3.5"/><path d="M12 33l9-9 6 6 4-4 8 8" stroke="#6A1B9A" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="31" cy="20" r="2.6" fill="#6A1B9A"/></svg>',
- prn:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M15 19v-9h18v9" stroke="#546E7A" stroke-width="3.5" stroke-linejoin="round"/><rect x="8" y="19" width="32" height="15" rx="4" stroke="#546E7A" stroke-width="3.5"/><rect x="15" y="29" width="18" height="10" rx="1.5" style="fill:var(--hmc)" stroke="#546E7A" stroke-width="3.5"/></svg>',
- dl:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M7 14a3 3 0 013-3h9l4 5h15a3 3 0 013 3v16a3 3 0 01-3 3H10a3 3 0 01-3-3z" fill="#E0A44F"/><circle cx="24" cy="27" r="9" fill="#fff"/><path d="M24 21v10m-4-4l4 4 4-4" stroke="#1E88E5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
- sto:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="#616161"/><path d="M24 24V8a16 16 0 0116 16z" fill="#D5D5D5"/><path d="M24 24L10 32" stroke="#fff" stroke-width="2.5"/></svg>',
- smb:'<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="9" y="9" width="30" height="12" rx="3.5" stroke="#00897B" stroke-width="3.5"/><rect x="9" y="27" width="30" height="12" rx="3.5" stroke="#00897B" stroke-width="3.5"/><circle cx="16" cy="15" r="2" fill="#00897B"/><circle cx="16" cy="33" r="2" fill="#00897B"/></svg>'};
+const HM_P={
+ ms:'M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z',
+ gal:'M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z',
+ vid:'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
+ dl:'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
+ prn:'M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z',
+ smb:'M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
+ sto:'M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z'};
+const hmSvg=k=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+HM_P[k]+'"/></svg>';
 const homeOn=()=>$('#home').style.display==='flex';
 function homeHide(){const o=$('#home');o.style.display='none';o.textContent=''}
 function homeShow(){
   const o=$('#home');if(o.style.display==='flex')return;
   drawerClose();o.textContent='';o.style.display='flex';
   const hb=E('div','hb'),mb=E('button');mb.setAttribute('aria-label','Menu');mb.append(ic('menu'));mb.onclick=drawerOpen;
-  const mo=E('button');mo.setAttribute('aria-label','Settings');mo.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="#fff"/><circle cx="12" cy="12" r="2" fill="#fff"/><circle cx="12" cy="19" r="2" fill="#fff"/></svg>';mo.onclick=openSettings;
-  hb.append(mb,E('b','','LANShare'),mo);
-  const g=E('div','hg');
-  let ti=0;const HC={ms:'#3949AB',gal:'#6A1B9A',prn:'#546E7A',dl:'#E0A44F',sto:'#616161',smb:'#00897B'};
-  const tile=(k,t,sub,fn)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);if(!fn)b.setAttribute('aria-disabled','true');
-    const tb=E('span','tb');tb.innerHTML=HM_SVG[k];b.append(tb,E('span','tt',t),E('span','ts',sub));if(fn)b.onclick=fn;return b};
-  g.append(
-    tile('ms','Main storage','All files on this phone',()=>{homeHide();openLoc('local','/')}),
-    tile('gal','Gallery','Photos and videos',()=>{homeHide();openLoc('local','/Pictures')}),
-    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')}),
-    tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
-    tile('sto','Storage Analyzer','Coming soon',null),
-    tile('smb','SMB Shares','Network folders',()=>{openSmb()}));
-  o.append(hb,g);
+  const mo=E('button');mo.setAttribute('aria-label','Settings');mo.append(ic('settings'));mo.onclick=openSettings;
+  hb.append(mb,E('h1','','LANShare'),mo);
+  const bd=E('div','hbd');
+  /* storage card: percent from the last known value at once, exact numbers once /api/space answers */
+  const hero=E('div','hero');hero.tabIndex=0;hero.setAttribute('role','button');hero.setAttribute('aria-label','Main storage');
+  const top=E('div','top'),hi=E('span','ic');hi.innerHTML=hmSvg('ms');const ht=E('div');ht.append(E('b','','Main storage'),E('small','','All files on this phone'));top.append(hi,ht);
+  const mt=E('div','meter'),mi=E('i');mt.append(mi);const rw=E('div','row'),ru=E('span'),rf=E('span');rw.append(ru,rf);hero.append(top,mt,rw);
+  const pct0=+LD('ls_used','')||null;if(pct0!=null){mi.style.width=pct0+'%';ru.textContent=pct0+'% used'}
+  const fill=v=>{if(!v||v.free==null||!v.total)return;const u=v.total-v.free,p=Math.round(u*100/v.total);
+    mi.style.width=p+'%';ru.textContent=fmt(u)+' used';rf.textContent=fmt(v.free)+' free'};
+  const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
+  api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
+  hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
+  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',smb:'var(--hc6)'};
+  const tile=(k,t,sub,fn)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
+    const tb=E('span','tb');tb.innerHTML=hmSvg(k);b.append(tb,E('span','tt',t),E('span','ts',sub));if(fn){b.onclick=fn;b.onkeydown=e=>{if(e.key==='Enter')fn()}}return b};
+  const g1=E('div','hg'),g2=E('div','hg');
+  g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/Pictures')}),
+    tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/Movies')}),
+    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')}));
+  g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
+    tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
+    tile('sto','Storage Analyzer','Coming soon',null));
+  bd.append(hero,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
+  o.append(hb,bd);
   warmWifi();if(window.nlLay)try{nlLay(true)}catch(e){}}
 
 /* ---- side drawer: tabs Folders / Favorites / Recent, quick folders, devices ---- */
@@ -2595,16 +2623,17 @@ function folderLead(name){const w=E('span');w.style.cssText='position:relative;d
   const bd=BADGE[name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.cssText+=';width:16px;height:16px;bottom:0;border-radius:4px;color:'+bd[1];const sv=ic(bd[0]);sv.style.cssText='width:11px;height:11px';g.append(sv);w.append(g)}return w}
 /* Printers: a single item under Devices (found printers are no longer listed one by one here). Tapping it closes the drawer and opens the same "Print on…" picker as the toolbar Print button (view-only, nothing is printed from here). */
 /* printers are fetched in the background whenever the drawer opens, so they are already listed here (no need to tap Printers first) */
-let WIFI_BUSY=false,WIFI_T=0;
+let WIFI_BUSY=false,WIFI_T=0,WIFI_P=null;
 function warmWifi(force){if(WIFI_BUSY||(!force&&Date.now()-WIFI_T<15000))return;WIFI_BUSY=true;drawerRefresh();
-  loadWifi().finally(()=>{WIFI_BUSY=false;WIFI_T=Date.now();drawerRefresh()})}
+  WIFI_P=loadWifi();WIFI_P.finally(()=>{WIFI_BUSY=false;WIFI_T=Date.now();drawerRefresh()})}
 function drawerPrinters(bd){
   const open=()=>{drawerClose();showPrinters()},n=WIFI.length;
   bd.append(dItem({lead:ic('print','s24'),title:'Printers',sub:n?n+' found':(WIFI_BUSY?'Searching for printers\u2026':'None found yet \u00b7 tap to search'),onclick:open}))}
 /* view-only: shows the "Print on…" picker (devices, printers, Search for printers); choosing a printer here prints nothing */
 async function showPrinters(){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
-  await loadWifi();await choosePrinter(here)}
+  const busy=WIFI_BUSY&&WIFI_P?WIFI_P:(WIFI.length?null:loadWifi());   // list already known: show it now; search running / nothing yet: open at once with "Searching printers…"
+  await choosePrinter(here,busy)}
 function drawerRender(){
   // tabs
   const tb=$('#dtabs');tb.textContent='';
