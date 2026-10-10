@@ -70,4 +70,28 @@ object Albums {
         }
         return JSONObject().put("albums", arr).put("video", video)
     }
+    /** Total of ALL pictures (or videos) of this phone: (files, bytes). Same sources and filters as [json]. */
+    fun total(video: Boolean = false): Pair<Long, Long> {
+        val rootFile = Core.local.root
+        val root = rootFile.path.trimEnd('/')
+        val roots = listOf(root, "/storage/emulated/0", "/sdcard", try { Environment.getExternalStorageDirectory().path.trimEnd('/') } catch (_: Exception) { root }).distinct()
+        val seen = HashSet<String>()
+        var n = 0L; var bytes = 0L
+        fun add(path: String, size: Long) {
+            val pre = roots.firstOrNull { path.startsWith("$it/") } ?: return
+            if (skip(path.removePrefix(pre).substringBeforeLast('/'))) return
+            if (!seen.add(path.removePrefix(pre))) return
+            val f = File(path)
+            if (!f.exists()) return   // MediaStore can still list deleted files
+            n++; bytes += if (size > 0) size else f.length()
+        }
+        try {
+            Core.appCtx?.contentResolver?.query(if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.SIZE), null, null, null)?.use { c ->
+                while (c.moveToNext()) { val p = c.getString(0); if (p != null) add(p, c.getLong(1)) }
+            }
+        } catch (_: Exception) {}
+        if (n == 0L) try { walk(rootFile, 0, intArrayOf(20000), if (video) VID else IMG) { p, sz, _ -> add(p, sz) } } catch (_: Exception) {}
+        return n to bytes
+    }
 }

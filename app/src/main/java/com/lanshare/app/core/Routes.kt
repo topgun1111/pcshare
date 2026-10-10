@@ -93,7 +93,11 @@ object Routes {
             "folderstat" -> {   // {files, bytes, partial} of one folder of this phone, recursive (start menu tiles)
                 val o = JSONObject()
                 val sp = vnorm(q["path"] ?: "/")
-                if (ex.q("dev") == "local" && arcSplit(sp) == null) {
+                val mk = q["media"]   // "img" / "vid": every picture / video of the phone (MediaStore), not one folder
+                if (mk == "img" || mk == "vid") {
+                    val (n, b) = try { Albums.total(mk == "vid") } catch (_: Exception) { -1L to 0L }
+                    if (n >= 0) o.put("files", n).put("bytes", b).put("partial", false)
+                } else if (ex.q("dev") == "local" && arcSplit(sp) == null) {
                     val (n, b, part) = try { Core.local.stat(sp, 8) } catch (_: Exception) { Triple(-1L, 0L, false) }
                     if (n >= 0) o.put("files", n).put("bytes", b).put("partial", part)
                 }
