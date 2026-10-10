@@ -34,7 +34,7 @@ import kotlin.math.sqrt
  *
  *  - CLIP ViT-B/32 (Xenova quantized ONNX, the SAME files the web page's clip_worker.js uses) through ONNX Runtime
  *  - CLIP BPE tokenizer in Kotlin (vocab.json + merges.txt)
- *  - OCR with ML Kit (bundled Latin model, offline)
+ *  - OCR with ML Kit (Play Services Latin model, offline) through TiledOcr (OcrTiled.kt), the same reader as the picture viewer
  *  - the model files (~150 MB) are NOT in the APK: [install] downloads them once into <filesDir>/models/clip/
  */
 object ClipEngine {
@@ -47,7 +47,8 @@ object ClipEngine {
         "merges.txt" to "merges.txt",
     )
     private const val ENGINE_ID = "clip-vit-b32-q8-v1"   // change when preprocessing / model changes: the old index is then discarded
-    private const val OCR_MAX = 1800                       // same as the web page: full picture downscaled to 1800 px
+    private const val OCR_MAX = 1800                       // fallback reader only (plain ML Kit call)
+    private const val OCR_HI = 3072                        // viewer-style reader: whole-picture pass at <= 3072 px, then tiles from the original file
 
     @Volatile private var installing = false
     @Volatile private var msg = ""
@@ -227,6 +228,7 @@ object ClipEngine {
         private var txt: OrtSession? = null
         private var tok: ClipTokenizer? = null
         private var ocrRec: com.google.mlkit.vision.text.TextRecognizer? = null
+        private var tiled: TiledOcr? = null      // the same reader the picture viewer uses (whole picture + full-resolution tiles + 2x for small pictures)
 
         private fun opts() = OrtSession.SessionOptions().apply { setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4)) }   // 4 threads on big phones: the scan is the slow part
 
@@ -237,13 +239,15 @@ object ClipEngine {
         /** End of a scan: the vision session (the big one) and the OCR model go; the text tower stays for queries. */
         @Synchronized override fun release() {
             try { vis?.close() } catch (_: Exception) {}; try { ocrRec?.close() } catch (_: Exception) {}
-            vis = null; ocrRec = null
+            try { tiled?.close() } catch (_: Exception) {}
+            vis = null; ocrRec = null; tiled = null
         }
 
         @Synchronized fun close() {
             try { vis?.close() } catch (_: Exception) {}; try { txt?.close() } catch (_: Exception) {}
             try { ocrRec?.close() } catch (_: Exception) {}
-            vis = null; txt = null; ocrRec = null
+            try { tiled?.close() } catch (_: Exception) {}
+            vis = null; txt = null; ocrRec = null; tiled = null
         }
 
         /** Output called [want], or else the first [1][512] output: the Xenova exports also return last_hidden_state. */
@@ -341,21 +345,40 @@ object ClipEngine {
         // ---- OCR (ML Kit via Google Play Services, Latin model downloaded on first use; Turkish letters c g i o s u still to be verified on a device) ----
         @Synchronized private fun recogniser() = ocrRec ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also { ocrRec = it }
 
+        @Synchronized private fun tiledOcr(): TiledOcr? = tiled ?: (Core.appCtx?.let { c -> TiledOcr(MlKitOcr(c)).also { it.skipTilesIfEmpty = true; tiled = it } })
+
+        @Synchronized private fun dropTiled() { try { tiled?.close() } catch (_: Exception) {}; tiled = null }
+
+        /** Same reading as the picture viewer's text layer (OcrTiled.kt): better on small print, tilted text and small pictures; slower than one plain pass. */
         override fun ocr(file: File): String {
-            val bm = decodeForOcr(file)
+            val t = tiledOcr() ?: return ocrPlain(file)
+            val bm = decodeForOcr(file, OCR_HI)
+            try {
+                val latch = java.util.concurrent.CountDownLatch(1)
+                var res: Result<List<OcrLine>>? = null
+                t.recognizeHi(bm, file) { r -> res = r; latch.countDown() }       // callbacks come on the main thread, this is the scan thread
+                if (!latch.await(150, java.util.concurrent.TimeUnit.SECONDS)) { dropTiled(); throw IllegalStateException("text reading timed out") }
+                val lines = res!!.getOrThrow()
+                return lines.joinToString("\n") { it.text }
+            } finally { bm.recycle() }
+        }
+
+        /** Fallback (no app context): one ML Kit pass over the picture reduced to 1800 px. */
+        private fun ocrPlain(file: File): String {
+            val bm = decodeForOcr(file, OCR_MAX)
             try {
                 val r = Tasks.await(recogniser().process(InputImage.fromBitmap(bm, 0)))
                 return r.text
             } finally { bm.recycle() }
         }
 
-        /** Longest side <= 1800 px, EXIF-rotated (same idea as Thumbs.render, but returns the bitmap: no JPEG round trip). */
-        private fun decodeForOcr(f: File): Bitmap {
+        /** Longest side <= [max] px, EXIF-rotated (same idea as Thumbs.render, but returns the bitmap: no JPEG round trip). */
+        private fun decodeForOcr(f: File, max: Int): Bitmap {
             val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(f.path, b)
             if (b.outWidth <= 0 || b.outHeight <= 0) throw IOException("not an image")
             var sample = 1
-            while (b.outWidth / (sample * 2) >= OCR_MAX && b.outHeight / (sample * 2) >= OCR_MAX) sample *= 2
+            while (b.outWidth / (sample * 2) >= max && b.outHeight / (sample * 2) >= max) sample *= 2
             val src = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: throw IOException("cannot decode the image")
             val m = Matrix()
             try {
@@ -366,7 +389,7 @@ object ClipEngine {
                 }
             } catch (_: Exception) {}
             val longest = max(src.width, src.height)
-            if (longest > OCR_MAX) { val s = OCR_MAX.toFloat() / longest; m.postScale(s, s) }
+            if (longest > max) { val s = max.toFloat() / longest; m.postScale(s, s) }
             val out = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
             if (out !== src) src.recycle()
             return out

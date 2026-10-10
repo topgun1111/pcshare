@@ -23,6 +23,8 @@ class TiledOcr(private val base: OcrEngine) : OcrEngine {
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ocr-tiles").also { it.isDaemon = true } }   // cuts tiles out of the original file
     @Volatile private var openHi: HiRes? = null
+    /** Gallery scan: a picture whose whole-picture pass found fewer than 3 words is not tiled (photos without text stay fast). The viewer leaves this off. */
+    @Volatile var skipTilesIfEmpty = false
 
     private class Tile(val x: Int, val y: Int, val w: Int, val h: Int, val core: RectF)
     private class Keyed(val key: Int, val line: OcrLine)
@@ -68,6 +70,7 @@ class TiledOcr(private val base: OcrEngine) : OcrEngine {
             if (closed) return@recognize
             val full = res.getOrNull()
             if (full == null) { cb(res); return@recognize }          // the base engine failed (model missing ...): report it as it is
+            if (skipTilesIfEmpty && full.sumOf { it.words.size } < 3) { cb(res); return@recognize }
             if (original == null) { tiles(bm, full, null, cb); return@recognize }
             io.execute {
                 val hi = try { HiRes.open(original) } catch (e: Throwable) { null }
