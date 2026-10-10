@@ -1101,7 +1101,8 @@ function galView(a){
   o.append(hd,sh,sc,gb);
   let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>LIST.filter(m=>GS.has(m.name));
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
-  sx.onclick=clr;sa.onclick=()=>{LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
+  sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
+    LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
   const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
   const upd=()=>{
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
@@ -1168,7 +1169,8 @@ function isView(sdir,sname,m0){
   const live=()=>o._for===tok&&o.style.display==='flex';
   const pth=m=>m.p,gp=()=>[...GS].map(n=>LIST.find(m=>m.name+'\u0000'+m.p===n).p),gi=()=>LIST.filter(m=>GS.has(m.name+'\u0000'+m.p)),key=m=>m.name+'\u0000'+m.p;
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
-  sx.onclick=clr;sa.onclick=()=>{LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
+  sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}
+    LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
   const upd=()=>{o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
@@ -2782,8 +2784,6 @@ function drawerRender(){
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
     bd.append(dItem({lead:ic('menu','s24'),title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
-    bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
-    bd.append(dItem({lead:ic('search','s24'),title:'Image search',sub:'Find pictures by what is in them',onclick:()=>{drawerClose();isView()}}));
     bd.append(E('div','dsep'));
     {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
@@ -2811,6 +2811,8 @@ function drawerRender(){
           QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
       bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Back to Download, DCIM, Movies, Pictures, Music, Documents.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
+    bd.append(E('div','dsep'));
+    bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
@@ -2922,7 +2924,7 @@ function doNew(){
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
 $('#fab').onclick=()=>inArc()?doExtract(2):doNew();
 $('#xsel').onclick=()=>{S.sel.clear();render()};
-$('#allsel').onclick=()=>{S.sel=new Set(shown().map(i=>i.name));render()};
+$('#allsel').onclick=()=>{const a=shown().map(i=>i.name);S.sel=(a.length&&S.sel.size>=a.length&&a.every(n=>S.sel.has(n)))?new Set():new Set(a);render()};   // second tap with everything selected = unselect all
 $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');
   try{await api('POST','/api/scan',{});toast('Scanning…',1500)}catch(e){toast('⚠ '+e.message,3000)}};
 $('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this device appears to others',input:{value:$('#nm').dataset.n||'',label:'Name'},ok:'Save'});if(!n)return;
