@@ -2636,7 +2636,7 @@ async function track(id){
       await new Promise(r=>setTimeout(r,400));busy=false}
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
-/* swipe left anywhere = next device (to the right in the chip bar), swipe right = previous; the list follows the finger and slides out/in; keep sliding to go further */
+/* swipe left anywhere = next device (to the right in the chip bar); swipe right is the Main menu swipe (native); the list follows the finger and slides out/in; keep sliding to go further */
 (()=>{let x0=0,y0=0,mode=0,busy=false;const STEP=50;  // mode: 0 undecided, 1 horizontal (ours), 2 ignore
   const L=()=>$('#list');
   const blocked=t=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex'||$('#pv').style.display==='flex'||$('#gal').style.display==='flex'||$('#home').style.display==='flex'||
@@ -2653,10 +2653,11 @@ async function track(id){
   window.addEventListener('touchstart',e=>{mode=(busy||e.touches.length!==1||blocked(e.target))?2:0;
     x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
   window.addEventListener('touchmove',e=>{if(mode===2||busy)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
-    if(!mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;mode=Math.abs(dx)>Math.abs(dy)*1.2?1:2;if(mode===2)return}
+    if(!mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;mode=(Math.abs(dx)>Math.abs(dy)*1.2&&dx<0)?1:2;if(mode===2)return}   // only a swipe to the left is ours (next device); a swipe to the right is the Main menu swipe
+    if(dx>0){tx('',1,0);return}
     if(e.cancelable)e.preventDefault();
     tx(Math.round(dx*0.4)+'px',1-Math.min(.5,Math.abs(dx)/260),0);   // list follows the finger
-    if(Math.abs(dx)>=STEP){step(dx<0?1:-1);x0=c.clientX;y0=c.clientY}},{passive:false});
+    if(dx<=-STEP){step(1);x0=c.clientX;y0=c.clientY}},{passive:false});
   const end=()=>{if(mode===1&&!busy)tx('',1,150);mode=0};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
 
@@ -2754,11 +2755,16 @@ const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
-// native edge swipe (MainActivity.dispatchTouchEvent): open the Main menu (home screen) unless something else is on top
-window.lsEdgeOpen=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
+// native swipe (MainActivity.dispatchTouchEvent): left-to-right swipe (from the edge or anywhere below the header) toggles file manager <-> Main menu; ignored when something else is on top
+const lsEdgeOk=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
   for(const id of ['#sheet','#dlg','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
-  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;
-  if(homeOn())return false;homeShow();return true};
+  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;return true};
+window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
+  if(homeOn()){hmFavClose();homeHide();if(window.nlLay)try{nlLay(true)}catch(e){}return true}   // on the Main menu the same swipe goes back to the file manager (the folder that was open)
+  homeShow();return true};
+/* tell the native side when the swipe is allowed and where the header ends (a swipe that starts in the header scrolls the path / device chips instead) */
+(()=>{let k='';setInterval(()=>{if(!window.LSAndroid||!LSAndroid.edgeOk)return;const ok=lsEdgeOk(),top=ok&&!homeOn()?Math.round($('#top').getBoundingClientRect().bottom):0,n=ok+'|'+top;if(n===k)return;k=n;
+  try{LSAndroid.edgeOk(ok,top,window.innerWidth)}catch(e){}},200)})();
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)
 function openLoc(dev,path){

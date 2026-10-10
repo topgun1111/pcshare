@@ -54,6 +54,11 @@ class MainActivity : Activity() {
     inner class Bridge {
         /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
         @JavascriptInterface fun homeStart(): Boolean = showHome
+        /** ui.html tells whether the swipe-right (Main menu <-> file manager) may act now, and where the header ends (CSS px; [vw] = page width in CSS px). */
+        @JavascriptInterface fun edgeOk(ok: Boolean, top: Double, vw: Double) {
+            swipeOk = ok
+            swipeTop = if (vw > 0 && ::web.isInitialized) (top * web.width / vw).toFloat() else 0f
+        }
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
@@ -216,10 +221,14 @@ class MainActivity : Activity() {
     }
 
 
-    // ---- swipe in from the left screen edge = open the side menu (works above the native list, which covers the page's own edge zone) ----
-    private var edgeOn = false          // a touch that started in the edge zone is being watched
-    private var edgeDone = false        // the swipe was recognised: swallow the rest of this touch
-    private var edgeX = 0f; private var edgeY = 0f
+    // ---- swipe right = Main menu <-> file manager. From the left screen edge (short swipe) or anywhere below the header (longer, mostly horizontal swipe). ----
+    @Volatile private var swipeOk = false     // set by ui.html (edgeOk): false while a dialog / viewer / selection / search / the side drawer is open
+    @Volatile private var swipeTop = 0f       // px: the header (path bar, device chips) ends here; swipes that start inside it scroll those strips instead
+    private var swOn = false                  // the current touch is being watched
+    private var swDone = false                // the swipe was recognised: swallow the rest of this touch
+    private var swEdge = false                // the touch started in the edge zone
+    private var swTop = false                 // the touch started in the header
+    private var swX = 0f; private var swY = 0f
 
     /** Android 10+ gesture navigation would turn an edge swipe into "Back": ask the system to leave a strip of the left edge to the app. */
     private fun edgeInit(root: View) {
@@ -236,27 +245,33 @@ class MainActivity : Activity() {
         val d = resources.displayMetrics.density
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                edgeDone = false
-                edgeOn = ev.pointerCount == 1 && ev.rawX <= 28f * d
-                edgeX = ev.rawX; edgeY = ev.rawY
+                swDone = false
+                swOn = swipeOk && ev.pointerCount == 1
+                swEdge = ev.rawX <= 28f * d
+                swTop = ev.rawY < swipeTop
+                swX = ev.rawX; swY = ev.rawY
             }
+            MotionEvent.ACTION_POINTER_DOWN -> swOn = false                  // pinch / two fingers: not a swipe
             MotionEvent.ACTION_MOVE -> {
-                if (edgeDone) return true
-                if (edgeOn && ev.pointerCount == 1) {
-                    val dx = ev.rawX - edgeX; val dy = ev.rawY - edgeY
-                    if (Math.abs(dy) > 40f * d && Math.abs(dy) > Math.abs(dx)) edgeOn = false          // a vertical scroll: not ours
-                    else if (dx > 40f * d && Math.abs(dy) < dx * 0.8f) {                              // clear swipe to the right
-                        edgeOn = false; edgeDone = true
+                if (swDone) return true
+                if (swOn && ev.pointerCount == 1) {
+                    val dx = ev.rawX - swX; val dy = ev.rawY - swY
+                    val ok = swEdge || !swTop                                // the header scrolls horizontally itself, except right at the edge
+                    val need = if (swEdge) 40f * d else 72f * d
+                    val slope = if (swEdge) 0.8f else 0.5f
+                    if (!ok || dx < -24f * d || (Math.abs(dy) > 24f * d && Math.abs(dy) > Math.abs(dx))) swOn = false   // header, swipe to the left (next device) or a vertical scroll: not ours
+                    else if (dx > need && Math.abs(dy) < dx * slope) {
+                        swOn = false; swDone = true
                         val c = MotionEvent.obtain(ev); c.action = MotionEvent.ACTION_CANCEL
-                        super.dispatchTouchEvent(c); c.recycle()                                       // list / page stop their own gesture
+                        super.dispatchTouchEvent(c); c.recycle()               // list / page stop their own gesture
                         if (::web.isInitialized) web.evaluateJavascript("window.lsEdgeOpen&&lsEdgeOpen()", null)
                         return true
                     }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                val was = edgeDone
-                edgeOn = false; edgeDone = false
+                val was = swDone
+                swOn = false; swDone = false
                 if (was) return true
             }
         }
