@@ -530,7 +530,7 @@ class ImageViewerActivity : Activity() {
     private fun updateOcrBar() {
         val ov = holder(pager.currentItem)?.ov
         val on = pager.currentItem in ocrOn && ov != null && ov.hasLines()
-        selBar.visibility = if (on) View.VISIBLE else View.GONE
+        selBar.visibility = View.GONE   // bottom bar removed: the floating Copy / Search / Share bubble is the only menu
         ocrBtn.setTextColor(if (on) 0xFF8AB4F8.toInt() else Color.WHITE)
         val cp = pager.currentItem
         ocrBtn.alpha = when {                                   // T: bright = text found / layer on, dim = no text, half = reading
@@ -635,6 +635,7 @@ class ImageViewerActivity : Activity() {
                 hit
             }
             ov.onSelection = { _ -> updateOcrBar() }
+            ov.onAction = { a -> when (a) { "copy" -> copyOcr(); "search" -> searchOcr(); "share" -> shareOcr() } }   // the floating Copy / Search / Share bubble
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
