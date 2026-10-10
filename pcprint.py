@@ -18,6 +18,7 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v21: an Office file converted for the preview is not converted again when it is printed (or previewed again) within 30 min: PDFs are cached by file content in office-cache; all conversions share one lock.
 v16: pictures are shrunk to what the sheet needs (Pillow: smaller PDF / spool, EXIF turn and PNG/GIF/BMP/TIFF conversion without PowerShell); the app
 shrinks big JPEGs before uploading; missing Python packages (pypdf, Pillow) are installed automatically, also on first use while the service runs.
 v15: "Print all files as one job" - a mixed selection (PDF, pictures, text, Office) is turned into pages, joined in order and laid out as ONE
@@ -35,7 +36,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "20"
+VERSION = "21"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -929,7 +930,57 @@ def office_engine(ext=None):
     return "LibreOffice" if find_soffice() else None
 
 
+OFFICE_CACHE = os.path.join(APP, "office-cache")   # converted office files, keyed by content: the preview and the print of the same file convert once
+OFFICE_CACHE_KEEP, OFFICE_CACHE_AGE = 12, 1800     # files / seconds
+OFFICE_LOCK = threading.Lock()                     # one conversion at a time for every caller (preview, print, joined jobs); a second caller finds the cache filled
+
+
+def _office_key(path):
+    import hashlib
+    h = hashlib.sha1(os.path.splitext(path)[1].lower().encode())
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def _office_cache_prune():
+    try:
+        now = time.time()
+        fs = sorted(((os.path.getmtime(p), p) for p in (os.path.join(OFFICE_CACHE, n) for n in os.listdir(OFFICE_CACHE)) if os.path.isfile(p)), reverse=True)
+        for i, (t, p) in enumerate(fs):
+            if i >= OFFICE_CACHE_KEEP or now - t > OFFICE_CACHE_AGE:
+                os.remove(p)
+    except OSError:
+        pass
+
+
 def office_to_pdf(path):
+    """Office file -> PDF in INBOX. Same content converted again within 30 min (preview, then print) is copied from the cache."""
+    try:
+        key = _office_key(path)
+    except OSError:
+        return _office_to_pdf(path)
+    cached = os.path.join(OFFICE_CACHE, key + ".pdf")
+    dst = out_pdf(path, "office")
+    with OFFICE_LOCK:
+        if os.path.isfile(cached) and os.path.getsize(cached) > 0 and time.time() - os.path.getmtime(cached) < OFFICE_CACHE_AGE:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(cached, dst)
+            log(f"office conversion reused: {os.path.basename(path)}")
+            return dst
+        pdf = _office_to_pdf(path)
+        try:
+            os.makedirs(OFFICE_CACHE, exist_ok=True)
+            shutil.copyfile(pdf, cached + ".tmp")
+            os.replace(cached + ".tmp", cached)
+            _office_cache_prune()
+        except OSError:
+            pass
+        return pdf
+
+
+def _office_to_pdf(path):
     ext = os.path.splitext(path)[1].lower()
     dst = out_pdf(path, "office")
     errs = []
@@ -1500,7 +1551,7 @@ def cleanup_old(days=3):
     Runs at start and every hour (before: only at start, so a PC that stays on for weeks collected everything)."""
     cut = time.time() - days * 86400
     keep = []
-    for d in (INBOX, os.path.join(APP, "lo-out")):
+    for d in (INBOX, os.path.join(APP, "lo-out"), OFFICE_CACHE):
         try:
             names = os.listdir(d)
         except OSError:
