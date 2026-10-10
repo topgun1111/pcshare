@@ -8,7 +8,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -19,19 +21,30 @@ import android.text.InputType
 import android.text.Spannable
 import android.text.TextUtils
 import android.text.TextWatcher
+import android.text.method.ArrowKeyMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ForegroundColorSpan
+import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.ViewConfiguration
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.graphics.ColorUtils
@@ -64,6 +77,8 @@ import java.util.concurrent.Executors
  * Keeps the file's encoding (UTF-8/16 BOM, falls back to Windows-1254 for legacy Turkish files) and line endings (LF / CRLF).
  * Saves on back / leaving the screen (like Keep) and with the check button; warns when the file changed on disk meanwhile.
  * Archives, files above 3 MB and binary files are never overwritten (read-only view / refused).
+ * Reading: pinch to zoom, word wrap on / off (off = sideways scrolling), line numbers, go to line, scroll progress, keep screen on,
+ * syntax colours for code files ([CodeHl]) and a Markdown preview with code cards, real tables and tappable links ([MdRender]).
  */
 class TextEditorActivity : Activity() {
     companion object {
@@ -74,6 +89,9 @@ class TextEditorActivity : Activity() {
         private const val MAX_BYTES = 3 shl 20
         private const val UNDO_CHARS = 6_000_000L
         private const val SNAP_MS = 700L
+        private const val HL_MAX = 300_000
+        private const val SIZE_MIN = 9f
+        private const val SIZE_MAX = 40f
 
         /** Set after a successful save: MainActivity refreshes the file list when it comes back to the front. */
         @Volatile private var changed = false
@@ -129,6 +147,15 @@ class TextEditorActivity : Activity() {
     private var mono = false
     private var night = false
     private var textColor = Color.BLACK
+    private var bgColor = Color.WHITE
+    private var wrap = true
+    private var hlSeq = 0
+    private var progress = -1
+    private var statusBase = ""
+    private var pinching = false
+    private val hlRun = Runnable { runHighlight() }
+    private val pvText = ArrayList<Pair<TextView, Float>>()   // preview text views and their size factor (relative to sizeSp)
+    private lateinit var scaleDet: ScaleGestureDetector
 
     // undo / redo (snapshots, debounced)
     private val undo = ArrayDeque<String>()
@@ -151,8 +178,9 @@ class TextEditorActivity : Activity() {
     private lateinit var column: LinearLayout
     private lateinit var locTv: TextView
     private lateinit var titleEt: EditText
-    private lateinit var body: EditText
-    private lateinit var preview: TextView      // formatted Markdown view (read-only), swaps places with [body]
+    private lateinit var body: CodeEdit
+    private lateinit var hsv: FitHScroll        // holds [body]: follows the screen width (wrap on) or scrolls sideways (wrap off)
+    private lateinit var previewBox: LinearLayout   // formatted Markdown view (read-only), swaps places with [hsv]
     private lateinit var modeBtn: TextView
     private var previewOn = false
     private var autoPrev = true                 // first load of a .md file opens in preview
@@ -183,8 +211,19 @@ class TextEditorActivity : Activity() {
         Fnt.init(this)
         night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         color = prefs.getInt("color", 0).coerceIn(0, PALS.size - 1)
-        sizeSp = prefs.getFloat("size", 16f).coerceIn(12f, 30f)
+        sizeSp = prefs.getFloat("size", 16f).coerceIn(SIZE_MIN, SIZE_MAX)
         mono = prefs.getBoolean("mono", false)
+        wrap = prefs.getBoolean("wrap", true)
+        scaleDet = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(d: ScaleGestureDetector): Boolean { pinching = true; return true }
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                val ns = (sizeSp * d.scaleFactor).coerceIn(SIZE_MIN, SIZE_MAX)
+                if (Math.abs(ns - sizeSp) >= 0.15f) { sizeSp = ns; zoomLive() }
+                return true
+            }
+            override fun onScaleEnd(d: ScaleGestureDetector) { pinching = false; prefs.edit().putFloat("size", sizeSp).apply() }
+        }).also { it.isQuickScaleEnabled = false }
+        if (prefs.getBoolean("awake", false)) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         dev = intent.getStringExtra(X_DEV) ?: "local"
         val p = intent.getStringExtra(X_PATH).orEmpty()
         dir = intent.getStringExtra(X_DIR) ?: "/"
@@ -197,6 +236,7 @@ class TextEditorActivity : Activity() {
             loaded = true
             locTv.text = "New note in " + (if (dev == "local") "this phone" else "device") + " › " + dir
             setBody("", keepUndo = false)
+            applyNums()
             updateStatus(); updateButtons()
             body.requestFocus()
             ui.postDelayed({ try { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(body, 0) } catch (_: Throwable) {} }, 250)
@@ -209,6 +249,11 @@ class TextEditorActivity : Activity() {
             locTv.text = p
             load()
         }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        try { scaleDet.onTouchEvent(ev) } catch (_: Throwable) { }   // pinch = text size
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onStop() {
@@ -315,10 +360,11 @@ class TextEditorActivity : Activity() {
                 override fun afterTextChanged(s: Editable?) { if (!loading && loaded) markDirty() }
             })
         }
-        body = EditText(this).apply {
+        body = CodeEdit(this).apply {
             hint = "Note"; background = null; gravity = Gravity.TOP or Gravity.START; setPadding(0, dp(4), 0, dp(24))
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             minLines = 8; setHorizontallyScrolling(false)
+            gap = dp(8)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
@@ -326,19 +372,27 @@ class TextEditorActivity : Activity() {
                     if (loading || !loaded) return
                     markDirty()
                     ui.removeCallbacks(snapRun); snapPending = true; ui.postDelayed(snapRun, SNAP_MS)
+                    scheduleHl(600)
                     if (findBox.visibility == View.VISIBLE) { ui.removeCallbacks(findRun); ui.postDelayed(findRun, 400) }
                 }
             })
         }
-        preview = TextView(this).apply {
-            visibility = View.GONE; setTextIsSelectable(true); setPadding(0, dp(4), 0, dp(24)); setLineSpacing(0f, 1.2f)
+        hsv = FitHScroll(this).apply {
+            isFillViewport = true; isHorizontalScrollBarEnabled = true; overScrollMode = View.OVER_SCROLL_NEVER
+            addView(body, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        previewBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, dp(4), 0, dp(24)) }
+        val wpx = resources.displayMetrics.widthPixels
+        val side = if (wpx > dp(860)) (wpx - dp(820)) / 2 else dp(20)   // wide screens: comfortable line length
         column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(2), dp(20), dp(8))
-            addView(locTv); addView(titleEt); addView(body); addView(preview)
+            orientation = LinearLayout.VERTICAL; setPadding(side, dp(2), side, dp(8))
+            addView(locTv); addView(titleEt); addView(hsv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)); addView(previewBox)
             setOnClickListener { if (!readOnly && !previewOn) { body.requestFocus(); body.setSelection(body.length()); (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(body, 0) } }
         }
-        scroll = ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = false; addView(column, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
+        scroll = ScrollView(this).apply {
+            isFillViewport = true; isVerticalScrollBarEnabled = false; addView(column, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            setOnScrollChangeListener { _, _, y, _, _ -> updateProgress(y) }
+        }
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // bottom bar: colour, text size, undo, redo, status
@@ -361,22 +415,192 @@ class TextEditorActivity : Activity() {
         applyTypography()
     }
 
+    private fun hlKey(): String? = CodeHl.keyForFile(path ?: titleEt.text.toString())
+    private fun isCode(): Boolean { val k = hlKey(); return k != null && k != "md" }
+
     private fun applyTypography() {
-        val face = if (mono) Typeface.MONOSPACE else Fnt.med()
+        val monoNow = mono || isCode()
+        val face = if (monoNow) Typeface.MONOSPACE else Fnt.med()
         body.typeface = face
         body.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
-        body.setLineSpacing(0f, if (mono) 1.05f else 1.15f)
+        body.setLineSpacing(0f, if (monoNow) 1.05f else 1.15f)
         titleEt.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp + 6f)
-        preview.typeface = face
-        preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        body.setHorizontallyScrolling(!wrap)
+        hsv.fit = wrap
+        hsv.requestLayout()
+        body.invalidate()
         if (previewOn) refreshPreview()
     }
 
+    /** Pinch in progress: only sizes change (cheap), nothing is rebuilt. */
+    private fun zoomLive() {
+        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        titleEt.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp + 6f)
+        for ((v, f) in pvText) v.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp * f)
+        body.relayoutGutter()
+    }
+
+    private fun numsOn(): Boolean = prefs.getBoolean("lines", isCode())
+    private fun applyNums() { body.setNumbers(numsOn()) }
+
     private fun isMd(): Boolean { val p = path?.lowercase() ?: return false; return p.endsWith(".md") || p.endsWith(".markdown") || p.endsWith(".mdx") }
 
+    // ---- syntax colours (code files): tokens are found on the io thread, then painted as spans on the text
+    private class HlSpan(c: Int) : ForegroundColorSpan(c)
+
+    private fun scheduleHl(delay: Long) { ui.removeCallbacks(hlRun); ui.postDelayed(hlRun, delay) }
+
+    private fun clearHl() {
+        val ed = body.text
+        for (sp in ed.getSpans(0, ed.length, HlSpan::class.java)) ed.removeSpan(sp)
+    }
+
+    private fun runHighlight() {
+        if (!loaded) return
+        val key = hlKey()
+        if (key == null || key == "md" && !isMd() || body.text.length > HL_MAX) { clearHl(); return }
+        val txt = body.text.toString()
+        val seq = ++hlSeq
+        val dark = night
+        io.execute {
+            val arr = try { CodeHl.scan(txt, key) } catch (_: Throwable) { null }
+            ui.post {
+                if (isDestroyed || arr == null || seq != hlSeq || body.text.length != txt.length) return@post
+                paintHl(arr, dark)
+            }
+        }
+    }
+
+    private fun paintHl(arr: IntArray, dark: Boolean) {
+        val ed = body.text
+        val n = ed.length
+        body.beginBatchEdit()
+        try {
+            clearHl()
+            var k = 0
+            while (k + 2 < arr.size) {
+                val s = arr[k]; val e = arr[k + 1]
+                if (s >= 0 && e > s && e <= n) ed.setSpan(HlSpan(CodeHl.color(arr[k + 2], dark)), s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                k += 3
+            }
+        } finally { body.endBatchEdit() }
+    }
+
+    // ---- Markdown preview: text blocks, code cards (highlighted, copy button), real tables, tappable links
+    private object LinkSel : ArrowKeyMovementMethod() {
+        override fun onTouchEvent(widget: TextView, text: Spannable, event: MotionEvent): Boolean {
+            if (event.action == MotionEvent.ACTION_UP && event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()) {
+                val lay = widget.layout
+                if (lay != null) {
+                    val x = event.x - widget.totalPaddingLeft + widget.scrollX
+                    val y = (event.y - widget.totalPaddingTop + widget.scrollY).toInt()
+                    val line = lay.getLineForVertical(y)
+                    if (x >= lay.getLineLeft(line) && x <= lay.getLineRight(line)) {
+                        val off = lay.getOffsetForHorizontal(line, x)
+                        val l = text.getSpans(off, off, ClickableSpan::class.java)
+                        if (l.isNotEmpty()) { l[0].onClick(widget); return true }
+                    }
+                }
+            }
+            return super.onTouchEvent(widget, text, event)
+        }
+    }
+
+    private fun openLink(u: String) {
+        try {
+            val uri = android.net.Uri.parse(u)
+            val sc = uri.scheme?.lowercase()
+            if (sc == "http" || sc == "https" || sc == "mailto" || sc == "tel") startActivity(Intent(Intent.ACTION_VIEW, uri)) else toast(u)
+        } catch (x: Exception) { toast("Cannot open link") }
+    }
+
+    private fun pvFace(): Typeface = if (mono) Typeface.MONOSPACE else Fnt.med()
+
+    private fun pvTextView(t: CharSequence): TextView = TextView(this).apply {
+        setTextColor(textColor); setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp); typeface = pvFace(); setLineSpacing(0f, 1.2f)
+        setTextIsSelectable(true); movementMethod = LinkSel
+        text = t
+        pvText.add(this to 1f)
+    }
+
+    private fun sub(): Int = ColorUtils.setAlphaComponent(textColor, 150)
+
+    private fun codeCard(b: MdRender.Block.Code): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(ColorUtils.setAlphaComponent(textColor, 26)) }
+        }
+        val lbl = TextView(this).apply {
+            text = b.lang.ifEmpty { "code" }; setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setTextColor(sub()); typeface = Fnt.semi()
+        }
+        val copy = tvBtn("Copy", 12f).apply {
+            typeface = Fnt.semi(); setTextColor(sub()); minWidth = dp(56); minimumHeight = dp(36)
+            setOnClickListener { (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("code", b.code)); toast("Copied") }
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(2), dp(4), 0)
+            addView(lbl, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); addView(copy)
+        }
+        val sp = SpannableString(b.code)
+        val key = CodeHl.key(b.lang)
+        if (key != null && key != "md") {
+            val arr = try { CodeHl.scan(b.code, key) } catch (_: Throwable) { null }
+            if (arr != null) { var k = 0; while (k + 2 < arr.size) { sp.setSpan(ForegroundColorSpan(CodeHl.color(arr[k + 2], night)), arr[k], arr[k + 1], Spannable.SPAN_EXCLUSIVE_EXCLUSIVE); k += 3 } }
+        }
+        val code = TextView(this).apply {
+            typeface = Typeface.MONOSPACE; setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp * 0.88f); setTextColor(textColor); setLineSpacing(0f, 1.1f)
+            setPadding(dp(12), dp(4), dp(12), dp(12)); setTextIsSelectable(true)
+            if (!wrap) setHorizontallyScrolling(true)
+            text = sp
+        }
+        pvText.add(code to 0.88f)
+        card.addView(head)
+        if (wrap) card.addView(code, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        else card.addView(HorizontalScrollView(this).apply {
+            isFillViewport = true; isHorizontalScrollBarEnabled = false
+            addView(code, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        return card
+    }
+
+    private fun tableView(b: MdRender.Block.Table): View {
+        val headBg = ColorUtils.compositeColors(ColorUtils.setAlphaComponent(textColor, 30), bgColor)
+        val tl = TableLayout(this).apply { setBackgroundColor(ColorUtils.setAlphaComponent(textColor, 70)); setPadding(1, 1, 0, 0) }
+        fun row(cells: List<CharSequence>, head: Boolean) {
+            val tr = TableRow(this)
+            for ((k, t) in cells.withIndex()) {
+                val tv = TextView(this).apply {
+                    text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp * 0.92f); setTextColor(textColor)
+                    typeface = if (head) Fnt.semi() else pvFace()
+                    setPadding(dp(10), dp(6), dp(10), dp(6)); maxWidth = dp(280)
+                    gravity = when (b.align.getOrElse(k) { 0 }) { 1 -> Gravity.CENTER_HORIZONTAL; 2 -> Gravity.END; else -> Gravity.START }
+                    setBackgroundColor(if (head) headBg else bgColor)
+                }
+                pvText.add(tv to 0.92f)
+                val lp = TableRow.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                lp.setMargins(0, 0, 1, 1)
+                tr.addView(tv, lp)
+            }
+            tl.addView(tr)
+        }
+        row(b.head, true)
+        for (r in b.rows) row(r, false)
+        return HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = true; addView(tl, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
+    }
+
     private fun refreshPreview() {
-        preview.setTextColor(textColor)
-        preview.text = MdRender.render(body.text.toString(), textColor, night, resources.displayMetrics.density)
+        previewBox.removeAllViews(); pvText.clear()
+        val blocks = MdRender.blocks(body.text.toString(), textColor, night, resources.displayMetrics.density) { openLink(it) }
+        var first = true
+        for (bl in blocks) {
+            val v: View = when (bl) {
+                is MdRender.Block.Text -> pvTextView(bl.text)
+                is MdRender.Block.Code -> codeCard(bl)
+                is MdRender.Block.Table -> tableView(bl)
+            }
+            previewBox.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (!first) topMargin = dp(10) })
+            first = false
+        }
     }
 
     /** Formatted (Markdown) view of the note instead of the raw text. The raw text stays in [body]; nothing is changed or saved by this. */
@@ -387,10 +611,10 @@ class TextEditorActivity : Activity() {
             hideFind()
             try { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(body.windowToken, 0) } catch (_: Throwable) {}
             refreshPreview()
-            preview.visibility = View.VISIBLE; body.visibility = View.GONE
+            previewBox.visibility = View.VISIBLE; hsv.visibility = View.GONE
             modeBtn.text = "\u270E"
         } else {
-            preview.visibility = View.GONE; body.visibility = View.VISIBLE
+            previewBox.visibility = View.GONE; hsv.visibility = View.VISIBLE
             modeBtn.text = "\uD83D\uDC41"
         }
         updateButtons()
@@ -400,6 +624,7 @@ class TextEditorActivity : Activity() {
         val p = PALS[color]
         val bg = if (night) p.dark else p.light
         textColor = if (night) 0xFFE8EAED.toInt() else 0xFF202124.toInt()
+        bgColor = bg
         val sub = ColorUtils.setAlphaComponent(textColor, 150)
         val hint = ColorUtils.setAlphaComponent(textColor, 110)
         root.setBackgroundColor(bg)
@@ -410,6 +635,9 @@ class TextEditorActivity : Activity() {
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
         for (t in listOf(locTv, status, findCount)) t.setTextColor(sub)
         banner.setTextColor(textColor)
+        body.numColor = ColorUtils.setAlphaComponent(textColor, 110)
+        body.invalidate()
+        scheduleHl(0)
         banner.setBackgroundColor(ColorUtils.setAlphaComponent(textColor, 28))
         findBox.setBackgroundColor(ColorUtils.setAlphaComponent(textColor, 18))
         replBtn.setTextColor(textColor)
@@ -425,7 +653,7 @@ class TextEditorActivity : Activity() {
         val ed = !readOnly && loaded
         undoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
         redoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
-        modeBtn.visibility = if (loaded) View.VISIBLE else View.GONE
+        modeBtn.visibility = if (loaded && !isCode()) View.VISIBLE else View.GONE
         undoBtn.alpha = if (undo.isNotEmpty() || snapPending) 1f else 0.3f
         redoBtn.alpha = if (redo.isNotEmpty()) 1f else 0.3f
     }
@@ -442,7 +670,16 @@ class TextEditorActivity : Activity() {
             diskMtime > 0 -> "Edited " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(diskMtime * 1000))
             else -> "Saved"
         }
-        status.text = "$base · $lines lines · ${t.length} chars"
+        statusBase = "$base · $lines lines · ${t.length} chars"
+        renderStatus()
+    }
+
+    private fun renderStatus() { status.text = if (progress in 0..100 && loaded) "$progress% · $statusBase" else statusBase }
+
+    private fun updateProgress(y: Int) {
+        val range = column.height - scroll.height
+        val p = if (range <= dp(40)) -1 else (y.toLong() * 100 / range).toInt().coerceIn(0, 100)
+        if (p != progress) { progress = p; renderStatus() }
     }
 
     private fun markDirty() {
@@ -521,6 +758,7 @@ class TextEditorActivity : Activity() {
                     setBody(dec.text, keepUndo = false)
                     dirty = false
                     if (readOnly) makeReadOnly()
+                    applyTypography(); applyNums()
                     updateStatus(); updateButtons()
                     if (autoPrev) { autoPrev = false; if (isMd()) setPreview(true) } else if (previewOn) refreshPreview()
                 }
@@ -552,6 +790,7 @@ class TextEditorActivity : Activity() {
         loading = false
         cur = t
         if (!keepUndo) { undo.clear(); redo.clear(); undoChars = 0 }
+        scheduleHl(50)
     }
 
     // ---------------------------------------------------------------- undo / redo
@@ -685,18 +924,30 @@ class TextEditorActivity : Activity() {
     private fun showMenu(anchor: View) {
         val m = PopupMenu(this, anchor)
         m.menu.add(0, 1, 0, "Find & replace").isEnabled = loaded
-        if (path != null) m.menu.add(0, 2, 1, "Reload from disk")
-        m.menu.add(0, 3, 2, if (mono) "Proportional font" else "Monospace font")
-        m.menu.add(0, 4, 3, "Share as text")
-        m.menu.add(0, 5, 4, "Copy all")
-        m.menu.add(0, 6, 5, "Details")
+        m.menu.add(0, 8, 1, "Go to line…").isEnabled = loaded
+        if (path != null) m.menu.add(0, 2, 2, "Reload from disk")
+        m.menu.add(0, 7, 3, "Word wrap").apply { isCheckable = true; isChecked = wrap }
+        m.menu.add(0, 9, 4, "Line numbers").apply { isCheckable = true; isChecked = numsOn() }
+        m.menu.add(0, 3, 5, if (mono) "Proportional font" else "Monospace font")
+        m.menu.add(0, 10, 6, "Keep screen on").apply { isCheckable = true; isChecked = prefs.getBoolean("awake", false) }
+        m.menu.add(0, 4, 7, "Share as text")
+        m.menu.add(0, 5, 8, "Copy all")
+        m.menu.add(0, 6, 9, "Details")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> showFind()
+                8 -> gotoLine()
                 2 -> if (dirty && !readOnly) AlertDialog.Builder(this).setMessage("Discard your changes and reload the file?")
                         .setPositiveButton("Reload") { _, _ -> readOnly = path?.let { arcSplit(it) != null } ?: false; banner.visibility = View.GONE; load() }.setNegativeButton("Cancel", null).show()
                      else { banner.visibility = View.GONE; load() }
+                7 -> { wrap = !wrap; prefs.edit().putBoolean("wrap", wrap).apply(); applyTypography() }
+                9 -> { prefs.edit().putBoolean("lines", !numsOn()).apply(); applyNums() }
                 3 -> { mono = !mono; prefs.edit().putBoolean("mono", mono).apply(); applyTypography() }
+                10 -> {
+                    val on = !prefs.getBoolean("awake", false)
+                    prefs.edit().putBoolean("awake", on).apply()
+                    if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
                 4 -> shareText()
                 5 -> { (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("note", body.text.toString())); toast("Copied") }
                 6 -> details()
@@ -710,10 +961,38 @@ class TextEditorActivity : Activity() {
         val m = PopupMenu(this, anchor)
         m.menu.add(0, 1, 0, "Larger text"); m.menu.add(0, 2, 1, "Smaller text"); m.menu.add(0, 3, 2, "Default size")
         m.setOnMenuItemClickListener {
-            sizeSp = when (it.itemId) { 1 -> sizeSp + 2f; 2 -> sizeSp - 2f; else -> 16f }.coerceIn(12f, 30f)
+            sizeSp = when (it.itemId) { 1 -> sizeSp + 2f; 2 -> sizeSp - 2f; else -> 16f }.coerceIn(SIZE_MIN, SIZE_MAX)
             prefs.edit().putFloat("size", sizeSp).apply(); applyTypography(); true
         }
         m.show()
+    }
+
+    private fun gotoLine() {
+        if (previewOn) setPreview(false)
+        val total = body.text.count { it == '\n' } + 1
+        val et = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER; hint = "1 – $total"; setSingleLine() }
+        val go = { v: String ->
+            val n = v.trim().toIntOrNull()
+            if (n != null) scrollToLine(n.coerceIn(1, total))
+        }
+        et.setOnEditorActionListener { _, _, _ -> go(et.text.toString()); true }
+        AlertDialog.Builder(this).setTitle("Go to line").setView(et)
+            .setPositiveButton("Go") { _, _ -> go(et.text.toString()) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun scrollToLine(n: Int) {
+        val t = body.text
+        var off = 0
+        var line = 1
+        while (line < n && off < t.length) { if (t[off] == '\n') line++; off++ }
+        body.setSelection(minOf(off, t.length))
+        body.post {
+            val lay = body.layout ?: return@post
+            val y = column.top + hsv.top + body.top + lay.getLineTop(lay.getLineForOffset(off))
+            scroll.smoothScrollTo(0, (y - dp(80)).coerceAtLeast(0))
+            hsv.smoothScrollTo(0, 0)
+        }
     }
 
     private fun pickColor() {
@@ -818,8 +1097,9 @@ class TextEditorActivity : Activity() {
         findCount.text = "${hi + 1}/${hits.size}" + (if (hits.size >= 5000) "+" else "")
         if (scrollTo) body.post {
             val lay = body.layout ?: return@post
-            val y = column.top + body.top + lay.getLineTop(lay.getLineForOffset(hits[hi]))
+            val y = column.top + hsv.top + body.top + lay.getLineTop(lay.getLineForOffset(hits[hi]))
             scroll.smoothScrollTo(0, (y - dp(120)).coerceAtLeast(0))
+            if (!wrap) hsv.smoothScrollTo((lay.getPrimaryHorizontal(hits[hi]) - hsv.width / 2).toInt().coerceAtLeast(0), 0)
         }
     }
 
@@ -843,5 +1123,85 @@ class TextEditorActivity : Activity() {
         snap(); markDirty()
         toast("Replaced $n")
         runFind(false)
+    }
+}
+
+/** EditText that can draw line numbers in its left padding (a wrapped line continues without a number). */
+private class CodeEdit(c: Context) : EditText(c) {
+    var gap = 0                  // px between the numbers and the text
+    var numColor = Color.GRAY
+    private var numbers = false
+    private var starts: IntArray? = null
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun setNumbers(on: Boolean) {
+        numbers = on
+        starts = null
+        if (on) relayoutGutter() else if (paddingLeft != 0) setPadding(0, paddingTop, paddingRight, paddingBottom)
+        invalidate()
+    }
+
+    private fun lineStarts(): IntArray {
+        starts?.let { return it }
+        val t = text
+        var a = IntArray(256)
+        var n = 1
+        for (i in 0 until t.length) if (t[i] == '\n') { if (n == a.size) a = a.copyOf(n * 2); a[n++] = i + 1 }
+        val r = a.copyOf(n)
+        starts = r
+        return r
+    }
+
+    fun relayoutGutter() {
+        if (!numbers) return
+        p.textSize = textSize * 0.85f
+        p.typeface = Typeface.MONOSPACE
+        val digits = maxOf(2, lineStarts().size.toString().length)
+        val w = (p.measureText("0") * digits).toInt() + gap * 2
+        if (paddingLeft != w) setPadding(w, paddingTop, paddingRight, paddingBottom)
+    }
+
+    override fun onTextChanged(text: CharSequence?, start: Int, lengthBefore: Int, lengthAfter: Int) {
+        super.onTextChanged(text, start, lengthBefore, lengthAfter)
+        if (numbers) { starts = null; relayoutGutter() }   // 'numbers' is still false while the TextView constructor runs
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (!numbers) return
+        val lay = layout ?: return
+        val st = lineStarts()
+        p.textSize = textSize * 0.85f
+        p.typeface = Typeface.MONOSPACE
+        p.color = numColor
+        p.textAlign = Paint.Align.RIGHT
+        val top = extendedPaddingTop
+        val clip = canvas.clipBounds
+        var l = lay.getLineForVertical(maxOf(0, clip.top - top))
+        val last = minOf(lay.lineCount - 1, lay.getLineForVertical(maxOf(0, clip.bottom - top)))
+        val x = (scrollX + paddingLeft - gap).toFloat()
+        val txt = text
+        while (l <= last) {
+            val s = lay.getLineStart(l)
+            if (s == 0 || txt[s - 1] == '\n') {
+                val idx = java.util.Arrays.binarySearch(st, s)
+                if (idx >= 0) canvas.drawText((idx + 1).toString(), x, (lay.getLineBaseline(l) + top).toFloat(), p)
+            }
+            l++
+        }
+        p.strokeWidth = 1f
+        canvas.drawLine(x + gap / 2f, clip.top.toFloat(), x + gap / 2f, clip.bottom.toFloat(), p)
+    }
+}
+
+/** HorizontalScrollView whose child either follows the viewport width (fit = word wrap) or grows to its content width (sideways scrolling). */
+private class FitHScroll(c: Context) : HorizontalScrollView(c) {
+    var fit = true
+    override fun measureChildWithMargins(child: View, parentWidthMeasureSpec: Int, widthUsed: Int, parentHeightMeasureSpec: Int, heightUsed: Int) {
+        if (!fit) { super.measureChildWithMargins(child, parentWidthMeasureSpec, widthUsed, parentHeightMeasureSpec, heightUsed); return }
+        val lp = child.layoutParams as ViewGroup.MarginLayoutParams
+        val cw = ViewGroup.getChildMeasureSpec(parentWidthMeasureSpec, paddingLeft + paddingRight + lp.leftMargin + lp.rightMargin + widthUsed, lp.width)
+        val ch = ViewGroup.getChildMeasureSpec(parentHeightMeasureSpec, paddingTop + paddingBottom + lp.topMargin + lp.bottomMargin + heightUsed, lp.height)
+        child.measure(cw, ch)
     }
 }

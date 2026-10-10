@@ -622,7 +622,18 @@ class ImageViewerActivity : Activity() {
             val ov = OcrOverlayView(c)
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
-            iv.onHold = { x, y -> ov.hasLines() && ov.selectWordAt(x, y) }
+            iv.onHold = { x, y ->   // long press works without the T button: the text read in the background is switched on by the press itself
+                val p = pager.currentItem
+                var opened = false
+                if (!ov.hasLines() && holder(p)?.ov === ov) {
+                    val have = ocrRes[p]
+                    if (have != null && have.isNotEmpty()) { showOcr(p, have); opened = true }
+                    else if (have == null) Toast.makeText(this@ImageViewerActivity, "Reading text...", Toast.LENGTH_SHORT).show()
+                }
+                val hit = ov.hasLines() && ov.selectWordAt(x, y)
+                if (!hit && opened) closeOcr()   // nothing under the finger: do not leave the boxes on
+                hit
+            }
             ov.onSelection = { _ -> updateOcrBar() }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
