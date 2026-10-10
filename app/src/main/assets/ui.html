@@ -2645,16 +2645,16 @@ function drawerRender(){
   const here=(dev,path)=>S.dev===dev&&S.path===path;
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
-    bd.append(dItem({lead:ic('menu','s24'),title:'Start menu',sub:'Gallery, printers, downloads\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
-    bd.append(dItem({lead:raw(HOME),title:'Home',sub:'Main storage root',on:here('local','/'),onclick:()=>openLoc('local','/')}));
     bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     bd.append(dItem({lead:ic('search','s24'),title:'Image search',sub:'Find pictures by what is in them',onclick:()=>{drawerClose();isView()}}));
     bd.append(E('div','dsep'));
-    bd.append(E('div','dsec','Devices'));
-    peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
-      bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
-    if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'));
+    {const col=LD('ls_devcol','0')==='1',h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
+      h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
+      h.onclick=()=>{try{localStorage.setItem('ls_devcol',col?'0':'1')}catch(e){}drawerRender()};bd.append(h);
+      if(!col){peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+          bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
+        if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
     drawerPrinters(bd);
     bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
