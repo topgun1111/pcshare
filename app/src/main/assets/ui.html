@@ -318,6 +318,8 @@ body.dual #dual{display:flex}
 .ppv{position:sticky;top:0;z-index:2;background:var(--cont);padding:4px 0 6px;border-bottom:1px solid var(--bd);margin-bottom:4px}
 .ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start;justify-content:safe center}
 .rtile{flex:none;width:64px;height:64px;position:relative;border:1px solid var(--bd);border-radius:6px;background:var(--card);overflow:hidden;padding:0}.rtile img{width:100%;height:100%;object-fit:contain;transition:transform .15s}.rtile span{position:absolute;right:3px;bottom:2px;font-size:11px;background:#000a;color:#fff;border-radius:3px;padding:0 4px}
+.ppv .pvcap{display:flex;align-items:center;gap:6px}.ppv .pvcap>div{flex:1;min-width:0}
+.ppv .pvrot{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--fg);background:var(--cont);border:1px solid var(--bd)}.ppv .pvrot:active{filter:brightness(.9)}.ppv .pvrot svg{width:22px;height:22px;fill:currentColor}
 .ppv .shp{flex:none;text-align:center;font-size:11px;color:var(--mut)}.ppv canvas{display:block;background:#fff;box-shadow:0 1px 3px #0006;margin-bottom:3px}
 .pact{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;position:sticky;bottom:-8px;background:var(--cont);padding:8px 0}
 .dcard{background:var(--cont);width:100%;max-width:420px;border-radius:28px;padding:24px 24px 16px;animation:up .2s ease-out}
@@ -490,6 +492,7 @@ Object.assign(IC,{zip:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h1
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
 const SV=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+IC.rotr='M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.72 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z';
 const PN=+((location.search.match(/[?&]pane=(\d)/)||[])[1]||0),KID=window.parent!==window&&PN>0;let DU=null;
 const S={dev:'local',path:'/',sel:new Set(),peers:[],items:[],clip:null,sig:'',miss:0,ips:'',known:{},err:'',down:false,lost:false,back:false,fails:0,hid:(()=>{try{return localStorage.getItem('ls_hidden')==='1'}catch(e){return false}})(),gal:true,rg:0,sort:LD('ls_sort','name'),asc:LD('ls_asc','1')!=='0',view:LD('ls_view','list')};
 const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Date',l:'Date modified',a:'Oldest first',d:'Newest first'},size:{t:'Size',l:'Size',a:'Smallest first',d:'Largest first'},type:{t:'Type',l:'Type',a:'A \u2192 Z',d:'Z \u2192 A'}};
@@ -1827,6 +1830,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
   /* page preview (same renderer as the PC dialog: PDF pages from the phone, pictures, text) */
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
+  let pvr=0;pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
   let pinfo=null,ptm=0;const pvf0=files.find(pvOK)||files[0];
   const sched=()=>{clearTimeout(ptm);ptm=setTimeout(drawPv,90)};redraw.push(sched);strip.addEventListener('scroll',()=>pvScroll(strip,sched),{passive:true});
   /* several pictures: they share the sheets when "pages per sheet" > 1 (same idea as the PC dialog) */
@@ -1850,7 +1854,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
     cap.textContent=files.length+' pictures \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')}
-  function drawPv(){try{drawPv0()}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
+  function drawPv(){try{drawPv0();pvTurn(strip,pvr,Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45))}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
   function drawPv0(){
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
     if(imgMode)return drawImgPv();
@@ -1951,6 +1955,15 @@ const pvImgs=new Map();
 /* one rendered page of the previewed document (JPEG from the phone: PdfRenderer), loaded lazily; cb redraws when it arrives */
 /* lazy: only the first PVLIM sheets ask the phone for page images; scrolling the strip raises the limit (pvScroll). Before: all (up to 60) pages were rendered at once and the strip redrew after every one. */
 let PVLIM=5;const PVNO={complete:false,naturalWidth:0};
+/* rotate the preview only (view, not the printout): turns every sheet canvas of the strip by deg and keeps it inside mw x mh */
+function pvTurn(strip,deg,mw,mh){if(!deg)return;strip.querySelectorAll('canvas').forEach(cv=>{
+  const w=parseFloat(cv.style.width),h=parseFloat(cv.style.height);if(!w||!h)return;
+  const sw=deg%180!==0,bw=sw?h:w,bh=sw?w:h,f=Math.min(1,mw/bw,mh/bh),box=E('div');
+  box.style.cssText='position:relative;margin-bottom:3px;width:'+Math.round(bw*f)+'px;height:'+Math.round(bh*f)+'px';
+  cv.style.cssText+=';position:absolute;margin:0;width:'+Math.round(w*f)+'px;height:'+Math.round(h*f)+'px;left:'+Math.round((bw-w)*f/2)+'px;top:'+Math.round((bh-h)*f/2)+'px;transform:rotate('+deg+'deg);transform-origin:50% 50%';
+  cv.parentNode.insertBefore(box,cv);box.append(cv)})}
+function pvRotBtn(cap,onTurn){const b=E('button','pvrot');b.type='button';b.title='Rotate preview';b.setAttribute('aria-label','Rotate preview');b.append(ic('rotr'));
+  const row=E('div','pvcap');cap.parentNode.insertBefore(row,cap);row.append(cap,b);b.onclick=onTurn;return b}
 function pvScroll(strip,cb){const n=strip.children.length;if(!n)return;const last=Math.floor((strip.scrollLeft+strip.clientWidth)/(strip.scrollWidth/n));if(last+3>PVLIM){PVLIM=last+3;cb()}}
 function pvPg(id,n,w,cb,s){if(s>PVLIM)return PVNO;const k=id+'|'+n+'|'+w;let im=pvImgs.get(k);if(im)return im;if(pvImgs.size>400)pvImgs.clear();
   im=new Image();im.onload=()=>cb&&cb();im.onerror=()=>{im._bad=1;cb&&cb()};im.src='/api/pvpage?id='+id+'&n='+n+'&w='+w;pvImgs.set(k,im);return im}
@@ -2017,6 +2030,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   card.append(E('div','handle'),E('h3','',pdf?'Save as PDF':'Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
+  let pvr=0;pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
   let pinfo=null,ptm=0,cur=null,hasOffice=false;
   const pvFile=()=>files.find(pvOK)||files[0];
   /* turn picture i by 90deg from how it looks NOW: the current auto-turns are frozen into the manual turns first, so the others do not jump and the tap always shows */
@@ -2037,7 +2051,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(n/2):n;
     cap.textContent=files.length+' picture'+(files.length===1?'':'s')+' (tap a picture to turn it) \u2192 '+n+' side'+(n===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(n>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')+''}
-  function drawPv(){
+  function drawPv(){drawPv1();const [mw,mh]=pvMax();pvTurn(strip,pvr,mw,mh)}
+  function drawPv1(){
     if(imgMode)return drawImgPv();
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';const f=pvFile();
     if(!f){cap.textContent='Folders are expanded when printing - no preview';return}
