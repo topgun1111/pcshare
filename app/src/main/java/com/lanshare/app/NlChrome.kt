@@ -178,7 +178,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             cv.drawText(fit(cnt, cntP, right - x), x, ty(bh / 2f, cntP), cntP)
             return
         }
-        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, p.onbar)   // main menu icon: 32 dp (the other top-bar icons stay 24) }
+        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, p.onbar) }   // main menu icon: 32 dp (the other top-bar icons stay 24)
         btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 24f, p.onbar) }
         btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 24f, p.onbar) }
         btn["scan"]?.let {
