@@ -77,7 +77,10 @@ class PhonePrint(private val act: Activity) {
     }
 
     private fun prepare(json: String) {
-        val arr = JSONObject(json).getJSONArray("items")
+        val root = JSONObject(json)
+        val arr = root.getJSONArray("items")
+        val optsJ = root.optJSONObject("opts")
+        val trimOn = optsJ?.optString("fit") == "trim"   // "Trim blank edges": crop boxes measured by the preview
         val dir = File(act.cacheDir, "print").apply { mkdirs() }
         dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
         val ins = ArrayList<In>()
@@ -97,7 +100,11 @@ class PhonePrint(private val act: Activity) {
             }
             val f = File(dir, "${System.nanoTime()}_${i}_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
             URL(url).openStream().use { s -> f.outputStream().use { out -> s.copyTo(out) } }
-            ins.add(In(name, f, kind))
+            var use = f
+            if (kind == "img") com.lanshare.app.core.PrintPrep.cropBox(optsJ, i)?.let { box ->
+                try { use = com.lanshare.app.core.PrintPrep.trim(f, name, box).file } catch (_: Exception) {}
+            }
+            ins.add(In(name, use, kind))
         }
         if (skipped.isNotEmpty())
             toast("Can't print " + skipped.distinct().joinToString(", ") + " on the phone. Use a PC with pcprint.py for Office files.")
@@ -107,7 +114,7 @@ class PhonePrint(private val act: Activity) {
         else act.runOnUiThread {
             askLayout(imgs) { layout ->
                 pool.execute {
-                    try { build(ins, layout) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+                    try { build(ins, if (trimOn && layout == 1) 0 else layout) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
                 }
             }
         }

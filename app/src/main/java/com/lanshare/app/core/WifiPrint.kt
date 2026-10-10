@@ -62,7 +62,7 @@ object WifiPrint {
             val nup0 = (opts?.optInt("nup", 1) ?: 1).takeIf { it in LAY } ?: 1
             val allPics = files.size > 1 && files.all { (sp, _) -> vbase(sp).substringAfterLast('.', "").lowercase().let { it in IMG || it in PrintPrep.PICS } }
             val merge = nup0 > 1 && allPics
-            if (merge) mergeImages(job, src, p, files, jo, nup0, (opts?.optInt("border", 0) ?: 0) == 1, dir, failed)
+            if (merge) mergeImages(job, src, p, files, jo, nup0, (opts?.optInt("border", 0) ?: 0) == 1, dir, failed, opts)
 
             for ((i, f0) in (if (merge) emptyList<Pair<String, Long>>() else files).withIndex()) {
                 if (job.cancel) throw Cancelled()
@@ -99,9 +99,10 @@ object WifiPrint {
                         cur = pdf; cext = "pdf"
                     }
                     val k2 = if (ext in IMG) PrintPrep.Kind.PIC else kind
+                    val cropBox = if (k2 == PrintPrep.Kind.PIC) PrintPrep.cropBox(opts, i) else null   // "Trim blank edges"
                     if (k2 == PrintPrep.Kind.PIC || k2 == PrintPrep.Kind.WEB || k2 == PrintPrep.Kind.SNIFF) {
                         try {
-                            val out = PrintPrep.convert(k2, t, name)
+                            val out = if (cropBox != null) PrintPrep.trim(t, name, cropBox) else PrintPrep.convert(k2, t, name)
                             cur = out.file; temps.add(out.file)
                             cext = out.name.substringAfterLast('.', "").lowercase()
                         } catch (x: Cancelled) { throw x
@@ -387,12 +388,13 @@ object WifiPrint {
 
     /** Downloads every picture, turns it into JPEG and prints them together on shared sheets. */
     private fun mergeImages(job: Job, src: Endpoint, p: WifiPrinters.P, files: List<Pair<String, Long>>, jo: Ipp.JobOpts, nup: Int,
-                            border: Boolean, dir: File, failed: MutableList<String>) {
+                            border: Boolean, dir: File, failed: MutableList<String>, opts: JSONObject? = null) {
         val temps = ArrayList<File>()
         try {
             job.label = "Merging ${files.size} pictures for ${p.name}"
             val jpgs = ArrayList<File>()
-            for ((sp, _) in files) {
+            for ((fi, f0) in files.withIndex()) {
+                val sp = f0.first
                 if (job.cancel) throw Cancelled()
                 val nm = vbase(sp)
                 val t = File(dir, "w-" + System.nanoTime().toString(36)).also { temps.add(it) }
@@ -408,7 +410,8 @@ object WifiPrint {
                     }
                 }
                 try {
-                    val out = PrintPrep.convert(PrintPrep.Kind.PIC, t, nm)
+                    val cb = PrintPrep.cropBox(opts, fi)   // "Trim blank edges"
+                    val out = if (cb != null) PrintPrep.trim(t, nm, cb) else PrintPrep.convert(PrintPrep.Kind.PIC, t, nm)
                     temps.add(out.file); jpgs.add(out.file)
                 } catch (x: Cancelled) { throw x
                 } catch (x: Throwable) { failed.add("$nm: could not be read (" + errText(x) + ")") }

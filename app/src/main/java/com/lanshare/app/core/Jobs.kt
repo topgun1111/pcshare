@@ -382,7 +382,8 @@ object Jobs {
                     var sendName = name
                     val kind = PrintPrep.kind(ext)
                     if (kind == PrintPrep.Kind.NO || (kind == PrintPrep.Kind.SNIFF && size > PrintPrep.SNIFF_MAX)) throw PrintFail(if (ext.isEmpty()) "this file type cannot be printed" else "$ext files cannot be printed")
-                    if (kind == PrintPrep.Kind.PIC || kind == PrintPrep.Kind.WEB || kind == PrintPrep.Kind.SNIFF) {
+                    val cropBox = if (ext in PrintPrep.IMG_EXT) PrintPrep.cropBox(opts, i) else null   // "Trim blank edges"
+                    if (cropBox != null || kind == PrintPrep.Kind.PIC || kind == PrintPrep.Kind.WEB || kind == PrintPrep.Kind.SNIFF) {
                         try {
                             Core.cacheDir.mkdirs()
                             val t = java.io.File(Core.cacheDir, "print-" + System.nanoTime().toString(36)).also { tmp = it }
@@ -395,7 +396,7 @@ object Jobs {
                                     o.write(buf, 0, n); sent += n; job.done += n
                                 }
                             }
-                            val out = PrintPrep.convert(kind, t, name).also { if (it.file != t) tmp2 = it.file }
+                            val out = (if (cropBox != null) PrintPrep.trim(t, name, cropBox) else PrintPrep.convert(kind, t, name)).also { if (it.file != t) tmp2 = it.file }
                             val ins = out.file.inputStream(); opened = ins; body = ins; bodyLen = out.file.length()
                             sendName = out.name
                         } catch (x: Cancelled) { throw x

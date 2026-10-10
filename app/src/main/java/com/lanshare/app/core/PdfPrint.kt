@@ -100,7 +100,7 @@ object PdfPrint {
                 val name = vbase(sp)
                 job.label = "Preparing ${i + 1}/${files.size}: $name"
                 try {
-                    val pages = load(job, src, sp, size, dir, temps, srcs, rots?.optInt(i, 0) ?: 0)
+                    val pages = load(job, src, sp, size, dir, temps, srcs, rots?.optInt(i, 0) ?: 0, PrintPrep.cropBox(opts, i))
                     if (joined) groups[0].pages.addAll(pages)
                     else groups.add(Group(name.substringBeforeLast('.', name)).also { it.pages.addAll(pages) })
                 } catch (e: Cancelled) { throw e
@@ -146,7 +146,7 @@ object PdfPrint {
 
     // ---- input: file -> pages -------------------------------------------------------------------------------
 
-    private fun load(job: Job, ep: Endpoint, sp: String, size: Long, dir: File, temps: MutableList<File>, srcs: MutableList<Src>, rot: Int): List<Pg> {
+    private fun load(job: Job, ep: Endpoint, sp: String, size: Long, dir: File, temps: MutableList<File>, srcs: MutableList<Src>, rot: Int, crop: DoubleArray? = null): List<Pg> {
         val name = vbase(sp)
         val ext = name.substringAfterLast('.', "").lowercase()
         val kind = PrintPrep.kind(ext)
@@ -175,7 +175,7 @@ object PdfPrint {
         val k2 = if (ext in WifiPrint.IMG) PrintPrep.Kind.PIC else kind
         if (k2 == PrintPrep.Kind.PIC || k2 == PrintPrep.Kind.WEB || k2 == PrintPrep.Kind.SNIFF) {
             try {
-                val out = PrintPrep.convert(k2, t, name)
+                val out = if (crop != null && k2 == PrintPrep.Kind.PIC) PrintPrep.trim(t, name, crop) else PrintPrep.convert(k2, t, name)
                 cur = out.file; temps.add(out.file)
                 cext = out.name.substringAfterLast('.', "").lowercase()
             } catch (x: Cancelled) { throw x

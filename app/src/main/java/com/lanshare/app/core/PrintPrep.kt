@@ -1,5 +1,6 @@
 package com.lanshare.app.core
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.print.WebPdf
 import android.util.Base64
@@ -61,6 +62,39 @@ object PrintPrep {
     }
 
     private fun tmp(f: File, suffix: String) = File(f.parentFile, f.name + suffix)
+
+    /** every picture type this app prints (pcprint.py ones + the ones Android converts) */
+    val IMG_EXT = setOf("png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff") + PICS
+
+    /** "Trim blank edges": crop box of picture [i] as fractions [x0, y0, x1, y1] of the picture (EXIF turn applied), measured by the preview in the app; null = no crop. */
+    fun cropBox(opts: org.json.JSONObject?, i: Int): DoubleArray? {
+        if (opts == null || opts.optString("fit") != "trim") return null
+        val b = opts.optJSONArray("crops")?.optJSONArray(i) ?: return null
+        if (b.length() != 4) return null
+        val v = DoubleArray(4) { b.optDouble(it, Double.NaN).coerceIn(0.0, 1.0) }
+        if (v.any { it.isNaN() } || v[2] - v[0] < 0.05 || v[3] - v[1] < 0.05) return null
+        if (v[0] <= 0.001 && v[1] <= 0.001 && v[2] >= 0.999 && v[3] >= 0.999) return null
+        return v
+    }
+
+    /** Crops the picture [f] to [box] (same orientation and pixels the preview used) and returns it as a JPEG. */
+    fun trim(f: File, name: String, box: DoubleArray): Out {
+        val base = if (name.contains('.')) name.substringBeforeLast('.') else name
+        val jpg = Thumbs.forPrint(f)
+        val bmp = BitmapFactory.decodeByteArray(jpg, 0, jpg.size) ?: throw IOException("cannot decode the image")
+        try {
+            val x = Math.round(box[0] * bmp.width).toInt().coerceIn(0, bmp.width - 1)
+            val y = Math.round(box[1] * bmp.height).toInt().coerceIn(0, bmp.height - 1)
+            val w = (Math.round(box[2] * bmp.width).toInt() - x).coerceIn(1, bmp.width - x)
+            val h = (Math.round(box[3] * bmp.height).toInt() - y).coerceIn(1, bmp.height - y)
+            val c = Bitmap.createBitmap(bmp, x, y, w, h)
+            try {
+                val o = tmp(f, ".trim.jpg")
+                o.outputStream().use { c.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                return Out(o, "$base.jpg")
+            } finally { if (c !== bmp) c.recycle() }
+        } finally { bmp.recycle() }
+    }
 
     private fun jpeg(f: File, base: String): Out {
         val o = tmp(f, ".jpg")
