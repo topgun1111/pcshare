@@ -223,6 +223,7 @@ object Jobs {
                     .put("default", if (o.isNull("default")) JSONObject.NULL else o.optString("default"))
                     .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
                     .put("pypdf", o.optBoolean("pypdf", false))
+                    .put("hard", o.optDouble("hard", 0.0))   // the printer's unprintable edge in points (preview shades it)
                     .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
                     .put("office", if (o.isNull("office")) JSONObject.NULL else o.optString("office"))   // what turns Word/Excel/PowerPoint files into PDF on the PC (null = nothing, or an older pcprint.py)
             } finally { r.close() }

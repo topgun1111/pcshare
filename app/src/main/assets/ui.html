@@ -1930,7 +1930,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','','Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
-  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
+  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
   let pinfo=null,ptm=0,cur=null,hasOffice=false;
   const pvFile=()=>files.find(pvOK)||files[0];
   /* turn picture i by 90deg from how it looks NOW: the current auto-turns are frozen into the manual turns first, so the others do not jump and the tap always shows */
@@ -1966,11 +1966,12 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(st.booklet){order=pvBooklet(idx.length).map(x=>x==null?null:idx[x]);cols=2;rows=1;land=1}else{order=idx;[cols,rows,land]=PV_LAY[st.nup]||PV_LAY[1]}
     const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=(im&&im.naturalWidth>im.naturalHeight)||(!isText&&!st.paper&&pinfo.pw>pinfo.ph);
     const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
-    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!isText&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?+st.margin:0,clipBox=fitting&&per===1&&FM>0;
+    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!isText&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?Math.max(+st.margin,hardM):0,clipBox=fitting&&per===1&&FM>0;
     let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
     const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
     for(let s0=0;s0<shown;s0++){
       const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
+      if(hardM*k>=1){const hb=Math.round(hardM*k);cv.style.outline=hb+'px solid rgba(220,40,40,.22)';cv.style.outlineOffset='-'+hb+'px'}   /* red edge = the printer cannot print here */
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
       const cw=(sw-2*FM)/cols,ch=(sh-2*FM)/rows,mg=per===1?0:(st.booklet?8:12),cells=[],tm=(isText||PV_TXT.includes(ext0))&&st.margin!==''?+st.margin:50;
       const clipOn=()=>{if(clipBox){c.save();c.beginPath();c.rect(FM,FM,sw-2*FM,sh-2*FM);c.clip()}},clipOff=()=>{if(clipBox)c.restore()};
@@ -2002,8 +2003,28 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       zone(st.hdr,22+fs*.6);zone(st.ftr,sh-14);
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
-    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
-  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
+    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(hardM>0?' \u00b7 red edge: the printer cannot print within '+(hardM*0.3528).toFixed(1)+' mm of the paper edge':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
+  /* total over ALL selected files: pages -> sides -> sheets of paper (page counts of the other files are read in the background; Word / Excel files count as unknown) */
+  const pcnt=new Map();let cntBusy=false;
+  const nPages=n=>{let idx=pvPageSet(st.range,n);if(st.pages)idx=idx.filter(x=>(x+1)%2===(st.pages==='odd'?1:0));return idx.length};
+  const infoPages=x=>x?(x.kind==='text'?pvTextPages(x.text,st).pages.length:(x.kind==='none'||x.kind==='office'?null:(x.pages||null))):null;
+  function updateTotals(){
+    if(imgMode||files.length<2){tot.textContent='';return}
+    const lay=PV_LAY[st.nup]||PV_LAY[1],per=st.booklet?2:lay[0]*lay[1],sd=k=>st.booklet?Math.ceil(k/4)*2:Math.ceil(k/per);
+    let pages=0,sides=0,paper=0,unk=0;
+    const two=st.duplex==='long'||st.duplex==='short'||!!st.booklet;
+    files.forEach((f,i)=>{const n=infoPages(pcnt.get(i));if(n==null){unk++;return}const k=nPages(n);pages+=k;if(!st.join){const s1=sd(k);sides+=s1;paper+=two?Math.ceil(s1/2):s1}});
+    if(st.join){sides=sd(pages);paper=two?Math.ceil(sides/2):sides}
+    const cp=Math.max(1,st.copies||1);
+    tot.textContent='All '+files.length+' files: '+(unk?'at least ':'')+pages+' page'+(pages===1?'':'s')+' \u2192 '+sides+' side'+(sides===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(cp>1?' \u00d7 '+cp+' = '+paper*cp:'')+(unk?' ('+unk+' file'+(unk===1?'':'s')+' not counted: Word / Excel / unknown'+(files.length>12?', max 12 read':'')+')':'')+(st.join?' \u00b7 one job':'')};
+  async function loadCounts(){if(cntBusy||imgMode||files.length<2)return;cntBusy=true;
+    for(let i=0;i<Math.min(files.length,12);i++){if(pcnt.has(i))continue;const f=files[i];
+      if(!pvOK(f)||PV_OFFICE.includes(pvExt(f))||PV_WEB.includes(pvExt(f))){pcnt.set(i,null);continue}   /* Word / Excel / web pages would need a conversion just to count */
+      try{pcnt.set(i,await pvInfo(f,pc))}catch(e){pcnt.set(i,null)}updateTotals()}
+    for(let i=12;i<files.length;i++)if(!pcnt.has(i))pcnt.set(i,null);
+    updateTotals();cntBusy=false}
+  redraw.push(updateTotals);
+  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;pcnt.set(files.indexOf(pvFile()),i);updateTotals();drawPv();loadCounts()});else cap.textContent='Folders are expanded when printing - no preview';
   const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
     redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
@@ -2038,6 +2059,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     api('GET','/api/printer?dev='+enc(pc.id)+(st.printer?'&printer='+enc(st.printer):''),null,12000).then(r=>{
       if(!r.ok){info.textContent='Print service not reachable on this PC';info.style.color='var(--err)';return}
       if(r.printers&&r.printers.length){pw.style.display='flex';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
+      {const h=+r.hard||0;if(h!==hardM){hardM=h;redraw.forEach(f=>f())}}
       if(!r.printer){info.textContent='No default printer set on the PC';info.style.color='var(--err)'}
       else if(r.problem){info.textContent=r.printer+' \u00b7 '+r.problem;info.style.color='var(--err)'}
       else{info.textContent=r.printer+' \u00b7 ready';info.style.color='var(--ok)'}

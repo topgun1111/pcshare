@@ -307,3 +307,17 @@ Delete `BrowserActivity.kt`, the `<activity .BrowserActivity>` line, the `native
 - **Text on the phone:** CSV / TSV printed as an aligned table (font shrinks down to 5.5 pt before wrapping); a toast when a text file is cut at 4 MB.
 - NOT done: PDF page ranges as vectors (needs PdfBox / pdfium dependency, cannot be added or checked here), enlarge-to-fit (changes actual-size printing; no UI for it), font size / line numbers / header-footer options for text, Wi-Fi "one job" join, PWG raster over IPP on the PC (only if a real print fails), duplex-swap switch in the app.
 - Not tested: Kotlin not compiled; ui.html only `node --check`ed.
+
+## pcprint.py v18 - Windows output decoding crash
+- Log showed `THREAD CRASH in _readerthread: UnicodeDecodeError 'charmap' ... cp1254 ... position 724` while reading `ipconfig` output (Turkish Windows: ipconfig writes the OEM code page cp857, `subprocess` decodes with cp1254; byte 0x8d is undefined there, e.g. in "Yerel Alan Baglantisi"). The service kept running but the address list came from the fallback.
+- Fix: every `subprocess.run(..., text=True)` now also has `errors="replace"` (ipconfig, netstat, PowerShell, SumatraPDF, lpstat ...). Only digits / ASCII are parsed from these outputs, so replacement characters are harmless.
+- Not tested on Windows.
+
+## pcprint.py v19 - only own addresses
+- After the v18 fix the log no longer crashed, but `pc_addresses()` now listed the router (192.168.1.1) as "this PC": it took every IPv4-looking number from `ipconfig` (gateway, DNS). Now only lines containing "IPv4" are read (also true for Turkish "IPv4 Adresi").
+- Not tested on Windows.
+
+## Print preview: printer edge + totals (pcprint.py v20)
+- **Unprintable edge:** `/ping` returns `hard` (points, `hard_margin(pr)`; 0 off Windows / unknown); `Jobs.printerStatus` passes it on; `printOptions` keeps `hardM`, draws a translucent red band on every preview sheet (`outline` with negative offset on the canvas) and notes it in the caption (mm). With a chosen margin the preview's fitting margin is now `max(margin, hardM)`, same rule as `eff_margin` on the PC.
+- **Totals over all files:** under the caption a bold line "All N files: P pages -> S sides, K sheets of paper x copies" (`updateTotals`, `loadCounts`). Page counts of files 2..12 are read in the background (PDF, pictures, text); Word / Excel / web pages are not converted just to count and are reported as "not counted". Honors page range, odd/even, pages per sheet, booklet, two-sided, join (one job = counted together) and copies.
+- Not tested: no real printer / Windows; ui.html only `node --check`ed, Kotlin not compiled.
