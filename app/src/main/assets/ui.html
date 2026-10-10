@@ -2791,7 +2791,6 @@ function drawerRender(){
       if(!col){peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
           bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,cls:'dev',onclick:()=>openLoc(p.id,'/')}))});
         if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
-    drawerPrinters(bd);
     bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
     QF.forEach((q,n)=>{
@@ -2812,6 +2811,7 @@ function drawerRender(){
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
       bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Back to Download, DCIM, Movies, Pictures, Music, Documents.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
     bd.append(E('div','dsep'));
+    drawerPrinters(bd);
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
