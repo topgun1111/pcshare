@@ -349,7 +349,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val r = row
         val s = w - 14f * d
         val nameH = (lines.size + (if (dupOwn) 1 else 0)) * 16.25f * d
-        val smallH = (if (r != null && r.b.isNotEmpty()) 2 else 1) * 16.8f * d
+        val smallH = 16.8f * d                                       // one line (count / size): the date line is not shown on grid cards
         setMeasuredDimension(w, Math.round(1f * d + 6f * d + s + 6f * d + nameH + 2f * d + smallH + 8f * d + 1f * d))
     }
 
@@ -370,8 +370,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val cx = lx + s / 2f; val cy = ly + s / 2f
         // ---- lead ----
         if (r.dir) {
-            val fw = 0.4f * s; val fh = fw * 48f / 56f
-            cv.save(); cv.translate(cx - fw / 2f, cy - fh / 2f); val sc = fw / 56f; cv.scale(sc, sc)
+            val fw = 0.62f * s; val fh = fw * 48f / 56f                        // folder icon: 62 % of the square (was 40 %)
+            val fy = cy - (if (r.badge != null) 0.07f * s else 0f)            // a little higher when the small category badge sits at the bottom
+            cv.save(); cv.translate(cx - fw / 2f, fy - fh / 2f); val sc = fw / 56f; cv.scale(sc, sc)
             p.color = 0xFFFB8C00.toInt(); cv.drawPath(NlIcons.foldBack, p)
             p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
             p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
@@ -446,7 +447,6 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         y += 2f * d
         val b1 = y + (16.8f * d - (fs.descent - fs.ascent)) / 2f - fs.ascent
         cv.drawText(r.a, (w - smallP.measureText(r.a)) / 2f, b1, smallP)
-        if (r.b.isNotEmpty()) cv.drawText(r.b, (w - smallP.measureText(r.b)) / 2f, b1 + 16.8f * d, smallP)
     }
 }
 
