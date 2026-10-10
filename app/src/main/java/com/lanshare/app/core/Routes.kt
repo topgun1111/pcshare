@@ -90,6 +90,15 @@ object Routes {
                 if (ex.q("dev") == "local" && arcSplit(vnorm(q["path"] ?: "/")) == null) Core.local.counts(vnorm(q["path"] ?: "/")).forEach { (k, n) -> o.put(k, n) }
                 return ex.json(o)
             }
+            "folderstat" -> {   // {files, bytes, partial} of one folder of this phone, recursive (start menu tiles)
+                val o = JSONObject()
+                val sp = vnorm(q["path"] ?: "/")
+                if (ex.q("dev") == "local" && arcSplit(sp) == null) {
+                    val (n, b, part) = try { Core.local.stat(sp) } catch (_: Exception) { Triple(-1L, 0L, false) }
+                    if (n >= 0) o.put("files", n).put("bytes", b).put("partial", part)
+                }
+                return ex.json(o)
+            }
             "ls" -> {
                 val dev = ex.q("dev")
                 val path = vnorm(q["path"] ?: "/")

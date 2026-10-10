@@ -372,6 +372,8 @@ body.dopen{overflow:hidden}
 .di .dl{flex:none;width:36px;height:36px;display:grid;place-items:center}
 .di .dl svg{width:36px;height:36px}.di .dl svg.s24{width:24px;height:24px}
 .di .dt{flex:1;min-width:0;display:flex;flex-direction:column}
+.di.dev .dt b{font-weight:700}
+#peers .chip>span{font-weight:700}.li .dn{font-weight:700}
 .di .dt b{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .di .dt small{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .di.on .dt small{color:inherit;opacity:.75}
@@ -652,7 +654,7 @@ function devPicker(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Devices'));
   const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
   const row=(label,id,p)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(id==='local'?ic('phone'):E('i','dot'+(p&&p.ok===false?' wn':'')));
-    const nr=E('div','');nr.append(E('span','',label));
+    const nr=E('div','');nr.append(E('span','dn',label));
     if(p&&p.via){const tb=E('em','',connTxt(p));tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+(p.via==='Tailscale'?'rgba(106,27,154,.15);color:#6A1B9A':'rgba(46,125,50,.15);color:#2E7D32');nr.append(tb)}
     lt.append(nr);if(p&&p.ok===false){const sm=E('small','','offline'+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}
     b.append(ld,lt);b.onclick=()=>{fin();openDev(id)};card.append(b)};
@@ -2643,12 +2645,17 @@ function homeShow(){
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
   let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',smb:'var(--hc6)'};
-  const tile=(k,t,sub,fn)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
-    const tb=E('span','tb');tb.innerHTML=hmSvg(k);b.append(tb,E('span','tt',t),E('span','ts',sub));if(fn){b.onclick=fn;b.onkeydown=e=>{if(e.key==='Enter')fn()}}return b};
+  const tile=(k,t,sub,fn,stat)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
+    const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=fn;b.onkeydown=e=>{if(e.key==='Enter')fn()}}
+    /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
+    if(stat){const ck='ls_hs_'+stat,sh=v=>{if(v&&v.files!=null)ts.textContent=fmt(v.bytes)+' ('+v.files+(v.partial?'+':'')+')'};
+      try{sh(JSON.parse(localStorage.getItem(ck)||'null'))}catch(e){}
+      api('GET','/api/folderstat?dev=local&path='+enc(stat),null,30000).then(r=>{if(r&&r.files!=null){try{localStorage.setItem(ck,JSON.stringify(r))}catch(e){}if(homeOn())sh(r)}}).catch(()=>{})}
+    return b};
   const g1=E('div','hg'),g2=E('div','hg');
-  g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/Pictures')}),
-    tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/Movies')}),
-    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')}));
+  g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/Pictures')},'/Pictures'),
+    tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/Movies')},'/Movies'),
+    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
     tile('sto','Storage Analyzer','Coming soon',null));
@@ -2684,7 +2691,7 @@ function openLoc(dev,path){
   if(dev!=='local'&&!S.peers.find(x=>x.id===dev)){toast('\u26a0 That device is not available right now',3000);return}
   S.newest=false;S.dev=dev;S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=true;load()}
 function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, meter}
-  const b=E('div','di'+(o.on?' on':''));b.setAttribute('role','button');b.tabIndex=0;
+  const b=E('div','di'+(o.on?' on':'')+(o.cls?' '+o.cls:''));b.setAttribute('role','button');b.tabIndex=0;
   const l=E('span','dl');l.append(o.lead);
   const t=E('span','dt');t.append(E('b','',o.title));if(o.sub)t.append(E('small','',o.sub));
   if(o.meter!=null){const m=E('div','dmeter'),i=E('i');i.style.width=o.meter+'%';m.append(i);t.append(m)}
@@ -2734,7 +2741,7 @@ function drawerRender(){
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
       h.onclick=()=>{DEVCOL=!col;drawerRender()};bd.append(h);
       if(!col){peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
-          bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
+          bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,cls:'dev',onclick:()=>openLoc(p.id,'/')}))});
         if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
     drawerPrinters(bd);
     bd.append(E('div','dsep'));

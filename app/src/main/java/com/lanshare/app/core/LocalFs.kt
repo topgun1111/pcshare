@@ -88,6 +88,28 @@ class LocalFs(rootPath: String) : Endpoint {
         return res
     }
 
+    private val statCache = java.util.concurrent.ConcurrentHashMap<String, Triple<Long, Long, Long>>()   // folder -> (time, files, bytes)
+
+    /** Number of files and total bytes below folder v (start menu tiles). Symlinks are not followed, hidden files count. Cached for a minute; stops after [secs] seconds and then returns what it has (partial = true). */
+    fun stat(v: String, secs: Int = 8): Triple<Long, Long, Boolean> {
+        val key = vnorm(v)
+        statCache[key]?.let { if (System.currentTimeMillis() - it.first < 60_000) return Triple(it.second, it.third, false) }
+        val end = System.currentTimeMillis() + secs * 1000L
+        var files = 0L
+        var bytes = 0L
+        val stack = ArrayDeque<File>()
+        stack.addLast(real(v))
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeLast()
+            for (f in dir.listFiles() ?: continue) {
+                if (f.isDirectory) { if (!isLink(f)) stack.addLast(f) } else { files++; bytes += f.length() }
+            }
+            if (System.currentTimeMillis() > end) return Triple(files, bytes, true)
+        }
+        statCache[key] = Triple(System.currentTimeMillis(), files, bytes)
+        return Triple(files, bytes, false)
+    }
+
     /** Recursive name search below folder v (case-insensitive substring). Capped by count and time. */
     fun search(v: String, q: String, limit: Int = 300, secs: Int = 15): SearchResult {
         val ql = q.lowercase()
