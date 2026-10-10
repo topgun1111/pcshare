@@ -42,3 +42,4 @@ Launch -> menu shows 5 tiles; each tile opens its screen and Back returns to the
 - 2026-10-11: drawer tab strip (Folders / Favorites / Recent) removed: no Favorites, no Recent history (`histPush`, `favToggle`, `ls_fav`, `ls_his`, `ls_dtab` code deleted); "Main menu" is now the first row. `#dtabs` stays in the DOM but `display:none`; `NlDrawer.kt` hides its tab view when the strip is empty. JS checked with `node --check`; Kotlin not compiled.
 - 2026-10-11: top bar buttons bigger: bar 44 -> 52 px, buttons 40 -> 48 px, search / view / refresh / split / settings icons 24 -> 30 (CSS `.bar .ibtn` + `NlChrome.kt` NlBarView). Not compiled.
 - 2026-10-11: line between list rows 1 -> 2 px (CSS `.row` border-bottom + `NativeList.kt` row divider). Not compiled.
+- 2026-10-11: drawer 'Main menu' row bigger (`.di.mm`: icon 44, title 23 px, subtitle 15 px, row 76 px). Not compiled.

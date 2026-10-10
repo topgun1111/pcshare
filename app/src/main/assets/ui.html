@@ -419,6 +419,7 @@ body.dopen{overflow:hidden}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
+.di.mm{min-height:76px;gap:14px}.di.mm .dl{width:44px;height:44px}.di.mm .dl svg{width:44px;height:44px}.di.mm .dt b{font-size:23px;font-weight:600}.di.mm .dt small{font-size:15px}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
@@ -2766,7 +2767,7 @@ function drawerRender(){
   const here=(dev,path)=>S.dev===dev&&S.path===path;
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
-    bd.append(dItem({lead:ic('menu','s24'),title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
+    bd.append(dItem({lead:ic('menu'),cls:'mm',title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
     bd.append(E('div','dsep'));
     {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
