@@ -2,6 +2,8 @@ package com.lanshare.app
 
 import android.animation.ValueAnimator
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -17,6 +19,7 @@ import android.util.LruCache
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -80,6 +83,15 @@ class ImageViewerActivity : Activity() {
     private var slide = false
     private var gen = 0
 
+    // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
+    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }
+    private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
+    private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
+    private var ocrBusy = false
+    private lateinit var ocrBtn: TextView
+    private lateinit var selBar: LinearLayout
+    private lateinit var copyBtn: TextView
+
     private val slideTick = object : Runnable {
         override fun run() {
             if (!slide) return
@@ -126,7 +138,7 @@ class ImageViewerActivity : Activity() {
             offscreenPageLimit = 1
             adapter = Ad()
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position) }
+                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position); updateOcrBar() }
                 override fun onPageScrollStateChanged(state: Int) { if (state == ViewPager2.SCROLL_STATE_DRAGGING && slide) setSlide(false) }
             })
         }
@@ -138,9 +150,9 @@ class ImageViewerActivity : Activity() {
         }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xB3000000.toInt(), 0x00000000))
-            setPadding(dp(8), dp(16), dp(8), dp(8))
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xB3000000.toInt(), 0x00000000))
+            setPadding(dp(8), dp(8), dp(8), dp(16))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
         }
         val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
         titleTv = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
@@ -149,17 +161,42 @@ class ImageViewerActivity : Activity() {
         slideBtn = tv("\u25B6", 18f).apply { setOnClickListener { setSlide(!slide) } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
         val edit = tv("\u270e", 20f).apply { setOnClickListener { edit() } }
+        ocrBtn = tv("T", 20f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setOnClickListener { toggleOcr() } }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(slideBtn)
+        top.addView(ocrBtn)
         top.addView(edit)
         top.addView(share)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(8) + b.left, dp(16), dp(8) + b.right, dp(8) + b.bottom)
+            v.setPadding(dp(8) + b.left, dp(8) + b.top, dp(8) + b.right, dp(16))
             insets
         }
         root.addView(top)
+
+        // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
+        fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setOnClickListener { act() } }
+        copyBtn = barBtn("Copy all") { copyOcr() }
+        selBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            background = GradientDrawable().apply { setColor(0xE6202124.toInt()); cornerRadius = dp(20).toFloat() }
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            visibility = View.GONE
+            addView(copyBtn)
+            addView(barBtn("Select all") { holder(pager.currentItem)?.ov?.selectAll() })
+            addView(barBtn("Search") { searchOcr() })
+            addView(barBtn("Share") { shareOcr() })
+            addView(barBtn("\u2715") { closeOcr() })
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) }
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(selBar) { v, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            (v.layoutParams as FrameLayout.LayoutParams).bottomMargin = dp(16) + b.bottom
+            v.requestLayout()
+            insets
+        }
+        root.addView(selBar)
         setContentView(root)
     }
 
@@ -195,7 +232,8 @@ class ImageViewerActivity : Activity() {
         val parsed = try { if (json == null) null else parse(json) } catch (_: Exception) { null }
         if (parsed == null || parsed.first.isEmpty()) { finish(); return }
         gen++
-        loading.clear(); failed.clear(); dims.clear(); cache.evictAll()
+        loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); ocrOn.clear(); ocrBusy = false
+        selBar.visibility = View.GONE
         File(cacheDir, "img").deleteRecursively()
         items = parsed.first
         pager.adapter = Ad()
@@ -339,6 +377,75 @@ class ImageViewerActivity : Activity() {
         }.start()
     }
 
+    // ---------------------------------------------------------------- select text (OCR)
+    /** "T" button: first press recognises the current picture and shows the text layer, next press hides it. */
+    private fun toggleOcr() {
+        val pos = pager.currentItem
+        if (pos in ocrOn) { closeOcr(); return }
+        if (ocrBusy) return
+        val bm = cache.get(pos)
+        if (bm == null) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (slide) setSlide(false)
+        val have = ocrRes[pos]
+        if (have != null) { showOcr(pos, have); return }
+        ocrBusy = true
+        ocrBtn.alpha = 0.4f
+        val my = gen
+        ocr.recognize(bm) { res ->
+            if (my != gen || isDestroyed) return@recognize
+            ocrBusy = false
+            ocrBtn.alpha = 1f
+            res.onSuccess { lines ->
+                ocrRes[pos] = lines
+                if (lines.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show()
+                else showOcr(pos, lines)
+            }.onFailure { e -> Toast.makeText(this, e.message ?: "Cannot read the text", Toast.LENGTH_LONG).show() }
+        }
+    }
+
+    private fun showOcr(pos: Int, lines: List<OcrLine>) {
+        if (lines.isEmpty()) return
+        ocrOn.add(pos)
+        holder(pos)?.applyOcr(lines)
+        updateOcrBar()
+    }
+
+    private fun closeOcr() {
+        val pos = pager.currentItem
+        ocrOn.remove(pos)
+        holder(pos)?.ov?.setLines(null)
+        updateOcrBar()
+    }
+
+    private fun updateOcrBar() {
+        val ov = holder(pager.currentItem)?.ov
+        val on = pager.currentItem in ocrOn && ov != null && ov.hasLines()
+        selBar.visibility = if (on) View.VISIBLE else View.GONE
+        ocrBtn.setTextColor(if (on) 0xFF8AB4F8.toInt() else Color.WHITE)
+        copyBtn.text = if (ov != null && ov.hasSelection()) "Copy" else "Copy all"
+    }
+
+    private fun ocrText(): String? { val ov = holder(pager.currentItem)?.ov ?: return null; return ov.selectedText() ?: ov.allText() }
+
+    private fun copyOcr() {
+        val t = ocrText() ?: return
+        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("text", t))
+        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Opens the selected text (else all text, cut to 200 chars) as a web search in the browser. */
+    private fun searchOcr() {
+        val t = (ocrText() ?: return).replace(Regex("\\s+"), " ").trim().take(200)
+        if (t.isEmpty()) return
+        try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(t)))) }
+        catch (e: Exception) { Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun shareOcr() {
+        val t = ocrText() ?: return
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share text"))
+    }
+
     // ---------------------------------------------------------------- düzenle (döndür / kırp / boyutlandır)
     private fun edit() {
         val pos = pager.currentItem
@@ -363,19 +470,23 @@ class ImageViewerActivity : Activity() {
         val old = items.getOrNull(pos) ?: return
         items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
         File(File(cacheDir, "img"), "$pos.bin").delete()
-        cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos)
-        holder(pos)?.let { h -> h.iv.setBmp(null); h.show(pos) }
+        cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos); ocrRes.remove(pos); ocrOn.remove(pos)
+        holder(pos)?.let { h -> h.ov.setLines(null); h.iv.setBmp(null); h.show(pos) }
+        updateOcrBar()
         updateTitle(pos)
     }
 
     // ---------------------------------------------------------------- pager pages
-    private inner class Pg(val root: FrameLayout, val iv: ZoomImageView, val spin: ProgressBar, val err: TextView) : RecyclerView.ViewHolder(root) {
+    private inner class Pg(val root: FrameLayout, val iv: ZoomImageView, val ov: OcrOverlayView, val spin: ProgressBar, val err: TextView) : RecyclerView.ViewHolder(root) {
         var pos = -1
+        /** Text layer on this page: lines are in pixels of the bitmap [iv] shows. */
+        fun applyOcr(lines: List<OcrLine>) { ov.setLines(lines); ov.setImageMatrix(iv.matrixNow()) }
         fun show(p: Int) {
             if (p != pos) return
             val bm = cache.get(p)
             val e = failed[p]
             if (bm != null) iv.setBmp(bm) else if (e != null) iv.setBmp(null)   // evicted from the cache but still on screen: keep showing it
+            if (bm != null && p in ocrOn && !ov.hasLines()) ocrRes[p]?.let { applyOcr(it) }   // page came back from the recycler: restore its text layer
             val wait = !iv.hasBmp() && e == null
             spin.visibility = if (wait) View.VISIBLE else View.GONE
             err.text = e ?: ""
@@ -389,20 +500,26 @@ class ImageViewerActivity : Activity() {
         override fun onCreateViewHolder(parent: ViewGroup, type: Int): Pg {
             val c = parent.context
             val root = FrameLayout(c).apply { layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
-            val iv = ZoomImageView(c).apply { onTap = { toggleUi() } }
+            val iv = ZoomImageView(c)
+            val ov = OcrOverlayView(c)
+            iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
+            iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
+            iv.onHold = { x, y -> ov.hasLines() && ov.selectWordAt(x, y) }
+            ov.onSelection = { _ -> updateOcrBar() }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
             root.addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            root.addView(ov, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             root.addView(spin); root.addView(err)
-            return Pg(root, iv, spin, err)
+            return Pg(root, iv, ov, spin, err)
         }
-        override fun onBindViewHolder(h: Pg, position: Int) { if (h.pos != position) h.iv.setBmp(null); h.pos = position; h.show(position); request(position) }
+        override fun onBindViewHolder(h: Pg, position: Int) { if (h.pos != position) { h.iv.setBmp(null); h.ov.setLines(null) }; h.pos = position; h.show(position); request(position) }
         // RecyclerView re-attaches cached pages WITHOUT calling bind: this is where a page that finished loading while it was off-screen gets its picture
         override fun onViewAttachedToWindow(h: Pg) { if (h.pos >= 0) h.show(h.pos) }
-        override fun onViewRecycled(h: Pg) { h.pos = -1; h.iv.setBmp(null) }
+        override fun onViewRecycled(h: Pg) { h.pos = -1; h.iv.setBmp(null); h.ov.setLines(null) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -414,6 +531,7 @@ class ImageViewerActivity : Activity() {
         gen++
         ui.removeCallbacksAndMessages(null)
         pool.shutdownNow()
+        ocr.close()
         cache.evictAll()
         File(cacheDir, "img").deleteRecursively()
         super.onDestroy()
@@ -428,6 +546,12 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     private var bh = 0
     private var fit = 1f
     var onTap: (() -> Unit)? = null
+    /** Long press at view coordinates; return true if it was used (text selection) - gives a haptic tick. */
+    var onHold: ((Float, Float) -> Boolean)? = null
+    /** Image px -> view px matrix changed (zoom / pan / new picture / resize). */
+    var onMatrixChanged: ((Matrix) -> Unit)? = null
+    fun matrixNow() = Matrix(mx)
+    private var held = false          // long press was used for text selection: ignore the rest of this touch (no accidental pan)
 
     init { scaleType = ScaleType.MATRIX }
 
@@ -447,6 +571,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         mx.setScale(fit, fit)
         mx.postTranslate((width - bw * fit) / 2f, (height - bh * fit) / 2f)
         imageMatrix = mx
+        onMatrixChanged?.invoke(mx)
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); reset() }
@@ -462,6 +587,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         v[Matrix.MTRANS_Y] = if (ih <= height) (height - ih) / 2f else v[Matrix.MTRANS_Y].coerceIn(height - ih, 0f)
         mx.setValues(v)
         imageMatrix = mx
+        onMatrixChanged?.invoke(mx)
     }
 
     private fun zoomTo(target: Float, fx: Float, fy: Float, animate: Boolean) {
@@ -490,11 +616,13 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     private val gd = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap?.invoke(); return true }
+        override fun onLongPress(e: MotionEvent) { if (onHold?.invoke(e.x, e.y) == true) { held = true; performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } }
         override fun onDoubleTap(e: MotionEvent): Boolean {
             if (zoomed()) zoomTo(fit, e.x, e.y, true) else zoomTo(maxOf(fit * 2.5f, minOf(width / bw.toFloat(), 1f)), e.x, e.y, true)
             return true
         }
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (held) return true
             if (!zoomed()) { parent?.requestDisallowInterceptTouchEvent(false); return false }
             mx.getValues(v)
             val s = v[Matrix.MSCALE_X]
@@ -511,7 +639,8 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         if (bw == 0) return super.onTouchEvent(e)
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
-        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(zoomed())
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
+        if (held) parent?.requestDisallowInterceptTouchEvent(true)
         if (e.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         return true
     }
