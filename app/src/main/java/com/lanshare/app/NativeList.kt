@@ -370,17 +370,22 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val cx = lx + s / 2f; val cy = ly + s / 2f
         // ---- lead ----
         if (r.dir) {
-            val fw = 0.62f * s; val fh = fw * 48f / 56f                        // folder icon: 62 % of the square (was 40 %)
-            val fy = cy - (if (r.badge != null) 0.07f * s else 0f)            // a little higher when the small category badge sits at the bottom
-            cv.save(); cv.translate(cx - fw / 2f, fy - fh / 2f); val sc = fw / 56f; cv.scale(sc, sc)
+            // folder icon: 62 % of the square; with a category badge the badge sits INSIDE the folder (centre of the front panel) and the folder grows until a 24 dp badge fits (62 dp, at most 94 % of the square)
+            val hasB = r.badge != null
+            val fw = if (hasB) Math.min(Math.max(0.62f * s, 62f * d), 0.94f * s) else 0.62f * s
+            val fh = fw * 48f / 56f
+            val sc = fw / 56f
+            val ox = cx - fw / 2f; val oy = cy - fh / 2f
+            cv.save(); cv.translate(ox, oy); cv.scale(sc, sc)
             p.color = 0xFFFB8C00.toInt(); cv.drawPath(NlIcons.foldBack, p)
             p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
             p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
             p.color = 0xFFFFB74D.toInt(); cv.drawPath(NlIcons.foldFront, p)
             cv.restore()
             r.badge?.let { g ->
-                val bs = 24f * d; val bi = 16f * d
-                val bottom = ly + s + d; val top = bottom - bs
+                val bs = Math.min(24f * d, 21.6f * sc); val bi = bs * 16f / 24f
+                val bcy = oy + 30.5f * sc                                   // centre of the front panel (viewBox y 17..44)
+                val top = bcy - bs / 2f; val bottom = bcy + bs / 2f
                 p.color = 0x33000000; rf.set(cx - bs / 2f - d, top - d, cx + bs / 2f + d, bottom + d); cv.drawRoundRect(rf, 6f * d, 6f * d, p)
                 p.color = Color.WHITE; rf.set(cx - bs / 2f, top, cx + bs / 2f, bottom); cv.drawRoundRect(rf, 5f * d, 5f * d, p)
                 icon(g, cx - bi / 2f, top + (bs - bi) / 2f, bi, r.badgeCol, cv)
