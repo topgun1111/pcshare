@@ -2594,7 +2594,8 @@ function favToggle(dev,path){
   if(isFav(dev,path))FAV=FAV.filter(f=>!sameLoc(f,{dev,path}));
   else FAV.push({dev,path,name:baseName(dev,path),dn:dev==='local'?'':devName(dev)});
   favSave();drawerRender()}
-function drawerOpen(){document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
+let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
+function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)
@@ -2645,13 +2646,13 @@ function drawerRender(){
   const here=(dev,path)=>S.dev===dev&&S.path===path;
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
-    bd.append(dItem({lead:raw(DRIVE),title:'Main storage',sub:S.dev==='local'?'':'Open on this device',right:used!=null?used+'%':'',meter:used,on:S.dev==='local'&&S.path!=='/',onclick:()=>openLoc('local',S.dev==='local'?S.path:'/')}));
+    bd.append(dItem({lead:ic('menu','s24'),title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     bd.append(dItem({lead:ic('search','s24'),title:'Image search',sub:'Find pictures by what is in them',onclick:()=>{drawerClose();isView()}}));
     bd.append(E('div','dsep'));
-    {const col=LD('ls_devcol','0')==='1',h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
+    {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
-      h.onclick=()=>{try{localStorage.setItem('ls_devcol',col?'0':'1')}catch(e){}drawerRender()};bd.append(h);
+      h.onclick=()=>{DEVCOL=!col;drawerRender()};bd.append(h);
       if(!col){peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
           bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,onclick:()=>openLoc(p.id,'/')}))});
         if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
