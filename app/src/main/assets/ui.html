@@ -2722,6 +2722,10 @@ const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
+// native edge swipe (MainActivity.dispatchTouchEvent): open the drawer unless something else is on top
+window.lsEdgeOpen=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
+  for(const id of ['#sheet','#dlg','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
+  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;drawerOpen();return true};
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)
 function openLoc(dev,path){

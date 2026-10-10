@@ -17,6 +17,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.*
 import android.graphics.*
+import android.view.MotionEvent
+import android.view.View
 import android.print.*
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -202,6 +204,7 @@ class MainActivity : Activity() {
             addView(drawer.panel, drawer.layoutParams())            // native side drawer: topmost, GONE until the page opens its drawer; swallows touches inside its own width only
         }
         setContentView(root)
+        edgeInit(root)
         splash = NlSplash(this, nl, web, root)
         if (b == null) splash.start()      // cold start: draw the last screen natively while the page loads
         askPermissions()
@@ -210,6 +213,54 @@ class MainActivity : Activity() {
         cleanShared()
         handleShare(intent)
         if (b == null) UpdateCheck.run(this)   // cold start: look for a newer GitHub release
+    }
+
+
+    // ---- swipe in from the left screen edge = open the side menu (works above the native list, which covers the page's own edge zone) ----
+    private var edgeOn = false          // a touch that started in the edge zone is being watched
+    private var edgeDone = false        // the swipe was recognised: swallow the rest of this touch
+    private var edgeX = 0f; private var edgeY = 0f
+
+    /** Android 10+ gesture navigation would turn an edge swipe into "Back": ask the system to leave a strip of the left edge to the app. */
+    private fun edgeInit(root: View) {
+        if (Build.VERSION.SDK_INT < 29) return
+        root.addOnLayoutChangeListener { v, _, t, _, b, _, _, _, _ ->
+            val d = resources.displayMetrics.density
+            val h = b - t; val strip = Math.min(h, Math.round(200f * d))   // the system allows at most 200 dp per edge
+            val top = (h - strip) / 2
+            if (Build.VERSION.SDK_INT >= 29) v.systemGestureExclusionRects = listOf(Rect(0, top, Math.round(32f * d), top + strip))
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        val d = resources.displayMetrics.density
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                edgeDone = false
+                edgeOn = ev.pointerCount == 1 && ev.rawX <= 28f * d
+                edgeX = ev.rawX; edgeY = ev.rawY
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (edgeDone) return true
+                if (edgeOn && ev.pointerCount == 1) {
+                    val dx = ev.rawX - edgeX; val dy = ev.rawY - edgeY
+                    if (Math.abs(dy) > 40f * d && Math.abs(dy) > Math.abs(dx)) edgeOn = false          // a vertical scroll: not ours
+                    else if (dx > 40f * d && Math.abs(dy) < dx * 0.8f) {                              // clear swipe to the right
+                        edgeOn = false; edgeDone = true
+                        val c = MotionEvent.obtain(ev); c.action = MotionEvent.ACTION_CANCEL
+                        super.dispatchTouchEvent(c); c.recycle()                                       // list / page stop their own gesture
+                        if (::web.isInitialized) web.evaluateJavascript("window.lsEdgeOpen&&lsEdgeOpen()", null)
+                        return true
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val was = edgeDone
+                edgeOn = false; edgeDone = false
+                if (was) return true
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onPause() { super.onPause(); if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
