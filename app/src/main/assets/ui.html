@@ -1777,7 +1777,7 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
   const add=(d,t,label,tag)=>{d.n++;const b=E('button','tbtn'+(t.id===last?' fill':''));b.textContent=label;if(tag){const g=E('em','',' · '+tag);g.style.cssText='font-style:normal;font-size:11px;opacity:.75';b.append(g)}
     b.style.margin='6px 6px 0 0';b.onclick=()=>fin(t);d.box.append(b)};
   const cnt=d=>acc(d,d.n+' printer'+(d.n===1?'':'s'),'ok');
-  const draw=wifi=>{card.textContent='';card.append(E('div','handle'),E('h3','','Print on…'));
+  let pn=null;const draw=(wifi,searching)=>{pn=null;card.textContent='';card.append(E('div','handle'),E('h3','','Print on…'));
   if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
   {const d=dev('Save as PDF','This phone','wifi');add(d,{id:'pdf:local',name:'PDF file',pdf:1},'PDF file (all layout options)','no printer needed');acc(d,'saved in LANShare PDF','ok')}
   peers.forEach(p=>{
@@ -1790,15 +1790,18 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
       d.n?cnt(d):acc(d,'No printer access','off')}).catch(()=>{d.n?cnt(d):acc(d,'No printer access','off')})});
   const lan=wifi.filter(w=>!w.viaId);
   if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'')));cnt(d)}
-  if(!lan.length)card.append(E('p','',peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.'));
+  if(!lan.length){const fm=peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.';pn=E('p','',searching?'Searching printers\u2026':fm);if(searching)pn.dataset.s=fm;card.append(pn)}
   const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
   sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
   if(lsGet('printHist',[]).length){const rb=E('button','tbtn','Recent prints');rb.style.alignSelf='flex-start';rb.onclick=()=>fin({recent:1});card.append(rb)}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c)};
   /* busy = a printer search that is still running: the sheet opens at once with a note, then fills in when the search ends */
-  if(busy){card.append(E('div','handle'),E('h3','','Print on…'),E('p','','Searching printers\u2026'));
-    const cb=E('button','tbtn','Cancel');cb.style.alignSelf='flex-end';cb.onclick=()=>fin(null);card.append(cb);
-    busy.catch(()=>{}).then(()=>{if(!shut)draw(WIFI)})}
+  if(busy){let done=false,sig='';
+    const cur=()=>WIFI.map(w=>w.id).join('|')+'#'+S.peers.map(p=>p.id+(p.ok===false?0:1)).join('|');
+    const sync=()=>{if(shut)return;const s=cur();if(s!==sig){sig=s;peers=S.peers;draw(WIFI,!done)}else if(done&&pn&&pn.dataset.s){pn.textContent=pn.dataset.s;delete pn.dataset.s}};
+    sig=cur();draw(wifi,true);
+    const iv=setInterval(()=>{if(shut)clearInterval(iv);else sync()},1000);
+    busy.catch(()=>{}).then(()=>{done=true;sync()})}
   else draw(wifi);
   o.append(card)})}
 /* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
@@ -2199,11 +2202,8 @@ function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
-  const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
-  await loadWifi();
-  const all=here.concat(WIFI,pcs);
-  const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-  let to=preset||await choosePrinter(here);
+  const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* the picker opens at once and fills in while the printer search runs */
+  let to=preset||await choosePrinter(here,busy);
   if(!to)return;
   if(to.recent)return printRecent();
   if(!N)return toast('No printable files selected',3000);
@@ -2240,11 +2240,8 @@ async function doPrint(preset,cx){
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async(names,priv)=>{
   try{
-    await loadWifi();
-    const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
-    const all=WIFI.concat(pcs);
-    const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
-    const to=await choosePrinter([]);
+    const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */
+    const to=await choosePrinter([],busy);
     if(!to)return;
     if(to.recent)return printRecent();
     try{localStorage.setItem('printTo',to.id)}catch(e){}

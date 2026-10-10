@@ -111,7 +111,14 @@ object Routes {
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
-            "wifiprinters" -> return ex.json((if (q["scan"] == "1") WifiPrinters.searchNow() else WifiPrinters.listJson(true)).also { a -> WifiPrinters.remoteJson().let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) } })   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
+            "wifiprinters" -> {
+                val rmBox = arrayOfNulls<org.json.JSONArray>(1)
+                val rt = Thread { rmBox[0] = try { WifiPrinters.remoteJson() } catch (_: Throwable) { null } }.also { it.isDaemon = true; it.start() }   // the other devices' printers are asked in parallel with the local search
+                val a = if (q["scan"] == "1") WifiPrinters.searchNow() else WifiPrinters.listJson(true)
+                try { rt.join(4000) } catch (_: InterruptedException) {}
+                rmBox[0]?.let { rm -> for (k in 0 until rm.length()) a.put(rm.get(k)) }
+                return ex.json(a)
+            }   // printers on this Wi-Fi (mDNS) + the other devices' printers, printed to over IPP
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))

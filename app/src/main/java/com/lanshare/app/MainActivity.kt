@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var splash: NlSplash
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
+    private var uiBooted = false   // the page's first screen is drawn (nlBoot / nlLayout / nlHide): a pending print dialog may open now
     private var showHome = false
     private val dlSeq = AtomicInteger()
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
@@ -105,12 +106,12 @@ class MainActivity : Activity() {
         @JavascriptInterface fun nlCfg(c: String) { runOnUiThread { nl.setCfg(c) } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
-        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss() } }
-        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide(); splash.dismiss() } }
+        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide(); splash.dismiss(); uiBooted = true; runPrint() } }
         /** Path bar + tool row content (NlHead.kt): JSON from ui.html nlHeadPush(). */
         @JavascriptInterface fun nlHead(json: String) { runOnUiThread { try { nl.setHead(json) } catch (_: Throwable) { } } }
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
-        @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss() } }
+        @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
         /** Native search box (NlSearch.kt): ui.html nlSrPush() geometry / state, the query the next nlItems was filtered by, focus request. */
         @JavascriptInterface fun nlSearch(json: String) { runOnUiThread { try { nl.setSearch(json) } catch (_: Throwable) { } } }
@@ -240,6 +241,7 @@ class MainActivity : Activity() {
         if (uris.isEmpty()) return
         val toPrint = i.component?.className?.endsWith("SendShareAlias") != true   // plain "LANShare" share entry = print; only the "LANShare Send" entry sends
         i.action = null   // consume once
+        if (toPrint && !pageReady) Toast.makeText(this, "Preparing print\u2026", Toast.LENGTH_SHORT).show()   // cold start: something on screen while the page loads
         Thread {
             var n = 0
             val names = ArrayList<String>()
@@ -324,12 +326,18 @@ class MainActivity : Activity() {
 
     /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */
     private fun runPrint() {
+        if (pendingPrint == null || !pageReady) return
+        if (uiBooted) firePrint()
+        else web.postDelayed({ firePrint() }, 600)   // first screen not drawn yet: wait at most 0.6 s (nlBoot / nlLayout call runPrint again as soon as it is)
+    }
+
+    /** Opens the print dialog in the page; idempotent (the pending names are consumed), so several scheduled calls are harmless. */
+    private fun firePrint() {
         val names = pendingPrint ?: return
-        if (!pageReady) return
         pendingPrint = null
         val arr = org.json.JSONArray(names).toString()
         val priv = pendingPrintPriv; pendingPrintPriv = false
-        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr,$priv)", null) }, 1200)
+        web.evaluateJavascript("(function f(n){if(window.lsPrintShared)lsPrintShared($arr,$priv);else if(n<30)setTimeout(function(){f(n+1)},100)})(0)", null)
     }
 
     /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */
