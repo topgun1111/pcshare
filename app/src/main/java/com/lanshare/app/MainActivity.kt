@@ -44,10 +44,13 @@ class MainActivity : Activity() {
     private lateinit var splash: NlSplash
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
+    private var showHome = false
     private val dlSeq = AtomicInteger()
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     inner class Bridge {
+        /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
+        @JavascriptInterface fun homeStart(): Boolean = showHome
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
@@ -79,9 +82,6 @@ class MainActivity : Activity() {
         /** Settings -> display size: "interface%,text%". */
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
-        /** Settings -> Text in pictures: 0 always, 1 only while charging, 2 off (see OcrPrefs). */
-        @JavascriptInterface fun ocrGet(): Int = OcrPrefs.mode(this@MainActivity)
-        @JavascriptInterface fun ocrSet(m: Int) { OcrPrefs.setMode(this@MainActivity, m) }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */
@@ -136,6 +136,7 @@ class MainActivity : Activity() {
     }
     private var pendingShare: List<String>? = null
     private var pendingPrint: List<String>? = null
+    private var pendingPrintPriv = false   // names are in the private print-in folder (from PcPrintService), not in LANShare Shared
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -143,6 +144,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
         Fnt.init(applicationContext)
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
@@ -224,6 +226,7 @@ class MainActivity : Activity() {
         if (i != null && i.action == ACTION_PRINT_SHARED) {   // from PcPrintService: a document printed from another app
             val n = i.getStringArrayExtra("names")?.toList().orEmpty()
             getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0))
+            pendingPrintPriv = i.getBooleanExtra("priv", false)
             i.action = null
             if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
             return
@@ -325,7 +328,8 @@ class MainActivity : Activity() {
         if (!pageReady) return
         pendingPrint = null
         val arr = org.json.JSONArray(names).toString()
-        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr)", null) }, 1200)
+        val priv = pendingPrintPriv; pendingPrintPriv = false
+        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr,$priv)", null) }, 1200)
     }
 
     /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */
