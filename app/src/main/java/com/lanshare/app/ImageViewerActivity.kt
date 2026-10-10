@@ -138,9 +138,9 @@ class ImageViewerActivity : Activity() {
         }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xB3000000.toInt(), 0x00000000))
-            setPadding(dp(8), dp(8), dp(8), dp(16))
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xB3000000.toInt(), 0x00000000))
+            setPadding(dp(8), dp(16), dp(8), dp(8))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
         }
         val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
         titleTv = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
@@ -156,7 +156,7 @@ class ImageViewerActivity : Activity() {
         top.addView(share)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(8) + b.left, dp(8) + b.top, dp(8) + b.right, dp(16))
+            v.setPadding(dp(8) + b.left, dp(16), dp(8) + b.right, dp(8) + b.bottom)
             insets
         }
         root.addView(top)
