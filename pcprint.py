@@ -19,6 +19,7 @@ turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
 v21: an Office file converted for the preview is not converted again when it is printed (or previewed again) within 30 min: PDFs are cached by file content in office-cache; all conversions share one lock.
+v22: the print-queue check before / after a print command reads the spooler directly (winspool.drv) instead of starting PowerShell (about 0.5-1 s per print); PowerShell stays as the fallback.
 v16: pictures are shrunk to what the sheet needs (Pillow: smaller PDF / spool, EXIF turn and PNG/GIF/BMP/TIFF conversion without PowerShell); the app
 shrinks big JPEGs before uploading; missing Python packages (pypdf, Pillow) are installed automatically, also on first use while the service runs.
 v15: "Print all files as one job" - a mixed selection (PDF, pictures, text, Office) is turned into pages, joined in order and laid out as ONE
@@ -36,7 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "21"
+VERSION = "22"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1171,12 +1172,40 @@ try { @(Get-PrintJob -PrinterName $Printer -ErrorAction Stop).Count } catch { 'x
 RETRY_FAST = 4.0   # seconds: a print command that fails later than this was already busy printing / spooling
 
 
+def _winspool_jobs(printer):
+    """Jobs waiting for a printer, read from winspool.drv (GetPrinter level 2, field cJobs) without starting PowerShell. None = could not read."""
+    try:
+        from ctypes import wintypes
+        sp = ctypes.WinDLL("winspool.drv", use_last_error=True)
+        h = wintypes.HANDLE()
+        if not sp.OpenPrinterW(printer, ctypes.byref(h), None):
+            return None
+        try:
+            need = wintypes.DWORD(0)
+            sp.GetPrinterW(h, 2, None, 0, ctypes.byref(need))
+            if need.value == 0:
+                return None
+            buf = ctypes.create_string_buffer(need.value)
+            if not sp.GetPrinterW(h, 2, buf, need.value, ctypes.byref(need)):
+                return None
+            # PRINTER_INFO_2W: 13 pointers (pServerName .. pSecurityDescriptor), then DWORD Attributes, Priority, DefaultPriority, StartTime, UntilTime, Status, cJobs
+            off = 13 * ctypes.sizeof(ctypes.c_void_p) + 6 * 4
+            return int(ctypes.c_uint32.from_buffer_copy(buf, off).value)
+        finally:
+            sp.ClosePrinter(h)
+    except Exception:
+        return None
+
+
 def spool_count(printer):
     """Number of jobs waiting in the PC's queue for that printer (None = cannot tell). Used to see whether a failed command left a job behind."""
     try:
         if WIN:
             if not printer:
                 return None
+            n = _winspool_jobs(printer)   # direct spooler call (a few ms); PowerShell (0.5-1 s per start) only if that fails
+            if n is not None:
+                return n
             r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_script("spool.ps1", PS_SPOOL), printer],
                                capture_output=True, text=True, errors="replace", timeout=10, creationflags=CF)
             t = (r.stdout or "").strip()
