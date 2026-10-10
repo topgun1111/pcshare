@@ -16,6 +16,9 @@ import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.lanshare.app.MlKitOcr
+import com.lanshare.app.OcrLine
+import com.lanshare.app.TiledOcr
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
