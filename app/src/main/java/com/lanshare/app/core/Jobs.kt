@@ -240,6 +240,14 @@ object Jobs {
         return sb.toString()
     }
 
+    /** Joined job: this file could not be sent, so tell the PC to leave its place empty (otherwise it waits for it and never prints the rest). */
+    private fun skipBatchSlot(ip: String, bid: String, idx: Int, n: Int) {
+        try {
+            Http.request(ip, PRINT_PORT, "POST", "/print?name=skip.txt&batch=$bid&idx=$idx&n=$n&join=1&skip=1", emptyMap(), 120_000,
+                java.io.ByteArrayInputStream(ByteArray(0)), 0L).close()
+        } catch (_: Exception) {}
+    }
+
     fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
         val src = ep(srcId)
         if (PdfPrint.isPdf(dstId)) {   // "Save as PDF": same layout options, the result is a PDF file on this phone (PdfPrint)
@@ -362,6 +370,8 @@ object Jobs {
             val failed = ArrayList<String>()
             // pictures laid out together (opts.sheet): every picture is sent with the batch id, pcprint.py prints one set of sheets after the last one
             val sheet = opts?.optString("sheet") == "1" && files.all { it.first.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff") + PrintPrep.PICS }
+            // "Print all files as one job": every file goes to the PC with the same batch id + join=1, pcprint.py joins them after the last one
+            val join = !sheet && files.size > 1 && opts?.opt("join").let { it == true || it == "1" || it == "true" || (it is Number && it.toInt() != 0) }
             val bid = java.lang.Long.toString(System.nanoTime(), 36)
             val rots = opts?.optJSONArray("rots")
             for ((i, f0) in files.withIndex()) {
@@ -375,6 +385,7 @@ object Jobs {
                 var tmp: java.io.File? = null
                 var opened: java.io.InputStream? = null
                 var tmp2: java.io.File? = null   // converted copy (pdf / jpg / txt) when it is a different file than the download
+                var registered = false   // the PC took this file into its batch (answered 200 / 500), so it must not be skipped
                 try {
                     val ext = name.substringAfterLast('.', "").lowercase()
                     var body: java.io.InputStream = f
@@ -403,10 +414,12 @@ object Jobs {
                         } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     } else if (kind == PrintPrep.Kind.TEXT) sendName = name.substringBeforeLast('.') + ".txt"
                     val counted = body === f   // converted pictures were already counted while they were read
-                    val extra = if (sheet) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" else ""
+                    // key: a repeated request (retry, reconnect) must not print twice - pcprint.py ignores a key it has already seen
+                    val extra = (if (sheet || join) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" + (if (join) "&join=1" else "") else "") + "&key=k$bid-$i"
                     val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
                         120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
                     try {
+                        registered = r.status == 200 || r.status == 500
                         val t = String(r.readUpTo(2000), Charsets.UTF_8)
                         if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
                         // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
@@ -419,6 +432,7 @@ object Jobs {
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
+                    if (join && !registered) skipBatchSlot(ip, bid, i, files.size)   // the PC counts the files: tell it this one will not come
                 } finally { f.close(); try { opened?.close() } catch (_: Exception) {}; try { tmp?.delete() } catch (_: Exception) {}; try { tmp2?.delete() } catch (_: Exception) {} }
             }
             job.done = job.total
