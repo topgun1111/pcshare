@@ -22,7 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import org.json.JSONObject
 
 /*
- * Native side drawer (hamburger menu): tabs (Folders / Favorites / Recent), the scrolling body (Home, Devices, Quick folders, favorites, history ...) and the footer buttons.
+ * Native side drawer (hamburger menu): the scrolling body (Main menu, Devices, Quick folders ...) and the footer buttons.
  *
  * Same idea as NlChrome, but even more mechanical: the HTML drawer (#dwr) stays in the page UNCHANGED. ui.html still builds every row and owns every handler.
  * After each build ui.html MIRRORS the DOM into flat draw lists (nlDrFlat): filled rects, svg paths, text with the browser's own computed position, size and colour.
@@ -367,7 +367,9 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
 
         tabs.hov = hov
         foot.hov = hov
-        tabs.reg = parseReg(j.getJSONObject("tabs"))
+        val tr = parseReg(j.getJSONObject("tabs"))
+        tabs.reg = tr
+        tabs.visibility = if (tr.h > 0f) View.VISIBLE else View.GONE   // tab strip was removed (no Favorites / Recent): nothing to paint
         tabs.requestLayout(); tabs.invalidate()
         val fr = parseReg(j.getJSONObject("foot"))
         foot.reg = fr

@@ -65,10 +65,10 @@ body{margin:0;font:500 15px/1.4 'Inter LS','Segoe UI','Segoe UI Variable Text',S
 #pathrow{display:flex;align-items:center;gap:8px;padding:2px 8px 2px 4px;background:var(--card);border-bottom:1px solid var(--bd)}
 .pill{display:none;align-items:center;gap:6px;flex:none;height:32px;padding:0 10px;border:1px solid var(--mut);border-radius:16px;font-weight:700;font-size:13px;letter-spacing:.2px;text-transform:uppercase}
 .pill i{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--fg) var(--p,0%),var(--bd) 0)}
-.bar{display:flex;align-items:center;gap:0;height:44px;padding:0 2px 0 14px;background:var(--bar);color:var(--onbar)}
+.bar{display:flex;align-items:center;gap:0;height:52px;padding:0 2px 0 14px;background:var(--bar);color:var(--onbar)}
 .selb{display:none;padding-left:4px;background:var(--sel);color:var(--onsel)}
 body.selm .mainb{display:none}body.selm .selb{display:flex}
-.ttl{flex:1;min-width:0;display:flex;align-items:center;gap:10px}.bar .ibtn{width:40px;height:40px}
+.ttl{flex:1;min-width:0;display:flex;align-items:center;gap:10px}.bar .ibtn{width:48px;height:48px}.bar .ibtn svg{width:30px;height:30px}
 .ttl h1{flex:0 1 auto;min-width:0;font-size:18px;line-height:24px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #nm{display:none!important;align-items:center;gap:4px;color:var(--barmut);font-size:12px;line-height:16px;flex:0 1 auto;min-width:0;max-width:50%}
 #nm svg{width:12px;height:12px}#nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -207,7 +207,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #banner{display:none;margin:6px 16px;padding:12px 16px;border-radius:16px;background:var(--errc);color:var(--onerr);font-size:13px}
 /* list */
 #list{padding:0;background:var(--card)}
-.row{display:flex;align-items:center;gap:14px;min-height:66px;padding:6px 14px 6px 10px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.row{display:flex;align-items:center;gap:14px;min-height:66px;padding:6px 14px 6px 10px;border-bottom:2px solid var(--bd);cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .row:active{background:var(--hov)}
 .row.sel{background:var(--sel);color:var(--onsel)}
 .lead{position:relative;width:56px;height:50px;display:grid;place-items:center;flex:none}
@@ -396,7 +396,7 @@ body.kid #fab svg{width:20px;height:20px}
 body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity .22s}
 body.dopen #dwr{transform:none;visibility:visible;transition:transform .22s ease-out}
 body.dopen{overflow:hidden}
-#dtabs{display:flex;flex:none;border-bottom:1px solid var(--bd);background:var(--bg)}
+#dtabs{display:none}
 #dtabs button{flex:1;height:52px;display:grid;place-items:center;color:var(--mut);position:relative}
 #dtabs button.on{color:var(--fg)}
 #dtabs button.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ac)}
@@ -757,7 +757,7 @@ async function loadMain(){
     if(dev!==S.dev||path!==S.path)return;
     if(path.indexOf('!')<0)lscPut(ck,{items:r.items,used:r.used});
     if(hit&&hit.items.length===r.items.length&&hit.items.every((o,k)=>o.name===r.items[k].name&&o.mtime===r.items[k].mtime&&o.size===r.items[k].size)){S.used=r.used;S.err='';if(!S.lost)banner('');loadSpace();fillCounts(dev,path);idlePre();return}   // nothing changed: keep what is on screen
-    S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(S.dev==='local'&&r.used!=null)SV('ls_used',String(r.used));if(typeof histPush==='function')histPush();if(!S.lost)banner('');
+    S.path=r.path;S.items=r.items;S.used=r.used;S.err='';if(S.dev==='local'&&r.used!=null)SV('ls_used',String(r.used));if(!S.lost)banner('');
     S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace();fillCounts(dev,path);idlePre()}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
@@ -2713,24 +2713,11 @@ function homeShow(){
   o.append(hb,bd);
   warmWifi();if(window.nlLay)try{nlLay(true)}catch(e){}}
 
-/* ---- side drawer: tabs Folders / Favorites / Recent, quick folders, devices ---- */
-const DRW={tab:+LD('ls_dtab','0')||0};
+/* ---- side drawer: main menu, devices, quick folders ---- */
+const DRW={tab:0};
 const JL=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){return d}};
-let FAV=JL('ls_fav',[]),HIS=JL('ls_his',[]);
 const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devName(dev)):path.split('/').filter(Boolean).pop().replace(/!$/,'');
 const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
-const isFav=(dev,path)=>FAV.some(f=>sameLoc(f,{dev,path}));
-function histPush(){const e={dev:S.dev,path:S.path,t:Date.now()};
-  if(e.dev==='local'&&e.path==='/')return;
-  if(HIS[0]&&sameLoc(HIS[0],e))return;
-  HIS=HIS.filter(h=>!sameLoc(h,e));HIS.unshift(e);if(HIS.length>40)HIS.length=40;
-  try{localStorage.setItem('ls_his',JSON.stringify(HIS))}catch(x){}
-  if(document.body.classList.contains('dopen')&&DRW.tab===2)drawerRender()}
-function favSave(){try{localStorage.setItem('ls_fav',JSON.stringify(FAV))}catch(e){}}
-function favToggle(dev,path){
-  if(isFav(dev,path))FAV=FAV.filter(f=>!sameLoc(f,{dev,path}));
-  else FAV.push({dev,path,name:baseName(dev,path),dn:dev==='local'?'':devName(dev)});
-  favSave();drawerRender()}
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
@@ -2773,11 +2760,7 @@ async function showPrinters(){
   const busy=WIFI_BUSY&&WIFI_P?WIFI_P:(WIFI.length?null:loadWifi());   // list already known: show it now; search running / nothing yet: open at once with "Searching printers…"
   await choosePrinter(here,busy)}
 function drawerRender(){
-  // tabs
-  const tb=$('#dtabs');tb.textContent='';
-  [['folders','Folders'],['star','Favorites'],['hist','Recent']].forEach((t,n)=>{
-    const b=E('button',DRW.tab===n?'on':'');b.setAttribute('aria-label',t[1]);b.append(ic(t[0]));
-    b.onclick=()=>{DRW.tab=n;SV('ls_dtab',String(n));drawerRender()};tb.append(b)});
+  $('#dtabs').textContent='';
   const bd=$('#dbody'),keep=bd.scrollTop;bd.textContent='';
   const ft=$('#dfoot');ft.textContent='';
   const here=(dev,path)=>S.dev===dev&&S.path===path;
@@ -2818,17 +2801,6 @@ function drawerRender(){
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
     ft.append(add,smb,st);
   }
-  else if(DRW.tab===1){
-    const cur=isFav(S.dev,S.path);
-    const a=dItem({lead:ic(cur?'star':'starb','s24'),title:cur?'Remove this folder':'Add this folder',sub:baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),onclick:()=>favToggle(S.dev,S.path)});
-    a.querySelector('.dl svg').style.color='#e2ac5f';bd.append(a);bd.append(E('div','dsep'));
-    if(!FAV.length)bd.append(E('div','dnone','No favorites yet.\nTap the star above to pin the current folder.'));
-    FAV.forEach(f=>bd.append(dItem({lead:folderLead(f.name),title:f.name,sub:(f.dev==='local'?'This device':(devName(f.dev)!=='device'?devName(f.dev):f.dn))+' \u00b7 '+f.path,on:here(f.dev,f.path),onclick:()=>openLoc(f.dev,f.path),x:{icon:'close',label:'Remove',fn:()=>favToggle(f.dev,f.path)}})));
-    const dn=bd.querySelector('.dnone');if(dn)dn.style.whiteSpace='pre-line'}
-  else{
-    if(!HIS.length)bd.append(E('div','dnone','Folders you open will show up here.'));
-    HIS.forEach(h=>bd.append(dItem({lead:folderLead(baseName(h.dev,h.path)),title:baseName(h.dev,h.path),sub:(h.dev==='local'?'This device':devName(h.dev))+' \u00b7 '+h.path,on:here(h.dev,h.path),onclick:()=>openLoc(h.dev,h.path),x:{icon:'close',label:'Remove',fn:()=>{HIS=HIS.filter(z=>!sameLoc(z,h));try{localStorage.setItem('ls_his',JSON.stringify(HIS))}catch(e){}drawerRender()}}})));
-    if(HIS.length){const c=E('button');c.append(ic('del'),E('span','','Clear history'));c.onclick=()=>{HIS=[];try{localStorage.removeItem('ls_his')}catch(e){}drawerRender()};ft.append(c)}}
   bd.scrollTop=keep}
 $('#menub').onclick=drawerOpen;
 $('#dscrim').onclick=drawerClose;

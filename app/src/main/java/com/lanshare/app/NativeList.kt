@@ -180,7 +180,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         }
         if (isSel) { p.color = pl.sel; cv.drawRect(0f, 0f, w, h, p) }
         else if (isPressed) { p.color = pl.hov; cv.drawRect(0f, 0f, w, h, p) }
-        p.color = pl.bd; cv.drawRect(0f, h - d, w, h, p)           // border-bottom 1px
+        p.color = pl.bd; cv.drawRect(0f, h - 2f * d, w, h, p)           // border-bottom 2px
 
         val c = compact
         val lg = large && !c
@@ -591,7 +591,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
                 p.style = Paint.Style.FILL
             }
         }
-        if (last) { p.style = Paint.Style.FILL; p.color = pl.bd; cv.drawRect(0f, h - d, w, h, p) }
+        if (last) { p.style = Paint.Style.FILL; p.color = pl.bd; cv.drawRect(0f, h - 2f * d, w, h, p) }
     }
 }
 
