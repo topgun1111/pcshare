@@ -67,6 +67,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         var view: String = j.optString("view", "list")
         var thumb: String = j.optString("thumb", "s")
         var cols: Int = j.optInt("cols", 0)          // 0 = automatic
+        val gal: Boolean = j.optInt("gal") == 1       // Gallery / Videos home (album cards): only the column count applies there
         val autoCols: Int = j.optInt("ec", 2)        // what "automatic" means on this screen (2, or 4 from 600 dp)
         var ff: Boolean = j.optInt("ff", 1) == 1     // folders first
         var sort: String = j.optString("sort", "name")
@@ -189,6 +190,15 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         fun draw() {
             col.removeAllViews()
             cbRow("Apply to all folders", s.aa) { v -> s.aa = v; onPref(JSONObject().put("aa", if (v) 1 else 0)); draw() }
+            if (s.gal) {   // album cards have no list / compact view, thumbnail size, sorting or folders-first: show the one thing that works
+                hr(); head("Albums")
+                val gshown = if (s.cols in 2..4) s.cols else s.autoCols
+                val gcols = listOf(2, 3, 4)
+                radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
+                    tv("${gcols[n]} columns", 16f, p.fg)
+                }
+                return
+            }
             hr(); head("View")
             val views = listOf("list" to "vlist", "grid" to "vgrid", "compact" to "vcomp")
             radioRow(views.map { (k, _) -> Triple(k.replaceFirstChar { c -> c.uppercase() }, s.view == k, { s.view = k; onPref(JSONObject().put("view", k)); draw() }) }) { n ->

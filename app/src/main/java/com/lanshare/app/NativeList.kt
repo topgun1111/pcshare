@@ -1083,10 +1083,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
         sqOn = j.optInt("sq") == 1
         val cp = j.optInt("cp") == 1
         val lg = j.optInt("lg") == 1
-        val md = j.optInt("md") == 1
-        val gc = j.optInt("gc")
+        val md = if (j.has("md")) j.optInt("md") == 1 else medium   // the page does not always send these two: a missing key keeps the choice made in the native sheet
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; ad.notifyDataSetChanged() }
-        gcols = if (gc in 2..4) gc else 0
+        if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..4) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
         val hd = j.optJSONArray("hd")
