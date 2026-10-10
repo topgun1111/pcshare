@@ -44,7 +44,7 @@ data class NlHeadData(
 
 class NlHeadView(c: Context, private val d: Float) : View(c) {
     var pal: NlPal? = null
-        set(v) { field = v; invalidate() }
+        set(v) { field = v; dirty = true; invalidate() }   // dirty: the laid-out bar caches its colours, so a theme switch must rebuild it
     var onAct: ((String, Int) -> Unit)? = null
 
     private var data: NlHeadData? = null

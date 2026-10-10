@@ -495,7 +495,7 @@ object Jobs {
         "docx", "xlsx", "pptx", "odt", "ods", "odp", "epub", "pdf")
 
     /** Packs files and folders of one device into a new .zip in a folder of the same device. */
-    fun startZip(devId: String, paths: List<String>, dir: String, name: String): String {
+    fun startZip(devId: String, paths: List<String>, dir: String, name: String, replace: Boolean = false): String {   // replace: reuse the exact name when it exists (the old file goes only after the new ZIP is complete)
         val e = ep(devId)
         val ps = paths.map { vnorm(it) }
         if (ps.isEmpty()) throw BadReq("nothing selected")
@@ -509,11 +509,11 @@ object Jobs {
         prune()
         val job = Job("Zipping")
         all[jid] = job
-        Thread({ zipWork(job, e, ps, d, n) }, "zip-$jid").also { it.isDaemon = true }.start()
+        Thread({ zipWork(job, e, ps, d, n, replace) }, "zip-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
-    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String) {
+    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false) {
         val dst: Endpoint = (e as? ArcEp)?.base ?: e
         var tmp: File? = null
         var uploading = false
@@ -538,7 +538,7 @@ object Jobs {
 
             // 2. where it goes: next to the originals, under a name that is free
             val taken = try { dst.names(dir) } catch (x: Cancelled) { throw x } catch (x: Exception) { throw IOException("cannot read the destination folder: ${errText(x)}") }
-            val finalName = uniqueName(name, taken, false)
+            val finalName = if (replace && name in taken) name else uniqueName(name, taken, false)
             target = vjoin(dir, finalName)
             val local = dst as? LocalFs
             val out: File

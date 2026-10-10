@@ -540,7 +540,7 @@ if(!SORTS[S.sort])S.sort='name';if(!VIEWS[S.view])S.view='list';
 S.q='';S.aa=false;S.thumb='s';S.cols=0;const LSTH=[{"id":"mint","n":"Aurora Mint","d":0,"sw":["#f6fffb","#14261f","#00796b","#b7ecdc"]},{"id":"sakura","n":"Sakura","d":0,"sw":["#fff8fa","#2b1520","#c2185b","#ffd0e1"]},{"id":"lavender","n":"Lavender Dream","d":0,"sw":["#fbf8ff","#1f1730","#6a4bc4","#e2d6ff"]},{"id":"sand","n":"Sand & Slate","d":0,"sw":["#faf7f2","#23211c","#3b5b73","#d3e3ee"]},{"id":"sky","n":"Sky Blue","d":0,"sw":["#f5faff","#0f1e2e","#1565c0","#cfe4ff"]},{"id":"solar","n":"Solarized Light","d":0,"sw":["#fdf6e3","#073642","#1f6fb2","#d9e8f2"]},{"id":"graphite","n":"Graphite Mono","d":0,"sw":["#ffffff","#111111","#111111","#e0e0e0"]},{"id":"ocean","n":"Ocean Deep","d":1,"sw":["#0b1620","#e3eef7","#4fc3f7","#0d4a66"]},{"id":"amoled","n":"AMOLED Violet","d":1,"sw":["#000000","#ececf2","#b388ff","#3a2370"]},{"id":"forest","n":"Deep Forest","d":1,"sw":["#0d1a12","#e2f0e4","#81c784","#1f5a2c"]},{"id":"nord","n":"Nord","d":1,"sw":["#2e3440","#eceff4","#88c0d0","#434c5e"]},{"id":"dracula","n":"Dracula","d":1,"sw":["#282a36","#f8f8f2","#bd93f9","#44475a"]},{"id":"sunset","n":"Sunset Dusk","d":1,"sw":["#1c1220","#f6e9ee","#ff8a65","#6b2e4a"]},{"id":"cyber","n":"Neon Cyber","d":1,"sw":["#0a0a14","#e8f9ff","#00e5ff","#4a0f55"]},{"id":"crimson","n":"Crimson Noir","d":1,"sw":["#140b0d","#f5e6e8","#ff6b81","#6a1b2a"]}];   // colour themes: id, name, dark, swatches [bg,fg,accent,selection]
 S.theme=LD('ls_theme','light');if(['light','dark','auto'].concat(LSTH.map(t=>t.id)).indexOf(S.theme)<0)S.theme='light';document.documentElement.dataset.theme=S.theme;
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
-setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(sysBars,50))}catch(e){}
+setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(()=>nlTheme(),50))}catch(e){}
 // view/sort preferences: global default + per-folder overrides ("Apply to all folders" promotes to global)
 let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
 let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
@@ -656,11 +656,12 @@ function dlg(o){return new Promise(res=>{
   const card=E('div','dcard');card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=o.input.label||'';inp.autocomplete='off';card.append(inp)}
   const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':''),o.ok||'OK');
+  let al=null;if(o.alt){al=E('button','tbtn',o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>done(inp?inp.value:true);
   d.onclick=e=>{if(e.target===d)done(null)};
   if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
-  row.append(c,k);card.append(row);d.append(card);
+  row.append(c);if(al)row.append(al);row.append(k);card.append(row);d.append(card);
   if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
 
 function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
@@ -789,6 +790,8 @@ const nlCol=v=>{v=(v||'').trim();let m;
 function nlPal(){const cs=getComputedStyle(document.documentElement),g=n=>nlCol(cs.getPropertyValue('--'+n)),k={};
   ['folder','img','vid','aud','pdf','zip','apk','doc','file'].forEach(n=>k[n]=[g('k-'+n+'-c'),g('k-'+n+'-b')]);
   return JSON.stringify({card:g('card'),bg:g('bg'),fg:g('fg'),mut:g('mut'),bd:g('bd'),sel:g('sel'),onsel:g('onsel'),hov:g('hov'),ac:g('ac'),onac:g('onac'),warn:g('warn'),cont:g('cont'),tl:g('tl'),k})}
+/* theme changed (picker or system dark/light): system bars + re-push every native palette at once; the native list / path bar only got it with the next nlRender, so they stayed in the old theme until a refresh */
+function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;NL.nlPalette(p)}NLSRJ='0';nlChPush();nlSrPush();if(NLL)nlLay(true)}catch(e){}}
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
@@ -1595,7 +1598,7 @@ function openSettings(){
   const thGrid=E('div','thg');thGrid.style.display='none';
   THL.forEach(t=>{const b=E('button','thc'+(t.id===S.theme?' on':''));b.dataset.id=t.id;b.style.background=t.sw[0];b.style.color=t.sw[1];
     const dots=E('i');t.sw.slice(1).forEach(c=>{const d=E('b');d.style.background=c;dots.append(d)});b.append(dots,E('span','',t.n));
-    b.onclick=()=>{S.theme=t.id;SV('ls_theme',t.id);document.documentElement.dataset.theme=t.id;sysBars();sm.textContent=THN[t.id];thGrid.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x.dataset.id===t.id))};thGrid.append(b)});
+    b.onclick=()=>{S.theme=t.id;SV('ls_theme',t.id);document.documentElement.dataset.theme=t.id;nlTheme();sm.textContent=THN[t.id];thGrid.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x.dataset.id===t.id))};thGrid.append(b)});
   rt.onclick=()=>{thGrid.style.display=thGrid.style.display==='none'?'grid':'none'};card.append(rt);card.append(thGrid);
   const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
   rb.onclick=()=>{close();openSmb()};card.append(rb);
@@ -2867,7 +2870,11 @@ async function doZip(){   // pack the selected files / folders into a new .zip n
   const n=await dlg({title:'Create ZIP',msg:it.length+' item'+(it.length>1?'s':'')+' will be packed into a new .zip in this folder',input:{value:base,label:'File name'},ok:'Zip'});
   if(!n||!n.trim())return;
   const paths=selPaths(),zdir=it[0].disp?(paths[0].replace(/\/[^\/]*$/,'')||'/'):S.path;S.sel.clear();GALT=0;render();
-  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim()});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
+  let rep=false;   // same name already in the folder: ask instead of silently making "name (1).zip"
+  try{const zn=/\.zip$/i.test(n.trim())?n.trim():n.trim()+'.zip',ls=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(zdir));
+    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({title:'"'+zn+'" already exists',msg:'Replace it with the new ZIP? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',danger:true});
+      if(!a){S.sel.clear();render();return}rep=a===true}}catch(e){}
+  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim(),replace:rep});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
 function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
   const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;dev=dev||S.dev;
