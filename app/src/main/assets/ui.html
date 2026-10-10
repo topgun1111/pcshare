@@ -429,9 +429,9 @@ body.dopen{overflow:hidden}
 #dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
 body.dual #dedge,body.selm #dedge{display:none}
 /* start menu (home): Material 3 look built on the app's own theme tokens; spec history in HANDOVER_HOME_MENU.md */
-#home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--bg);color:var(--fg);--hc1:#8e24aa;--hc2:#d81b60;--hc3:#b7791f;--hc4:#546e7a;--hc5:#757575;--hc6:#00897b}
-:root[data-theme=dark] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4}
-@media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4}}
+#home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--bg);color:var(--fg);--hc1:#8e24aa;--hc2:#d81b60;--hc3:#b7791f;--hc4:#546e7a;--hc5:#757575;--hc6:#00897b;--hc7:#f9a825}
+:root[data-theme=dark] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4;--hc7:#ffe082}
+@media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4;--hc7:#ffe082}}
 #home .hb{flex:none;height:calc(64px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 4px 0;display:flex;align-items:center;gap:4px;background:var(--bg)}
 #home .hb h1{flex:1;margin:0 0 0 8px;font-size:22px;font-weight:500}
 #home .hb button{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--mut)}
@@ -457,6 +457,18 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .ht .tt{font-size:13px;font-weight:500;text-align:center;line-height:1.2}
 #home .ht .ts{font-size:11px;color:var(--mut);text-align:center;line-height:1.2}
 #home .ht.off{opacity:.5;pointer-events:none}
+#hmfavs{position:fixed;inset:0;z-index:20}
+#hmfav{position:fixed;z-index:21;overflow-y:auto;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:20px;box-shadow:0 8px 28px #0006;padding:6px 0;animation:hmpop .16s ease-out both;-webkit-overflow-scrolling:touch}
+#hmfav .mh{padding:10px 18px 6px;font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
+#hmfav .mn{padding:10px 18px 14px;font-size:14px;color:var(--mut);white-space:pre-line}
+#hmfav .mi{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:6px 16px;text-align:left;border-bottom:1px solid var(--bd)}
+#hmfav .mi:last-child{border-bottom:0}
+#hmfav .mi:active{background:var(--hov)}
+#hmfav .ml{flex:none;width:36px;height:36px;display:grid;place-items:center}
+#hmfav .mt{flex:1;min-width:0;display:flex;flex-direction:column}
+#hmfav .mt b{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hmfav .mt small{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes hmpop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
 @keyframes hmin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
@@ -2653,6 +2665,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 // Android back: close the top-most overlay / search / selection; returns true when it handled the press
 function lsBack(){
+  if($('#hmfav')){hmFavClose();return true}
   if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
   if($('#gal').style.display==='flex'){const g=$('#gal');if(g._sel&&g._sel())return true;galClose();return true}
@@ -2666,7 +2679,7 @@ function lsBack(){
   if(S.dev==='local'&&!homeOn()){homeShow();return true}   // top of main storage: Back returns to the start menu
   return false}
 
-/* ---- start menu (home): tiles call the same functions as the drawer; Storage Analyzer is a disabled placeholder until its screen exists ---- */
+/* ---- start menu (home): tiles call the same functions as the drawer; "Favorite folders" opens a cascading menu of the Quick folders ---- */
 const HM_P={
  ms:'M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z',
  gal:'M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z',
@@ -2674,10 +2687,29 @@ const HM_P={
  dl:'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
  prn:'M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z',
  smb:'M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
+ fav:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2.06 11L15 15.28 12.06 17l.78-3.33-2.59-2.24 3.41-.29L15 8l1.34 3.14 3.41.29-2.59 2.24.78 3.33z',
  sto:'M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z'};
 const hmSvg=k=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+HM_P[k]+'"/></svg>';
 const homeOn=()=>$('#home').style.display==='flex';
 function homeHide(){const o=$('#home');o.style.display='none';o.textContent=''}
+function hmFavClose(){const a=$('#hmfavs'),m=$('#hmfav');if(a)a.remove();if(m)m.remove()}
+function hmFavMenu(anchor){
+  if($('#hmfav')){hmFavClose();return}
+  const o=$('#home'),sc=E('div');sc.id='hmfavs';sc.onclick=hmFavClose;
+  const m=E('div');m.id='hmfav';m.setAttribute('role','menu');
+  m.append(E('div','mh','Favorite folders'));
+  if(!QF.length)m.append(E('div','mn','No favorite folders yet.\nAdd them in the side menu: Quick folders > Edit.'));
+  QF.forEach(q=>{const b=E('button','mi');b.setAttribute('role','menuitem');
+    const l=E('span','ml');l.append(folderLead(q.name));
+    const t=E('span','mt');t.append(E('b','',q.name));const dn=q.dev==='local'?'':(devName(q.dev)!=='device'?devName(q.dev):(q.dn||''));if(dn)t.append(E('small','',dn));
+    b.append(l,t);b.onclick=()=>{hmFavClose();homeHide();openLoc(q.dev,q.path)};m.append(b)});
+  o.append(sc,m);
+  const r=anchor.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,w=Math.min(300,vw-24);
+  m.style.width=w+'px';m.style.left=Math.max(12,Math.min(r.right-w,vw-w-12))+'px';
+  const above=r.top-16,below=vh-r.bottom-16,up=above>=Math.min(m.scrollHeight,280)||above>below,room=Math.max(120,up?above:below);
+  m.style.maxHeight=room+'px';
+  if(up){m.style.bottom=(vh-r.top+8)+'px';m.style.transformOrigin='bottom right'}else{m.style.top=(r.bottom+8)+'px';m.style.transformOrigin='top right'}
+}
 function homeShow(){
   const o=$('#home');if(o.style.display==='flex')return;
   drawerClose();o.textContent='';o.style.display='flex';
@@ -2695,9 +2727,9 @@ function homeShow(){
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',smb:'var(--hc6)'};
+  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',smb:'var(--hc6)',fav:'var(--hc7)'};
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
-    const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=fn;b.onkeydown=e=>{if(e.key==='Enter')fn()}}
+    const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
     if(stat){const ck='ls_hs_'+(media||'')+stat,sh=v=>{if(v&&v.files!=null)ts.textContent=fmt(v.bytes)+' ('+v.files+(v.partial?'+':'')+')'};
       try{sh(JSON.parse(localStorage.getItem(ck)||'null'))}catch(e){}
@@ -2709,7 +2741,7 @@ function homeShow(){
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
-    tile('sto','Storage Analyzer','Coming soon',null));
+    tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)));
   bd.append(hero,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);
   warmWifi();if(window.nlLay)try{nlLay(true)}catch(e){}}
@@ -2722,10 +2754,11 @@ const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
-// native edge swipe (MainActivity.dispatchTouchEvent): open the drawer unless something else is on top
+// native edge swipe (MainActivity.dispatchTouchEvent): open the Main menu (home screen) unless something else is on top
 window.lsEdgeOpen=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
   for(const id of ['#sheet','#dlg','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
-  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;drawerOpen();return true};
+  if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;
+  if(homeOn())return false;homeShow();return true};
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 // jump to any device + folder (used by every drawer entry)
 function openLoc(dev,path){
@@ -2744,9 +2777,7 @@ function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, m
 const QF0=()=>['Download','DCIM','Movies','Pictures','Music','Documents'].map(n=>({dev:'local',path:'/'+n,name:n}));
 let QF=JL('ls_qf',null);if(!Array.isArray(QF))QF=QF0();
 function qfSave(){try{localStorage.setItem('ls_qf',JSON.stringify(QF))}catch(e){}}
-/* Pictures is a permanent shortcut: always present (re-added on every start if missing) and cannot be removed */
-const qfPerm=q=>!!q&&q.dev==='local'&&String(q.path).toLowerCase()==='/pictures';
-QF=QF.filter(q=>q&&q.path);if(!QF.some(qfPerm)){QF.push({dev:'local',path:'/Pictures',name:'Pictures'});qfSave()}
+QF=QF.filter(q=>q&&q.path);
 Object.assign(IC,{up2:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',dn2:'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z'});
 function folderLead(name){const w=E('span');w.style.cssText='position:relative;display:block;width:36px;height:36px';
   const f=raw(FOLD);f.style.cssText='width:36px;height:31px;margin-top:3px';w.append(f);
@@ -2788,7 +2819,7 @@ function drawerRender(){
         o.onclick=async()=>{const nn=await dlg({title:'Rename shortcut',input:{value:q.name,label:'Name'},ok:'Save'});if(nn&&nn.trim()){q.name=nn.trim().slice(0,40);qfSave();drawerRender()}};
         o.xs=[{icon:'up2',label:'Move up',off:n===0,fn:()=>{QF.splice(n-1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
               {icon:'dn2',label:'Move down',off:n===QF.length-1,fn:()=>{QF.splice(n+1,0,QF.splice(n,1)[0]);qfSave();drawerRender()}},
-              {icon:'close',label:'Remove',off:qfPerm(q),fn:()=>{if(qfPerm(q))return;QF.splice(n,1);qfSave();drawerRender()}}]}
+              {icon:'close',label:'Remove',fn:()=>{QF.splice(n,1);qfSave();drawerRender()}}]}
       bd.append(dItem(o))});
     if(DRW.edit){
       const dup=QF.some(q=>sameLoc(q,{dev:S.dev,path:S.path}));
