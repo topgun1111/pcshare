@@ -2122,7 +2122,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull pfx'),redraw=[];
   /* preview size: as wide as the screen allows and up to ~45% of its height */
-  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(110,innerHeight*.17)];
+  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(140,innerHeight*.32)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   let lastPaper=null,lastLeast=false,renderSum=()=>{};const sumSet=(p,l)=>{lastPaper=p;lastLeast=!!l;renderSum()};
   const px=E('button','px');px.setAttribute('aria-label','Close');px.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';px.onclick=()=>fin(null);card.append(E('div','handle'));
