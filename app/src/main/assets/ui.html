@@ -360,7 +360,6 @@ body.dual #dual{display:flex}
 .prow .sub{font-size:12px;line-height:16px;color:var(--mut)}.prow .pch{flex:none;display:none}.prow .pch svg{width:20px;height:20px;fill:var(--mut)}
 .phint{margin:6px 20px 0;font-size:12px;color:var(--mut)}
 .pfx .ppv{position:static;margin:8px 16px 0;border:0;border-radius:16px;background:var(--cont);padding:4px 10px 6px}
-.ppre{display:flex;gap:8px;overflow-x:auto;padding:10px 0 2px;scrollbar-width:none}.ppre::-webkit-scrollbar{display:none}.ppre .chip{flex:none;height:34px;border-radius:17px;padding:0 14px}
 .ptabs{display:flex;padding:6px 16px 0;margin-top:6px;border-bottom:1px solid var(--bd)}.ptabs button{flex:1;height:40px;font-size:14px;font-weight:600;color:var(--mut);border-bottom:3px solid transparent}.ptabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
 .pbody{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 16px}.pbody .pf{margin:14px 0 0}.pbody .pf>b{margin-bottom:0}
 .pseg{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--cont)}.pseg .chip{flex:1;height:40px;justify-content:center;border:0;border-radius:10px;background:transparent;padding:0 2px;font-size:13px}.pseg .chip.on{background:var(--sel);color:var(--onsel)}
@@ -2008,7 +2007,6 @@ function wifiOptions(pr,files){return new Promise(res=>{
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
 function inkTxt(r){const a=(r&&r.ink)||[];if(!a.length)return null;return{t:a.map(i=>((i.name||'Ink').replace(/\s*(ink|toner|cartridge)s?\b/ig,'').trim()||'Ink')+' '+i.level+'%').join(' \u00b7 '),low:a.some(i=>i.level<=10)}}
 const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
-const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
 const PV_PAPER={A3:[842,1191],A4:[595,842],A5:[420,595],Letter:[612,792],Legal:[612,1008]},PV_LAY={1:[1,1,0],2:[2,1,1],4:[2,2,0],6:[3,2,1],9:[3,3,0]};
@@ -2248,20 +2246,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     const au=E('div','sr'),aw=E('label','sw'),ai=E('input'),ak=E('i');ai.type='checkbox';ai.onchange=()=>{st.noauto=ai.checked?0:1;if(ai.checked)st.rots=files.map(()=>0);redraw.forEach(g=>g())};aw.append(ai,ak);au.append(E('span','','Auto-turn pictures to fill the sheet'),aw);redraw.push(()=>{ai.checked=!st.noauto});
     sec('Turn pictures (tap = 90\u00b0 clockwise)',row,au);
   }
-  // presets: one scrolling chip row under the preview
-  const pr=E('div','ppre'),mine=lsGet('printPresets',{});
-  const apply=p=>{const keep=st.printer;Object.assign(st,PRN_DEF,p);st.printer=keep;st.wm=st.hdr=st.ftr='';st.wm_under=0;redraw.forEach(f=>f())};
-  const drawPresets=()=>{pr.textContent='';const all=Object.assign({},PRN_BUILTIN,lsGet('printPresets',{}));
-    Object.keys(all).forEach(n=>{const b=E('button','chip',n);b.onclick=()=>apply(all[n]);
-      if(!PRN_BUILTIN[n]){b.oncontextmenu=e=>{e.preventDefault();rm(n)};let t;b.ontouchstart=()=>{t=setTimeout(()=>rm(n),700)};b.ontouchend=b.ontouchmove=()=>clearTimeout(t)}pr.append(b)});
-    const a=E('button','chip add','+ Save');a.onclick=async()=>{const n=await dlg({title:'Save preset',msg:'Saves the options below under a name (press and hold a preset to delete it).',input:{label:'Preset name'},ok:'Save'});
-      if(!n||!n.trim())return;const m=lsGet('printPresets',{}),c=Object.assign({},st);delete c.printer;delete c.range;m[n.trim().slice(0,24)]=c;try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};pr.append(a)};
-  const rm=async n=>{if(!await dlg({title:'Delete preset "'+n+'"?',ok:'Delete',danger:true}))return;const m=lsGet('printPresets',{});delete m[n];try{localStorage.setItem('printPresets',JSON.stringify(m))}catch(e){}drawPresets()};
-  drawPresets();
   const tb=E('div','ptabs'),body=E('div','pbody'),names=[['b','Basics'],['l','Layout'],['p','Pages']];
   const showT=k=>{names.forEach(([n],i)=>{tabs[n].style.display=n===k?'':'none';tbs[i].classList.toggle('on',n===k)});body.scrollTop=0};
   const tbs=names.map(([k,l])=>{const b=E('button','',l);b.onclick=()=>showT(k);tb.append(b);return b});
-  body.append(pr,tabs.b,tabs.l,tabs.p);card.append(tb,body);
+  body.append(tabs.b,tabs.l,tabs.p);card.append(tb,body);
   // printer: the list lives in the printer row at the top
   const sel=E('select');sel.setAttribute('aria-label','Printer');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);sel.style.display='none';pt.insertBefore(sel,info);
   sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
