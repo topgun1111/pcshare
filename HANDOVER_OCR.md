@@ -73,9 +73,27 @@ No gradle / manifest changes (ML Kit + play-services-base were already dependenc
 6. Edit -> replace original -> text layer is dropped for that page.
 7. Rotation / split-screen: layer stays aligned (`onSizeChanged` -> `reset()` -> `onMatrixChanged`).
 
+## Automatic background reading (session 4, "Galaxy-like" step 1)
+- The viewer reads pictures by itself, no button press needed: 0.7 s after a page is shown (and when a page finishes loading) `autoOcr()` reads the current picture, then the next, then the previous one, one at a time (`ocrWork`). Skipped during the slideshow.
+- **T button state** (`updateOcrBar`): bright = text found or layer on, dim (0.35) = read, no text, half = reading now, 0.8 = not read yet. Press = show the layer instantly if already read; if still reading it shows when done (`ocrWant`, no delay).
+- **Disk cache** `cacheDir/ocr/<uuid>.json` (`ocrFile/ocrSave/ocrLoad`): lines + word boxes, key = url query + size, valid only if the decoded bitmap has the same width/height; files older than 30 days are deleted at start (`pruneOcr`). Re-opening a picture shows its text at once.
+- Failures: a page that fails is skipped by auto mode (`ocrBad`); after 2 failures in a row auto mode stops (`ocrFails`, e.g. no Play Services / model missing); pressing T retries. Toasts ("Downloading text model...", "Reading text...") only while the user waits after pressing T.
+- Not compiled / not device-tested. Check: open a photo of text, wait 1-2 s, T turns bright; press T = boxes appear immediately; swipe to the next photo of text = also ready; airplane mode + a photo already read = still instant.
+
+## Roadmap: making it feel like Samsung Gallery (options, in order of value)
+Do these only after the first build is green and the basic version works on the phone. One option per session.
+1. **Automatic, instant text** - DONE (session 4, see section above; not compiled).
+2. **Better accuracy** - read the full-resolution picture or tiles of it (small print, document photos) instead of the <=3072/4096 px viewer bitmap; if Turkish `ı İ ğ ş ç` come out wrong with the Latin model, try Tesseract with Turkish data or a small correction pass. Note: boxes must then be mapped back to the viewer bitmap.
+3. **Native-feeling selection** - tap a word directly while the layer is on (no long press); double-tap = word, triple-tap = line; draw boxes only around the touched area instead of every word; magnifier while dragging the handles; floating toolbar above the selection (Copy / Search / Share / Translate).
+4. **Translate** - offline Turkish <-> English button with ML Kit Translate (new dependency + model download); useful for the English-teacher use case.
+5. **Smart actions** - phone numbers, links and e-mails in the text become tappable; "Save as .txt".
+6. **Tilted text** - use ML Kit corner points (`cornerPoints`) so boxes follow rotated text instead of loose axis-aligned rectangles (needs `OcrWord` to carry a polygon; change the contract in all three parts).
+Extra ideas: Settings switch for background reading (on / only while charging / off); persist nothing else.
+
 ## Known gaps / ideas
 - Long press no longer pans the picture while the finger is still down (`held` flag in `ZoomImageView`). No long-press-and-drag to extend (use the handles); no double-tap word/line select (double tap is zoom).
 - Very small text in 12 MP+ photos is recognised at the viewer's decoded size (<= 3072/4096 px); a full-resolution region pass (crop the cached `cacheDir/img/<pos>.bin` around the zoomed area) would help - not built.
 - Bar has Copy / Select all / Search / Share / X (Search = browser web search of the selection, max 200 chars). No "translate" yet; `selBar` is a plain `LinearLayout`, add buttons there.
 - OCR result is kept per page only while the viewer is open (not persisted).
 - 2026-10-10 (session 3, Part 6 polish): `ZoomImageView.held` (no pan after a selecting long press); **Search** button on the selection bar (`searchOcr()`). `ImageViewerActivity.kt` 635 -> ~648 lines. Still **not compiled / not device-tested**; Part 4 (GitHub build) and Part 5 (device checklist) need the user's side. Not built: full-resolution region OCR for small text, persisting results.
+- 2026-10-10 (session 4): automatic background OCR + disk cache + T button states (see section above). `ImageViewerActivity.kt` ~757 lines. Not compiled.

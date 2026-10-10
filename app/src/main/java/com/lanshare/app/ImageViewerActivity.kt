@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
@@ -40,6 +41,7 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lanshare.app.core.mimeFor
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -84,10 +86,15 @@ class ImageViewerActivity : Activity() {
     private var gen = 0
 
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
-    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }
+    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
-    private var ocrBusy = false
+    private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
+    private val ocrBad = HashSet<Int>()                  // pages where recognition failed (auto mode skips them; pressing T retries)
+    private var ocrWork = -1                             // page being recognised right now, -1 = idle
+    private var ocrWant = -1                             // page the user pressed T on and is waiting for
+    private var ocrFails = 0                             // consecutive failures; auto mode stops at 2 (model missing / no Play Services)
+    private val autoRun = Runnable { autoOcr() }
     private lateinit var ocrBtn: TextView
     private lateinit var selBar: LinearLayout
     private lateinit var copyBtn: TextView
@@ -122,6 +129,7 @@ class ImageViewerActivity : Activity() {
         File(cacheDir, "img").deleteRecursively()
         buildUi()
         begin()
+        pool.execute { pruneOcr() }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -138,7 +146,7 @@ class ImageViewerActivity : Activity() {
             offscreenPageLimit = 1
             adapter = Ad()
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position); updateOcrBar() }
+                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position); ocrWant = -1; updateOcrBar(); scheduleAutoOcr() }
                 override fun onPageScrollStateChanged(state: Int) { if (state == ViewPager2.SCROLL_STATE_DRAGGING && slide) setSlide(false) }
             })
         }
@@ -232,7 +240,8 @@ class ImageViewerActivity : Activity() {
         val parsed = try { if (json == null) null else parse(json) } catch (_: Exception) { null }
         if (parsed == null || parsed.first.isEmpty()) { finish(); return }
         gen++
-        loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); ocrOn.clear(); ocrBusy = false
+        loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); ocrOn.clear(); ocrNone.clear(); ocrBad.clear(); ocrWork = -1; ocrWant = -1; ocrFails = 0
+        ui.removeCallbacks(autoRun)
         selBar.visibility = View.GONE
         File(cacheDir, "img").deleteRecursively()
         items = parsed.first
@@ -289,6 +298,7 @@ class ImageViewerActivity : Activity() {
                 } else failed[pos] = re ?: "Cannot open this picture"
                 holder(pos)?.show(pos)
                 if (pager.currentItem == pos) updateTitle(pos)
+                if (rb != null) scheduleAutoOcr()
             }
         }
     }
@@ -378,29 +388,121 @@ class ImageViewerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- select text (OCR)
-    /** "T" button: first press recognises the current picture and shows the text layer, next press hides it. */
+    /** "T" button: shows the text layer of the current picture (already read in the background, else reads it now); next press hides it. */
     private fun toggleOcr() {
         val pos = pager.currentItem
         if (pos in ocrOn) { closeOcr(); return }
-        if (ocrBusy) return
-        val bm = cache.get(pos)
-        if (bm == null) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
         if (slide) setSlide(false)
         val have = ocrRes[pos]
-        if (have != null) { showOcr(pos, have); return }
-        ocrBusy = true
-        ocrBtn.alpha = 0.4f
+        if (have != null) {
+            if (have.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show() else showOcr(pos, have)
+            return
+        }
+        val bm = cache.get(pos)
+        if (bm == null) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        ocrBad.remove(pos); ocrFails = 0
+        ocrWant = pos                                  // shown as soon as it is read
+        if (ocrWork < 0) startOcr(pos, bm)             // else it is busy: with this page (just wait) or a neighbour (this page goes first next)
+        updateOcrBar()
+    }
+
+    // ---- background reading: current picture first, then the next and the previous one; results are cached on disk
+    private fun scheduleAutoOcr() { ui.removeCallbacks(autoRun); ui.postDelayed(autoRun, if (ocrWant >= 0) 0L else 700L) }   // no delay while the user waits
+
+    private fun autoOcr() {
+        if (isDestroyed || slide || ocrWork >= 0 || ocrFails >= 2) return
+        val cur = pager.currentItem
+        for (p in intArrayOf(cur, cur + 1, cur - 1)) {
+            if (p !in items.indices || ocrRes.containsKey(p) || p in ocrBad) continue
+            val bm = cache.get(p) ?: continue
+            startOcr(p, bm)
+            return
+        }
+    }
+
+    private fun startOcr(p: Int, bm: Bitmap) {
+        val item = items.getOrNull(p) ?: return
+        val saved = ocrLoad(p, bm)
+        if (saved != null) { ocrDone(p, saved); return }
+        ocrWork = p
+        updateOcrBar()
         val my = gen
         ocr.recognize(bm) { res ->
             if (my != gen || isDestroyed) return@recognize
-            ocrBusy = false
-            ocrBtn.alpha = 1f
-            res.onSuccess { lines ->
-                ocrRes[pos] = lines
-                if (lines.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show()
-                else showOcr(pos, lines)
-            }.onFailure { e -> Toast.makeText(this, e.message ?: "Cannot read the text", Toast.LENGTH_LONG).show() }
+            ocrWork = -1
+            if (items.getOrNull(p) !== item) { scheduleAutoOcr(); return@recognize }   // the picture was replaced meanwhile
+            res.onSuccess { lines -> ocrFails = 0; ocrSave(p, bm, lines); ocrDone(p, lines) }
+                .onFailure { e ->
+                    ocrBad.add(p); ocrFails++
+                    if (ocrWant == p) { ocrWant = -1; Toast.makeText(this, e.message ?: "Cannot read the text", Toast.LENGTH_LONG).show() }
+                    updateOcrBar()
+                }
+            scheduleAutoOcr()
         }
+    }
+
+    private fun ocrDone(p: Int, lines: List<OcrLine>) {
+        ocrRes[p] = lines
+        if (lines.isEmpty()) ocrNone.add(p)
+        if (ocrWant == p) {
+            ocrWant = -1
+            if (lines.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show() else showOcr(p, lines)
+        }
+        updateOcrBar()
+        scheduleAutoOcr()
+    }
+
+    // ---- disk cache of recognised text (cacheDir/ocr, one small JSON per picture, kept 30 days; valid only for the same decoded size)
+    private fun ocrFile(p: Int): File {
+        val it = items[p]
+        val key = it.url.substringAfter('?', it.url) + "|" + it.size
+        return File(File(cacheDir, "ocr").apply { mkdirs() }, java.util.UUID.nameUUIDFromBytes(key.toByteArray()).toString() + ".json")
+    }
+
+    private fun boxArr(r: RectF) = JSONArray().put(r.left.toDouble()).put(r.top.toDouble()).put(r.right.toDouble()).put(r.bottom.toDouble())
+    private fun arrBox(a: JSONArray) = RectF(a.getDouble(0).toFloat(), a.getDouble(1).toFloat(), a.getDouble(2).toFloat(), a.getDouble(3).toFloat())
+
+    private fun ocrSave(p: Int, bm: Bitmap, lines: List<OcrLine>) {
+        val f = try { ocrFile(p) } catch (e: Exception) { return }
+        val w = bm.width
+        val h = bm.height
+        pool.execute {
+            try {
+                val ls = JSONArray()
+                for (l in lines) {
+                    val wa = JSONArray()
+                    for (x in l.words) wa.put(JSONObject().put("t", x.text).put("b", boxArr(x.box)))
+                    ls.put(JSONObject().put("t", l.text).put("b", boxArr(l.box)).put("w", wa))
+                }
+                f.writeText(JSONObject().put("w", w).put("h", h).put("l", ls).toString())
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun ocrLoad(p: Int, bm: Bitmap): List<OcrLine>? {
+        try {
+            val f = ocrFile(p)
+            if (!f.isFile) return null
+            val o = JSONObject(f.readText())
+            if (o.getInt("w") != bm.width || o.getInt("h") != bm.height) return null
+            val ls = o.getJSONArray("l")
+            val out = ArrayList<OcrLine>()
+            for (i in 0 until ls.length()) {
+                val l = ls.getJSONObject(i)
+                val wa = l.getJSONArray("w")
+                val ws = ArrayList<OcrWord>()
+                for (j in 0 until wa.length()) { val x = wa.getJSONObject(j); ws.add(OcrWord(x.getString("t"), arrBox(x.getJSONArray("b")))) }
+                out.add(OcrLine(l.getString("t"), arrBox(l.getJSONArray("b")), ws))
+            }
+            return out
+        } catch (e: Exception) { return null }
+    }
+
+    private fun pruneOcr() {
+        try {
+            val lim = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+            File(cacheDir, "ocr").listFiles()?.forEach { f -> if (f.lastModified() < lim) f.delete() }
+        } catch (_: Exception) {}
     }
 
     private fun showOcr(pos: Int, lines: List<OcrLine>) {
@@ -422,6 +524,14 @@ class ImageViewerActivity : Activity() {
         val on = pager.currentItem in ocrOn && ov != null && ov.hasLines()
         selBar.visibility = if (on) View.VISIBLE else View.GONE
         ocrBtn.setTextColor(if (on) 0xFF8AB4F8.toInt() else Color.WHITE)
+        val cp = pager.currentItem
+        ocrBtn.alpha = when {                                   // T: bright = text found / layer on, dim = no text, half = reading
+            cp in ocrOn -> 1f
+            ocrRes[cp]?.isNotEmpty() == true -> 1f
+            cp in ocrNone -> 0.35f
+            ocrWork == cp -> 0.5f
+            else -> 0.8f
+        }
         copyBtn.text = if (ov != null && ov.hasSelection()) "Copy" else "Copy all"
     }
 
@@ -470,7 +580,7 @@ class ImageViewerActivity : Activity() {
         val old = items.getOrNull(pos) ?: return
         items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
         File(File(cacheDir, "img"), "$pos.bin").delete()
-        cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos); ocrRes.remove(pos); ocrOn.remove(pos)
+        cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos); ocrRes.remove(pos); ocrOn.remove(pos); ocrNone.remove(pos); ocrBad.remove(pos)
         holder(pos)?.let { h -> h.ov.setLines(null); h.iv.setBmp(null); h.show(pos) }
         updateOcrBar()
         updateTitle(pos)
