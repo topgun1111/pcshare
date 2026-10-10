@@ -420,7 +420,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 @media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
 #gal .gmh:first-child{padding-top:8px}
-body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint{display:none}
+body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint,body.galm #newb,body.galm #sortb{display:none}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -1343,7 +1343,7 @@ function nativeImg(i){
   if(!okImg(i))return false;
   const V=cxl().filter(okImg);if(!V.length)return false;
   const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(m.p||jn(cxp(),m.name));   // m.p = full path (image search results come from many folders)
-  const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0}));
+  const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0,mtime:m.mtime||0}));
   const at=Math.max(0,V.findIndex(m=>(m.p||m.name)===(i.p||i.name)));
   try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
 function viewImg(i){if(!nativeImg(i))openMedia(i)}
@@ -1777,6 +1777,7 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
   const cnt=d=>acc(d,d.n+' printer'+(d.n===1?'':'s'),'ok');
   const draw=wifi=>{card.textContent='';card.append(E('div','handle'),E('h3','','Print on…'));
   if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
+  {const d=dev('Save as PDF','This phone','wifi');add(d,{id:'pdf:local',name:'PDF file',pdf:1},'PDF file (all layout options)','no printer needed');acc(d,'saved in LANShare PDF','ok')}
   peers.forEach(p=>{
     const ts=p.via==='Tailscale',d=dev(p.name,ts?'Tailscale':'Wi-Fi',ts?'ts':'wifi');
     if(p.ok===false&&!p.smb){acc(d,'offline','off');return}
@@ -2000,7 +2001,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const st=Object.assign({},PRN_DEF,pBy()[pc.id+'|'+p0]||lsGet('printOpts',{}));st.printer=p0;st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
-  const here=pc.id==='__here';   /* this phone: Android's own print dialog sets copies / sides / colour / printer */
+  const pdf=pc.id==='pdf:local',here=pc.id==='__here';   /* this phone: Android's own print dialog sets copies / sides / colour / printer */
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -2008,7 +2009,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   /* preview size: as wide as the screen allows and up to ~45% of its height */
   const pvMax=()=>[Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-  card.append(E('div','handle'),E('h3','','Print on '+pc.name));
+  card.append(E('div','handle'),E('h3','',pdf?'Save as PDF':'Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
   let pinfo=null,ptm=0,cur=null,hasOffice=false;
@@ -2134,7 +2135,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
   const pw=sec('Printer',sel);pw.style.display='none';
   const hint=E('div','sub');hint.style.cssText='font-size:12px;color:var(--mut);margin-top:4px;display:none';
-  const status=()=>{if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
+  const status=()=>{if(pdf){info.textContent='Saved as a PDF file in "LANShare PDF" on this phone';info.style.color='';return}if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
     info.textContent='Checking printer\u2026';info.className='sub';
     api('GET','/api/printer?dev='+enc(pc.id)+(st.printer?'&printer='+enc(st.printer):''),null,12000).then(r=>{
       if(!r.ok){info.textContent='Print service not reachable on this PC';info.style.color='var(--err)';return}
@@ -2151,9 +2152,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
   mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
   redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);
-  if(!here){sec('Copies',cp);
+  if(!here&&!pdf){sec('Copies',cp);
   sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
   sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]))}
+  if(pdf)sec('Colour',seg('color',[['','Colour'],['mono','Black & white']]));
   sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
   if(!imgMode&&files.length>1)sec('Files',sw('join','Print all files as one job (pages joined, laid out together)'));
   if(imgMode)sec('Order',sw('reverse','Reverse order'));
@@ -2165,7 +2167,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   if(!imgMode)sec('Position',seg('align',[['','Centre'],['top','Top'],['topleft','Top left']]),sw('autorot','Turn pages to fit the sheet'));
   const tok=E('div','sub','Layout and fitting work for PDF, image and text files; other files get printer and copies only.');
   tok.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(tok,hint);
-  const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill','Print');
+  const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill',pdf?'Save PDF':'Print');
   c.onclick=()=>fin(null);
   k.onclick=()=>{const out={};Object.keys(PRN_DEF).forEach(n=>{if(st[n]!==PRN_DEF[n]&&st[n]!==''&&st[n]!==0)out[n]=st[n]});
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
@@ -2215,6 +2217,12 @@ async function doPrint(preset,cx){
     done();
     if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)})),opts}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
+    return}
+  if(to.pdf){
+    const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
+    const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
+    try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   if(to.wifi){
     const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));

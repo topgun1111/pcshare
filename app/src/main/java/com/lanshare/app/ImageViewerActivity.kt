@@ -6,14 +6,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
-import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -65,10 +63,9 @@ class ImageViewerActivity : Activity() {
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
         private const val REQ_EDIT = 41
-        private const val OCR_VER = 3          // bump when the reading method changes (TiledOcr = 2, + corner polygons + full-resolution tiles = 3): older cached results are ignored
     }
 
-    private class Item(val name: String, val url: String, val size: Long)
+    private class Item(val name: String, val url: String, val size: Long, val mtime: Long = 0L)
 
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "img-load").also { it.isDaemon = true } }
@@ -89,7 +86,7 @@ class ImageViewerActivity : Activity() {
     private var gen = 0
 
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
-    private val ocr: TiledOcr by lazy { TiledOcr(MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } }) }   // toasts only while the user waits for T
+    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
@@ -100,7 +97,6 @@ class ImageViewerActivity : Activity() {
     private val autoRun = Runnable { autoOcr() }
     private lateinit var ocrBtn: TextView
     private lateinit var selBar: LinearLayout
-    private lateinit var smartBtn: TextView                   // shown only when links / phone numbers / e-mails were found in the (selected) text
     private lateinit var copyBtn: TextView
 
     private val slideTick = object : Runnable {
@@ -168,12 +164,12 @@ class ImageViewerActivity : Activity() {
         }
         val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
         titleTv = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1 }
+        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         slideBtn = tv("\u25B6", 18f).apply { setOnClickListener { setSlide(!slide) } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
         val edit = tv("\u270e", 20f).apply { setOnClickListener { edit() } }
-        ocrBtn = tv("T", 20f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setOnClickListener { toggleOcr() }; setOnLongClickListener { ocrMenu(); true } }
+        ocrBtn = tv("T", 20f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setOnClickListener { toggleOcr() } }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(slideBtn)
@@ -188,7 +184,7 @@ class ImageViewerActivity : Activity() {
         root.addView(top)
 
         // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
-        fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setPadding(dp(9), dp(8), dp(9), dp(8)); setOnClickListener { act() } }
+        fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setOnClickListener { act() } }
         copyBtn = barBtn("Copy all") { copyOcr() }
         selBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
@@ -197,9 +193,7 @@ class ImageViewerActivity : Activity() {
             visibility = View.GONE
             addView(copyBtn)
             addView(barBtn("Select all") { holder(pager.currentItem)?.ov?.selectAll() })
-            smartBtn = barBtn("Links") { smartOcr() }.apply { visibility = View.GONE }
-            addView(smartBtn)
-            addView(barBtn("Save") { saveOcr() })
+            addView(barBtn("Search") { searchOcr() })
             addView(barBtn("Share") { shareOcr() })
             addView(barBtn("\u2715") { closeOcr() })
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(16) }
@@ -235,8 +229,16 @@ class ImageViewerActivity : Activity() {
 
     private fun updateTitle(pos: Int) {
         val it = items.getOrNull(pos) ?: return
-        titleTv.text = it.name
-        subTv.text = (pos + 1).toString() + " / " + items.size + (dims[pos]?.let { d -> " \u00b7 $d" } ?: "") + (if (it.size > 0) " \u00b7 " + android.text.format.Formatter.formatShortFileSize(this, it.size) else "")
+        // line 1: "3/341 \u2022 IMG_name"; line 2: date \u2022 time, then pixel size and file size
+        titleTv.text = (pos + 1).toString() + "/" + items.size + " \u2022 " + it.name
+        val parts = ArrayList<String>()
+        if (it.mtime > 0) {
+            val d = java.util.Date(it.mtime * 1000)
+            parts.add(java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(d) + " \u2022 " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(d))
+        }
+        dims[pos]?.let { d -> parts.add(d) }
+        if (it.size > 0) parts.add(android.text.format.Formatter.formatShortFileSize(this, it.size))
+        subTv.text = parts.joinToString("   \u00b7   ")
     }
 
     // ---------------------------------------------------------------- start
@@ -265,7 +267,7 @@ class ImageViewerActivity : Activity() {
             val it = arr.getJSONObject(i)
             val url = it.getString("url")
             if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))   // only the app's own server
-                out.add(Item(it.optString("name"), url, it.optLong("size", 0L)))
+                out.add(Item(it.optString("name"), url, it.optLong("size", 0L), it.optLong("mtime", 0L)))
         }
         return out to o.optInt("start", 0).coerceIn(0, maxOf(out.size - 1, 0))
     }
@@ -413,23 +415,12 @@ class ImageViewerActivity : Activity() {
     }
 
     // ---- background reading: current picture first, then the next and the previous one; results are cached on disk
-    /** Long press on the bare picture = T button (+ selects the word under the finger when the text is already read). True = press was used. */
-    private fun holdOcr(ov: OcrOverlayView, x: Float, y: Float): Boolean {
-        val pos = pager.currentItem
-        if (pos in ocrOn) return false
-        toggleOcr()
-        if (pos in ocrOn && ov.hasLines()) ov.selectWordAt(x, y)
-        return true
-    }
-
     private fun scheduleAutoOcr() { ui.removeCallbacks(autoRun); ui.postDelayed(autoRun, if (ocrWant >= 0) 0L else 700L) }   // no delay while the user waits
 
     private fun autoOcr() {
         if (isDestroyed || slide || ocrWork >= 0 || ocrFails >= 2) return
         val cur = pager.currentItem
-        val auto = autoAllowed()
         for (p in intArrayOf(cur, cur + 1, cur - 1)) {
-            if (!auto && p != ocrWant) continue                      // background reading is off: only the page the user pressed T on
             if (p !in items.indices || ocrRes.containsKey(p) || p in ocrBad) continue
             val bm = cache.get(p) ?: continue
             startOcr(p, bm)
@@ -444,10 +435,10 @@ class ImageViewerActivity : Activity() {
         ocrWork = p
         updateOcrBar()
         val my = gen
-        ocr.recognizeHi(bm, File(File(cacheDir, "img"), "$p.bin").takeIf { it.isFile }) { res ->   // original file = full-resolution tiles for small print
-            if (my != gen || isDestroyed) return@recognizeHi
+        ocr.recognize(bm) { res ->
+            if (my != gen || isDestroyed) return@recognize
             ocrWork = -1
-            if (items.getOrNull(p) !== item) { scheduleAutoOcr(); return@recognizeHi }   // the picture was replaced meanwhile
+            if (items.getOrNull(p) !== item) { scheduleAutoOcr(); return@recognize }   // the picture was replaced meanwhile
             res.onSuccess { lines -> ocrFails = 0; ocrSave(p, bm, lines); ocrDone(p, lines) }
                 .onFailure { e ->
                     ocrBad.add(p); ocrFails++
@@ -470,9 +461,8 @@ class ImageViewerActivity : Activity() {
     }
 
     // ---- disk cache of recognised text (cacheDir/ocr, one small JSON per picture, kept 30 days; valid only for the same decoded size)
-    private fun ocrFile(p: Int): File = ocrFileOf(items[p])
-
-    private fun ocrFileOf(it: Item): File {
+    private fun ocrFile(p: Int): File {
+        val it = items[p]
         val key = it.url.substringAfter('?', it.url) + "|" + it.size
         return File(File(cacheDir, "ocr").apply { mkdirs() }, java.util.UUID.nameUUIDFromBytes(key.toByteArray()).toString() + ".json")
     }
@@ -489,14 +479,10 @@ class ImageViewerActivity : Activity() {
                 val ls = JSONArray()
                 for (l in lines) {
                     val wa = JSONArray()
-                    for (x in l.words) {
-                        val wo = JSONObject().put("t", x.text).put("b", boxArr(x.box))
-                        x.quad?.let { q -> wo.put("q", JSONArray().apply { for (v in q) put(v.toDouble()) }) }
-                        wa.put(wo)
-                    }
+                    for (x in l.words) wa.put(JSONObject().put("t", x.text).put("b", boxArr(x.box)))
                     ls.put(JSONObject().put("t", l.text).put("b", boxArr(l.box)).put("w", wa))
                 }
-                f.writeText(JSONObject().put("v", OCR_VER).put("w", w).put("h", h).put("l", ls).toString())
+                f.writeText(JSONObject().put("w", w).put("h", h).put("l", ls).toString())
             } catch (_: Exception) {}
         }
     }
@@ -506,14 +492,14 @@ class ImageViewerActivity : Activity() {
             val f = ocrFile(p)
             if (!f.isFile) return null
             val o = JSONObject(f.readText())
-            if (o.optInt("v") != OCR_VER || o.getInt("w") != bm.width || o.getInt("h") != bm.height) return null   // other reading method / size: read again
+            if (o.getInt("w") != bm.width || o.getInt("h") != bm.height) return null
             val ls = o.getJSONArray("l")
             val out = ArrayList<OcrLine>()
             for (i in 0 until ls.length()) {
                 val l = ls.getJSONObject(i)
                 val wa = l.getJSONArray("w")
                 val ws = ArrayList<OcrWord>()
-                for (j in 0 until wa.length()) { val x = wa.getJSONObject(j); val qa = x.optJSONArray("q"); ws.add(OcrWord(x.getString("t"), arrBox(x.getJSONArray("b")), if (qa != null && qa.length() == 8) FloatArray(8) { n -> qa.getDouble(n).toFloat() } else null)) }
+                for (j in 0 until wa.length()) { val x = wa.getJSONObject(j); ws.add(OcrWord(x.getString("t"), arrBox(x.getJSONArray("b")))) }
                 out.add(OcrLine(l.getString("t"), arrBox(l.getJSONArray("b")), ws))
             }
             return out
@@ -523,12 +509,7 @@ class ImageViewerActivity : Activity() {
     private fun pruneOcr() {
         try {
             val lim = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
-            val fs = File(cacheDir, "ocr").listFiles() ?: return
-            var total = 0L
-            for (f in fs.sortedByDescending { it.lastModified() }) {          // newest first; too old or beyond 8 MB in total = deleted
-                total += f.length()
-                if (f.lastModified() < lim || total > 8L * 1024 * 1024) f.delete()
-            }
+            File(cacheDir, "ocr").listFiles()?.forEach { f -> if (f.lastModified() < lim) f.delete() }
         } catch (_: Exception) {}
     }
 
@@ -560,7 +541,6 @@ class ImageViewerActivity : Activity() {
             else -> 0.8f
         }
         copyBtn.text = if (ov != null && ov.hasSelection()) "Copy" else "Copy all"
-        smartBtn.visibility = if (on && OcrSmart.find(ocrText() ?: "").isNotEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun ocrText(): String? { val ov = holder(pager.currentItem)?.ov ?: return null; return ov.selectedText() ?: ov.allText() }
@@ -577,112 +557,6 @@ class ImageViewerActivity : Activity() {
         if (t.isEmpty()) return
         try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(t)))) }
         catch (e: Exception) { Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show() }
-    }
-
-    /** Links / phone numbers / e-mails found in the selection (else all text): pick one to open, dial or write to. */
-    private fun smartOcr() {
-        val hits = OcrSmart.find(ocrText() ?: return)
-        if (hits.isEmpty()) { Toast.makeText(this, "Nothing found", Toast.LENGTH_SHORT).show(); return }
-        android.app.AlertDialog.Builder(this)
-            .setItems(hits.map { it.label() }.toTypedArray()) { _, i ->
-                try { startActivity(hits[i].intent()) } catch (e: Exception) { Toast.makeText(this, "No app found", Toast.LENGTH_SHORT).show() }
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
-    /** Save menu: the text as .txt, the vocabulary list (every different word once) as .txt, or the word list to the clipboard. */
-    private fun saveOcr() {
-        val t = ocrText() ?: return
-        android.app.AlertDialog.Builder(this)
-            .setItems(arrayOf("Save text (.txt)", "Save word list (.txt)", "Copy word list")) { _, i ->
-                when (i) {
-                    0 -> saveTxt(t)
-                    else -> {
-                        val w = OcrSmart.words(t)
-                        if (w.isEmpty()) Toast.makeText(this, "No words", Toast.LENGTH_SHORT).show()
-                        else if (i == 1) saveTxt(w)
-                        else {
-                            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("words", w))
-                            Toast.makeText(this, "Copied " + (w.count { it == '\n' } + 1) + " words", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            }
-            .show()
-    }
-
-    private fun saveTxt(t: String) {
-        try { Toast.makeText(this, "Saved: " + OcrSmart.saveTxt(this, t), Toast.LENGTH_LONG).show() }
-        catch (e: Exception) { Toast.makeText(this, e.message ?: "Cannot save", Toast.LENGTH_LONG).show() }
-    }
-
-    // ---- background reading setting + search in the pictures that were already read (long press on T)
-    private fun autoMode() = OcrPrefs.mode(this)                            // 0 always, 1 only while charging, 2 off (Settings -> Text in pictures)
-    private fun charging(): Boolean {
-        val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        return (i?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
-    }
-    private fun autoAllowed() = when (autoMode()) { 2 -> false; 1 -> charging(); else -> true }
-
-    private fun ocrMenu() {
-        val modes = arrayOf("always", "only while charging", "off")
-        android.app.AlertDialog.Builder(this)
-            .setItems(arrayOf("Find text in these pictures", "Background reading: " + modes[autoMode().coerceIn(0, 2)])) { _, i ->
-                if (i == 0) findDialog()
-                else android.app.AlertDialog.Builder(this)
-                    .setTitle("Background reading")
-                    .setSingleChoiceItems(arrayOf("Always", "Only while charging", "Off"), autoMode().coerceIn(0, 2)) { d, w ->
-                        OcrPrefs.setMode(this, w)
-                        d.dismiss()
-                        if (w == 0) scheduleAutoOcr()
-                    }
-                    .show()
-            }
-            .show()
-    }
-
-    private fun findDialog() {
-        val et = android.widget.EditText(this).apply { setSingleLine(); hint = "word or phrase" }
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Find text in these pictures")
-            .setView(et)
-            .setPositiveButton("Search") { _, _ -> findText(et.text.toString()) }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /** Looks through the saved text of every picture of this list (only pictures that were already read); accents and Turkish dotted / dotless i are ignored. */
-    private fun findText(q0: String) {
-        val q = OcrSmart.fold(q0.trim())
-        if (q.isEmpty()) return
-        val snap = items.toList()
-        val my = gen
-        pool.execute {
-            val hits = ArrayList<Pair<Int, String>>()
-            var unread = 0
-            for ((p, item) in snap.withIndex()) {
-                val f = try { ocrFileOf(item) } catch (e: Exception) { null }
-                if (f == null || !f.isFile) { unread++; continue }
-                try {
-                    val ls = JSONObject(f.readText()).getJSONArray("l")
-                    for (i in 0 until ls.length()) {
-                        val line = ls.getJSONObject(i).getString("t")
-                        if (OcrSmart.fold(line).contains(q)) { hits.add(p to line.trim().take(60)); break }
-                    }
-                } catch (_: Exception) { unread++ }
-                if (hits.size >= 60) break
-            }
-            ui.post {
-                if (my != gen || isDestroyed) return@post
-                if (hits.isEmpty()) { Toast.makeText(this, "Not found" + (if (unread > 0) " ($unread pictures not read yet)" else ""), Toast.LENGTH_LONG).show(); return@post }
-                android.app.AlertDialog.Builder(this)
-                    .setTitle(hits.size.toString() + " found" + (if (unread > 0) " ($unread not read yet)" else ""))
-                    .setItems(hits.map { (p, l) -> snap[p].name + "\n" + l }.toTypedArray()) { _, i -> pager.setCurrentItem(hits[i].first, false) }
-                    .setNegativeButton("Close", null)
-                    .show()
-            }
-        }
     }
 
     private fun shareOcr() {
@@ -748,11 +622,7 @@ class ImageViewerActivity : Activity() {
             val ov = OcrOverlayView(c)
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
-            iv.onHold = { x, y -> if (ov.hasLines()) ov.selectWordAt(x, y) else holdOcr(ov, x, y) }   // layer on: select word; layer off: same as pressing T
-            iv.onTextHit = { x, y -> ov.hitsWord(x, y) }                        // tap on a word selects it (1 = word, 2 = line, 3 = paragraph)
-            iv.onTextTap = { x, y, n -> ov.tapSelect(x, y, n) }
-            iv.onTouchAt = { x, y -> ov.touchHint(x, y) }                       // outlines the words around the finger
-            ov.onAction = { id -> when (id) { "copy" -> copyOcr(); "search" -> searchOcr(); "share" -> shareOcr() } }
+            iv.onHold = { x, y -> ov.hasLines() && ov.selectWordAt(x, y) }
             ov.onSelection = { _ -> updateOcrBar() }
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
@@ -798,24 +668,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     var onHold: ((Float, Float) -> Boolean)? = null
     /** Image px -> view px matrix changed (zoom / pan / new picture / resize). */
     var onMatrixChanged: ((Matrix) -> Unit)? = null
-    /** Is there a recognised word under this view point? Taps starting on a word go to [onTextTap] instead of hide-bars / double-tap zoom. */
-    var onTextHit: ((Float, Float) -> Boolean)? = null
-    /** Tap on a word: count 1 = word, 2 = line, 3 = paragraph (taps within 450 ms of each other). */
-    var onTextTap: ((Float, Float, Int) -> Unit)? = null
-    /** Finger position while it is down (single pointer) - for the outlines around the finger. */
-    var onTouchAt: ((Float, Float) -> Unit)? = null
     fun matrixNow() = Matrix(mx)
-    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
-    private var downOnWord = false
-    private var tapMoved = false
-    private var textTapUsed = false   // the last tap was used for text: swallow the delayed single-tap (hide bars)
-    private var downX = 0f
-    private var downY = 0f
-    private var downT = 0L
-    private var lastTapT = 0L
-    private var lastTapX = 0f
-    private var lastTapY = 0f
-    private var taps = 0
     private var held = false          // long press was used for text selection: ignore the rest of this touch (no accidental pan)
 
     init { scaleType = ScaleType.MATRIX }
@@ -880,10 +733,9 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     private val gd = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
-        override fun onSingleTapConfirmed(e: MotionEvent): Boolean { if (textTapUsed) { textTapUsed = false; return true }; onTap?.invoke(); return true }
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap?.invoke(); return true }
         override fun onLongPress(e: MotionEvent) { if (onHold?.invoke(e.x, e.y) == true) { held = true; performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } }
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            if (downOnWord) return true                       // double tap on a word selects the line, no zoom
             if (zoomed()) zoomTo(fit, e.x, e.y, true) else zoomTo(maxOf(fit * 2.5f, minOf(width / bw.toFloat(), 1f)), e.x, e.y, true)
             return true
         }
@@ -903,29 +755,9 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (bw == 0) return super.onTouchEvent(e)
-        if (e.actionMasked == MotionEvent.ACTION_DOWN) {
-            downOnWord = onTextHit?.invoke(e.x, e.y) == true   // must be known before the gesture detector sees a 2nd tap
-            tapMoved = false; textTapUsed = false
-            downX = e.x; downY = e.y; downT = e.eventTime
-        }
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
         if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> onTouchAt?.invoke(e.x, e.y)
-            MotionEvent.ACTION_MOVE -> {
-                if (e.pointerCount > 1 || Math.hypot((e.x - downX).toDouble(), (e.y - downY).toDouble()) > slop) tapMoved = true
-                if (e.pointerCount == 1) onTouchAt?.invoke(e.x, e.y)
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> tapMoved = true
-            MotionEvent.ACTION_UP -> if (downOnWord && !tapMoved && !held && !sd.isInProgress && e.eventTime - downT < 400) {
-                taps = if (e.eventTime - lastTapT < 450 && Math.hypot((e.x - lastTapX).toDouble(), (e.y - lastTapY).toDouble()) < slop * 6) taps + 1 else 1
-                if (taps > 3) taps = 1
-                lastTapT = e.eventTime; lastTapX = e.x; lastTapY = e.y
-                textTapUsed = true
-                onTextTap?.invoke(e.x, e.y, taps)
-            }
-        }
         if (held) parent?.requestDisallowInterceptTouchEvent(true)
         if (e.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         return true

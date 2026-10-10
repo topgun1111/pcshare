@@ -242,6 +242,14 @@ object Jobs {
 
     fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
         val src = ep(srcId)
+        if (PdfPrint.isPdf(dstId)) {   // "Save as PDF": same layout options, the result is a PDF file on this phone (PdfPrint)
+            val pid = UUID.randomUUID().toString().replace("-", "").take(8)
+            prune()
+            val pjob = Job("Saving PDF")
+            all[pid] = pjob
+            Thread({ PdfPrint.work(pjob, src, paths, opts) }, "pdfprint-$pid").also { it.isDaemon = true }.start()
+            return pid
+        }
         if (WifiPrinters.isWifi(dstId)) {   // a printer on the same Wi-Fi: straight over IPP, no PC (WifiPrint)
             val wp = WifiPrinters.get(dstId) ?: throw IOException("that printer is no longer on the network")
             val wid = UUID.randomUUID().toString().replace("-", "").take(8)

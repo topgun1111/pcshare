@@ -112,7 +112,7 @@ object PrintPreview {
     }
 
     private fun office(to: String, f: File, name: String, out: File) {
-        val ip = if (WifiPrinters.isWifi(to) || to.isEmpty()) Jobs.converterIp()
+        val ip = if (WifiPrinters.isWifi(to) || PdfPrint.isPdf(to) || to.isEmpty()) Jobs.converterIp()
         else Jobs.printTarget(to).first
         Jobs.officeToPdf(ip, f, name, out)
     }

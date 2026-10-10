@@ -30,12 +30,12 @@ import java.nio.charset.Charset
 object WifiPrint {
     private class PrintFail(msg: String) : IOException(msg)
 
-    private val IMG = setOf("png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff")
-    private val OFFICE = setOf("doc", "docx", "rtf", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp")
-    private val TXT = setOf("txt", "log", "md", "csv")
+    internal val IMG = setOf("png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff")
+    internal val OFFICE = setOf("doc", "docx", "rtf", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp")
+    internal val TXT = setOf("txt", "log", "md", "csv")
     /** pages per sheet -> columns, rows, landscape sheet (same table as pcprint.py / the preview) */
-    private val LAY = mapOf(2 to Triple(2, 1, true), 4 to Triple(2, 2, false), 6 to Triple(3, 2, true), 9 to Triple(3, 3, false))
-    private val DIMS = mapOf("A4" to (595 to 842), "A3" to (842 to 1191), "A5" to (420 to 595), "Letter" to (612 to 792), "Legal" to (612 to 1008))
+    internal val LAY = mapOf(2 to Triple(2, 1, true), 4 to Triple(2, 2, false), 6 to Triple(3, 2, true), 9 to Triple(3, 3, false))
+    internal val DIMS = mapOf("A4" to (595 to 842), "A3" to (842 to 1191), "A5" to (420 to 595), "Letter" to (612 to 792), "Legal" to (612 to 1008))
     private val PAPER = mapOf("A4" to "iso_a4_210x297mm", "A3" to "iso_a3_297x420mm", "A5" to "iso_a5_148x210mm",
         "Letter" to "na_letter_8.5x11in", "Legal" to "na_legal_8.5x14in")
 
@@ -523,7 +523,7 @@ object WifiPrint {
         } finally { doc.close(); try { rr.close() } catch (_: Exception) {}; try { fd.close() } catch (_: Exception) {} }
     }
 
-    private fun imageToPdf(f: File): File {
+    internal fun imageToPdf(f: File): File {
         val bmp = BitmapFactory.decodeFile(f.path) ?: throw PrintFail("the picture could not be read")
         val doc = PdfDocument()
         try {
@@ -545,7 +545,7 @@ object WifiPrint {
         } finally { doc.close(); bmp.recycle() }
     }
 
-    private fun textToPdf(f: File): File {
+    internal fun textToPdf(f: File): File {
         if (f.length() > 4L shl 20) throw PrintFail("the text file is too large for Wi-Fi printing (max 4 MB)")
         val raw = f.readBytes()
         var s = String(raw, Charsets.UTF_8)

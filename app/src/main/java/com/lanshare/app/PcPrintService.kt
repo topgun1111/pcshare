@@ -4,11 +4,15 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentValues
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.print.PrintAttributes
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import android.print.PrinterCapabilitiesInfo
 import android.print.PrinterId
 import android.print.PrinterInfo
@@ -23,21 +27,33 @@ import java.io.IOException
  * "Print" in ANY app / file manager can pick it. The finished PDF is copied to <storage>/LANShare Shared/
  * and MainActivity opens LANShare's own print dialog (PC picker, layout options, preview) for it.
  *
+ * It also offers a second, local printer - "LANShare - save as PDF". Printing to it never opens LANShare: the PDF that
+ * Android built from the app's own print dialog (paper size, orientation, colour, page range, margins, scale, copies...
+ * all honoured by Android's print framework) is just saved to <storage>/LANShare PDF/ and a notification opens it.
+ *
  * The user has to switch the service on once: Settings > Connected devices > Printing > LANShare.
  */
 class PcPrintService : PrintService() {
 
+    private companion object {
+        const val ID_PC = "lanshare-pc"
+        const val ID_PDF = "lanshare-pdf"
+        const val DIR_PDF = "LANShare PDF"
+    }
+
     override fun onCreatePrinterDiscoverySession(): PrinterDiscoverySession = object : PrinterDiscoverySession() {
-        override fun onStartPrinterDiscovery(priorityList: List<PrinterId>) { addPrinters(listOf(printer())) }
+        override fun onStartPrinterDiscovery(priorityList: List<PrinterId>) { addPrinters(printers()) }
         override fun onStopPrinterDiscovery() {}
         override fun onValidatePrinters(printerIds: List<PrinterId>) {}
-        override fun onStartPrinterStateTracking(printerId: PrinterId) { addPrinters(listOf(printer())) }
+        override fun onStartPrinterStateTracking(printerId: PrinterId) { addPrinters(printers()) }
         override fun onStopPrinterStateTracking(printerId: PrinterId) {}
         override fun onDestroy() {}
     }
 
+    private fun printers(): List<PrinterInfo> = listOf(printer(), pdfPrinter())
+
     private fun printer(): PrinterInfo {
-        val id = generatePrinterId("lanshare-pc")
+        val id = generatePrinterId(ID_PC)
         val caps = PrinterCapabilitiesInfo.Builder(id)
             .addMediaSize(PrintAttributes.MediaSize.ISO_A4, true)
             .addMediaSize(PrintAttributes.MediaSize.ISO_A3, false)
@@ -54,12 +70,36 @@ class PcPrintService : PrintService() {
             .build()
     }
 
+    /** The local "printer" that only writes a PDF file. Wide capability list so the system print dialog offers every option. */
+    private fun pdfPrinter(): PrinterInfo {
+        val id = generatePrinterId(ID_PDF)
+        val M = PrintAttributes.MediaSize
+        val caps = PrinterCapabilitiesInfo.Builder(id)
+            .addMediaSize(M.ISO_A4, true)
+            .addMediaSize(M.ISO_A3, false).addMediaSize(M.ISO_A2, false).addMediaSize(M.ISO_A1, false).addMediaSize(M.ISO_A0, false)
+            .addMediaSize(M.ISO_A5, false).addMediaSize(M.ISO_A6, false)
+            .addMediaSize(M.ISO_B4, false).addMediaSize(M.ISO_B5, false)
+            .addMediaSize(M.NA_LETTER, false).addMediaSize(M.NA_LEGAL, false).addMediaSize(M.NA_TABLOID, false)
+            .addMediaSize(M.NA_GOVT_LETTER, false)
+            .addResolution(PrintAttributes.Resolution("r300", "300 dpi", 300, 300), true)
+            .addResolution(PrintAttributes.Resolution("r600", "600 dpi", 600, 600), false)
+            .addResolution(PrintAttributes.Resolution("r1200", "1200 dpi", 1200, 1200), false)
+            .setColorModes(PrintAttributes.COLOR_MODE_COLOR or PrintAttributes.COLOR_MODE_MONOCHROME, PrintAttributes.COLOR_MODE_COLOR)
+            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+            .build()
+        return PrinterInfo.Builder(id, "LANShare - save as PDF", PrinterInfo.STATUS_IDLE)
+            .setDescription("Saves a PDF in the \"LANShare PDF\" folder")
+            .setCapabilities(caps)
+            .build()
+    }
+
     override fun onRequestCancelPrintJob(job: PrintJob) { job.cancel() }
 
     override fun onPrintJobQueued(job: PrintJob) {
         Thread {
             try {
                 job.start()
+                if (job.info.printerId?.localId == ID_PDF) { savePdf(job); return@Thread }
                 val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
                 if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No storage access - allow \"All files access\" for LANShare")
                 var base = (job.info.label ?: "document").replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(80).ifEmpty { "document" }
@@ -74,6 +114,56 @@ class PcPrintService : PrintService() {
                 try { job.fail(e.message ?: "LANShare could not read the document") } catch (_: Exception) {}
             }
         }.start()
+    }
+
+    /** "Save as PDF" printer: write the document's PDF to <storage>/LANShare PDF/ (never auto-deleted), then tell the user. */
+    private fun savePdf(job: PrintJob) {
+        var base = (job.info.label ?: "document").replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(80).ifEmpty { "document" }
+        base = base.removeSuffix(".pdf").removeSuffix(".PDF").trim().ifEmpty { "document" }
+        val pfd: ParcelFileDescriptor = job.document.data ?: throw IOException("No document data")
+        var uri: Uri? = null
+        var shown = base
+        ParcelFileDescriptor.AutoCloseInputStream(pfd).use { ins ->
+            val dir = File(Environment.getExternalStorageDirectory(), DIR_PDF)
+            if ((dir.isDirectory || dir.mkdirs()) && dir.canWrite()) {
+                var f = File(dir, "$base.pdf"); var k = 1
+                while (f.exists()) { f = File(dir, "$base ($k).pdf"); k++ }
+                f.outputStream().use { ins.copyTo(it) }
+                shown = f.name
+                uri = try { FileProvider.getUriForFile(this, "$packageName.fileprovider", f) } catch (_: Exception) { null }
+            } else if (Build.VERSION.SDK_INT >= 29) {
+                // no "All files access": MediaStore still lets an app add a file to Download/LANShare PDF
+                val cv = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "$base.pdf")
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$DIR_PDF")
+                }
+                val u = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv) ?: throw IOException("Could not create the PDF file")
+                contentResolver.openOutputStream(u)?.use { ins.copyTo(it) } ?: throw IOException("Could not write the PDF file")
+                uri = u
+            } else throw IOException("No storage access - allow \"All files access\" for LANShare")
+        }
+        job.complete()
+        notifySaved(shown, uri)
+    }
+
+    private fun notifySaved(name: String, uri: Uri?) {
+        try {
+            val nid = 8000 + (name.hashCode() and 0xFFF)
+            val nm = getSystemService(NotificationManager::class.java)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
+            val b = if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(NotificationChannel("lanshare_print", "Print requests", NotificationManager.IMPORTANCE_HIGH))
+                Notification.Builder(this, "lanshare_print")
+            } else @Suppress("DEPRECATION") Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+            b.setSmallIcon(R.drawable.ic_notification).setContentTitle("PDF saved").setContentText("$name  -  $DIR_PDF").setAutoCancel(true)
+            if (uri != null) {
+                val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                b.setContentIntent(PendingIntent.getActivity(this, nid, v, flags))
+            }
+            nm.notify(nid, b.build())
+        } catch (_: Exception) {}
     }
 
     /** Open LANShare's print dialog for the file. Android 10+ may block a background start, so a tap-to-open notification is posted too. */
