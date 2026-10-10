@@ -9,7 +9,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -29,6 +32,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -37,6 +41,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.graphics.PathParser
 import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
@@ -74,7 +79,7 @@ class ImageViewerActivity : Activity() {
     private lateinit var top: LinearLayout
     private lateinit var titleTv: TextView
     private lateinit var subTv: TextView
-    private lateinit var slideBtn: TextView
+    private lateinit var countPill: TextView
     private val loading = HashSet<Int>()          // UI thread only
     private val failed = HashMap<Int, String>()   // UI thread only
     private val dims = HashMap<Int, String>()
@@ -95,7 +100,7 @@ class ImageViewerActivity : Activity() {
     private var ocrWant = -1                             // page the user pressed T on and is waiting for
     private var ocrFails = 0                             // consecutive failures; auto mode stops at 2 (model missing / no Play Services)
     private val autoRun = Runnable { autoOcr() }
-    private lateinit var ocrBtn: TextView
+    private lateinit var ocrBtn: IconBtn
     private lateinit var selBar: LinearLayout
     private lateinit var copyBtn: TextView
 
@@ -152,37 +157,66 @@ class ImageViewerActivity : Activity() {
         }
         root.addView(pager)
 
-        fun tv(txt: String, sp: Float) = TextView(this).apply {
-            text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
-        }
+        // top bar: back, file name + date, then three icon actions and a menu (slideshow, details). The position counter lives in a pill at the bottom.
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xB3000000.toInt(), 0x00000000))
-            setPadding(dp(8), dp(8), dp(8), dp(16))
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x66000000, 0x00000000))
+            setPadding(dp(4), dp(6), dp(4), dp(28))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
         }
-        val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
-        titleTv = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
-        slideBtn = tv("\u25B6", 18f).apply { setOnClickListener { setSlide(!slide) } }
-        val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }
-        val edit = tv("\u270e", 20f).apply { setOnClickListener { edit() } }
-        ocrBtn = tv("T", 20f).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setOnClickListener { toggleOcr() } }
+        fun icon(path: String, desc: String, act: () -> Unit) = IconBtn(this, path).apply {
+            contentDescription = desc; setOnClickListener { act() }
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(2) }
+        }
+        val back = icon(IconBtn.BACK, "Back") { finish() }.apply { layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)) }
+        titleTv = TextView(this).apply {
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt())
+        }
+        subTv = TextView(this).apply {
+            setTextColor(0xB3FFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setPadding(0, dp(1), 0, 0)
+        }
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(6), 0, dp(8), 0); addView(titleTv); addView(subTv) }
+        ocrBtn = icon(IconBtn.TEXT, "Text on this picture") { toggleOcr() }
+        val edit = icon(IconBtn.EDIT, "Edit") { edit() }
+        val share = icon(IconBtn.SHARE, "Share") { share() }
+        lateinit var more: IconBtn
+        more = icon(IconBtn.MORE, "More") {
+            PopupMenu(this, more).apply {
+                menu.add(0, 1, 0, if (slide) "Stop slideshow" else "Slideshow")
+                menu.add(0, 2, 1, "Details")
+                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; else -> false } }
+            }.show()
+        }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(slideBtn)
-        top.addView(ocrBtn)
-        top.addView(edit)
-        top.addView(share)
+        top.addView(ocrBtn); top.addView(edit); top.addView(share); top.addView(more)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(8) + b.left, dp(8) + b.top, dp(8) + b.right, dp(16))
+            v.setPadding(dp(4) + b.left, dp(6) + b.top, dp(4) + b.right, dp(28))
             insets
         }
         root.addView(top)
 
+        countPill = TextView(this).apply {
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); gravity = Gravity.CENTER
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+            background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0x99000000.toInt()) }
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(20) }
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(countPill) { v, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            (v.layoutParams as FrameLayout.LayoutParams).bottomMargin = dp(20) + b.bottom
+            v.requestLayout()
+            insets
+        }
+        root.addView(countPill)
+
+        fun tv(txt: String, sp: Float) = TextView(this).apply {
+            text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
+        }
         // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
         fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setOnClickListener { act() } }
         copyBtn = barBtn("Copy all") { copyOcr() }
@@ -211,6 +245,7 @@ class ImageViewerActivity : Activity() {
     private fun toggleUi() {
         uiOn = !uiOn
         top.visibility = if (uiOn) View.VISIBLE else View.GONE
+        countPill.visibility = if (uiOn) View.VISIBLE else View.GONE
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (uiOn) c.show(WindowInsetsCompat.Type.systemBars()) else c.hide(WindowInsetsCompat.Type.systemBars())
@@ -218,7 +253,6 @@ class ImageViewerActivity : Activity() {
 
     private fun setSlide(on: Boolean) {
         slide = on
-        slideBtn.text = if (on) "\u275A\u275A" else "\u25B6"
         ui.removeCallbacks(slideTick)
         if (on) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -229,16 +263,25 @@ class ImageViewerActivity : Activity() {
 
     private fun updateTitle(pos: Int) {
         val it = items.getOrNull(pos) ?: return
-        // line 1: "3/341 \u2022 IMG_name"; line 2: date \u2022 time, then pixel size and file size
-        titleTv.text = (pos + 1).toString() + "/" + items.size + " \u2022 " + it.name
-        val parts = ArrayList<String>()
-        if (it.mtime > 0) {
+        // title: file name; second line: date \u00b7 time (size, pixels and the rest are under menu > Details); the position sits in the pill at the bottom
+        titleTv.text = it.name
+        countPill.text = (pos + 1).toString() + " / " + items.size
+        subTv.text = if (it.mtime > 0) {
             val d = java.util.Date(it.mtime * 1000)
-            parts.add(java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(d) + " \u2022 " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(d))
-        }
-        dims[pos]?.let { d -> parts.add(d) }
-        if (it.size > 0) parts.add(android.text.format.Formatter.formatShortFileSize(this, it.size))
-        subTv.text = parts.joinToString("   \u00b7   ")
+            java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(d) + "  \u00b7  " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(d)
+        } else if (it.size > 0) android.text.format.Formatter.formatShortFileSize(this, it.size) else ""
+        subTv.visibility = if (subTv.text.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun showDetails(pos: Int) {
+        val it = items.getOrNull(pos) ?: return
+        val rows = ArrayList<String>()
+        rows.add("Name\n" + it.name)
+        if (it.mtime > 0) rows.add("Modified\n" + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it.mtime * 1000)))
+        dims[pos]?.let { d -> rows.add("Dimensions\n$d") }
+        if (it.size > 0) rows.add("Size\n" + android.text.format.Formatter.formatShortFileSize(this, it.size))
+        rows.add("Position\n" + (pos + 1) + " of " + items.size)
+        android.app.AlertDialog.Builder(this).setTitle("Details").setMessage(rows.joinToString("\n\n")).setPositiveButton("Close", null).show()
     }
 
     // ---------------------------------------------------------------- start
@@ -531,7 +574,7 @@ class ImageViewerActivity : Activity() {
         val ov = holder(pager.currentItem)?.ov
         val on = pager.currentItem in ocrOn && ov != null && ov.hasLines()
         selBar.visibility = View.GONE   // bottom bar removed: the floating Copy / Search / Share bubble is the only menu
-        ocrBtn.setTextColor(if (on) 0xFF8AB4F8.toInt() else Color.WHITE)
+        ocrBtn.tint = if (on) 0xFF8AB4F8.toInt() else Color.WHITE
         val cp = pager.currentItem
         ocrBtn.alpha = when {                                   // T: bright = text found / layer on, dim = no text, half = reading
             cp in ocrOn -> 1f
@@ -773,5 +816,38 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         if (held) parent?.requestDisallowInterceptTouchEvent(true)
         if (e.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         return true
+    }
+}
+
+/** Flat vector icon button for the viewer's top bar (Material icon paths in a 24 x 24 box, tinted, round pressed highlight). */
+internal class IconBtn(c: Context, d: String) : View(c) {
+    companion object {
+        const val BACK = "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
+        const val SHARE = "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"
+        const val EDIT = "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+        const val MORE = "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
+        const val TEXT = "M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"
+    }
+    private val dn = resources.displayMetrics.density
+    private val path: Path = PathParser.createPathFromPathData(d) ?: Path()
+    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFFFFF }
+    var tint = Color.WHITE
+        set(v) { if (v != field) { field = v; invalidate() } }
+
+    init { isClickable = true; isFocusable = true }
+
+    override fun drawableStateChanged() { super.drawableStateChanged(); invalidate() }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        if (isPressed) canvas.drawCircle(w / 2, h / 2, minOf(w, h) / 2f - 2f * dn, glow)
+        ink.color = tint
+        ink.setShadowLayer(2.5f * dn, 0f, 1f * dn, 0x80000000.toInt())      // keeps the glyph readable over bright pictures
+        canvas.save()
+        canvas.translate((w - 24f * dn) / 2f, (h - 24f * dn) / 2f)
+        canvas.scale(dn, dn)
+        canvas.drawPath(path, ink)
+        canvas.restore()
     }
 }
