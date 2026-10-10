@@ -141,7 +141,6 @@ object Routes {
                 return ok(ex)
             }
             "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson(ex.query["since"]?.toIntOrNull() ?: -1))
-            "printretry" -> return ex.json(JSONObject().put("job", Jobs.retryPrint(ex.q("id"))))   // POST, no body: print only the failed files of that job again
             "jobanswer" -> {   // the user answered "replace this file?" of a running copy
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).give(ex.q("q").toIntOrNull() ?: -1, ex.q("ans"))
                 return ok(ex)
@@ -176,7 +175,6 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
-            "sharedclean" -> ex.json(JSONObject().put("deleted", Jobs.cleanShared(b.getJSONArray("names").strings(), b.optBoolean("priv"))))
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }

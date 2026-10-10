@@ -301,18 +301,8 @@ object WifiPrinters {
             if (r.int("printer-state") == 5) problems.add("stopped")
             if (r.bool("printer-is-accepting-jobs") == false) problems.add("not accepting jobs")
             reasons.filter { it.endsWith("-error") }.forEach { problems.add(it.removeSuffix("-error").replace('-', ' ')) }
-            val ink = JSONArray()
-            run {
-                val lv = r.ints("marker-levels"); val nm = r.strs("marker-names"); val ty = r.strs("marker-types"); val co = r.strs("marker-colors")
-                for (i in lv.indices) {
-                    val t = ty.getOrNull(i).orEmpty()
-                    if (t.isNotEmpty() && !(t.contains("ink") || t.contains("toner")) || t.startsWith("waste")) continue
-                    if (lv[i] !in 0..100) continue   // -1 / -2 / -3: the printer does not know
-                    ink.put(JSONObject().put("name", nm.getOrNull(i).orEmpty()).put("level", lv[i]).put("color", co.getOrNull(i).orEmpty()))
-                }
-            }
             JSONObject().put("ok", true).put("wifi", true)
-                .put("printer", p.name).put("ink", ink)
+                .put("printer", p.name)
                 .put("problem", if (problems.isEmpty()) JSONObject.NULL else problems.distinct().joinToString(", "))
                 .put("printers", JSONArray())
                 .put("color", if (p.colorModes.isNotEmpty()) p.colorModes.contains("color") else (p.color ?: JSONObject.NULL))

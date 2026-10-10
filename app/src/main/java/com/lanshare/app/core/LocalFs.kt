@@ -18,7 +18,6 @@ class LocalSource(private val f: RandomAccessFile, override val size: Long) : So
     override fun close() = f.close()
 }
 
-const val PRINT_IN = "/.print-in/"   // virtual path of <cacheDir>/print-in
 private const val PAR_MIN = 150      // folders with fewer entries are read on the calling thread
 private const val PAR_THREADS = 4
 
@@ -29,13 +28,6 @@ class LocalFs(rootPath: String) : Endpoint {
     val root: File = File(rootPath).canonicalFile
 
     fun real(v: String): File {
-        val n = vnorm(v)
-        if (n.startsWith(PRINT_IN)) {   // documents handed over by Android's print dialog live in the app's private cache (no storage permission needed)
-            val base = Core.appCtx?.let { File(it.cacheDir, "print-in").apply { mkdirs() }.canonicalFile } ?: throw Denied("app not ready")
-            val q = File(base, n.substring(PRINT_IN.length)).canonicalFile
-            if (q != base && !q.path.startsWith(base.path + "/")) throw Denied("outside the shared folder")
-            return q
-        }
         val p = File(root, vnorm(v).trimStart('/')).canonicalFile
         if (p != root && !p.path.startsWith(root.path.trimEnd('/') + "/")) throw Denied("outside the shared folder")
         return p

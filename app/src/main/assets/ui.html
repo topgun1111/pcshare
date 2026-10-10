@@ -1716,7 +1716,6 @@ function pickPrinter(here,wifi,peers){return new Promise(res=>{
   if(!lan.length)card.append(E('p','',peers.length||here.length?'No printers found on this Wi-Fi yet.':'No devices or printers found yet.'));
   const sb=E('button','tbtn','Search for printers');sb.style.alignSelf='flex-start';
   sb.onclick=async()=>{sb.disabled=true;sb.textContent='Searching\u2026 (up to 15 s)';await loadWifi(true);fin({rescan:1})};card.append(sb);
-  if(lsGet('printHist',[]).length){const rb=E('button','tbtn','Recent prints');rb.style.alignSelf='flex-start';rb.onclick=()=>fin({recent:1});card.append(rb)}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 /* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
 async function choosePrinter(here){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers);if(!(to&&to.rescan))return to}return null}
@@ -1819,16 +1818,13 @@ function wifiOptions(pr,files){return new Promise(res=>{
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());
   api('GET','/api/printer?dev='+enc(pr.id),null,12000).then(r=>{
     if(!r.ok){info.textContent='Printer not reachable - is it on and on this Wi-Fi?';info.style.color='var(--err)';return}
-    const ik=inkTxt(r);
-    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi'+(ik?' \u00b7 '+ik.t+(ik.low?' (low!)':''):'');info.style.color=ik&&ik.low?'var(--err)':'var(--ok)'}
-    if(r.problem&&ik)info.textContent+=' \u00b7 '+ik.t
+    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi';info.style.color='var(--ok)'}
     if(r.duplex===false)sides.style.display='none';
     if(r.color===false)colour.style.display='none'
   }).catch(()=>{info.textContent='Printer status unavailable'})})}
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
-function inkTxt(r){const a=(r&&r.ink)||[];if(!a.length)return null;return{t:a.map(i=>((i.name||'Ink').replace(/\s*(ink|toner|cartridge)s?\b/ig,'').trim()||'Ink')+' '+i.level+'%').join(' \u00b7 '),low:a.some(i=>i.level<=10)}}
-const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
+const PRN_DEF={printer:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0};
 const PRN_BUILTIN={'Normal':{},'Save paper':{nup:2,duplex:'long',color:'mono'},'Booklet':{booklet:1,duplex:'short'},'Draft':{color:'mono',nup:2}};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
@@ -1915,12 +1911,9 @@ async function pvInfoOld(f){
     return{kind:'doc',pages:Math.max(1,Math.ceil(lines/61))}}
   catch(e){return{kind:'doc',pages:0}}finally{clearTimeout(tm)}}
 function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res=>{
-  /* options are remembered per PC + printer ('printOptsBy'); a printer used for the first time starts from the last options used anywhere */
-  const pBy=()=>lsGet('printOptsBy',{}),pk=()=>pc.id+'|'+(st.printer||''),p0=pc.pn||lsGet('printOptsLast',{})[pc.id]||'';
-  const st=Object.assign({},PRN_DEF,pBy()[pc.id+'|'+p0]||lsGet('printOpts',{}));st.printer=p0;st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;
+  const st=Object.assign({},PRN_DEF,lsGet('printOpts',{}));st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;if(pc.pn)st.printer=pc.pn;
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
-  const here=pc.id==='__here';   /* this phone: Android's own print dialog sets copies / sides / colour / printer */
   st.rots=files.map(()=>0);st.booklet=imgMode?0:st.booklet;if(imgMode)st.noauto=0;
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -1930,7 +1923,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','','Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
-  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
+  const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
   let pinfo=null,ptm=0,cur=null,hasOffice=false;
   const pvFile=()=>files.find(pvOK)||files[0];
   /* turn picture i by 90deg from how it looks NOW: the current auto-turns are frozen into the manual turns first, so the others do not jump and the tap always shows */
@@ -1966,12 +1959,11 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(st.booklet){order=pvBooklet(idx.length).map(x=>x==null?null:idx[x]);cols=2;rows=1;land=1}else{order=idx;[cols,rows,land]=PV_LAY[st.nup]||PV_LAY[1]}
     const per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4,im=pinfo.img,iland=(im&&im.naturalWidth>im.naturalHeight)||(!isText&&!st.paper&&pinfo.pw>pinfo.ph);
     const pg=iland?[pd[1],pd[0]]:[pd[0],pd[1]],pw0=pg[0],ph0=pg[1];
-    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!isText&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?Math.max(+st.margin,hardM):0,clipBox=fitting&&per===1&&FM>0;
+    const ext0=(f.name.split('.').pop()||'').toLowerCase(),fitting=!im&&!isText&&!PV_TXT.includes(ext0)&&(st.margin!==''||+st.scale>0||st.align!==''||!!st.autorot||st.fit==='fill'),FM=fitting&&st.margin!==''?+st.margin:0,clipBox=fitting&&per===1&&FM>0;
     let sw,sh;if(per===1){sw=pw0;sh=ph0}else{sw=land?pd[1]:pd[0];sh=land?pd[0]:pd[1]}
     const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1),nSheets=Math.ceil(order.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short'||st.booklet;
     for(let s0=0;s0<shown;s0++){
       const chunk=order.slice(s0*per,s0*per+per),cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
-      if(hardM*k>=1){const hb=Math.round(hardM*k);cv.style.outline=hb+'px solid rgba(220,40,40,.22)';cv.style.outlineOffset='-'+hb+'px'}   /* red edge = the printer cannot print here */
       const c=cv.getContext('2d');c.scale(dpr*k,dpr*k);c.fillStyle='#fff';c.fillRect(0,0,sw,sh);
       const cw=(sw-2*FM)/cols,ch=(sh-2*FM)/rows,mg=per===1?0:(st.booklet?8:12),cells=[],tm=(isText||PV_TXT.includes(ext0))&&st.margin!==''?+st.margin:50;
       const clipOn=()=>{if(clipBox){c.save();c.beginPath();c.rect(FM,FM,sw-2*FM,sh-2*FM);c.clip()}},clipOff=()=>{if(clipBox)c.restore()};
@@ -2003,28 +1995,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       zone(st.hdr,22+fs*.6);zone(st.ftr,sh-14);
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
     const paper=two?Math.ceil(nSheets/2):nSheets;
-    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(hardM>0?' \u00b7 red edge: the printer cannot print within '+(hardM*0.3528).toFixed(1)+' mm of the paper edge':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
-  /* total over ALL selected files: pages -> sides -> sheets of paper (page counts of the other files are read in the background; Word / Excel files count as unknown) */
-  const pcnt=new Map();let cntBusy=false;
-  const nPages=n=>{let idx=pvPageSet(st.range,n);if(st.pages)idx=idx.filter(x=>(x+1)%2===(st.pages==='odd'?1:0));return idx.length};
-  const infoPages=x=>x?(x.kind==='text'?pvTextPages(x.text,st).pages.length:(x.kind==='none'||x.kind==='office'?null:(x.pages||null))):null;
-  function updateTotals(){
-    if(imgMode||files.length<2){tot.textContent='';return}
-    const lay=PV_LAY[st.nup]||PV_LAY[1],per=st.booklet?2:lay[0]*lay[1],sd=k=>st.booklet?Math.ceil(k/4)*2:Math.ceil(k/per);
-    let pages=0,sides=0,paper=0,unk=0;
-    const two=st.duplex==='long'||st.duplex==='short'||!!st.booklet;
-    files.forEach((f,i)=>{const n=infoPages(pcnt.get(i));if(n==null){unk++;return}const k=nPages(n);pages+=k;if(!st.join){const s1=sd(k);sides+=s1;paper+=two?Math.ceil(s1/2):s1}});
-    if(st.join){sides=sd(pages);paper=two?Math.ceil(sides/2):sides}
-    const cp=Math.max(1,st.copies||1);
-    tot.textContent='All '+files.length+' files: '+(unk?'at least ':'')+pages+' page'+(pages===1?'':'s')+' \u2192 '+sides+' side'+(sides===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(cp>1?' \u00d7 '+cp+' = '+paper*cp:'')+(unk?' ('+unk+' file'+(unk===1?'':'s')+' not counted: Word / Excel / unknown'+(files.length>12?', max 12 read':'')+')':'')+(st.join?' \u00b7 one job':'')};
-  async function loadCounts(){if(cntBusy||imgMode||files.length<2)return;cntBusy=true;
-    for(let i=0;i<Math.min(files.length,12);i++){if(pcnt.has(i))continue;const f=files[i];
-      if(!pvOK(f)||PV_OFFICE.includes(pvExt(f))||PV_WEB.includes(pvExt(f))){pcnt.set(i,null);continue}   /* Word / Excel / web pages would need a conversion just to count */
-      try{pcnt.set(i,await pvInfo(f,pc))}catch(e){pcnt.set(i,null)}updateTotals()}
-    for(let i=12;i<files.length;i++)if(!pcnt.has(i))pcnt.set(i,null);
-    updateTotals();cntBusy=false}
-  redraw.push(updateTotals);
-  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;pcnt.set(files.indexOf(pvFile()),i);updateTotals();drawPv();loadCounts()});else cap.textContent='Folders are expanded when printing - no preview';
+    cap.textContent=total+' page'+(total===1?'':'s')+(sample?' (sample - count unknown)':'')+(order.length!==total?' \u2192 '+order.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+name+' (+'+(files.length-1)+' more)':'')+(sample&&pinfo.why?' \u00b7 real preview unavailable: '+pinfo.why:'')}
+  if(imgMode)drawPv();else if(pvFile())pvInfo(pvFile(),pc).then(i=>{pinfo=i;drawPv()});else cap.textContent='Folders are expanded when printing - no preview';
   const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
   const seg=(key,opts,cls)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip '+(cls||''),l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};
     redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
@@ -2051,15 +2023,13 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   drawPresets();sec('Presets',pr);
   // printer
   const sel=E('select','tf');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);
-  sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
+  sel.onchange=()=>{st.printer=sel.value;status()};
   const pw=sec('Printer',sel);pw.style.display='none';
   const hint=E('div','sub');hint.style.cssText='font-size:12px;color:var(--mut);margin-top:4px;display:none';
-  const status=()=>{if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
-    info.textContent='Checking printer\u2026';info.className='sub';
+  const status=()=>{info.textContent='Checking printer\u2026';info.className='sub';
     api('GET','/api/printer?dev='+enc(pc.id)+(st.printer?'&printer='+enc(st.printer):''),null,12000).then(r=>{
       if(!r.ok){info.textContent='Print service not reachable on this PC';info.style.color='var(--err)';return}
       if(r.printers&&r.printers.length){pw.style.display='flex';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
-      {const h=+r.hard||0;if(h!==hardM){hardM=h;redraw.forEach(f=>f())}}
       if(!r.printer){info.textContent='No default printer set on the PC';info.style.color='var(--err)'}
       else if(r.problem){info.textContent=r.printer+' \u00b7 '+r.problem;info.style.color='var(--err)'}
       else{info.textContent=r.printer+' \u00b7 ready';info.style.color='var(--ok)'}
@@ -2070,12 +2040,10 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   // copies
   const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
   mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
-  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);
-  if(!here){sec('Copies',cp);
+  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);sec('Copies',cp);
   sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
-  sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]))}
+  sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
   sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'),sw('border',imgMode?'Border around each picture':'Border around each page'),...(imgMode?[]:[sw('booklet','Booklet (folded, two-sided on short edge)')]));
-  if(!imgMode&&files.length>1)sec('Files',sw('join','Print all files as one job (pages joined, laid out together)'));
   if(imgMode)sec('Order',sw('reverse','Reverse order'));
   else sec('Pages',seg('pages',[['','All'],['odd','Odd only'],['even','Even only']]),txt('range','Page range, e.g. 1-3,5,8-'),sw('reverse','Reverse order'));
   sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
@@ -2090,28 +2058,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   k.onclick=()=>{const out={};Object.keys(PRN_DEF).forEach(n=>{if(st[n]!==PRN_DEF[n]&&st[n]!==''&&st[n]!==0)out[n]=st[n]});
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
-    if(imgMode||files.length<2)delete out.join;
-    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep));
-      const by=pBy();delete by[pk()];by[pk()]=keep;const ks=Object.keys(by);while(ks.length>40)delete by[ks.shift()];localStorage.setItem('printOptsBy',JSON.stringify(by));
-      const lp=lsGet('printOptsLast',{});lp[pc.id]=st.printer||'';localStorage.setItem('printOptsLast',JSON.stringify(lp))}catch(e){}fin(out)};
+    const keep=Object.assign({},st);delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep))}catch(e){}fin(out)};
   act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());status()})}
-/* recent prints (kept on the phone): what was sent where with which options, so it can be printed again with one tap */
-function phAdd(h){if(!h.paths||!h.paths.length||h.paths.length>150)return null;const a=lsGet('printHist',[]);h.id=String(Date.now());h.t=Date.now();h.ok=null;a.unshift(h);a.length=Math.min(a.length,12);
-  try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}return h.id}
-function phMark(id,ok){if(!id)return;const a=lsGet('printHist',[]),h=a.find(x=>x.id===id);if(h){h.ok=ok;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}}}
-async function phGo(h){try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
-  const id=phAdd({dev:h.dev,paths:h.paths,to:h.to,toName:h.toName,opts:h.opts,names:h.names});watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
-function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent='';o.style.display='flex';
-  const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
-  card.append(E('div','handle'),E('h3','','Recent prints'));
-  if(!a.length)card.append(E('p','','Nothing printed yet.'));
-  a.forEach(h=>{const b=E('button','tbtn'),nm=(h.names||[]).length>2?h.names.slice(0,2).join(', ')+' +'+(h.names.length-2):(h.names||[]).join(', ');
-    b.style.cssText='display:block;width:100%;text-align:left;margin:6px 0';
-    const bits=[h.toName||'',new Date(h.t).toLocaleString()],op=h.opts||{};if(op.copies>1)bits.push(op.copies+' copies');if(op.nup>1)bits.push(op.nup+' per sheet');if(op.duplex&&op.duplex!=='off')bits.push('two-sided');
-    const sm=E('small','',bits.filter(Boolean).join(' \u00b7 '));sm.style.cssText='display:block;font-size:12px;color:var(--mut);margin-top:2px';
-    b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)});
-  const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
-  cl.onclick=()=>{try{localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
@@ -2121,34 +2069,27 @@ async function doPrint(preset,cx){
   const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
   let to=preset||await choosePrinter(here);
   if(!to)return;
-  if(to.recent)return printRecent();
   if(!N)return toast('No printable files selected',3000);
   if(N<ALL.length)toast((ALL.length-N)+' file(s) that cannot be printed were skipped',3500);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
   if(to.id==='__here'){
-    const f=IT().filter(i=>!i.dir);
+    const f=IT().filter(i=>!i.dir);done();
     if(!f.length)return toast('Select files to print');
     const urlOf=i=>location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i));
-    /* only pictures: the same sheet dialog as for a PC (pictures per sheet, preview, turn each one, margins); everything else prints with defaults */
-    let opts=null;
-    if(f.every(i=>PV_IMG.includes((i.name.split('.').pop()||'').toLowerCase()))){opts=await printOptions(to,f.map(i=>({name:i.name,path:PF(i),url:urlOf(i)})),true);if(!opts)return}
-    done();
-    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)})),opts}));
+    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)}))}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
     return}
   if(to.wifi){
     const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
     const wo=await wifiOptions(to,wf);if(!wo)return;
-    try{const ps=PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts:wo});done();
-      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}
+    try{const r=await api('POST','/api/print',{dev:DV,paths:PS(),to:to.id,opts:wo});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
   const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
-  try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-    const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
+  try{const r=await api('POST','/api/print',{dev:DV,paths:opts.sheet?pvf.map(p=>p.path):PS(),to:to.id,opts});done();watchJob(r.job);track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
-window.lsPrintShared=async(names,priv)=>{
+window.lsPrintShared=async names=>{
   try{
     await loadWifi();
     const pcs=S.peers.filter(p=>p.smb).concat(S.peers.filter(p=>!p.smb));
@@ -2156,13 +2097,11 @@ window.lsPrintShared=async(names,priv)=>{
     const last=localStorage.getItem('printTo');all.sort((a,b)=>(b.id===last)-(a.id===last));
     const to=await choosePrinter([]);
     if(!to)return;
-    if(to.recent)return printRecent();
     try{localStorage.setItem('printTo',to.id)}catch(e){}
-    const clean=r=>{watchJob(r.job);track(r.job).then(ok=>{if(ok)api('POST','/api/sharedclean',{names,priv:!!priv}).catch(()=>{})})};   /* printed fine: the copy in LANShare Shared is not needed any more */
-    const pvf=names.map(n=>{const path=(priv?'/.print-in/':'/LANShare Shared/')+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
-    if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});clean(rw);return}
+    const pvf=names.map(n=>{const path='/LANShare Shared/'+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
+    if(to.wifi){const wo=await wifiOptions(to,pvf);if(!wo)return;const rw=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts:wo});watchJob(rw.job);track(rw.job);return}
     const opts=await printOptions(to,pvf,true);if(!opts)return;
-    const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});clean(r)
+    const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});watchJob(r.job);track(r.job)
   }catch(e){toast('\u26a0 '+e.message,5000)}};
 
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
@@ -2399,17 +2338,13 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   L.pc.textContent=ok?'100%':L.pc.textContent;L.now.style.display='none';
   L.sub.style.display='';L.sub.textContent=ok?(j.note||'')+(j.bytes&&el>=1&&j.total>1?(j.note?' · ':'')+fmt(j.total)+' in '+durTxt(el)+' · avg '+fmt(j.total/el)+'/s':(j.note?'':'Finished in '+durTxt(el))):(j.error||'');
   if(!ok&&j.state==='error')L.sub.style.color='var(--err)';
-  if(!ok&&j.detail){const bx=E('div','');bx.style.cssText='margin:2px 0 6px';const tg=E('button','tbtn','Details');tg.style.cssText='font-size:12px;padding:2px 10px';const pre=E('div','');pre.style.cssText='display:none;font-size:11.5px;color:var(--mut);word-break:break-word;margin-top:4px;white-space:pre-wrap;user-select:text';pre.textContent=j.detail;tg.onclick=()=>{pre.style.display=pre.style.display==='none'?'block':'none'};bx.append(tg,pre);L.sub.after(bx)}
   lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(ok?j.total:j.done)+' of '+fmt(j.total):j.done+' of '+j.total],['s','Speed',''],['e','Time left',''],
     ['u','Elapsed',durTxt(el)],['f',j.filesTotal>0?'Files':'Items removed',j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'')],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.cR!=null&&j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
   lvProblems(L,j);
   L.cx.style.display='none';L.hide.textContent='Close';L.hide.className='tbtn fill';
   L.hide.onclick=()=>{const o=$('#sheet');o.style.display='none';o.onclick=null};
-  if(j.state==='error'&&j.retry>0){const rb=E('button','tbtn fill','Retry failed ('+j.retry+')');
-    rb.onclick=async()=>{rb.disabled=true;try{const r=await api('POST','/api/printretry?id='+id);L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rb.disabled=false;toast('\u26a0 '+e.message,5000)}};
-    L.hide.className='tbtn';L.row.insertBefore(rb,L.hide)}
-  const bad=(j.problems||[]).length>1||j.retry>0;
+  const bad=(j.problems||[]).length>1;
   if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
   if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}

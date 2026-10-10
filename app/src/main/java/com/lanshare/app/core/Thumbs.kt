@@ -47,9 +47,6 @@ object Thumbs {
     /** Full-quality JPEG (longest side <= ~A4 at 300 dpi) for pictures the PC cannot decode itself (webp, heic ...). */
     fun forPrint(f: File): ByteArray = render(f, PRINT_MAX, PRINT_MAX, 92)
 
-    /** Same, with an own size limit (used to shrink big photos before they are uploaded to the PC). */
-    fun forPrintMax(f: File, max: Int): ByteArray = render(f, max, max, 90)
-
     /** Thumbnail of a temporary file (no disk cache of its own: the caller caches under its own key). */
     fun makeUncached(f: File): ByteArray = render(f)
 

@@ -24,33 +24,6 @@ const val STORAGE_MSG = "This phone hides files from LANShare: open Android Sett
 
 fun errText(e: Throwable): String = (e.message ?: "").ifEmpty { e.javaClass.simpleName }
 
-private val FRIENDLY: List<Pair<Regex, (MatchResult) -> String>> = listOf(
-    Regex("no PC with pcprint\\.py answered[^;]*") to { _ -> "No PC with the print service answered. Check that pcprint.py is running on the PC, that both are on the same network and that Windows Firewall allows it." },
-    Regex("(.+?) is not reachable - is it switched on and on this Wi-Fi\\?( \\([^)]*\\))?") to { m -> m.groupValues[1] + " did not answer. Check that it is switched on and on the same Wi-Fi." },
-    Regex("the printer refused the job \\(([^)]*)\\)") to { m ->
-        val c = m.groupValues[1]
-        when {
-            c.contains("not accepting") -> "The printer is not accepting jobs right now (offline, paused or showing an error)."
-            c.contains("busy") || c.contains("unavailable") -> "The printer is busy. Try again in a moment."
-            c.contains("format") -> "The printer cannot read this kind of file. Print through a PC instead."
-            c.contains("options") -> "The printer did not accept the chosen options. Try \"Printer default\" for sides and colour."
-            c.contains("too large") -> "The file is too big for the printer."
-            c.contains("login") || c.contains("forbidden") -> "The printer asks for a login or blocks printing from this phone."
-            else -> "The printer refused the job."
-        }
-    },
-    Regex("(?i)(read|connect)? ?timed out|SocketTimeoutException") to { _ -> "The printer stopped answering in time." },
-    Regex("(?i)connection (lost|reset|refused)|broken pipe|software caused connection abort|failed to connect[^;]*|unable to resolve host[^;]*|no route to host[^;]*|network is unreachable") to { _ -> "The connection was lost." }
-)
-
-/** Plain-language version of a technical error + the original text (null when nothing was rewritten): the UI shows the first, a "Details" button the second. */
-fun friendlyErr(raw: String?): Pair<String?, String?> {
-    if (raw.isNullOrEmpty()) return raw to null
-    var t: String = raw
-    for ((re, f) in FRIENDLY) t = re.replace(t) { f(it) }
-    return if (t == raw) raw to null else t to raw
-}
-
 // ---- virtual paths (always '/'-separated, rooted at '/', never above the root)
 fun vnorm(p: String): String {
     val parts = ArrayList<String>()

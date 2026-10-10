@@ -133,7 +133,6 @@ class MainActivity : Activity() {
     }
     private var pendingShare: List<String>? = null
     private var pendingPrint: List<String>? = null
-    private var pendingPrintPriv = false   // names are in the private print-in folder (from PcPrintService), not in LANShare Shared
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -222,7 +221,6 @@ class MainActivity : Activity() {
         if (i != null && i.action == ACTION_PRINT_SHARED) {   // from PcPrintService: a document printed from another app
             val n = i.getStringArrayExtra("names")?.toList().orEmpty()
             getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0))
-            pendingPrintPriv = i.getBooleanExtra("priv", false)
             i.action = null
             if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
             return
@@ -324,8 +322,7 @@ class MainActivity : Activity() {
         if (!pageReady) return
         pendingPrint = null
         val arr = org.json.JSONArray(names).toString()
-        val priv = pendingPrintPriv; pendingPrintPriv = false
-        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr,$priv)", null) }, 1200)
+        web.postDelayed({ web.evaluateJavascript("window.lsPrintShared&&lsPrintShared($arr)", null) }, 1200)
     }
 
     /** Open the UI's "Send to..." device picker for the files just shared in (waits until the page is loaded). */

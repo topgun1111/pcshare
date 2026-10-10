@@ -18,14 +18,6 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
-v16: pictures are shrunk to what the sheet needs (Pillow: smaller PDF / spool, EXIF turn and PNG/GIF/BMP/TIFF conversion without PowerShell); the app
-shrinks big JPEGs before uploading; missing Python packages (pypdf, Pillow) are installed automatically, also on first use while the service runs.
-v15: "Print all files as one job" - a mixed selection (PDF, pictures, text, Office) is turned into pages, joined in order and laid out as ONE
-job (pages per sheet, fitting, duplex run across all files, no half-empty sheet per file).
-v14: N pages per sheet picks a portrait or landscape sheet (whichever shows the pages larger, e.g. landscape slides 4-up now get a landscape
-sheet), and PDF pages are measured / cut by their CropBox (the visible area) instead of the MediaBox.
-v13: no double prints - the app sends a key with every file and a repeated key / a late picture of a finished batch is ignored; a failed print
-command is retried only if it failed at once and left nothing in the print queue.
 v12: sturdier service (worker that survives any error, idle-socket timeout, queue / disk limits, hourly clean-up, no PowerShell races,
 cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
 Queue folder, Open log.
@@ -35,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "20"
+VERSION = "12"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -138,7 +130,7 @@ def print_image(path, printer="", copies=1):
     if printer:
         cmd += ["-Printer", printer]
     cmd += ["-Copies", str(copies)]
-    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=120, creationflags=0x08000000)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=0x08000000)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or f"exit {r.returncode}").strip()[:300])
 
@@ -170,62 +162,16 @@ def have_pypdf():
     return _PYPDF[0]
 
 
-PKGS = (("pypdf", "pypdf"), ("PIL", "Pillow"))   # (import name, pip name): everything the service can use besides the standard library
-PKG_LOCK = threading.Lock()   # requests run in threads: only one pip at a time
-
-
-def have_pkg(mod):
+def ensure_pypdf():
+    if have_pypdf():
+        return
+    log("installing pypdf (layout / watermark / booklet features)...")
     try:
-        importlib.import_module(mod)
-        return True
-    except Exception:
-        return False
-
-
-def _pip(*args):
-    kw = dict(timeout=300, capture_output=True, text=True, errors="replace", creationflags=0x08000000 if WIN else 0)
-    r = subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--quiet", "--disable-pip-version-check", *args], **kw)
-    if r.returncode != 0 and not WIN:   # Linux/macOS: "externally managed environment"
-        r = subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--quiet", "--break-system-packages", *args], **kw)
-    return r
-
-
-def ensure_packages(only=None):
-    """Installs whatever of PKGS is missing (pip --user; installs pip itself first if the Python has none). Returns True when all wanted ones import."""
-    with PKG_LOCK:
-        missing = [(m, p) for m, p in PKGS if (only is None or m == only) and not have_pkg(m)]
-        if not missing:
-            return True
-        log("installing " + ", ".join(p for _, p in missing) + " ...")
-        try:
-            if subprocess.run([sys.executable, "-m", "pip", "--version"], capture_output=True, timeout=30, creationflags=0x08000000 if WIN else 0).returncode != 0:
-                subprocess.run([sys.executable, "-m", "ensurepip", "--user"], capture_output=True, timeout=120, creationflags=0x08000000 if WIN else 0)
-            for m, p in missing:
-                r = _pip(p)
-                if r.returncode != 0:
-                    log(f"pip install {p} failed: {(r.stderr or r.stdout or '').strip()[-300:]}")
-            importlib.invalidate_caches()
-            import site
-            if site.ENABLE_USER_SITE and site.getusersitepackages() not in sys.path and os.path.isdir(site.getusersitepackages()):
-                sys.path.append(site.getusersitepackages())   # a fresh --user install of a running interpreter
-        except Exception as e:
-            log(f"package install skipped: {e}")
-        ok = all(have_pkg(m) for m, _ in missing)
-        _PYPDF[0] = None
-        return ok
-
-
-def ensure_pypdf():   # kept for the callers that ask for "the packages"
-    ensure_packages()
-
-
-def need_pypdf():
-    """pypdf, installed on the spot if it is missing (first use)."""
-    return have_pypdf() or ensure_packages("pypdf")
-
-
-def have_pil():
-    return have_pkg("PIL")
+        subprocess.run([sys.executable, "-m", "pip", "install", "--user", "--quiet", "pypdf"], timeout=240,
+                       creationflags=0x08000000 if WIN else 0, capture_output=True)
+        importlib.invalidate_caches()
+    except Exception as e:
+        log(f"pypdf install skipped: {e}")
 
 
 def _int(v, d, lo, hi):
@@ -294,13 +240,6 @@ def needs_fitting(o):
 def neutral_fit(o):
     """The same options without any fitting (used when the file was already fitted while it was converted to PDF)."""
     return dict(o, margin=-1, scale=0, align="center", autorot=False, fit="shrink")
-
-
-def eff_margin(o, default):
-    """Sheet margin in points: the chosen one, but never less than the printer's hard margin (it cannot print closer to the edge anyway).
-    Not chosen (-1) = the built-in default for that kind of file."""
-    m = o["margin"]
-    return default if m < 0 else max(float(m), o.get("hard", 0.0))
 
 
 def fit_cell(w, h, cw, ch, o, per):
@@ -458,115 +397,12 @@ def out_pdf(path, tag):
     return os.path.join(INBOX, os.path.splitext(os.path.basename(path))[0] + "." + tag + ".pdf")
 
 
-def target_px(o):
-    """Longest side in pixels a picture needs on this sheet layout (about 300 dpi for the cell it is printed in)."""
-    pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
-    per = 2 if o["booklet"] else o["nup"]
-    return int((3508 if per == 1 else 2480 if per < 6 else 1754) * max(pw, ph) / 842.0)
-
-
-def pil_jpeg(path, o, flat=False):
-    """Pillow: picture -> (jpeg bytes, w, h, components) with the EXIF turn applied, shrunk to what the sheet needs.
-    None = Pillow is missing, or the file is fine as it is (a baseline JPEG that is not too big), or it failed (the old path then runs).
-    flat=True: a JPEG that only needs the EXIF turn is converted too (callers that cannot turn it with a page matrix)."""
-    if not have_pil():
-        return None
-    try:
-        from PIL import Image, ImageOps
-        Image.MAX_IMAGE_PIXELS = None
-        tp = target_px(o)
-        im = Image.open(path)
-        big = max(im.size) > tp * 1.15
-        jpg = im.format == "JPEG" and im.mode in ("RGB", "L")
-        if jpg and not big and not (flat and im.getexif().get(0x0112, 1) not in (0, 1)):
-            return None
-        if jpg and big:
-            im.draft("RGB" if im.mode == "RGB" else "L", (tp, tp))   # the decoder scales down while reading: much faster for big photos
-        im = ImageOps.exif_transpose(im)
-        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
-            im = im.convert("RGBA")
-            bg = Image.new("RGB", im.size, (255, 255, 255))
-            bg.paste(im, mask=im.getchannel("A"))
-            im = bg
-        elif im.mode not in ("RGB", "L"):
-            im = im.convert("RGB")
-        if max(im.size) > tp:
-            im.thumbnail((tp, tp), Image.LANCZOS)
-        buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=90)
-        d = buf.getvalue()
-        info = jpeg_info(d)
-        return (d,) + tuple(info) if info else None
-    except Exception as e:
-        log(f"Pillow could not convert {os.path.basename(path)}: {e}")
-        return None
-
-
-MAX_FRAMES = 300   # frames printed from one multi-page TIFF
-
-
-def tiff_frames(path, o):
-    """Multi-page TIFF -> one JPEG file per frame (in the queue folder). [] = not a TIFF, one frame only, or no Pillow (the first frame is then used)."""
-    if os.path.splitext(path)[1].lower() not in (".tif", ".tiff") or not have_pil():
-        return []
-    try:
-        from PIL import Image, ImageSequence
-        Image.MAX_IMAGE_PIXELS = None
-        im = Image.open(path)
-        if getattr(im, "n_frames", 1) < 2:
-            return []
-        tp, base, out = target_px(o), os.path.splitext(os.path.basename(path))[0], []
-        for i, fr in enumerate(ImageSequence.Iterator(im)):
-            if i >= MAX_FRAMES:
-                log(f"{os.path.basename(path)}: only the first {MAX_FRAMES} frames are printed")
-                break
-            try:
-                if fr.mode.startswith("I;16") or fr.mode in ("I", "F"):
-                    fr = fr.point(lambda v: v / 256.0).convert("L")
-                elif fr.mode in ("RGBA", "LA") or (fr.mode == "P" and "transparency" in fr.info):
-                    fr = fr.convert("RGBA")
-                    bg = Image.new("RGB", fr.size, (255, 255, 255))
-                    bg.paste(fr, mask=fr.getchannel("A"))
-                    fr = bg
-                elif fr.mode not in ("RGB", "L"):
-                    fr = fr.convert("RGB")
-                else:
-                    fr = fr.copy()
-                if max(fr.size) > tp:
-                    fr.thumbnail((tp, tp), Image.LANCZOS)
-                dest = os.path.join(INBOX, f"{base}.f{i + 1:03d}.jpg")
-                fr.save(dest, "JPEG", quality=90)
-                out.append(dest)
-            except Exception as e:
-                log(f"{os.path.basename(path)}: frame {i + 1} skipped: {e}")
-        return out if len(out) > 1 else out[:0]
-    except Exception as e:
-        log(f"TIFF frames of {os.path.basename(path)} could not be read: {e}")
-        return []
-
-
-def merge_pdfs(parts, dest):
-    from pypdf import PdfReader, PdfWriter
-    wr, keep = PdfWriter(), []
-    for p in parts:
-        rd = PdfReader(p)
-        keep.append(rd)
-        for pg in rd.pages:
-            wr.add_page(pg)
-    with open(dest, "wb") as f:
-        wr.write(f)
-    return dest
-
-
-def img_to_pdf(path, o, exact=False):
-    """Image -> one-page PDF (paper size from the options, EXIF rotation applied, fit with a margin). A multi-page TIFF -> one page per frame."""
-    fr = tiff_frames(path, o) if need_pypdf() else []
-    if fr:
-        return merge_pdfs([img_to_pdf(f, o, exact) for f in fr], out_pdf(path, "img"))
+def img_to_pdf(path, o):
+    """Image -> one-page PDF (paper size from the options, EXIF rotation applied, fit with a margin)."""
     data = open(path, "rb").read()
     ext = os.path.splitext(path)[1].lower()
-    jpg = pil_jpeg(path, o, True)
-    if not jpg and ext in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
+    jpg = None
+    if ext in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
         info = jpeg_info(data)
         if info and info[2] in (1, 3) and (jpeg_orientation(data) == 1 or not WIN):
             jpg = (data,) + info
@@ -575,7 +411,7 @@ def img_to_pdf(path, o, exact=False):
             raise RuntimeError("this image type can only be converted on Windows")
         ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv.jpg")
         r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
-                           capture_output=True, text=True, errors="replace", timeout=120, creationflags=0x08000000)
+                           capture_output=True, text=True, timeout=120, creationflags=0x08000000)
         if r.returncode != 0 or not os.path.isfile(tmp):
             raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
         data = open(tmp, "rb").read()
@@ -589,10 +425,7 @@ def img_to_pdf(path, o, exact=False):
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
     if iw > ih:
         pw, ph = ph, pw
-    m = eff_margin(o, 28)
-    if exact:   # page = the picture itself (joined jobs): the sheet layout then fits it like any other page
-        kk = 842.0 / max(iw, ih)
-        pw, ph, m = iw * kk, ih * kk, 0
+    m = o["margin"] if o["margin"] >= 0 else 28
     fw, fh = pw - 2 * m, ph - 2 * m
     k = max(fw / iw, fh / ih) if o["fit"] == "fill" else min(fw / iw, fh / ih)   # fill = cover the area inside the margins, crop the rest
     w, h = iw * k, ih * k
@@ -612,7 +445,7 @@ def txt_to_pdf(path, o):
         except UnicodeDecodeError:
             pass
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
-    mm = eff_margin(o, 50)
+    mm = o["margin"] if o["margin"] >= 0 else 50
     size = max(4.0, min(40.0, 10.0 * (o["scale"] / 100.0 if o["scale"] else 1.0)))   # custom scale = font size
     lead = size * 1.2
     cpl, lpp = max(1, int((pw - 2 * mm) / (0.6 * size))), max(1, int((ph - 2 * mm) / lead))
@@ -681,53 +514,10 @@ def zones(text, y, w, size, extra):
     return c
 
 
-def clip_to_crop(page, rd):
-    """A page with a CropBox smaller than its MediaBox shows only the CropBox. When such a page is placed on a sheet its content must be cut
-    at the CropBox too, otherwise what is hidden in a viewer (scan borders, bleed, off-page objects) shows up next to the neighbouring pages."""
-    try:
-        mb, cb = page.mediabox, page.cropbox
-        if (float(cb.left), float(cb.bottom), float(cb.width), float(cb.height)) == (float(mb.left), float(mb.bottom), float(mb.width), float(mb.height)):
-            return
-        from pypdf.generic import ContentStream, FloatObject
-        cs = ContentStream(page.get_contents(), rd)
-        cs.operations = ([([], b"q"), ([FloatObject(float(cb.left)), FloatObject(float(cb.bottom)), FloatObject(float(cb.width)), FloatObject(float(cb.height))], b"re"),
-                          ([], b"W"), ([], b"n")] + list(cs.operations) + [([], b"Q")])
-        page.replace_contents(cs)
-    except Exception as e:
-        log(f"crop box clip skipped: {e}")
-
-
-def best_sheet(o, dims, per, short, long_, M, mg=12):
-    """Sheet orientation for N pages per sheet -> (columns, rows, landscape). Every page is fitted into its cell on a portrait and on a landscape
-    sheet; the orientation that shows the pages larger wins (the usual one for the layout wins a tie). One orientation for the whole job."""
-    best = None
-    default_land = LAYOUT[per][2]
-    for land in (default_land, not default_land):
-        cols, rows = SHEET_GRID[per][1 if land else 0]
-        sw, sh = (long_, short) if land else (short, long_)
-        iw, ih = (sw - 2 * M) / cols - 2 * mg, (sh - 2 * M) / rows - 2 * mg
-        if iw <= 0 or ih <= 0:
-            continue
-        score = 0.0
-        for w, h in dims:
-            if w <= 0 or h <= 0:
-                continue
-            k = min(iw / w, ih / h)
-            if o["autorot"]:
-                k = max(k, min(iw / h, ih / w))
-            score += k * k * w * h
-        if best is None or score > best[0] * 1.0001:
-            best = (score, cols, rows, land)
-    if best is None:
-        c, r, l = LAYOUT[per]
-        return c, r, l
-    return best[1], best[2], best[3]
-
-
 def process_pdf(src, o, name):
     """Page selection, order, booklet / N-up, watermark, header/footer -> (new pdf path, sheets)."""
-    if not need_pypdf():
-        raise RuntimeError("layout options need the 'pypdf' package on the PC and it could not be installed automatically (pip install pypdf)")
+    if not have_pypdf():
+        raise RuntimeError("layout options need the 'pypdf' package on the PC (pip install pypdf) - it is not installed yet")
     from pypdf import PdfReader, PdfWriter, Transformation
     rd = PdfReader(src)
     if rd.is_encrypted:
@@ -747,7 +537,6 @@ def process_pdf(src, o, name):
                 pages[i].transfer_rotation_to_content()
         except Exception:
             pass
-        clip_to_crop(pages[i], rd)
     if o["booklet"]:
         order = [None if x is None else idx[x] for x in booklet_order(len(idx))]
         cols, rows, land = 2, 1, True
@@ -755,11 +544,11 @@ def process_pdf(src, o, name):
         order = idx
         cols, rows, land = LAYOUT[o["nup"]]
     per = cols * rows
-    box = lambda p: (float(p.cropbox.left), float(p.cropbox.bottom), float(p.cropbox.width), float(p.cropbox.height))   # the visible area (= MediaBox when there is no CropBox)
+    box = lambda p: (float(p.mediabox.left), float(p.mediabox.bottom), float(p.mediabox.width), float(p.mediabox.height))
     wr = PdfWriter()
     sheets, rects, clips = [], [], []
     fitting = needs_fitting(o)
-    M = eff_margin(o, 0) if fitting else 0   # sheet margin in points (not less than the printer's hard margin)
+    M = max(o["margin"], 0) if fitting else 0   # sheet margin in points
     first = next(i for i in order if i is not None)
     if per == 1 and not fitting and all(box(pages[i])[:2] == (0.0, 0.0) for i in idx):
         for i in order:
@@ -772,8 +561,6 @@ def process_pdf(src, o, name):
         if o["paper"]:
             fw, fh = PAPERS[o["paper"]]
         short, long_ = sorted((fw, fh))
-        if per > 1 and not o["booklet"]:   # portrait or landscape sheet, whichever shows the pages larger (slides want landscape, text pages portrait)
-            cols, rows, land = best_sheet(o, [box(pages[i])[2:] for i in order if i is not None], per, short, long_, M)
         sw, sh = (long_, short) if land else (short, long_)
         for s0 in range(0, len(order), per):
             chunk = order[s0:s0 + per]
@@ -941,7 +728,7 @@ def office_to_pdf(path):
             pass
         try:
             r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, dst],
-                               capture_output=True, text=True, errors="replace", timeout=180, creationflags=CF)
+                               capture_output=True, text=True, timeout=180, creationflags=CF)
             if r.returncode == 0 and os.path.isfile(dst) and os.path.getsize(dst) > 0:
                 return dst
             errs.append("Microsoft Office: " + ((r.stderr or r.stdout or "").strip().splitlines() or ["exit %d" % r.returncode])[0][:150])
@@ -960,7 +747,7 @@ def office_to_pdf(path):
             from pathlib import Path
             prof = Path(APP, "lo-profile").resolve().as_uri()   # own profile: works while the user has LibreOffice open
             r = subprocess.run([so, "-env:UserInstallation=" + prof, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", outdir, path],
-                               capture_output=True, text=True, errors="replace", timeout=180, creationflags=CF)
+                               capture_output=True, text=True, timeout=180, creationflags=CF)
             if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
                 os.replace(tmp, dst)
                 return dst
@@ -975,17 +762,10 @@ SHEET_GRID = {1: ((1, 1), (1, 1)), 2: ((1, 2), (2, 1)), 4: ((2, 2), (2, 2)), 6: 
 SHEET_MARGIN, SHEET_GAP = 14.0, 8.0   # points
 BATCHES = {}   # batch id -> {"t": time, "items": {index: (file, rotation)}}   (the app sends each picture as its own request)
 BATCH_LOCK = threading.Lock()   # every request runs in its own thread
-FINISHED_BATCHES = {}   # batch id -> time its sheets were queued: a picture of that batch that arrives again is ignored (it would print alone)
-SEEN = {}               # request key -> {"t", "evt", "res"}: the app sends a key with every file; the same key again = the same file, never printed twice
-SEEN_LOCK = threading.Lock()
-SEEN_KEEP = 900         # seconds a key / finished batch is remembered
 
 
-def prep_image(path, tag, o=None):
+def prep_image(path, tag):
     """-> (jpeg bytes, raw width, raw height, components, EXIF turn in degrees clockwise that still has to be applied)."""
-    r = pil_jpeg(path, o) if o else None
-    if r:
-        return r + (0,)   # shrunk and turned by Pillow
     data = open(path, "rb").read()
     if os.path.splitext(path)[1].lower() in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
         info, ori = jpeg_info(data), jpeg_orientation(data)
@@ -995,7 +775,7 @@ def prep_image(path, tag, o=None):
         raise RuntimeError("this image type can only be converted on Windows")
     ps1, tmp = ps_script("convimg.ps1", PS_CONV), os.path.join(APP, "conv%s.jpg" % tag)
     r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, tmp],
-                       capture_output=True, text=True, errors="replace", timeout=120, creationflags=0x08000000)
+                       capture_output=True, text=True, timeout=120, creationflags=0x08000000)
     if r.returncode != 0 or not os.path.isfile(tmp):
         raise RuntimeError((r.stderr or r.stdout or "image conversion failed").strip()[:300])
     try:
@@ -1012,13 +792,8 @@ def prep_image(path, tag, o=None):
 def images_to_sheets(items, o, name):
     """items = [(file, rotation 0/90/180/270 clockwise)] -> (pdf path, sheets). Mirrors the preview in the app (ui.html pvSheets)."""
     imgs = []
-    exp = []
-    for p, rot in items:   # every frame of a multi-page TIFF is a picture of its own
-        fr = tiff_frames(p, o)
-        exp.extend([(f, rot) for f in fr] if fr else [(p, rot)])
-    items = exp
     for n, (p, rot) in enumerate(items):
-        d, rw, rh, comps, base = prep_image(p, n, o)
+        d, rw, rh, comps, base = prep_image(p, n)
         ew, eh = (rh, rw) if base in (90, 270) else (rw, rh)   # size as the picture looks after EXIF
         imgs.append(dict(d=d, rw=rw, rh=rh, comps=comps, base=base, ew=ew, eh=eh, rot=rot))
     if o["reverse"]:
@@ -1027,7 +802,7 @@ def images_to_sheets(items, o, name):
         im["n"] = n
     per = o["nup"]
     pw, ph = PAPERS.get(o["paper"], PAPERS["A4"])
-    M, G = eff_margin(o, SHEET_MARGIN), SHEET_GAP
+    M, G = (o["margin"] if o["margin"] >= 0 else SHEET_MARGIN), SHEET_GAP
     fill = o["fit"] == "fill"   # cover the whole cell and crop what sticks out
 
     def plan(portrait):
@@ -1075,138 +850,26 @@ def images_to_sheets(items, o, name):
     return dest, len(pages)
 
 
-class JoinJob(list):
-    """Received files of any kind that are to be printed as ONE job (the app's "Print all files as one job")."""
-
-
-def join_to_pdf(paths, o, notes):
-    """Every file -> PDF pages, all pages joined in the order the files were selected -> one PDF."""
-    if not need_pypdf():
-        raise RuntimeError("printing files as one job needs the 'pypdf' package on the PC and it could not be installed automatically (pip install pypdf)")
-    from pypdf import PdfReader, PdfWriter
-    wr, used, keep = PdfWriter(), 0, []
-    for p in paths:
-        ext = os.path.splitext(p)[1].lower()
-        name = os.path.basename(p).split("_", 1)[-1]
-        try:
-            if ext == ".pdf": src = p
-            elif ext in IMAGES: src = img_to_pdf(p, o, exact=True)
-            elif ext in TEXT_EXT: src = txt_to_pdf(p, dict(o, scale=0, hard=0.0, margin=0 if o["margin"] >= 0 else -1))   # sheet margin comes from the layout step
-            elif ext in OFFICE_EXT: src = office_to_pdf(p)
-            else: raise RuntimeError("type not supported")
-            rd = PdfReader(src)
-            if rd.is_encrypted:
-                try: rd.decrypt("")
-                except Exception: pass
-            keep.append(rd)
-            for pg in rd.pages:
-                wr.add_page(pg)
-            used += 1
-        except Exception as e:
-            log(f"joined job: {name} skipped: {e}")
-            notes.append(f"{name} skipped ({str(e)[:100]})")
-    if not used:
-        raise RuntimeError("none of the files could be turned into pages")
-    dest = out_pdf(paths[0], "join")
-    with open(dest, "wb") as f:
-        wr.write(f)
-    return dest
-
-
-PS_SPOOL = r"""
-param([string]$Printer)
-try { @(Get-PrintJob -PrinterName $Printer -ErrorAction Stop).Count } catch { 'x' }
-"""
-RETRY_FAST = 4.0   # seconds: a print command that fails later than this was already busy printing / spooling
-
-
-def spool_count(printer):
-    """Number of jobs waiting in the PC's queue for that printer (None = cannot tell). Used to see whether a failed command left a job behind."""
-    try:
-        if WIN:
-            if not printer:
-                return None
-            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_script("spool.ps1", PS_SPOOL), printer],
-                               capture_output=True, text=True, errors="replace", timeout=10, creationflags=CF)
-            t = (r.stdout or "").strip()
-            return int(t) if t.isdigit() else None
-        r = subprocess.run(["lpstat", "-o"] + ([printer] if printer else []), capture_output=True, text=True, errors="replace", timeout=10)
-        return len([l for l in (r.stdout or "").splitlines() if l.strip()])
-    except Exception:
-        return None
-
-
-def run_retry(cmd, printer=None, **kw):
-    """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment) - but ONLY when
-    it failed straight away and left nothing in the print queue. A command that ran for a while, or that left a new job in the queue, may
-    already have sent the document: trying again would print it twice. A timeout is never retried either."""
-    n0 = spool_count(printer)
-    t0 = time.time()
+def run_retry(cmd, **kw):
+    """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment).
+    A timeout is NOT retried: the job may already be in the queue and would print twice."""
     try:
         subprocess.run(cmd, check=True, **kw)
     except subprocess.CalledProcessError as e:
-        took = time.time() - t0
-        n1 = spool_count(printer)
-        if n0 is not None and n1 is not None and n1 > n0:
-            log(f"print command exited with {e.returncode}, but the job is in the queue - not sending it again")
-            return
-        if took > RETRY_FAST:
-            log(f"print command failed after {took:.0f}s (exit {e.returncode}) - not retried, it may have printed")
-            raise
-        log(f"print command failed at once (exit {e.returncode}), trying once more")
+        log(f"print command failed (exit {e.returncode}), trying once more")
         time.sleep(3)
         subprocess.run(cmd, check=True, **kw)
 
 
-SWAP_FILE = os.path.join(APP, "duplex_swap.txt")   # printer names (one per line, # = comment, * = every printer) whose landscape sheets come out upside down on the back
-
-
-def duplex_swap(pr):
-    try:
-        with open(SWAP_FILE, encoding="utf-8") as f:
-            names = [l.strip().lower() for l in f if l.strip() and not l.lstrip().startswith("#")]
-    except OSError:
-        return False
-    return "*" in names or (pr or "").lower() in names
-
-
-def hard_margin(pr):
-    """The printer's hard margin in points (it cannot print closer to the edge; 0 = unknown / not Windows)."""
-    if not WIN:
-        return 0.0
-    try:
-        info = printer_info(pr or None, max_age=600)
-        v = max(float((info or {}).get("hx") or 0), float((info or {}).get("hy") or 0)) * 0.72   # hundredths of an inch -> points
-        return min(36.0, math.ceil(v * 2) / 2.0)
-    except Exception:
-        return 0.0
-
-
-def swap_duplex(pdf, o, pr):
-    """Printers that turn the back of landscape sheets upside down: long <-> short edge for those sheets (switch: duplex_swap.txt)."""
-    if o["duplex"] not in ("long", "short") or not duplex_swap(pr or DEFAULT_PRINTER[0]) or not have_pypdf():
-        return o
-    try:
-        from pypdf import PdfReader
-        pg = PdfReader(pdf).pages[0]
-        if float(pg.cropbox.width) > float(pg.cropbox.height):
-            log(f"landscape sheets: duplex {o['duplex']} edge sent as {'short' if o['duplex'] == 'long' else 'long'} edge (duplex_swap.txt)")
-            return dict(o, duplex="short" if o["duplex"] == "long" else "long")
-    except Exception as e:
-        log(f"duplex swap skipped: {e}")
-    return o
-
-
 def send_pdf(pdf, o, pr, sm, notes):
-    o = swap_duplex(pdf, o, pr)
     if not WIN:
         cmd = ["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"])]
         sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
         if sides: cmd += ["-o", "sides=" + sides]
         if o["color"] == "mono": cmd += ["-o", "print-color-mode=monochrome"]
-        run_retry(cmd + [pdf], printer=pr or DEFAULT_PRINTER[0], timeout=120)
+        run_retry(cmd + [pdf], timeout=120)
     elif sm:
-        run_retry(sumatra_args(sm, pdf, o, pr), printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
+        run_retry(sumatra_args(sm, pdf, o, pr), timeout=300, creationflags=0x08000000)
     else:
         if pr or o["duplex"] or o["color"]:
             notes.append("printer / duplex / colour ignored: SumatraPDF is not installed")
@@ -1219,17 +882,6 @@ def print_file(path, o):
     notes = []
     pr = o["printer"] or None
     sm = find_sumatra() if WIN else None
-    if o["margin"] >= 0:
-        o = dict(o, hard=hard_margin(pr))   # margin "None" = as close to the edge as this printer can print
-        if o["hard"] > o["margin"]:
-            log(f"margin {o['margin']}pt raised to the printer's hard margin {o['hard']:g}pt")
-    if isinstance(path, JoinJob):   # mixed files sent as one job: join the pages, then lay out once
-        pdf = join_to_pdf(path, o, notes)
-        if needs_layout(o) or needs_fitting(o):
-            pdf, sheets = process_pdf(pdf, o, os.path.basename(path[0]).split("_", 1)[-1])
-            log(f"laid out {len(path)} joined files: {sheets} sheet{'s' if sheets != 1 else ''}")
-        send_pdf(pdf, dict(o, fit="noscale") if needs_fitting(o) and o["paper"] else o, pr, sm, notes)
-        return notes
     if isinstance(path, list):   # pictures sent together: one set of sheets
         pdf, sheets = images_to_sheets(path, o, "pictures")
         log(f"laid out {len(path)} pictures: {sheets} sheet{'s' if sheets != 1 else ''}")
@@ -1284,7 +936,7 @@ def print_file(path, o):
         if pr:
             ps1 = ps_script("printto.ps1", PS_PRINTTO)
             r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, path, pr],
-                               capture_output=True, text=True, errors="replace", timeout=120, creationflags=0x08000000)
+                               capture_output=True, text=True, timeout=120, creationflags=0x08000000)
             if r.returncode != 0:
                 raise RuntimeError(f"no app on the PC can print {ext} files to a chosen printer - choose the default printer")
         else:
@@ -1307,9 +959,7 @@ $d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Na
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
   $j = @(Get-PrintJob -PrinterName $d.Name -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.JobStatus })
-  $hx = 0; $hy = 0
-  try { Add-Type -AssemblyName System.Drawing; $ps = New-Object System.Drawing.Printing.PrinterSettings; $ps.PrinterName = $d.Name; $hx = [double]$ps.DefaultPageSettings.HardMarginX; $hy = [double]$ps.DefaultPageSettings.HardMarginY } catch { }
-  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j; hx=$hx; hy=$hy } | ConvertTo-Json -Compress
+  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j } | ConvertTo-Json -Compress
 }
 """
 STATUS_TEXT = {   # Get-Printer PrinterStatus -> plain words
@@ -1347,12 +997,12 @@ PRINTERS = []   # names of all printers installed on the PC
 def list_printers():
     if not WIN:
         try:
-            return [l.split()[1] for l in subprocess.run(["lpstat", "-a"], capture_output=True, text=True, errors="replace", timeout=10).stdout.splitlines() if l.strip()]
+            return [l.split()[1] for l in subprocess.run(["lpstat", "-a"], capture_output=True, text=True, timeout=10).stdout.splitlines() if l.strip()]
         except Exception:
             return []
     try:
         out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
-                             capture_output=True, text=True, errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
+                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
         v = json.loads(out) if out else []
         return [v] if isinstance(v, str) else [str(x) for x in v]
     except Exception:
@@ -1385,7 +1035,7 @@ def _printer_info(name=None):
     try:
         ps1 = ps_script("pstate.ps1", PS_STATE)
         out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
-                             capture_output=True, text=True, errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
+                             capture_output=True, text=True, timeout=30, creationflags=0x08000000).stdout.strip()
         info = json.loads(out) if out else None
         if info:
             if isinstance(info.get("jobs"), str):
@@ -1405,7 +1055,7 @@ def refresh_printer():
                 DEFAULT_PRINTER[0] = info["name"] if info else None
                 PRINTER_PROBLEM[0] = describe_problem(info)
             else:
-                out = subprocess.run(["lpstat", "-d"], capture_output=True, text=True, errors="replace", timeout=10).stdout.split(":")[-1].strip()
+                out = subprocess.run(["lpstat", "-d"], capture_output=True, text=True, timeout=10).stdout.split(":")[-1].strip()
                 DEFAULT_PRINTER[0] = out or None
         except Exception:
             DEFAULT_PRINTER[0] = None
@@ -1447,7 +1097,7 @@ def record(name, res):
 
 
 def print_one(path, evt, res, o):
-    name = f"{len(path)} files (one job)" if isinstance(path, JoinJob) else f"{len(path)} pictures" if isinstance(path, list) else os.path.basename(path)
+    name = f"{len(path)} pictures" if isinstance(path, list) else os.path.basename(path)
     CURRENT[0] = name
     try:
         pr = o["printer"] or DEFAULT_PRINTER[0]
@@ -1638,8 +1288,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine(), "convert": True,
-                                    "hard": hard_margin(pr)})
+                                    "office": office_engine(), "convert": True})
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
@@ -1716,54 +1365,15 @@ class H(BaseHTTPRequestHandler):
         evt, res = threading.Event(), {}
         qs = parse_qs(u.query)
         bid = re.sub(r"[^0-9A-Za-z]", "", (qs.get("batch") or [""])[0])[:20]
-        key = re.sub(r"[^0-9A-Za-z_-]", "", (qs.get("key") or [""])[0])[:60]
         job = dest
-
-        def drop_dest():
-            try: os.remove(dest)
-            except OSError: pass
-
-        def answer(ev, rs):
-            if not ev.wait(90):   # still waiting in the queue: the phone treats this as sent
-                return self.reply(200, {"ok": True, "queued": True})
-            if "error" in rs:
-                return self.reply(500, {"error": rs["error"]})   # the phone shows the reason
-            self.reply(200, {"ok": True, "printed": True, "printer": rs.get("printer"), "warning": rs.get("warning"), "note": rs.get("note")})
-
-        ent = None
-        if key:   # the same file arriving again (an app retry, a reconnect over Tailscale ...) must not print twice
-            with SEEN_LOCK:
-                for k in [k for k, v in SEEN.items() if time.time() - v["t"] > SEEN_KEEP]:
-                    SEEN.pop(k, None)
-                old = SEEN.get(key)
-                if old is None:
-                    ent = SEEN[key] = {"t": time.time(), "evt": None, "res": None}
-            if old is not None:
-                drop_dest()
-                log(f"repeated request ignored: {name} (key {key})")
-                if old["evt"] is not None:
-                    return answer(old["evt"], old["res"])   # same answer as the first one gets
-                return self.reply(200, {"ok": True, "duplicate": True, "batched": bool(bid)})
-        join = (qs.get("join") or [""])[0] == "1"       # mixed files for ONE job (any type)
-        skip = (qs.get("skip") or [""])[0] == "1"       # the app could not convert this one: it only keeps the count right
-        if bid and (ext in IMAGES or join):   # several files for one job / set of sheets: wait for the last one
+        if bid and ext in IMAGES:   # several pictures for one set of sheets: wait for the last one
             gq = lambda k: (qs.get(k) or [""])[0]
             idx, cnt, rot = _int(gq("idx"), 0, 0, 999), _int(gq("n"), 1, 1, 1000), _int(gq("rot"), 0, 0, 359) // 90 * 90 % 360
             with BATCH_LOCK:
-                for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > SEEN_KEEP]:
+                for k in [k for k, v in BATCHES.items() if time.time() - v["t"] > 900]:
                     BATCHES.pop(k, None)
-                for k in [k for k, t in FINISHED_BATCHES.items() if time.time() - t > SEEN_KEEP]:
-                    FINISHED_BATCHES.pop(k, None)
-                finished = bid in FINISHED_BATCHES
-                if not finished:
-                    bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
-                    bt["items"][idx] = None if skip else (dest, rot)
-            if skip:
-                drop_dest()
-            if finished:   # this set of sheets is already queued: a late or repeated picture would print alone on a sheet
-                drop_dest()
-                log(f"picture of an already finished batch ignored: {name}")
-                return self.reply(200, {"ok": True, "duplicate": True, "batched": True})
+                bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
+                bt["items"][idx] = (dest, rot)
             if idx < cnt - 1:
                 return self.reply(200, {"ok": True, "batched": True})
             end = time.time() + 6   # pictures that arrive out of order (parallel uploads): give the stragglers a moment
@@ -1773,16 +1383,14 @@ class H(BaseHTTPRequestHandler):
                         break
                 time.sleep(0.25)
             with BATCH_LOCK:
-                got = [bt["items"][k] for k in sorted(bt["items"]) if bt["items"][k] is not None]
-                job = JoinJob(d for d, _ in got) if join else got
+                job = [bt["items"][k] for k in sorted(bt["items"])]
                 BATCHES.pop(bid, None)
-                FINISHED_BATCHES[bid] = time.time()
-            if not got:
-                return self.reply(400, {"error": "nothing to print"})
-        if ent is not None:
-            ent["evt"], ent["res"] = evt, res
         PRINTQ.put((job, evt, res, o))
-        answer(evt, res)
+        if not evt.wait(90):   # still waiting in the queue: the phone treats this as sent
+            return self.reply(200, {"ok": True, "queued": True})
+        if "error" in res:
+            return self.reply(500, {"error": res["error"]})   # the phone shows the reason
+        self.reply(200, {"ok": True, "printed": True, "printer": res.get("printer"), "warning": res.get("warning"), "note": res.get("note")})
 
 
 def pc_addresses():
@@ -1794,10 +1402,8 @@ def pc_addresses():
         pass
     if WIN:   # getaddrinfo often misses the Tailscale adapter
         try:
-            out = subprocess.run(["ipconfig"], capture_output=True, text=True, errors="replace", creationflags=0x08000000).stdout
-            for ln in out.splitlines():   # only "IPv4 Address" lines: gateways (192.168.1.1) and subnet masks are not this PC
-                if "IPv4" in ln:
-                    found |= set(re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b", ln))
+            out = subprocess.run(["ipconfig"], capture_output=True, text=True, creationflags=0x08000000).stdout
+            found |= set(re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b", out))
         except Exception:
             pass
     ips = []
@@ -1836,8 +1442,8 @@ def serve():
     threading.Thread(target=print_worker, daemon=True, name="print-worker").start()
     threading.Thread(target=refresh_printer, daemon=True, name="printer-state").start()
     threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
-    if not all(have_pkg(m) for m, _ in PKGS):
-        threading.Thread(target=ensure_packages, daemon=True).start()
+    if not have_pypdf():
+        threading.Thread(target=ensure_pypdf, daemon=True).start()
     ips, ts = pc_addresses()
     log(f"print service ready on port {PORT} (this PC: {', '.join(ips)}{'; Tailscale: ' + ts if ts else ''})")
     srv.serve_forever()
@@ -1874,7 +1480,7 @@ def stop_service():
         if not is_running(): return True
         time.sleep(0.3)
     if WIN:   # old version without /stop: kill whatever listens on the port
-        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, errors="replace", creationflags=0x08000000).stdout
+        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, creationflags=0x08000000).stdout
         for line in out.splitlines():
             c = line.split()
             if len(c) >= 5 and c[3] == "LISTENING" and c[1].endswith(f":{PORT}"):
@@ -1904,7 +1510,7 @@ def is_admin():
 
 def fw_rule_exists():
     r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE}"],
-                       capture_output=True, text=True, errors="replace", creationflags=0x08000000)
+                       capture_output=True, text=True, creationflags=0x08000000)
     return r.returncode == 0 and FW_RULE in r.stdout
 
 
