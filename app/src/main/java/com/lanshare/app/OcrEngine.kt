@@ -7,6 +7,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.android.gms.tasks.Tasks
@@ -68,6 +70,8 @@ class MlKitOcr(private val ctx: Context) : OcrEngine {
     }
 
     private fun ensureModel() {
+        if (GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(ctx) != ConnectionResult.SUCCESS)
+            throw IllegalStateException("Google Play Services is missing or needs an update (it is needed to read text)")
         val rec = recogniser()
         val mi = ModuleInstall.getClient(ctx)
         fun ok() = Tasks.await(mi.areModulesAvailable(rec), 30, TimeUnit.SECONDS).areModulesAvailable()

@@ -49,6 +49,18 @@ object OcrSmart {
         return out.sortedBy { it.first }.map { it.second }.distinctBy { it.kind to it.text }
     }
 
+    /** Search key: lower case, no accents, Turkish dotted / dotless i = i (so "Sinif" finds "Sınıf"). */
+    fun fold(s: String): String =
+        java.text.Normalizer.normalize(s.replace('\u0130', 'i').replace('\u0131', 'i'), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+
+    private val wordRe = Regex("\\p{L}[\\p{L}'\u2019-]*")
+
+    /** Every different word of [text] once, lower case, in order of appearance, one per line (vocabulary list). */
+    fun words(text: String): String =
+        wordRe.findAll(text.replace('\u0130', 'i')).map { it.value.trim('\'', '\u2019', '-').lowercase(Locale.ROOT) }
+            .filter { it.length >= 2 }.distinct().joinToString("\n")
+
     /** Saves [text] as a .txt file in Downloads (Android 10+) or the app's own files folder. Returns a short description of where it went. */
     fun saveTxt(ctx: Context, text: String): String {
         val name = "picture-text-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".txt"
