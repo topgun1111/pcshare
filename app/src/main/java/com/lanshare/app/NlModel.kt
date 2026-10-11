@@ -17,6 +17,10 @@ import java.util.Objects
  * Keep in sync with ui.html: shown(), findDups(), kind(), fmt(), nlA(), nlBuild(), BADGE, COL.
  */
 object NlModel {
+    /** Paths the user hid with the Hide button (ui.html HGAL, pushed by nlHidden); shown again by "Show hidden files". */
+    @Volatile var hidden: Set<String> = emptySet()
+    private fun fullPath(dir: String, name: String) = (if (dir == "/" || dir.isEmpty()) "" else dir.trimEnd('/')) + "/" + name
+
     class Cfg(val sort: String, val asc: Boolean, val hid: Boolean, val gal: Boolean, val view: String, val thumb: String, val ff: Boolean = true)
 
     /** rows == null: not buildable here (page decides); count = number of entries read (for the "too big" memo). */
@@ -96,15 +100,15 @@ object NlModel {
                 val c = Core.local.counts(path)
                 items = items.map { if (it.dir) (c[it.name]?.let { n -> it.copy(n = n) } ?: it) else it }
             }
-            return Result(rows(items, path, cfg), items.size, headSum(items, cfg.hid))
+            return Result(rows(items, path, cfg), items.size, headSum(items, cfg.hid, path))
         } catch (_: Throwable) { return Result(null, 0) }
     }
 
     /** ui.html renderTools(): "12 items . 3.4 MB" (bold) and "2 folders . 10 files" (small, only when both kinds exist) of the visible entries. */
-    fun headSum(items: List<Item>, hid: Boolean): Pair<String, String> {
+    fun headSum(items: List<Item>, hid: Boolean, dir: String = ""): Pair<String, String> {
         var n = 0; var fo = 0; var fi = 0; var sz = 0L
         for (i in items) {
-            if (!hid && (i.hid || (i.name.isNotEmpty() && i.name[0] == '.'))) continue
+            if (!hid && (i.hid || (i.name.isNotEmpty() && i.name[0] == '.') || (hidden.isNotEmpty() && hidden.contains(fullPath(dir, i.name))))) continue
             n++; if (i.dir) fo++ else { fi++; sz += i.size }
         }
         val b = n.toString() + (if (n == 1) " item" else " items") + (if (fi > 0) " \u00b7 " + fmt(sz) else "")
@@ -119,7 +123,7 @@ object NlModel {
         val coll = Collator.getInstance()                          // Intl.Collator(undefined,{numeric:true,sensitivity:'base'})
         (coll as? RuleBasedCollator)?.setNumericCollation(true)
         coll.setStrength(Collator.PRIMARY)
-        val vis = if (cfg.hid) items else items.filter { !it.hid && (it.name.isEmpty() || it.name[0] != '.') }
+        val vis = if (cfg.hid) items else items.filter { !it.hid && (it.name.isEmpty() || it.name[0] != '.') && (hidden.isEmpty() || !hidden.contains(fullPath(p0, it.name))) }
         val d = if (cfg.asc) 1 else -1
         val num = { i: Item -> if (cfg.sort == "date") i.mtime else if (i.dir) (if (cfg.ff) (i.n ?: 0).toLong() else 0L) else i.size }   // folders mixed in with files: no item count to compare with a byte size
         val v: List<Item> = if (cfg.sort == "none") vis else vis.sortedWith(Comparator<Item> { a, b ->

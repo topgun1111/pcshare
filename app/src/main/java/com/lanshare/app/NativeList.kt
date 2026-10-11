@@ -836,6 +836,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     fun setCfg(c: String) { if (c != curCfg) { built.clear(); baseRows = null }; curCfg = c }
+    /** The user's hidden items changed (Hide / Unhide): rows built before are stale. */
+    fun setHidden(s: Set<String>) { if (s != NlModel.hidden) { NlModel.hidden = s; built.clear(); baseRows = null } }
     /** ui.html nlQ(): the query the rows of the next nlItems were filtered by. */
     fun noteQ(q: String) { pageQ = q }
 

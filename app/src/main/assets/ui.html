@@ -611,7 +611,8 @@ function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
 const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const arcP=p=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
-const vis=()=>(S.hid||arcP(S.path))?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid);
+const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
+const vis=()=>(S.hid||arcP(S.path))?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid&&!(S.dev==='local'&&hidP(jn(S.path,i.name))));
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
 function shown(){  // visible items in the chosen order; folders always come first
@@ -828,7 +829,7 @@ function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;N
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
   if(!items.length&&S.sr.items&&!S.sr.err)return null;
   return[{_hd:1,name:S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…'}].concat(items.map(i=>Object.assign({_h:1},i)))}
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
@@ -1068,9 +1069,10 @@ function galInfo(dev,path,mt){const gv=galVid(),k=gv+'|'+dev+'|'+path+'|'+mt;if(
   }).catch(()=>{delete GALC[k];return{cover:null,n:0,sub:0}})}
 /* albums the user hid from the gallery (press and hold an album card): kept in this browser, shown again with "Show N hidden albums" */
 let HGAL=[];try{HGAL=JSON.parse(localStorage.getItem('ls_galhid')||'[]')}catch(e){}if(!Array.isArray(HGAL))HGAL=[];
-const galHidden=p=>HGAL.indexOf(p)>=0;
+const galHidden=p=>HGAL.indexOf(p)>=0;hgSave();
 function galHideSet(p,on){galHideMany([p],on)}
-function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}render()}
+function hgSave(){try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}try{if(NL&&NL.nlHidden)NL.nlHidden(JSON.stringify(HGAL))}catch(e){}}   // the native list filters the same paths when it builds a folder itself
+function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);hgSave();render()}
 /* the gallery's own press-and-hold menu (separate from the file browser's selection bar); the file actions that duplicate it are left out for now */
 function albHold(c,path,name){holdMenu(c,{name:name})}   // standard file-manager behaviour: press and hold selects the album, actions appear in the bottom bar
 function mkAlbum(i,P0){
@@ -1278,7 +1280,7 @@ function isView(sdir,sname,m0){
       inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
       try{const r=await api('GET','/api/search?dev=local&path='+enc(sdir||'/')+'&q='+enc(q),null,120000);
         if(!live())return;
-        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
+        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
         show(it.map(i=>({path:i.path,score:0})),q)}
       catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
       return}
@@ -1638,7 +1640,7 @@ function openSettings(){
   const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
   rb.onclick=()=>{close();openSmb()};card.append(rb);
   api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
-  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden album'+(HGAL.length===1?'':'s'):'Hidden albums, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
+  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden item'+(HGAL.length===1?'':'s'):'Hidden items, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
   rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
@@ -1705,16 +1707,16 @@ function openGallerySettings(){
   t.append(E('b','','Hide small albums'),E('small','','Albums with a single item and Android resource folders'));
   cb.onchange=()=>{try{localStorage.setItem('ls_galhide',cb.checked?'1':'0')}catch(e){}if(galRoot())render()};
   sw.append(cb,E('i'));row.append(t,sw);card.append(row);
-  card.append(E('div','dsec','Hidden albums'));
+  card.append(E('div','dsec','Hidden albums, files and folders'));
   const list=E('div');card.append(list);
   const draw=()=>{list.textContent='';
-    if(!HGAL.length){const e=E('div','set'),t2=E('div','t');t2.append(E('small','','None. Press and hold an album in the gallery to hide it.'));e.append(t2);list.append(e);return}
+    if(!HGAL.length){const e=E('div','set'),t2=E('div','t');t2.append(E('small','','None. Press and hold a file, folder or album and tap Hide.'));e.append(t2);list.append(e);return}
     HGAL.forEach(p=>{const r=E('div','set'),t2=E('div','t'),ub=E('button','tbtn','Unhide');
       t2.append(E('b','',p.slice(p.lastIndexOf('/')+1)||p),E('small','',p));
-      ub.onclick=()=>{HGAL=HGAL.filter(x=>x!==p);try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}draw();if(galRoot())render()};
+      ub.onclick=()=>{HGAL=HGAL.filter(x=>x!==p);hgSave();draw();render()};
       r.append(t2,ub);list.append(r)});
     if(HGAL.length>1){const r=E('div','set');r.style.cssText='display:flex;justify-content:flex-end';const ua=E('button','tbtn','Unhide all');
-      ua.onclick=()=>{HGAL=[];try{localStorage.setItem('ls_galhid','[]')}catch(e){}draw();if(galRoot())render()};r.append(ua);list.append(r)}};
+      ua.onclick=()=>{HGAL=[];hgSave();draw();render()};r.append(ua);list.append(r)}};
   draw();
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 async function openSmb(){
@@ -1776,7 +1778,7 @@ function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
 function renderSR(l){
   if(!S.q||S.q.length<2||!srOK())return;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
   if(!items.length&&S.sr.items&&!S.sr.err)return;
   const h=E('div');h.style.cssText='padding:14px 16px 6px;font-size:13px;color:var(--mut);grid-column:1/-1';
   h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
@@ -1823,6 +1825,9 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
       btn('hide','Hide',()=>{const ps=it.map(i=>jn(S.path,i.name));S.sel.clear();galHideMany(ps,true)})}
+    else if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0){   // any file or folder of this phone: Hide (Unhide when "Show hidden files" is on and they are all hidden)
+      const ps=selPaths(),un=ps.length>0&&ps.every(hidP);
+      btn('hide',un?'Unhide':'Hide',()=>{S.sel.clear();galHideMany(ps,!un);toast(un?ps.length+' item(s) visible again':ps.length+' item(s) hidden - Settings > Gallery settings brings them back',un?2000:4000)})}
     if(!A)btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
