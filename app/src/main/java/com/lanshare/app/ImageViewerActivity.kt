@@ -77,6 +77,8 @@ class ImageViewerActivity : Activity() {
     private var items: List<Item> = emptyList()
     private lateinit var pager: ViewPager2
     private lateinit var top: LinearLayout
+    private lateinit var topWrap: LinearLayout   // top bar + details band underneath it
+    private lateinit var infoTv: TextView        // wide details band: date, time, pixels, size, position
     private lateinit var titleTv: TextView
     private lateinit var subTv: TextView
     private lateinit var countPill: TextView
@@ -162,7 +164,18 @@ class ImageViewerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x66000000, 0x00000000))
             setPadding(dp(4), dp(6), dp(4), dp(28))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        // details band: sits right under the top bar and spans the full width, so nothing is cut off with "..." (the dark space around the picture is used for it)
+        infoTv = TextView(this).apply {
+            setTextColor(0xE6FFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setLineSpacing(0f, 1.15f)
+            maxLines = 3; setPadding(dp(16), dp(8), dp(16), dp(8)); setBackgroundColor(0x99000000.toInt())
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = -dp(20) }
+        }
+        topWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
+            addView(top); addView(infoTv)
         }
         fun icon(path: String, desc: String, act: () -> Unit) = IconBtn(this, path).apply {
             contentDescription = desc; setOnClickListener { act() }
@@ -195,9 +208,10 @@ class ImageViewerActivity : Activity() {
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             v.setPadding(dp(4) + b.left, dp(6) + b.top, dp(4) + b.right, dp(28))
+            infoTv.setPadding(dp(16) + b.left, dp(8), dp(16) + b.right, dp(8))
             insets
         }
-        root.addView(top)
+        root.addView(topWrap)
 
         countPill = TextView(this).apply {
             setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); gravity = Gravity.CENTER
@@ -244,7 +258,7 @@ class ImageViewerActivity : Activity() {
 
     private fun toggleUi() {
         uiOn = !uiOn
-        top.visibility = if (uiOn) View.VISIBLE else View.GONE
+        topWrap.visibility = if (uiOn) View.VISIBLE else View.GONE
         countPill.visibility = if (uiOn) View.VISIBLE else View.GONE
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -263,14 +277,24 @@ class ImageViewerActivity : Activity() {
 
     private fun updateTitle(pos: Int) {
         val it = items.getOrNull(pos) ?: return
-        // title: file name; second line: date \u00b7 time (size, pixels and the rest are under menu > Details); the position sits in the pill at the bottom
+        // title: file name; the wide band under the top bar: date \u00b7 time, pixels (+ megapixels), size; the position sits in the pill at the bottom
         titleTv.text = it.name
         countPill.text = (pos + 1).toString() + " / " + items.size
-        subTv.text = if (it.mtime > 0) {
+        subTv.visibility = View.GONE   // the date moved into the wide details band below the top bar
+        val sep = "   \u2022   "
+        val parts = ArrayList<String>()
+        if (it.mtime > 0) {
             val d = java.util.Date(it.mtime * 1000)
-            java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(d) + "  \u00b7  " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(d)
-        } else if (it.size > 0) android.text.format.Formatter.formatShortFileSize(this, it.size) else ""
-        subTv.visibility = if (subTv.text.isEmpty()) View.GONE else View.VISIBLE
+            parts.add(java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(d) + "  \u00b7  " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(d))
+        }
+        dims[pos]?.let { d ->
+            val wh = d.split('\u00d7')
+            val mp = if (wh.size == 2) (wh[0].trim().toLongOrNull() ?: 0L) * (wh[1].trim().toLongOrNull() ?: 0L) else 0L
+            parts.add(if (mp > 0) d + "  \u00b7  " + String.format(java.util.Locale.US, "%.1f MP", mp / 1e6) else d)
+        }
+        if (it.size > 0) parts.add(android.text.format.Formatter.formatShortFileSize(this, it.size))
+        infoTv.text = parts.joinToString(sep)
+        infoTv.visibility = if (parts.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun showDetails(pos: Int) {
