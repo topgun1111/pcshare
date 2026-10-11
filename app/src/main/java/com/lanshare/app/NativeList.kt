@@ -62,9 +62,6 @@ object NlIcons {
         cache[k] = p
         return p
     }
-    // ui.html FOLD (viewBox 56x48), arc flags written with spaces
-    val foldBack: Path = PathParser.createPathFromPathData("M2 8a4 4 0 0 1 4-4h14l4 4h26a4 4 0 0 1 4 4v28a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z")
-    val foldFront: Path = PathParser.createPathFromPathData("M2 21a4 4 0 0 1 4-4h44a4 4 0 0 1 4 4v19a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z")
 }
 
 /** "New" = modified within the last 60 s (twin of ui.html NEWSEC / isNew). Drawn as a red dot on the row's lead. */
@@ -124,6 +121,34 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
         super.dispatchDraw(c)
         if (dim > 0f) { veil.color = Color.argb((dim * 255f).toInt().coerceIn(0, 255), 0, 0, 0); c.drawRect(listRect, veil); if (!headRect.isEmpty) c.drawRect(headRect, veil) }
         c.restore()
+    }
+}
+
+/** The classic folder (paper sheets behind a tan front panel) in a 100 x 87.7 unit box; shared by the grid cards and every list view. */
+object NlClassicFolder {
+    // front panel: flat left part, diagonal rise, raised right part
+    private val FRONT = Path().apply {
+        moveTo(0f, 32.7f); quadTo(0f, 25.7f, 7f, 25.7f); lineTo(42.2f, 25.7f); lineTo(56.5f, 11.8f); quadTo(58.8f, 9.9f, 62f, 9.9f)
+        lineTo(95f, 9.9f); quadTo(100f, 9.9f, 100f, 15f); lineTo(100f, 81.3f); quadTo(100f, 87.7f, 93.5f, 87.7f)
+        lineTo(6.5f, 87.7f); quadTo(0f, 87.7f, 0f, 81.3f); close()
+    }
+    private val SHEETS = floatArrayOf(6.4f, 11.9f, 18f)
+    const val W = 100f
+    const val H = 87.7f
+
+    /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. */
+    fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float) {
+        cv.save(); cv.translate(ox, oy); cv.scale(k, k)
+        p.style = Paint.Style.FILL; p.color = 0xFFD49A50.toInt(); rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
+        for (t in SHEETS) {
+            rf.set(2.8f, t, 87.2f, 40f)
+            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 3f, 3f, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFB9B9B9.toInt(); cv.drawRoundRect(rf, 3f, 3f, p)
+        }
+        p.style = Paint.Style.FILL; p.color = 0xFFE2AC62.toInt(); cv.drawPath(FRONT, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFD08A3E.toInt(); cv.drawPath(FRONT, p)
+        p.style = Paint.Style.FILL
+        cv.restore()
     }
 }
 
@@ -198,12 +223,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             icon("check", lcx - ico / 2f, cy - ico / 2f, ico, pl.onac, cv)
         } else if (r.dir) {
             val fw = (if (c) 34f else if (lg) 68f else if (md) 54f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else if (md) 46f else 34f) * d
-            cv.save(); cv.translate(lcx - fw / 2f, cy - fh / 2f); val s = fw / 56f; cv.scale(s, s)
-            p.color = 0xFFFB8C00.toInt(); cv.drawPath(NlIcons.foldBack, p)
-            p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
-            p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
-            p.color = 0xFFFFB74D.toInt(); cv.drawPath(NlIcons.foldFront, p)
-            cv.restore()
+            val fk = Math.min(fw / NlClassicFolder.W, fh / NlClassicFolder.H)       // classic folder, centred in the old folder box
+            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk)
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
                 val bottom = cy + leadB + (if (c) 2f else 1f) * d; val top = bottom - bs
@@ -323,19 +344,12 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
 
     private companion object {
         const val LH = 20f   // name line height, dp
-        // folder front panel (100 x 87.7 unit box): flat left part, diagonal rise, raised right part
-        val FRONT = Path().apply {
-            moveTo(0f, 32.7f); quadTo(0f, 25.7f, 7f, 25.7f); lineTo(42.2f, 25.7f); lineTo(56.5f, 11.8f); quadTo(58.8f, 9.9f, 62f, 9.9f)
-            lineTo(95f, 9.9f); quadTo(100f, 9.9f, 100f, 15f); lineTo(100f, 81.3f); quadTo(100f, 87.7f, 93.5f, 87.7f)
-            lineTo(6.5f, 87.7f); quadTo(0f, 87.7f, 0f, 81.3f); close()
-        }
         // file page (100 x 127.7 unit box) with the folded top-right corner
         val PAGE = Path().apply {
             moveTo(7.4f, 0f); lineTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(100f, 120.3f); quadTo(100f, 127.7f, 92.6f, 127.7f)
             lineTo(7.4f, 127.7f); quadTo(0f, 127.7f, 0f, 120.3f); lineTo(0f, 7.4f); quadTo(0f, 0f, 7.4f, 0f); close()
         }
         val FOLD = Path().apply { moveTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(77.7f, 29.7f); quadTo(70.3f, 29.7f, 70.3f, 22.3f); close() }
-        val SHEETS = floatArrayOf(6.4f, 11.9f, 18f)
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
@@ -380,15 +394,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
 
     /** Folder with paper sheets behind a tan front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
     private fun folder(cv: Canvas, ox: Float, oy: Float, k: Float, badge: String?, badgeCol: Int) {
+        NlClassicFolder.draw(cv, p, rf, ox, oy, k)
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
-        p.style = Paint.Style.FILL; p.color = 0xFFD49A50.toInt(); rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
-        for (t in SHEETS) {
-            rf.set(2.8f, t, 87.2f, 40f)
-            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 3f, 3f, p)
-            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFB9B9B9.toInt(); cv.drawRoundRect(rf, 3f, 3f, p)
-        }
-        p.style = Paint.Style.FILL; p.color = 0xFFE2AC62.toInt(); cv.drawPath(FRONT, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFD08A3E.toInt(); cv.drawPath(FRONT, p)
         if (badge != null) {
             rf.set(23f, 43f, 73.7f, 93.7f)
             p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
