@@ -58,6 +58,8 @@ body{margin:0;font:500 15px/1.4 'Urbanist LS','Segoe UI','Segoe UI Variable Text
 /* pull to refresh */
 #ptr{position:fixed;left:0;right:0;top:0;height:0;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;z-index:4;font-size:13px;pointer-events:none}
 #ptr div{margin:0 0 8px;padding:6px 14px;border-radius:16px;background:var(--cont);color:var(--mut);box-shadow:var(--sh)}#ptr.go div{color:var(--ac);font-weight:700}
+.gptr{flex:none;height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;font-size:13px;pointer-events:none}
+.gptr div{margin:0 0 8px;padding:6px 14px;border-radius:16px;background:var(--cont);color:var(--mut);box-shadow:var(--sh)}.gptr.go div{color:var(--ac);font-weight:700}
 /* top app bar */
 #top{position:sticky;top:0;z-index:5;background:var(--bg);transition:box-shadow .2s}
 #top:before{content:"";display:block;height:env(safe-area-inset-top);background:var(--bar)}
@@ -1123,6 +1125,21 @@ function galOpts(gg,redraw){
       b.onclick=()=>{try{localStorage.setItem('ls_galsort',a[0])}catch(e){}draw();redraw()};r2.append(b)})};
   draw();card.append(r1,E('p','','Sort by'),r2);
   const c=E('button','tbtn','Done');c.style.alignSelf='flex-end';c.onclick=close;card.append(c);o.append(card)}
+/* pull down to refresh inside a scrolling panel of the #gal overlay (album / video album): `sc` scrolls, `box` is the indicator above it, `go` reloads, `ok` = may start (not while selecting) */
+function pullBind(sc,box,go,ok){
+  const lab=box.firstChild,TH=70;let y0=0,dy=0,on=false;
+  const setH=h=>{box.style.height=h+'px'};
+  const reset=()=>{box.style.transition='height .2s';setH(0);box.classList.remove('go')};
+  sc.addEventListener('touchstart',e=>{on=false;if(e.touches.length!==1||sc.scrollTop>0||(ok&&!ok()))return;y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
+  sc.addEventListener('touchmove',e=>{if(!on)return;dy=e.touches[0].clientY-y0;
+    if(dy<=0||sc.scrollTop>0){if(dy<=0){on=false;setH(0)}return}
+    if(dy<16)return;
+    if(e.cancelable)e.preventDefault();
+    box.style.transition='';const h=Math.min(dy*0.5,TH+20);setH(h);const rd=h>=TH;box.classList.toggle('go',rd);
+    lab.textContent=rd?'\u21bb Release to refresh':'\u2193 Pull to refresh'},{passive:false});
+  const end=()=>{if(!on)return;on=false;
+    if(dy>=16&&dy*0.5>=TH){box.classList.add('go');lab.textContent='Refreshing\u2026';setH(46);setTimeout(go,150)}else reset()};
+  sc.addEventListener('touchend',end);sc.addEventListener('touchcancel',end)}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
@@ -1133,12 +1150,13 @@ function galView(a){
   // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
-  o.append(hd,sh,sc,gb);
+  const pb=E('div','gptr');pb.append(E('div'));o.append(hd,sh,pb,sc,gb);
   let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>LIST.filter(m=>GS.has(m.name));
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
     LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
   const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
+  pullBind(sc,pb,reload,()=>!GS.size);   // pull down = rescan the album (also video albums)
   const upd=()=>{
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
     const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
