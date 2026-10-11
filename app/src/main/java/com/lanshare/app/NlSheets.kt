@@ -192,10 +192,10 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             cbRow("Apply to all folders", s.aa) { v -> s.aa = v; onPref(JSONObject().put("aa", if (v) 1 else 0)); draw() }
             if (s.gal) {   // album cards have no list / compact view, thumbnail size, sorting or folders-first: show the one thing that works
                 hr(); head("Albums")
-                val gshown = if (s.cols in 2..4) s.cols else s.autoCols
-                val gcols = listOf(2, 3, 4)
+                val gshown = if (s.cols in 2..5) s.cols else s.autoCols
+                val gcols = listOf(2, 3, 4, 5)
                 radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
-                    tv("${gcols[n]} columns", 16f, p.fg)
+                    tv("${gcols[n]}", 16f, p.fg)
                 }
                 return
             }
@@ -210,10 +210,10 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
                 NlGlyph(act, NlGlyph.parse(s.ic.optString("img")), p.fg, dp(thumbs[n].second))
             }
             if (s.view == "grid") {
-                val shown = if (s.cols in 2..4) s.cols else s.autoCols
-                val cols = listOf(2, 3, 4)
+                val shown = if (s.cols in 2..5) s.cols else s.autoCols
+                val cols = listOf(2, 3, 4, 5)
                 radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
-                    tv("${cols[n]} columns", 16f, p.fg)
+                    tv("${cols[n]}", 16f, p.fg)
                 }
             }
             hr(); head("Sort")
