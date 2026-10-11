@@ -291,7 +291,13 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     }
 }
 
-/** One grid card (ui.html #list.v-grid .row): square lead, name (max 2 lines, centred), size + date lines. Dense, frameless (card tint only while selected; picture-only cards keep bg + 1px --bd border), padding 3 3 4. */
+/**
+ * One grid card (ui.html #list.v-grid .row), dense and frameless like a classic file-manager grid:
+ * a square icon area as wide as the card, the name below (max 2 lines, centred, 17 sp) and nothing else (no count / size line).
+ * Folders and files without a thumbnail are vector icons drawn in a 100-unit box (folder with paper sheets, grey page with a folded
+ * corner and a white type badge); pictures / videos are rounded-square thumbnails. A card only gets a tint while selected.
+ * Picture-only cards of an image folder (bare) keep their own frame.
+ */
 class NlGridView(c: Context, private val d: Float) : View(c) {
     var row: NlRow? = null
     var pal: NlPal? = null
@@ -301,8 +307,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     var dur: String? = null
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 13f * d }
-    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 12f * d }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 17f * d }
     private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d }
     private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d }
     private val rf = RectF()
@@ -316,6 +321,23 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
 
     var bare = false       // picture-only card of an image folder: no padding, no caption (ui.html #list.imgf .row.im)
 
+    private companion object {
+        const val LH = 20f   // name line height, dp
+        // folder front panel (100 x 87.7 unit box): flat left part, diagonal rise, raised right part
+        val FRONT = Path().apply {
+            moveTo(0f, 32.7f); quadTo(0f, 25.7f, 7f, 25.7f); lineTo(42.2f, 25.7f); lineTo(56.5f, 11.8f); quadTo(58.8f, 9.9f, 62f, 9.9f)
+            lineTo(95f, 9.9f); quadTo(100f, 9.9f, 100f, 15f); lineTo(100f, 81.3f); quadTo(100f, 87.7f, 93.5f, 87.7f)
+            lineTo(6.5f, 87.7f); quadTo(0f, 87.7f, 0f, 81.3f); close()
+        }
+        // file page (100 x 127.7 unit box) with the folded top-right corner
+        val PAGE = Path().apply {
+            moveTo(7.4f, 0f); lineTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(100f, 120.3f); quadTo(100f, 127.7f, 92.6f, 127.7f)
+            lineTo(7.4f, 127.7f); quadTo(0f, 127.7f, 0f, 120.3f); lineTo(0f, 7.4f); quadTo(0f, 0f, 7.4f, 0f); close()
+        }
+        val FOLD = Path().apply { moveTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(77.7f, 29.7f); quadTo(70.3f, 29.7f, 70.3f, 22.3f); close() }
+        val SHEETS = floatArrayOf(6.4f, 11.9f, 18f)
+    }
+
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
         row = r; pal = pl; isSel = sel; selMode = selm; this.bare = bare; thumb = null; dur = null; layRow = null; invalidate()
     }
@@ -324,7 +346,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val r = row ?: return
         if (layRow === r && layW == w) return
         layRow = r; layW = w
-        val tw = w - 6f * d
+        val tw = w - 2f * d
         val sl = StaticLayout(r.nm, nameP, Math.max(1, tw.toInt()), Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
         val n = Math.min(2, sl.lineCount)
         val out = ArrayList<String>()
@@ -346,17 +368,48 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val w = MeasureSpec.getSize(wSpec)
         if (bare) { setMeasuredDimension(w, w); return }
         prep(w)
-        val r = row
-        val s = w - 6f * d
-        val nameH = (lines.size + (if (dupOwn) 1 else 0)) * 16.25f * d
-        val smallH = 16.8f * d                                       // one line (count / size): the date line is not shown on grid cards
-        setMeasuredDimension(w, Math.round(1f * d + 3f * d + s + 2f * d + nameH + 1f * d + smallH + 4f * d + 1f * d))
+        // every card has the same height: 3 dp + square icon area + 2 dp + two name lines + 2 dp
+        setMeasuredDimension(w, Math.round(3f * d + (w - 6f * d) + 2f * d + 2f * LH * d + 2f * d))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
         val path = NlIcons.path(k) ?: NlIcons.path("file") ?: return
         p.style = Paint.Style.FILL; p.color = color
         cv.save(); cv.translate(x, y); val sc = size / 24f; cv.scale(sc, sc); cv.drawPath(path, p); cv.restore()
+    }
+
+    /** Folder with paper sheets behind a tan front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
+    private fun folder(cv: Canvas, ox: Float, oy: Float, k: Float, badge: String?, badgeCol: Int) {
+        cv.save(); cv.translate(ox, oy); cv.scale(k, k)
+        p.style = Paint.Style.FILL; p.color = 0xFFD49A50.toInt(); rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
+        for (t in SHEETS) {
+            rf.set(2.8f, t, 87.2f, 40f)
+            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 3f, 3f, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFB9B9B9.toInt(); cv.drawRoundRect(rf, 3f, 3f, p)
+        }
+        p.style = Paint.Style.FILL; p.color = 0xFFE2AC62.toInt(); cv.drawPath(FRONT, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFD08A3E.toInt(); cv.drawPath(FRONT, p)
+        if (badge != null) {
+            rf.set(23f, 43f, 73.7f, 93.7f)
+            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFD0D0D0.toInt(); cv.drawRoundRect(rf, 5.5f, 5.5f, p)
+            icon(badge, 48.35f - 16.9f, 68.35f - 16.9f, 33.8f, badgeCol, cv)
+        }
+        cv.restore()
+    }
+
+    /** File without a thumbnail: grey page with a folded corner and a white badge holding the type icon (page is 100 units wide, the badge sticks out 20 units on the left). */
+    private fun page(cv: Canvas, ox: Float, oy: Float, k: Float, kind: String) {
+        cv.save(); cv.translate(ox, oy); cv.scale(k, k)
+        p.style = Paint.Style.FILL; p.color = 0xFF85908C.toInt(); cv.drawPath(PAGE, p)
+        p.color = 0xFFAAB5B0.toInt(); cv.drawPath(FOLD, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.1f; p.color = 0xFF66736E.toInt()
+        clip.reset(); clip.moveTo(0f, 121f); clip.quadTo(0f, 127.2f, 7.4f, 127.2f); clip.lineTo(92.6f, 127.2f); clip.quadTo(100f, 127.2f, 100f, 121f); cv.drawPath(clip, p)
+        rf.set(-20.3f, 28.8f, 59.6f, 107.9f)
+        p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 6.6f, 6.6f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFA8A8A8.toInt(); cv.drawRoundRect(rf, 6.6f, 6.6f, p)
+        icon(kind, 19.65f - 26f, 68.35f - 26f, 52f, 0xFF5F6E69.toInt(), cv)
+        cv.restore()
     }
 
     override fun onDraw(cv: Canvas) {
@@ -370,30 +423,12 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             p.style = Paint.Style.FILL; p.color = pl.sel; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 12f * d, 12f * d, p)
         }
         p.style = Paint.Style.FILL
-        val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 4f * d
+        val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 3f * d
         val cx = lx + s / 2f; val cy = ly + s / 2f
         // ---- lead ----
         if (r.dir) {
-            // folder icon: 62 % of the square; with a category badge the badge sits INSIDE the folder (centre of the front panel) and the folder grows until a 24 dp badge fits (62 dp, at most 94 % of the square)
-            val hasB = r.badge != null
-            val fw = if (hasB) Math.min(Math.max(0.62f * s, 62f * d), 0.94f * s) else 0.74f * s
-            val fh = fw * 48f / 56f
-            val sc = fw / 56f
-            val ox = cx - fw / 2f; val oy = cy - fh / 2f
-            cv.save(); cv.translate(ox, oy); cv.scale(sc, sc)
-            p.color = 0xFFFB8C00.toInt(); cv.drawPath(NlIcons.foldBack, p)
-            p.color = 0xFFF1F3F4.toInt(); rf.set(6f, 9f, 50f, 14f); cv.drawRoundRect(rf, 1f, 1f, p)
-            p.color = 0xFFDADCE0.toInt(); rf.set(6f, 13f, 50f, 16f); cv.drawRect(rf, p)
-            p.color = 0xFFFFB74D.toInt(); cv.drawPath(NlIcons.foldFront, p)
-            cv.restore()
-            r.badge?.let { g ->
-                val bs = Math.min(24f * d, 21.6f * sc); val bi = bs * 16f / 24f
-                val bcy = oy + 30.5f * sc                                   // centre of the front panel (viewBox y 17..44)
-                val top = bcy - bs / 2f; val bottom = bcy + bs / 2f
-                p.color = 0x33000000; rf.set(cx - bs / 2f - d, top - d, cx + bs / 2f + d, bottom + d); cv.drawRoundRect(rf, 6f * d, 6f * d, p)
-                p.color = Color.WHITE; rf.set(cx - bs / 2f, top, cx + bs / 2f, bottom); cv.drawRoundRect(rf, 5f * d, 5f * d, p)
-                icon(g, cx - bi / 2f, top + (bs - bi) / 2f, bi, r.badgeCol, cv)
-            }
+            val k = s / 100f
+            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol)
         } else {
             val bm = thumb
             if (bm != null) {
@@ -412,12 +447,11 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                     cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
                 }
             } else {
-                val kb = pl.kb[r.k] ?: pl.kb["file"] ?: 0; val kc = pl.kc[r.k] ?: pl.kc["file"] ?: 0
-                val t = 0.4f * s
-                p.color = kb; rf.set(cx - t / 2f, cy - t / 2f, cx + t / 2f, cy + t / 2f); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
-                icon(r.k, cx - t / 2f, cy - t / 2f, t, kc, cv)
+                val k = 0.93f * s / 120.3f
+                page(cv, lx + (s - 120.3f * k) / 2f + 20.3f * k, cy - 127.7f * k / 2f, k, r.k)
             }
         }
+        p.style = Paint.Style.FILL
         if (r.fresh) nlDot(cv, p, lx + 9f * d, ly + 9f * d, 5.5f * d, Color.WHITE, d)
         // ---- check circle (top 5, right 5, 24px) ----
         val kx = lx + s - 5f * d - 12f * d; val ky = ly + 5f * d + 12f * d
@@ -433,11 +467,11 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             p.style = Paint.Style.FILL
         }
         if (bare) return
-        // ---- texts ----
-        val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
+        // ---- name (up to two lines, centred) ----
+        val fn = nameP.fontMetrics
         nameP.color = if (isSel) pl.onsel else pl.fg
-        smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var y = ly + s + 2f * d
+        val lh = LH * d
         val dw = dupP.measureText("duplicate?") + 12f * d
         fun pill(x: Float, mid: Float) {
             p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - 7.7f * d, x + dw, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
@@ -445,18 +479,15 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             cv.drawText("duplicate?", x + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
         for ((i, ln) in lines.withIndex()) {
-            val base = y + (16.25f * d - (fn.descent - fn.ascent)) / 2f - fn.ascent
+            val base = y + (lh - (fn.descent - fn.ascent)) / 2f - fn.ascent
             val lw = nameP.measureText(ln)
             if (dupInline && i == lines.size - 1) {
                 val x = (w - (lw + 6f * d + dw)) / 2f
-                cv.drawText(ln, x, base, nameP); pill(x + lw + 6f * d, y + 8.125f * d)
+                cv.drawText(ln, x, base, nameP); pill(x + lw + 6f * d, y + lh / 2f)
             } else cv.drawText(ln, (w - lw) / 2f, base, nameP)
-            y += 16.25f * d
+            y += lh
         }
-        if (dupOwn) { pill((w - dw) / 2f, y + 8.125f * d); y += 16.25f * d }
-        y += 1f * d
-        val b1 = y + (16.8f * d - (fs.descent - fs.ascent)) / 2f - fs.ascent
-        cv.drawText(r.a, (w - smallP.measureText(r.a)) / 2f, b1, smallP)
+        if (dupOwn) pill((w - dw) / 2f, y + lh / 2f)
     }
 }
 
@@ -1015,9 +1046,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
         ad.notifyDataSetChanged()
     }
 
-    /** List = LinearLayoutManager; grid view = GridLayoutManager (2 columns, 4 from 600 dp), cards 2 dp apart (item offset 1 each side), 3 dp from the screen edge (rv padding 2 + offset 1). */
+    /** List = LinearLayoutManager; grid view = GridLayoutManager (5 columns, 2 in picture folders, 4 / 3 from 600 dp), cards 2 dp apart (item offset 1 each side), 3 dp from the screen edge (rv padding 2 + offset 1). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (gcols in 2..5) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
+        val span = if (grid) (if (gcols in 2..5) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else (if (imgMode) 2 else 5)) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
