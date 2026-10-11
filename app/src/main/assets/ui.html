@@ -807,7 +807,7 @@ const NLON=(()=>{try{return localStorage.getItem('ls_nl')!=='0'}catch(e){return 
 /* native Sort / View sheets (Kotlin: NlSheets.kt) and native search box (NlSearch.kt). Kill switches: localStorage ls_nls='0' / ls_nlq='0', NativeList.SHEETS / NativeList.SEARCH = false. */
 const NLSH=(()=>{try{return !!NL&&!KID&&!!NL.nlSort&&!!NL.nlSheets&&NL.nlSheets()&&localStorage.getItem('ls_nls')!=='0'}catch(e){return false}})();
 const NLSR=(()=>{try{return !!NL&&!KID&&!!NL.nlSearch&&!!NL.nlSearchOk&&NL.nlSearchOk()&&localStorage.getItem('ls_nlq')!=='0'}catch(e){return false}})();
-function nlSheetState(){const W=window.innerWidth,o={cols:S.cols,gal:galRoot()?1:0,ec:galRoot()?(W>=900?4:W>=600?3:2):(W>=600?4:2),view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:S.hid?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
+function nlSheetState(){const W=window.innerWidth,o={cols:S.cols,gal:galRoot()?1:0,ec:galRoot()?(W>=900?4:W>=600?3:2):(W>=600?4:5),view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:S.hid?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
   Object.keys(SORTS).forEach(k=>o.lb[k]=SORTS[k].t);return JSON.stringify(o)}
 // a choice made in a native sheet: {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kotlin has already shown the re-built rows when it could; this applies the same preference (and persists it).
 window.nlPref=j=>{let p;try{p=JSON.parse(j)}catch(e){return}
