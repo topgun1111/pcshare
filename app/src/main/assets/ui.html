@@ -292,7 +292,8 @@ body.dual #dual{display:flex}
 .ib.pri .ii{background:var(--ac);color:var(--onac)}.ib.dng{color:var(--err)}
 #clip{display:none;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#clip span{flex:1;min-width:0}
 .tbtn{height:36px;padding:0 16px;border-radius:18px;font-weight:600;font-size:14px;color:var(--ac)}.tbtn:active{background:var(--hov)}
-.tbtn.fill{background:var(--ac);color:var(--onac)}.tbtn.dng{color:var(--err)}
+.tbtn.fill{background:var(--ac);color:var(--onac)}
+#sheet .card.bigask{padding:12px 20px calc(24px + env(safe-area-inset-bottom));gap:8px}#sheet .card.bigask h3{font-size:28px}#sheet .card.bigask p{font-size:19px;line-height:1.45}#sheet .card.bigask .tbtn{height:60px;border-radius:30px;font-size:20px}.tbtn.dng{color:var(--err)}
 #clip .ibtn{width:36px;height:36px}
 /* snackbar */
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));background:#2e3133;color:#f0f0f0;border-radius:12px;padding:14px 16px;z-index:12;font-size:14px;box-shadow:var(--sh)}
@@ -2912,7 +2913,7 @@ async function askConflicts(dev,dir,paths,srcDev){
   const hit=[...new Set(paths.filter(p=>!(srcDev===dev&&pdir(p)===dir)).map(cdest).filter(n=>n&&have.has(n)))];
   if(!hit.length)return 'rename';
   return new Promise(res=>{
-    const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');
+    const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card bigask');
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
     const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};

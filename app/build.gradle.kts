@@ -9,7 +9,7 @@ fun git(vararg a: String): String = try {
     val p = ProcessBuilder(listOf("git") + a).directory(rootDir).redirectErrorStream(true).start()
     p.inputStream.bufferedReader().readText().trim().also { p.waitFor() }
 } catch (e: Exception) { "" }
-val commitCount = System.getenv("VERSION_CODE")?.toIntOrNull() ?: git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
+val commitCount = System.getenv("BUILD_N")?.toIntOrNull() ?: System.getenv("VERSION_CODE")?.toIntOrNull() ?: git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
 val baseVersion = File(rootDir, "VERSION").takeIf { it.exists() }?.readText()?.trim().takeUnless { it.isNullOrEmpty() } ?: "1.0"
 val shortSha = git("rev-parse", "--short", "HEAD")
 // versionCode = minutes since 2026-01-01 (UTC): ALWAYS increases with every build, even if git history is shallow/reset.
