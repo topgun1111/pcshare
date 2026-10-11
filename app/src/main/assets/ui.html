@@ -610,7 +610,8 @@ function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'b
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
 const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
-const vis=()=>S.hid?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid);
+const arcP=p=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
+const vis=()=>(S.hid||arcP(S.path))?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid);
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
 function shown(){  // visible items in the chosen order; folders always come first
@@ -827,7 +828,7 @@ function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;N
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
   if(!items.length&&S.sr.items&&!S.sr.err)return null;
   return[{_hd:1,name:S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…'}].concat(items.map(i=>Object.assign({_h:1},i)))}
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
@@ -1277,7 +1278,7 @@ function isView(sdir,sname,m0){
       inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
       try{const r=await api('GET','/api/search?dev=local&path='+enc(sdir||'/')+'&q='+enc(q),null,120000);
         if(!live())return;
-        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
         show(it.map(i=>({path:i.path,score:0})),q)}
       catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
       return}
@@ -1775,7 +1776,7 @@ function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
 function renderSR(l){
   if(!S.q||S.q.length<2||!srOK())return;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||!i.path.split('/').some(x=>x[0]==='.')));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||!i.path.split('/').some(x=>x[0]==='.')));
   if(!items.length&&S.sr.items&&!S.sr.err)return;
   const h=E('div');h.style.cssText='padding:14px 16px 6px;font-size:13px;color:var(--mut);grid-column:1/-1';
   h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
@@ -2804,7 +2805,7 @@ function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, m
   if(o.right)b.append(E('span','dr2',o.right));
   (o.xs||(o.x?[o.x]:[])).forEach(a=>{const x=E('button','dx');x.setAttribute('aria-label',a.label);x.append(ic(a.icon));if(a.off){x.style.opacity='.25';x.disabled=true}x.onclick=e=>{e.stopPropagation();a.fn()};b.append(x)});
   b.onclick=o.onclick;b.onkeydown=e=>{if(e.key==='Enter')b.click()};return b}
-const QF0=()=>['Download','DCIM','Movies','Pictures','Music','Documents'].map(n=>({dev:'local',path:'/'+n,name:n}));
+const QF0=()=>[];   // quick folders start empty; the user adds their own
 let QF=JL('ls_qf',null);if(!Array.isArray(QF))QF=QF0();
 function qfSave(){try{localStorage.setItem('ls_qf',JSON.stringify(QF))}catch(e){}}
 QF=QF.filter(q=>q&&q.path);
@@ -2858,7 +2859,7 @@ function drawerRender(){
           if(dup){toast('Already in the list',1800);return}
           QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
-      bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Back to Download, DCIM, Movies, Pictures, Music, Documents.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
+      bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Removes all quick folders.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
