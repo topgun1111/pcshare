@@ -1679,7 +1679,7 @@ class H(BaseHTTPRequestHandler):
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
                                     "office": office_engine(), "convert": True,
-                                    "hard": hard_margin(pr), "trays": printer_bins(pr) if want else []})
+                                    "hard": hard_margin(pr), "trays": printer_bins(pr)})
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
