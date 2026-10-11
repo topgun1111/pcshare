@@ -1909,10 +1909,14 @@ async function loadWifi(scan){try{WIFI=((await api('GET','/api/wifiprinters'+(sc
 function wifiOptions(pr,files){return new Promise(res=>{
   const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0,tray:''};
   const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const card=E('div','card pfull'),redraw=[];
+  const card=E('div','card pfull pfx'),redraw=[];
+  const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(140,innerHeight*.32)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-  card.append(E('div','handle'),E('h3','','Print on '+pr.name));
-  const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
+  let lastPaper=null,renderSum=()=>{};const sumSet=p=>{lastPaper=p;renderSum()};
+  const px=E('button','px');px.setAttribute('aria-label','Close');px.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';px.onclick=()=>fin(null);card.append(E('div','handle'));
+  const prow=E('div','prow'),pt=E('div','pt'),ptit=E('div','ptit',pr.name),info=E('div','sub','Checking printer\u2026');
+  prow.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
+  pt.append(ptit,info);prow.append(pt,px);card.append(prow);
   /* page preview (same renderer as the PC dialog: PDF pages from the phone, pictures, text) */
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';pv.append(strip,cap);card.append(pv);
   let pvr=0;pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
@@ -1925,7 +1929,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
   function drawImgPv(){
     const [cols,rows,landS]=PV_LAY[st.nup]||PV_LAY[1],per=cols*rows,pd=PV_PAPER[st.paper]||PV_PAPER.A4;
     const nSheets=Math.ceil(files.length/per),shown=Math.min(nSheets,60),two=st.duplex==='long'||st.duplex==='short';
-    const mw=Math.max(160,card.clientWidth-40),mh=Math.max(160,innerHeight*.45),dpr=Math.min(2,window.devicePixelRatio||1);
+    const [mw,mh]=pvMax(),dpr=Math.min(2,window.devicePixelRatio||1);
     for(let s0=0;s0<shown;s0++){const chunk=files.map((_,i)=>i).slice(s0*per,s0*per+per),t0=thumbs[chunk[0]],tb0=td(t0),fl=tb0[0]>tb0[1];
       const sw=per===1?(fl?pd[1]:pd[0]):(landS?pd[1]:pd[0]),sh=per===1?(fl?pd[0]:pd[1]):(landS?pd[0]:pd[1]),k=Math.min(mw/sw,mh/sh);
       const cv=document.createElement('canvas');cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
@@ -1938,9 +1942,9 @@ function wifiOptions(pr,files){return new Promise(res=>{
         if(st.border&&per>1){c.strokeStyle='#555';c.lineWidth=Math.max(1,.8/k);c.strokeRect(-bw/2,-bh/2,bw,bh)}c.restore()});
       c.strokeStyle='#cfcfcf';c.lineWidth=Math.max(1,.8/k);c.strokeRect(0,0,sw,sh);
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
-    const paper=two?Math.ceil(nSheets/2):nSheets;
+    const paper=two?Math.ceil(nSheets/2):nSheets;sumSet(paper);
     cap.textContent=files.length+' pictures \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(thumbs.some(t=>!t.complete)?' \u00b7 loading\u2026':'')}
-  function drawPv(){try{drawPv0();pvTurn(strip,pvr,Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45))}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
+  function drawPv(){try{drawPv0();{const [mw,mh]=pvMax();pvTurn(strip,pvr,mw,mh)}}catch(e){strip.textContent='';cap.textContent='Preview error: '+((e&&e.message)||e)}}
   function drawPv0(){
     strip.textContent='';strip.style.filter=st.color==='mono'?'grayscale(1)':'';
     if(imgMode)return drawImgPv();
@@ -1954,7 +1958,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
     const bbw=(im&&st.fit==='trim')?pvBBox(im):[0,0,1,1],pd=PV_PAPER[st.paper]||PV_PAPER.A4,srcLand=(im&&im.naturalWidth*(bbw[2]-bbw[0])>im.naturalHeight*(bbw[3]-bbw[1]))||(!isText&&pinfo.pw>pinfo.ph);
     const pgw=srcLand?pd[1]:pd[0],pgh=srcLand?pd[0]:pd[1];
     let sw,sh;if(per===1){sw=pgw;sh=pgh}else{sw=landS?pd[1]:pd[0];sh=landS?pd[0]:pd[1]}
-    const mw=Math.max(160,card.clientWidth-40),mh=Math.max(160,innerHeight*.45),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1);
+    const [mw,mh]=pvMax(),k=Math.min(mw/sw,mh/sh),dpr=Math.min(2,window.devicePixelRatio||1);
     const two=st.duplex==='long'||st.duplex==='short',nSheets=Math.ceil(idx.length/per),shown=Math.min(nSheets,60);
     for(let s0=0;s0<shown;s0++){const chunk=idx.slice(s0*per,s0*per+per),cv=document.createElement('canvas');
       cv.width=Math.round(sw*k*dpr);cv.height=Math.round(sh*k*dpr);cv.style.width=Math.round(sw*k)+'px';cv.style.height=Math.round(sh*k)+'px';
@@ -1972,35 +1976,52 @@ function wifiOptions(pr,files){return new Promise(res=>{
         c.strokeStyle=(st.border&&per>1)?'#555':'#cfcfcf';c.lineWidth=Math.max(1,.8/(k*sc));c.strokeRect(0,0,pgw,pgh);
         c.restore()});
       const w=E('div','shp');w.append(cv,E('span','',two?((Math.floor(s0/2)+1)+(s0%2?' back':' front')):String(s0+1)));strip.append(w)}
-    const paper=two?Math.ceil(nSheets/2):nSheets;
+    const paper=two?Math.ceil(nSheets/2):nSheets;sumSet(paper);
     cap.textContent=total+' page'+(total===1?'':'s')+(idx.length!==total?' \u2192 '+idx.length+' printed':'')+' \u2192 '+nSheets+' side'+(nSheets===1?'':'s')+', '+paper+' sheet'+(paper===1?'':'s')+' of paper'+(st.copies>1?' \u00d7 '+st.copies:'')+(nSheets>shown?' (first '+shown+' shown)':'')+(files.length>1?' \u00b7 previewing '+pvf0.name+' (+'+(files.length-1)+' more)':'')}
   if(imgMode)drawPv();else if(pvf0)pvInfo(pvf0,pr).then(i=>{pinfo=i;drawPv()});else cap.textContent='No preview';
-  const sec=(t,...kids)=>{const d=E('div','pf');d.append(E('b','',t));kids.forEach(k=>d.append(k));card.append(d);return d};
-  const seg=(key,opts)=>{const r=E('div','cr');opts.forEach(([v,l])=>{const b=E('button','chip',l);b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
-  const cp=E('div','cr'),mi=E('button','chip n','\u2212'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:16px';
+  const tabs={b:E('div','ptab'),l:E('div','ptab'),p:E('div','ptab')};let into=tabs.b;
+  const sec=(t,...kids)=>{const d=E('div','pf');if(t)d.append(E('b','',t));kids.forEach(k=>d.append(k));into.append(d);return d};
+  const seg=(key,opts,kind)=>{const r=E('div',kind==='g'?'pgrid':kind==='g2'?'pgrid g2':kind==='n'?'pgrid g5':'pseg');opts.forEach(([v,l])=>{const b=E('button','chip',l);
+    if(kind==='n'){const [c,rw]=PV_LAY[v]||PV_LAY[1],w=24/c-2.2,h=24/rw-2.2;let q='';for(let y=0;y<rw;y++)for(let x=0;x<c;x++)q+='<rect x="'+(1.1+x*24/c).toFixed(1)+'" y="'+(1.1+y*24/rw).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="1"/>';b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">'+q+'</svg><span>'+l+'</span>'}
+    b.onclick=()=>{st[key]=v;redraw.forEach(f=>f())};redraw.push(()=>b.classList.toggle('on',st[key]===v));r.append(b)});return r};
+  const sw=(key,label,subt)=>{const r=E('div','sr'),w=E('label','sw'),i=E('input'),k=E('i');i.type='checkbox';i.onchange=()=>{st[key]=i.checked?1:0;redraw.forEach(f=>f())};
+    w.append(i,k);const sp=E('span','',label);if(subt)sp.append(E('small','',subt));r.append(sp,w);redraw.push(()=>{i.checked=!!st[key]});return r};
+  const cp=E('div','pstep'),mi=E('button','chip n','−'),pl=E('button','chip n','+'),cn=E('span','','1');cn.style.cssText='min-width:28px;text-align:center;font-size:18px;font-weight:600';
   mi.onclick=()=>{st.copies=Math.max(1,st.copies-1);redraw.forEach(f=>f())};pl.onclick=()=>{st.copies=Math.min(99,st.copies+1);redraw.forEach(f=>f())};
-  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);sec('Copies',cp);
-  const sides=sec('Sides',seg('duplex',[['','Printer default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
-  const colour=sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','Black & white']]));
-  sec('Paper',seg('paper',[['','Printer default'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']]));
+  redraw.push(()=>{cn.textContent=st.copies});cp.append(mi,cn,pl);
+  /* Basics: only what the printer itself understands over IPP; Sides / Colour are hidden when it reports it cannot do them */
+  const duo=E('div','pduo');into=duo;sec('Copies',cp);const colour=sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','B&W']]));tabs.b.append(duo);into=tabs.b;
+  const sides=sec('Sides',seg('duplex',[['','Default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
+  sec('Paper',seg('paper',[['','Default'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']],'g'));
   /* paper trays: filled in when the printer reports them (media-source-supported); hidden otherwise */
-  const trRow=E('div','cr'),trSec=sec('Tray',trRow),trNote=E('div','sub','');trSec.style.display='none';trNote.style.cssText='font-size:12px;color:var(--mut);margin-top:4px';trSec.append(trNote);
-  sec('Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']]));
-  sec('Page border',seg('border',[[0,'Off'],[1,'On']]));
-  sec('Scaling',seg('fit',[['','Printer default'],['shrink','Fit to page'],['fill','Fill (crop)'],['noscale','Actual size']].concat(files.length&&files.every(f=>PV_IMG.includes(pvExt(f)))?[['trim','Trim blank edges']]:[])));
+  const trRow=E('div','pgrid g2'),trSec=sec('Tray',trRow),trNote=E('div','sub','');trSec.style.display='none';trNote.style.cssText='font-size:12px;color:var(--mut);margin-top:4px';trSec.append(trNote);
+  /* Layout */
+  into=tabs.l;
+  sec(imgMode?'Pictures per sheet':'Pages per sheet',seg('nup',[[1,'1'],[2,'2'],[4,'4'],[6,'6'],[9,'9']],'n'));
+  {const tg=E('div','ptg');tg.append(sw('border',imgMode?'Border around each picture':'Border around each page'));sec('',tg)}
+  sec('Scaling',seg('fit',[['','Printer default'],['shrink','Fit to page'],['fill','Fill (crop)'],['noscale','Actual size']].concat(files.length&&files.every(f=>PV_IMG.includes(pvExt(f)))?[['trim','Trim blank edges']]:[]),'g2'));
+  {const tok=E('div','sub','Direct Wi-Fi printing: PDF, pictures and text. Booklets, watermarks, margins and Word / Excel / PowerPoint files need a PC.');tok.style.margin='14px 0 0';into.append(tok)}
+  /* Pages */
+  into=tabs.p;
   const rg=E('input','tf');rg.placeholder='Page range, e.g. 1-3,5,8-  (PDF files)';rg.autocomplete='off';rg.oninput=()=>{st.range=rg.value};sec('Pages',rg);
-  const note=E('div','sub','Direct Wi-Fi printing: PDF, pictures and text. Booklets, watermarks and Word / Excel / PowerPoint files need a PC.');
-  note.style.cssText='font-size:12px;color:var(--mut);margin:4px 0';card.append(note);
-  const act=E('div','pact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn fill','Print');
-  c.onclick=()=>fin(null);
+  const tb=E('div','ptabs'),body=E('div','pbody'),names=[['b','Basics'],['l','Layout'],['p','Pages']];
+  const showT=k=>{names.forEach(([n],i)=>{tabs[n].style.display=n===k?'':'none';tbs[i].classList.toggle('on',n===k)});body.scrollTop=0};
+  const tbs=names.map(([k,l])=>{const b=E('button','',l);b.onclick=()=>showT(k);tb.append(b);return b});
+  if(imgMode)tbs[2].style.display='none';
+  body.append(tabs.b,tabs.l,tabs.p);card.append(tb,body);
+  /* footer: sheet total + Print */
+  const act=E('div','pact'),ps=E('div','ps'),pb=E('b'),psm=E('small'),k=E('button','tbtn fill','Print');ps.append(pb,psm);
+  renderSum=()=>{const c2=Math.max(1,st.copies||1),n=lastPaper==null?null:lastPaper*c2;pb.textContent=n==null?'Print':n+' sheet'+(n===1?'':'s');
+    const q=[c2+(c2===1?' copy':' copies'),st.duplex==='long'||st.duplex==='short'?'2-sided':st.duplex==='off'?'1-sided':'',st.color==='mono'?'B&W':st.color==='color'?'Colour':''];
+    if(st.nup>1)q.push(st.nup+' per sheet');psm.textContent=q.filter(Boolean).join(' · ')};redraw.push(renderSum);
   k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range','nup','border','tray'].forEach(n=>{if(st[n]!==''&&st[n]!==1&&st[n]!==0)out[n]=st[n]});
     if(st.fit==='trim'){const tc=imgMode?thumbs.map(t=>pvBBox(t)):(pinfo&&pinfo.img?[pvBBox(pinfo.img)]:null);if(tc)out.crops=tc}
     fin(out)};
-  act.append(c,k);card.append(act);o.append(card);redraw.forEach(f=>f());
+  act.append(ps,k);card.append(act);o.append(card);showT('b');redraw.forEach(f=>f());
   api('GET','/api/printer?dev='+enc(pr.id),null,12000).then(r=>{
     if(!r.ok){info.textContent='Printer not reachable - is it on and on this Wi-Fi?';info.style.color='var(--err)';return}
     const ik=inkTxt(r);
-    if(r.problem){info.textContent=pr.name+' \u00b7 '+r.problem;info.style.color='var(--err)'}else{info.textContent=pr.name+' \u00b7 ready \u00b7 Wi-Fi'+(ik?' \u00b7 '+ik.t+(ik.low?' (low!)':''):'');info.style.color=ik&&ik.low?'var(--err)':'var(--ok)'}
+    if(r.problem){info.textContent=r.problem;info.style.color='var(--err)'}else{info.textContent='ready \u00b7 Wi-Fi'+(ik?' \u00b7 '+ik.t+(ik.low?' (low!)':''):'');info.style.color=ik&&ik.low?'var(--err)':'var(--ok)'}
     if(r.problem&&ik)info.textContent+=' \u00b7 '+ik.t
     if(r.duplex===false)sides.style.display='none';
     if(r.color===false)colour.style.display='none';
