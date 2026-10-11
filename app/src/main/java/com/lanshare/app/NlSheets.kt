@@ -204,10 +204,12 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             radioRow(views.map { (k, _) -> Triple(k.replaceFirstChar { c -> c.uppercase() }, s.view == k, { s.view = k; onPref(JSONObject().put("view", k)); draw() }) }) { n ->
                 NlGlyph(act, NlGlyph.parse(s.ic.optString(views[n].second)), p.fg, dp(24f))
             }
-            val thumbs = listOf("s" to 22f, "m" to 27f, "l" to 32f)
-            radioRow(thumbs.map { (k, _) -> Triple(if (k == "s") "Small thumbnails" else if (k == "m") "Medium thumbnails" else "Large thumbnails", s.thumb == k, { s.thumb = k; onPref(JSONObject().put("thumb", k)); draw() }) }) { n ->
-                // the 24 box path scaled to 22 / 32 dp, like the page does
-                NlGlyph(act, NlGlyph.parse(s.ic.optString("img")), p.fg, dp(thumbs[n].second))
+            if (s.view == "list") {   // thumbnail size only exists in the list view (compact rows and grid cards ignore it)
+                val thumbs = listOf("s" to 22f, "m" to 27f, "l" to 32f)
+                radioRow(thumbs.map { (k, _) -> Triple(if (k == "s") "Small thumbnails" else if (k == "m") "Medium thumbnails" else "Large thumbnails", s.thumb == k, { s.thumb = k; onPref(JSONObject().put("thumb", k)); draw() }) }) { n ->
+                    // the 24 box path scaled to 22 / 32 dp, like the page does
+                    NlGlyph(act, NlGlyph.parse(s.ic.optString("img")), p.fg, dp(thumbs[n].second))
+                }
             }
             if (s.view == "grid") {
                 val shown = if (s.cols in 2..4) s.cols else s.autoCols
