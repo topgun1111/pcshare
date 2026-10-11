@@ -669,8 +669,8 @@ function openView(){
     card.append(E('hr'),E('div','sh','View'));
     const r1=E('div','vrad');
     ['list','grid','compact'].forEach(k=>{const b=E('button','rdo'+(S.view===k?' on':''));b.append(E('span','rd'),ic(VIEWS[k].i));b.setAttribute('aria-label',VIEWS[k].t);b.onclick=()=>{setPref({view:k});draw()};r1.append(b)});card.append(r1);
-    const r2=E('div','vrad');
-    [['s','Small thumbnails',22],['l','Large thumbnails',32]].forEach(a=>{const b=E('button','rdo'+(S.thumb===a[0]?' on':'')),g=ic('img');g.style.width=g.style.height=a[2]+'px';b.append(E('span','rd'),g);b.setAttribute('aria-label',a[1]);b.onclick=()=>{setPref({thumb:a[0]});draw()};r2.append(b)});card.append(r2);
+    const r2=E('div','vrad');   // thumbnail size only applies to the list view
+    if(S.view==='list')[['s','Small thumbnails',22],['l','Large thumbnails',32]].forEach(a=>{const b=E('button','rdo'+(S.thumb===a[0]?' on':'')),g=ic('img');g.style.width=g.style.height=a[2]+'px';b.append(E('span','rd'),g);b.setAttribute('aria-label',a[1]);b.onclick=()=>{setPref({thumb:a[0]});draw()};r2.append(b)});if(S.view==='list')card.append(r2);
     card.append(E('hr'),E('div','sh','Sort'));
     const sb=E('button','vrow');sb.append(E('span','vt',SORTS[S.sort].t+(S.sort==='none'?'':(S.asc?' \u25B2':' \u25BC'))));sb.onclick=()=>{close();openSort()};card.append(sb);
     card.append(E('hr'),E('div','sh','Others'),cbrow('Show hidden files',S.hid,()=>{toggleHidden(true);draw()}))};
