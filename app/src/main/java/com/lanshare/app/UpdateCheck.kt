@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -19,9 +20,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Checks GitHub releases/latest on app start and offers the new APK. At most one request per [MIN_INTERVAL_MS]. */
+/** Checks GitHub releases/latest on app start and offers the new APK (only if newer). A manual check (force=true) always downloads the latest APK regardless of version. At most one request per [MIN_INTERVAL_MS]. */
 object UpdateCheck {
-    private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases/latest"
+    private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases?per_page=15"   // list, not /latest: we pick the highest version ourselves
     private const val PREFS = "update_check"
     private const val MIN_INTERVAL_MS = 6L * 60 * 60 * 1000
 
@@ -35,11 +36,24 @@ object UpdateCheck {
                 val c = URL(API).openConnection() as HttpURLConnection
                 c.setRequestProperty("Accept", "application/vnd.github+json")
                 c.connectTimeout = 8000; c.readTimeout = 8000
-                val j = try { JSONObject(c.inputStream.bufferedReader().readText()) } finally { c.disconnect() }
+                val txt = try { c.inputStream.bufferedReader().readText() } finally { c.disconnect() }
+                val arr = JSONArray(txt)
+                var best: JSONObject? = null
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    if (o.optBoolean("draft")) continue
+                    val oa = o.optJSONArray("assets") ?: continue
+                    var hasApk = false
+                    for (k in 0 until oa.length()) if (oa.getJSONObject(k).optString("name").endsWith(".apk")) { hasApk = true; break }
+                    if (!hasApk) continue
+                    val bt = best?.getString("tag_name")
+                    if (bt == null || isNewer(o.getString("tag_name"), bt)) best = o
+                }
+                val j = best ?: throw IOException("Release yok")
                 sp.edit().putLong("last", now).apply()
                 val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }
+                if (!force && !isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // manual check (force) ignores the version comparison
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
                 var url = j.getString("html_url")
@@ -52,6 +66,10 @@ object UpdateCheck {
                 val dl = url; val dlSize = size; val dlApk = isApk
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
+                    if (force) {   // manual "Check for updates": always fetch the latest release APK, whatever the installed version is
+                        if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
+                        return@runOnUiThread
+                    }
                     AlertDialog.Builder(a)
                         .setTitle("Yeni sürüm: $tag")
                         .setMessage("Mevcut sürüm: $cur\nGitHub'da yeni bir güncelleme var.")

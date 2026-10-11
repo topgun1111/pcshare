@@ -4,14 +4,18 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-// Sürüm: VERSION dosyası (major.minor) + git commit sayısı. Dosya ezilse bile kod geri sarmaz.
+// Sürüm: VERSION dosyası = major (2), CI her push'ta v<major>.<n> etiketini otomatik artırır (2.0, 2.1, 2.2 ...).
 fun git(vararg a: String): String = try {
     val p = ProcessBuilder(listOf("git") + a).directory(rootDir).redirectErrorStream(true).start()
     p.inputStream.bufferedReader().readText().trim().also { p.waitFor() }
 } catch (e: Exception) { "" }
-val commitCount = System.getenv("VERSION_CODE")?.toIntOrNull() ?: git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
+val commitCount = System.getenv("BUILD_N")?.toIntOrNull() ?: System.getenv("VERSION_CODE")?.toIntOrNull() ?: git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
 val baseVersion = File(rootDir, "VERSION").takeIf { it.exists() }?.readText()?.trim().takeUnless { it.isNullOrEmpty() } ?: "1.0"
 val shortSha = git("rev-parse", "--short", "HEAD")
+// Sürüm: CI release etiketinden gelir (APP_VERSION, örn. "2.3"). Yoksa: VERSION (major) + "." + commit sayısı (eski şema, eski workflow etiketiyle aynı).
+val appVersion = (project.findProperty("appVersion") as String?)?.takeIf { it.isNotBlank() }   // gradle -PappVersion=2.6 (CI)
+    ?: System.getenv("APP_VERSION")?.takeIf { it.isNotBlank() }                                   // or env APP_VERSION
+    ?: "${baseVersion.substringBefore('.')}.$commitCount"                                          // fallback = old scheme (major.commitCount), same as the old workflow's tag
 // versionCode = minutes since 2026-01-01 (UTC): ALWAYS increases with every build, even if git history is shallow/reset.
 // Never switch this scheme back to a smaller number, or Android refuses to update.
 val buildCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: ((System.currentTimeMillis() / 1000 - 1767225600L) / 60).toInt()
@@ -24,7 +28,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = buildCode
-        versionName = "$baseVersion.$commitCount" + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
+        versionName = appVersion + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
         // Image search libraries (ONNX Runtime) ship native code per CPU type; keep only 64-bit ARM (all current phones) to cut the APK by ~3/4 of that.
         ndk { abiFilters += "arm64-v8a" }
     }
