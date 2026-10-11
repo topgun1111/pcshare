@@ -291,7 +291,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     }
 }
 
-/** One grid card (ui.html #list.v-grid .row): square lead, name (max 2 lines, centred), size + date lines. Card bg = --bg, 1px --bd border, radius 12, padding 6 6 8. */
+/** One grid card (ui.html #list.v-grid .row): square lead, name (max 2 lines, centred), size + date lines. Dense, frameless (card tint only while selected; picture-only cards keep bg + 1px --bd border), padding 3 3 4. */
 class NlGridView(c: Context, private val d: Float) : View(c) {
     var row: NlRow? = null
     var pal: NlPal? = null
@@ -324,7 +324,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val r = row ?: return
         if (layRow === r && layW == w) return
         layRow = r; layW = w
-        val tw = w - 14f * d
+        val tw = w - 6f * d
         val sl = StaticLayout(r.nm, nameP, Math.max(1, tw.toInt()), Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
         val n = Math.min(2, sl.lineCount)
         val out = ArrayList<String>()
@@ -347,10 +347,10 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         if (bare) { setMeasuredDimension(w, w); return }
         prep(w)
         val r = row
-        val s = w - 14f * d
+        val s = w - 6f * d
         val nameH = (lines.size + (if (dupOwn) 1 else 0)) * 16.25f * d
         val smallH = 16.8f * d                                       // one line (count / size): the date line is not shown on grid cards
-        setMeasuredDimension(w, Math.round(1f * d + 6f * d + s + 6f * d + nameH + 2f * d + smallH + 8f * d + 1f * d))
+        setMeasuredDimension(w, Math.round(1f * d + 3f * d + s + 2f * d + nameH + 1f * d + smallH + 4f * d + 1f * d))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
@@ -363,16 +363,20 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val r = row ?: return
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
-        p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 16f * d, 16f * d, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 15.5f * d, 15.5f * d, p)
+        if (bare) {
+            p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 16f * d, 16f * d, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 15.5f * d, 15.5f * d, p)
+        } else if (isSel) {
+            p.style = Paint.Style.FILL; p.color = pl.sel; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 12f * d, 12f * d, p)
+        }
         p.style = Paint.Style.FILL
-        val s = if (bare) w - 2f * d else w - 14f * d; val lx = if (bare) d else 7f * d; val ly = lx
+        val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 4f * d
         val cx = lx + s / 2f; val cy = ly + s / 2f
         // ---- lead ----
         if (r.dir) {
             // folder icon: 62 % of the square; with a category badge the badge sits INSIDE the folder (centre of the front panel) and the folder grows until a 24 dp badge fits (62 dp, at most 94 % of the square)
             val hasB = r.badge != null
-            val fw = if (hasB) Math.min(Math.max(0.62f * s, 62f * d), 0.94f * s) else 0.62f * s
+            val fw = if (hasB) Math.min(Math.max(0.62f * s, 62f * d), 0.94f * s) else 0.74f * s
             val fh = fw * 48f / 56f
             val sc = fw / 56f
             val ox = cx - fw / 2f; val oy = cy - fh / 2f
@@ -431,8 +435,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         if (bare) return
         // ---- texts ----
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
-        nameP.color = pl.fg; smallP.color = pl.mut
-        var y = ly + s + 6f * d
+        nameP.color = if (isSel) pl.onsel else pl.fg
+        smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
+        var y = ly + s + 2f * d
         val dw = dupP.measureText("duplicate?") + 12f * d
         fun pill(x: Float, mid: Float) {
             p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - 7.7f * d, x + dw, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
@@ -449,7 +454,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             y += 16.25f * d
         }
         if (dupOwn) { pill((w - dw) / 2f, y + 8.125f * d); y += 16.25f * d }
-        y += 2f * d
+        y += 1f * d
         val b1 = y + (16.8f * d - (fs.descent - fs.ascent)) / 2f - fs.ascent
         cv.drawText(r.a, (w - smallP.measureText(r.a)) / 2f, b1, smallP)
     }
@@ -629,7 +634,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val gap = object : RecyclerView.ItemDecoration() {
         override fun getItemOffsets(out: Rect, v: View, parent: RecyclerView, st: RecyclerView.State) {
             if (parent.getChildAdapterPosition(v) >= galStart) { out.set(0, 0, 0, 0); return }     // gallery rows span the full width
-            val o = Math.round(4f * d); out.set(o, o, o, o)
+            val o = Math.round(1f * d); out.set(o, o, o, o)
         }
     }
     private var rows: List<NlRow> = emptyList()
@@ -671,7 +676,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var compact = false
     private var large = false
     private var medium = false
-    private var gcols = 0               // grid view: 0 = automatic (2, 4 from 600 dp), else 2 / 3 / 4 (the user's choice)
+    private var gcols = 0               // grid view: 0 = automatic (2, 4 from 600 dp), else 2 / 3 / 4 / 5 (the user's choice)
     private class Th(val bm: Bitmap, val dur: String?)
     private val thumbs = object : android.util.LruCache<String, Th>((Runtime.getRuntime().maxMemory() / 8L).toInt()) {
         override fun sizeOf(k: String, v: Th) = v.bm.byteCount
@@ -960,7 +965,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     // ================= native Sort / View =================
     /** A choice made in the native sheet. Sort / view / thumbnails: rows are re-built here at once for this phone's plain folders; in every case the page applies the same preference. */
     fun pref(o: JSONObject) {
-        try { if (o.has("cols")) { val n = o.optInt("cols"); gcols = if (n in 2..4) n else 0; if (gridOn) ensureMgr(true) } } catch (_: Throwable) { }
+        try { if (o.has("cols")) { val n = o.optInt("cols"); gcols = if (n in 2..5) n else 0; if (gridOn) ensureMgr(true) } } catch (_: Throwable) { }
         try { instantPref(o) } catch (_: Throwable) { }
         web.evaluateJavascript("window.nlPref&&nlPref(" + JSONObject.quote(o.toString()) + ")", null)
     }
@@ -1010,13 +1015,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
         ad.notifyDataSetChanged()
     }
 
-    /** List = LinearLayoutManager; grid view = GridLayoutManager (2 columns, 4 from 600 dp), cards 8 dp apart (rv padding 4 + item offset 4). */
+    /** List = LinearLayoutManager; grid view = GridLayoutManager (2 columns, 4 from 600 dp), cards 2 dp apart (item offset 1 each side), 3 dp from the screen edge (rv padding 2 + offset 1). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (gcols in 2..4) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
+        val span = if (grid) (if (gcols in 2..5) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else 2) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
-        val pd = if (grid) Math.round(4f * d) else 0
+        val pd = if (grid) Math.round(2f * d) else 0
         rv.setPadding(pd, pd, pd, pd); rv.clipToPadding = !grid
         if (grid) rv.addItemDecoration(gap)
         lm = if (grid) GridLayoutManager(act, span).also { g ->
@@ -1085,7 +1090,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val lg = j.optInt("lg") == 1
         val md = if (j.has("md")) j.optInt("md") == 1 else medium   // the page does not always send these two: a missing key keeps the choice made in the native sheet
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; ad.notifyDataSetChanged() }
-        if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..4) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
+        if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..5) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
         val hd = j.optJSONArray("hd")
