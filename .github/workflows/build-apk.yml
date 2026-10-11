@@ -27,10 +27,16 @@ jobs:
       - name: Sürüm
         id: ver
         run: |
-          BASE=$(tr -d '[:space:]' < VERSION 2>/dev/null || echo 1.0)
-          N=$(git rev-list --count HEAD)
-          echo "tag=v$BASE.$N" >> "$GITHUB_OUTPUT"
-          echo "apk=LANShare-v$BASE.$N.apk" >> "$GITHUB_OUTPUT"
+          # VERSION = major (2). Next version = highest existing v<major>.<n> tag + 1; first one is v<major>.0
+          MAJOR=$(tr -d '[:space:]' < VERSION 2>/dev/null || echo 2)
+          MAJOR=${MAJOR%%.*}
+          git fetch --tags --force -q || true
+          LAST=$(git tag -l "v${MAJOR}.*" | sed -E "s/^v${MAJOR}\.//" | grep -E '^[0-9]+$' | sort -n | tail -1)
+          if [ -z "$LAST" ]; then MINOR=0; else MINOR=$((LAST+1)); fi
+          VER="$MAJOR.$MINOR"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          echo "apk=LANShare-v$VER.apk" >> "$GITHUB_OUTPUT"
 
       # Secret keystore only when ALL four secrets exist; otherwise the build signs with app/lanshare.jks
       - name: İmza hazırlığı
@@ -48,12 +54,13 @@ jobs:
 
       - name: Release APK
         env:
+          APP_VERSION: ${{ steps.ver.outputs.ver }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set +e
-          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
             # Surface the real error in the Annotations list (readable on a phone)
@@ -61,6 +68,18 @@ jobs:
             grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::$l"; done
           fi
           exit $rc
+
+      - name: Sürümü doğrula
+        run: |
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+          if [ -z "$AAPT2" ]; then echo "::warning::aapt2 yok, sürüm doğrulaması atlandı"; exit 0; fi
+          WANT="${{ steps.ver.outputs.ver }}"
+          GOT=$("$AAPT2" dump badging app/build/outputs/apk/release/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          echo "APK versionName: $GOT (beklenen: $WANT)"
+          case "$GOT" in
+            "$WANT"|"$WANT"-*) ;;
+            *) echo "::error::APK versionName '$GOT' but release is '$WANT' - app/build.gradle.kts is missing the appVersion line?"; exit 1 ;;
+          esac
 
       - name: APK adlandır
         run: cp app/build/outputs/apk/release/*.apk "${{ steps.ver.outputs.apk }}"
@@ -76,4 +95,6 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: LANShare ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
+          make_latest: true
+          fail_on_unmatched_files: true
           files: ${{ steps.ver.outputs.apk }}
