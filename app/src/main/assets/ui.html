@@ -351,7 +351,7 @@ body.dual #dual{display:flex}
 .pf .sr{display:flex;align-items:center;gap:12px}.pf .sr span{flex:1;font-size:15px}
 #sheet .card.pfull{height:100vh;height:100dvh;max-height:none;border-radius:0;padding-top:calc(8px + env(safe-area-inset-top))}
 .ppv{position:sticky;top:0;z-index:2;background:var(--cont);padding:4px 0 6px;border-bottom:1px solid var(--bd);margin-bottom:4px}
-.ppv .strip{display:flex;gap:12px;overflow-x:auto;padding:6px 2px;min-height:60px;align-items:flex-start;justify-content:safe center}
+.ppv .strip{display:flex;gap:12px;overflow-x:hidden;touch-action:pan-y;padding:6px 2px;min-height:60px;align-items:flex-start;justify-content:safe center}
 .rtile{flex:none;width:64px;height:64px;position:relative;border:1px solid var(--bd);border-radius:6px;background:var(--card);overflow:hidden;padding:0}.rtile img{width:100%;height:100%;object-fit:contain;transition:transform .15s}.rtile span{position:absolute;right:3px;bottom:2px;font-size:11px;background:#000a;color:#fff;border-radius:3px;padding:0 4px}
 .ppv .pvcap{display:flex;align-items:center;gap:6px}.ppv .pvcap>div{flex:1;min-width:0}
 .pvrot{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--fg);background:var(--cont);border:1px solid var(--bd)}.pvrot:active{filter:brightness(.9)}.pvrot svg{width:22px;height:22px;fill:currentColor}
@@ -426,7 +426,7 @@ body.dopen{overflow:hidden}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
 #dfoot button{flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--ac)}
 #dfoot button:active{background:var(--hov)}#dfoot svg{width:20px;height:20px}
-#dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
+#dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;display:none;z-index:5}
 body.dual #dedge,body.selm #dedge{display:none}
 /* start menu (home): Material 3 look built on the app's own theme tokens; spec history in HANDOVER_HOME_MENU.md */
 #home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--bg);color:var(--fg);--hc1:#8e24aa;--hc2:#d81b60;--hc3:#b7791f;--hc4:#546e7a;--hc5:#757575;--hc6:#00897b;--hc7:#f9a825}
@@ -2103,8 +2103,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const thumbs=imgMode?files.map(f=>{const im=new Image();im.onload=()=>sched();im.onerror=()=>{if(!im._fb){im._fb=1;im.src=f.url}else sched()};im.src=f.url.replace('/api/dl?','/api/thumb?');return im}):[];
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull'),redraw=[];
-  /* preview size: as wide as the screen allows and up to ~45% of its height */
-  const pvMax=()=>[Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.45)];
+  /* preview size: as wide as the screen allows and up to ~67% of its height */
+  const pvMax=()=>[Math.max(160,card.clientWidth-40),Math.max(160,innerHeight*.675)];
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   card.append(E('div','handle'),E('h3','',pdf?'Save as PDF':'Print on '+pc.name));
   const info=E('div','sub','Checking printer\u2026');info.style.cssText='font-size:12px;color:var(--mut);margin:-6px 0 4px';card.append(info);
@@ -2332,7 +2332,7 @@ async function doPrint(preset,cx){
   try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
     const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
-window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
+window.lsOpenArc=p=>{try{galClose();const v=$('#pv');if(v&&v._close)v._close()}catch(e){}openLoc('local',p+'!')};   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async(names,priv)=>{
   try{
     const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */
@@ -2849,7 +2849,6 @@ $('#dscrim').onclick=drawerClose;
 // swipe: from the left edge opens, swipe left on the drawer closes
 (()=>{let x0=0,y0=0,mode=0;
   const st=(e,m)=>{if(e.touches.length!==1)return;x0=e.touches[0].clientX;y0=e.touches[0].clientY;mode=m};
-  $('#dedge').addEventListener('touchstart',e=>st(e,1),{passive:true});
   $('#dwr').addEventListener('touchstart',e=>st(e,2),{passive:true});
   $('#dscrim').addEventListener('touchstart',e=>st(e,2),{passive:true});
   document.addEventListener('touchmove',e=>{if(!mode)return;const dx=e.touches[0].clientX-x0,dy=e.touches[0].clientY-y0;

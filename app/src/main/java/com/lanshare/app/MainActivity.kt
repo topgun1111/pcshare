@@ -347,6 +347,7 @@ class MainActivity : Activity() {
     private fun handleView(i: Intent) {
         val u = i.data ?: return
         i.action = null   // consume once
+        ImageViewerActivity.inst?.get()?.finish()   // leave the picture viewer: the archive opens in the file browser
         Thread {
             var rel: String? = null
             try {

@@ -65,6 +65,7 @@ class ImageViewerActivity : Activity() {
     companion object {
         /** JSON handed over by MainActivity.Bridge.viewImages(): {start, items:[{name, url, size}]} */
         @Volatile var pending: String? = null
+        @Volatile var inst: java.lang.ref.WeakReference<ImageViewerActivity>? = null
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
         private const val REQ_EDIT = 41
@@ -120,6 +121,7 @@ class ImageViewerActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        inst = java.lang.ref.WeakReference(this)
         if (Build.VERSION.SDK_INT >= 28)
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
