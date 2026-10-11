@@ -13,7 +13,9 @@ val commitCount = System.getenv("BUILD_N")?.toIntOrNull() ?: System.getenv("VERS
 val baseVersion = File(rootDir, "VERSION").takeIf { it.exists() }?.readText()?.trim().takeUnless { it.isNullOrEmpty() } ?: "1.0"
 val shortSha = git("rev-parse", "--short", "HEAD")
 // Sürüm: CI release etiketinden gelir (APP_VERSION, örn. "2.3"). Yerelde: VERSION (major) + ".0".
-val appVersion = System.getenv("APP_VERSION")?.takeIf { it.isNotBlank() } ?: "${baseVersion.substringBefore('.')}.0"
+val appVersion = (project.findProperty("appVersion") as String?)?.takeIf { it.isNotBlank() }   // gradle -PappVersion=2.6 (CI)
+    ?: System.getenv("APP_VERSION")?.takeIf { it.isNotBlank() }                                   // or env APP_VERSION
+    ?: "${baseVersion.substringBefore('.')}.0"                                                      // local build
 // versionCode = minutes since 2026-01-01 (UTC): ALWAYS increases with every build, even if git history is shallow/reset.
 // Never switch this scheme back to a smaller number, or Android refuses to update.
 val buildCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: ((System.currentTimeMillis() / 1000 - 1767225600L) / 60).toInt()
