@@ -28,8 +28,58 @@ object WifiPrinters {
         @Volatile var mediaReady: List<String> = emptyList()      // paper actually loaded
         @Volatile var mediaDefault: List<String> = emptyList()
         @Volatile var mediaSupported: List<String> = emptyList()
+        @Volatile var trays: List<Tray> = emptyList()              // paper trays the printer reports (media-source-supported / media-col-ready / printer-input-tray)
         @Volatile var rasterDpi: List<Int> = emptyList()          // resolutions of image/pwg-raster the printer takes
         @Volatile var sheetBack: String = "normal"                // pwg-raster-document-sheet-back: normal / flipped / rotated / manual-tumble
+    }
+
+    /** One paper source of the printer. [id] = the media-source keyword sent with the job; [dim] = size of the paper in it in 1/100 mm; [loaded] null = the printer does not say. */
+    class Tray(val id: String, val name: String, val size: String, val dim: IntArray?, val type: String, val level: Int, val loaded: Boolean?, val media: String?)
+
+    private val SIZES = listOf("A4" to intArrayOf(21000, 29700), "A3" to intArrayOf(29700, 42000), "A5" to intArrayOf(14800, 21000), "A6" to intArrayOf(10500, 14800),
+        "B5" to intArrayOf(17600, 25000), "Letter" to intArrayOf(21590, 27940), "Legal" to intArrayOf(21590, 35560), "Executive" to intArrayOf(18415, 26670),
+        "4x6 in" to intArrayOf(10160, 15240), "5x7 in" to intArrayOf(12700, 17780))
+
+    private fun near(a: Int, b: Int) = Math.abs(a - b) <= 120
+    private fun sizeLabel(d: IntArray?): String {
+        if (d == null) return ""
+        val x = minOf(d[0], d[1]); val y = maxOf(d[0], d[1])
+        SIZES.firstOrNull { near(it.second[0], x) && near(it.second[1], y) }?.let { return it.first }
+        return String.format(java.util.Locale.US, "%.0f\u00d7%.0f mm", x / 100.0, y / 100.0)
+    }
+    /** "iso_a4_210x297mm" / "na_letter_8.5x11in" -> [x, y] in 1/100 mm */
+    private val MEDIA_DIM = Regex("_(\\d+(?:\\.\\d+)?)x(\\d+(?:\\.\\d+)?)(mm|in)$")
+    fun mediaDim(n: String): IntArray? {
+        val m = MEDIA_DIM.find(n) ?: return null
+        val k = if (m.groupValues[3] == "in") 2540.0 else 100.0
+        return intArrayOf((m.groupValues[1].toDouble() * k).toInt(), (m.groupValues[2].toDouble() * k).toInt())
+    }
+    private fun prettyTray(id: String) = when (id) {
+        "auto" -> "Automatic"; "manual" -> "Manual feed"; "by-pass-tray" -> "Bypass tray"; "main" -> "Main tray"; "top" -> "Top tray"; "middle" -> "Middle tray"
+        "bottom" -> "Bottom tray"; "side" -> "Side tray"; "envelope" -> "Envelope tray"; "photo" -> "Photo tray"; "large-capacity" -> "Large-capacity tray"
+        else -> Regex("^tray-(\\d+)$").find(id)?.let { "Tray " + it.groupValues[1] } ?: id.replace('-', ' ').replaceFirstChar { c -> c.uppercase() }
+    }
+    private fun norm(x: String) = x.lowercase().filter { it.isLetterOrDigit() }
+
+    /** Trays from one Get-Printer-Attributes answer. Empty when the printer reports no media-source-supported (then nothing can be chosen). */
+    fun trays(r: Ipp.Resp, supported: List<String>): List<Tray> {
+        val src = r.strs("media-source-supported").map { it.trim() }.filter { it.isNotEmpty() && it != "none" }.distinct()
+        if (src.isEmpty()) return emptyList()
+        val ready = r.colls("media-col-ready")
+        val havePaper = ready.isNotEmpty()
+        val real = src.filter { it != "auto" && it != "manual" && it != "by-pass-tray" }
+        // printer-input-tray: "type=sheetFeedAutoRemovableTray;mediafeed=2970;mediaxfeed=2100;maxcapacity=250;level=100;status=0;name=tray 1;"
+        val inp = r.strs("printer-input-tray").map { t -> t.split(';').mapNotNull { kv -> val i = kv.indexOf('='); if (i > 0) kv.substring(0, i).trim() to kv.substring(i + 1).trim() else null }.toMap() }
+        return src.map { id ->
+            val rc = ready.firstOrNull { it["media-source"] == id }
+            val x = rc?.get("media-size.x-dimension")?.toIntOrNull(); val y = rc?.get("media-size.y-dimension")?.toIntOrNull()
+            val dim = if (x != null && y != null) intArrayOf(x, y) else null
+            val tin = inp.firstOrNull { norm(it["name"] ?: "") == norm(id) } ?: (if (inp.size == real.size && id in real) inp[real.indexOf(id)] else null)
+            val level = tin?.get("level")?.toIntOrNull()?.takeIf { it >= 0 } ?: -1
+            val med = if (dim == null) null else supported.firstOrNull { n -> mediaDim(n)?.let { d -> (near(d[0], dim[0]) && near(d[1], dim[1])) || (near(d[0], dim[1]) && near(d[1], dim[0])) } == true }
+            val loaded: Boolean? = when { id == "auto" -> null; level == 0 -> false; rc != null -> true; havePaper -> false; else -> null }
+            Tray(id, prettyTray(id), sizeLabel(dim), dim, rc?.get("media-type") ?: "", level, loaded, med)
+        }
     }
 
     private val map = ConcurrentHashMap<String, P>()
@@ -294,6 +344,7 @@ object WifiPrinters {
             p.sides = r.strs("sides-supported")
             p.colorModes = r.strs("print-color-mode-supported")
             p.mediaReady = r.strs("media-ready"); p.mediaDefault = r.strs("media-default"); p.mediaSupported = r.strs("media-supported")
+            p.trays = trays(r, p.mediaSupported)
             p.rasterDpi = r.dpis("pwg-raster-document-resolution-supported")
             p.sheetBack = r.strs("pwg-raster-document-sheet-back").firstOrNull() ?: "normal"
             val reasons = r.strs("printer-state-reasons").filter { it != "none" }
@@ -305,6 +356,9 @@ object WifiPrinters {
                 .put("printer", p.name)
                 .put("problem", if (problems.isEmpty()) JSONObject.NULL else problems.distinct().joinToString(", "))
                 .put("printers", JSONArray())
+                .put("trays", JSONArray().also { ta -> p.trays.forEach { t -> ta.put(JSONObject().put("id", t.id).put("name", t.name).put("size", t.size).put("type", t.type)
+                    .put("level", t.level).put("loaded", t.loaded ?: JSONObject.NULL).put("media", t.media ?: JSONObject.NULL)) } })
+                .put("trayinfo", r.dump(listOf("media-source-supported", "media-col-ready", "printer-input-tray", "media-ready", "media-default", "media-type-supported")))
                 .put("color", if (p.colorModes.isNotEmpty()) p.colorModes.contains("color") else (p.color ?: JSONObject.NULL))
                 .put("duplex", if (p.sides.isNotEmpty()) p.sides.any { it.startsWith("two-sided") } else (p.duplex ?: JSONObject.NULL))
         } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }

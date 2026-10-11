@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "20"
+VERSION = "21"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -251,6 +251,7 @@ def parse_opts(q):
              scale=_scale(g("scale")), align=g("align") if g("align") in ("top", "topleft") else "center",
              autorot=g("autorot") == "1",
              paper=g("paper") if g("paper") in PAPERS else "", nup=_int(g("nup"), 1, 1, 9),
+             tray=g("tray") if g("tray").isdigit() and len(g("tray")) <= 6 else "",   # paper tray = the driver's bin number (see printer_bins)
              booklet=g("booklet") == "1", border=g("border") == "1",
              pages=g("pages") if g("pages") in ("odd", "even") else "", reverse=g("reverse") == "1",
              range=re.sub(r"[^0-9,\- ]", "", g("range"))[:80], wm=g("wm")[:60], wm_under=g("wm_under") == "1",
@@ -862,6 +863,7 @@ def sumatra_args(sm, pdf, o, pr):
     elif o["color"] == "color": st.append("color")
     st.append("shrink" if o["fit"] == "fill" else o["fit"])   # "fill" was already done while laying the page out
     if o["paper"]: st.append("paper=" + o["paper"])
+    if o.get("tray"): st.append("bin=" + str(o["tray"]))
     cmd = [sm, "-print-to", pr] if pr else [sm, "-print-to-default"]
     return cmd + ["-print-settings", ",".join(x for x in st if x), "-silent", pdf]
 
@@ -1182,6 +1184,41 @@ def hard_margin(pr):
         return 0.0
 
 
+BIN_CACHE = {}   # printer name -> (time, [{"id", "name"}])
+
+
+def printer_bins(pr):
+    """Paper trays (input bins) the printer driver offers: [{"id": DEVMODE bin number, "name": "Tray 1"}]. [] when unknown / not Windows.
+    Read with DeviceCapabilitiesW (DC_BINS + DC_BINNAMES); SumatraPDF takes the number in -print-settings as bin=<n>."""
+    if not WIN:
+        return []
+    if not pr:
+        pr = DEFAULT_PRINTER[0]
+    if not pr:
+        return []
+    hit = BIN_CACHE.get(pr)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    out = []
+    try:
+        dc = ctypes.windll.winspool.drv.DeviceCapabilitiesW
+        dc.restype = ctypes.c_int
+        dc.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_ushort, ctypes.c_void_p, ctypes.c_void_p]
+        n = dc(pr, None, 6, None, None)                     # DC_BINS: how many
+        if 0 < n <= 64:
+            ids = (ctypes.c_ushort * n)()
+            names = ctypes.create_unicode_buffer(24 * n)    # DC_BINNAMES: n names of 24 characters each
+            if dc(pr, None, 6, ctypes.addressof(ids), None) == n and dc(pr, None, 12, ctypes.addressof(names), None) == n:
+                for i in range(n):
+                    nm = ctypes.wstring_at(ctypes.addressof(names) + i * 48, 24).split("\0")[0].strip()
+                    if ids[i] != 7 and nm:                  # 7 = DMBIN_AUTO = "let the printer choose": that is the app's "Automatic"
+                        out.append({"id": int(ids[i]), "name": nm})
+    except Exception as e:
+        log(f"tray list failed for {pr}: {e}")
+    BIN_CACHE[pr] = (time.time(), out)
+    return out
+
+
 def swap_duplex(pdf, o, pr):
     """Printers that turn the back of landscape sheets upside down: long <-> short edge for those sheets (switch: duplex_swap.txt)."""
     if o["duplex"] not in ("long", "short") or not duplex_swap(pr or DEFAULT_PRINTER[0]) or not have_pypdf():
@@ -1206,10 +1243,13 @@ def send_pdf(pdf, o, pr, sm, notes):
         if o["color"] == "mono": cmd += ["-o", "print-color-mode=monochrome"]
         run_retry(cmd + [pdf], printer=pr or DEFAULT_PRINTER[0], timeout=120)
     elif sm:
+        if o.get("tray") and o["tray"] not in {str(b["id"]) for b in printer_bins(pr)}:
+            notes.append("tray " + o["tray"] + " is not offered by this printer, it chose the tray itself")
+            o = dict(o, tray="")
         run_retry(sumatra_args(sm, pdf, o, pr), printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
     else:
-        if pr or o["duplex"] or o["color"]:
-            notes.append("printer / duplex / colour ignored: SumatraPDF is not installed")
+        if pr or o["duplex"] or o["color"] or o.get("tray"):
+            notes.append("printer / duplex / colour / tray ignored: SumatraPDF is not installed")
         for _ in range(min(o["copies"], 10)):
             os.startfile(pdf, "print")
 
@@ -1639,7 +1679,7 @@ class H(BaseHTTPRequestHandler):
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
                                     "office": office_engine(), "convert": True,
-                                    "hard": hard_margin(pr)})
+                                    "hard": hard_margin(pr), "trays": printer_bins(pr) if want else []})
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})

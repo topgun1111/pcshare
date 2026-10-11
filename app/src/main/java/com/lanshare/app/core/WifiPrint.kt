@@ -43,6 +43,7 @@ object WifiPrint {
         val dir = File(Core.appCtx?.cacheDir ?: Core.cacheDir, "wprint").apply { mkdirs() }
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
         warns.set(ArrayList())
+        tray.set(null)
         try {
             val st = WifiPrinters.status(p.id)
             if (!st.optBoolean("ok")) throw IOException("${p.name} is not reachable - is it switched on and on this Wi-Fi? (${st.optString("why")})")
@@ -179,7 +180,12 @@ object WifiPrint {
         val color = when (o.optString("color")) { "color" -> "color"; "mono" -> "monochrome"; else -> null }
             ?.takeIf { p.colorModes.isEmpty() || it in p.colorModes }
         val scaling = when (o.optString("fit")) { "shrink", "fit" -> "fit"; "fill" -> "fill"; "noscale" -> "none"; else -> "fit" }
-        return Ipp.JobOpts(copies, sides, color, pickMedia(p, PAPER[o.optString("paper")]), scaling, ranges(o.optString("range")))
+        val tid = o.optString("tray")
+        val tr = if (tid.isEmpty() || tid == "auto") null else p.trays.firstOrNull { it.id == tid }
+        // a chosen tray decides the paper size too (when the printer says what is in it), so the layout and the tray agree
+        val media = pickMedia(p, tr?.media ?: PAPER[o.optString("paper")])
+        tray.set(tr?.let { it.id to (it.dim ?: media?.let { m -> WifiPrinters.mediaDim(m) }) })
+        return Ipp.JobOpts(copies, sides, color, media, scaling, ranges(o.optString("range")))
     }
 
     /** "1-3,5,8-" -> [1,3] [5,5] [8,MAX] */
@@ -195,6 +201,8 @@ object WifiPrint {
 
     /** Warnings collected while one job runs (each job has its own thread); shown with the "Sent ..." note. */
     private val warns = ThreadLocal<ArrayList<String>>()
+    /** Tray the user picked for the running job: media-source keyword + paper size in 1/100 mm (set by [jobOpts], used by [submit]). */
+    private val tray = ThreadLocal<Pair<String, IntArray?>?>()
 
     /**
      * Sends one job. When the printer rejects an option, options are dropped one at a time and two-sided printing ("sides") is dropped LAST,
@@ -211,6 +219,12 @@ object WifiPrint {
         )
         var last: Ipp.JobOpts? = null
         var r: Ipp.Resp? = null
+        val tp = tray.get()
+        if (tp != null) {   // paper tray chosen: first try with it (media-col); if the printer refuses that, print from its own choice of tray and say so
+            val rt = Ipp.printJob(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second), f)
+            if (!rejected(rt)) { if (!rt.ok) throw PrintFail(Ipp.statusText(rt.status)); return }
+            warns.get()?.add("the printer does not accept a tray choice, it picked the tray itself")
+        }
         for (t in tries) {
             val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}"
             if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}") continue   // nothing new to try

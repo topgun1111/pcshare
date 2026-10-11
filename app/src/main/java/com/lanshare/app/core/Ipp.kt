@@ -15,18 +15,31 @@ object Ipp {
 
     class Attr(val tag: Int, val v: ByteArray)
 
-    class Resp(val status: Int, private val attrs: Map<String, List<Attr>>) {
+    class Resp(val status: Int, private val attrs: Map<String, List<Attr>>, private val cols: Map<String, List<Map<String, String>>> = emptyMap()) {
         val ok: Boolean get() = status < 0x100
         fun strs(n: String): List<String> = attrs[n]?.map { String(it.v, Charsets.UTF_8) } ?: emptyList()
         fun int(n: String): Int? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int }
         fun bool(n: String): Boolean? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 1 }?.let { it[0].toInt() != 0 }
         /** resolution values (9 bytes: x, y, unit) -> the x dpi of each */
+        /** collection values (media-col-ready ...) flattened: one map per value, nested members as "media-size.x-dimension" */
+        fun colls(n: String): List<Map<String, String>> = cols[n] ?: emptyList()
+        /** readable dump of the named attributes (strings and collections) - shown to the user so a printer's tray data can be checked */
+        fun dump(names: List<String>): String {
+            val sb = StringBuilder()
+            for (n in names) {
+                val a = strs(n); if (a.isNotEmpty()) sb.append(n).append(" = ").append(a.joinToString(" | ") { it.take(200) }).append('\n')
+                colls(n).forEachIndexed { i, m -> sb.append(n).append('[').append(i).append("] = ").append(m.entries.joinToString(", ") { it.key + "=" + it.value }).append('\n') }
+            }
+            return sb.toString().trim()
+        }
         fun dpis(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 9 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
     }
 
     /** What the user asked for; null / empty = leave it to the printer. [ranges] = list of [from, to] (1-based). */
     class JobOpts(val copies: Int = 1, val sides: String? = null, val color: String? = null, val media: String? = null,
-                  val scaling: String? = null, val ranges: List<IntArray> = emptyList())
+                  val scaling: String? = null, val ranges: List<IntArray> = emptyList(),
+                  /** paper tray (media-source keyword, e.g. "tray-2") + the size in 1/100 mm [x, y]: sent as media-col instead of "media" */
+                  val source: String? = null, val srcDim: IntArray? = null)
 
     private class Req(op: Int, uri: String) {
         val o = ByteArrayOutputStream()
@@ -58,7 +71,7 @@ object Ipp {
         val rq = Req(OP_GET_PRINTER_ATTRS, p.uri)
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
-            "media-ready", "media-default", "media-supported",
+            "media-ready", "media-default", "media-supported", "media-source-supported", "media-col-ready", "printer-input-tray", "media-type-supported",
             "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
@@ -68,13 +81,24 @@ object Ipp {
         val rq = Req(OP_PRINT_JOB, p.uri)
         rq.str(0x42, "job-name", jobName.take(100))
         rq.str(0x49, "document-format", mime)
-        val hasJob = jo.copies > 1 || jo.sides != null || jo.color != null || jo.media != null || jo.scaling != null || jo.ranges.isNotEmpty()
+        val hasJob = jo.copies > 1 || jo.sides != null || jo.color != null || jo.media != null || jo.source != null || jo.scaling != null || jo.ranges.isNotEmpty()
         if (hasJob) {
             rq.group(0x02)   // job-attributes group
             if (jo.copies > 1) rq.int("copies", jo.copies)
             jo.sides?.let { rq.str(0x44, "sides", it) }
             jo.color?.let { rq.str(0x44, "print-color-mode", it) }
             jo.media?.let { rq.str(0x44, "media", it) }
+            jo.source?.let { src ->   // media-col { media-size { x-dimension, y-dimension }, media-source }
+                rq.attr(0x34, "media-col", ByteArray(0))
+                jo.srcDim?.let { d ->
+                    rq.attr(0x4A, "", "media-size".toByteArray()); rq.attr(0x34, "", ByteArray(0))
+                    rq.attr(0x4A, "", "x-dimension".toByteArray()); rq.attr(0x21, "", ByteBuffer.allocate(4).putInt(d[0]).array())
+                    rq.attr(0x4A, "", "y-dimension".toByteArray()); rq.attr(0x21, "", ByteBuffer.allocate(4).putInt(d[1]).array())
+                    rq.attr(0x37, "", ByteArray(0))
+                }
+                rq.attr(0x4A, "", "media-source".toByteArray()); rq.attr(0x44, "", src.toByteArray())
+                rq.attr(0x37, "", ByteArray(0))
+            }
             jo.scaling?.let { rq.str(0x44, "print-scaling", it) }
             jo.ranges.forEachIndexed { i, r ->
                 rq.attr(0x33, if (i == 0) "page-ranges" else "", ByteBuffer.allocate(8).putInt(r[0]).putInt(r[1]).array())
@@ -139,12 +163,17 @@ object Ipp {
         val status = bb.short.toInt() and 0xFFFF
         bb.int                                     // request id
         val map = LinkedHashMap<String, MutableList<Attr>>()
+        val cols = LinkedHashMap<String, MutableList<Map<String, String>>>()
         var cur: String? = null
-        var depth = 0                              // inside a collection value (media-col ...): skipped
+        var depth = 0                              // inside a collection value (media-col ...): members are collected into [curCol]
+        var colAttr: String? = null
+        var curCol: LinkedHashMap<String, String>? = null
+        val pre = ArrayList<String>()              // names of the enclosing member collections ("media-size")
+        var mem = ""
         while (bb.hasRemaining()) {
             val tag = bb.get().toInt() and 0xFF
             if (tag == 0x03) break
-            if (tag < 0x10) { cur = null; continue }   // group delimiter
+            if (tag < 0x10) { cur = null; depth = 0; pre.clear(); continue }   // group delimiter
             if (bb.remaining() < 2) break
             val nl = bb.short.toInt() and 0xFFFF
             if (bb.remaining() < nl + 2) break
@@ -152,14 +181,32 @@ object Ipp {
             val vl = bb.short.toInt() and 0xFFFF
             if (bb.remaining() < vl) break
             val v = ByteArray(vl).also { bb.get(it) }
-            if (tag == 0x34) { depth++; cur = null; continue }
-            if (tag == 0x37) { if (depth > 0) depth--; continue }
-            if (depth > 0) continue
+            if (tag == 0x34) {
+                if (depth == 0) { if (nm != null) colAttr = String(nm, Charsets.UTF_8); curCol = LinkedHashMap(); cur = null }
+                else pre.add(mem)
+                depth++; continue
+            }
+            if (tag == 0x37) {
+                if (depth > 1) { depth--; if (pre.isNotEmpty()) pre.removeAt(pre.size - 1) }
+                else if (depth == 1) { depth = 0; val ca = colAttr; val cc = curCol; if (ca != null && cc != null) cols.getOrPut(ca) { ArrayList() }.add(cc); curCol = null }
+                continue
+            }
+            if (depth > 0) {
+                if (tag == 0x4A) { mem = String(v, Charsets.UTF_8); continue }
+                val key = (pre + mem).joinToString(".")
+                val txt = when {
+                    (tag == 0x21 || tag == 0x23) && v.size == 4 -> ByteBuffer.wrap(v).int.toString()
+                    tag == 0x22 && v.size == 1 -> (v[0].toInt() != 0).toString()
+                    else -> String(v, Charsets.UTF_8)
+                }
+                curCol?.let { it[key] = if (it.containsKey(key)) it[key] + "," + txt else txt }
+                continue
+            }
             if (nm != null) cur = String(nm, Charsets.UTF_8)
             val c = cur ?: continue
             map.getOrPut(c) { ArrayList() }.add(Attr(tag, v))
         }
-        return Resp(status, map)
+        return Resp(status, map, cols)
     }
 
     fun statusText(s: Int): String = "the printer refused the job (" + when (s) {
