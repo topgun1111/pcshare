@@ -175,7 +175,7 @@ class ImageViewerActivity : Activity() {
         topWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
-            addView(top); addView(infoTv)
+            addView(this@ImageViewerActivity.top); addView(infoTv)   // 'top' alone would be View.getTop() (an Int) here
         }
         fun icon(path: String, desc: String, act: () -> Unit) = IconBtn(this, path).apply {
             contentDescription = desc; setOnClickListener { act() }
