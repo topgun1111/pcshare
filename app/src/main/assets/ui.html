@@ -1814,7 +1814,6 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.some(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&!A)btn('paste','Paste',doPaste,'pri');
-    if(files)btn('download','Download',doDownload);
     if(files&&it.some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
@@ -1836,9 +1835,6 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
   document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
   try{nlChPush()}catch(e){}}
-function doDownload(){
-  const f=selItems().filter(i=>!i.dir);S.sel.clear();render();
-  f.forEach((i,k)=>setTimeout(()=>{const a=document.createElement('a');a.href='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))+'&dl=1';a.download=i.name;document.body.append(a);a.click();a.remove()},k*600))}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
 async function doPaste(){try{const cf=await askConflicts(S.dev,S.path,(S.clip&&S.clip.paths)||[],S.clip&&S.clip.dev);if(!cf)return;const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path,conflict:cf});
