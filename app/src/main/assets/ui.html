@@ -922,7 +922,7 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='newb'){$('#newb').onclick();return}
   if(ev==='sort'){openSort();return}
   const i=NLL[x];
-  if(ev==='refresh'){(async()=>{try{api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}NL.nlDone()})();return}
+  if(ev==='refresh'){(async()=>{try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}NL.nlDone()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
@@ -1315,6 +1315,8 @@ function isView(sdir,sname,m0){
 let GALA=null,GALT=0,GALP=null,GALPK=null;   // GALA.k = 'vid' | 'img': which kind of albums it holds
 function galFetch(){const gk=galVid()?'vid':'img';if(GALP&&GALPK===gk)return;GALPK=gk;
   GALP=api('GET','/api/albums'+(gk==='vid'?'?kind=vid':'')).then(r=>{const a=((r&&r.albums)||[]).map(x=>{x.v=gk==='vid';return x}),sig=gk+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===gk){GALA={a:a,sig:sig,k:gk};GALT=Date.now()}return ch&&GALPK===gk}).catch(e=>{try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return false}).then(ch=>{if(GALPK===gk)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+/* pull to refresh / refresh button at the Gallery or Videos album home: drop the 15 s album cache and re-read the albums now */
+function galForce(){GALT=0;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
 function mkAlbumX(a,P0,V){
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
   c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));
@@ -2717,7 +2719,7 @@ async function track(id){
     lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
   const end=async()=>{if(!on)return;on=false;
     if(dy>=16&&dy*0.5>=TH&&!busy){busy=true;box.classList.add('go');lab.textContent='Refreshing…';setH(46);
-      try{api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}
+      try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}
       await new Promise(r=>setTimeout(r,400));busy=false}
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
