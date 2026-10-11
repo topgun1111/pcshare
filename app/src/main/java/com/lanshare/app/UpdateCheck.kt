@@ -19,7 +19,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Checks GitHub releases/latest on app start and offers the new APK. At most one request per [MIN_INTERVAL_MS]. */
+/** Checks GitHub releases/latest on app start and offers the new APK (only if newer). A manual check (force=true) always downloads the latest APK regardless of version. At most one request per [MIN_INTERVAL_MS]. */
 object UpdateCheck {
     private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases/latest"
     private const val PREFS = "update_check"
@@ -39,7 +39,7 @@ object UpdateCheck {
                 sp.edit().putLong("last", now).apply()
                 val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }
+                if (!force && !isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // manual check (force) ignores the version comparison
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
                 var url = j.getString("html_url")
@@ -52,6 +52,10 @@ object UpdateCheck {
                 val dl = url; val dlSize = size; val dlApk = isApk
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
+                    if (force) {   // manual "Check for updates": always fetch the latest release APK, whatever the installed version is
+                        if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
+                        return@runOnUiThread
+                    }
                     AlertDialog.Builder(a)
                         .setTitle("Yeni sürüm: $tag")
                         .setMessage("Mevcut sürüm: $cur\nGitHub'da yeni bir güncelleme var.")
