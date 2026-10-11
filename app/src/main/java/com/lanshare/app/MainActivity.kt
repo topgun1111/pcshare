@@ -111,6 +111,9 @@ class MainActivity : Activity() {
                 runOnUiThread { nl.setItems(key, rows, s, sig) } } catch (_: Throwable) { }
         }
         @JavascriptInterface fun nlCfg(c: String) { runOnUiThread { nl.setCfg(c) } }
+        /** JSON array of the paths hidden with the Hide button (ui.html HGAL). */
+        @JavascriptInterface fun nlHidden(json: String) {
+            try { val a = org.json.JSONArray(json); val set = HashSet<String>(); for (k in 0 until a.length()) set.add(a.getString(k)); runOnUiThread { nl.setHidden(set) } } catch (_: Throwable) { } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
         @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
