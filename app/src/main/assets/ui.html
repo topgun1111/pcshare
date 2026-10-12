@@ -593,15 +593,18 @@ S.theme=LD('ls_theme','light');if(['light','dark','auto'].concat(LSTH.map(t=>t.i
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
 setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(()=>nlTheme(),50))}catch(e){}
 // view/sort preferences: global default + per-folder overrides ("Apply to all folders" promotes to global)
-let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
+let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0,colsW:0};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
 let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 const pfKey=()=>S.dev+'|'+S.path;
+const wideScr=()=>window.innerWidth>=600;   // unfolded phone / tablet; a folded phone is narrower
+let LSW=wideScr(),lswT=0;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}},150)});
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
-  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';S.cols=[2,3,4,5,6,7,8].indexOf(+o.cols)>=0?+o.cols:0}
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{const cv=+(wideScr()?o.colsW:o.cols);S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
-function setPref(p){const cur=Object.assign({view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb,cols:S.cols},p);
+function setPref(p){p=Object.assign({},p);if('cols'in p){p[wideScr()?'colsW':'cols']=p.cols;if(wideScr())delete p.cols}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
+  const cur=Object.assign({},G,PF[pfKey()]||{},{view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}
   render()}
