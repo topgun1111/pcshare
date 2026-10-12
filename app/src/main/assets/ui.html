@@ -804,7 +804,7 @@ async function fillCounts(dev,path){if(dev!=='local')return;
     let any=false;const ch=new Set();S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;ch.add(i);if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});if(any&&window.nlPatch)nlPatch(ch);
     const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
     if(any&&S.sort==='size')render()}catch(e){}}
-async function load(){try{return await loadMain()}finally{if(window.nlBoot)nlBoot()}}   // first finished load = the native start picture can go
+async function load(){try{return await loadMain()}finally{if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
 async function loadMain(){
   clearTimeout(loadT);
   if(galRoot()){useLSC=false;S.items=[];S.err='';S.sel.clear();if(!S.lost)banner('');render();return}   // gallery = albums from MediaStore only, no file-manager listing
@@ -943,7 +943,8 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='newb'){$('#newb').onclick();return}
   if(ev==='sort'){openSort();return}
   const i=NLL[x];
-  if(ev==='refresh'){(async()=>{try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}NL.nlDone()})();return}
+  if(ev==='refresh'){(async()=>{const fin=()=>{try{NL.nlDone()}catch(e){}},cap=setTimeout(fin,8000);   // an offline device can keep /api/ls waiting for minutes: stop the spinner anyway
+    try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
@@ -2772,7 +2773,7 @@ async function track(id){
     lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
   const end=async()=>{if(!on)return;on=false;
     if(dy>=16&&dy*0.5>=TH&&!busy){busy=true;box.classList.add('go');lab.textContent='Refreshing…';setH(46);
-      try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}
+      try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await Promise.race([load(),new Promise(r=>setTimeout(r,8000))]);refreshClip()}catch(e){}
       await new Promise(r=>setTimeout(r,400));busy=false}
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
