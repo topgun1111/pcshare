@@ -81,7 +81,8 @@ class NlRow(
     val gal: Boolean = false,           // video-gallery cell (drawn by NlGalView, several per adapter row)
     val dev: String = "local",          // endpoint the row belongs to ("local", a peer id, "smb:...")
     val hit: Boolean = false,           // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
-    val fresh: Boolean = false          // modified within the last 60 s: red dot on the lead (ui.html isNew / `w`)
+    val fresh: Boolean = false,         // modified within the last 60 s: red dot on the lead (ui.html isNew / `w`)
+    val hid: Boolean = false            // hidden item shown because "Show hidden files" is on: drawn faded (ui.html `x`)
 ) {
     val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }
@@ -174,6 +175,11 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     private var ell: String? = null
     private var ellFor: NlRow? = null
     private var ellW = -1f
+
+    /** Hidden items (dot-names, hidden flag, Hide button) are drawn faded so they stand out when "Show hidden files" is on. */
+    override fun draw(cv: Canvas) {
+        if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
+    }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean, md: Boolean = false) {
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; requestLayout() }
@@ -350,6 +356,11 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             lineTo(7.4f, 127.7f); quadTo(0f, 127.7f, 0f, 120.3f); lineTo(0f, 7.4f); quadTo(0f, 0f, 7.4f, 0f); close()
         }
         val FOLD = Path().apply { moveTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(77.7f, 29.7f); quadTo(70.3f, 29.7f, 70.3f, 22.3f); close() }
+    }
+
+    /** Hidden items (dot-names, hidden flag, Hide button) are drawn faded so they stand out when "Show hidden files" is on. */
+    override fun draw(cv: Canvas) {
+        if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
@@ -580,7 +591,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             val x = 4f * d + k * (cs + 4f * d); val y = 4f * d
             val on = (first + k) in sel
             rf.set(x, y, x + cs, y + cs)
-            cv.save()
+            if (r.hid) cv.saveLayerAlpha(rf, 110) else cv.save()
             clip.reset(); clip.addRoundRect(rf, 8f * d, 8f * d, Path.Direction.CW); cv.clipPath(clip)
             p.style = Paint.Style.FILL
             p.color = pl.kb["vid"] ?: pl.kb["file"] ?: 0; p.shader = null; cv.drawRect(rf, p)
@@ -655,7 +666,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 val o = a.getJSONObject(i)
                 out.add(NlRow(o.getString("n"), o.optInt("d") == 1, o.optString("k", "file"), o.optString("a"), o.optString("b"),
                     if (o.has("g")) o.getString("g") else null, o.optLong("gc").toInt(), o.optInt("u") == 1,
-                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1, o.optInt("w") == 1))
+                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1, o.optInt("w") == 1, o.optInt("x") == 1))
             }
             return out
         }
