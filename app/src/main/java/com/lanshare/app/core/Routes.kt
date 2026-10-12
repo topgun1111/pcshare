@@ -251,7 +251,9 @@ object Routes {
 
     private fun smbUpdate(ex: Exchange, b: JSONObject) {
         val remove = b.optString("remove")
+        val edit = b.optString("edit")
         if (remove.isNotEmpty()) Smb.remove(remove)
+        else if (edit.isNotEmpty()) Smb.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optString("share"))
         else Smb.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"))
         ex.json(JSONObject().put("ok", true).put("list", Smb.status()))
     }
