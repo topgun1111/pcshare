@@ -2887,7 +2887,7 @@ function homeShow(){
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
     if(stat){const ck='ls_hs_'+(media||'')+stat,sh=v=>{if(v&&v.files!=null)ts.textContent=fmt(v.bytes)+' ('+v.files+(v.partial?'+':'')+')'};
       try{sh(JSON.parse(localStorage.getItem(ck)||'null'))}catch(e){}
-      api('GET','/api/folderstat?dev=local&path='+enc(stat)+(media?'&media='+media:''),null,60000).then(r=>{if(r&&r.files!=null){try{localStorage.setItem(ck,JSON.stringify(r))}catch(e){}if(homeOn())sh(r)}}).catch(()=>{})}
+      setTimeout(()=>{if(!homeOn()||trk>0||LVS)return;api('GET','/api/folderstat?dev=local&path='+enc(stat)+(media?'&media='+media:''),null,60000).then(r=>{if(r&&r.files!=null){try{localStorage.setItem(ck,JSON.stringify(r))}catch(e){}if(homeOn())sh(r)}}).catch(()=>{})},1500)}   // not while a copy is running, and not at the same instant the menu opens: these scans read the whole storage
     return b};
   const g1=E('div','hg'),g2=E('div','hg');
   g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/@gallery')},'/Pictures','img'),

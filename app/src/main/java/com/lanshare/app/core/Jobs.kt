@@ -644,8 +644,10 @@ object Jobs {
         try {
             val ddirN = vnorm(ddir)
             job.dest = dst.name + " \u203a " + ddirN
+            job.cur = "Reading the file list\u2026"   // shown on the card, so a slow / stuck first step is visible instead of a silent 0%
             val plan = ArrayList<Pair<String, List<WalkItem>?>>()
             for (p0 in paths) {
+                if (job.cancel) throw Cancelled()
                 val p = vnorm(p0)
                 if (p == "/") throw Denied("cannot copy the root")
                 if (same && (ddirN == p || ddirN.startsWith("$p/"))) throw BadReq("cannot put a folder inside itself")
@@ -657,9 +659,12 @@ object Jobs {
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
             job.filesTotal = if (same && cut) plan.size else plan.sumOf { (_, w) -> w!!.count { !it.dir && !it.skip } }
             if (!(same && cut)) pinArchives(job, src, plan)
+            if (job.cancel) throw Cancelled()
+            job.cur = "Checking the destination folder\u2026"
             val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
             // SAFETY: nothing that already exists at the destination is ever deleted to make room. Folders are merged; only files with the
             // same name are replaced - one by one as the user decides (conflict "ask"), or all / none ("replace" / "skip").
+            job.cur = ""
             val dstDirs = HashMap<String, Map<String, Item>>()
             fun listing(dir: String): Map<String, Item> = dstDirs.getOrPut(dir) {
                 try { dst.ls(dir).associateBy { it.name } } catch (e: Cancelled) { throw e } catch (_: Exception) { emptyMap() }
