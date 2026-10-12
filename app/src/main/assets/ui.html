@@ -920,7 +920,10 @@ const nlA=(i,CP)=>{const dt=CP&&i.mtime?new Date(i.mtime*1000).toLocaleDateStrin
 function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effects). Kotlin twin: NlModel.rows()
   const CP=S.view==='compact';
   const dt=i=>i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(CP?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
-  const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h)return{n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1};
+  const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h){const o={n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1},k=o.k;
+      /* subfolder-search hits get previews too (full path + size + date = thumbnail key), same rules as ordinary rows */
+      if(!i.dir&&!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6))){o.p=i.path;o.s=i.size||0;o.t=i.mtime||0}
+      return o};
     const k=kind(i),o={n:i.name,k:k,a:nlA(i,CP),b:CP?'':dt(i)};
     if(x>=GN)o.v=1;
     if(isNew(i))o.w=1;
