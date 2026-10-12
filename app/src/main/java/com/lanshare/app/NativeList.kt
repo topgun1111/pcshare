@@ -1005,7 +1005,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     // ================= native Sort / View =================
     /** A choice made in the native sheet. Sort / view / thumbnails: rows are re-built here at once for this phone's plain folders; in every case the page applies the same preference. */
     fun pref(o: JSONObject) {
-        try { if (o.has("cols")) { val n = o.optInt("cols"); gcols = if (n in 2..6) n else 0; if (gridOn) ensureMgr(true) } } catch (_: Throwable) { }
+        try { if (o.has("cols")) { val n = o.optInt("cols"); gcols = if (n in 2..8) n else 0; if (gridOn) ensureMgr(true) } } catch (_: Throwable) { }
         try { instantPref(o) } catch (_: Throwable) { }
         web.evaluateJavascript("window.nlPref&&nlPref(" + JSONObject.quote(o.toString()) + ")", null)
     }
@@ -1057,7 +1057,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     /** List = LinearLayoutManager; grid view = GridLayoutManager (5 columns, 2 in picture folders, 4 / 3 from 600 dp), cards 2 dp apart (item offset 1 each side), 3 dp from the screen edge (rv padding 2 + offset 1). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (gcols in 2..6) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else (if (imgMode) 2 else 5)) else 1
+        val span = if (grid) (if (gcols in 2..8) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else (if (imgMode) 2 else 5)) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
@@ -1130,7 +1130,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val lg = j.optInt("lg") == 1
         val md = if (j.has("md")) j.optInt("md") == 1 else medium   // the page does not always send these two: a missing key keeps the choice made in the native sheet
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; ad.notifyDataSetChanged() }
-        if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..6) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
+        if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..8) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
         val hd = j.optJSONArray("hd")

@@ -173,28 +173,37 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
 
-        fun radioRow(items: List<Triple<String, Boolean, () -> Unit>>, iconOf: (Int) -> View) {
-            val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6f), 0, dp(6f)) }
-            items.forEachIndexed { n, item ->
-                val cell = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), 0, dp(4f), 0); contentDescription = item.first }
-                ripple(cell)
-                cell.addView(NlRadio(act, item.second, p.mut, p.tl, d))
-                cell.addView(iconOf(n), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(14f), 0, 0, 0) })
-                val act1 = item.third
-                cell.setOnClickListener { act1() }
-                row.addView(cell, LinearLayout.LayoutParams(0, dp(56f), 1f))
+        // perRow: more options than fit on one line (the 7 column counts on a narrow phone) wrap onto further lines of equal-width cells
+        fun radioRow(items: List<Triple<String, Boolean, () -> Unit>>, perRow: Int = items.size, iconOf: (Int) -> View) {
+            val per = perRow.coerceAtLeast(1)
+            for (start in items.indices step per) {
+                val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6f), 0, dp(6f)) }
+                for (k in 0 until per) {
+                    val n = start + k
+                    if (n >= items.size) { row.addView(View(act), LinearLayout.LayoutParams(0, dp(56f), 1f)); continue }
+                    val item = items[n]
+                    val cell = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), 0, dp(4f), 0); contentDescription = item.first }
+                    ripple(cell)
+                    cell.addView(NlRadio(act, item.second, p.mut, p.tl, d))
+                    cell.addView(iconOf(n), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(14f), 0, 0, 0) })
+                    val act1 = item.third
+                    cell.setOnClickListener { act1() }
+                    row.addView(cell, LinearLayout.LayoutParams(0, dp(56f), 1f))
+                }
+                col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
-            col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        // 7 column counts need ~400 dp on one line; below that they wrap 4 + 3 + ...
+        val colsPerRow = if (act.resources.displayMetrics.widthPixels / d >= 480f) 7 else 4
 
         fun draw() {
             col.removeAllViews()
             cbRow("Apply to all folders", s.aa) { v -> s.aa = v; onPref(JSONObject().put("aa", if (v) 1 else 0)); draw() }
             if (s.gal) {   // album cards have no list / compact view, thumbnail size, sorting or folders-first: show the one thing that works
                 hr(); head("Albums")
-                val gshown = if (s.cols in 2..6) s.cols else s.autoCols
-                val gcols = listOf(2, 3, 4, 5, 6)
-                radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
+                val gshown = if (s.cols in 2..8) s.cols else s.autoCols
+                val gcols = listOf(2, 3, 4, 5, 6, 7, 8)
+                radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow) { n ->
                     tv("${gcols[n]}", 16f, p.fg)
                 }
                 return
@@ -212,9 +221,9 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
                 }
             }
             if (s.view == "grid") {
-                val shown = if (s.cols in 2..6) s.cols else s.autoCols
-                val cols = listOf(2, 3, 4, 5, 6)
-                radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }) { n ->
+                val shown = if (s.cols in 2..8) s.cols else s.autoCols
+                val cols = listOf(2, 3, 4, 5, 6, 7, 8)
+                radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow) { n ->
                     tv("${cols[n]}", 16f, p.fg)
                 }
             }
