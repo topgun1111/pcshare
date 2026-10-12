@@ -102,6 +102,31 @@ object Smb {
         return c.getString("id")
     }
 
+    /**
+     * Edits a saved share in place (same id, same position, so the Devices list and open tabs keep pointing at it).
+     * An empty [password] keeps the stored one. The new login is tested first; nothing is changed when it fails.
+     */
+    fun update(id: String, host0: String, user: String, password: String, name: String, share: String): String {
+        val host = host0.trim()
+        if (host.isEmpty()) throw BadReq("enter the PC's address")
+        val old = cfg(id) ?: throw BadReq("this PC is no longer in the list")
+        val c = JSONObject().put("id", id).put("host", host)
+            .put("share", share.trim().trim('\\', '/')).put("user", user.trim())
+            .put("password", if (password.isEmpty()) old.optString("password", "") else password)
+            .put("name", name.trim().take(40).ifEmpty { split(host).first })
+        SmbFs.create(c).ls("/")
+        val cur = Cfg.smb()
+        val list = ArrayList<JSONObject>()
+        for (i in 0 until cur.length()) cur.getJSONObject(i).let { list.add(if (it.optString("id") == id) c else it) }
+        state.remove(id)
+        reach.remove(id)
+        SmbFs.forget(id)
+        Cfg.setSmb(JSONArray(list))
+        split(host).first.let { if (viaOf(it) == "Tailscale") Cfg.addPin(it) }
+        Cfg.save()
+        return id
+    }
+
     fun remove(id: String) {
         val cur = Cfg.smb()
         val list = ArrayList<JSONObject>()

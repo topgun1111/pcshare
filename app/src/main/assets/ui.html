@@ -440,6 +440,23 @@ body.dopen{overflow:hidden}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
+/* SMB (PC drives) sheet */
+.smb .smh{display:flex;align-items:center;gap:14px;padding:0 8px 4px}.smb .smh h3{margin:0}.smb .smt{flex:1;min-width:0}.smb .smt small{display:block;color:var(--mut);font-size:13px}
+.smb .smi{flex:none;width:44px;height:44px;border-radius:14px;background:var(--ac);color:var(--onac);display:grid;place-items:center}.smb .smi svg{width:26px;height:26px;fill:currentColor}
+.smb .smn{font-size:13px;line-height:1.45;color:var(--mut);margin:6px 8px 4px}
+.smb .sml{display:flex;flex-direction:column;gap:8px;padding:0 4px}
+.smb .smr{display:flex;align-items:center;gap:12px;padding:12px;border-radius:20px;background:var(--card);border:1px solid var(--bd);cursor:pointer}.smb .smr:active{background:var(--hov)}
+.smb .sma{position:relative;flex:none;width:44px;height:44px;border-radius:50%;background:var(--hov);color:var(--ac);display:grid;place-items:center}.smb .sma svg{width:24px;height:24px;fill:currentColor}
+.smb .smd{position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;background:#2e9e5b;border:2px solid var(--card)}.smb .smd.off{background:var(--err)}
+.smb .smb2{flex:1;min-width:0}.smb .smb2 b{display:block;font-size:16px;font-weight:600;overflow-wrap:anywhere}.smb .smb2 small{display:block;color:var(--mut);font-size:13px;overflow-wrap:anywhere}
+.smb .smpl{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.smb .smp{font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px;background:var(--hov);color:var(--fg)}.smb .smp.g{color:var(--mut)}
+.smb .smx{flex:none;min-width:40px;height:40px;padding:0 6px;border-radius:20px;display:grid;place-items:center;color:var(--mut);font-size:13px;font-weight:700}.smb .smx:active{background:var(--hov)}.smb .smx svg{width:22px;height:22px;fill:currentColor}.smb .smx.dng{color:var(--err)}.smb .smx.arm{background:var(--err);color:#fff;padding:0 12px}
+.smb .smempty{padding:14px 12px;text-align:center;border-radius:16px;border:1px dashed var(--bd)}.smb .smempty b{display:block;font-size:15px}.smb .smempty small{display:block;color:var(--mut);font-size:13px;margin-top:2px}
+.smb .smft{margin:8px 8px 6px;font-size:20px;font-weight:600}
+.smb .smf{display:block;margin:0 4px 12px}.smb .smf>span{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:0 0 4px 12px}.smb .smf .tf{height:52px;margin:0}
+.smb .smpw{display:flex;align-items:center;gap:6px}.smb .smshow{flex:none;height:40px;padding:0 12px;border-radius:20px;color:var(--ac);font-weight:700;font-size:13px}
+.smb .smerr{margin:0 8px 10px;padding:10px 14px;border-radius:12px;background:var(--hov);color:var(--err);font-size:14px;overflow-wrap:anywhere}
+.smb .dact{margin-top:8px}
 .di.mm{min-height:76px;gap:14px}.di.mm .dl{width:44px;height:44px}.di.mm .dl svg{width:44px;height:44px}.di.mm .dt b{font-size:23px;font-weight:600}.di.mm .dt small{font-size:15px}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
@@ -1742,46 +1759,78 @@ function openGallerySettings(){
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','SMB (PC drives)'));
-  const info=E('p','','Add a PC or NAS: enter its IP address (e.g. 192.168.1.20) and a Windows account on it. All its drives (C$, D$ \u2026) and shared folders are listed; the PC appears next to your devices at the top. Drives like C$ need an administrator account.');
-  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
-  const list=E('div');card.append(list);
-  const found=E('div');card.append(found);let cur=[],lastFound=null;
+  const card=E('div','card smb');
+  const head=E('div','smh'),hi=E('span','smi'),ht=E('div','smt');hi.append(ic('pc'));
+  ht.append(E('h3','','SMB (PC drives)'),E('small','','Windows PCs and NAS boxes on your network'));head.append(hi,ht);
+  card.append(E('div','handle'),head);
+  const main=E('div'),pane=E('div');pane.style.display='none';card.append(main,pane);
+  let cur=[],lastFound=null;
   const refresh=()=>{S.sig='';pollPeers()};
+  const info=E('p','smn','Tap a PC to edit its address or login. Its drives (C$, D$ …) and shared folders appear next to your devices; drives like C$ need an administrator account.');
+  const lh=E('div','dsec','Saved PCs'),list=E('div','sml'),found=E('div','sml'),act=E('div','dact');
+  const fh=E('div','dsec'),rs=E('button','','Rescan');fh.append(E('span','','Found on the network'),rs);rs.onclick=()=>scan();
+  main.append(info,lh,list,fh,found,act);
+  const pill=(t,cls)=>E('span','smp'+(cls?' '+cls:''),t);
   const draw=l=>{cur=l;list.textContent='';showFound();
-    if(!l.length){const e=E('div','set');e.append(E('div','t',''));e.firstChild.append(E('small','','No PCs yet'));list.append(e)}
-    l.forEach(x=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
-      t.append(E('b','',x.name),E('small','','\\\\'+x.host+(x.share?'\\'+x.share:'')+(x.user?' \u00b7 '+x.user:' \u00b7 guest')));
-      rm.onclick=async()=>{try{draw((await api('POST','/api/smb',{remove:x.id})).list);if(S.dev===x.id)openDev('local');refresh()}catch(e){toast('\u26a0 '+e.message,4000)}};
-      r.append(t,rm);list.append(r)})};
+    lh.textContent='Saved PCs'+(l.length?' ('+l.length+')':'');
+    if(!l.length){const e=E('div','smempty');e.append(E('b','','No PCs yet'),E('small','','Add one below, or pick one found on the network.'));list.append(e)}
+    l.forEach(x=>{const r=E('div','smr'),av=E('div','sma'),dot=E('i','smd'+(x.ok?'':' off')),t=E('div','smb2'),
+        ed=E('button','smx'),rm=E('button','smx dng');
+      av.append(ic('pc'),dot);
+      const sub=E('small','','\\\\'+x.host+(x.share?'\\'+x.share:''));
+      const pl=E('div','smpl');pl.append(pill(x.user||'guest',x.user?'':'g'));if(x.share)pl.append(pill(x.share));
+      t.append(E('b','',x.name),sub,pl);
+      ed.append(ic('edit'));ed.title='Edit';rm.append(ic('del'));rm.title='Remove';
+      let armed=0,tm=0;
+      rm.onclick=async e=>{e.stopPropagation();
+        if(!armed){armed=1;rm.classList.add('arm');rm.textContent='Remove?';tm=setTimeout(()=>{armed=0;rm.classList.remove('arm');rm.textContent='';rm.append(ic('del'))},3000);return}
+        clearTimeout(tm);
+        try{draw((await api('POST','/api/smb',{remove:x.id})).list);if(S.dev===x.id)openDev('local');refresh()}catch(er){toast('⚠ '+er.message,4000)}};
+      ed.onclick=e=>{e.stopPropagation();form(x)};r.onclick=()=>form(x);
+      r.append(av,t,ed,rm);list.append(r)})};
   try{draw(await api('GET','/api/smb'))}catch(e){draw([])}
-  const form=E('div');form.style.cssText='display:none;flex-direction:column;gap:8px;margin:8px';card.append(form);
-  const F={};[['host','Server address (e.g. 192.168.1.20)','text'],['user','Username (empty = guest)','text'],['password','Password','password'],['name','Display name (optional)','text']].forEach(([k,ph,ty])=>{
-    const i=E('input','tf');i.placeholder=ph;i.type=ty;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;form.append(i)});
   /* PCs / NAS / routers answering on the SMB port: found automatically when this dialog opens; Add asks for the account */
-  function showFound(){found.textContent='';
-    const hd=E('div','set'),ht=E('div','t'),rs=E('button','tbtn','Rescan');ht.append(E('b','','Found on the network'));
-    if(lastFound===null)ht.append(E('small','','Scanning for PCs\u2026 (up to 20 s)'));rs.disabled=lastFound===null;rs.onclick=()=>scan();hd.append(ht,rs);found.append(hd);
-    if(lastFound===null)return;
+  function showFound(){found.textContent='';rs.disabled=lastFound===null;rs.textContent=lastFound===null?'Scanning…':'Rescan';
+    if(lastFound===null){const e=E('div','smempty');e.append(E('small','','Scanning for PCs (up to 20 s)…'));found.append(e);return}
     const fl=lastFound.filter(f=>!cur.some(x=>x.host.split(':')[0]===f.ip));
-    if(!fl.length){const e=E('div','set'),t=E('div','t');t.append(E('small','',lastFound.length?'All PCs found are already added':'No PC with file sharing found. Use Add PC to type an address.'));e.append(t);found.append(e)}
-    fl.forEach(f=>{const r=E('div','set'),t=E('div','t'),ab=E('button','tbtn fill','Add');
-      t.append(E('b','',f.name||f.ip),E('small','','\\\\'+f.ip));
-      ab.onclick=()=>{F.host.value=f.ip;F.name.value=f.name||'';F.user.value='';F.password.value='';form.style.display='flex';add.style.display='none';save.style.display='';F.user.focus();toast('Enter the PC\u2019s Windows username and password',4000)};
-      r.append(t,ab);found.append(r)})}
+    if(!fl.length){const e=E('div','smempty');e.append(E('small','',lastFound.length?'All PCs found are already added':'No PC with file sharing found. Use Add PC to type an address.'));found.append(e)}
+    fl.forEach(f=>{const r=E('div','smr'),av=E('div','sma'),t=E('div','smb2'),ab=E('button','tbtn fill','Add');
+      av.append(ic('wifi'));t.append(E('b','',f.name||f.ip),E('small','','\\\\'+f.ip));
+      ab.onclick=()=>form(null,{host:f.ip,name:f.name||''});r.onclick=ab.onclick;
+      r.append(av,t,ab);found.append(r)})}
   async function scan(){lastFound=null;showFound();try{lastFound=await api('GET','/api/smbscan',null,40000)}catch(e){lastFound=[]}showFound()}
+  /* one form for both adding and editing; x = saved entry to edit, pre = values to start an add with */
+  function form(x,pre){
+    const edit=!!x,v=x||pre||{};main.style.display='none';pane.style.display='';pane.textContent='';
+    pane.append(E('h4','smft',edit?'Edit PC':'Add PC'));
+    if(edit)pane.append(E('p','smn','Changes are tested before they are saved. Leave the password empty to keep the current one.'));
+    const F={},defs=[['host','Server address','192.168.1.20 or 192.168.1.20:445','text',v.host||''],
+      ['user','Username','Empty = guest','text',v.user||''],
+      ['password','Password',edit?'•••••• (unchanged)':'','password',''],
+      ['name','Display name','Optional','text',v.name||''],
+      ['share','Share','Optional: only this share (empty = all drives and shares)','text',v.share||'']];
+    defs.forEach(([k,lb,ph,ty,val])=>{const w=E('label','smf'),i=E('input','tf');w.append(E('span','',lb));
+      i.placeholder=ph;i.type=ty;i.value=val;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;
+      if(k==='password'){const row=E('div','smpw'),sh=E('button','smshow','Show');sh.type='button';
+        sh.onclick=()=>{const p=i.type==='password';i.type=p?'text':'password';sh.textContent=p?'Hide':'Show'};row.append(i,sh);w.append(row)}
+      else w.append(i);
+      pane.append(w)});
+    const err=E('div','smerr');err.style.display='none';pane.append(err);
+    const bar=E('div','dact'),cn=E('button','tbtn','Cancel'),sv=E('button','tbtn fill',edit?'Save':'Connect');
+    const back=()=>{pane.style.display='none';pane.textContent='';main.style.display=''};
+    cn.onclick=back;
+    sv.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;
+      if(!b.host.trim()){err.textContent='Enter the PC’s IP address';err.style.display='';F.host.focus();return}
+      if(edit)b.edit=x.id;
+      err.style.display='none';sv.disabled=cn.disabled=true;sv.textContent=edit?'Saving…':'Connecting…';
+      try{const r=await api('POST','/api/smb',b,30000);draw(r.list);back();toast(edit?'Saved':'Connected!',2500);refresh();
+        if(edit&&S.dev===x.id){S.path='/';S.sig='';load()}}
+      catch(e){err.textContent='⚠ '+e.message;err.style.display='';sv.disabled=cn.disabled=false;sv.textContent=edit?'Save':'Connect'}};
+    bar.append(cn,sv);pane.append(bar);
+    (edit||v.host?F.user:F.host).focus()}
   const d=E('button','tbtn','Done');d.onclick=()=>{close();openSettings()};
-  const save=E('button','tbtn fill','Connect');
-  const add=E('button','tbtn fill','Add PC');
-  add.onclick=()=>{form.style.display='flex';add.style.display='none';save.style.display='';F.host.focus()};
-  save.style.display='none';
-  save.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;
-    if(!b.host.trim()){toast('Enter the PC\u2019s IP address',3000);return}
-    save.disabled=true;save.textContent='Connecting\u2026';
-    try{const r=await api('POST','/api/smb',b,30000);draw(r.list);for(const k in F)F[k].value='';form.style.display='none';save.style.display='none';add.style.display='';toast('Connected!',2500);refresh()}
-    catch(e){toast('\u26a0 '+e.message,5000)}
-    save.disabled=false;save.textContent='Connect'};
-  const act=E('div','dact');act.append(d,add,save);card.append(act);o.append(card);scan()}
+  const add=E('button','tbtn fill','Add PC');add.onclick=()=>form(null);
+  act.append(d,add);o.append(card);scan()}
 function holdMenu(r,i,cb){  // press and hold (or right-click) selects the item; actions appear in the bottom bar
   let t=0,x0=0,y0=0;const stop=()=>{clearTimeout(t);t=0};
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
