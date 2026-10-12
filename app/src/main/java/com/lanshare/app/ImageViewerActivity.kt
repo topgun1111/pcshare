@@ -93,7 +93,7 @@ class ImageViewerActivity : Activity() {
     private var gen = 0
 
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
-    private val ocr by lazy { MlKitOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
+    private val ocr by lazy { AutoOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
@@ -723,6 +723,8 @@ class ImageViewerActivity : Activity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && !uiOn) WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
     }
+
+    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this) }
 
     override fun onDestroy() {
         gen++

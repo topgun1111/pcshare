@@ -132,7 +132,7 @@ class PdfViewerActivity : Activity() {
     private lateinit var subTv: TextView
     private lateinit var nightBtn: TextView
     private lateinit var sb: PdfScrollBar
-    private var ocrEng: MlKitOcr? = null
+    private var ocrEng: AutoOcr? = null
     private var ocrBusy = false
     private var thumbDlg: Dialog? = null
     private val thumbCache = object : LruCache<Int, Bitmap>(12 * 1024 * 1024) { override fun sizeOf(key: Int, value: Bitmap) = value.byteCount }
@@ -916,7 +916,7 @@ class PdfViewerActivity : Activity() {
                 ui.post {
                     if (isDestroyed) return@post
                     if (bm == null) { ocrBusy = false; Toast.makeText(this, "Could not read this page", Toast.LENGTH_LONG).show(); return@post }
-                    val eng = ocrEng ?: MlKitOcr(applicationContext).also { e -> e.onStatus = { m -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show() }; ocrEng = e }
+                    val eng = ocrEng ?: AutoOcr(applicationContext).also { e -> e.onStatus = { m -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show() }; ocrEng = e }
                     try {
                         eng.recognize(bm) { r ->
                             ocrBusy = false
@@ -1016,6 +1016,8 @@ class PdfViewerActivity : Activity() {
         savePos()
         super.onPause()
     }
+
+    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this) }
 
     override fun onDestroy() {
         gen++; rgen++

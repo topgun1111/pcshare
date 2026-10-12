@@ -294,6 +294,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
         if (::web.isInitialized && TextEditorActivity.consumeChanged()) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file: refresh the list
     }

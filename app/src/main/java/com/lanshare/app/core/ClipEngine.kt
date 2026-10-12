@@ -16,6 +16,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.lanshare.app.AutoOcr
 import com.lanshare.app.MlKitOcr
 import com.lanshare.app.OcrLine
 import com.lanshare.app.TiledOcr
@@ -53,6 +54,9 @@ object ClipEngine {
     private const val OCR_MAX = 1800                       // fallback reader only (plain ML Kit call)
     private const val OCR_HI = 3072                        // viewer-style reader: whole-picture pass at <= 3072 px, then tiles from the original file
 
+    /** (label, url) of every file, for the daily link check in [com.lanshare.app.ModelLinks]. */
+    fun links(): List<Pair<String, String>> = FILES.map { (n, r) -> "CLIP image-search model $n" to BASE + r }
+
     @Volatile private var installing = false
     @Volatile private var msg = ""
     @Volatile private var err: String? = null
@@ -83,18 +87,22 @@ object ClipEngine {
         if (installed(ctx)) { tryLoad(ctx); return }
         installing = true; err = null; bytesDone = 0; bytesTotal = 0; msg = "Connecting…"
         Thread({
+            var curUrl = ""
             try {
                 val d = dir(ctx); d.mkdirs()
                 var n = 0
                 for ((local, remote) in FILES) {
                     n++
+                    curUrl = BASE + remote
                     val dst = File(d, local)
                     if (dst.length() > 0) { bytesDone += dst.length(); bytesTotal += dst.length(); continue }   // finished in an earlier run
                     download(BASE + remote, dst, "Downloading model $n/${FILES.size}")
                 }
                 tryLoad(ctx)
                 msg = "Model ready"
-            } catch (t: Throwable) { err = "Download interrupted: " + errText(t) + ". What was already downloaded is kept - press Download again to continue where it stopped."; msg = "" }
+            } catch (t: Throwable) {
+                if (t is HttpErr && com.lanshare.app.ModelLinks.isDead(t.code)) com.lanshare.app.ModelLinks.report(ctx, "CLIP image-search model", curUrl, t.code)   // warning screen
+                err = "Download interrupted: " + errText(t) + ". What was already downloaded is kept - press Download again to continue where it stopped."; msg = "" }
             finally { installing = false }
         }, "clip-download").also { it.isDaemon = true; it.start() }
     }
@@ -348,7 +356,7 @@ object ClipEngine {
         // ---- OCR (ML Kit via Google Play Services, Latin model downloaded on first use; Turkish letters c g i o s u still to be verified on a device) ----
         @Synchronized private fun recogniser() = ocrRec ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also { ocrRec = it }
 
-        @Synchronized private fun tiledOcr(): TiledOcr? = tiled ?: (Core.appCtx?.let { c -> TiledOcr(MlKitOcr(c)).also { it.skipTilesIfEmpty = true; tiled = it } })
+        @Synchronized private fun tiledOcr(): TiledOcr? = tiled ?: (Core.appCtx?.let { c -> TiledOcr(AutoOcr(c)).also { it.skipTilesIfEmpty = true; tiled = it } })
 
         @Synchronized private fun dropTiled() { try { tiled?.close() } catch (_: Exception) {}; tiled = null }
 
