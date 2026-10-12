@@ -449,6 +449,11 @@ body.dopen{overflow:hidden}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
+/* folder colour / icon picker */
+.fspv{display:flex;justify-content:center;padding:4px 0 8px}.fspv .pf{position:relative;width:88px;height:77px}.fspv .pf .fold,.fspv .pf .fold svg{display:block;width:100%;height:100%}
+.fspv .pb{position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:34px;height:34px;border-radius:9px;background:#fff;box-shadow:0 1px 3px #0004;display:none;align-items:center;justify-content:center}.fspv .pb svg{width:22px;height:22px}
+.fsg{display:flex;flex-wrap:wrap;gap:10px;padding:4px 8px 6px}.fsc{width:38px;height:38px;border-radius:50%;border:0;box-sizing:border-box;padding:0}.fsc.on{box-shadow:0 0 0 2px var(--cont),0 0 0 4px var(--ac)}
+.fsi{width:46px;height:46px;border-radius:13px;border:0;display:flex;align-items:center;justify-content:center;background:var(--hov);color:var(--fg);font-size:18px}.fsi svg{width:24px;height:24px;fill:currentColor}.fsi.on{background:var(--ac);color:var(--onac)}
 /* print queue screen (own overlay, so it can open on top of the print dialog) */
 #pq{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
 #pq .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
@@ -594,6 +599,7 @@ const FOLD='<svg viewBox="0 0 100 88"><rect x="8" y="0" width="84" height="32" r
 const HOME='<svg viewBox="0 0 32 32" class="cico"><path d="M6 17l10-8.5L26 17v11H6z" fill="#f5f5f5" stroke="#b5b5b5"/><path d="M2 16L16 4l14 12-2 2.2L16 8 4 18.2z" fill="#e53935"/><path d="M13 20h6v8h-6z" fill="#fb8c00"/></svg>';
 const DRIVE='<svg viewBox="0 0 32 32" class="cico"><path d="M9 4h14l4 15v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7z" fill="#c9c9c9"/><path d="M5 19h22v7a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="#b2b2b2"/><circle cx="9.5" cy="24" r="1.4" fill="#4caf50"/></svg>';
 const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.innerHTML=h;return e.firstChild.nodeType===1&&!c?e.firstChild:e};
+Object.assign(IC,{star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',heart:'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',home:'M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',work:'M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z',school:'M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z',games:'M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z',lock:'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',cloud:'M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z',build:'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z',code:'M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',bookmark:'M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z',place:'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',flight:'M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z',palette:'M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z'});   /* folder icons (Style picker) + the Style button */
 const BADGE={dcim:['camera','#333'],download:['download','#e65100'],downloads:['download','#e65100'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#8d4b00']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   s.setAttribute('viewBox','0 0 24 24');if(cls)s.setAttribute('class',cls);p.setAttribute('d',IC[k]);s.append(p);return s};
@@ -918,7 +924,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
     if(x>=GN)o.v=1;
     if(isNew(i))o.w=1;
     if(isHid(i))o.x=1;
-    if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}}
+    if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}const fs=FSTY[S.dev+'|'+jn(P0,i.name)];if(fs){if(fs.c)o.fc=nlCol(fs.c);if(fs.i){o.g=fs.i;o.gc=nlCol(fsIc(fs))}}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
       if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
@@ -1146,6 +1152,33 @@ const galHidden=p=>HGAL.indexOf(p)>=0;hgSave();
 function galHideSet(p,on){galHideMany([p],on)}
 function hgSave(){try{localStorage.setItem('ls_galhid',JSON.stringify(HGAL))}catch(e){}try{if(NL&&NL.nlHidden)NL.nlHidden(JSON.stringify(HGAL))}catch(e){}}   // the native list filters the same paths when it builds a folder itself
 function galHideMany(ps,on){HGAL=HGAL.filter(x=>ps.indexOf(x)<0);if(on)HGAL.push(...ps);hgSave();render()}
+/* custom folder colour + icon (Style button). FSTY: 'dev|path' -> {c:'#rrggbb' or '', i:icon key or ''}. The native list gets this phone's entries (nlFStyle). */
+let FSTY={};try{FSTY=JSON.parse(localStorage.getItem('ls_fsty')||'{}')}catch(e){}if(!FSTY||typeof FSTY!=='object'||Array.isArray(FSTY))FSTY={};
+const FS_COLS=['#EF5350','#FB8C00','#FDD835','#66BB6A','#26A69A','#42A5F5','#5C6BC0','#AB47BC','#EC407A','#8D6E63','#90A4AE'];
+const FS_ICONS=['star','heart','home','work','school','games','lock','cloud','build','code','bookmark','place','flight','camera','aud','vid','img','doc','download','zip'];
+const shade=(h,f)=>{const n=parseInt(h.slice(1),16),r=Math.round((n>>16&255)*f),g=Math.round((n>>8&255)*f),b=Math.round((n&255)*f);return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)};
+const foldSvg=c=>c?FOLD.replace('#d49a50',shade(c,.88)).replace('#e2ac62',c).replace('#d08a3e',shade(c,.78)):FOLD;
+const fsIc=f=>f&&f.c?shade(f.c,.62):'#555';
+const fsGet=p=>FSTY[S.dev+'|'+p]||null;
+function fsPush(){try{if(NL&&NL.nlFStyle){const o={};for(const k in FSTY){if(k.indexOf('local|')!==0)continue;const f=FSTY[k];o[k.slice(6)]=[f.c?nlCol(f.c):0,f.i||'',f.i?nlCol(fsIc(f)):0]}NL.nlFStyle(JSON.stringify(o))}}catch(e){}}
+function fsSave(){try{localStorage.setItem('ls_fsty',JSON.stringify(FSTY))}catch(e){}fsPush()}
+fsPush();
+function openFolderStyle(ps){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const cur=Object.assign({c:'',i:''},FSTY[S.dev+'|'+ps[0]]||{});   /* starts from the first folder's look */
+  const close=()=>{o.style.display='none';o.onclick=null;S.sel.clear();render()};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','',ps.length>1?ps.length+' folders':'Folder style'));
+  const pv=E('div','fspv'),pf=E('div','pf'),pb=E('div','pb');pv.append(pf);card.append(pv);
+  const colB=[],icB=[];
+  const draw=()=>{pf.textContent='';pf.append(raw(foldSvg(cur.c),'fold'),pb);pb.style.display=cur.i?'flex':'none';pb.textContent='';if(cur.i){pb.style.color=fsIc(cur);pb.append(ic(cur.i))}
+    colB.forEach(([v,b])=>b.classList.toggle('on',v===cur.c));icB.forEach(([v,b])=>b.classList.toggle('on',v===cur.i))};
+  const save=()=>{ps.forEach(p=>{const k=S.dev+'|'+p;if(cur.c||cur.i)FSTY[k]={c:cur.c,i:cur.i};else delete FSTY[k]});fsSave();draw()};
+  card.append(E('div','dsec','Colour'));const cg=E('div','fsg');
+  ['',...FS_COLS].forEach(v=>{const b=E('button','fsc');b.style.background=v||'#E2AC62';b.setAttribute('aria-label',v?'Colour '+v:'Default colour');b.onclick=()=>{cur.c=v;save()};colB.push([v,b]);cg.append(b)});card.append(cg);
+  card.append(E('div','dsec','Icon'));const ig=E('div','fsg');
+  ['',...FS_ICONS].forEach(v=>{const b=E('button','fsi');if(v)b.append(ic(v));else b.textContent='\u2014';b.setAttribute('aria-label',v||'No icon');b.onclick=()=>{cur.i=v;save()};icB.push([v,b]);ig.append(b)});card.append(ig);
+  const row=E('div','dact'),rs=E('button','tbtn','Reset'),dn=E('button','tbtn fill','Done');row.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:8px';
+  rs.onclick=()=>{cur.c='';cur.i='';save()};dn.onclick=close;row.append(rs,dn);card.append(row);o.append(card);draw()}
 /* the gallery's own press-and-hold menu (separate from the file browser's selection bar); the file actions that duplicate it are left out for now */
 function albHold(c,path,name){holdMenu(c,{name:name})}   // standard file-manager behaviour: press and hold selects the album, actions appear in the bottom bar
 function mkAlbum(i,P0){
@@ -1433,7 +1466,7 @@ function render(){
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(k==='img'&&!i.dir?' im':'')+(S.sel.has(i.name)?' sel':'')+(isHid(i)?' hdn':''));
     const lead=E('div','lead k-'+k);
-    if(i.dir){lead.append(raw(FOLD,'fold'));const bd=BADGE[i.name.toLowerCase()];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
+    if(i.dir){const fs=fsGet(jn(S.path,i.name));lead.append(raw(fs&&fs.c?foldSvg(fs.c):FOLD,'fold'));let bd=BADGE[i.name.toLowerCase()];if(fs&&fs.i)bd=[fs.i,fsIc(fs)];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
       if(!AR&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
         const key=thKey(i),pth0=jn(S.path,i.name);
@@ -1982,6 +2015,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
+    if(!A&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
       btn('hide','Hide',()=>{const ps=it.map(i=>jn(S.path,i.name));S.sel.clear();galHideMany(ps,true)})}

@@ -19,6 +19,10 @@ import java.util.Objects
 object NlModel {
     /** Paths the user hid with the Hide button (ui.html HGAL, pushed by nlHidden); shown again by "Show hidden files". */
     @Volatile var hidden: Set<String> = emptySet()
+
+    /** Custom folder look of this phone's folders (ui.html FSTY, pushed by nlFStyle): colour (ARGB, 0 = default), icon key (null = category badge / none), icon colour. */
+    data class FS(val col: Int, val icon: String?, val icCol: Int)
+    @Volatile var fstyle: Map<String, FS> = emptyMap()
     private fun fullPath(dir: String, name: String) = (if (dir == "/" || dir.isEmpty()) "" else dir.trimEnd('/')) + "/" + name
 
     class Cfg(val sort: String, val asc: Boolean, val hid: Boolean, val gal: Boolean, val view: String, val thumb: String, val ff: Boolean = true)
@@ -153,8 +157,10 @@ object NlModel {
             val b = if (cp || i.mtime == 0L) "" else df.format(Date(i.mtime * 1000)) + ", " + tf.format(Date(i.mtime * 1000))
             var badge: String? = null; var badgeCol = 0; var dup = false
             var path: String? = null; var size = 0L; var mt = 0L
+            var fcol = 0
             if (i.dir) {
                 BADGE[i.name.lowercase()]?.let { badge = it.icon; badgeCol = it.color }
+                if (fstyle.isNotEmpty()) fstyle[fullPath(p0, i.name)]?.let { f -> fcol = f.col; if (f.icon != null) { badge = f.icon; badgeCol = f.icCol } }
             } else {
                 if (i.name in dups) dup = true
                 size = i.size                                   // every file row carries its size (viewers need it); ui.html nlBuild sends `s` for all files too
@@ -162,7 +168,7 @@ object NlModel {
                     path = (if (p0 == "/") "" else p0) + "/" + i.name; size = i.size; mt = i.mtime
                 }
             }
-            out.add(NlRow(i.name, i.dir, k, a, b, badge, badgeCol, dup, path, size, mt, isGal, "local", false, nlIsNew(i.mtime), i.hid || (i.name.isNotEmpty() && i.name[0] == '.') || (hidden.isNotEmpty() && hidden.contains(fullPath(p0, i.name)))))
+            out.add(NlRow(i.name, i.dir, k, a, b, badge, badgeCol, dup, path, size, mt, isGal, "local", false, nlIsNew(i.mtime), i.hid || (i.name.isNotEmpty() && i.name[0] == '.') || (hidden.isNotEmpty() && hidden.contains(fullPath(p0, i.name))), fcol))
         }
         for (i in list) add(i, false)
         for (i in gv) add(i, true)
@@ -172,7 +178,7 @@ object NlModel {
     /** Content signature of a row list: equal rows = equal signature, whoever built them (page JSON or this object). */
     fun sig(rows: List<NlRow>): Int {
         var h = 1
-        for (r in rows) h = 31 * h + Objects.hash(r.nm, r.dir, r.k, r.a, r.b, r.badge, r.badgeCol, r.dup, r.path, r.size, r.mtime, r.gal, r.dev, r.hit, r.fresh, r.hid)
+        for (r in rows) h = 31 * h + Objects.hash(r.nm, r.dir, r.k, r.a, r.b, r.badge, r.badgeCol, r.dup, r.path, r.size, r.mtime, r.gal, r.dev, r.hit, r.fresh, r.hid, r.fcol)
         return h
     }
 }

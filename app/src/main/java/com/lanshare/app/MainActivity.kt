@@ -116,6 +116,13 @@ class MainActivity : Activity() {
         /** JSON array of the paths hidden with the Hide button (ui.html HGAL). */
         @JavascriptInterface fun nlHidden(json: String) {
             try { val a = org.json.JSONArray(json); val set = HashSet<String>(); for (k in 0 until a.length()) set.add(a.getString(k)); runOnUiThread { nl.setHidden(set) } } catch (_: Throwable) { } }
+        /** JSON {"/path": [colour ARGB or 0, icon key or "", icon colour]} of this phone's folders with a custom colour / icon (ui.html FSTY). */
+        @JavascriptInterface fun nlFStyle(json: String) {
+            try {
+                val o = org.json.JSONObject(json); val m = HashMap<String, NlModel.FS>()
+                for (k in o.keys()) { val a = o.getJSONArray(k); m[k] = NlModel.FS(a.getLong(0).toInt(), a.getString(1).ifEmpty { null }, a.getLong(2).toInt()) }
+                runOnUiThread { nl.setFStyle(m) }
+            } catch (_: Throwable) { } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
         @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }

@@ -40,6 +40,19 @@ import java.util.concurrent.Future
 object NlIcons {
     private val raw = mapOf(
         "folder" to "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z",
+        "star" to "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z",
+        "heart" to "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z",
+        "home" to "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+        "work" to "M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z",
+        "school" to "M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z",
+        "games" to "M15 7.5V2H9v5.5l3 3 3-3zM7.5 9H2v6h5.5l3-3-3-3zM9 16.5V22h6v-5.5l-3-3-3 3zM16.5 9l-3 3 3 3H22V9h-5.5z",
+        "lock" to "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z",
+        "cloud" to "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z",
+        "build" to "M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z",
+        "code" to "M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z",
+        "bookmark" to "M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z",
+        "place" to "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+        "flight" to "M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z",
         "file" to "M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z",
         "doc" to "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z",
         "img" to "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
@@ -82,7 +95,8 @@ class NlRow(
     val dev: String = "local",          // endpoint the row belongs to ("local", a peer id, "smb:...")
     val hit: Boolean = false,           // subfolder-search hit (tap = go to that path, not "enter the folder shown here")
     val fresh: Boolean = false,         // modified within the last 60 s: red dot on the lead (ui.html isNew / `w`)
-    val hid: Boolean = false            // hidden item shown because "Show hidden files" is on: drawn faded (ui.html `x`)
+    val hid: Boolean = false,           // hidden item shown because "Show hidden files" is on: drawn faded (ui.html `x`)
+    val fcol: Int = 0                   // custom folder colour (ARGB, ui.html `fc`; 0 = the classic tan folder)
 ) {
     val thumbKey: String? = if (path == null) null else "$dev|$path|$size|$mtime"
 }
@@ -138,16 +152,22 @@ object NlClassicFolder {
     const val H = 87.7f
 
     /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. */
-    fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float) {
+    /** `tint` = custom folder colour (ARGB, 0 = classic tan): front panel = tint, back tab / outline = darker shades of it (same factors as ui.html foldSvg). */
+    private fun shade(c: Int, f: Float): Int = Color.argb(255, (Color.red(c) * f).toInt().coerceIn(0, 255), (Color.green(c) * f).toInt().coerceIn(0, 255), (Color.blue(c) * f).toInt().coerceIn(0, 255))
+
+    fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float, tint: Int = 0) {
+        val back = if (tint != 0) shade(tint, .88f) else 0xFFD49A50.toInt()
+        val front = if (tint != 0) tint or (0xFF shl 24) else 0xFFE2AC62.toInt()
+        val edge = if (tint != 0) shade(tint, .78f) else 0xFFD08A3E.toInt()
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
-        p.style = Paint.Style.FILL; p.color = 0xFFD49A50.toInt(); rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
+        p.style = Paint.Style.FILL; p.color = back; rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
         for (t in SHEETS) {
             rf.set(2.8f, t, 87.2f, 40f)
             p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 3f, 3f, p)
             p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFB9B9B9.toInt(); cv.drawRoundRect(rf, 3f, 3f, p)
         }
-        p.style = Paint.Style.FILL; p.color = 0xFFE2AC62.toInt(); cv.drawPath(FRONT, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFD08A3E.toInt(); cv.drawPath(FRONT, p)
+        p.style = Paint.Style.FILL; p.color = front; cv.drawPath(FRONT, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = edge; cv.drawPath(FRONT, p)
         p.style = Paint.Style.FILL
         cv.restore()
     }
@@ -230,7 +250,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         } else if (r.dir) {
             val fw = (if (c) 34f else if (lg) 68f else if (md) 54f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else if (md) 46f else 34f) * d
             val fk = Math.min(fw / NlClassicFolder.W, fh / NlClassicFolder.H)       // classic folder, centred in the old folder box
-            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk)
+            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk, r.fcol)
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
                 val bottom = cy + leadB + (if (c) 2f else 1f) * d; val top = bottom - bs
@@ -404,8 +424,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     }
 
     /** Folder with paper sheets behind a tan front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
-    private fun folder(cv: Canvas, ox: Float, oy: Float, k: Float, badge: String?, badgeCol: Int) {
-        NlClassicFolder.draw(cv, p, rf, ox, oy, k)
+    private fun folder(cv: Canvas, ox: Float, oy: Float, k: Float, badge: String?, badgeCol: Int, tint: Int = 0) {
+        NlClassicFolder.draw(cv, p, rf, ox, oy, k, tint)
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
         if (badge != null) {
             rf.set(23f, 43f, 73.7f, 93.7f)
@@ -446,7 +466,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         // ---- lead ----
         if (r.dir) {
             val k = s / 100f
-            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol)
+            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, r.fcol)
         } else {
             val bm = thumb
             if (bm != null) {
@@ -666,7 +686,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 val o = a.getJSONObject(i)
                 out.add(NlRow(o.getString("n"), o.optInt("d") == 1, o.optString("k", "file"), o.optString("a"), o.optString("b"),
                     if (o.has("g")) o.getString("g") else null, o.optLong("gc").toInt(), o.optInt("u") == 1,
-                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1, o.optInt("w") == 1, o.optInt("x") == 1))
+                    if (o.has("p")) o.getString("p") else null, o.optLong("s"), o.optLong("t"), o.optInt("v") == 1, dev, o.optInt("h") == 1, o.optInt("w") == 1, o.optInt("x") == 1, o.optLong("fc").toInt()))
             }
             return out
         }
@@ -849,6 +869,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setCfg(c: String) { if (c != curCfg) { built.clear(); baseRows = null }; curCfg = c }
     /** The user's hidden items changed (Hide / Unhide): rows built before are stale. */
     fun setHidden(s: Set<String>) { if (s != NlModel.hidden) { NlModel.hidden = s; built.clear(); baseRows = null } }
+    /** The user's folder colours / icons changed (ui.html FSTY): rows built before are stale. */
+    fun setFStyle(m: Map<String, NlModel.FS>) { if (m != NlModel.fstyle) { NlModel.fstyle = m; built.clear(); baseRows = null } }
     /** ui.html nlQ(): the query the rows of the next nlItems were filtered by. */
     fun noteQ(q: String) { pageQ = q }
 
