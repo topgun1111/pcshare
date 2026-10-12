@@ -33,7 +33,7 @@ object Thumbs {
         val cp = File(File(cacheRoot(), key.substring(0, 2)), "$key.jpg")
         try { if (cp.isFile) return cp.readBytes() } catch (_: IOException) {}
 
-        val data = render(f)
+        val data = if (f.name.endsWith(".pdf", true)) renderPdf(f) else render(f)
         try {
             cp.parentFile?.mkdirs()
             val tmp = File(cp.path + ".tmp" + Thread.currentThread().id)
@@ -49,6 +49,33 @@ object Thumbs {
 
     /** Thumbnail of a temporary file (no disk cache of its own: the caller caches under its own key). */
     fun makeUncached(f: File): ByteArray = render(f)
+
+    private const val PDF_W = 480
+    private val pdfLock = Any()   // PdfRenderer is not meant for parallel use: one PDF at a time
+
+    /** First page of a PDF as a JPEG: rendered 480 px wide on white; a tall page is cut to its top square (the heading and first lines read best in the small tile). Password-protected / broken PDFs throw (the list keeps the type icon). */
+    private fun renderPdf(f: File): ByteArray = synchronized(pdfLock) {
+        val pfd = android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+        try {
+            val r = try { android.graphics.pdf.PdfRenderer(pfd) } catch (e: SecurityException) { throw IOException("password protected PDF") }
+            try {
+                if (r.pageCount < 1) throw IOException("empty PDF")
+                val pg = r.openPage(0)
+                try {
+                    val w = PDF_W; val h = (w.toLong() * pg.height.coerceAtLeast(1) / pg.width.coerceAtLeast(1)).toInt().coerceIn(1, 2000)
+                    val full = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    full.eraseColor(Color.WHITE)
+                    pg.render(full, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    val bmp = if (h > w) Bitmap.createBitmap(full, 0, 0, w, w).also { full.recycle() } else full
+                    val out = ByteArrayOutputStream()
+                    val ok = bmp.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                    bmp.recycle()
+                    if (!ok) throw IOException("could not encode the thumbnail")
+                    out.toByteArray()
+                } finally { pg.close() }
+            } finally { r.close() }
+        } finally { try { pfd.close() } catch (_: IOException) {} }
+    }
 
     private fun render(f: File, max: Int = MAX, draft: Int = DRAFT, quality: Int = 70): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

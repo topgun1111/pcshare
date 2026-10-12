@@ -164,7 +164,7 @@ object NlModel {
             } else {
                 if (i.name in dups) dup = true
                 size = i.size                                   // every file row carries its size (viewers need it); ui.html nlBuild sends `s` for all files too
-                if ((k == "img" || k == "vid") && !NOTHUMB.containsMatchIn(i.name) && (k == "vid" || i.size < 30_000_000L)) {
+                if (((k == "img" || k == "vid") && !NOTHUMB.containsMatchIn(i.name) && (k == "vid" || i.size < 30_000_000L)) || (k == "pdf" && i.size in 1L..60_000_000L)) {   // PDFs: first page (this phone only)
                     path = (if (p0 == "/") "" else p0) + "/" + i.name; size = i.size; mt = i.mtime
                 }
             }

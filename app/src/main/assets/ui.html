@@ -927,7 +927,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
     if(isHid(i))o.x=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}const fs=FSTY[S.dev+'|'+jn(P0,i.name)];if(fs){if(fs.c)o.fc=nlCol(fs.c);if(fs.i){o.g=fs.i;o.gc=nlCol(fsIc(fs))}}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
-      if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
+      if(!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
 const nlCfg=()=>[S.sort,S.asc?1:0,S.hid?1:0,S.gal?1:0,S.view,S.thumb].join(',');
