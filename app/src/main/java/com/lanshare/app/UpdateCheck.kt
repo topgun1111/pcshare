@@ -66,7 +66,9 @@ object UpdateCheck {
                 val dl = url; val dlSize = size; val dlApk = isApk
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                    if (force) {   // manual "Check for updates": always fetch the latest release APK, whatever the installed version is
+                    // manual "Check for updates": a newer version gets the same dialog as the automatic check (Download / Later / Skip this version);
+                    // when nothing newer exists it still fetches the latest release APK directly (reinstall), as before
+                    if (force && !isNewer(tag, cur)) {
                         if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
                         return@runOnUiThread
                     }
@@ -77,7 +79,10 @@ object UpdateCheck {
                             if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
                         }
                         .setNegativeButton("Sonra", null)
-                        .setNeutralButton("Bu sürümü atla") { _, _ -> sp.edit().putString("skip", tag).apply() }
+                        .setNeutralButton("Bu sürümü atla") { _, _ ->
+                            sp.edit().putString("skip", tag).apply()
+                            Toast.makeText(a, "$tag atlandı (Ayarlar > Check for updates ile yine de indirilebilir)", Toast.LENGTH_LONG).show()
+                        }
                         .show()
                 }
             } catch (_: Throwable) { onMsg?.invoke("Kontrol edilemedi (internet / GitHub)") }   // automatic check stays silent
