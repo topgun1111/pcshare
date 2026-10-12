@@ -487,6 +487,12 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .hbd{flex:1;overflow-y:auto;padding:8px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:20px;-webkit-overflow-scrolling:touch}
 #home .hero{flex:none;background:var(--sel);color:var(--onsel);border-radius:28px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;cursor:pointer;animation:hmin .4s cubic-bezier(.2,.8,.25,1) both;-webkit-tap-highlight-color:transparent}
 #home .hero:active{filter:brightness(.96)}
+/* top row: Main storage and Devices side by side, each half the width */
+#home .hrow{flex:none;display:flex;gap:10px;align-items:stretch}
+#home .hrow .hero{flex:1 1 0;min-width:0;padding:16px 14px;border-radius:24px;gap:12px;justify-content:space-between}
+#home .hrow .hero .top{flex-direction:column;align-items:flex-start;gap:10px}
+#home .hrow .hero b{font-size:17px}#home .hrow .hero small{display:block;overflow-wrap:anywhere}
+#home .hrow .hero .row{flex-wrap:wrap;gap:0 8px}
 #home .hero .top{display:flex;align-items:center;gap:14px}
 #home .hero .ic{flex:none;width:52px;height:52px;border-radius:16px;background:var(--ac);color:var(--onac);display:flex;align-items:center;justify-content:center}
 #home .hero .ic svg{width:28px;height:28px;fill:currentColor}
@@ -2903,6 +2909,11 @@ function homeShow(){
   const hero=E('div','hero');hero.tabIndex=0;hero.setAttribute('role','button');hero.setAttribute('aria-label','Main storage');
   const top=E('div','top'),hi=E('span','ic');hi.innerHTML=hmSvg('ms');const ht=E('div');ht.append(E('b','','Main storage'),E('small','','All files on this phone'));top.append(hi,ht);
   const mt=E('div','meter'),mi=E('i');mt.append(mi);const rw=E('div','row'),ru=E('span'),rf=E('span');rw.append(ru,rf);hero.append(top,mt,rw);
+  /* Devices card: the other half of the top row (was a tile in "Network and tools") */
+  const dvc=E('div','hero');dvc.tabIndex=0;dvc.setAttribute('role','button');dvc.setAttribute('aria-label','Devices');
+  {const di=E('span','ic'),dt=E('div'),dtop=E('div','top'),dsm=E('small');dsm.id='hmdev';di.innerHTML=hmSvg('dev');dt.append(E('b','','Devices'),dsm);dtop.append(di,dt);dvc.append(dtop);
+   dvc.onclick=()=>devPicker(true);dvc.onkeydown=e=>{if(e.key==='Enter')devPicker(true)}}
+  const hrow=E('div','hrow');hrow.append(hero,dvc);
   const pct0=+LD('ls_used','')||null;if(pct0!=null){mi.style.width=pct0+'%';ru.textContent=pct0+'% used'}
   const fill=v=>{if(!v||v.free==null||!v.total)return;const u=v.total-v.free,p=Math.round(u*100/v.total);
     mi.style.width=p+'%';ru.textContent=fmt(u)+' used';rf.textContent=fmt(v.free)+' free'};
@@ -2924,8 +2935,8 @@ function homeShow(){
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
     tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)));
-  {const dv=tile('dev','Devices','',()=>devPicker(true));dv.querySelector('.ts').id='hmdev';g2.append(dv);hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()}   // opening the menu = look for devices now
-  bd.append(hero,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
+  hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
+  bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);
   warmWifi();if(window.nlLay)try{nlLay(true)}catch(e){}}
 
