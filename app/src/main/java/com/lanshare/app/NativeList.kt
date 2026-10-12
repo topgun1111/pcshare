@@ -1095,7 +1095,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)
         val pd = if (grid) Math.round(2f * d) else 0
-        rv.setPadding(pd, pd, pd, pd); rv.clipToPadding = !grid
+        // extra room at the end (FAB 56 dp + 16 dp margin + 16 dp air): the last row can be scrolled above the "New folder" button instead of hiding under it
+        rv.setPadding(pd, pd, pd, pd + Math.round(88f * d)); rv.clipToPadding = false
         if (grid) rv.addItemDecoration(gap)
         lm = if (grid) GridLayoutManager(act, span).also { g ->
             g.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() { override fun getSpanSize(position: Int) = if (position >= galStart || rows.getOrNull(position)?.k == "hdr") span else 1 }

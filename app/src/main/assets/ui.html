@@ -293,6 +293,7 @@ body.dual #dual{display:flex}
 #pv .pe .tbtn{margin-top:8px;color:inherit;border:1px solid currentColor}
 /* FAB */
 #fab{position:fixed;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));z-index:7;height:56px;padding:0 20px 0 16px;border-radius:16px;display:flex;align-items:center;gap:12px;background:var(--fab);color:var(--onfab);font-weight:600;font-size:15px;box-shadow:var(--sh);transition:transform .15s,opacity .15s}
+#list::after{content:"";display:block;height:calc(88px + env(safe-area-inset-bottom))}   /* room under the last row so the New folder button never covers it */
 #fab:active{transform:scale(.96)}body.selm #fab{display:none}
 /* bottom bar */
 #dock{touch-action:manipulation;position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--cont);border-top:1px solid var(--bd);box-shadow:0 -2px 8px #0002;padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
