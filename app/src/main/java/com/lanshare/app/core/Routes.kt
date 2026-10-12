@@ -59,7 +59,7 @@ object Routes {
                 ex.reply(200, Ipp.forward(p, ex.body, n), "application/ipp")
             }
             "mkdir" -> { L.mkdir(ex.q("path")); ok(ex) }
-            "rm" -> { L.remove(ex.q("path")); ok(ex) }
+            "rm" -> { Jobs.removeUser(L, vnorm(ex.q("path"))); ok(ex) }   // same as a local delete: into the recycle bin where possible
             "rename" -> { L.rename(ex.q("path"), ex.q("name")); ok(ex) }
             "mv" -> { L.move(ex.q("path"), ex.q("to")); ok(ex) }
             else -> ex.fail(404, "unknown route")

@@ -33,6 +33,13 @@ class LocalFs(rootPath: String) : Endpoint {
         return p
     }
 
+    /** Like [real], but the LAST component is not resolved: a symlink stays the link itself (delete / rename / move act on the link, not its target). */
+    fun lreal(v: String): File {
+        val n = vnorm(v)
+        if (n == "/") return real(v)
+        return File(real(vdir(n)), vbase(n))
+    }
+
     private fun fsize(f: File): Long {
         val l = f.length()
         if (l > 0) return l
@@ -182,7 +189,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun stat(v: String): JSONObject {
-        val f = real(v)
+        val f = lreal(v)
         val link = isLink(f)
         if (!f.exists() && !link) throw NotFound("No such file or directory")
         val dir = f.isDirectory
@@ -221,6 +228,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
+        if (size < 0) throw BadReq("missing size")
         val p = real(v)
         try {   // refuse up front instead of failing at 95 % of a big transfer (keeps 5 MB spare for Android itself)
             val free = root.usableSpace
@@ -241,7 +249,12 @@ class LocalFs(rootPath: String) : Endpoint {
                     cb?.invoke(n)
                 }
             }
-            if (!tmp.renameTo(p)) { p.delete(); if (!tmp.renameTo(p)) throw IOException("could not move the file into place") }
+            if (!tmp.renameTo(p)) {   // keep the old file until the new one is in place
+                val bak = File(p.path + ".lsold")
+                val hadOld = p.exists() && p.renameTo(bak)
+                if (!tmp.renameTo(p)) { if (hadOld) bak.renameTo(p); throw IOException("could not move the file into place") }
+                if (hadOld) bak.delete()
+            }
         } finally {
             if (tmp.exists()) tmp.delete()
         }
@@ -253,7 +266,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun remove(v: String, progress: ((String) -> Unit)?) {
-        val p = real(v)
+        val p = lreal(v)
         if (p == root) throw Denied("cannot delete the shared root")
         if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
         val fails = ArrayList<String>()
@@ -277,17 +290,31 @@ class LocalFs(rootPath: String) : Endpoint {
 
     override fun rename(v: String, newName: String) {
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
-        val p = real(v)
-        if (File(p.parentFile, newName).exists()) throw Exists("name already exists")
-        if (!p.renameTo(real(vjoin(vdir(v), newName)))) throw IOException("could not rename")
+        val p = lreal(v)
+        if (p == root) throw Denied("cannot rename the shared root")
+        val dst = File(p.parentFile, newName)
+        if (dst.exists() || isLink(dst)) {
+            // case-only rename (a.jpg -> A.jpg) on a case-insensitive volume: the "other" name is this very file
+            val same = newName != p.name && newName.equals(p.name, true) && Build.VERSION.SDK_INT >= 26 &&
+                try { Files.isSameFile(dst.toPath(), p.toPath()) } catch (_: Exception) { false }
+            if (!same) throw Exists("name already exists")
+        }
+        if (!p.renameTo(dst)) throw IOException("could not rename")
     }
 
     override fun move(v: String, toV: String) {
-        val s = real(v)
+        val s = lreal(v)                                // a link is moved itself
+        if (!s.exists() && !isLink(s)) throw NotFound("No such file or directory")
         var d = real(toV)
         if (d.isDirectory) d = File(d, s.name)         // shutil.move: into an existing folder
+        if (d.path == s.path) return                    // onto itself: nothing to do
+        if (!isLink(s) && s.isDirectory && d.path.startsWith(s.path.trimEnd('/') + "/")) throw BadReq("cannot put a folder inside itself")
+        if (d.exists() || isLink(d)) throw Exists("name already exists")   // same answer on every volume (rename would silently replace a file)
         if (!s.renameTo(d)) {                           // e.g. across volumes: copy + delete
-            if (s.isDirectory) { if (!s.copyRecursively(d, false)) throw IOException("could not copy the folder") } else s.copyTo(d, false)
+            if (isLink(s) || !s.isDirectory) {
+                if (isLink(s)) throw IOException("could not move the link")
+                s.copyTo(d, false)
+            } else if (!s.copyRecursively(d, false)) { d.deleteRecursively(); throw IOException("could not copy the folder") }
             val fails = ArrayList<String>()
             delRec(s, fails)   // only reached when the copy above worked completely
             if (fails.isNotEmpty()) throw IOException("copied, but the original could not be removed: " + fails.take(3).joinToString("; "))
