@@ -124,6 +124,8 @@ object Routes {
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
+            "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
+            "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)
                 val rt = Thread { rmBox[0] = try { WifiPrinters.remoteJson() } catch (_: Throwable) { null } }.also { it.isDaemon = true; it.start() }   // the other devices' printers are asked in parallel with the local search

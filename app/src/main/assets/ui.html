@@ -449,6 +449,11 @@ body.dopen{overflow:hidden}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
 .dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
+/* print queue screen (own overlay, so it can open on top of the print dialog) */
+#pq{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
+#pq .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
+#pq .card>*{flex-shrink:0}.pqh{display:flex;align-items:center;justify-content:space-between}.pqh h3{margin:0;font-size:20px;font-weight:500}.pqs{font-size:13px;color:var(--mut);margin:0 0 4px}
+#pq .pqok{color:var(--ok)}#pq .pqbad{color:var(--err)}.pql{display:inline-block;margin-top:2px;padding:2px 0;border:0;background:transparent;color:var(--ac);font:inherit;font-size:12px;font-weight:700}
 /* SMB (PC drives) sheet */
 .smb .smh{display:flex;align-items:center;gap:14px;padding:0 8px 4px}.smb .smh h3{margin:0}.smb .smt{flex:1;min-width:0}.smb .smt small{display:block;color:var(--mut);font-size:13px}
 .smb .smi{flex:none;width:44px;height:44px;border-radius:14px;background:var(--ac);color:var(--onac);display:grid;place-items:center}.smb .smi svg{width:26px;height:26px;fill:currentColor}
@@ -1705,6 +1710,41 @@ function lsDl(id,name,done,total,speed,st,msg){
   else{c.el.classList.add('ind');c.info.textContent=done?fmt(done)+' · '+(speed>0?fmt(speed)+'/s':'…'):'Connecting…'}}
 function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
   S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
+function openPrintQueue(pc){
+  /* what the print service on a PC is doing: the job being printed, the jobs that still wait (Cancel) and the last finished ones. Needs pcprint.py 22+. */
+  try{localStorage.setItem('ls_lastpq',JSON.stringify({id:pc.id,name:pc.name}))}catch(e){}
+  let o=document.getElementById('pq');if(!o){o=E('div');o.id='pq';document.body.append(o)}
+  o.textContent='';o.style.display='flex';
+  let alive=true,tm=0,armed={id:0,t:0};
+  const close=()=>{alive=false;clearTimeout(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),body=E('div');cb.onclick=close;
+  hd.append(E('h3','','Print queue'),cb);card.append(E('div','handle'),hd,E('div','pqs',pc.name||'PC'),body);o.append(card);
+  const row=(title,small,right,cls)=>{const r=E('div','set'),t=E('div','t'),b=E('b','',title);if(cls)b.className=cls;t.append(b);if(small)t.append(E('small','',small));r.append(t);if(right)r.append(right);return r};
+  const load=()=>api('GET','/api/pcqueue?dev='+enc(pc.id),null,6000).then(r=>{if(alive)draw(r)}).catch(()=>{if(alive)draw(null)});
+  const cancel=(w,b)=>{
+    if(armed.id!==w.id||Date.now()-armed.t>3000){armed={id:w.id,t:Date.now()};b.textContent='Cancel job?';return}   /* second tap within 3 s confirms */
+    armed={id:0,t:0};b.disabled=true;
+    api('POST','/api/pccancel?dev='+enc(pc.id)+'&id='+w.id,{},8000).then(x=>{
+      toast(x.result==='ok'?'Job cancelled':x.result==='printing'?'Already printing - stop it on the PC':x.result==='old'?'Update pcprint.py on the PC first':'Already finished',2800);load()
+    }).catch(e=>{toast('\u26a0 '+e.message,4000);load()})};
+  const draw=r=>{
+    body.textContent='';
+    if(!r||!r.ok){body.append(row('Print service not reachable','Is pcprint.py running on this PC?'));return}
+    if(r.old){body.append(row('Update pcprint.py on the PC','This screen needs pcprint.py version 22 or newer. Copy the new pcprint.py to the PC and run it once.'));return}
+    body.append(E('div','dsec','Printing now'));
+    body.append(r.current?row(r.current,'Sent to the printer - it can no longer be cancelled here'):row('Nothing is printing'));
+    const w=r.waiting||[];
+    body.append(E('div','dsec','Waiting'+(w.length?' ('+w.length+')':'')));
+    if(!w.length)body.append(row('No jobs waiting'));
+    w.forEach(j=>{const b=E('button','tbtn dng','Cancel');if(armed.id===j.id&&Date.now()-armed.t<=3000)b.textContent='Cancel job?';
+      b.onclick=()=>cancel(j,b);
+      body.append(row(j.name,[j.t,j.printer,j.copies>1?j.copies+' copies':''].filter(Boolean).join(' \u00b7 '),b))});
+    const h=(r.history||[]).slice().reverse().slice(0,15);
+    if(h.length){body.append(E('div','dsec','Recent'));
+      h.forEach(j=>body.append(row((j.ok?'\u2713 ':'\u2715 ')+j.name,[j.t,j.printer,j.ok?(j.warning?'printer: '+j.warning:'printed'):j.error].filter(Boolean).join(' \u00b7 '),null,j.ok?'pqok':'pqbad')))}
+  };
+  const tick=()=>{if(!alive)return;load().then(()=>{if(alive)tm=setTimeout(tick,2000)})};
+  body.append(row('Checking the PC\u2026'));tick()}
 function openSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -1731,6 +1771,8 @@ function openSettings(){
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
+  {const rq=E('button','set'),tq=E('div','t'),lp=lsGet('ls_lastpq',null),sq=E('small','',lp&&lp.name?'On '+lp.name+' - waiting and finished jobs, cancel':'Shows after you print on a PC');rq.style.width='100%';rq.style.textAlign='left';
+    tq.append(E('b','','Print queue'),sq);rq.append(tq);rq.onclick=()=>{if(!lp||!lp.id){toast('Print on a PC first',2500);return}close();openPrintQueue(lp)};card.append(rq)}
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
@@ -2282,6 +2324,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const prow=E('div','prow'),pt=E('div','pt'),ptit=E('div','ptit',pdf?'Save as PDF':pc.name),info=E('div','sub','Checking printer\u2026'),chev=E('span','pch');
   prow.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
   chev.innerHTML='<svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>';pt.append(ptit,info);prow.append(pt,chev,px);card.append(prow);
+  if(!pdf&&!here&&!pc.wifi&&!/^r?wifi:/.test(pc.id)){const ql=E('button','pql','Print queue \u203a');ql.setAttribute('aria-label','Show the print queue of '+pc.name);ql.onclick=e=>{e.stopPropagation();openPrintQueue(pc)};pt.append(ql)}
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
   let pvr=0;if(!imgMode)pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
   let pinfo=null,ptm=0,cur=null,hasOffice=false;

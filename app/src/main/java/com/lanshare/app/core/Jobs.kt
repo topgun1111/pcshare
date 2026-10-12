@@ -224,6 +224,33 @@ object Jobs {
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
+    /** pcprint.py 22+: what prints right now, what still waits (with ids) and the last finished jobs. old=true: pcprint.py is older than 22 (no waiting list). */
+    fun pcQueue(dev: String): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/jobs", emptyMap(), 4000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", true).put("old", true)
+                if (r.status != 200) return JSONObject().put("ok", false)
+                val o = JSONObject(String(r.readUpTo(262144), Charsets.UTF_8))
+                o.put("ok", true).put("old", !o.has("waiting"))
+            } finally { r.close() }
+        } catch (_: Exception) { JSONObject().put("ok", false) }
+    }
+
+    /** Cancels one WAITING job on the PC: {ok, result: "ok" | "printing" (already on its way to the printer) | "gone" (printed already) | "old" (pcprint.py < 22)}. */
+    fun pcCancel(dev: String, id: Int): JSONObject {
+        val (ip, _) = printTarget(dev)
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "POST", "/cancel?id=$id", mapOf("Content-Length" to "0"), 5000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", false).put("result", "old")
+                val o = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
+                JSONObject().put("ok", o.optBoolean("ok", false)).put("result", o.optString("result", "gone"))
+            } finally { r.close() }
+        } catch (e: Exception) { throw IOException("PC not reachable (${errText(e)})") }
+    }
+
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
         "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot", "tray")
