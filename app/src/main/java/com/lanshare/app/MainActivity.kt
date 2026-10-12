@@ -88,6 +88,8 @@ class MainActivity : Activity() {
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Settings -> display size: "interface%,text%". */
+        /** Width of the WebView in dp: in split screen / multi-window it is narrower than the display (window.screen.width reports the whole display). */
+        @JavascriptInterface fun winW(): Int = Math.round(web.width / resources.displayMetrics.density)
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
@@ -170,6 +172,7 @@ class MainActivity : Activity() {
             if (UiScale.iface(this@MainActivity) != 100) { settings.useWideViewPort = true; settings.loadWithOverviewMode = false }   // the page rewrites its viewport meta to scale itself (ui.html head)
             settings.textZoom = UiScale.text(this@MainActivity)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
             addJavascriptInterface(Bridge(), "LSAndroid")
+            addOnLayoutChangeListener { _, l, _, r, _, ol, _, or2, _ -> if (r - l != or2 - ol) post { evaluateJavascript("window.lsFit&&lsFit()", null) } }   // window resized (split screen, fold)
             webViewClient = object : WebViewClient() {
                 // window.open('/api/dl?...') and <a download> navigations -> save to Downloads
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {

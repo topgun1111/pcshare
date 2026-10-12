@@ -2,7 +2,8 @@
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script>/* Settings -> Interface size: scale the whole page by a viewport (layout width = screen / f) */
 (function(){function fit(){try{if(!(window.LSAndroid&&LSAndroid.uiGet))return;var f=LSAndroid.uiGet().split(',')[0]/100;if(!f||f===1)return;
-var w=Math.round((window.screen.width||innerWidth)/f);var m=document.querySelector('meta[name=viewport]');var c='width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover';if(m&&m.getAttribute('content')!==c)m.setAttribute('content',c)}catch(e){}}
+var ww=0;try{ww=LSAndroid.winW?LSAndroid.winW():0}catch(e){}var w=Math.round((ww>0?ww:(window.screen.width||innerWidth))/f);   /* window width (split screen / pop-up), not the whole display */
+var m=document.querySelector('meta[name=viewport]');var c='width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover';if(m&&m.getAttribute('content')!==c)m.setAttribute('content',c)}catch(e){}}
 /* fold / unfold changes the screen width without a reload: re-fit the layout width (the new width can arrive a moment late, so retry) */
 window.lsFit=function(){fit();setTimeout(fit,150);setTimeout(fit,500);setTimeout(fit,1200)};fit();
 window.addEventListener('orientationchange',window.lsFit);var ft=0;window.addEventListener('resize',function(){clearTimeout(ft);ft=setTimeout(window.lsFit,100)})})();</script>
