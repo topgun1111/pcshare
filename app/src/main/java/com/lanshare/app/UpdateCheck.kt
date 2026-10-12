@@ -20,7 +20,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Checks GitHub releases/latest on app start and offers the new APK (only if newer). A manual check (force=true) always downloads the latest APK regardless of version. At most one request per [MIN_INTERVAL_MS]. */
+/** Checks GitHub releases on app start and offers the new APK ONLY if it is newer than the installed version (same or older = nothing is shown). A manual check (force=true) skips the 6 h limit and the "skipped version" memory, but also only offers newer versions; otherwise it reports "up to date". */
 object UpdateCheck {
     private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases?per_page=15"   // list, not /latest: we pick the highest version ourselves
     private const val PREFS = "update_check"
@@ -53,7 +53,7 @@ object UpdateCheck {
                 sp.edit().putLong("last", now).apply()
                 val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                if (!force && !isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // manual check (force) ignores the version comparison
+                if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // same or older release: no dialog, no download (manual check just says so)
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
                 var url = j.getString("html_url")
@@ -66,12 +66,6 @@ object UpdateCheck {
                 val dl = url; val dlSize = size; val dlApk = isApk
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                    // manual "Check for updates": a newer version gets the same dialog as the automatic check (Download / Later / Skip this version);
-                    // when nothing newer exists it still fetches the latest release APK directly (reinstall), as before
-                    if (force && !isNewer(tag, cur)) {
-                        if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
-                        return@runOnUiThread
-                    }
                     AlertDialog.Builder(a)
                         .setTitle("Yeni sürüm: $tag")
                         .setMessage("Mevcut sürüm: $cur\nGitHub'da yeni bir güncelleme var.")
