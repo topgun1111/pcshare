@@ -1,9 +1,11 @@
 <!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script>/* Settings -> Interface size: scale the whole page by a viewport (layout width = screen / f) */
-(function fit(){try{if(!(window.LSAndroid&&LSAndroid.uiGet))return;var f=LSAndroid.uiGet().split(',')[0]/100;if(!f||f===1)return;
-var w=Math.round((window.screen.width||innerWidth)/f);document.querySelector('meta[name=viewport]').setAttribute('content','width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover');
-window.addEventListener('orientationchange',function(){setTimeout(fit,300)})}catch(e){}})();</script>
+(function(){function fit(){try{if(!(window.LSAndroid&&LSAndroid.uiGet))return;var f=LSAndroid.uiGet().split(',')[0]/100;if(!f||f===1)return;
+var w=Math.round((window.screen.width||innerWidth)/f);var m=document.querySelector('meta[name=viewport]');var c='width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover';if(m&&m.getAttribute('content')!==c)m.setAttribute('content',c)}catch(e){}}
+/* fold / unfold changes the screen width without a reload: re-fit the layout width (the new width can arrive a moment late, so retry) */
+window.lsFit=function(){fit();setTimeout(fit,150);setTimeout(fit,500);setTimeout(fit,1200)};fit();
+window.addEventListener('orientationchange',window.lsFit);var ft=0;window.addEventListener('resize',function(){clearTimeout(ft);ft=setTimeout(window.lsFit,100)})})();</script>
 <meta name=theme-color content="#1c1c1e">
 <title>LANShare</title>
 <style>
@@ -93,6 +95,10 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #peers .chip svg{width:20px;height:20px}
 #peers .chip .dot{width:10px;height:10px;margin:0 3px}
 #peers .chip small{font-size:11px}
+/* narrow (folded) screen: the device chips shrink instead of running off the right edge */
+#peers .chip.on{flex:0 1 auto;min-width:0}#peers .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:480px){#peers{gap:6px;padding:6px 8px}#peers .chip{padding:0 10px 0 8px;gap:6px;font-size:13px}#peers .chip.add{padding:0 8px}#peers .chip.add span{display:none}}
+
 .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:var(--warn)}
 #hint{padding:3px 14px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
 /* breadcrumbs */
@@ -600,13 +606,14 @@ let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 const pfKey=()=>S.dev+'|'+S.path;
 const uiF=()=>{try{const f=LSAndroid.uiGet().split(',')[0]/100;return f>0?f:1}catch(e){return 1}};   // Interface size factor (1 = 100%)
 const wideScr=()=>window.innerWidth*uiF()>=600;   // real dp (page width is screen/f): unfolded phone / tablet; a folded phone is narrower
-let LSW=wideScr(),lswT=0;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}},150)});
+let LSW=wideScr(),lswT=0;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}try{nlLay(true);nlChPush()}catch(e){}},300)});
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
-  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{const cv=+(wideScr()?o.colsW:o.cols);S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
+  S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
-function setPref(p){p=Object.assign({},p);if('cols'in p){p[wideScr()?'colsW':'cols']=p.cols;if(wideScr())delete p.cols}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
+function setPref(p){p=Object.assign({},p);if('cols'in p){const wd=wideScr(),n=+p.cols||0;p.lastW=wd?1:0;p.cell=n?Math.round(window.innerWidth*uiF()/n):0;if(n===0){p.cols=0;p.colsW=0}else if(wd){p.colsW=n;delete p.cols}}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
   const cur=Object.assign({},G,PF[pfKey()]||{},{view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}

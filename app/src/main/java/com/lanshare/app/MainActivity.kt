@@ -153,6 +153,12 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b, false))
 
+    /** Fold / unfold: the activity is not recreated (configChanges), so tell the page to re-fit its layout width to the new screen. */
+    override fun onConfigurationChanged(c: android.content.res.Configuration) {
+        super.onConfigurationChanged(c)
+        if (::web.isInitialized) web.post { web.evaluateJavascript("window.lsFit&&lsFit()", null) }
+    }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
