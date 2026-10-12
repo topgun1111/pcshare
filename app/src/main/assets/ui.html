@@ -597,7 +597,7 @@ let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0};try{Object.assign(G,J
 let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 const pfKey=()=>S.dev+'|'+S.path;
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
-  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';S.cols=[2,3,4,5,6].indexOf(+o.cols)>=0?+o.cols:0}
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'name';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';S.cols=[2,3,4,5,6,7,8].indexOf(+o.cols)>=0?+o.cols:0}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
@@ -1136,7 +1136,7 @@ function galOpts(gg,redraw){
   const r1=E('div','');r1.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
   const r2=E('div','');r2.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
   const draw=()=>{r1.textContent='';r2.textContent='';const cur=+LD('ls_galpc','')||dflt;
-    [2,3,4,5,6].forEach(n=>{const b=E('button','tbtn'+(n===cur?' fill':''),String(n));b.style.minWidth='48px';
+    [2,3,4,5,6,7,8].forEach(n=>{const b=E('button','tbtn'+(n===cur?' fill':''),String(n));b.style.minWidth='48px';
       b.onclick=()=>{try{localStorage.setItem('ls_galpc',String(n))}catch(e){}gg.style.setProperty('--pc',n);draw()};r1.append(b)});
     [['new','Newest first'],['old','Oldest first'],['az','Name A-Z'],['za','Name Z-A'],['big','Largest first']].forEach(a=>{const b=E('button','tbtn'+(galSort()===a[0]?' fill':''),a[1]);
       b.onclick=()=>{try{localStorage.setItem('ls_galsort',a[0])}catch(e){}draw();redraw()};r2.append(b)})};
