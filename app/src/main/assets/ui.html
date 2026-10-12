@@ -1982,7 +1982,12 @@ function renderSR(l){
   l.append(h);
   items.forEach(i=>{
     const k=kind(i),r=E('div','row'),lead=E('div','lead k-'+k);
-    if(i.dir)lead.append(raw(FOLD,'fold'));else lead.append(ic(k,'kd'));
+    if(i.dir)lead.append(raw(FOLD,'fold'));else{lead.append(ic(k,'kd'));
+      if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6)){   // previews for hits, same rules as ordinary rows
+        const key='v2|'+S.dev+'|'+i.path+'|'+(i.size||0)+'|'+(i.mtime||0);
+        const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
+          if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
+        const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(i.path),done:showR}))}}
     const nm=E('div','nm'),sub=E('small');sub.append(E('span','',par(i.path)));
     nm.append(E('b','',i.name),sub);r.append(lead,nm);
     r.onclick=()=>i.dir?go(i.path):goFind(par(i.path),i.name);
