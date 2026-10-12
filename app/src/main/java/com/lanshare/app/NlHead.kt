@@ -96,7 +96,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private var downX = 0f; private var downY = 0f; private var lastX = 0f
     private var moved = false
     private var dragStrip = false
-    private var pressKind = 0                 // 0 none, 1 crumb, 2 newest, 3 sort
+    private var pressKind = 0                 // 0 none, 1 crumb, 2 newest, 3 sort, 4 disk pill
     private var pressIdx = -1
 
     fun set(dt: NlHeadData?, toEnd: Boolean) {
@@ -278,6 +278,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
                 dragStrip = e.y < hA && e.x >= areaL && e.x <= areaR
                 pressKind = 0; pressIdx = -1
                 if (dragStrip) { val i = crumbAt(e.x, e.y); if (i >= 0) { pressKind = 1; pressIdx = i } }
+                else if (e.y < hA && pillW > 0f && (data?.used ?: -1) >= 0 && e.x >= width - 8f * d - pillW - 6f * d) pressKind = 4
                 else if (e.y >= hA) {
                     if (sortR.contains(e.x, e.y)) pressKind = 3
                     else if (newR.contains(e.x, e.y)) pressKind = 2
@@ -298,7 +299,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
             MotionEvent.ACTION_UP -> {
                 vt?.addMovement(e)
                 if (!moved && pressKind != 0) {
-                    when (pressKind) { 1 -> onAct?.invoke("crumb", pressIdx); 2 -> onAct?.invoke("newb", 0); 3 -> onAct?.invoke("sort", 0) }
+                    when (pressKind) { 1 -> onAct?.invoke("crumb", pressIdx); 2 -> onAct?.invoke("newb", 0); 3 -> onAct?.invoke("sort", 0); 4 -> onAct?.invoke("used", 0) }
                 } else if (moved && dragStrip) {
                     vt?.computeCurrentVelocity(1000)
                     val vx = vt?.xVelocity ?: 0f
