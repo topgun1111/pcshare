@@ -197,7 +197,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
         for ((i, c) in crs.withIndex()) {
             val x = areaL + c.x - sx
             if (x + c.w >= areaL - 1f && x <= areaR + 1f) {
-                if (pressKind == 1 && pressIdx == i) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; rf.set(x, cy - 20f * d, x + c.w, cy + 20f * d); cv.drawRoundRect(rf, 6f * d, 6f * d, fillP) }
+                if (pressKind == 1 && pressIdx == i) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; rf.set(x, cy - 18f * d, x + c.w, cy + 18f * d); cv.drawRoundRect(rf, 6f * d, 6f * d, fillP) }
                 val tp = if (c.cur) curP else crumbP
                 tp.color = if (c.cur) p.fg else p.mut
                 when (c.kind) {
@@ -261,7 +261,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private fun crumbAt(x: Float, y: Float): Int {
         if (x < areaL || x > areaR) return -1
         val cy = (hA - d) / 2f
-        if (Math.abs(y - cy) > 20f * d) return -1
+        if (Math.abs(y - cy) > 18f * d) return -1
         val cx = x - areaL + sx
         for ((i, c) in crs.withIndex()) if (cx >= c.x && cx <= c.x + c.w) return i
         return -1
