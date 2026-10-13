@@ -264,6 +264,18 @@ body.dual #dual{display:flex}
 #dual .dw{flex:1 1 0;min-width:0;display:flex;border-top:3px solid transparent;background:var(--bg);transition:border-color .15s}
 #dual .dw.act{border-top-color:var(--ac)}
 #dual iframe{flex:1;min-width:0;width:100%;height:100%;border:0;background:var(--bg)}
+/* split-screen drag & drop */
+#dual .dw{position:relative}
+#dual .dw.drop::after{content:'';position:absolute;inset:0;border:3px dashed var(--ac);background:color-mix(in srgb,var(--ac) 10%,transparent);pointer-events:none;z-index:2}
+body.dnd{-webkit-user-select:none;user-select:none;cursor:grabbing}
+body.kid #list .row.sel{touch-action:none}
+.row.dnt{background:var(--sel)!important;outline:2px solid var(--ac);outline-offset:-2px}
+.dgh{position:fixed;left:0;top:0;z-index:70;pointer-events:none;background:var(--ac);color:var(--onac);padding:8px 14px;border-radius:12px;font:600 14px/1.2 system-ui,sans-serif;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:var(--sh);opacity:.95}
+.dsc{position:fixed;inset:0;z-index:80;background:#0000002e}
+.dmn{position:absolute;min-width:200px;max-width:300px;background:var(--cont);color:var(--fg);border-radius:16px;box-shadow:var(--sh);padding:6px;display:flex;flex-direction:column}
+.dmh{padding:8px 12px 6px;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmb{border:0;background:none;color:var(--fg);font:500 15px system-ui,sans-serif;text-align:left;padding:12px;border-radius:10px;cursor:pointer}
+.dmb:hover,.dmb:active{background:var(--hov)}.dmb.pri{color:var(--ac);font-weight:600}
 /* player */
 #pv{display:none;position:fixed;inset:0;z-index:20;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 #pv .pst,#pv .ppane{position:absolute;inset:0}
@@ -1518,7 +1530,7 @@ function render(){
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
       if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isEd(i))editFile(i);else openFile(i)};
-    holdMenu(r,i);
+    holdMenu(r,i);r._it=i;dragRow(r,i);
     if(i.dir)r.addEventListener('pointerdown',()=>prefetch(S.dev,jn(P0,i.name)));
     return r};
   // big folders: draw rows in chunks as the user scrolls (a 100k-file folder would otherwise freeze the WebView)
@@ -2017,6 +2029,30 @@ function holdMenu(r,i,cb){  // press and hold (or right-click) selects the item;
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
+/* ---- split screen drag & drop (pane side): hold a row (it gets selected) and drag it to the other pane or onto a folder; the parent draws the ghost and runs the copy/move ---- */
+function dragRow(r,i){
+  if(!KID||inArc())return;
+  let x0=0,y0=0,drag=0;
+  const begin=()=>{if(!(parent.lsDnd))return false;
+    if(!S.sel.has(i.name)){S.sel.add(i.name);r.classList.add('sel');renderBar()}
+    const n=S.sel.size;drag=1;window._dnd=1;r._lp=true;document.body.classList.add('dnd');
+    parent.lsDnd.begin(PN,n===1?i.name.replace(/!$/,''):n+' items');return true};
+  const mv=(x,y)=>{try{parent.lsDnd.move(PN,x,y)}catch(e){}};
+  const fin=(x,y,ev,ok)=>{if(!drag)return;drag=0;window._dnd=0;document.body.classList.remove('dnd');
+    try{ok?parent.lsDnd.end(PN,x,y,ev):parent.lsDnd.cancel()}catch(e){}setTimeout(()=>{r._lp=false},60)};
+  // touch: after the hold-to-select (or straight away on an already selected row) a move starts the drag
+  r.addEventListener('touchstart',e=>{drag=0;if(e.touches.length===1){x0=e.touches[0].clientX;y0=e.touches[0].clientY}},{passive:true});
+  r.addEventListener('touchmove',e=>{if(e.touches.length!==1)return;const t=e.touches[0];
+    if(!drag){if(!(r._lp||S.sel.has(i.name))||Math.hypot(t.clientX-x0,t.clientY-y0)<10)return;if(!begin())return}
+    if(e.cancelable)e.preventDefault();mv(t.clientX,t.clientY)},{passive:false});
+  r.addEventListener('touchend',e=>{const t=e.changedTouches[0];if(t)fin(t.clientX,t.clientY,e,1)});
+  r.addEventListener('touchcancel',e=>fin(0,0,e,0));
+  // mouse / trackpad
+  r.addEventListener('mousedown',e=>{if(e.button!==0)return;x0=e.clientX;y0=e.clientY;
+    const mm=ev=>{if(!drag){if(Math.hypot(ev.clientX-x0,ev.clientY-y0)<8)return;if(!begin()){off();return}}ev.preventDefault();mv(ev.clientX,ev.clientY)};
+    const up=ev=>{off();if(drag){ev.preventDefault();fin(ev.clientX,ev.clientY,ev,1)}};
+    const off=()=>{document.removeEventListener('mousemove',mm,true);document.removeEventListener('mouseup',up,true)};
+    document.addEventListener('mousemove',mm,true);document.addEventListener('mouseup',up,true)})}
 function go(p){S.newest=false;S.path=p;S.lim=0;S.sel.clear();clearQ();useLSC=true;load()}
 /* ---- search in subfolders (server walks the tree below the current folder) ---- */
 let sT=0;
@@ -3023,7 +3059,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
   window.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1||!atTop()||modal())return;
     if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#gal,#sheet,#dlg,#top,button'))return;
     y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
-  window.addEventListener('touchmove',e=>{if(!on)return;dy=e.touches[0].clientY-y0;
+  window.addEventListener('touchmove',e=>{if(!on||window._dnd)return;dy=e.touches[0].clientY-y0;
     if(dy<=0||!atTop()){if(dy<=0){on=false;setH(0)}return}
     if(dy<16)return;
     if(e.cancelable)e.preventDefault();
@@ -3051,7 +3087,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     await wait(170);busy=false;return true};
   window.addEventListener('touchstart',e=>{mode=(busy||e.touches.length!==1||blocked(e.target))?2:0;
     x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
-  window.addEventListener('touchmove',e=>{if(mode===2||busy)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
+  window.addEventListener('touchmove',e=>{if(mode===2||busy||window._dnd)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
     if(!mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;mode=(Math.abs(dx)>Math.abs(dy)*1.2&&dx<0)?1:2;if(mode===2)return}   // only a swipe to the left is ours (next device); a swipe to the right is the Main menu swipe
     if(dx>0){tx('',1,0);return}
     if(e.cancelable)e.preventDefault();
@@ -3353,7 +3389,10 @@ $('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this 
 /* ---- split screen: two full, independent panes (each can show this phone or another device); copy/move between them ---- */
 window.lsPane={get dev(){return S.dev},get path(){return S.path},paths:()=>selPaths(),
   clearSel(){S.sel.clear();render()},api,toast,watchJob,track,load,refreshClip,
-  dropClip(){S.clip=null;renderBar()}};
+  dropClip(){S.clip=null;renderBar()},
+  rowAt(x,y,own){const e=document.elementFromPoint(x,y),w=e&&e.closest&&e.closest('.row'),it=w&&w._it;   // folder row under a point (not one of the dragged rows)
+    return it&&it.dir&&!(own&&S.sel.has(it.name))?{name:it.name,el:w}:null},
+  hot(el){if(this._h&&this._h!==el)this._h.classList.remove('dnt');this._h=el||null;if(el)el.classList.add('dnt')}};
 if(KID){document.body.classList.add('kid');$('#dualb').textContent='';$('#dualb').append(ic('single'));
   document.addEventListener('pointerdown',()=>{try{parent.lsFocus(PN)}catch(e){}},true);
   $('#dualb').onclick=()=>{try{parent.lsDualSet(false)}catch(e){}}}
@@ -3369,18 +3408,74 @@ function duApply(){
     const mk=n=>{const d=E('div','dw'+(n===1?' act':'')),f=document.createElement('iframe');f.src='/?pane='+n;f.title='Pane '+n;d.append(f);w.append(d);return[d,f]};
     const[wa,a]=mk(1),[wb,b]=mk(2);DU={a,b,wa,wb,act:1};document.body.classList.add('dual');window.lsDual=true}
   else if(!want&&DU){DU=null;window.lsDual=false;w.textContent='';document.body.classList.remove('dual')}}
-async function lsXfer(from,op){
+/* copy / move the selection of pane `from` into pane `to` (or into folder `dir` of it) */
+async function lsDrop(from,to,op,dir){
   if(!DU)return;
-  const A=(from===1?DU.a:DU.b).contentWindow.lsPane,B=(from===1?DU.b:DU.a).contentWindow.lsPane;
+  const A=(from===1?DU.a:DU.b).contentWindow.lsPane,B=(to===1?DU.a:DU.b).contentWindow.lsPane;
+  const dd=dir==null?B.path:dir;
   try{
     const paths=A.paths();if(!paths.length)return;
-    if(A.dev===B.dev&&A.path===B.path){A.toast('Both panes show the same folder',3000);return}
+    if(A.dev===B.dev&&A.path===dd){A.toast(dir==null?'Both panes show the same folder':'Already in this folder',3000);return}
+    if(A.dev===B.dev&&paths.some(p=>dd===p||dd.startsWith(p+'/'))){A.toast('A folder cannot go into itself',3000);return}
     await A.api('POST','/api/clip',{op,dev:A.dev,paths});
-    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:B.path});
+    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:dd});
     A.clearSel();A.watchJob(r.job);
     if(await A.track(r.job)){await A.api('POST','/api/clip',{op:'clear'});A.dropClip()}
     A.load();B.load();B.refreshClip()}
   catch(e){A.toast('\u26a0 '+e.message,5000)}}
+function lsXfer(from,op){return lsDrop(from,from===1?2:1,op)}
+/* ---- drag & drop between the panes (parent side): ghost, drop highlight, edge auto-scroll, Copy / Move chooser ---- */
+const DND={on:0,from:0,g:null,tp:0,tr:null,px:0,py:0,raf:0,what:''};
+const dndFr=n=>DU&&(n===1?DU.a:DU.b);
+function dndPlace(){
+  if(!DU||!DND.g)return;
+  DND.g.style.transform='translate('+(DND.px+14)+'px,'+(DND.py-18)+'px)';
+  let tp=0,row=null;
+  for(const n of [1,2]){const fr=dndFr(n),r=fr.getBoundingClientRect();
+    if(DND.px>=r.left&&DND.px<r.right&&DND.py>=r.top&&DND.py<r.bottom){tp=n;
+      try{row=fr.contentWindow.lsPane.rowAt(DND.px-r.left,DND.py-r.top,n===DND.from)}catch(e){}}}
+  DND.tp=tp;DND.tr=row;
+  DU.wa.classList.toggle('drop',tp===1&&!row&&!(DND.from===1));DU.wb.classList.toggle('drop',tp===2&&!row&&!(DND.from===2));
+  [1,2].forEach(n=>{try{dndFr(n).contentWindow.lsPane.hot(n===tp&&row?row.el:null)}catch(e){}})}
+function dndTick(){
+  if(!DND.on)return;
+  if(DND.tp){const fr=dndFr(DND.tp),r=fr.getBoundingClientRect(),y=DND.py-r.top,h=r.height,z=70;let dy=0;
+    if(y<z)dy=-Math.ceil((z-y)/5);else if(y>h-z)dy=Math.ceil((y-(h-z))/5);
+    if(dy){try{fr.contentWindow.scrollBy(0,Math.max(-24,Math.min(24,dy)));dndPlace()}catch(e){}}}
+  DND.raf=requestAnimationFrame(dndTick)}
+function dndStop(){
+  DND.on=0;cancelAnimationFrame(DND.raf);if(DND.g){DND.g.remove();DND.g=null}
+  document.body.classList.remove('dnd');
+  if(DU){DU.wa.classList.remove('drop');DU.wb.classList.remove('drop');
+    [1,2].forEach(n=>{try{dndFr(n).contentWindow.lsPane.hot(null)}catch(e){}})}}
+function dndAsk(x,y,what,where){return new Promise(res=>{
+  const sc=E('div','dsc'),m=E('div','dmn');
+  const done=v=>{sc.remove();res(v)};
+  m.append(E('div','dmh',what+' \u2192 '+where));
+  const b=(t,v,c)=>{const e=E('button','dmb'+(c||''),t);e.onclick=()=>done(v);return e};
+  m.append(b('Copy here','copy',' pri'),b('Move here','cut'),b('Cancel',null));
+  sc.onclick=e=>{if(e.target===sc)done(null)};
+  sc.append(m);document.body.append(sc);
+  const mw=m.offsetWidth,mh=m.offsetHeight;
+  m.style.left=Math.max(8,Math.min(x-mw/2,innerWidth-mw-8))+'px';
+  m.style.top=Math.max(8,Math.min(y-mh-12,innerHeight-mh-8))+'px'})}
+window.lsDnd={
+  begin(pn,what){if(!DU)return;dndStop();DND.on=1;DND.from=pn;DND.what=what;DND.tp=0;DND.tr=null;
+    const g=E('div','dgh',what);document.body.append(g);DND.g=g;document.body.classList.add('dnd');
+    DND.raf=requestAnimationFrame(dndTick)},
+  move(pn,x,y){if(!DND.on||!DU)return;const f=dndFr(pn).getBoundingClientRect();DND.px=f.left+x;DND.py=f.top+y;dndPlace()},
+  cancel(){dndStop()},
+  async end(pn,x,y,ev){
+    if(!DND.on||!DU)return;
+    if(x||y){const f=dndFr(pn).getBoundingClientRect();DND.px=f.left+x;DND.py=f.top+y;dndPlace()}
+    const tp=DND.tp,row=DND.tr,from=DND.from,what=DND.what,px=DND.px,py=DND.py;dndStop();
+    if(!tp||(tp===from&&!row))return;                      // dropped outside, or on the empty area of its own pane: nothing to do
+    const B=dndFr(tp).contentWindow.lsPane,A=dndFr(from).contentWindow.lsPane;
+    const dir=row?jn(B.path,row.name):null;
+    const leaf=p=>p.split('/').filter(Boolean).pop()||'/';
+    const where=(B.dev!==A.dev?devName(B.dev)+' / ':'')+(row?row.name.replace(/!$/,''):leaf(B.path));
+    const op=(ev&&ev.ctrlKey)?'copy':(ev&&ev.shiftKey)?'cut':await dndAsk(px,py,what,where);   // mouse: Ctrl = copy, Shift = move, no key = ask
+    if(op)lsDrop(from,tp,op,dir)}};
 let duT=0;window.addEventListener('resize',()=>{clearTimeout(duT);duT=setTimeout(duApply,200)});
 duApply();
 (async()=>{
