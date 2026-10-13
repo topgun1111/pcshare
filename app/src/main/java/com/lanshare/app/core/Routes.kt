@@ -41,7 +41,7 @@ object Routes {
         val L: Endpoint = ArcEp(Core.local)
         when (route) {
             "ping" -> ok(ex)
-            "ls" -> ex.json(jarr(L.ls(ex.q("path")).map { it.toJson() }))
+            "ls" -> ex.json(jarr((if (ex.query["counts"] == "0") L.lsFast(ex.q("path")) else L.ls(ex.q("path"))).map { it.toJson() }))
             "stat" -> ex.json(L.stat(ex.q("path")))
             "space" -> ex.json(spaceJson(L.space(ex.q("path"))))
             "walk" -> ex.json(jarr(L.walk(ex.q("path")).map { it.toJson() }))

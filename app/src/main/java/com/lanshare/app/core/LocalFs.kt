@@ -145,8 +145,10 @@ class LocalFs(rootPath: String) : Endpoint {
     override fun search(v: String, q: String) =
         if (vnorm(v) == "/") search(v, q, 20_000, 80) else search(v, q, 300, 15)
 
+    override fun lsFast(v: String): List<Item> = ls(v, false)
+
     override fun names(v: String): MutableSet<String> =
-        try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+        try { ls(v, false).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
 
     override fun walk(v: String): List<WalkItem> {
         val base = real(v)

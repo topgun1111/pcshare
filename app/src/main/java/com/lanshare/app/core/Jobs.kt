@@ -695,7 +695,7 @@ object Jobs {
             job.cur = ""
             val dstDirs = HashMap<String, Map<String, Item>>()
             fun listing(dir: String): Map<String, Item> = dstDirs.getOrPut(dir) {
-                try { dst.ls(dir).associateBy { it.name } } catch (e: Cancelled) { throw e } catch (_: Exception) { emptyMap() }
+                try { dst.lsFast(dir).associateBy { it.name } } catch (e: Cancelled) { throw e } catch (_: Exception) { emptyMap() }
             }
             var sticky: String? = null   // "replace" / "skip" once the user answered "all"
             var kept = 0                 // files the user chose to skip while moving: their originals stay

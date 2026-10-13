@@ -32,6 +32,8 @@ interface Endpoint {
     val id: String
     val name: String
     fun ls(v: String): List<Item>
+    /** Same entries without the "N items" count of every sub-folder (those counts read each folder: minutes on a big phone root). For name / size checks. */
+    fun lsFast(v: String): List<Item> = ls(v)
     fun search(v: String, q: String): SearchResult
     fun names(v: String): MutableSet<String>
     fun walk(v: String): List<WalkItem>

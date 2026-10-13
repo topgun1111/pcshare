@@ -127,8 +127,13 @@ class RemoteFs(peer: Peer) : Endpoint {
         return SearchResult((0 until a.length()).map { Item.fromJson(a.getJSONObject(it)) }, o.optBoolean("partial"))
     }
 
+    override fun lsFast(v: String): List<Item> {   // counts=0: the other phone skips counting every sub-folder (an older build ignores it and answers as before)
+        val a = JSONArray(String(bytes("GET", "ls", mapOf("path" to v, "counts" to "0")), Charsets.UTF_8))
+        return (0 until a.length()).map { Item.fromJson(a.getJSONObject(it)) }
+    }
+
     override fun names(v: String): MutableSet<String> =
-        try { ls(v).map { it.name }.toMutableSet() } catch (_: NotFound) { mutableSetOf() }
+        try { lsFast(v).map { it.name }.toMutableSet() } catch (_: NotFound) { mutableSetOf() }
 
     override fun walk(v: String): List<WalkItem> {
         val a = JSONArray(String(bytes("GET", "walk", mapOf("path" to v)), Charsets.UTF_8))
