@@ -94,7 +94,7 @@ class RemoteFs(peer: Peer) : Endpoint {
             val order = if (first != null) listOf(first) + ips.filter { it != first } else ips
             for (cand in order) {
                 try {
-                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, timeoutMs, body, size, onSent, minOf(timeoutMs, 8_000))
+                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, timeoutMs, body, size, connectMs = minOf(timeoutMs, 8_000), onSent = onSent)
                     err = null
                     if (cand != ip) {   // remember the address that works
                         ip = cand

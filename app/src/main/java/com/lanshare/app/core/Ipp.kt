@@ -115,8 +115,8 @@ object Ipp {
         val vp = p.viaPeer
         val r = if (vp != null) {   // a printer on another device: that device forwards the raw IPP request (see [forward])
             val peer = Core.disc.get(vp) ?: throw IOException("the device that has this printer is offline")
-            Http.request(peer.ip, peer.port, "POST", "/p/ipp?id=" + java.net.URLEncoder.encode(p.origId, "UTF-8"), hdr, timeoutMs, body, req.size + dataLen, onSent)
-        } else Http.request(p.host, p.port, "POST", "/" + p.path, hdr, timeoutMs, body, req.size + dataLen, onSent)
+            Http.request(peer.ip, peer.port, "POST", "/p/ipp?id=" + java.net.URLEncoder.encode(p.origId, "UTF-8"), hdr, timeoutMs, body, req.size + dataLen, onSent = onSent)
+        } else Http.request(p.host, p.port, "POST", "/" + p.path, hdr, timeoutMs, body, req.size + dataLen, onSent = onSent)
         try {
             if (r.status != 200) throw IOException(if (vp != null) "the other device could not reach the printer (HTTP ${r.status}) - is its LANShare up to date?" else "the printer answered HTTP ${r.status}")
             return parse(readBody(r))
