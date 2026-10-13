@@ -342,8 +342,22 @@ body.dual #dual{display:flex}
 .pj .pjg{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:8px}.pj .pjc{min-width:0}.pj .pjc small{display:block;color:var(--mut);font-size:12px}.pj .pjc b{display:block;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pj .pjc b.pjbad{color:var(--err)}
 .pj .pjm{font-size:13px;color:var(--mut);margin-bottom:6px}.pj .pja{border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0 8px}
 .pj .pjr{border-radius:12px;padding:8px 10px;margin:4px 0 8px;background:color-mix(in srgb,var(--err) 10%,transparent);font-size:12px;overflow-wrap:anywhere}.pj .pjr b{display:block;color:var(--err);font-size:13px;margin-bottom:2px}.pj .pjr small{color:var(--mut)}
-.pj .pjl{max-height:26vh;overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px}.pj .dact{margin-top:10px}
+.pj .pjl{max-height:calc(var(--lvh,100vh)*.26);overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px}.pj .dact{margin-top:10px}
 #toast{cursor:pointer}
+/* progress card fits any window (foldable split screen, pop-up, short landscape): handle + title + bar stay on top, Minimize/Cancel stay at the bottom, only the middle scrolls.
+   --lvh = real window height in px (set from JS; plain vh can be stale while a split-screen window is being resized) */
+#sheet .card.pj{box-sizing:border-box;max-width:640px;margin:0 auto;min-width:0;overflow:hidden;max-height:calc(var(--lvh,100vh) - env(safe-area-inset-top) - 8px);padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+#sheet .card.pj>.pjbody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.pj .pjbody>*{flex-shrink:0}
+.pj .pjg{grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr))}
+.pj .dact{flex-wrap:wrap}.pj .dact .tbtn{min-width:0}
+@media (max-height:520px){
+  #sheet .card.pj{border-radius:20px 20px 0 0;padding-left:12px;padding-right:12px}
+  .pj .handle{margin:0 auto 6px}.pj .pjh h3{font-size:17px}.pj .pjp{font-size:18px}
+  .pj .pjs{margin:0 0 6px;max-height:2.7em;overflow:hidden}.pj .pjb{margin-bottom:6px}
+  .pj .pjn{padding:6px 10px;margin-bottom:6px}.pj .pjg{gap:4px 10px;margin-bottom:4px}.pj .pjc b{font-size:14px}
+  .pj .pjl{max-height:calc(var(--lvh,100vh)*.22);min-height:0}.pj .dact{margin-top:6px}}
+@media (max-width:360px){.pj .pjh h3{font-size:18px}.pj .pjp{font-size:19px}#sheet .card.pj{padding-left:12px;padding-right:12px}}
 .handle{width:32px;height:4px;border-radius:2px;background:var(--mut);opacity:.5;margin:4px auto 12px}
 #sheet h3,.dcard h3{margin:0 0 8px;font-size:22px;font-weight:500}
 .li{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px;border-radius:16px;text-align:left;width:100%}.li:active{background:var(--hov)}
@@ -2780,6 +2794,9 @@ function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return
 /* ---- progress card for every background job (copy / move / send / extract / zip / delete / print): what is happening now, counts, speed, time,
    problems as they happen. Opens by itself when a job runs longer than 2 s; "Minimize" leaves the small bar at the bottom (tap it to open the card again).
    Copies that merge into existing folders also show every replaced / new / skipped file and ask "replace this file?" one file at a time. ---- */
+(function(){const set=()=>{const h=Math.round((window.visualViewport&&window.visualViewport.height)||window.innerHeight||0);if(h>0)document.documentElement.style.setProperty('--lvh',h+'px')};
+  set();['resize','orientationchange'].forEach(t=>window.addEventListener(t,()=>{set();setTimeout(set,250)}));
+  if(window.visualViewport)visualViewport.addEventListener('resize',set);if(window.ResizeObserver)new ResizeObserver(set).observe(document.documentElement)})();
 let LVS=null;
 const LVK={R:['↻','Replaced','#E65100'],N:['＋','New','#2E7D32'],S:['↷','Skipped','var(--mut)']};
 const durTxt=s=>{s=Math.max(0,Math.round(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>(n<10?'0':'')+n;return h?h+':'+p(m)+':'+p(x):m+':'+p(x)};
@@ -2795,7 +2812,7 @@ function lvMake(id){
   askBox.style.display='none';pr.style.display='none';list.style.display='none';sum.style.display='none';
   const hide=E('button','tbtn','Minimize'),cx=E('button','tbtn','Cancel');
   hide.onclick=lvHide;cx.onclick=()=>{api('POST','/api/jobcancel?id='+id).catch(()=>{});cx.disabled=true;cx.textContent='Cancelling…'};
-  row.append(hide,cx);card.append(E('div','handle'),hd,sub,bar,now,grid,sum,askBox,pr,list,row);
+  row.append(hide,cx);const body=E('div','pjbody');body.append(now,grid,sum,askBox,pr,list);card.append(E('div','handle'),hd,sub,bar,body,row);
   return{id,card,h,pc,sub,fill,now,nn,nf,ns,nb,grid,sum,askBox,pr,list,row,hide,cx,n:0,lines:0,answered:-1,curq:-1,hidden:true,min:false,auto:false,cells:{}}}
 function lvLine(L,k,nm){const m=LVK[k]||LVK.N,d=E('div');d.style.color=m[2];d.textContent=m[0]+' '+nm;d.title=m[1];L.list.style.display='block';L.list.append(d);
   if(++L.lines>500){L.list.firstChild.remove();L.lines--}}
@@ -2840,6 +2857,7 @@ function lvFeed(id,j){
           api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden)lvShow();
+    if(L.askSeen!==a.q){L.askSeen=a.q;setTimeout(()=>{try{L.askBox.scrollIntoView({block:'nearest'})}catch(e){}},60)}
   }else L.askBox.style.display='none';
   return !L.hidden}
 /* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
@@ -2852,7 +2870,7 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
   L.pc.textContent=ok?'100%':L.pc.textContent;L.now.style.display='none';
   L.sub.style.display='';L.sub.textContent=ok?(j.note||'')+(j.bytes&&el>=1&&j.total>1?(j.note?' · ':'')+fmt(j.total)+' in '+durTxt(el)+' · avg '+fmt(j.total/el)+'/s':(j.note?'':'Finished in '+durTxt(el))):(j.error||'');
   if(!ok&&j.state==='error')L.sub.style.color='var(--err)';
-  if(!ok&&j.detail){const bx=E('div','');bx.style.cssText='margin:2px 0 6px';const tg=E('button','tbtn','Details');tg.style.cssText='font-size:12px;padding:2px 10px';const pre=E('div','');pre.style.cssText='display:none;font-size:11.5px;color:var(--mut);word-break:break-word;margin-top:4px;white-space:pre-wrap;user-select:text';pre.textContent=j.detail;tg.onclick=()=>{pre.style.display=pre.style.display==='none'?'block':'none'};bx.append(tg,pre);L.sub.after(bx)}
+  if(!ok&&j.detail){const bx=E('div','');bx.style.cssText='margin:2px 0 6px';const tg=E('button','tbtn','Details');tg.style.cssText='font-size:12px;padding:2px 10px';const pre=E('div','');pre.style.cssText='display:none;font-size:11.5px;color:var(--mut);word-break:break-word;margin-top:4px;white-space:pre-wrap;user-select:text';pre.textContent=j.detail;tg.onclick=()=>{pre.style.display=pre.style.display==='none'?'block':'none'};bx.append(tg,pre);L.grid.before(bx)}
   lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(ok?j.total:j.done)+' of '+fmt(j.total):j.done+' of '+j.total],['s','Speed',''],['e','Time left',''],
     ['u','Elapsed',durTxt(el)],['f',j.filesTotal>0?'Files':'Items removed',j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'')],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.cR!=null&&j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
