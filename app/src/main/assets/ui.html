@@ -3419,9 +3419,10 @@ async function lsDrop(from,to,op,dir){
     const paths=A.paths();if(!paths.length)return;
     if(A.dev===B.dev&&A.path===dd){A.toast(dir==null?'Both panes show the same folder':'Already in this folder',3000);return}
     if(A.dev===B.dev&&paths.some(p=>dd===p||dd.startsWith(p+'/'))){A.toast('A folder cannot go into itself',3000);return}
-    const cf=await A.askConflicts(B.dev,dd,paths,A.dev);if(!cf)return;   // same name already there: ask each / replace all / skip / cancel
+    A.toast(op==='cut'?'Moving\u2026':'Copying\u2026',1500);   // instant feedback: the button never looks dead
     await A.api('POST','/api/clip',{op,dev:A.dev,paths});
-    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:dd,conflict:cf});
+    // no pre-check over the network: the job itself asks "replace / skip (all)?" per file when a name already exists (nothing is ever deleted unasked)
+    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:dd,conflict:'ask'});
     A.clearSel();A.watchJob(r.job);
     if(await A.track(r.job)){await A.api('POST','/api/clip',{op:'clear'});A.dropClip()}
     A.load();B.load();B.refreshClip()}
