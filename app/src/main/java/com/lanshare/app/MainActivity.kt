@@ -92,6 +92,9 @@ class MainActivity : Activity() {
         @JavascriptInterface fun winW(): Int = Math.round(web.width / resources.displayMetrics.density)
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
+        /** Settings -> Text recognition model: "mode,paddleInstalled" (mode 0 automatic, 1 PaddleOCR, 2 ML Kit; installed 0 / 1). */
+        @JavascriptInterface fun ocrEngGet(): String = OcrPrefs.engine(this@MainActivity).toString() + "," + (if (PaddleModels.installed(this@MainActivity)) 1 else 0)
+        @JavascriptInterface fun ocrEngSet(m: Int) { OcrPrefs.setEngine(this@MainActivity, m); if (m != OcrPrefs.ENG_MLKIT) PaddleModels.installAsync(applicationContext) }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */

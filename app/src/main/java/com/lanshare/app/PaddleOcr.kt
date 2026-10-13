@@ -282,8 +282,16 @@ class AutoOcr(private val ctx: Context) : OcrEngine {
     private var pd: PaddleOcr? = null
     private var fails = 0
 
+    private var told = false
+
     override fun recognize(bm: Bitmap, cb: (Result<List<OcrLine>>) -> Unit) {
-        if (!PaddleModels.installed(ctx)) { PaddleModels.installAsync(ctx); ml.recognize(bm, cb); return }
+        val mode = OcrPrefs.engine(ctx)   // Settings -> Text recognition model, read on every call so a change applies at once
+        if (mode == OcrPrefs.ENG_MLKIT) { ml.recognize(bm, cb); return }
+        if (!PaddleModels.installed(ctx)) {
+            PaddleModels.installAsync(ctx)
+            if (mode == OcrPrefs.ENG_PADDLE && !told) { told = true; onStatus?.invoke("PaddleOCR model is not downloaded yet (needs Wi-Fi), using ML Kit for now") }
+            ml.recognize(bm, cb); return
+        }
         if (fails >= 2) { ml.recognize(bm, cb); return }
         val p = pd ?: PaddleOcr(ctx).also { pd = it }
         p.recognize(bm) { r ->

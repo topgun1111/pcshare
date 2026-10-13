@@ -1857,10 +1857,29 @@ function openSettings(){
     api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
     rm.onclick=async()=>{if(!rm._ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;
       try{await api('POST','/api/imgs',{op:'uninstall'});rm._ok=false;sm2.textContent='Not installed';toast('Model files deleted')}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rm)}
+  if(window.LSAndroid&&LSAndroid.ocrEngGet){const ro=E('button','set'),to=E('div','t'),so=E('small','');ro.style.width='100%';ro.style.textAlign='left';
+    so.textContent=['Automatic','PaddleOCR','ML Kit'][+LSAndroid.ocrEngGet().split(',')[0]]||'Automatic';to.append(E('b','','Text recognition model'),so);ro.append(to);
+    ro.onclick=()=>{close();openOcrSettings()};card.append(ro)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function openOcrSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Text recognition model'));
+  const info=E('p','','Reads text in pictures: select text in the image viewer, page text in PDFs, and Text in pictures search. Changing the model clears the saved text, so pictures are read again with the new one.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const g=()=>{const a=LSAndroid.ocrEngGet().split(',').map(Number);return{m:a[0]||0,inst:a[1]===1}};
+  const list=E('div');card.append(list);
+  const draw=()=>{list.textContent='';const st=g();
+    const pad=st.inst?'Model downloaded (about 10 MB). Reads small print and Turkish letters well.':'Model not downloaded yet: it downloads by itself on Wi-Fi (about 10 MB). ML Kit reads until then.';
+    [[0,'Automatic','PaddleOCR when its model is on the phone, otherwise ML Kit'],[1,'PaddleOCR',pad],[2,'ML Kit','Google Play Services model. Nothing to download here.']].forEach(([id,n,sub])=>{
+      const r=E('button','set'),t=E('div','t');r.style.width='100%';r.style.textAlign='left';
+      t.append(E('b','',(st.m===id?'\u2713 ':'')+n),E('small','',sub));r.append(t);
+      r.onclick=()=>{if(st.m===id)return;LSAndroid.ocrEngSet(id);if(id!==2&&!st.inst)toast('Downloading the PaddleOCR model on Wi-Fi\u2026',3000);draw()};list.append(r)})};
+  draw();
+  const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openExcluded(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
