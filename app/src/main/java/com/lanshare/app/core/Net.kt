@@ -130,10 +130,10 @@ class HttpResp(val status: Int, val headers: Map<String, String>, private val so
 
 object Http {
     fun request(ip: String, port: Int, method: String, path: String, headers: Map<String, String>, timeoutMs: Int,
-                body: InputStream? = null, bodyLen: Long = 0, onSent: ((Int) -> Unit)? = null): HttpResp {
+                body: InputStream? = null, bodyLen: Long = 0, onSent: ((Int) -> Unit)? = null, connectMs: Int = timeoutMs): HttpResp {
         val s = Net.newSocket(ip)
         try {
-            s.connect(InetSocketAddress(ip, port), timeoutMs)
+            s.connect(InetSocketAddress(ip, port), connectMs)
             s.soTimeout = timeoutMs
             s.tcpNoDelay = true
             val o = s.getOutputStream()

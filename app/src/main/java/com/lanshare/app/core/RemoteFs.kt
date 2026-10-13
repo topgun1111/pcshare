@@ -65,6 +65,24 @@ class RemoteFs(peer: Peer) : Endpoint {
     private fun query(params: Map<String, String>) =
         params.entries.joinToString("&") { URLEncoder.encode(it.key, "UTF-8") + "=" + URLEncoder.encode(it.value, "UTF-8") }
 
+    @Volatile private var okAt = 0L
+    /** All known addresses of this device are tried at the same time (2.5 s); the first that connects wins and is trusted for a minute. */
+    private fun pickIp(): String? {
+        val now = System.currentTimeMillis()
+        if (ips.size < 2 || now - okAt < 60_000) return ip
+        val win = java.util.concurrent.LinkedBlockingQueue<String>()
+        for (c in ips) Thread({
+            try {
+                val s = Net.newSocket(c)
+                try { s.connect(java.net.InetSocketAddress(c, port), 2_500); win.offer(c) } finally { try { s.close() } catch (_: Exception) {} }
+            } catch (_: Exception) {}
+        }, "ip-probe").also { it.isDaemon = true; it.start() }
+        val w = win.poll(3_000, java.util.concurrent.TimeUnit.MILLISECONDS) ?: return null
+        okAt = now
+        if (w != ip) { ip = w; Core.discOrNull()?.setPeerIp(id, w) }
+        return w
+    }
+
     /** Sends the request and returns the open response (status 200/206). Caller closes it. */
     fun callRaw(method: String, route: String, params: Map<String, String> = emptyMap(), body: InputStream? = null,
                 size: Long = 0, headers: Map<String, String> = emptyMap(), onSent: ((Int) -> Unit)? = null, timeoutMs: Int = 30_000): HttpResp {
@@ -72,9 +90,11 @@ class RemoteFs(peer: Peer) : Endpoint {
         var r: HttpResp? = null
         var err: Exception? = null
         for (rnd in 0 until (if (retry) 3 else 1)) {
-            for (cand in ips) {
+            val first = pickIp()   // the address that answers right now goes first: a dead / stale address must not cost a timeout on every call
+            val order = if (first != null) listOf(first) + ips.filter { it != first } else ips
+            for (cand in order) {
                 try {
-                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, timeoutMs, body, size, onSent)
+                    r = Http.request(cand, port, method, "/p/$route?" + query(params), headers, timeoutMs, body, size, onSent, minOf(timeoutMs, 8_000))
                     err = null
                     if (cand != ip) {   // remember the address that works
                         ip = cand
