@@ -359,12 +359,12 @@ body.dual #dual{display:flex}
   .pj .pjl{max-height:calc(var(--lvh,100vh)*.22);min-height:0}.pj .dact{margin-top:6px}}
 @media (max-width:360px){.pj .pjh h3{font-size:18px}.pj .pjp{font-size:19px}#sheet .card.pj{padding-left:12px;padding-right:12px}}
 /* floating progress bubble + all-jobs panel: live outside #sheet, so no other sheet can remove them; sized from the real window (split screen / fold halves) */
-#jb{display:none;position:fixed;z-index:13;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;background:conic-gradient(var(--ac) calc(var(--p,0)*1%),var(--bd) 0);box-shadow:var(--sh);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+#jb{display:none;position:fixed;z-index:21;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;background:conic-gradient(var(--ac) calc(var(--p,0)*1%),var(--bd) 0);box-shadow:var(--sh);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
 #jb::before{content:'';position:absolute;inset:5px;border-radius:50%;background:var(--card)}
 #jb b{position:relative;font-size:18px;font-weight:700;color:var(--fg)}
 #jb.ind{animation:jbpulse 1.2s ease-in-out infinite}#jb.ok{background:var(--ok)}#jb.bad{background:var(--err)}
 @media (max-width:420px),(max-height:420px){#jb{width:42px;height:42px}#jb b{font-size:15px}}
-#jp{display:none;position:fixed;z-index:14;box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:calc(var(--lvh,100vh)*.6);flex-direction:column;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);padding:8px 12px}
+#jp{display:none;position:fixed;z-index:22;box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:calc(var(--lvh,100vh)*.6);flex-direction:column;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);padding:8px 12px}
 #jp .jh{display:flex;align-items:center;gap:4px;flex:0 0 auto}#jp .jh b{flex:1;font-size:15px}
 #jp .jh button{background:none;border:0;color:var(--ac);font-size:13px;padding:8px 10px;min-height:40px}#jp .jh .jm{color:var(--fg);font-size:22px;width:40px;padding:0}
 #jp .jl{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
@@ -991,7 +991,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
   const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'))||vis($('#home'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
-  ['#fab','#toast','#dlw'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
+  ['#fab','#toast','#dlw','#jb','#jp'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
   const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
   let hd=null;                                                         // native path bar + tool row sit exactly on top of these two rows
@@ -2922,16 +2922,25 @@ async function track(id){
 
 /* ---- floating progress bubble: shows EVERY running job (copy / move / send / extract / zip / delete / print / scans) at once. Round, in a corner (drag it, it snaps to the nearest corner),
    tap = panel with one row per job (bar, Cancel, tap a row = its detail card), Clear, minimize. It is not inside #sheet, so opening any other sheet or dialog never removes it. ---- */
-const JB={rows:[],h:{},seen:{},seq:0,dis:{},on:false,open:false,c:3};
-try{const v=localStorage.getItem('jbc');JB.c=v==null?3:Math.max(0,Math.min(3,+v||0))}catch(e){}
+const JB={rows:[],h:{},seen:{},seq:0,dis:{},on:false,open:false,c:1,sig:''};
+try{const v=localStorage.getItem('jbc');JB.c=v==null?1:Math.max(0,Math.min(3,+v||0))}catch(e){}
 const jbB=E('div'),jbN=E('b'),jbP=E('div'),jbHd=E('div','jh'),jbL=E('div','jl'),jbClr=E('button','','Clear'),jbMin=E('button','jm','\u2013');
 jbB.id='jb';jbP.id='jp';jbB.setAttribute('aria-label','Running tasks');jbMin.setAttribute('aria-label','Minimize');
 jbB.append(jbN);jbHd.append(E('b','','Running tasks'),jbClr,jbMin);jbP.append(jbHd,jbL);document.body.append(jbB,jbP);
-function jbPos(){const top=JB.c<2,left=JB.c%2===0;
+function jbVis(e){if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'}
+function jbPos(){const top=JB.c<2,left=JB.c%2===0,W=window.innerWidth,H=window.innerHeight,bw=jbB.offsetWidth||52;
+  let t=0,b=H;   // free band: below the (native) top bar / path rows, above dock / clipboard strip / toast / download cards / FAB
+  ['#top','#pathrow','#toolrow'].forEach(q=>{const e=$(q);if(jbVis(e)){const r=e.getBoundingClientRect();if(r.height>0&&r.bottom<H/2)t=Math.max(t,r.bottom)}});
+  ['#clip','#dock','#toast','#dlw','#fab'].forEach(q=>{const e=$(q);if(!jbVis(e))return;const r=e.getBoundingClientRect();if(r.height<=0||r.top<H/3)return;
+    if(q==='#fab'&&(left?r.left>16+bw+8:r.right<W-16-bw-8))return;   // FAB is on the other side
+    b=Math.min(b,r.top)});
   [jbB,jbP].forEach(e=>{e.style.transform='';e.style.top=e.style.bottom=e.style.left=e.style.right='auto';
-    e.style[top?'top':'bottom']=top?'calc(env(safe-area-inset-top,0px) + 16px)':'calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom,0px))';
-    e.style[left?'left':'right']='calc(16px + env(safe-area-inset-'+(left?'left':'right')+',0px))'})}
+    e.style[top?'top':'bottom']=top?'calc(max('+Math.round(t)+'px,env(safe-area-inset-top,0px)) + 12px)':'calc('+Math.round(H-b)+'px + 12px + env(safe-area-inset-bottom,0px))';
+    e.style[left?'left':'right']='calc(16px + env(safe-area-inset-'+(left?'left':'right')+',0px))'});
+  const lvh=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lvh'))||H;
+  jbP.style.maxHeight=Math.max(140,Math.min(lvh*.6,b-Math.max(t,0)-32))+'px'}   // panel never taller than the free band (split screen / fold half)
 jbPos();
+let jbLT=0;function jbLay(){if(jbLT)return;jbLT=requestAnimationFrame(()=>{jbLT=0;try{nlLay(true)}catch(e){}try{nlChPush()}catch(e){}})}   // native list/chrome: punch a hole for the bubble / panel
 function jbRow(id){const root=E('div','jr'),col=E('div','jc'),t=E('div','jt'),bar=E('div','jbar'),f=E('i'),d=E('small'),x=E('button','jx');
   bar.append(f);col.append(t,bar,d);root.append(col,x);
   root.onclick=e=>{if(e.target===x)return;if(LVS&&LVS.id===id){JB.open=false;lvShow();jbRender()}};
@@ -2942,6 +2951,8 @@ function jbRender(){
   if(!any)JB.open=false;
   jbP.style.display=JB.open&&any?'flex':'none';
   jbB.style.display=any&&!JB.open&&!lvOn()?'flex':'none';
+  if(any&&!JB.drag){try{jbPos()}catch(e){}}
+  const sg=jbP.style.display+jbB.style.display+JB.c+jbB.style.top+jbB.style.bottom+jbP.style.top+jbP.style.bottom+jbP.style.maxHeight;if(sg!==JB.sig){JB.sig=sg;jbLay()}
   const failed=!run.length&&rows.some(r=>r.state==='error'),pcts=run.map(r=>r.pct);
   const ind=run.length>0&&pcts.some(p=>p<0),all=pcts.length&&!ind?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0;
   jbB.className=failed?'bad':!run.length?'ok':ind?'ind':'';jbB.style.setProperty('--p',all);
@@ -2973,14 +2984,16 @@ jbMin.onclick=()=>{JB.open=false;jbRender()};
 {let sx=0,sy=0,drag=false;
   jbB.addEventListener('pointerdown',e=>{sx=e.clientX;sy=e.clientY;drag=false;try{jbB.setPointerCapture(e.pointerId)}catch(_){}});
   jbB.addEventListener('pointermove',e=>{if(!jbB.hasPointerCapture||!jbB.hasPointerCapture(e.pointerId))return;const dx=e.clientX-sx,dy=e.clientY-sy;
-    if(!drag&&Math.hypot(dx,dy)>8)drag=true;if(drag)jbB.style.transform='translate('+dx+'px,'+dy+'px)'});
+    if(!drag&&Math.hypot(dx,dy)>8){drag=true;JB.drag=true}if(drag){jbB.style.transform='translate('+dx+'px,'+dy+'px)';jbLay()}});
   const up=e=>{try{jbB.releasePointerCapture(e.pointerId)}catch(_){}
     if(drag){const r=jbB.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
-      JB.c=(cy<innerHeight/2?0:2)+(cx<innerWidth/2?0:1);try{localStorage.setItem('jbc',JB.c)}catch(_){}jbPos()}
+      JB.c=(cy<innerHeight/2?0:2)+(cx<innerWidth/2?0:1);try{localStorage.setItem('jbc',JB.c)}catch(_){}jbPos();jbLay()}
     else if(e.type==='pointerup'){JB.open=true;JB.t=Date.now();jbRender()}
-    drag=false};
+    drag=false;JB.drag=false};
   jbB.addEventListener('pointerup',up);jbB.addEventListener('pointercancel',up)}
 document.addEventListener('click',e=>{if(Date.now()-(JB.t||0)<400)return;if(JB.open&&!jbP.contains(e.target)&&!jbB.contains(e.target)){e.stopPropagation();e.preventDefault();JB.open=false;jbRender()}},true);   // tap outside = collapse (the tap is swallowed)
+['resize','orientationchange'].forEach(t=>window.addEventListener(t,()=>setTimeout(()=>{try{jbPos();jbLay()}catch(e){}},300)));
+if(window.visualViewport)visualViewport.addEventListener('resize',()=>{try{jbPos();jbLay()}catch(e){}});
 jbKick();   // jobs outlive the page: show the ones already running after a reload / coming back to the app
 
 // ---- pull down to refresh
