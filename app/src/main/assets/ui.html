@@ -2908,6 +2908,7 @@ function lvFeed(id,j){
   if(j.cur){L.now.style.display='';L.nn.textContent=j.cur;
     if(j.bytes&&j.curTotal>0){L.nb.style.display='';L.nf.style.width=Math.min(100,Math.floor(j.curDone*100/j.curTotal))+'%';L.ns.textContent=fmt(j.curDone)+' of '+fmt(j.curTotal)}
     else{L.nb.style.display='none';L.ns.textContent=''}}
+  else L.now.style.display='none';   // nothing to report right now: never leave the previous step's text (e.g. "Checking the destination folder") on the card
   const fl=j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'');
   lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(j.done)+' of '+fmt(j.total):j.done+' of '+j.total],
     ['s','Speed',j.speed>0?fmt(j.speed)+'/s':''],['e','Time left',j.eta>0?etaTxt(j.eta):''],['u','Elapsed',durTxt(j.elapsed)],
@@ -3390,6 +3391,7 @@ $('#nm').onclick=async()=>{const n=await dlg({title:'Device name',msg:'How this 
 window.lsPane={get dev(){return S.dev},get path(){return S.path},paths:()=>selPaths(),
   clearSel(){S.sel.clear();render()},api,toast,watchJob,track,load,refreshClip,
   dropClip(){S.clip=null;renderBar()},
+  askConflicts:(...a)=>askConflicts(...a),
   rowAt(x,y,own){const e=document.elementFromPoint(x,y),w=e&&e.closest&&e.closest('.row'),it=w&&w._it;   // folder row under a point (not one of the dragged rows)
     return it&&it.dir&&!(own&&S.sel.has(it.name))?{name:it.name,el:w}:null},
   hot(el){if(this._h&&this._h!==el)this._h.classList.remove('dnt');this._h=el||null;if(el)el.classList.add('dnt')}};
@@ -3417,8 +3419,9 @@ async function lsDrop(from,to,op,dir){
     const paths=A.paths();if(!paths.length)return;
     if(A.dev===B.dev&&A.path===dd){A.toast(dir==null?'Both panes show the same folder':'Already in this folder',3000);return}
     if(A.dev===B.dev&&paths.some(p=>dd===p||dd.startsWith(p+'/'))){A.toast('A folder cannot go into itself',3000);return}
+    const cf=await A.askConflicts(B.dev,dd,paths,A.dev);if(!cf)return;   // same name already there: ask each / replace all / skip / cancel
     await A.api('POST','/api/clip',{op,dev:A.dev,paths});
-    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:dd});
+    const r=await A.api('POST','/api/paste',{dev:B.dev,dir:dd,conflict:cf});
     A.clearSel();A.watchJob(r.job);
     if(await A.track(r.job)){await A.api('POST','/api/clip',{op:'clear'});A.dropClip()}
     A.load();B.load();B.refreshClip()}

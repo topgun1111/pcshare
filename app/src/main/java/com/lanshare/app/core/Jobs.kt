@@ -75,6 +75,7 @@ class Job(@Volatile var label: String) {
         answer = null
         synchronized(this) { askSeq++; q.put("q", askSeq) }
         ask = q
+        cur = "Waiting for your answer\u2026"
         try {
             while (true) {
                 if (cancel) throw Cancelled()
@@ -82,7 +83,7 @@ class Job(@Volatile var label: String) {
                 if (a != null) return a
                 Thread.sleep(120)
             }
-        } finally { ask = null; answer = null }
+        } finally { ask = null; answer = null; cur = "" }
     }
 
     /** The answer only counts for the question that is open right now (a late double tap must not answer the next one). */
@@ -109,6 +110,7 @@ class Job(@Volatile var label: String) {
     fun toJson(since: Int = -1): JSONObject = JSONObject().put("state", state).put("done", done).put("total", total).put("bytes", bytes)
         .put("error", error ?: JSONObject.NULL).put("label", label).also {
             if (cancel) it.put("cancel", true)
+            ask?.let { a -> it.put("ask", a) }   // the open "replace this file?" question must always reach the UI
             if (end > 0) it.put("end", end / 1000.0)
             it.put("elapsed", ((if (end > 0) end else System.currentTimeMillis()) - startedAt) / 1000.0)
             if (cur.isNotEmpty()) it.put("cur", cur).put("curDone", curDone).put("curTotal", curTotal)
@@ -119,7 +121,6 @@ class Job(@Volatile var label: String) {
             result?.let { r -> it.put("result", r) }
             if (live) {
                 it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
-                ask?.let { a -> it.put("ask", a) }
                 if (since >= 0) { val (n, l) = logSince(since); it.put("logn", n).put("log", org.json.JSONArray(l)) }
             }
             if (state == "run") {
