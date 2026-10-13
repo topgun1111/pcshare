@@ -254,6 +254,7 @@ class ImageViewerActivity : Activity() {
         }
         root.addView(selBar)
         setContentView(root)
+        com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
     }
 
     private fun toggleUi() {

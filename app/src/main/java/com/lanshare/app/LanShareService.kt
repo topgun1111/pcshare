@@ -45,7 +45,7 @@ class LanShareService : Service() {
         if (Build.VERSION.SDK_INT >= 26)
             getSystemService(NotificationManager::class.java)
                 .createNotificationChannel(NotificationChannel(ch, "LANShare", NotificationManager.IMPORTANCE_LOW))
-        try { val (run, done, total) = com.lanshare.app.core.ImgSearch.progress(); lastNote = if (run) "$done/$total" else ""; startForeground(1, buildNote(run, done, total)) }
+        try { val (run, done, total) = com.lanshare.app.core.ImgSearch.progress(); lastNote = noteKey(run, done, total); startForeground(1, buildNote(run, done, total)) }
         catch (e: Exception) {   // ForegroundServiceStartNotAllowedException etc.: keep running as a normal service rather than crash
             android.util.Log.w("LANShare", "startForeground refused: " + e)
         }
@@ -70,7 +70,7 @@ class LanShareService : Service() {
         override fun run() {
             try {
                 val (run, done, total) = com.lanshare.app.core.ImgSearch.progress()
-                val key = if (run) "$done/$total" else ""
+                val key = noteKey(run, done, total)
                 if (key != lastNote) {   // notify only when the text changes
                     lastNote = key
                     getSystemService(NotificationManager::class.java).notify(1, buildNote(run, done, total))
@@ -80,6 +80,12 @@ class LanShareService : Service() {
         }
     }
 
+    /** Changes whenever the notification text would change (scan progress or the running background jobs). */
+    private fun noteKey(run: Boolean, done: Int, total: Int): String {
+        val jr = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
+        return (if (run) "$done/$total" else "") + "|" + jr.size + ":" + com.lanshare.app.ops.JobView.overallPct(jr) + ":" + (jr.firstOrNull()?.label ?: "")
+    }
+
     /** The one foreground notification: shows scan progress while a picture scan runs, so the scan is covered by a visible foreground service. */
     private fun buildNote(scanning: Boolean, done: Int, total: Int): android.app.Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -87,7 +93,13 @@ class LanShareService : Service() {
             .setSmallIcon(R.drawable.ic_notification).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .addAction(R.drawable.ic_notification, "Stop",
                 PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
-        if (scanning) {
+        val jobs = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
+        if (jobs.isNotEmpty()) {   // copy / zip / print ... running in the background: progress stays visible when the app is not on screen
+            val pct = com.lanshare.app.ops.JobView.overallPct(jobs)
+            b.setContentTitle(if (jobs.size == 1) jobs[0].label else "${jobs.size} tasks running")
+            b.setContentText(if (pct >= 0) "$pct %" else "Working\u2026")
+            b.setProgress(100, maxOf(pct, 0), pct < 0)
+        } else if (scanning) {
             b.setContentTitle("Scanning pictures")
             b.setContentText(if (total > 0) "$done / $total" else "Listing folders\u2026")
             b.setProgress(total, done, total <= 0)
