@@ -163,6 +163,15 @@ object Routes {
                 return ok(ex)
             }
             "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson(ex.query["since"]?.toIntOrNull() ?: -1))
+            "jobs" -> {   // every running job (copy / move / send / extract / zip / delete / print / scans) + ones finished in the last 10 s: feeds the floating progress bubble
+                val now = System.currentTimeMillis()
+                val arr = org.json.JSONArray()
+                for ((k, j) in Jobs.all.entries.toList().map { it.key to it.value }) {
+                    if (j.state != "run" && (j.end <= 0L || now - j.end > 10_000L)) continue
+                    arr.put(j.toJson().put("id", k))
+                }
+                return ex.json(arr)
+            }
             "jobanswer" -> {   // the user answered "replace this file?" of a running copy
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).give(ex.q("q").toIntOrNull() ?: -1, ex.q("ans"))
                 return ok(ex)

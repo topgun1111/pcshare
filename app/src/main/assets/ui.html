@@ -358,6 +358,23 @@ body.dual #dual{display:flex}
   .pj .pjn{padding:6px 10px;margin-bottom:6px}.pj .pjg{gap:4px 10px;margin-bottom:4px}.pj .pjc b{font-size:14px}
   .pj .pjl{max-height:calc(var(--lvh,100vh)*.22);min-height:0}.pj .dact{margin-top:6px}}
 @media (max-width:360px){.pj .pjh h3{font-size:18px}.pj .pjp{font-size:19px}#sheet .card.pj{padding-left:12px;padding-right:12px}}
+/* floating progress bubble + all-jobs panel: live outside #sheet, so no other sheet can remove them; sized from the real window (split screen / fold halves) */
+#jb{display:none;position:fixed;z-index:13;width:52px;height:52px;border-radius:50%;align-items:center;justify-content:center;background:conic-gradient(var(--ac) calc(var(--p,0)*1%),var(--bd) 0);box-shadow:var(--sh);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+#jb::before{content:'';position:absolute;inset:5px;border-radius:50%;background:var(--card)}
+#jb b{position:relative;font-size:18px;font-weight:700;color:var(--fg)}
+#jb.ind{animation:jbpulse 1.2s ease-in-out infinite}#jb.ok{background:var(--ok)}#jb.bad{background:var(--err)}
+@media (max-width:420px),(max-height:420px){#jb{width:42px;height:42px}#jb b{font-size:15px}}
+#jp{display:none;position:fixed;z-index:14;box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:calc(var(--lvh,100vh)*.6);flex-direction:column;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);padding:8px 12px}
+#jp .jh{display:flex;align-items:center;gap:4px;flex:0 0 auto}#jp .jh b{flex:1;font-size:15px}
+#jp .jh button{background:none;border:0;color:var(--ac);font-size:13px;padding:8px 10px;min-height:40px}#jp .jh .jm{color:var(--fg);font-size:22px;width:40px;padding:0}
+#jp .jl{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+#jp .jr{display:flex;align-items:center;gap:6px;padding:6px 0}#jp .jc{flex:1;min-width:0}
+#jp .jt{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#jp .jbar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:4px 0 2px}#jp .jbar i{display:block;height:100%;width:0;background:var(--ac);transition:width .3s}
+#jp .jbar.ind i{width:100%!important;opacity:.5;animation:jbpulse 1.2s ease-in-out infinite}
+#jp small{display:block;color:var(--mut);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#jp .jx{flex:0 0 40px;height:40px;border:0;background:none;color:var(--fg);font-size:20px}
+@keyframes jbpulse{50%{opacity:.55}}
 .handle{width:32px;height:4px;border-radius:2px;background:var(--mut);opacity:.5;margin:4px auto 12px}
 #sheet h3,.dcard h3{margin:0 0 8px;font-size:22px;font-weight:500}
 .li{display:flex;align-items:center;gap:16px;min-height:56px;padding:8px;border-radius:16px;text-align:left;width:100%}.li:active{background:var(--hov)}
@@ -2800,10 +2817,11 @@ function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return
 let LVS=null;
 const LVK={R:['↻','Replaced','#E65100'],N:['＋','New','#2E7D32'],S:['↷','Skipped','var(--mut)']};
 const durTxt=s=>{s=Math.max(0,Math.round(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>(n<10?'0':'')+n;return h?h+':'+p(m)+':'+p(x):m+':'+p(x)};
+function lvOn(){const L=LVS,o=$('#sheet');return !!(L&&!L.hidden&&L.card.isConnected&&o.style.display==='flex')}   // the card is really on screen (another sheet may have replaced it)
 function lvShow(){const L=LVS;if(!L)return;const o=$('#sheet');
   if(!L.card.isConnected||o.style.display!=='flex'){o.textContent='';o.append(L.card);o.style.display='flex';o.onclick=e=>{if(e.target===o)lvHide()}}
-  L.hidden=false;$('#toast').style.display='none'}
-function lvHide(){const o=$('#sheet');if(LVS){LVS.hidden=true;LVS.min=true}o.style.display='none';o.onclick=null}
+  L.hidden=false;$('#toast').style.display='none';try{jbRender()}catch(e){}}
+function lvHide(){const o=$('#sheet');if(LVS){LVS.hidden=true;LVS.min=true}o.style.display='none';o.onclick=null;try{jbKick();jbRender()}catch(e){}}
 function lvMake(id){
   const card=E('div','card pj'),hd=E('div','pjh'),h=E('h3','','Working…'),pc=E('b','pjp','0%'),sub=E('div','pjs'),
     bar=E('div','pjb'),fill=E('i'),now=E('div','pjn'),nn=E('div','pjnn'),nb=E('div','pjnb'),nf=E('i'),ns=E('small'),
@@ -2842,7 +2860,7 @@ function lvFeed(id,j){
     ['f',j.filesTotal>0?'Files':(j.label&&/^Delet/.test(j.label)?'Items removed':'Files'),fl],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
   lvProblems(L,j);
-  if(j.elapsed>=2&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;lvShow()}   // long job: open the card once (never over another sheet)
+  if(j.elapsed>=2&&!L.auto&&!L.min&&$('#sheet').style.display!=='flex'&&$('#dlg').style.display!=='flex'){L.auto=true;if((window.innerHeight||0)>=520&&(window.innerWidth||0)>=400)lvShow();else jbKick()}   // long job: open the card once (never over another sheet)
   const a=j.ask;
   if(a&&a.q!==L.answered){
     if(L.curq!==a.q){L.curq=a.q;L.askBox.textContent='';
@@ -2856,12 +2874,12 @@ function lvFeed(id,j){
         const b=E('button',x[2],x[0]);b.onclick=()=>{L.answered=a.q;L.askBox.style.display='none';
           api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
       L.askBox.append(E('div','','Already exists - replace?'),nm,info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
-    L.askBox.style.display='block';if(L.hidden)lvShow();
+    L.askBox.style.display='block';if(L.hidden||!lvOn())lvShow();
     if(L.askSeen!==a.q){L.askSeen=a.q;setTimeout(()=>{try{L.askBox.scrollIntoView({block:'nearest'})}catch(e){}},60)}
   }else L.askBox.style.display='none';
-  return !L.hidden}
+  return lvOn()}
 /* the job ended: returns true when the card is on screen and shows the result (the caller then skips the toast) */
-function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
+function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;const vis=lvOn();LVS=null;
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));L.list.scrollTop=L.list.scrollHeight;
   L.askBox.style.display='none';
   const ok=j.state==='done',el=j.elapsed||0;
@@ -2881,15 +2899,15 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;LVS=null;
     rb.onclick=async()=>{rb.disabled=true;try{const r=await api('POST','/api/printretry?id='+id);L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rb.disabled=false;toast('\u26a0 '+e.message,5000)}};
     L.hide.className='tbtn';L.row.insertBefore(rb,L.hide)}
   const bad=(j.problems||[]).length>1||j.retry>0;
-  if(L.hidden&&ok)return false;                 // minimized and fine: the toast says it
-  if(L.hidden&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
+  if(!vis&&ok)return false;                 // minimized and fine: the toast says it
+  if(!vis&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}
 let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 $('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#tc'))return;if(LVS&&LVS.id===curJob)lvShow()});
 let trk=0;
 async function track(id){
-  let ok=false,jf=0;curJob=id;trk++;
+  let ok=false,jf=0;curJob=id;trk++;jbKick();
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
     if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
@@ -2897,12 +2915,73 @@ async function track(id){
     if(j.state==='done'){const c=lvEnd(id,j);if(!c)toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
     const card=lvFeed(id,j);
     const pct=Math.floor(j.done*100/j.total);
-    if(card)$('#toast').style.display='none';
-    else{const sp=[];if(j.speed>0)sp.push(fmt(j.speed)+'/s');if(j.eta>0)sp.push('about '+etaTxt(j.eta)+' left');
-      toast((j.label||'Working')+'… '+pct+'%  '+(j.bytes?fmt(j.done)+' / '+fmt(j.total):j.done+' / '+j.total)+(sp.length?'  · '+sp.join(' · '):'')+'  ›',0,pct)}
+    if(card)$('#toast').style.display='none';   // minimized / replaced card: the floating bubble (jbRender) shows the progress
     await new Promise(r=>setTimeout(r,400))}
   trk--;Object.keys(SP).forEach(k=>delete SP[k]);
   await refreshClip();load();return ok}
+
+/* ---- floating progress bubble: shows EVERY running job (copy / move / send / extract / zip / delete / print / scans) at once. Round, in a corner (drag it, it snaps to the nearest corner),
+   tap = panel with one row per job (bar, Cancel, tap a row = its detail card), Clear, minimize. It is not inside #sheet, so opening any other sheet or dialog never removes it. ---- */
+const JB={rows:[],h:{},seen:{},seq:0,dis:{},on:false,open:false,c:3};
+try{const v=localStorage.getItem('jbc');JB.c=v==null?3:Math.max(0,Math.min(3,+v||0))}catch(e){}
+const jbB=E('div'),jbN=E('b'),jbP=E('div'),jbHd=E('div','jh'),jbL=E('div','jl'),jbClr=E('button','','Clear'),jbMin=E('button','jm','\u2013');
+jbB.id='jb';jbP.id='jp';jbB.setAttribute('aria-label','Running tasks');jbMin.setAttribute('aria-label','Minimize');
+jbB.append(jbN);jbHd.append(E('b','','Running tasks'),jbClr,jbMin);jbP.append(jbHd,jbL);document.body.append(jbB,jbP);
+function jbPos(){const top=JB.c<2,left=JB.c%2===0;
+  [jbB,jbP].forEach(e=>{e.style.transform='';e.style.top=e.style.bottom=e.style.left=e.style.right='auto';
+    e.style[top?'top':'bottom']=top?'calc(env(safe-area-inset-top,0px) + 16px)':'calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom,0px))';
+    e.style[left?'left':'right']='calc(16px + env(safe-area-inset-'+(left?'left':'right')+',0px))'})}
+jbPos();
+function jbRow(id){const root=E('div','jr'),col=E('div','jc'),t=E('div','jt'),bar=E('div','jbar'),f=E('i'),d=E('small'),x=E('button','jx');
+  bar.append(f);col.append(t,bar,d);root.append(col,x);
+  root.onclick=e=>{if(e.target===x)return;if(LVS&&LVS.id===id){JB.open=false;lvShow();jbRender()}};
+  x.onclick=()=>{if(x.dataset.k==='c'){api('POST','/api/jobcancel?id='+id).catch(()=>{});x.disabled=true}};
+  return{root,t,f,bar,d,x}}
+function jbRender(){
+  const rows=JB.rows,run=rows.filter(r=>r.state==='run'),any=rows.length>0;
+  if(!any)JB.open=false;
+  jbP.style.display=JB.open&&any?'flex':'none';
+  jbB.style.display=any&&!JB.open&&!lvOn()?'flex':'none';
+  const failed=!run.length&&rows.some(r=>r.state==='error'),pcts=run.map(r=>r.pct);
+  const ind=run.length>0&&pcts.some(p=>p<0),all=pcts.length&&!ind?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0;
+  jbB.className=failed?'bad':!run.length?'ok':ind?'ind':'';jbB.style.setProperty('--p',all);
+  jbN.textContent=failed?'!':!run.length?'\u2713':String(run.length);
+  if(!JB.open||!any)return;
+  const ids=rows.map(r=>r.id);Object.keys(JB.h).forEach(k=>{if(!ids.includes(k)){JB.h[k].root.remove();delete JB.h[k]}});
+  rows.forEach((r,i)=>{const h=JB.h[r.id]||(JB.h[r.id]=jbRow(r.id));
+    if(jbL.children[i]!==h.root)jbL.insertBefore(h.root,jbL.children[i]||null);
+    h.t.textContent=(r.label||'Working')+(r.state==='run'&&r.pct>=0?'  '+r.pct+'%':'');
+    h.bar.classList.toggle('ind',r.pct<0);h.f.style.width=Math.max(r.pct,0)+'%';
+    h.f.style.background=r.state==='error'?'var(--err)':r.state==='cancel'?'var(--mut)':r.state==='done'?'var(--ok)':'';
+    const dt=r.state==='error'?(r.error||''):r.cancel?'Cancelling\u2026':r.ask?'Waiting for your answer - tap to open':[r.filesTotal>0?(r.files||0)+'/'+r.filesTotal:'',r.cur||'',r.speed>0?fmt(r.speed)+'/s':''].filter(Boolean).join('  ');
+    h.d.textContent=dt;h.d.style.display=dt?'':'none';
+    const st=r.state;h.x.dataset.k=st==='run'&&!r.cancel?'c':'';h.x.disabled=!(st==='run'&&!r.cancel);
+    h.x.textContent=st==='run'?(r.cancel?'\u2026':'\u2715'):st==='done'?'\u2713':st==='error'?'!':'\u2013';h.x.setAttribute('aria-label',st==='run'?'Cancel':'')});
+  jbClr.style.visibility=rows.some(r=>r.state!=='run')?'visible':'hidden'}
+async function jbPoll(){
+  let a;try{a=await api('GET','/api/jobs',null,4000)}catch(e){return}
+  if(!Array.isArray(a))return;const now=Date.now()/1000;
+  JB.rows=a.filter(j=>j.state==='run'||(j.end&&!JB.dis[j.id]&&now-j.end<(j.state==='error'?10:3)))
+    .map(j=>({id:j.id,label:j.label,state:j.state,pct:j.state==='done'?100:j.total>0?Math.min(100,Math.floor(j.done*100/j.total)):-1,error:j.error,cancel:!!j.cancel,
+      ask:j.ask,cur:j.cur,files:j.files,filesTotal:j.filesTotal,speed:j.speed}));
+  JB.rows.forEach(r=>{if(JB.seen[r.id]==null)JB.seen[r.id]=JB.seq++});JB.rows.sort((x,y)=>JB.seen[x.id]-JB.seen[y.id]);
+  jbRender()}
+function jbKick(){if(JB.on)return;JB.on=true;
+  (async()=>{try{for(;;){await jbPoll();if(!JB.rows.length&&!trk)break;await new Promise(r=>setTimeout(r,JB.rows.some(x=>x.state==='run')?450:800))}}finally{JB.on=false}})()}
+jbClr.onclick=()=>{JB.rows.forEach(r=>{if(r.state!=='run')JB.dis[r.id]=1});JB.rows=JB.rows.filter(r=>r.state==='run');jbRender()};
+jbMin.onclick=()=>{JB.open=false;jbRender()};
+{let sx=0,sy=0,drag=false;
+  jbB.addEventListener('pointerdown',e=>{sx=e.clientX;sy=e.clientY;drag=false;try{jbB.setPointerCapture(e.pointerId)}catch(_){}});
+  jbB.addEventListener('pointermove',e=>{if(!jbB.hasPointerCapture||!jbB.hasPointerCapture(e.pointerId))return;const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(!drag&&Math.hypot(dx,dy)>8)drag=true;if(drag)jbB.style.transform='translate('+dx+'px,'+dy+'px)'});
+  const up=e=>{try{jbB.releasePointerCapture(e.pointerId)}catch(_){}
+    if(drag){const r=jbB.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+      JB.c=(cy<innerHeight/2?0:2)+(cx<innerWidth/2?0:1);try{localStorage.setItem('jbc',JB.c)}catch(_){}jbPos()}
+    else if(e.type==='pointerup'){JB.open=true;JB.t=Date.now();jbRender()}
+    drag=false};
+  jbB.addEventListener('pointerup',up);jbB.addEventListener('pointercancel',up)}
+document.addEventListener('click',e=>{if(Date.now()-(JB.t||0)<400)return;if(JB.open&&!jbP.contains(e.target)&&!jbB.contains(e.target)){e.stopPropagation();e.preventDefault();JB.open=false;jbRender()}},true);   // tap outside = collapse (the tap is swallowed)
+jbKick();   // jobs outlive the page: show the ones already running after a reload / coming back to the app
 
 // ---- pull down to refresh
 (()=>{const box=$('#ptr'),lab=box.firstChild,TH=70;let y0=0,dy=0,on=false,busy=false;
