@@ -1840,8 +1840,6 @@ function openSettings(){
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
-  {const rq=E('button','set'),tq=E('div','t'),lp=lsGet('ls_lastpq',null),sq=E('small','',lp&&lp.name?'On '+lp.name+' - waiting and finished jobs, cancel':'Shows after you print on a PC');rq.style.width='100%';rq.style.textAlign='left';
-    tq.append(E('b','','Print queue'),sq);rq.append(tq);rq.onclick=()=>{if(!lp||!lp.id){toast('Print on a PC first',2500);return}close();openPrintQueue(lp)};card.append(rq)}
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
