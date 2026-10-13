@@ -695,7 +695,8 @@ const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(
 const arcP=p=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
 const isHid=i=>i.name[0]==='.'||!!i.hid||(S.dev==='local'&&hidP(jn(S.path,i.name)));   // hidden item (only on screen while "Show hidden files" is on): drawn faded
-const vis=()=>(S.hid||arcP(S.path))?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid&&!(S.dev==='local'&&hidP(jn(S.path,i.name))));
+const showHid=()=>S.hid&&S.dev==='local';   // "Show hidden files" only applies to this device: other devices / PC (SMB) never show hidden items
+const vis=()=>(showHid()||arcP(S.path))?S.items:S.items.filter(i=>i.name[0]!=='.'&&!i.hid&&!(S.dev==='local'&&hidP(jn(S.path,i.name))));
 const COL=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 const extOf=n=>{const p=n.lastIndexOf('.');return p>0?n.slice(p+1).toLowerCase():''};
 function shown(){  // visible items in the chosen order; folders always come first
@@ -705,7 +706,7 @@ function shown(){  // visible items in the chosen order; folders always come fir
   const qf=a=>S.q?a.filter(i=>i.name.toLowerCase().indexOf(S.q)>=0):a.slice();   // the filter keeps the order, so the sorted list is reused while typing a search
   if(k==='none')return qf(vis());
   let sorted;
-  if(k!=='size'&&SHC&&SHC.it===S.items&&SHC.n===S.items.length&&SHC.h===S.hid&&SHC.k===k&&SHC.d===d)sorted=SHC.v;   // size order depends on folder counts that arrive in place: never cached
+  if(k!=='size'&&SHC&&SHC.it===S.items&&SHC.n===S.items.length&&SHC.h===showHid()&&SHC.k===k&&SHC.d===d)sorted=SHC.v;   // size order depends on folder counts that arrive in place: never cached
   else{sorted=vis().slice().sort((a,b)=>{
     if(a.dir!==b.dir)return a.dir?-1:1;
     let c=0;
@@ -714,7 +715,7 @@ function shown(){  // visible items in the chosen order; folders always come fir
     else c=num(a)-num(b);
     if(c)return c*d;
     return COL.compare(a.name,b.name)*(k==='name'?d:1)});
-    if(k!=='size')SHC={it:S.items,n:S.items.length,h:S.hid,k:k,d:d,v:sorted}}
+    if(k!=='size')SHC={it:S.items,n:S.items.length,h:showHid(),k:k,d:d,v:sorted}}
   return qf(sorted)}
 let SHC=null;
 let DUPS=new Set();
@@ -916,7 +917,7 @@ const NLON=(()=>{try{return localStorage.getItem('ls_nl')!=='0'}catch(e){return 
 /* native Sort / View sheets (Kotlin: NlSheets.kt) and native search box (NlSearch.kt). Kill switches: localStorage ls_nls='0' / ls_nlq='0', NativeList.SHEETS / NativeList.SEARCH = false. */
 const NLSH=(()=>{try{return !!NL&&!KID&&!!NL.nlSort&&!!NL.nlSheets&&NL.nlSheets()&&localStorage.getItem('ls_nls')!=='0'}catch(e){return false}})();
 const NLSR=(()=>{try{return !!NL&&!KID&&!!NL.nlSearch&&!!NL.nlSearchOk&&NL.nlSearchOk()&&localStorage.getItem('ls_nlq')!=='0'}catch(e){return false}})();
-function nlSheetState(){const W=window.innerWidth,o={cols:S.cols,gal:galRoot()?1:0,ec:galRoot()?(W>=900?4:W>=600?3:2):(W>=600?4:5),view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:S.hid?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
+function nlSheetState(){const W=window.innerWidth,o={cols:S.cols,gal:galRoot()?1:0,ec:galRoot()?(W>=900?4:W>=600?3:2):(W>=600?4:5),view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:showHid()?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
   Object.keys(SORTS).forEach(k=>o.lb[k]=SORTS[k].t);return JSON.stringify(o)}
 // a choice made in a native sheet: {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kotlin has already shown the re-built rows when it could; this applies the same preference (and persists it).
 window.nlPref=j=>{let p;try{p=JSON.parse(j)}catch(e){return}
@@ -937,7 +938,7 @@ function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;N
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(showHid()||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
   if(!items.length&&S.sr.items&&!S.sr.err)return null;
   return[{_hd:1,name:S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…'}].concat(items.map(i=>Object.assign({_h:1},i)))}
 // native for every device and view (thumbnails of other devices / SMB are made by Kotlin through the endpoint: RemoteThumbs)
@@ -964,7 +965,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
       if(!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
-const nlCfg=()=>[S.sort,S.asc?1:0,S.hid?1:0,S.gal?1:0,S.view,S.thumb].join(',');
+const nlCfg=()=>[S.sort,S.asc?1:0,showHid()?1:0,S.gal?1:0,S.view,S.thumb].join(',');
 function nlRender(LIST,P0,GN){
   if(GN==null)GN=NLGN;NLL=LIST;NLP0=P0;NLGN=GN;   // LIST = folder rows followed by the video-gallery cells (index >= GN)
   const a=nlBuild(LIST,P0,GN);
@@ -1437,7 +1438,7 @@ function isView(sdir,sname,m0){
       inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
       try{const r=await api('GET','/api/search?dev=local&path='+enc(sdir||'/')+'&q='+enc(q),null,120000);
         if(!live())return;
-        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
+        const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(showHid()||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
         show(it.map(i=>({path:i.path,score:0})),q)}
       catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
       return}
@@ -2006,7 +2007,7 @@ function srOK(){return S.sr&&S.sr.q===S.q&&S.sr.dev===S.dev&&S.sr.path===S.path}
 function renderSR(l){
   if(!S.q||S.q.length<2||!srOK())return;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
-  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(S.hid||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
+  const items=(S.sr.items||[]).filter(i=>par(i.path)!==here&&(showHid()||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
   if(!items.length&&S.sr.items&&!S.sr.err)return;
   const h=E('div');h.style.cssText='padding:14px 16px 6px;font-size:13px;color:var(--mut);grid-column:1/-1';
   h.textContent=S.sr.err?'⚠ Search failed: '+S.sr.err:S.sr.items?'In subfolders ('+items.length+(S.sr.partial?'+':'')+')':'Searching subfolders…';
@@ -3285,7 +3286,7 @@ function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
   const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;dev=dev||S.dev;
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const draw=async(p)=>{const my=++tk;let items=[],err='';
-    try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>i.dir&&(S.hid||(i.name[0]!=='.'&&!i.hid)))}catch(e){if(my!==tk)return;err=e.message}
+    try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>i.dir&&((S.hid&&dev==='local')||(i.name[0]!=='.'&&!i.hid)))}catch(e){if(my!==tk)return;err=e.message}
     cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','',title||'Extract to\u2026'));
     const loc=E('small','',p);loc.style.cssText='color:var(--mut);margin:-4px 0 6px;word-break:break-all';card.append(loc);
     if(p!=='/'){const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('back'));lt.append(E('span','','..'));b.append(ld,lt);b.onclick=()=>draw(pdir(p));card.append(b)}

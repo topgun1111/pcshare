@@ -14,7 +14,7 @@ data class Item(val name: String, val dir: Boolean, val size: Long, val mtime: L
 
     companion object {
         fun fromJson(o: JSONObject) = Item(o.getString("name"), o.optBoolean("dir"), o.optLong("size"), o.optLong("mtime"),
-            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null)
+            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null, o.optBoolean("hid"))
     }
 }
 

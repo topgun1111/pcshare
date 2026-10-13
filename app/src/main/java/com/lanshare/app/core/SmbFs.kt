@@ -434,7 +434,7 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     private fun item(name: String, attrs: Long, size: Long, mtime: Long, path: String? = null): Item {
         val d = isDir(attrs)
-        return Item(name, d, if (d) 0L else size, mtime, null, path)
+        return Item(name, d, if (d) 0L else size, mtime, null, path, (attrs and 0x2L) != 0L || (attrs and 0x4L) != 0L)   // Windows HIDDEN (0x2) / SYSTEM (0x4) attribute
     }
 
     private fun listRaw(s: DiskShare, v: String): List<Item> =
