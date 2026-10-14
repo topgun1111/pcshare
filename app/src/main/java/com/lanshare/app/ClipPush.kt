@@ -72,14 +72,18 @@ object ClipPush {
         val link = linkOf(text)
         ui.post {
             val a = front
-            if (a != null) {
-                show(a, text, from, link)
-                if (link != null) open(a, link)
-            } else notify(ctx, text, from, link)
+            if (a != null) try { show(a, text, from, link) } catch (e: Throwable) { android.util.Log.w("LANShare", "clip box failed: $e") }
+            notify(ctx, text, from, link)   // always: also covers a box that is hidden / missed, and keeps the item in the shade
+            if (a != null && link != null) open(a, link)
         }
     }
 
     private fun dp(a: Context, v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, a.resources.displayMetrics).toInt()
+
+    private fun navBar(a: Activity): Int {
+        val r = a.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (r > 0) a.resources.getDimensionPixelSize(r) else 0
+    }
 
     private fun dismiss() {
         hide?.let { ui.removeCallbacks(it) }; hide = null
@@ -88,7 +92,7 @@ object ClipPush {
 
     private fun show(a: Activity, text: String, from: String, link: String?) {
         dismiss()
-        val host = a.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val host = a.window.decorView as? ViewGroup ?: return   // top-most layer: nothing the app draws can cover the box
         val card = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(a, 14f), dp(a, 10f), dp(a, 14f), dp(a, 12f))
@@ -116,7 +120,7 @@ object ClipPush {
         }
         val maxW = minOf(a.resources.displayMetrics.widthPixels - dp(a, 32f), dp(a, 340f))
         host.addView(card, FrameLayout.LayoutParams(maxW, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START)
-            .apply { leftMargin = dp(a, 16f); bottomMargin = dp(a, 24f) })
+            .apply { leftMargin = dp(a, 16f); bottomMargin = dp(a, 24f) + navBar(a) })
         card.bringToFront()
         box = card
         hide = Runnable { dismiss() }.also { ui.postDelayed(it, 10_000) }
@@ -142,7 +146,7 @@ object ClipPush {
             .setAutoCancel(true).setContentIntent(tapPi)
             .addAction(R.drawable.ic_notification, if (link != null) "Open" else "Copy", tapPi)
         if (link != null) b.addAction(R.drawable.ic_notification, "Copy", copyPi)
-        try { nm.notify(id, b.build()) } catch (_: Exception) {}
+        try { nm.notify(id, b.build()) } catch (e: Throwable) { android.util.Log.w("LANShare", "clip notify failed: $e") }
     }
 
     fun textFor(id: Int): String? = texts[id]
