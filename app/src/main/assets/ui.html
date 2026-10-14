@@ -2163,7 +2163,8 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
     wifi.filter(w=>w.viaId===p.id).forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),'Wi-Fi printer'));
     if(d.n)cnt(d);else acc(d,'checking…','off');
     api('GET','/api/printer?dev='+enc(p.id),null,6000).then(r=>{
-      if(r&&r.ok&&r.printer)add(d,p,r.printer+(r.problem?' · '+r.problem:''),'PC print service');
+      if(r&&r.ok){const VIRT=/^(Microsoft (Print to PDF|XPS)|OneNote|Fax|Send To|Root Print Queue)/i,all=(r.printers&&r.printers.length?r.printers:(r.printer?[r.printer]:[])).filter(n=>n===r.printer||!VIRT.test(n));
+        all.forEach(n=>add(d,Object.assign({},p,{pn:n}),n+(n===r.printer&&r.problem?' · '+r.problem:''),'PC print service'))}
       d.n?cnt(d):acc(d,'No printer access','off')}).catch(()=>{d.n?cnt(d):acc(d,'No printer access','off')})});
   const lan=wifi.filter(w=>!w.viaId);
   if(lan.length){const d=dev('Printers on this Wi-Fi','Wi-Fi','wifi');lan.forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':'')));cnt(d)}
