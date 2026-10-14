@@ -74,7 +74,7 @@
                 <data android:pathPattern=".*\\.RAR"/>
             </intent-filter>
         </activity>
-        <!-- Second share-sheet entry: the plain "LANShare" share entry opens the print dialog; files shared through this one open the "Send to..." device picker -->
+        <!-- Second share-sheet entry: the plain "LANShare" share entry opens the print dialog; this one sends the clipboard (link / text) to the device picked from the "Send to..." list -->
         <activity-alias android:name=".SendShareAlias" android:targetActivity=".MainActivity" android:exported="true"
             android:label="LANShare Send" android:icon="@mipmap/ic_launcher">
             <intent-filter>
@@ -109,6 +109,7 @@
             <intent-filter><action android:name="android.printservice.PrintService"/></intent-filter>
             <meta-data android:name="android.printservice" android:resource="@xml/printservice"/>
         </service>
+        <receiver android:name=".ClipCopyReceiver" android:exported="false"/>
         <service android:name=".LanShareService" android:exported="false"
             android:foregroundServiceType="dataSync"/>
     </application>

@@ -199,7 +199,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runPrint(); runOpen() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runClipShare(); runPrint(); runOpen() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -300,10 +300,13 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    override fun onPause() { super.onPause(); if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) tryClipSend() }
+
+    override fun onPause() { super.onPause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
     override fun onResume() {
         super.onResume()
+        ClipPush.front = this
         ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
         if (::web.isInitialized && TextEditorActivity.consumeChanged()) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file: refresh the list
@@ -327,9 +330,54 @@ class MainActivity : Activity() {
         val uris: List<Uri> = if (i.action == Intent.ACTION_SEND)
             listOfNotNull(i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
         else i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+        val viaSend = i.component?.className?.endsWith("SendShareAlias") == true   // plain "LANShare" share entry = print; the "LANShare Send" entry sends the clipboard
+        if (viaSend) {
+            val shownText = i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+            i.action = null   // consume once
+            clipReq = ClipReq(shownText, uris)
+            tryClipSend()
+            return
+        }
         if (uris.isEmpty()) return
-        val toPrint = i.component?.className?.endsWith("SendShareAlias") != true   // plain "LANShare" share entry = print; only the "LANShare Send" entry sends
         i.action = null   // consume once
+        copySharedIn(uris, true)
+    }
+
+    private class ClipReq(val text: String?, val uris: List<Uri>)
+    private var clipReq: ClipReq? = null
+    private var pendingClipText: String? = null
+
+    /** "LANShare Send": the clipboard (link / text) goes to the picked device. Android 10+ lets only the focused app read the clipboard, so this waits for window focus.
+     *  Empty clipboard -> the text of the share, then (last resort) the shared files like before. */
+    private fun tryClipSend() {
+        val r = clipReq ?: return
+        if (!hasWindowFocus()) { window.decorView.postDelayed({ tryClipSend() }, 600); return }
+        clipReq = null
+        val fromClip = try {
+            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip
+                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+        } catch (_: Throwable) { null }
+        val text = listOf(fromClip, r.text).firstOrNull { !it.isNullOrBlank() }
+        when {
+            text != null -> { pendingClipText = text; runClipShare() }
+            r.uris.isNotEmpty() -> copySharedIn(r.uris, false)
+            else -> Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Opens the "Send to..." device picker for the clipboard text (waits until the page is loaded). */
+    private fun runClipShare() {
+        val t = pendingClipText ?: return
+        if (!pageReady) return
+        pendingClipText = null
+        web.postDelayed({
+            web.evaluateJavascript(
+                "(async()=>{try{const p=await pickDevice(true,'Send clipboard to\\u2026');if(!p)return;" +
+                "await api('POST','/api/sendclip',{to:p.id,text:" + JSONObject.quote(t) + "});toast('Sent to '+p.name)}catch(e){toast('\\u26a0 '+e.message,5000)}})()", null)
+        }, 1200)
+    }
+
+    private fun copySharedIn(uris: List<Uri>, toPrint: Boolean) {
         if (toPrint && !pageReady) Toast.makeText(this, "Preparing print\u2026", Toast.LENGTH_SHORT).show()   // cold start: something on screen while the page loads
         Thread {
             var n = 0

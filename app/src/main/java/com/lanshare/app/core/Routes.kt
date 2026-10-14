@@ -58,6 +58,17 @@ object Routes {
                 val p = WifiPrinters.known(ex.q("id")) ?: throw Denied("not a printer of this device")
                 ex.reply(200, Ipp.forward(p, ex.body, n), "application/ipp")
             }
+            "clip" -> {   // text / link pushed from another device's "LANShare Send"
+                val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
+                if (n > (4 shl 20)) throw BadReq("text too large")
+                val buf = ByteArray(n.toInt()); var o = 0
+                while (o < buf.size) { val r = ex.body.read(buf, o, buf.size - o); if (r < 0) throw BadReq("short body"); o += r }
+                val j = JSONObject(String(buf, Charsets.UTF_8))
+                val t = j.optString("text")
+                if (t.isBlank()) throw BadReq("empty text")
+                com.lanshare.app.ClipPush.received(t, j.optString("from").ifBlank { ex.remoteIp })
+                ok(ex)
+            }
             "mkdir" -> { L.mkdir(ex.q("path")); ok(ex) }
             "rm" -> { Jobs.removeUser(L, vnorm(ex.q("path"))); ok(ex) }   // same as a local delete: into the recycle bin where possible
             "rename" -> { L.rename(ex.q("path"), ex.q("name")); ok(ex) }
@@ -199,6 +210,14 @@ object Routes {
             }
             "send" -> ex.json(JSONObject().put("job", Jobs.start(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("to"), INBOX, false, "Sending")))
+            "sendclip" -> {   // clipboard text / link -> another LANShare device (shown there in a box, links open in its browser)
+                val t = b.getString("text")
+                if (t.isBlank()) throw BadReq("clipboard is empty")
+                val peer = Core.disc.get(b.getString("to")) ?: throw IOException("that device is offline")
+                try { RemoteFs(peer).pushClip(t, Cfg.name) }
+                catch (e: NotFound) { throw IOException("${peer.name} runs an older LANShare - update it to receive the clipboard") }
+                ok(ex)
+            }
             "bin" -> {   // starts a background task (poll GET /api/bin?items=0 for progress); "cancel" stops it after the current item
                 if (b.getString("op") == "cancel") { Bin.cancelTask(); ex.json(JSONObject().put("ok", true)) }
                 else ex.json(JSONObject().put("task", Bin.start(b.getString("op"), b.optJSONArray("ids")?.strings() ?: emptyList()).toJson()))

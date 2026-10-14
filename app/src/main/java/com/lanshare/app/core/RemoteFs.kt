@@ -136,6 +136,13 @@ class RemoteFs(peer: Peer) : Endpoint {
 
     fun ping() { bytes("GET", "ping") }
 
+    /** Sends clipboard text / a link to that device (it shows a box and opens links in its browser). */
+    fun pushClip(text: String, from: String) {
+        val b = JSONObject().put("text", text).put("from", from).toString().toByteArray(Charsets.UTF_8)
+        callRaw("POST", "clip", body = java.io.ByteArrayInputStream(b), size = b.size.toLong(),
+            headers = mapOf("Content-Type" to "application/json"), timeoutMs = 15_000).close()
+    }
+
     override fun ls(v: String): List<Item> {
         val a = JSONArray(String(bytes("GET", "ls", mapOf("path" to v)), Charsets.UTF_8))
         return (0 until a.length()).map { Item.fromJson(a.getJSONObject(it)) }
