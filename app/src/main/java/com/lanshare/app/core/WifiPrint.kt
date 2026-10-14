@@ -122,7 +122,7 @@ object WifiPrint {
                     }
                     when (cext) {
                         "pdf" -> sendPdf(p, job, cur, name, joUse, temps)
-                        "jpg", "jpeg" -> sendJpeg(p, cur, name, joUse, temps)
+                        "jpg", "jpeg" -> sendJpeg(p, job, cur, name, joUse, temps)
                         else -> throw PrintFail("$cext files cannot be printed on a Wi-Fi printer")
                     }
                 } catch (e: PrintFail) {
@@ -392,12 +392,13 @@ object WifiPrint {
         if (have) flush()
     }
 
-    private fun sendJpeg(p: WifiPrinters.P, jpg: File, name: String, jo: Ipp.JobOpts, temps: MutableList<File>) {
+    private fun sendJpeg(p: WifiPrinters.P, job: Job, jpg: File, name: String, jo: Ipp.JobOpts, temps: MutableList<File>) {
         val fm = p.formats
         if (fm.isEmpty() || "image/jpeg" in fm) { submit(p, jpg, "image/jpeg", name, jo); return }
-        if ("application/pdf" !in fm) throw PrintFail("this printer only accepts ${fmtList(p)} - print through a PC instead")
+        // no JPEG: wrap the picture in a PDF; sendPdf then sends it as PDF, or renders it to PWG raster (Epson L-series: raster + escpr only)
+        if ("application/pdf" !in fm && "image/pwg-raster" !in fm) throw PrintFail("this printer only accepts ${fmtList(p)} - print through a PC instead")
         val pdf = imageToPdf(jpg).also { temps.add(it) }
-        submit(p, pdf, "application/pdf", name, jo)
+        sendPdf(p, job, pdf, name, jo, temps)
     }
 
     /** Downloads every picture, turns it into JPEG and prints them together on shared sheets. */
