@@ -143,8 +143,8 @@ object Http {
     }
 
     fun request(ip: String, port: Int, method: String, path: String, headers: Map<String, String>, timeoutMs: Int,
-                body: InputStream? = null, bodyLen: Long = 0, connectMs: Int = timeoutMs, onSent: ((Int) -> Unit)? = null,
-                tls: Boolean = false): HttpResp {
+                body: InputStream? = null, bodyLen: Long = 0, connectMs: Int = timeoutMs, tls: Boolean = false,
+                onSent: ((Int) -> Unit)? = null): HttpResp {   // onSent stays last: Jobs.kt passes it as a trailing lambda
         val raw = Net.newSocket(ip)
         var s: Socket = raw
         try {
