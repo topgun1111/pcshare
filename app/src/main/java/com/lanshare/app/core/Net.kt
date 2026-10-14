@@ -129,13 +129,33 @@ class HttpResp(val status: Int, val headers: Map<String, String>, private val so
 }
 
 object Http {
+    /** "ip:port" of printers that answered HTTP 426 on plain HTTP: they only accept IPP over TLS (Epson). Remembered for the session. */
+    val tlsHosts: MutableSet<String> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    // Printers use self-signed certificates and are reached by IP on the LAN, so the certificate cannot be checked: TLS here is only used for them.
+    private val trustAll: javax.net.ssl.SSLSocketFactory by lazy {
+        val tm = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
+            override fun checkServerTrusted(c: Array<java.security.cert.X509Certificate>?, a: String?) {}
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+        }
+        javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf<javax.net.ssl.TrustManager>(tm), null) }.socketFactory
+    }
+
     fun request(ip: String, port: Int, method: String, path: String, headers: Map<String, String>, timeoutMs: Int,
-                body: InputStream? = null, bodyLen: Long = 0, connectMs: Int = timeoutMs, onSent: ((Int) -> Unit)? = null): HttpResp {
-        val s = Net.newSocket(ip)
+                body: InputStream? = null, bodyLen: Long = 0, connectMs: Int = timeoutMs, onSent: ((Int) -> Unit)? = null,
+                tls: Boolean = false): HttpResp {
+        val raw = Net.newSocket(ip)
+        var s: Socket = raw
         try {
-            s.connect(InetSocketAddress(ip, port), connectMs)
-            s.soTimeout = timeoutMs
-            s.tcpNoDelay = true
+            raw.connect(InetSocketAddress(ip, port), connectMs)
+            raw.soTimeout = timeoutMs
+            raw.tcpNoDelay = true
+            if (tls) {
+                s = trustAll.createSocket(raw, ip, port, true)
+                s.soTimeout = timeoutMs
+                (s as javax.net.ssl.SSLSocket).startHandshake()
+            }
             val o = s.getOutputStream()
             val sb = StringBuilder("$method $path HTTP/1.1\r\nHost: $ip:$port\r\nConnection: close\r\n")
             for ((k, v) in headers) sb.append(k).append(": ").append(v).append("\r\n")

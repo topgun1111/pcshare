@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "21"
+VERSION = "24"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1199,23 +1199,26 @@ def printer_bins(pr):
     hit = BIN_CACHE.get(pr)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
-    out = []
+    out, n = [], -1
     try:
-        dc = ctypes.windll.winspool.drv.DeviceCapabilitiesW
+        dc = ctypes.WinDLL("winspool.drv", use_last_error=True).DeviceCapabilitiesW   # the DLL is winspool.drv; ctypes.windll.winspool looked for winspool.dll
         dc.restype = ctypes.c_int
         dc.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_ushort, ctypes.c_void_p, ctypes.c_void_p]
-        n = dc(pr, None, 6, None, None)                     # DC_BINS: how many
+        n = dc(pr, None, 6, None, None)                     # DC_BINS: how many (-1 = no answer)
         if 0 < n <= 64:
             ids = (ctypes.c_ushort * n)()
             names = ctypes.create_unicode_buffer(24 * n)    # DC_BINNAMES: n names of 24 characters each
-            if dc(pr, None, 6, ctypes.addressof(ids), None) == n and dc(pr, None, 12, ctypes.addressof(names), None) == n:
-                for i in range(n):
-                    nm = ctypes.wstring_at(ctypes.addressof(names) + i * 48, 24).split("\0")[0].strip()
-                    if ids[i] != 7 and nm:                  # 7 = DMBIN_AUTO = "let the printer choose": that is the app's "Automatic"
-                        out.append({"id": int(ids[i]), "name": nm})
+            n1 = dc(pr, None, 6, ctypes.addressof(ids), None)
+            n2 = dc(pr, None, 12, ctypes.addressof(names), None)
+            for i in range(min(n1, n2)):
+                nm = ctypes.wstring_at(ctypes.addressof(names) + i * 48, 24).split("\0")[0].strip()
+                if ids[i] != 7 and nm:                      # 7 = DMBIN_AUTO = "let the printer choose": that is the app's "Automatic"
+                    out.append({"id": int(ids[i]), "name": nm})
+        log(f"trays for {pr}: driver reports {n} bin(s) -> {out}")
     except Exception as e:
-        log(f"tray list failed for {pr}: {e}")
-    BIN_CACHE[pr] = (time.time(), out)
+        log(f"tray list failed for {pr}: {e!r}")
+        return []                                           # a failure is not cached: the next ping tries again
+    BIN_CACHE[pr] = (time.time(), out)   # cached (also when empty) so the log is not spammed by every ping
     return out
 
 
@@ -1343,6 +1346,7 @@ PRINTER_PROBLEM = [None]   # e.g. "paper jam" (None = nothing reported)
 # One PowerShell call: default printer + its status + the states of the jobs waiting in its Windows queue.
 PS_STATE = r"""
 param([string]$Name)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8   # printer names with Turkish letters (e.g. "L1250 Series(Ağ)") must reach Python intact
 $d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Name } } else { Get-CimInstance Win32_Printer | Where-Object { $_.Default } }
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
@@ -1391,12 +1395,26 @@ def list_printers():
         except Exception:
             return []
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
-                             capture_output=True, text=True, errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
         v = json.loads(out) if out else []
         return [v] if isinstance(v, str) else [str(x) for x in v]
     except Exception:
         return []
+
+
+def fix_printer_name(n):
+    """The app may still remember a name that older versions of this service reported in the wrong code page ("Ağ" -> "A§"): map it back."""
+    if not n or n in PRINTERS:
+        return n
+    for enc in ("cp857", "cp850", "cp1254"):
+        try:
+            c = n.encode("cp1252").decode(enc)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if c in PRINTERS:
+            return c
+    return n
 
 
 _PI_CACHE = {}   # printer name (None = default) -> (time, info)
@@ -1425,7 +1443,7 @@ def _printer_info(name=None):
     try:
         ps1 = ps_script("pstate.ps1", PS_STATE)
         out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
-                             capture_output=True, text=True, errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
         info = json.loads(out) if out else None
         if info:
             if isinstance(info.get("jobs"), str):
@@ -1669,7 +1687,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(403, {"error": "LAN/Tailscale only"})
         u = urlparse(self.path)
         if u.path == "/ping":
-            want = (parse_qs(u.query).get("printer") or [""])[0]
+            want = fix_printer_name((parse_qs(u.query).get("printer") or [""])[0])
             pr, prob = DEFAULT_PRINTER[0], PRINTER_PROBLEM[0]
             if want and want in PRINTERS:   # live state of the printer chosen in the app
                 pr = want
@@ -1726,6 +1744,7 @@ class H(BaseHTTPRequestHandler):
         if n > MAX_BYTES:
             return self.reply(413, {"error": "file too large"})
         o = parse_opts(parse_qs(u.query))
+        o["printer"] = fix_printer_name(o["printer"])
         if o["printer"] and PRINTERS and o["printer"] not in PRINTERS:
             return self.reply(400, {"error": f"unknown printer '{o['printer']}'"})
         if PRINTQ.qsize() >= MAX_QUEUE:

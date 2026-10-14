@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 object WifiPrinters {
     class P(val id: String, val name: String, val host: String, val port: Int, val path: String, val model: String,
             val pdl: List<String>, val color: Boolean?, val duplex: Boolean?, val viaPeer: String? = null) {
-        val uri: String get() = "ipp://$host:$port/$path"
+        val uri: String get() = (if (Http.tlsHosts.contains("$host:$port")) "ipps" else "ipp") + "://$host:$port/$path"
         /** Id of the printer as the device that owns it knows it ("wifi:ip:port/path"); ids of remote printers are "rwifi:<peer id>|<that id>". */
         val origId: String get() = if (viaPeer != null) id.substringAfter('|') else id
         @Volatile var formats: List<String> = pdl            // refined by status() from the printer itself

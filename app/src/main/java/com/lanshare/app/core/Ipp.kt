@@ -78,6 +78,7 @@ object Ipp {
 
     /** Sends [file] as one job. [mime] = application/pdf or image/jpeg. */
     fun printJob(p: WifiPrinters.P, jobName: String, mime: String, jo: JobOpts, file: File, onSent: ((Int) -> Unit)? = null): Resp {
+        probeTls(p)   // the file stream cannot be replayed: learn first whether the printer wants TLS (HTTP 426), then send the job once
         val rq = Req(OP_PRINT_JOB, p.uri)
         rq.str(0x42, "job-name", jobName.take(100))
         rq.str(0x49, "document-format", mime)
@@ -108,7 +109,24 @@ object Ipp {
         return file.inputStream().use { call(p, head, it, file.length(), 180_000, onSent) }
     }
 
+    private val probed: MutableSet<String> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** One tiny plain request per printer: if it answers 426 (Upgrade Required, e.g. Epson) it is switched to IPP over TLS from then on. */
+    private fun probeTls(p: WifiPrinters.P) {
+        if (p.viaPeer != null || !probed.add("${p.host}:${p.port}")) return
+        try { printerAttrs(p) } catch (_: Exception) { probed.remove("${p.host}:${p.port}") }
+    }
+
     private fun call(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
+        // a header-only request (attributes query) that gets 426 is repeated once over TLS; the printer is remembered
+        if (p.viaPeer == null && data == null && !Http.tlsHosts.contains("${p.host}:${p.port}")) {
+            val r0 = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), timeoutMs, ByteArrayInputStream(req), req.size.toLong())
+            val st = r0.status
+            if (st != 426) try { if (st != 200) throw IOException("the printer answered HTTP $st"); return parse(readBody(r0)) } finally { r0.close() }
+            r0.close()
+            Http.tlsHosts.add("${p.host}:${p.port}")
+            probed.add("${p.host}:${p.port}")
+        }
         val head = ByteArrayInputStream(req)
         val body: InputStream = if (data == null) head else SequenceInputStream(head, data)
         val hdr = mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp")
@@ -116,7 +134,7 @@ object Ipp {
         val r = if (vp != null) {   // a printer on another device: that device forwards the raw IPP request (see [forward])
             val peer = Core.disc.get(vp) ?: throw IOException("the device that has this printer is offline")
             Http.request(peer.ip, peer.port, "POST", "/p/ipp?id=" + java.net.URLEncoder.encode(p.origId, "UTF-8"), hdr, timeoutMs, body, req.size + dataLen, onSent = onSent)
-        } else Http.request(p.host, p.port, "POST", "/" + p.path, hdr, timeoutMs, body, req.size + dataLen, onSent = onSent)
+        } else Http.request(p.host, p.port, "POST", "/" + p.path, hdr, timeoutMs, body, req.size + dataLen, onSent = onSent, tls = Http.tlsHosts.contains("${p.host}:${p.port}"))
         try {
             if (r.status != 200) throw IOException(if (vp != null) "the other device could not reach the printer (HTTP ${r.status}) - is its LANShare up to date?" else "the printer answered HTTP ${r.status}")
             return parse(readBody(r))
@@ -125,7 +143,8 @@ object Ipp {
 
     /** Device side of a remote print: sends one raw IPP request ([len] bytes of [body]) to a printer discovered here and returns the printer's raw answer. */
     fun forward(p: WifiPrinters.P, body: InputStream, len: Long): ByteArray {
-        val r = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), 170_000, body, len)
+        val r = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), 170_000, body, len,
+            tls = Http.tlsHosts.contains("${p.host}:${p.port}"))
         try {
             if (r.status != 200) throw IOException("the printer answered HTTP ${r.status}")
             return readBody(r)
