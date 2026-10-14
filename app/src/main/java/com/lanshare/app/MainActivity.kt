@@ -85,6 +85,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun editText(json: String) {
             runOnUiThread { try { startActivity(TextEditorActivity.intent(this@MainActivity, json)) } catch (_: Throwable) { } }
         }
+        /** Menu -> "Text inbox": the native send / receive text screen (InboxActivity). */
+        @JavascriptInterface fun openInbox() {
+            runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }
+        }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Settings -> display size: "interface%,text%". */

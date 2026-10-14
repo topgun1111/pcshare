@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Direct Share: the dynamic shortcuts that Shortcuts.kt publishes (one per online device, category below) appear in the share sheet for plain text and send it
+     straight to that device through ClipSendActivity. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="com.lanshare.app.ClipSendActivity">
+        <data android:mimeType="text/plain"/>
+        <category android:name="com.lanshare.app.category.SEND_TEXT"/>
+    </share-target>
+</shortcuts>

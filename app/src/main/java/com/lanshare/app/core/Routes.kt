@@ -66,7 +66,7 @@ object Routes {
                 val j = JSONObject(String(buf, Charsets.UTF_8))
                 val t = j.optString("text")
                 if (t.isBlank()) throw BadReq("empty text")
-                com.lanshare.app.ClipPush.received(t, j.optString("from").ifBlank { ex.remoteIp })
+                com.lanshare.app.ClipPush.received(t, j.optString("from").ifBlank { ex.remoteIp }, j.optBoolean("quiet"))
                 ok(ex)
             }
             "mkdir" -> { L.mkdir(ex.q("path")); ok(ex) }
@@ -216,6 +216,7 @@ object Routes {
                 val peer = Core.disc.get(b.getString("to")) ?: throw IOException("that device is offline")
                 try { RemoteFs(peer).pushClip(t, Cfg.name) }
                 catch (e: NotFound) { throw IOException("${peer.name} runs an older LANShare - update it to receive the clipboard") }
+                Notes.add(true, peer.name, t)   // also listed in the text inbox
                 ok(ex)
             }
             "bin" -> {   // starts a background task (poll GET /api/bin?items=0 for progress); "cancel" stops it after the current item

@@ -25,7 +25,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.lanshare.app.core.Cfg
 import com.lanshare.app.core.Core
+import com.lanshare.app.core.Notes
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -66,14 +68,18 @@ object ClipPush {
         try { (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("LANShare", text)) } catch (_: Exception) {}
     }
 
-    /** Called on a server thread when another device sent [text]. */
-    fun received(text: String, from: String) {
+    /** Called on a server thread when another device sent [text]. [quiet] = a clipboard-sync push: honoured only when this phone's "Auto-copy" is on, else it is shown like any other text. */
+    fun received(text: String, from: String, quiet: Boolean = false) {
         val ctx = Core.appCtx ?: return
         val link = linkOf(text)
+        Notes.add(false, from, text)   // text inbox (history + the inbox screen if it is open)
+        val auto = Cfg.autoCopy()
+        if (auto) { ClipSync.mark(text); copy(ctx, text) }   // writing the clipboard is allowed in the background; marked so clipboard sync does not echo it back
+        if (quiet && auto) return                            // silent: no box, no notification, no browser
         ui.post {
             val a = front
             if (a != null) try { show(a, text, from, link) } catch (e: Throwable) { android.util.Log.w("LANShare", "clip box failed: $e") }
-            notify(ctx, text, from, link)   // always: also covers a box that is hidden / missed, and keeps the item in the shade
+            if (!Notes.visible) notify(ctx, text, from, link)   // also covers a box that is hidden / missed, and keeps the item in the shade (not needed while the inbox is on screen)
             if (a != null && link != null) open(a, link)
         }
     }

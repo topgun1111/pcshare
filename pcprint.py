@@ -18,6 +18,9 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v26: text sharing - phones send text / links to this PC (POST /p/clip, same body as between phones) and the "Text" button opens the LANShare Text
+window: received texts (copy, open link, delete, optional automatic copy to the clipboard) and a box to send text to any phone heard on the network
+(UDP beacons on port 48555; the setup adds a firewall rule for it - run the file once more).
 v16: pictures are shrunk to what the sheet needs (Pillow: smaller PDF / spool, EXIF turn and PNG/GIF/BMP/TIFF conversion without PowerShell); the app
 shrinks big JPEGs before uploading; missing Python packages (pypdf, Pillow) are installed automatically, also on first use while the service runs.
 v15: "Print all files as one job" - a mixed selection (PDF, pictures, text, Office) is turned into pages, joined in order and laid out as ONE
@@ -35,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "25"
+VERSION = "26"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1624,6 +1627,231 @@ def safe_name(n):
     return n[:120] or "file"
 
 
+# ------------------------------------------------------------------ text sharing (v26): phone <-> PC text and links
+# The phone sends text with POST /p/clip (same body as between phones: {"text","from","quiet"}); this PC keeps it in a small inbox that the
+# "LANShare Text" window shows. Sending the other way: the service listens for the phones' UDP beacons (port 48555) to know which devices are
+# around and POSTs to their /p/clip. The inbox is private to this PC: only the window (localhost) reads it, never other LAN devices.
+BEACON_PORT = 48555
+TEXT_FILE = os.path.join(APP, "inbox.json")
+TEXT_CFG = os.path.join(APP, "text.json")
+TEXT_MAX_ITEMS, TEXT_MAX_CHARS, TEXT_MAX_TOTAL = 300, 100_000, 2_000_000
+TEXTS = []                          # {"id","ts","out","peer","text"}, oldest first
+TEXT_SET = {"autocopy": False, "popup": True}   # autocopy: received text goes to the clipboard (also honours quiet clipboard-sync pushes); popup: open the window on new text
+DEVICES = {}                        # id -> {"id","name","ip","port","seen"}: phones / PCs running LANShare that were heard recently
+_TLOCK = threading.Lock()
+_TNEXT = [1]
+_TLOADED = [False]
+_POPUP_AT = [0.0]
+DEVICE_TTL = 90                     # seconds a device stays in the list after its last beacon / text
+
+
+def _text_load():
+    if _TLOADED[0]:
+        return
+    _TLOADED[0] = True
+    try:
+        with open(TEXT_FILE, "r", encoding="utf-8") as f:
+            for o in json.load(f):
+                TEXTS.append({"id": int(o.get("id", _TNEXT[0])), "ts": float(o.get("ts", 0)), "out": bool(o.get("out")),
+                              "peer": str(o.get("peer", "")), "text": str(o.get("text", ""))})
+                _TNEXT[0] = max(_TNEXT[0], TEXTS[-1]["id"] + 1)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    try:
+        with open(TEXT_CFG, "r", encoding="utf-8") as f:
+            c = json.load(f)
+            for k in TEXT_SET:
+                if isinstance(c.get(k), bool):
+                    TEXT_SET[k] = c[k]
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _atomic_json(path, obj):
+    try:
+        os.makedirs(APP, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        log(f"cannot save {os.path.basename(path)}: {e}")
+
+
+def text_add(out, peer, text):
+    """Adds one inbox entry (out = sent from this PC). The same text twice within 2 s from the same device is kept once. Returns the entry or None."""
+    if not text or not text.strip():
+        return None
+    text = text[:TEXT_MAX_CHARS]
+    with _TLOCK:
+        _text_load()
+        now = time.time()
+        last = TEXTS[-1] if TEXTS else None
+        if last and last["out"] == out and last["peer"] == peer and last["text"] == text and now - last["ts"] < 2:
+            return last
+        e = {"id": _TNEXT[0], "ts": now, "out": out, "peer": peer, "text": text}
+        _TNEXT[0] += 1
+        TEXTS.append(e)
+        total = sum(len(t["text"]) for t in TEXTS)
+        while len(TEXTS) > TEXT_MAX_ITEMS or (total > TEXT_MAX_TOTAL and len(TEXTS) > 1):
+            total -= len(TEXTS.pop(0)["text"])
+        _atomic_json(TEXT_FILE, TEXTS)
+        return e
+
+
+def text_delete(tid=None):
+    with _TLOCK:
+        _text_load()
+        if tid is None:
+            TEXTS.clear()
+        else:
+            TEXTS[:] = [t for t in TEXTS if t["id"] != tid]
+        _atomic_json(TEXT_FILE, TEXTS)
+
+
+def text_settings(**kw):
+    with _TLOCK:
+        _text_load()
+        for k, v in kw.items():
+            if k in TEXT_SET and isinstance(v, bool):
+                TEXT_SET[k] = v
+        _atomic_json(TEXT_CFG, TEXT_SET)
+        return dict(TEXT_SET)
+
+
+def text_snapshot(since=0):
+    with _TLOCK:
+        _text_load()
+        return [dict(t) for t in TEXTS if t["id"] > since], (TEXTS[-1]["id"] if TEXTS else 0), dict(TEXT_SET)
+
+
+def device_seen(did, name, ip, port):
+    if not did or not ip or not isinstance(port, int) or not 0 < port < 65536:
+        return
+    with _TLOCK:
+        DEVICES[did] = {"id": did, "name": (name or ip)[:60], "ip": ip, "port": port, "seen": time.time()}
+
+
+def devices_now():
+    now = time.time()
+    with _TLOCK:
+        for k in [k for k, d in DEVICES.items() if now - d["seen"] > 600]:
+            del DEVICES[k]
+        return sorted((dict(d) for d in DEVICES.values() if now - d["seen"] <= DEVICE_TTL), key=lambda d: d["name"].lower())
+
+
+def beacon_listener():
+    """Hears the LANShare beacons (JSON over UDP, every ~2 s from every phone) so the window can offer them as targets. Best effort."""
+    warned = False
+    while True:
+        s = None
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # lanshare.py may listen on the same port on this PC
+            s.bind(("", BEACON_PORT))
+            s.settimeout(5)
+            warned = False
+            while True:
+                try:
+                    data, addr = s.recvfrom(4096)
+                except socket.timeout:
+                    continue
+                try:
+                    m = json.loads(data.decode("utf-8", "replace"))
+                    if m.get("app") == "lanshare" and isinstance(m.get("id"), str) and isinstance(m.get("port"), int):
+                        device_seen(m["id"], str(m.get("name") or ""), addr[0], m["port"])
+                except (ValueError, AttributeError):
+                    pass
+        except Exception as e:
+            if not warned:
+                log(f"text sharing: cannot listen for device beacons on UDP {BEACON_PORT} ({e}) - phones that sent text here can still be answered")
+                warned = True
+            time.sleep(30)
+        finally:
+            if s:
+                try: s.close()
+                except OSError: pass
+
+
+def set_clipboard(text):
+    """Puts text on this PC's clipboard (Windows: PowerShell Set-Clipboard; elsewhere wl-copy / xclip / pbcopy when installed). True when it worked."""
+    try:
+        if WIN:
+            os.makedirs(APP, exist_ok=True)
+            f = os.path.join(APP, "clip.txt")
+            with _PSLOCK:
+                with open(f, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(text)
+            ps1 = ps_script("setclip.ps1", "param($p)\r\nSet-Clipboard -Value ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))\r\n")
+            r = subprocess.run(["powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", ps1, f],
+                               capture_output=True, timeout=20, creationflags=0x08000000)
+            return r.returncode == 0
+        for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"], ["pbcopy"]):
+            if shutil.which(cmd[0]):
+                return subprocess.run(cmd, input=text.encode("utf-8"), timeout=10, capture_output=True).returncode == 0
+    except Exception as e:
+        log(f"clipboard copy failed: {e}")
+    return False
+
+
+def open_text_window():
+    """Opens the 'LANShare Text' window (Windows) unless one is open already (the window itself checks) - at most once per 5 s."""
+    if not WIN or time.time() - _POPUP_AT[0] < 5:
+        return
+    _POPUP_AT[0] = time.time()
+    try:
+        script = TARGET if os.path.isfile(TARGET) else os.path.abspath(__file__)
+        subprocess.Popen([pyw(), script, "--text"], creationflags=0x00000008 | 0x08000000, close_fds=True)
+    except Exception as e:
+        log(f"cannot open the text window: {e}")
+
+
+def text_received(text, peer, quiet=False, dev=None):
+    """A phone sent [text]: store it, copy it when Auto-copy is on, show the window unless it was a silent clipboard-sync push that got copied."""
+    with _TLOCK:
+        _text_load()
+        auto = TEXT_SET["autocopy"]
+        popup = TEXT_SET["popup"]
+    if dev:
+        device_seen(*dev)
+    e = text_add(False, peer, text)
+    if e is None:
+        return
+    copied = set_clipboard(text) if auto else False
+    log(f"text from {peer}: {len(text)} characters" + (" (copied)" if copied else ""))
+    if popup and not (quiet and auto):
+        open_text_window()
+
+
+def text_send(did, text):
+    """Sends [text] to a device heard recently. Returns (ok, error message)."""
+    if not text or not text.strip():
+        return False, "nothing to send"
+    with _TLOCK:
+        d = dict(DEVICES.get(did) or {})
+    if not d:
+        return False, "that device is not on the network right now"
+    import http.client
+    body = json.dumps({"text": text[:TEXT_MAX_CHARS], "from": socket.gethostname()}).encode("utf-8")
+    try:
+        c = http.client.HTTPConnection(d["ip"], d["port"], timeout=8)
+        try:
+            c.request("POST", "/p/clip", body=body, headers={"Content-Type": "application/json"})
+            r = c.getresponse()
+            r.read()
+        finally:
+            c.close()
+    except (OSError, http.client.HTTPException) as e:
+        return False, f"{d['name']} did not answer ({e})"
+    if r.status == 404:
+        return False, f"{d['name']} runs an older LANShare - update it to receive text"
+    if r.status != 200:
+        return False, f"{d['name']} answered {r.status}"
+    text_add(True, d["name"], text)
+    log(f"text sent to {d['name']}: {len(text)} characters")
+    return True, None
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "LANSharePrint/" + VERSION
@@ -1650,6 +1878,65 @@ class H(BaseHTTPRequestHandler):
             return ip.is_private or ip.is_loopback or ip.is_link_local
         except ValueError:
             return False
+
+    def is_local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1")
+
+    def read_json(self, limit=4 << 20):
+        """JSON body of the request (Content-Length required); replies 400 / 413 and returns None when it is unusable."""
+        try:
+            n = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            self.reply(400, {"error": "missing Content-Length"})
+            return None
+        if n > limit:
+            self.reply(413, {"error": "text too large"})
+            return None
+        raw = b""
+        while len(raw) < n:
+            chunk = self.rfile.read(min(1 << 16, n - len(raw)))
+            if not chunk:
+                self.reply(400, {"error": "short body"})
+                return None
+            raw += chunk
+        try:
+            o = json.loads(raw.decode("utf-8")) if raw else {}
+        except ValueError:
+            self.reply(400, {"error": "bad JSON"})
+            return None
+        if not isinstance(o, dict):
+            self.reply(400, {"error": "bad JSON"})
+            return None
+        return o
+
+    def clip_post(self, path, u):
+        """Text sharing POST routes. /clip (= /p/clip, what phones call): text from another device; the rest is for the window on this PC only."""
+        if path == "/clip":
+            o = self.read_json()
+            if o is None:
+                return
+            text = o.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return self.reply(400, {"error": "empty text"})
+            peer = str(o.get("from") or self.client_address[0])[:60]
+            port = o.get("port")
+            dev = (str(o["id"]), peer, self.client_address[0], port) if isinstance(o.get("id"), str) and isinstance(port, int) else None
+            text_received(text, peer, bool(o.get("quiet")), dev)
+            return self.reply(200, {"ok": True})
+        if not self.is_local():
+            return self.reply(403, {"error": "local only"})
+        o = self.read_json(1 << 20)
+        if o is None:
+            return
+        if path == "/clip/send":
+            ok, err = text_send(str(o.get("to") or ""), o.get("text") if isinstance(o.get("text"), str) else "")
+            return self.reply(200 if ok else 502, {"ok": ok, "error": err})
+        if path == "/clip/delete":
+            text_delete(o["id"] if isinstance(o.get("id"), int) else None)
+            return self.reply(200, {"ok": True})
+        if path == "/clip/settings":
+            return self.reply(200, {"ok": True, "settings": text_settings(**{k: v for k, v in o.items() if isinstance(v, bool)})})
+        return self.reply(404, {"error": "not found"})
 
     CONVERT_LOCK = threading.Lock()   # one conversion at a time (Word / LibreOffice do not like parallel automation)
 
@@ -1715,8 +2002,17 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine(), "convert": True,
+                                    "office": office_engine(), "convert": True, "clip": True,
                                     "hard": hard_margin(pr), "trays": printer_bins(pr)})
+        if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
+            if not self.is_local():
+                return self.reply(403, {"error": "local only"})
+            try:
+                since = int((parse_qs(u.query).get("since") or ["0"])[0])
+            except ValueError:
+                since = 0
+            items, last, st = text_snapshot(since)
+            return self.reply(200, {"ok": True, "items": items, "last": last, "settings": st, "devices": devices_now(), "host": socket.gethostname()})
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
@@ -1748,6 +2044,9 @@ class H(BaseHTTPRequestHandler):
             if dropped:
                 log(f"queue cleared from the window: {dropped} job{'s' if dropped != 1 else ''} dropped")
             return self.reply(200, {"ok": True, "dropped": dropped})
+        cp = u.path[2:] if u.path.startswith("/p/") else u.path   # phones call /p/clip, the window /clip/...
+        if cp == "/clip" or cp.startswith("/clip/"):
+            return self.clip_post(cp, u)
         if u.path == "/convert":   # office file -> PDF, only so the app can show a real page preview (nothing is printed)
             return self.convert(u)
         if u.path != "/print":
@@ -1914,6 +2213,7 @@ def serve():
     threading.Thread(target=print_worker, daemon=True, name="print-worker").start()
     threading.Thread(target=refresh_printer, daemon=True, name="printer-state").start()
     threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
+    threading.Thread(target=beacon_listener, daemon=True, name="text-beacons").start()
     if not all(have_pkg(m) for m, _ in PKGS):
         threading.Thread(target=ensure_packages, daemon=True).start()
     ips, ts = pc_addresses()
@@ -1986,16 +2286,28 @@ def fw_rule_exists():
     return r.returncode == 0 and FW_RULE in r.stdout
 
 
+FW_RULE_UDP = "LANSharePrint-Beacons"   # v26: phones' discovery beacons (UDP 48555) for the text window's device list
+
+
+def fw_udp_exists():
+    r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE_UDP}"],
+                       capture_output=True, text=True, errors="replace", creationflags=0x08000000)
+    return r.returncode == 0 and FW_RULE_UDP in r.stdout
+
+
 def fw_add():
     for n in ("LANSharePrint", FW_RULE):   # drop the old LAN-only rule and any previous copy of this one
         subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={n}"], capture_output=True, creationflags=0x08000000)
     # any network profile (the Tailscale adapter is usually "Public"), but only from the local subnet and the tailnet range
     subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={FW_RULE}", "dir=in", "action=allow", "protocol=TCP",
                     f"localport={PORT}", "profile=any", "remoteip=LocalSubnet,100.64.0.0/10"], capture_output=True, creationflags=0x08000000)
+    subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={FW_RULE_UDP}"], capture_output=True, creationflags=0x08000000)
+    subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={FW_RULE_UDP}", "dir=in", "action=allow", "protocol=UDP",
+                    f"localport={BEACON_PORT}", "profile=any", "remoteip=LocalSubnet,100.64.0.0/10"], capture_output=True, creationflags=0x08000000)
 
 
 def ensure_firewall():
-    if fw_rule_exists():
+    if fw_rule_exists() and fw_udp_exists():
         return True
     if is_admin():
         fw_add()
@@ -2004,7 +2316,7 @@ def ensure_firewall():
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{TARGET}" --fw', None, 0)
         for _ in range(40):
             time.sleep(1)
-            if fw_rule_exists():
+            if fw_rule_exists() and fw_udp_exists():
                 break
     return fw_rule_exists()
 
@@ -2081,12 +2393,248 @@ def open_path(p):
         log(f"cannot open {p}: {e}")
 
 
-def one_window():
-    """Only one window at a time (Windows named mutex)."""
-    h = ctypes.windll.kernel32.CreateMutexW(None, False, "LANSharePrintWindow")
+def one_window(name="LANSharePrintWindow"):
+    """Only one window of each kind at a time (Windows named mutex). The handle is kept alive for the life of the process."""
+    h = ctypes.windll.kernel32.CreateMutexW(None, False, name)
     if ctypes.windll.kernel32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
         return None
     return h
+
+
+def get_local(path, timeout=3):
+    import urllib.request
+    return urllib.request.urlopen(f"http://127.0.0.1:{PORT}{path}", timeout=timeout).read()
+
+
+def post_json_local(path, obj, timeout=15):
+    import urllib.request
+    return urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=json.dumps(obj).encode("utf-8"), method="POST",
+                                                         headers={"Content-Type": "application/json"}), timeout=timeout).read()
+
+
+def text_window():
+    """'LANShare Text': what phones sent to this PC (copy / open link / delete) and a box to send text or a link to a phone. Talks to the service on localhost."""
+    if WIN and one_window("LANShareTextWindow") is None:
+        return
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+    except ImportError:
+        print("tkinter is not installed; the text window needs it")
+        return
+    if not is_running():
+        start_service()
+    root = tk.Tk()
+    root.title("LANShare Text")
+    root.geometry("640x560")
+    root.minsize(420, 420)
+    BG, FG, DIM = "#10151f", "#d7dde8", "#7d8aa3"
+    root.configure(bg=BG)
+
+    items = []            # what the list shows, oldest first
+    shown = [()]          # ids on screen: the list is rebuilt only when this changes
+    devices = []
+    st = {"autocopy": False, "popup": True}
+
+    top = tk.Frame(root, bg=BG)
+    top.pack(fill="x", padx=10, pady=(10, 4))
+    info = tk.Label(top, text="connecting...", fg=DIM, bg=BG, anchor="w")
+    info.pack(side="left")
+    ontop = tk.BooleanVar(value=False)
+    tk.Checkbutton(top, text="Always on top", variable=ontop, fg=FG, bg=BG, selectcolor=BG, activebackground=BG, activeforeground=FG,
+                   command=lambda: root.attributes("-topmost", ontop.get())).pack(side="right")
+
+    mid = tk.Frame(root, bg=BG)
+    mid.pack(fill="both", expand=True, padx=10, pady=4)
+    lb = tk.Listbox(mid, bg="#0b0f17", fg=FG, selectbackground="#27407a", relief="flat", activestyle="none", font=("Segoe UI", 10), exportselection=False, height=8)
+    sb = tk.Scrollbar(mid, command=lb.yview)
+    lb.configure(yscrollcommand=sb.set)
+    sb.pack(side="right", fill="y")
+    lb.pack(side="left", fill="both", expand=True)
+
+    pv = tk.Text(root, bg="#0b0f17", fg=FG, relief="flat", wrap="word", height=7, state="disabled", font=("Consolas", 10))
+    pv.pack(fill="both", expand=False, padx=10, pady=4)
+
+    acts = tk.Frame(root, bg=BG)
+    acts.pack(fill="x", padx=10)
+
+    def sel():
+        c = lb.curselection()
+        return items[c[0]] if c and c[0] < len(items) else None
+
+    def show_sel(_e=None):
+        e = sel()
+        pv.configure(state="normal")
+        pv.delete("1.0", "end")
+        if e:
+            pv.insert("end", e["text"])
+        pv.configure(state="disabled")
+
+    def copy_sel(_e=None):
+        e = sel() or (items[-1] if items else None)
+        if e:
+            root.clipboard_clear()
+            root.clipboard_append(e["text"])
+            root.update()
+            msg.configure(text="Copied", fg="#6ee7a0")
+
+    def link_of(t):
+        m = re.search(r"https?://[^\s<>\"']+", t or "")
+        return m.group(0).rstrip(".,;:!?)") if m else None
+
+    def open_link():
+        e = sel() or (items[-1] if items else None)
+        u = link_of(e["text"]) if e else None
+        if u:
+            import webbrowser
+            webbrowser.open(u)
+        else:
+            msg.configure(text="No link in this text", fg="#ff7b7b")
+
+    def delete_sel():
+        e = sel()
+        if e:
+            try: post_json_local("/clip/delete", {"id": e["id"]})
+            except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
+            poll(True)
+
+    def clear_all():
+        from tkinter import messagebox
+        if items and messagebox.askyesno("Clear", "Remove all texts from this PC's list?", parent=root):
+            try: post_json_local("/clip/delete", {})
+            except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
+            poll(True)
+
+    for label, cmd in (("Copy", copy_sel), ("Open link", open_link), ("Delete", delete_sel), ("Clear all", clear_all)):
+        tk.Button(acts, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="left", padx=(0, 6))
+    lb.bind("<<ListboxSelect>>", show_sel)
+    lb.bind("<Double-Button-1>", copy_sel)
+
+    tk.Frame(root, bg="#1b2433", height=1).pack(fill="x", padx=10, pady=8)
+    snd = tk.Frame(root, bg=BG)
+    snd.pack(fill="x", padx=10)
+    tk.Label(snd, text="Send to", fg=FG, bg=BG).pack(side="left")
+    dev_var = tk.StringVar()
+    combo = ttk.Combobox(snd, textvariable=dev_var, state="readonly", width=32)
+    combo.pack(side="left", padx=6)
+    inp = tk.Text(root, bg="#0b0f17", fg=FG, insertbackground=FG, relief="flat", wrap="word", height=4, font=("Consolas", 10))
+    inp.pack(fill="x", padx=10, pady=6)
+    row = tk.Frame(root, bg=BG)
+    row.pack(fill="x", padx=10, pady=(0, 10))
+    msg = tk.Label(row, text="", fg=DIM, bg=BG, anchor="w")
+    msg.pack(side="left", fill="x", expand=True)
+
+    def send(_e=None):
+        t = inp.get("1.0", "end").strip()
+        i = combo.current()
+        if not t:
+            msg.configure(text="Type something first", fg="#ff7b7b")
+            return "break"
+        if i < 0 or i >= len(devices):
+            msg.configure(text="No device found yet - it must be on the same network with LANShare open", fg="#ff7b7b")
+            return "break"
+        d = devices[i]
+        msg.configure(text=f"Sending to {d['name']}...", fg=DIM)
+
+        def go():
+            try:
+                r = json.loads(post_json_local("/clip/send", {"to": d["id"], "text": t}, 20))
+                ok, err = r.get("ok"), r.get("error")
+            except Exception as ex:
+                ok, err = False, getattr(ex, "read", lambda: b"")() or str(ex)
+                try: err = json.loads(err).get("error", err)
+                except Exception: err = str(err)
+
+            def done():
+                if ok:
+                    inp.delete("1.0", "end")
+                    msg.configure(text=f"Sent to {d['name']}", fg="#6ee7a0")
+                    poll(True)
+                else:
+                    msg.configure(text=str(err)[:120], fg="#ff7b7b")
+            root.after(0, done)
+        threading.Thread(target=go, daemon=True).start()
+        return "break"
+
+    def paste():
+        try:
+            inp.insert("insert", root.clipboard_get())
+        except tk.TclError:
+            msg.configure(text="Clipboard is empty", fg="#ff7b7b")
+
+    tk.Button(row, text="Paste", command=paste, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(6, 0))
+    tk.Button(row, text="Send  (Ctrl+Enter)", command=send, relief="flat", bg="#1d3a2a", fg="#b3ffd0").pack(side="right")
+    inp.bind("<Control-Return>", send)
+
+    opts = tk.Frame(root, bg=BG)
+    opts.pack(fill="x", padx=10, pady=(0, 8))
+    ac_var, pop_var = tk.BooleanVar(), tk.BooleanVar(value=True)
+
+    def push_settings():
+        try: post_json_local("/clip/settings", {"autocopy": ac_var.get(), "popup": pop_var.get()})
+        except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
+    tk.Checkbutton(opts, text="Copy received text to the clipboard automatically", variable=ac_var, command=push_settings, fg=FG, bg=BG,
+                   selectcolor=BG, activebackground=BG, activeforeground=FG).pack(side="left")
+    tk.Checkbutton(opts, text="Open this window on new text", variable=pop_var, command=push_settings, fg=FG, bg=BG,
+                   selectcolor=BG, activebackground=BG, activeforeground=FG).pack(side="left", padx=12)
+
+    def stamp(ts):
+        t = time.localtime(ts)
+        return time.strftime("%H:%M", t) if time.strftime("%Y%m%d", t) == time.strftime("%Y%m%d") else time.strftime("%d.%m. %H:%M", t)
+
+    def poll(force=False):
+        try:
+            d = json.loads(get_local("/clip", 3))
+        except Exception:
+            info.configure(text="text service not running - restarting it...", fg="#fbbf24")
+            if not force and not getattr(poll, "reviving", False):
+                poll.reviving = True
+                def rev():
+                    try: start_service()
+                    finally: poll.reviving = False
+                threading.Thread(target=rev, daemon=True).start()
+            if not force:
+                root.after(2000, poll)
+            return
+        items[:] = d.get("items", [])
+        ids = tuple((e["id"]) for e in items)
+        if ids != shown[0]:
+            keep = sel()["id"] if sel() else None
+            atend = not lb.curselection() or lb.curselection()[0] >= len(shown[0]) - 1
+            lb.delete(0, "end")
+            for e in items:
+                first = " ".join(e["text"].split())[:90]
+                lb.insert("end", ("→ To " if e["out"] else "← From ") + e["peer"] + "  ·  " + stamp(e["ts"]) + "   " + first)
+                if e["out"]:
+                    lb.itemconfig("end", fg="#ffd9a0")
+            shown[0] = ids
+            if keep is not None and any(e["id"] == keep for e in items):
+                lb.selection_set([e["id"] for e in items].index(keep))
+            elif items and atend:
+                lb.selection_set("end")
+                lb.see("end")
+            show_sel()
+        st.update(d.get("settings", {}))
+        ac_var.set(bool(st.get("autocopy")))
+        pop_var.set(bool(st.get("popup", True)))
+        ds = d.get("devices", [])
+        names = [x["name"] + "  (" + x["ip"] + ")" for x in ds]
+        if names != list(combo["values"]):
+            cur = devices[combo.current()]["id"] if 0 <= combo.current() < len(devices) else None
+            devices[:] = ds
+            combo["values"] = names
+            idx = next((k for k, x in enumerate(ds) if x["id"] == cur), 0 if ds else -1)
+            if idx >= 0:
+                combo.current(idx)
+            else:
+                dev_var.set("")
+        info.configure(text=f"{d.get('host', '')}  ·  {len(ds)} device{'s' if len(ds) != 1 else ''} found", fg=DIM)
+        if not force:
+            root.after(1500, poll)
+
+    root.bind("<Control-c>", lambda e: copy_sel() if root.focus_get() is not inp else None)
+    poll()
+    root.mainloop()
 
 
 def ui():
@@ -2166,8 +2714,15 @@ def ui():
             return
         messagebox.showinfo("Clear queue", f"{n} waiting job{'s' if n != 1 else ''} cancelled." if n else "Nothing was waiting.")
 
+    def open_text():   # separate process: its own window, single instance
+        try:
+            subprocess.Popen([pyw() if WIN else sys.executable, TARGET if os.path.isfile(TARGET) else os.path.abspath(__file__), "--text"],
+                             **({"creationflags": 0x00000008 | 0x08000000, "close_fds": True} if WIN else {}))
+        except Exception as e:
+            log(f"cannot open the text window: {e}")
+
     for label, cmd in (("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
-                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page)):
+                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page), ("Text", open_text)):
         tk.Button(bot, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(0, 6))
 
     pos = [0]
@@ -2268,6 +2823,8 @@ def main():
         fw_add()
     elif "--ui" in a:
         ui()
+    elif "--text" in a:
+        text_window()
     elif "--serve" in a or not WIN:
         if is_running():
             return

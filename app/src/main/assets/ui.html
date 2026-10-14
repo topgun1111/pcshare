@@ -3283,6 +3283,7 @@ function drawerRender(){
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
+    if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};

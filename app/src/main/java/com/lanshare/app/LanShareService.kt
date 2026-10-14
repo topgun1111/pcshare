@@ -36,6 +36,25 @@ class LanShareService : Service() {
 
     override fun onBind(i: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        inst = this
+    }
+
+    companion object {
+        @Volatile private var inst: LanShareService? = null
+        /** Re-posts the foreground notification now (clears the inline "Send text" box after a send). Safe from any thread. */
+        fun refresh() { val s = inst ?: return; s.ui.post { s.repost() } }
+    }
+
+    private fun repost() {
+        try {
+            val (run, done, total) = com.lanshare.app.core.ImgSearch.progress()
+            lastNote = noteKey(run, done, total)
+            getSystemService(NotificationManager::class.java).notify(1, buildNote(run, done, total))
+        } catch (_: Exception) {}
+    }
+
     override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
         if (i?.action == "STOP") {            // notification "Stop" button: kill server + app
             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
@@ -58,7 +77,7 @@ class LanShareService : Service() {
                 val f = android.content.IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }
                 registerReceiver(screenRx, f)
             } catch (_: Exception) {}
-            Thread { Core.start(applicationContext, root) }.apply { isDaemon = true; start() }
+            Thread { Core.start(applicationContext, root); try { ClipSync.refresh(applicationContext) } catch (_: Throwable) {} }.apply { isDaemon = true; start() }   // config is loaded now: apply the opt-in clipboard sync
             ui.postDelayed(noteTick, 2000)
         }
         return START_STICKY
@@ -66,8 +85,13 @@ class LanShareService : Service() {
 
     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private var lastNote = ""
+    private var tickN = 0
     private val noteTick = object : Runnable {
         override fun run() {
+            if (tickN++ % 5 == 0) {   // every ~10 s: keep the Direct Share targets (online devices) current
+                val app = applicationContext
+                Thread { Shortcuts.sync(app) }.also { it.isDaemon = true }.start()
+            }
             try {
                 val (run, done, total) = com.lanshare.app.core.ImgSearch.progress()
                 val key = noteKey(run, done, total)
@@ -91,8 +115,16 @@ class LanShareService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val b = NotificationCompat.Builder(this, "lanshare")
             .setSmallIcon(R.drawable.ic_notification).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(R.drawable.ic_notification, "Stop",
-                PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
+        // text sharing: type here (inline box) -> default device, or send the clipboard; both without opening the app
+        val replyFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+        val replyPi = PendingIntent.getBroadcast(this, 2, Intent(this, QuickSendReceiver::class.java).setAction("com.lanshare.app.QUICK_SEND"), replyFlags)
+        b.addAction(NotificationCompat.Action.Builder(R.drawable.ic_notification, "Send text", replyPi)
+            .addRemoteInput(androidx.core.app.RemoteInput.Builder(QuickSendReceiver.KEY).setLabel("Text to send").build())
+            .setAllowGeneratedReplies(false).build())
+        b.addAction(R.drawable.ic_notification, "Clipboard",
+            PendingIntent.getActivity(this, 3, Intent(this, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+        b.addAction(R.drawable.ic_notification, "Stop",
+            PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
         val jobs = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
         if (jobs.isNotEmpty()) {   // copy / zip / print ... running in the background: progress stays visible when the app is not on screen
             val pct = com.lanshare.app.ops.JobView.overallPct(jobs)
@@ -110,6 +142,7 @@ class LanShareService : Service() {
     }
 
     override fun onDestroy() {
+        if (inst === this) inst = null
         ui.removeCallbacks(noteTick)
         try { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(netCb) } catch (_: Exception) {}
         try { unregisterReceiver(screenRx) } catch (_: Exception) {}

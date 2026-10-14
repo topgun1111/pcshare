@@ -1,0 +1,1820 @@
+diff --git a/HANDOVER_TEXT_SHARING.md b/HANDOVER_TEXT_SHARING.md
+new file mode 100644
+index 0000000..db85777
+--- /dev/null
++++ b/HANDOVER_TEXT_SHARING.md
+@@ -0,0 +1,53 @@
++# HANDOVER – Text sharing (replace WhatsApp for text/links)
++
++**Status 2026-10-15: code complete (phone + PC), Kotlin NOT compiled, NOT device-tested** (no Android SDK / kotlinc in the authoring environment). `ui.html` JS syntax-checked with node; all XML parsed. Branch `feat/text-inbox` of `topgun1111/pcshare`, **nothing pushed yet**. CI (`build-apk.yml`) only builds on push to `main`/`master` or manual dispatch (dispatch creates a release + tag), so compile errors surface only after merge or a dispatch.
++
++First step next session: copy the zip contents over the repo (paths are repo-relative) or `git apply text-sharing.patch`, push the branch, open the PR, then fix compiler errors from the Actions log.
++
++## What already existed (do not rebuild)
++- `/p/clip` (receive) + `/api/sendclip` (send) + `RemoteFs.pushClip` + `ClipPush.kt` (on-screen box + heads-up notification, links auto-open) + share-sheet alias `.SendShareAlias` ("LANShare Send": sends the clipboard to a device picked in a WebView picker).
++
++## What was added
++| Piece | Files | Behaviour |
++|---|---|---|
++| Inbox store | `core/Notes.kt` | `<filesDir>/inbox.json`, max 300 items / 2 MB, `add/all/remove/clear`, `listeners`, `visible` flag. Fed by `ClipPush.received` (in) and `Routes` `sendclip` + `TextSend.send` (out). |
++| Inbox screen | `InboxActivity.kt`, Bridge `openInbox()`, drawer item in `assets/ui.html` | Native chat-like list; tap = copy, long-press = copy / open link / share / delete; type or paste + Send; "To:" line picks the DEFAULT device; ⋮ menu: Auto-copy, Clipboard sync, Clear. |
++| Default target | `Cfg.defTarget()` (`def_target`), `TextSend.target()` | Default if online; else (no default set) the only online device; else null → picker. |
++| Share-sheet fast path | `ClipSendActivity.kt` (+ manifest filter SEND text/plain, label "LANShare Text") | Invisible activity, sends shared text to target immediately; picker dialog only if several online and no default. |
++| Direct Share | `Shortcuts.kt`, `res/xml/shortcuts.xml`, manifest `<meta-data android:app.shortcuts>` on MainActivity | One dynamic shortcut per online device (default ranked first), category `com.lanshare.app.category.SEND_TEXT`, share-target class `ClipSendActivity`. Re-synced every ~10 s from `LanShareService.noteTick` and on inbox open. Same shortcuts show on launcher long-press and send the clipboard. |
++| Quick Settings tile | `SendClipTile.kt` + manifest service | Tap → `ClipSendActivity` (needs window focus to read the clipboard on Android 10+) → default device. Subtitle = default device name (API 29+). `startActivityAndCollapse(PendingIntent)` on API 34+. |
++| Notification quick-reply | `QuickSendReceiver.kt`, `LanShareService.buildNote` | Foreground notification now has: inline "Send text" (RemoteInput) → default device, "Clipboard", "Stop". `LanShareService.refresh()` re-posts to clear the input state. |
++| Auto-copy (receive) | `Cfg.autoCopy()`, `ClipPush.received` | Incoming text is written to the clipboard in the background (allowed on Android 10+). |
++| Clipboard sync (send) | `ClipSync.kt`, `App.kt` (new Application class, manifest `android:name=".App"`) | Opt-in. While ≥1 LANShare screen is visible, copied text is pushed silently (`quiet:true`) to the default device. Skips IS_SENSITIVE clips, blank/>100 KB, echoes of received text (`mark`). **Foreground only** (Android 10+ clipboard-read rule). Receiver honours `quiet` only if ITS Auto-copy is on, else shows it normally (prevents silent clipboard hijack by any LAN device). |
++
++Protocol change: `/p/clip` body gains optional `"quiet": true` (old receivers ignore it).
++
++## PC side (added later the same day) - pcprint.py v26 + `core/PcText.kt`
++**PC (`pcprint.py`, service on port 8799):**
++- `POST /p/clip` (also `/clip`): same body as between phones (`text`, `from`, `quiet`, now also `id` + `port` of the sender). Stored in `%APPDATA%\LANSharePrint\inbox.json` (max 300 items / 2 MB), optional copy to the clipboard (PowerShell `Set-Clipboard`; setting "Copy received text automatically", default off, also the opt-in for quiet pushes), and the **LANShare Text** window opens (setting "Open this window on new text", default on, at most every 5 s).
++- Localhost only (the window): `GET /clip?since=N` (items + devices + settings), `POST /clip/send {to,text}`, `/clip/delete {id}` (no id = clear), `/clip/settings {autocopy,popup}`. Other LAN devices cannot read the inbox.
++- Devices to send to: the service listens for the phones' UDP beacons (port 48555, `SO_REUSEADDR`) and keeps the ones heard in the last 90 s; a phone that sends text here also registers itself. `/clip/send` only talks to devices in that list (no arbitrary hosts).
++- Window: `pcprint.py --text` or the new **Text** button in the main window (single instance, named mutex): list of texts (double-click = copy), Copy / Open link / Delete / Clear all, device drop-down + box + Send (Ctrl+Enter), the two switches.
++- `/ping` now has `"clip": true`. Firewall: setup adds a UDP rule `LANSharePrint-Beacons` (48555, LocalSubnet + tailnet) - **run the new file once** so Windows asks (without it only phones that already sent text can be answered).
++- Tested on Linux with a stub phone: phone->PC, beacon discovery, PC->phone, delete / settings, bad bodies (400), empty text. The Tk window was only run against a mocked tkinter (builds, polls, fills the list); Windows clipboard / popup / firewall not run.
++
++**Phone (`core/PcText.kt`, `TextSend`):** a PC is not a LANShare peer, so every ~30 s (on demand from `TextSend.online()`) the addresses already known (devices, saved SMB hosts, pins, ARP neighbours) get `GET :8799/ping`; a reply with `clip:true` makes that host a text target named "<PC> (PC)", id `pc:<ip>`, port 8799. It shows up wherever phones do (inbox target line / picker, default device, Direct Share, tile, share sheet "LANShare Text") because `TextSend.online()` / `find()` merge both lists; `RemoteFs.pushClip` posts to its `/p/clip` unchanged. A PC's texts to the phone arrive through the normal `/p/clip` (inbox + notification). `RemoteFs.pushClip` now also sends `id` and `port`. Old pcprint.py (404) -> "pcprint.py ... is older than v26".
++
++## Files
++New: `core/PcText.kt` (PC targets), `App.kt ClipSendActivity.kt ClipSync.kt InboxActivity.kt QuickSendReceiver.kt SendClipTile.kt Shortcuts.kt TextSend.kt core/Notes.kt res/xml/shortcuts.xml`
++Modified: `AndroidManifest.xml assets/ui.html ClipPush.kt LanShareService.kt MainActivity.kt core/Cfg.kt core/RemoteFs.kt core/Routes.kt res/values/themes.xml pcprint.py` (+ `ClipSendActivity.kt TextSend.kt` use `TextSend.find`) (+ this file)
++
++## Known risks / check list (compile + device)
++1. Compile: `LanShareService` companion accesses private `ui`/`repost()`; outer class accesses private `inst` of its companion; `Intent.EXTRA_SHORTCUT_ID` (API 29 constant) used with minSdk 24; `ShortcutInfoCompat`/`IconCompat` from core-ktx 1.13.1; `Tile.subtitle` guarded by API 29.
++2. `ClipSendActivity` is `noHistory` + translucent theme `Theme.LANShare.Clear`; verify it gets window focus (clipboard read) from the tile, the notification button and the share sheet.
++3. Direct Share: verify the share-target is picked up (shortcut category must match `shortcuts.xml`); if `targetClass` rejects the exported activity, point it at `MainActivity` and branch on `EXTRA_SHORTCUT_ID` in `handleShare`.
++4. Share sheet now lists three LANShare entries for text: "LANShare" (print, `*/*`), "LANShare Send" (alias, sends clipboard via picker), "LANShare Text" (new, instant). Consider removing the alias.
++5. Dynamic-shortcut rate limiting in the background is swallowed (`Shortcuts.sync` resets `last` and retries).
++6. Cold start from the tile: `ClipSendActivity` polls up to ~8 s for discovery (`ensureRunning` starts the service).
++7. Device checklist: inbox send/receive both ways; default device persists; tile; notification inline reply; share text from Chrome → "LANShare Text" and → device name (Direct Share); Auto-copy with app closed; Clipboard sync on (app open) copies on the other phone only when its Auto-copy is on; password-manager copy NOT synced; inbox survives app restart.
++
++## Not done / ideas
++- Device checklist for the PC: phone -> PC (window opens, text listed, Copy works, link opens), PC -> phone (device appears within ~2 s of opening LANShare on the phone; text lands in the inbox), auto-copy on/off, Windows asks for the UDP firewall rule once. The phone must be on the same subnet as the PC (or both on the tailnet) to find it.
++- Long-press a device chip to set default (default is currently set only in the inbox screen).
++- Unread badge, file attachments in the inbox, Settings row in `ui.html` for the switches.
++- Commit/PR conventions: extensive commit message + PR description (what and why); end commits with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_012SjHbGkm7G5ysSv32XutGF`; PR body ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)` + the session URL. Give the PR/compare link after pushing: `https://github.com/topgun1111/pcshare/compare/main...feat/text-inbox`.
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index e6cf248..b82c690 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -13,7 +13,7 @@
+     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
+     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
+-    <application android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
++    <application android:name=".App" android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
+         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
+         android:theme="@style/Theme.LANShare">
+         <!-- Ask Play Services to fetch the OCR model at install time (otherwise it downloads on first OCR use) -->
+@@ -30,6 +30,8 @@
+                 <category android:name="android.intent.category.DEFAULT"/>
+                 <data android:mimeType="*/*"/>
+             </intent-filter>
++            <!-- Direct Share targets (one per online device, published by Shortcuts.kt) -->
++            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
+             <!-- "Open with" for archives (zip / rar / cbz / cbr): the archive opens inside LANShare's own browser -->
+             <intent-filter>
+                 <action android:name="android.intent.action.VIEW"/>
+@@ -110,6 +112,25 @@
+             <meta-data android:name="android.printservice" android:resource="@xml/printservice"/>
+         </service>
+         <receiver android:name=".ClipCopyReceiver" android:exported="false"/>
++        <!-- Text sharing: Text inbox screen, one-shot sender (share sheet / Direct Share / tile / notification button), notification quick-reply, Quick Settings tile -->
++        <activity android:name=".InboxActivity" android:exported="false" android:theme="@style/Theme.LANShare"
++            android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateHidden"
++            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden"/>
++        <activity android:name=".ClipSendActivity" android:exported="true" android:theme="@style/Theme.LANShare.Clear"
++            android:label="LANShare Text" android:icon="@mipmap/ic_launcher"
++            android:launchMode="standard" android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true">
++            <!-- own share-sheet entry: sends the shared text to the default device at once (no picker) -->
++            <intent-filter>
++                <action android:name="android.intent.action.SEND"/>
++                <category android:name="android.intent.category.DEFAULT"/>
++                <data android:mimeType="text/plain"/>
++            </intent-filter>
++        </activity>
++        <receiver android:name=".QuickSendReceiver" android:exported="false"/>
++        <service android:name=".SendClipTile" android:exported="true" android:label="Send clipboard" android:icon="@drawable/ic_notification"
++            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
++            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE"/></intent-filter>
++        </service>
+         <service android:name=".LanShareService" android:exported="false"
+             android:foregroundServiceType="dataSync"/>
+     </application>
+diff --git a/app/src/main/assets/ui.html b/app/src/main/assets/ui.html
+index 7dd8f9e..a9bc7a9 100644
+--- a/app/src/main/assets/ui.html
++++ b/app/src/main/assets/ui.html
+@@ -3283,6 +3283,7 @@ function drawerRender(){
+     bd.append(E('div','dsep'));
+     drawerPrinters(bd);
+     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
++    if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
+     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
+     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
+     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
+diff --git a/app/src/main/java/com/lanshare/app/App.kt b/app/src/main/java/com/lanshare/app/App.kt
+new file mode 100644
+index 0000000..fce1911
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/App.kt
+@@ -0,0 +1,11 @@
++package com.lanshare.app
++
++import android.app.Application
++
++/** Process start: registers the screen counter of the clipboard sync before any activity exists (a service would be created too late to see the first one). */
++class App : Application() {
++    override fun onCreate() {
++        super.onCreate()
++        try { ClipSync.install(this) } catch (_: Throwable) {}
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/ClipPush.kt b/app/src/main/java/com/lanshare/app/ClipPush.kt
+index 03293df..cbd15e1 100644
+--- a/app/src/main/java/com/lanshare/app/ClipPush.kt
++++ b/app/src/main/java/com/lanshare/app/ClipPush.kt
+@@ -25,7 +25,9 @@ import android.widget.LinearLayout
+ import android.widget.TextView
+ import android.widget.Toast
+ import androidx.core.app.NotificationCompat
++import com.lanshare.app.core.Cfg
+ import com.lanshare.app.core.Core
++import com.lanshare.app.core.Notes
+ import java.util.concurrent.ConcurrentHashMap
+ import java.util.concurrent.atomic.AtomicInteger
+ 
+@@ -66,14 +68,18 @@ object ClipPush {
+         try { (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("LANShare", text)) } catch (_: Exception) {}
+     }
+ 
+-    /** Called on a server thread when another device sent [text]. */
+-    fun received(text: String, from: String) {
++    /** Called on a server thread when another device sent [text]. [quiet] = a clipboard-sync push: honoured only when this phone's "Auto-copy" is on, else it is shown like any other text. */
++    fun received(text: String, from: String, quiet: Boolean = false) {
+         val ctx = Core.appCtx ?: return
+         val link = linkOf(text)
++        Notes.add(false, from, text)   // text inbox (history + the inbox screen if it is open)
++        val auto = Cfg.autoCopy()
++        if (auto) { ClipSync.mark(text); copy(ctx, text) }   // writing the clipboard is allowed in the background; marked so clipboard sync does not echo it back
++        if (quiet && auto) return                            // silent: no box, no notification, no browser
+         ui.post {
+             val a = front
+             if (a != null) try { show(a, text, from, link) } catch (e: Throwable) { android.util.Log.w("LANShare", "clip box failed: $e") }
+-            notify(ctx, text, from, link)   // always: also covers a box that is hidden / missed, and keeps the item in the shade
++            if (!Notes.visible) notify(ctx, text, from, link)   // also covers a box that is hidden / missed, and keeps the item in the shade (not needed while the inbox is on screen)
+             if (a != null && link != null) open(a, link)
+         }
+     }
+diff --git a/app/src/main/java/com/lanshare/app/ClipSendActivity.kt b/app/src/main/java/com/lanshare/app/ClipSendActivity.kt
+new file mode 100644
+index 0000000..8439840
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/ClipSendActivity.kt
+@@ -0,0 +1,82 @@
++package com.lanshare.app
++
++import android.app.Activity
++import android.app.AlertDialog
++import android.content.ClipboardManager
++import android.content.Context
++import android.content.Intent
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.widget.Toast
++import com.lanshare.app.core.Peer
++
++/**
++ * Invisible one-shot sender. Started by
++ *  - the Quick Settings tile, the notification "Clipboard" button and the launcher / Direct Share shortcuts (action [TextSend.ACT_SEND]): sends the CLIPBOARD,
++ *  - the share sheet (ACTION_SEND text/plain): sends the shared text.
++ * Target: the shortcut's device ("to" / EXTRA_SHORTCUT_ID), else the default device, else the only online device, else a short picker.
++ * It is an activity (not a service) because Android 10+ lets only the focused app read the clipboard.
++ */
++class ClipSendActivity : Activity() {
++    private val ui = Handler(Looper.getMainLooper())
++    private var shared: String? = null
++    private var to: String? = null
++    private var started = false
++
++    override fun onCreate(b: Bundle?) {
++        super.onCreate(b)
++        val i = intent
++        if (i?.action == Intent.ACTION_SEND) shared = i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
++        to = (i?.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.takeIf { it.startsWith("peer:") }?.removePrefix("peer:")
++            ?: i?.getStringExtra("to"))?.takeIf { it.isNotEmpty() }
++        TextSend.ensureRunning(this)   // process was killed: bring discovery back
++    }
++
++    override fun onWindowFocusChanged(hasFocus: Boolean) {
++        super.onWindowFocusChanged(hasFocus)
++        if (!hasFocus || started) return
++        started = true
++        val t = shared?.takeIf { it.isNotBlank() } ?: readClip()
++        if (t == null) { say("Clipboard is empty"); finish(); return }
++        go(t, 0)
++    }
++
++    private fun readClip(): String? = try {
++        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
++            ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.takeIf { it.isNotBlank() }
++    } catch (_: Throwable) { null }
++
++    private fun say(m: String) { Toast.makeText(applicationContext, m, Toast.LENGTH_SHORT).show() }
++
++    /** Waits up to ~8 s for discovery (cold start), then sends / asks. */
++    private fun go(t: String, tries: Int) {
++        if (isFinishing) return
++        val explicit: Peer? = to?.let { TextSend.find(it) }
++        val on = TextSend.online()
++        val peer = explicit ?: if (to == null) TextSend.target() else null
++        when {
++            peer != null -> send(t, peer)
++            to == null && on.size > 1 -> choose(t, on)
++            tries < 20 -> ui.postDelayed({ go(t, tries + 1) }, 400)
++            else -> { say(if (to != null) "That device is offline" else "No device found"); finish() }
++        }
++    }
++
++    private fun send(t: String, p: Peer) {
++        TextSend.send(t, p.id) { err, name ->
++            say(err ?: "Sent to $name")
++            finish()
++        }
++    }
++
++    private fun choose(t: String, on: List<Peer>) {
++        AlertDialog.Builder(this)
++            .setTitle("Send to…")
++            .setItems(on.map { it.name }.toTypedArray()) { _, w -> send(t, on[w]) }
++            .setOnCancelListener { finish() }
++            .show()
++    }
++
++    override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
++}
+diff --git a/app/src/main/java/com/lanshare/app/ClipSync.kt b/app/src/main/java/com/lanshare/app/ClipSync.kt
+new file mode 100644
+index 0000000..b949a00
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/ClipSync.kt
+@@ -0,0 +1,68 @@
++package com.lanshare.app
++
++import android.app.Activity
++import android.app.Application
++import android.content.ClipboardManager
++import android.content.Context
++import android.os.Build
++import android.os.Bundle
++import com.lanshare.app.core.Cfg
++
++/**
++ * Clipboard sync (opt-in, Text inbox menu): while any LANShare screen is on screen, text you copy is also sent - silently - to the default device.
++ * Android 10+ lets only the app in the foreground read the clipboard, so this cannot run in the background; the receiving side copies it
++ * without a notification only when ITS owner turned "Auto-copy received text" on (otherwise it shows up like any other text).
++ * Copies flagged as sensitive (password managers), blank / huge texts and texts that just arrived from another device are never sent.
++ */
++object ClipSync {
++    @Volatile private var lastHash = 0
++    private var cm: ClipboardManager? = null
++    private var lis: ClipboardManager.OnPrimaryClipChangedListener? = null
++    private var started = 0
++    private var installed = false
++
++    /** Remember [t] as "already handled" (it came from another device, or was just sent). */
++    fun mark(t: String) { lastHash = t.hashCode() }
++
++    /** Counts the started LANShare screens: the listener lives while at least one is visible. Called once, from the service. */
++    @Synchronized fun install(app: Application) {
++        if (installed) return
++        installed = true
++        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
++            override fun onActivityStarted(a: Activity) { synchronized(ClipSync) { started++ }; refresh(a) }
++            override fun onActivityStopped(a: Activity) { synchronized(ClipSync) { if (started > 0) started-- }; refresh(a) }
++            override fun onActivityCreated(a: Activity, b: Bundle?) {}
++            override fun onActivityResumed(a: Activity) {}
++            override fun onActivityPaused(a: Activity) {}
++            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
++            override fun onActivityDestroyed(a: Activity) {}
++        })
++    }
++
++    /** (Re)applies the setting: listener on when enabled and a screen is visible, else off. */
++    @Synchronized fun refresh(ctx: Context) {
++        try { lis?.let { cm?.removePrimaryClipChangedListener(it) } } catch (_: Throwable) {}
++        lis = null; cm = null
++        if (started <= 0 || !Cfg.clipSync()) return
++        val m = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
++        val app = ctx.applicationContext
++        val l = ClipboardManager.OnPrimaryClipChangedListener { onChange(app, m) }
++        m.addPrimaryClipChangedListener(l)
++        cm = m; lis = l
++    }
++
++    private fun onChange(ctx: Context, m: ClipboardManager) {
++        val c = try { m.primaryClip } catch (_: Throwable) { null } ?: return
++        if (c.itemCount == 0) return
++        val sensitive = try {
++            Build.VERSION.SDK_INT >= 28 && c.description?.extras?.getBoolean("android.content.extra.IS_SENSITIVE", false) == true
++        } catch (_: Throwable) { false }
++        if (sensitive) return
++        val t = try { c.getItemAt(0).coerceToText(ctx)?.toString() } catch (_: Throwable) { null }
++        if (t.isNullOrBlank() || t.length > 100_000) return
++        if (t.hashCode() == lastHash) return
++        lastHash = t.hashCode()
++        val peer = TextSend.target() ?: return
++        TextSend.send(t, peer.id, quiet = true) { _, _ -> }
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/InboxActivity.kt b/app/src/main/java/com/lanshare/app/InboxActivity.kt
+new file mode 100644
+index 0000000..9a5629e
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/InboxActivity.kt
+@@ -0,0 +1,255 @@
++package com.lanshare.app
++
++import android.app.Activity
++import android.app.AlertDialog
++import android.content.ClipboardManager
++import android.content.Context
++import android.content.Intent
++import android.graphics.Color
++import android.graphics.drawable.GradientDrawable
++import android.os.Bundle
++import android.os.Handler
++import android.os.Looper
++import android.text.InputType
++import android.text.format.DateUtils
++import android.view.Gravity
++import android.view.View
++import android.view.ViewGroup
++import android.widget.BaseAdapter
++import android.widget.Button
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.LinearLayout
++import android.widget.ListView
++import android.widget.TextView
++import android.widget.Toast
++import com.lanshare.app.core.Cfg
++import com.lanshare.app.core.Notes
++import java.text.DateFormat
++import java.util.Date
++
++/**
++ * Text inbox: a chat-like list of everything sent to / received from other devices, plus a box to type or paste text and send it.
++ * Tap an entry = copy it, long-press = copy / open link / share / delete. The device line chooses the default target of text sharing
++ * (share-sheet entry, Direct Share, Quick Settings tile, notification quick-reply); the menu holds the Auto-copy and Clipboard-sync switches.
++ */
++class InboxActivity : Activity() {
++    private val ui = Handler(Looper.getMainLooper())
++    private lateinit var list: ListView
++    private lateinit var input: EditText
++    private lateinit var toLine: TextView
++    private var data: List<Notes.Note> = emptyList()
++    private val onChange: () -> Unit = { ui.post { refresh() } }
++
++    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
++
++    override fun onCreate(b: Bundle?) {
++        super.onCreate(b)
++        TextSend.ensureRunning(this)
++        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
++
++        // header: title + menu
++        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(6)) }
++        head.addView(TextView(this).apply { text = "Text inbox"; textSize = 20f; setTextColor(Color.BLACK); setTypeface(typeface, android.graphics.Typeface.BOLD) },
++            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        head.addView(TextView(this).apply {
++            text = "⋮"; textSize = 24f; setTextColor(Color.BLACK); gravity = Gravity.CENTER
++            setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { menu() }
++            contentDescription = "Menu"
++        })
++        root.addView(head)
++
++        // target line
++        toLine = TextView(this).apply {
++            textSize = 14f; setTextColor(0xFF5F6368.toInt()); setBackgroundColor(0xFFF3F3F3.toInt())
++            setPadding(dp(16), dp(10), dp(16), dp(10)); setOnClickListener { chooseTarget(null) }
++        }
++        root.addView(toLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
++
++        // list (+ empty hint)
++        list = ListView(this).apply { divider = null; dividerHeight = 0; isStackFromBottom = true; transcriptMode = android.widget.AbsListView.TRANSCRIPT_MODE_NORMAL; adapter = this@InboxActivity.adapter }
++        val empty = TextView(this).apply {
++            text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; textSize = 15f; setTextColor(0xFF80868B.toInt()); setPadding(dp(32), dp(32), dp(32), dp(32))
++        }
++        val frame = FrameLayout(this)
++        frame.addView(list, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++        frame.addView(empty, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
++        list.emptyView = empty
++        root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
++
++        // input row
++        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(8), dp(6), dp(8), dp(8)) }
++        input = EditText(this).apply {
++            hint = "Type or paste text"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
++            minLines = 1; maxLines = 5
++        }
++        row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
++        row.addView(Button(this).apply { text = "Paste"; isAllCaps = false; setOnClickListener { paste() } })
++        row.addView(Button(this).apply { text = "Send"; isAllCaps = false; setOnClickListener { sendTyped() } })
++        root.addView(row)
++
++        setContentView(root)
++        refresh()
++    }
++
++    override fun onResume() {
++        super.onResume()
++        Notes.visible = true
++        Notes.listeners.add(onChange)
++        refresh()
++        // let the share sheet / tile see the current device list right away
++        Thread { Shortcuts.sync(applicationContext) }.also { it.isDaemon = true }.start()
++    }
++
++    override fun onPause() {
++        Notes.visible = false
++        Notes.listeners.remove(onChange)
++        super.onPause()
++    }
++
++    private fun refresh() {
++        data = Notes.all()
++        adapter.notifyDataSetChanged()
++        if (data.isNotEmpty()) list.setSelection(data.size - 1)
++        val d = TextSend.defaultName()
++        val id = Cfg.defTarget()
++        toLine.text = when {
++            id.isNotEmpty() && d != null -> "To: $d  ▾   (default device)"
++            id.isNotEmpty() -> "To: a device that is offline now  ▾"
++            else -> {
++                val on = TextSend.online()
++                if (on.size == 1) "To: ${on[0].name}  ▾   (the only device online)" else "To: ask every time  ▾"
++            }
++        }
++    }
++
++    // ---- sending
++    private fun paste() {
++        val t = try {
++            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
++                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
++        } catch (_: Throwable) { null }
++        if (t.isNullOrEmpty()) { toast("Clipboard is empty"); return }
++        input.text.insert(input.selectionStart.coerceAtLeast(0), t)
++    }
++
++    private fun sendTyped() {
++        val t = input.text.toString().trim()
++        if (t.isEmpty()) { toast("Type something first"); return }
++        val peer = TextSend.target()
++        if (peer != null) { sendTo(t, peer.id); return }
++        val on = TextSend.online()
++        if (on.isEmpty()) { toast("No device found yet"); return }
++        chooseTarget { id -> sendTo(t, id) }   // several devices and no default: ask once
++    }
++
++    private fun sendTo(t: String, id: String) {
++        TextSend.send(t, id) { err, name ->
++            if (err != null) toast(err) else { input.setText(""); toast("Sent to $name") }
++        }
++    }
++
++    /** Device picker. [then] = send with the picked device (one-off, default unchanged); null = choose the DEFAULT device. */
++    private fun chooseTarget(then: ((String) -> Unit)?) {
++        val on = TextSend.online()
++        val labels = ArrayList<String>()
++        val ids = ArrayList<String>()
++        if (then == null) { labels.add("Ask every time"); ids.add("") }
++        on.forEach { labels.add(it.name + if (then == null && it.id == Cfg.defTarget()) "  ✓" else ""); ids.add(it.id) }
++        if (ids.isEmpty()) { toast("No device found yet"); return }
++        AlertDialog.Builder(this)
++            .setTitle(if (then == null) "Send text to… (default)" else "Send to…")
++            .setItems(labels.toTypedArray()) { _, w ->
++                if (then != null) then(ids[w])
++                else {
++                    Cfg.setDefTarget(ids[w])
++                    refresh()
++                    Thread { Shortcuts.sync(applicationContext) }.also { it.isDaemon = true }.start()
++                }
++            }.show()
++    }
++
++    // ---- menu
++    private fun menu() {
++        val items = arrayOf(
++            "Auto-copy received text: " + (if (Cfg.autoCopy()) "ON" else "off"),
++            "Clipboard sync (while LANShare is open): " + (if (Cfg.clipSync()) "ON" else "off"),
++            "Clear inbox"
++        )
++        AlertDialog.Builder(this).setItems(items) { _, w ->
++            when (w) {
++                0 -> { Cfg.setAutoCopy(!Cfg.autoCopy()); toast(if (Cfg.autoCopy()) "Received text goes to the clipboard at once" else "Auto-copy off") }
++                1 -> {
++                    val on = !Cfg.clipSync()
++                    if (on && Cfg.defTarget().isEmpty()) toast("Tip: pick a default device first - sync sends to it")
++                    Cfg.setClipSync(on)
++                    ClipSync.refresh(this)
++                    toast(if (on) "Text you copy is sent to the default device while this app is open" else "Clipboard sync off")
++                }
++                2 -> AlertDialog.Builder(this).setTitle("Clear the inbox?").setMessage("Removes the list on this phone only.")
++                    .setPositiveButton("Clear") { _, _ -> Notes.clear() }.setNegativeButton("Cancel", null).show()
++            }
++        }.show()
++    }
++
++    // ---- list
++    private fun toast(m: String) { Toast.makeText(this, m, Toast.LENGTH_SHORT).show() }
++
++    private fun copy(t: String) {
++        ClipSync.mark(t)   // not an echo for clipboard sync
++        ClipPush.copy(this, t); toast("Copied")
++    }
++
++    private fun whenText(ts: Long): String =
++        if (DateUtils.isToday(ts)) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(ts))
++        else DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
++
++    private fun actions(n: Notes.Note) {
++        val link = ClipPush.linkOf(n.text)
++        val labels = ArrayList<String>(); labels.add("Copy")
++        if (link != null) labels.add("Open link")
++        labels.add("Share…"); labels.add("Delete")
++        AlertDialog.Builder(this).setItems(labels.toTypedArray()) { _, w ->
++            when (labels[w]) {
++                "Copy" -> copy(n.text)
++                "Open link" -> if (link != null && !ClipPush.open(this, link)) toast("No app can open this link")
++                "Share…" -> try {
++                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, n.text), "Share text"))
++                } catch (_: Throwable) {}
++                "Delete" -> Notes.remove(n.id)
++            }
++        }.show()
++    }
++
++    private val adapter = object : BaseAdapter() {
++        override fun getCount() = data.size
++        override fun getItem(p: Int) = data[p]
++        override fun getItemId(p: Int) = data[p].id
++        override fun getView(p: Int, cv: View?, parent: ViewGroup): View {
++            val n = data[p]
++            val root = LinearLayout(this@InboxActivity).apply {
++                orientation = LinearLayout.VERTICAL
++                gravity = if (n.out) Gravity.END else Gravity.START
++                setPadding(dp(10), dp(4), dp(10), dp(4))
++            }
++            val bubble = LinearLayout(this@InboxActivity).apply {
++                orientation = LinearLayout.VERTICAL
++                setPadding(dp(12), dp(8), dp(12), dp(8))
++                background = GradientDrawable().apply { setColor(if (n.out) 0xFFFFE0B2.toInt() else 0xFFEEEEEE.toInt()); cornerRadius = dp(14).toFloat() }
++                setOnClickListener { copy(n.text) }
++                setOnLongClickListener { actions(n); true }
++            }
++            bubble.addView(TextView(this@InboxActivity).apply {
++                text = (if (n.out) "To " else "From ") + n.peer + " · " + whenText(n.ts)
++                textSize = 12f; setTextColor(0xFF5F6368.toInt())
++            })
++            bubble.addView(TextView(this@InboxActivity).apply {
++                text = n.text.trim().take(1500); textSize = 15f; setTextColor(Color.BLACK)
++                maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
++                setPadding(0, dp(2), 0, 0)
++            })
++            root.addView(bubble, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
++            return root
++        }
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/LanShareService.kt b/app/src/main/java/com/lanshare/app/LanShareService.kt
+index 6526f92..4ab1b10 100644
+--- a/app/src/main/java/com/lanshare/app/LanShareService.kt
++++ b/app/src/main/java/com/lanshare/app/LanShareService.kt
+@@ -36,6 +36,25 @@ class LanShareService : Service() {
+ 
+     override fun onBind(i: Intent?): IBinder? = null
+ 
++    override fun onCreate() {
++        super.onCreate()
++        inst = this
++    }
++
++    companion object {
++        @Volatile private var inst: LanShareService? = null
++        /** Re-posts the foreground notification now (clears the inline "Send text" box after a send). Safe from any thread. */
++        fun refresh() { val s = inst ?: return; s.ui.post { s.repost() } }
++    }
++
++    private fun repost() {
++        try {
++            val (run, done, total) = com.lanshare.app.core.ImgSearch.progress()
++            lastNote = noteKey(run, done, total)
++            getSystemService(NotificationManager::class.java).notify(1, buildNote(run, done, total))
++        } catch (_: Exception) {}
++    }
++
+     override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
+         if (i?.action == "STOP") {            // notification "Stop" button: kill server + app
+             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+@@ -58,7 +77,7 @@ class LanShareService : Service() {
+                 val f = android.content.IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }
+                 registerReceiver(screenRx, f)
+             } catch (_: Exception) {}
+-            Thread { Core.start(applicationContext, root) }.apply { isDaemon = true; start() }
++            Thread { Core.start(applicationContext, root); try { ClipSync.refresh(applicationContext) } catch (_: Throwable) {} }.apply { isDaemon = true; start() }   // config is loaded now: apply the opt-in clipboard sync
+             ui.postDelayed(noteTick, 2000)
+         }
+         return START_STICKY
+@@ -66,8 +85,13 @@ class LanShareService : Service() {
+ 
+     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+     private var lastNote = ""
++    private var tickN = 0
+     private val noteTick = object : Runnable {
+         override fun run() {
++            if (tickN++ % 5 == 0) {   // every ~10 s: keep the Direct Share targets (online devices) current
++                val app = applicationContext
++                Thread { Shortcuts.sync(app) }.also { it.isDaemon = true }.start()
++            }
+             try {
+                 val (run, done, total) = com.lanshare.app.core.ImgSearch.progress()
+                 val key = noteKey(run, done, total)
+@@ -91,8 +115,16 @@ class LanShareService : Service() {
+         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+         val b = NotificationCompat.Builder(this, "lanshare")
+             .setSmallIcon(R.drawable.ic_notification).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
+-            .addAction(R.drawable.ic_notification, "Stop",
+-                PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
++        // text sharing: type here (inline box) -> default device, or send the clipboard; both without opening the app
++        val replyFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
++        val replyPi = PendingIntent.getBroadcast(this, 2, Intent(this, QuickSendReceiver::class.java).setAction("com.lanshare.app.QUICK_SEND"), replyFlags)
++        b.addAction(NotificationCompat.Action.Builder(R.drawable.ic_notification, "Send text", replyPi)
++            .addRemoteInput(androidx.core.app.RemoteInput.Builder(QuickSendReceiver.KEY).setLabel("Text to send").build())
++            .setAllowGeneratedReplies(false).build())
++        b.addAction(R.drawable.ic_notification, "Clipboard",
++            PendingIntent.getActivity(this, 3, Intent(this, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
++        b.addAction(R.drawable.ic_notification, "Stop",
++            PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
+         val jobs = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
+         if (jobs.isNotEmpty()) {   // copy / zip / print ... running in the background: progress stays visible when the app is not on screen
+             val pct = com.lanshare.app.ops.JobView.overallPct(jobs)
+@@ -110,6 +142,7 @@ class LanShareService : Service() {
+     }
+ 
+     override fun onDestroy() {
++        if (inst === this) inst = null
+         ui.removeCallbacks(noteTick)
+         try { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(netCb) } catch (_: Exception) {}
+         try { unregisterReceiver(screenRx) } catch (_: Exception) {}
+diff --git a/app/src/main/java/com/lanshare/app/MainActivity.kt b/app/src/main/java/com/lanshare/app/MainActivity.kt
+index 181e90f..422ae1e 100644
+--- a/app/src/main/java/com/lanshare/app/MainActivity.kt
++++ b/app/src/main/java/com/lanshare/app/MainActivity.kt
+@@ -85,6 +85,10 @@ class MainActivity : Activity() {
+         @JavascriptInterface fun editText(json: String) {
+             runOnUiThread { try { startActivity(TextEditorActivity.intent(this@MainActivity, json)) } catch (_: Throwable) { } }
+         }
++        /** Menu -> "Text inbox": the native send / receive text screen (InboxActivity). */
++        @JavascriptInterface fun openInbox() {
++            runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }
++        }
+         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
+         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
+         /** Settings -> display size: "interface%,text%". */
+diff --git a/app/src/main/java/com/lanshare/app/QuickSendReceiver.kt b/app/src/main/java/com/lanshare/app/QuickSendReceiver.kt
+new file mode 100644
+index 0000000..552ab74
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/QuickSendReceiver.kt
+@@ -0,0 +1,25 @@
++package com.lanshare.app
++
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.widget.Toast
++import androidx.core.app.RemoteInput
++
++/** The inline "Send text" box of the LANShare notification: whatever is typed there goes to the default device without opening the app. */
++class QuickSendReceiver : BroadcastReceiver() {
++    override fun onReceive(c: Context, i: Intent) {
++        val app = c.applicationContext
++        val t = RemoteInput.getResultsFromIntent(i)?.getCharSequence(KEY)?.toString()?.trim()
++        LanShareService.refresh()   // re-post the notification right away: that clears the "sending" state of the input box
++        if (t.isNullOrEmpty()) return
++        val peer = TextSend.target()
++        if (peer == null) { Toast.makeText(app, "Pick a default device in Text inbox first", Toast.LENGTH_LONG).show(); return }
++        TextSend.send(t, peer.id) { err, name ->   // the foreground service keeps the process alive while this runs
++            Toast.makeText(app, err ?: "Sent to $name", Toast.LENGTH_SHORT).show()
++            LanShareService.refresh()
++        }
++    }
++
++    companion object { const val KEY = "text" }
++}
+diff --git a/app/src/main/java/com/lanshare/app/SendClipTile.kt b/app/src/main/java/com/lanshare/app/SendClipTile.kt
+new file mode 100644
+index 0000000..9e77d6b
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/SendClipTile.kt
+@@ -0,0 +1,30 @@
++package com.lanshare.app
++
++import android.app.PendingIntent
++import android.content.Intent
++import android.os.Build
++import android.service.quicksettings.Tile
++import android.service.quicksettings.TileService
++
++/** Quick Settings tile "Send clipboard": one tap from the notification shade sends the clipboard to the default device (see [ClipSendActivity]). */
++class SendClipTile : TileService() {
++    override fun onStartListening() { refresh() }
++
++    private fun refresh() {
++        val t = qsTile ?: return
++        t.label = "Send clipboard"
++        if (Build.VERSION.SDK_INT >= 29) t.subtitle = TextSend.defaultName() ?: "Pick a device"
++        t.state = Tile.STATE_INACTIVE
++        t.updateTile()
++    }
++
++    override fun onClick() {
++        val i = Intent(this, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++        if (Build.VERSION.SDK_INT >= 34) {
++            startActivityAndCollapse(PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
++        } else {
++            @Suppress("DEPRECATION")
++            startActivityAndCollapse(i)
++        }
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/Shortcuts.kt b/app/src/main/java/com/lanshare/app/Shortcuts.kt
+new file mode 100644
+index 0000000..2639d9e
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/Shortcuts.kt
+@@ -0,0 +1,41 @@
++package com.lanshare.app
++
++import android.content.Context
++import android.content.Intent
++import androidx.core.content.pm.ShortcutInfoCompat
++import androidx.core.content.pm.ShortcutManagerCompat
++import androidx.core.graphics.drawable.IconCompat
++
++/**
++ * Direct Share: every online device is published as a share-sheet target for plain text ("Share -> Pixel 7" in any app, no picker, no LANShare screen).
++ * The share-target declaration is res/xml/shortcuts.xml (target class = [ClipSendActivity]); the default device is ranked first.
++ * The same shortcuts show on a long-press of the launcher icon and send the clipboard to that device.
++ */
++object Shortcuts {
++    const val CATEGORY = "com.lanshare.app.category.SEND_TEXT"
++    private var last = ""
++
++    /** Re-publishes the shortcuts when the set of online devices (or the default) changed. Cheap when nothing changed; call from any thread. */
++    @Synchronized fun sync(ctx: Context) {
++        try {
++            val on = TextSend.online()
++            val def = com.lanshare.app.core.Cfg.defTarget()
++            val key = on.joinToString("|") { it.id + ":" + it.name } + "#" + def
++            if (key == last) return
++            last = key
++            val max = minOf(ShortcutManagerCompat.getMaxShortcutCountPerActivity(ctx), 6)
++            val list = on.sortedByDescending { it.id == def }.take(max).mapIndexed { n, p ->
++                ShortcutInfoCompat.Builder(ctx, "peer:" + p.id)
++                    .setShortLabel(p.name.take(24).ifBlank { "Device" })
++                    .setLongLabel("Send to " + p.name)
++                    .setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher))
++                    .setIntent(Intent(ctx, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND).putExtra("to", p.id))
++                    .setCategories(setOf(CATEGORY))
++                    .setLongLived(true)
++                    .setRank(n)
++                    .build()
++            }
++            ShortcutManagerCompat.setDynamicShortcuts(ctx, list)
++        } catch (_: Throwable) { last = "" }   // rate-limited or not supported: try again at the next change
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/TextSend.kt b/app/src/main/java/com/lanshare/app/TextSend.kt
+new file mode 100644
+index 0000000..66ee587
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/TextSend.kt
+@@ -0,0 +1,69 @@
++package com.lanshare.app
++
++import android.content.Context
++import android.content.Intent
++import android.os.Handler
++import android.os.Looper
++import androidx.core.content.ContextCompat
++import com.lanshare.app.core.Cfg
++import com.lanshare.app.core.Core
++import com.lanshare.app.core.NotFound
++import com.lanshare.app.core.Notes
++import com.lanshare.app.core.Peer
++import com.lanshare.app.core.PcText
++import com.lanshare.app.core.RemoteFs
++import java.io.IOException
++
++/** Shared by the share-sheet entry, Direct Share, the Quick Settings tile, the notification quick-reply, clipboard sync and the inbox screen: who text goes to, and the sending itself. */
++object TextSend {
++    const val ACT_SEND = "com.lanshare.app.SEND_CLIP"
++
++    /** Devices that answered a live check: phones / PCs running LANShare, plus PCs running pcprint.py v26+ ("<name> (PC)"). */
++    fun online(): List<Peer> {
++        PcText.kick()
++        val lan = try { Core.discOrNull()?.list()?.filter { it.ok }.orEmpty() } catch (_: Throwable) { emptyList() }
++        return lan + PcText.peers()
++    }
++
++    /** A device by id (a LANShare peer or a "pc:<ip>" PC); null when unknown / not seen. */
++    fun find(id: String): Peer? = try { PcText.get(id) ?: Core.discOrNull()?.get(id) } catch (_: Throwable) { null }
++
++    /** Where text goes without asking: the chosen default if it is online, else - when no default is set - the only online device, else null. */
++    fun target(): Peer? {
++        val on = online()
++        val d = Cfg.defTarget()
++        return on.firstOrNull { it.id == d } ?: if (d.isEmpty() && on.size == 1) on[0] else null
++    }
++
++    /** Name of the chosen default device (even when it is offline), or null. */
++    fun defaultName(): String? {
++        val d = Cfg.defTarget()
++        if (d.isEmpty()) return null
++        return find(d)?.name
++    }
++
++    /** Starts the background service (and with it discovery + the server) when the process was killed. */
++    fun ensureRunning(ctx: Context) {
++        if (Core.discOrNull() != null) return
++        try { ContextCompat.startForegroundService(ctx, Intent(ctx, LanShareService::class.java)) } catch (_: Throwable) {}
++    }
++
++    /** Sends [text] to [peerId] on a background thread; [done] runs on the main thread with (error message or null, device name). [quiet] = clipboard-sync push. */
++    fun send(text: String, peerId: String, quiet: Boolean = false, done: (String?, String) -> Unit) {
++        Thread {
++            var name = ""
++            val err: String? = try {
++                val peer = find(peerId) ?: throw IOException("that device is offline")
++                name = peer.name
++                try { RemoteFs(peer).pushClip(text, Cfg.name, quiet) }
++                catch (e: NotFound) {
++                    throw IOException(if (peerId.startsWith(PcText.PREFIX)) "pcprint.py on ${peer.name} is older than v26 - run the new file once on that PC"
++                                      else "${peer.name} runs an older LANShare - update it to receive text")
++                }
++                if (!quiet) Notes.add(true, peer.name, text)
++                null
++            } catch (e: Throwable) { e.message ?: e.toString() }
++            Handler(Looper.getMainLooper()).post { done(err, name) }
++        }.also { it.isDaemon = true }.start()
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/core/Cfg.kt b/app/src/main/java/com/lanshare/app/core/Cfg.kt
+index 3f03d3b..679589f 100644
+--- a/app/src/main/java/com/lanshare/app/core/Cfg.kt
++++ b/app/src/main/java/com/lanshare/app/core/Cfg.kt
+@@ -46,6 +46,16 @@ object Cfg {
+     @Synchronized fun imgAutoCharging(): Boolean = obj.optBoolean("img_auto_chg", false)
+     @Synchronized fun setImgAutoCharging(v: Boolean) { obj.put("img_auto_chg", v); save() }
+ 
++    /** Text sharing: the device that "Send clipboard" (Quick Settings tile / notification), the share-sheet entry and the inbox send to without asking (peer id; "" = ask / the only online device). */
++    @Synchronized fun defTarget(): String = obj.optString("def_target", "")
++    @Synchronized fun setDefTarget(v: String) { obj.put("def_target", v); save() }
++    /** Text that arrives from another device is put on this phone's clipboard at once (default off). Also the opt-in for silent clipboard-sync pushes. */
++    @Synchronized fun autoCopy(): Boolean = obj.optBoolean("auto_copy", false)
++    @Synchronized fun setAutoCopy(v: Boolean) { obj.put("auto_copy", v); save() }
++    /** Copying text while a LANShare screen is open also sends it to the default device (default off). */
++    @Synchronized fun clipSync(): Boolean = obj.optBoolean("clip_sync", false)
++    @Synchronized fun setClipSync(v: Boolean) { obj.put("clip_sync", v); save() }
++
+     /** Wi-Fi printers this device has found (kept across restarts / sleep, so they are still offered when mDNS is silent with the screen off). */
+     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
+     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }
+diff --git a/app/src/main/java/com/lanshare/app/core/Notes.kt b/app/src/main/java/com/lanshare/app/core/Notes.kt
+new file mode 100644
+index 0000000..59169e3
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/core/Notes.kt
+@@ -0,0 +1,90 @@
++package com.lanshare.app.core
++
++import org.json.JSONArray
++import org.json.JSONObject
++import java.io.File
++import java.util.concurrent.CopyOnWriteArrayList
++
++/**
++ * Text inbox: every text / link sent to or received from another device, oldest first.
++ * Persisted in <filesDir>/inbox.json (written to a temp file, then renamed), capped by count and total size.
++ */
++object Notes {
++    class Note(val id: Long, val ts: Long, val out: Boolean, val peer: String, val text: String)
++
++    private const val MAX_ITEMS = 300
++    private const val MAX_TEXT = 100_000
++    private const val MAX_TOTAL = 2_000_000
++    private val items = ArrayList<Note>()
++    private var loaded = false
++    private var nextId = 1L
++
++    /** Called (on any thread) after the list changed. */
++    val listeners = CopyOnWriteArrayList<() -> Unit>()
++    /** The inbox screen is on top: an incoming text needs no heads-up notification. */
++    @Volatile var visible = false
++
++    private fun file(): File? = Cfg.dir?.let { File(it, "inbox.json") }
++
++    private fun ensure() {
++        if (loaded) return
++        val f = file() ?: return   // config not loaded yet: try again on the next call
++        loaded = true
++        try {
++            if (f.isFile) {
++                val a = JSONArray(f.readText())
++                for (i in 0 until a.length()) {
++                    val o = a.optJSONObject(i) ?: continue
++                    val id = o.optLong("id", nextId)
++                    items.add(Note(id, o.optLong("ts"), o.optBoolean("out"), o.optString("peer"), o.optString("text")))
++                    if (id >= nextId) nextId = id + 1
++                }
++            }
++        } catch (_: Exception) {}
++    }
++
++    private fun save() {
++        val f = file() ?: return
++        try {
++            val a = JSONArray()
++            for (n in items) a.put(JSONObject().put("id", n.id).put("ts", n.ts).put("out", n.out).put("peer", n.peer).put("text", n.text))
++            val tmp = File(f.path + ".tmp")
++            tmp.writeText(a.toString())
++            if (!tmp.renameTo(f)) { f.delete(); if (!tmp.renameTo(f)) f.writeText(a.toString()) }
++        } catch (_: Exception) {}
++    }
++
++    private fun fire() { for (l in listeners) try { l() } catch (_: Throwable) {} }
++
++    /** Adds one entry ([out] = sent by this device). The same text twice within 2 s from the same device is kept once. */
++    fun add(out: Boolean, peer: String, text: String): Note? {
++        if (text.isBlank()) return null
++        val t = text.take(MAX_TEXT)
++        val n: Note
++        synchronized(this) {
++            ensure()
++            val now = System.currentTimeMillis()
++            val last = items.lastOrNull()
++            if (last != null && last.out == out && last.peer == peer && last.text == t && now - last.ts < 2000) return last
++            n = Note(nextId++, now, out, peer, t)
++            items.add(n)
++            var total = items.sumOf { it.text.length }
++            while (items.size > MAX_ITEMS || (total > MAX_TOTAL && items.size > 1)) { total -= items.removeAt(0).text.length }
++            save()
++        }
++        fire()
++        return n
++    }
++
++    @Synchronized fun all(): List<Note> { ensure(); return ArrayList(items) }
++
++    fun remove(id: Long) {
++        synchronized(this) { ensure(); if (!items.removeAll { it.id == id }) return; save() }
++        fire()
++    }
++
++    fun clear() {
++        synchronized(this) { ensure(); items.clear(); save() }
++        fire()
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/core/PcText.kt b/app/src/main/java/com/lanshare/app/core/PcText.kt
+new file mode 100644
+index 0000000..cc30c63
+--- /dev/null
++++ b/app/src/main/java/com/lanshare/app/core/PcText.kt
+@@ -0,0 +1,70 @@
++package com.lanshare.app.core
++
++import org.json.JSONObject
++import java.util.concurrent.ConcurrentHashMap
++import java.util.concurrent.Executors
++import java.util.concurrent.TimeUnit
++import java.util.concurrent.atomic.AtomicBoolean
++
++/**
++ * PCs that run pcprint.py v26+ also receive text: its print port (8799) answers `/p/clip` like a phone does. They are not LANShare peers (no
++ * beacons, no file access), so they are found here: every ~30 s (on demand, see [kick]) the addresses we already know - other devices, saved
++ * SMB hosts, pinned hosts, ARP neighbours - are asked `GET /ping`, and a reply with `"clip": true` makes that host a text target.
++ * They appear next to the phones as "<PC name> (PC)" with the id "pc:<ip>" (usable as the default device, in Direct Share, the tile ...).
++ */
++object PcText {
++    const val PREFIX = "pc:"
++    private const val TTL = 100_000L
++    private class Pc(val ip: String, val name: String, val seen: Long)
++    private val pcs = ConcurrentHashMap<String, Pc>()
++    private val busy = AtomicBoolean(false)
++    @Volatile private var lastScan = 0L
++
++    private fun peerOf(p: Pc) = Peer(PREFIX + p.ip, p.ip, Jobs.PRINT_PORT, p.name + " (PC)", p.seen, listOf(p.ip), true)
++
++    /** PCs that answered within the last 100 s. */
++    fun peers(): List<Peer> {
++        val now = System.currentTimeMillis()
++        return pcs.values.filter { now - it.seen < TTL }.sortedBy { it.name.lowercase() }.map { peerOf(it) }
++    }
++
++    /** A PC by its "pc:<ip>" id (also when it was last seen a while ago: the send itself tells whether it is still there). */
++    fun get(id: String): Peer? = if (id.startsWith(PREFIX)) pcs[id.removePrefix(PREFIX)]?.let { peerOf(it) } else null
++
++    /** Starts a background look-around unless one ran in the last 30 s. Cheap to call often. */
++    fun kick() {
++        val now = System.currentTimeMillis()
++        if (now - lastScan < 30_000 || !busy.compareAndSet(false, true)) return
++        lastScan = now
++        Thread { try { scan() } catch (_: Throwable) {} finally { busy.set(false) } }.also { it.isDaemon = true }.start()
++    }
++
++    private fun scan() {
++        val ips = LinkedHashSet<String>()
++        ips.addAll(pcs.keys)
++        val d = Core.discOrNull()
++        if (d != null) for (p in d.list()) { ips.add(p.ip); ips.addAll(p.ips) }
++        try { val a = Cfg.smb(); for (k in 0 until a.length()) a.optJSONObject(k)?.optString("host")?.takeIf { it.isNotEmpty() }?.let { ips.add(Smb.split(it).first) } } catch (_: Exception) {}
++        try { ips.addAll(Cfg.pins()) } catch (_: Exception) {}
++        try { ips.addAll(Net.arpNeighbors()) } catch (_: Exception) {}
++        d?.ownIps?.let { ips.removeAll(it) }
++        ips.removeAll { it.isBlank() }
++        val pool = Executors.newFixedThreadPool(16) { r -> Thread(r).also { it.isDaemon = true } }
++        try {
++            for (ip in ips.take(120)) pool.execute {
++                try {
++                    val r = Http.request(ip, Jobs.PRINT_PORT, "GET", "/ping", emptyMap(), 1500)
++                    try {
++                        if (r.status == 200) {
++                            val o = JSONObject(String(r.readUpTo(32768), Charsets.UTF_8))
++                            if (o.optBoolean("clip", false)) pcs[ip] = Pc(ip, o.optString("name").ifBlank { ip }, System.currentTimeMillis())
++                        }
++                    } finally { r.close() }
++                } catch (_: Exception) {}
++            }
++        } finally {
++            pool.shutdown()
++            try { pool.awaitTermination(8, TimeUnit.SECONDS) } catch (_: InterruptedException) {}
++        }
++    }
++}
+diff --git a/app/src/main/java/com/lanshare/app/core/RemoteFs.kt b/app/src/main/java/com/lanshare/app/core/RemoteFs.kt
+index a2cf4ac..3b5b67c 100644
+--- a/app/src/main/java/com/lanshare/app/core/RemoteFs.kt
++++ b/app/src/main/java/com/lanshare/app/core/RemoteFs.kt
+@@ -137,8 +137,11 @@ class RemoteFs(peer: Peer) : Endpoint {
+     fun ping() { bytes("GET", "ping") }
+ 
+     /** Sends clipboard text / a link to that device (it shows a box and opens links in its browser). */
+-    fun pushClip(text: String, from: String) {
+-        val b = JSONObject().put("text", text).put("from", from).toString().toByteArray(Charsets.UTF_8)
++    fun pushClip(text: String, from: String, quiet: Boolean = false) {
++        val j = JSONObject().put("text", text).put("from", from)
++        try { j.put("id", Cfg.id); Core.discOrNull()?.let { j.put("port", it.port) } } catch (_: Exception) {}   // lets a PC (pcprint.py 26+) answer this device from its text window
++        if (quiet) j.put("quiet", true)   // clipboard sync: the receiver only copies it silently when its owner turned "Auto-copy" on, else it is shown like any other text
++        val b = j.toString().toByteArray(Charsets.UTF_8)
+         callRaw("POST", "clip", body = java.io.ByteArrayInputStream(b), size = b.size.toLong(),
+             headers = mapOf("Content-Type" to "application/json"), timeoutMs = 15_000).close()
+     }
+diff --git a/app/src/main/java/com/lanshare/app/core/Routes.kt b/app/src/main/java/com/lanshare/app/core/Routes.kt
+index a68d76e..66521c7 100644
+--- a/app/src/main/java/com/lanshare/app/core/Routes.kt
++++ b/app/src/main/java/com/lanshare/app/core/Routes.kt
+@@ -66,7 +66,7 @@ object Routes {
+                 val j = JSONObject(String(buf, Charsets.UTF_8))
+                 val t = j.optString("text")
+                 if (t.isBlank()) throw BadReq("empty text")
+-                com.lanshare.app.ClipPush.received(t, j.optString("from").ifBlank { ex.remoteIp })
++                com.lanshare.app.ClipPush.received(t, j.optString("from").ifBlank { ex.remoteIp }, j.optBoolean("quiet"))
+                 ok(ex)
+             }
+             "mkdir" -> { L.mkdir(ex.q("path")); ok(ex) }
+@@ -216,6 +216,7 @@ object Routes {
+                 val peer = Core.disc.get(b.getString("to")) ?: throw IOException("that device is offline")
+                 try { RemoteFs(peer).pushClip(t, Cfg.name) }
+                 catch (e: NotFound) { throw IOException("${peer.name} runs an older LANShare - update it to receive the clipboard") }
++                Notes.add(true, peer.name, t)   // also listed in the text inbox
+                 ok(ex)
+             }
+             "bin" -> {   // starts a background task (poll GET /api/bin?items=0 for progress); "cancel" stops it after the current item
+diff --git a/app/src/main/res/values/themes.xml b/app/src/main/res/values/themes.xml
+index 7855a40..b5d42bd 100644
+--- a/app/src/main/res/values/themes.xml
++++ b/app/src/main/res/values/themes.xml
+@@ -14,4 +14,12 @@
+         <item name="android:statusBarColor">@android:color/black</item>
+         <item name="android:navigationBarColor">@android:color/black</item>
+     </style>
++    <!-- invisible one-shot activities (ClipSendActivity): no window of their own, only a toast / a picker dialog -->
++    <style name="Theme.LANShare.Clear" parent="android:Theme.Material.Light.NoActionBar">
++        <item name="android:windowIsTranslucent">true</item>
++        <item name="android:windowBackground">@android:color/transparent</item>
++        <item name="android:backgroundDimEnabled">false</item>
++        <item name="android:windowAnimationStyle">@null</item>
++        <item name="android:windowShowWallpaper">false</item>
++    </style>
+ </resources>
+diff --git a/app/src/main/res/xml/shortcuts.xml b/app/src/main/res/xml/shortcuts.xml
+new file mode 100644
+index 0000000..6516529
+--- /dev/null
++++ b/app/src/main/res/xml/shortcuts.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Direct Share: the dynamic shortcuts that Shortcuts.kt publishes (one per online device, category below) appear in the share sheet for plain text and send it
++     straight to that device through ClipSendActivity. -->
++<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
++    <share-target android:targetClass="com.lanshare.app.ClipSendActivity">
++        <data android:mimeType="text/plain"/>
++        <category android:name="com.lanshare.app.category.SEND_TEXT"/>
++    </share-target>
++</shortcuts>
+diff --git a/pcprint.py b/pcprint.py
+index 35c7b63..6f6be57 100644
+--- a/pcprint.py
++++ b/pcprint.py
+@@ -18,6 +18,9 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
+ turn-pages-to-fit-the-sheet.
+ Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
+ Python stdlib only (pypdf is optional and installed automatically).
++v26: text sharing - phones send text / links to this PC (POST /p/clip, same body as between phones) and the "Text" button opens the LANShare Text
++window: received texts (copy, open link, delete, optional automatic copy to the clipboard) and a box to send text to any phone heard on the network
++(UDP beacons on port 48555; the setup adds a firewall rule for it - run the file once more).
+ v16: pictures are shrunk to what the sheet needs (Pillow: smaller PDF / spool, EXIF turn and PNG/GIF/BMP/TIFF conversion without PowerShell); the app
+ shrinks big JPEGs before uploading; missing Python packages (pypdf, Pillow) are installed automatically, also on first use while the service runs.
+ v15: "Print all files as one job" - a mixed selection (PDF, pictures, text, Office) is turned into pages, joined in order and laid out as ONE
+@@ -35,7 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+ from urllib.parse import parse_qs, urlparse
+ 
+ PORT = 8799
+-VERSION = "25"
++VERSION = "26"
+ WIN = os.name == "nt"
+ MAX_BYTES = 300 << 20
+ APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
+@@ -1624,6 +1627,231 @@ def safe_name(n):
+     return n[:120] or "file"
+ 
+ 
++# ------------------------------------------------------------------ text sharing (v26): phone <-> PC text and links
++# The phone sends text with POST /p/clip (same body as between phones: {"text","from","quiet"}); this PC keeps it in a small inbox that the
++# "LANShare Text" window shows. Sending the other way: the service listens for the phones' UDP beacons (port 48555) to know which devices are
++# around and POSTs to their /p/clip. The inbox is private to this PC: only the window (localhost) reads it, never other LAN devices.
++BEACON_PORT = 48555
++TEXT_FILE = os.path.join(APP, "inbox.json")
++TEXT_CFG = os.path.join(APP, "text.json")
++TEXT_MAX_ITEMS, TEXT_MAX_CHARS, TEXT_MAX_TOTAL = 300, 100_000, 2_000_000
++TEXTS = []                          # {"id","ts","out","peer","text"}, oldest first
++TEXT_SET = {"autocopy": False, "popup": True}   # autocopy: received text goes to the clipboard (also honours quiet clipboard-sync pushes); popup: open the window on new text
++DEVICES = {}                        # id -> {"id","name","ip","port","seen"}: phones / PCs running LANShare that were heard recently
++_TLOCK = threading.Lock()
++_TNEXT = [1]
++_TLOADED = [False]
++_POPUP_AT = [0.0]
++DEVICE_TTL = 90                     # seconds a device stays in the list after its last beacon / text
++
++
++def _text_load():
++    if _TLOADED[0]:
++        return
++    _TLOADED[0] = True
++    try:
++        with open(TEXT_FILE, "r", encoding="utf-8") as f:
++            for o in json.load(f):
++                TEXTS.append({"id": int(o.get("id", _TNEXT[0])), "ts": float(o.get("ts", 0)), "out": bool(o.get("out")),
++                              "peer": str(o.get("peer", "")), "text": str(o.get("text", ""))})
++                _TNEXT[0] = max(_TNEXT[0], TEXTS[-1]["id"] + 1)
++    except (OSError, ValueError, TypeError, AttributeError):
++        pass
++    try:
++        with open(TEXT_CFG, "r", encoding="utf-8") as f:
++            c = json.load(f)
++            for k in TEXT_SET:
++                if isinstance(c.get(k), bool):
++                    TEXT_SET[k] = c[k]
++    except (OSError, ValueError, TypeError):
++        pass
++
++
++def _atomic_json(path, obj):
++    try:
++        os.makedirs(APP, exist_ok=True)
++        tmp = path + ".tmp"
++        with open(tmp, "w", encoding="utf-8") as f:
++            json.dump(obj, f, ensure_ascii=False)
++        os.replace(tmp, path)
++    except OSError as e:
++        log(f"cannot save {os.path.basename(path)}: {e}")
++
++
++def text_add(out, peer, text):
++    """Adds one inbox entry (out = sent from this PC). The same text twice within 2 s from the same device is kept once. Returns the entry or None."""
++    if not text or not text.strip():
++        return None
++    text = text[:TEXT_MAX_CHARS]
++    with _TLOCK:
++        _text_load()
++        now = time.time()
++        last = TEXTS[-1] if TEXTS else None
++        if last and last["out"] == out and last["peer"] == peer and last["text"] == text and now - last["ts"] < 2:
++            return last
++        e = {"id": _TNEXT[0], "ts": now, "out": out, "peer": peer, "text": text}
++        _TNEXT[0] += 1
++        TEXTS.append(e)
++        total = sum(len(t["text"]) for t in TEXTS)
++        while len(TEXTS) > TEXT_MAX_ITEMS or (total > TEXT_MAX_TOTAL and len(TEXTS) > 1):
++            total -= len(TEXTS.pop(0)["text"])
++        _atomic_json(TEXT_FILE, TEXTS)
++        return e
++
++
++def text_delete(tid=None):
++    with _TLOCK:
++        _text_load()
++        if tid is None:
++            TEXTS.clear()
++        else:
++            TEXTS[:] = [t for t in TEXTS if t["id"] != tid]
++        _atomic_json(TEXT_FILE, TEXTS)
++
++
++def text_settings(**kw):
++    with _TLOCK:
++        _text_load()
++        for k, v in kw.items():
++            if k in TEXT_SET and isinstance(v, bool):
++                TEXT_SET[k] = v
++        _atomic_json(TEXT_CFG, TEXT_SET)
++        return dict(TEXT_SET)
++
++
++def text_snapshot(since=0):
++    with _TLOCK:
++        _text_load()
++        return [dict(t) for t in TEXTS if t["id"] > since], (TEXTS[-1]["id"] if TEXTS else 0), dict(TEXT_SET)
++
++
++def device_seen(did, name, ip, port):
++    if not did or not ip or not isinstance(port, int) or not 0 < port < 65536:
++        return
++    with _TLOCK:
++        DEVICES[did] = {"id": did, "name": (name or ip)[:60], "ip": ip, "port": port, "seen": time.time()}
++
++
++def devices_now():
++    now = time.time()
++    with _TLOCK:
++        for k in [k for k, d in DEVICES.items() if now - d["seen"] > 600]:
++            del DEVICES[k]
++        return sorted((dict(d) for d in DEVICES.values() if now - d["seen"] <= DEVICE_TTL), key=lambda d: d["name"].lower())
++
++
++def beacon_listener():
++    """Hears the LANShare beacons (JSON over UDP, every ~2 s from every phone) so the window can offer them as targets. Best effort."""
++    warned = False
++    while True:
++        s = None
++        try:
++            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
++            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # lanshare.py may listen on the same port on this PC
++            s.bind(("", BEACON_PORT))
++            s.settimeout(5)
++            warned = False
++            while True:
++                try:
++                    data, addr = s.recvfrom(4096)
++                except socket.timeout:
++                    continue
++                try:
++                    m = json.loads(data.decode("utf-8", "replace"))
++                    if m.get("app") == "lanshare" and isinstance(m.get("id"), str) and isinstance(m.get("port"), int):
++                        device_seen(m["id"], str(m.get("name") or ""), addr[0], m["port"])
++                except (ValueError, AttributeError):
++                    pass
++        except Exception as e:
++            if not warned:
++                log(f"text sharing: cannot listen for device beacons on UDP {BEACON_PORT} ({e}) - phones that sent text here can still be answered")
++                warned = True
++            time.sleep(30)
++        finally:
++            if s:
++                try: s.close()
++                except OSError: pass
++
++
++def set_clipboard(text):
++    """Puts text on this PC's clipboard (Windows: PowerShell Set-Clipboard; elsewhere wl-copy / xclip / pbcopy when installed). True when it worked."""
++    try:
++        if WIN:
++            os.makedirs(APP, exist_ok=True)
++            f = os.path.join(APP, "clip.txt")
++            with _PSLOCK:
++                with open(f, "w", encoding="utf-8", newline="") as fh:
++                    fh.write(text)
++            ps1 = ps_script("setclip.ps1", "param($p)\r\nSet-Clipboard -Value ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))\r\n")
++            r = subprocess.run(["powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", ps1, f],
++                               capture_output=True, timeout=20, creationflags=0x08000000)
++            return r.returncode == 0
++        for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"], ["pbcopy"]):
++            if shutil.which(cmd[0]):
++                return subprocess.run(cmd, input=text.encode("utf-8"), timeout=10, capture_output=True).returncode == 0
++    except Exception as e:
++        log(f"clipboard copy failed: {e}")
++    return False
++
++
++def open_text_window():
++    """Opens the 'LANShare Text' window (Windows) unless one is open already (the window itself checks) - at most once per 5 s."""
++    if not WIN or time.time() - _POPUP_AT[0] < 5:
++        return
++    _POPUP_AT[0] = time.time()
++    try:
++        script = TARGET if os.path.isfile(TARGET) else os.path.abspath(__file__)
++        subprocess.Popen([pyw(), script, "--text"], creationflags=0x00000008 | 0x08000000, close_fds=True)
++    except Exception as e:
++        log(f"cannot open the text window: {e}")
++
++
++def text_received(text, peer, quiet=False, dev=None):
++    """A phone sent [text]: store it, copy it when Auto-copy is on, show the window unless it was a silent clipboard-sync push that got copied."""
++    with _TLOCK:
++        _text_load()
++        auto = TEXT_SET["autocopy"]
++        popup = TEXT_SET["popup"]
++    if dev:
++        device_seen(*dev)
++    e = text_add(False, peer, text)
++    if e is None:
++        return
++    copied = set_clipboard(text) if auto else False
++    log(f"text from {peer}: {len(text)} characters" + (" (copied)" if copied else ""))
++    if popup and not (quiet and auto):
++        open_text_window()
++
++
++def text_send(did, text):
++    """Sends [text] to a device heard recently. Returns (ok, error message)."""
++    if not text or not text.strip():
++        return False, "nothing to send"
++    with _TLOCK:
++        d = dict(DEVICES.get(did) or {})
++    if not d:
++        return False, "that device is not on the network right now"
++    import http.client
++    body = json.dumps({"text": text[:TEXT_MAX_CHARS], "from": socket.gethostname()}).encode("utf-8")
++    try:
++        c = http.client.HTTPConnection(d["ip"], d["port"], timeout=8)
++        try:
++            c.request("POST", "/p/clip", body=body, headers={"Content-Type": "application/json"})
++            r = c.getresponse()
++            r.read()
++        finally:
++            c.close()
++    except (OSError, http.client.HTTPException) as e:
++        return False, f"{d['name']} did not answer ({e})"
++    if r.status == 404:
++        return False, f"{d['name']} runs an older LANShare - update it to receive text"
++    if r.status != 200:
++        return False, f"{d['name']} answered {r.status}"
++    text_add(True, d["name"], text)
++    log(f"text sent to {d['name']}: {len(text)} characters")
++    return True, None
++
++
+ class H(BaseHTTPRequestHandler):
+     protocol_version = "HTTP/1.1"
+     server_version = "LANSharePrint/" + VERSION
+@@ -1651,6 +1879,65 @@ class H(BaseHTTPRequestHandler):
+         except ValueError:
+             return False
+ 
++    def is_local(self):
++        return self.client_address[0] in ("127.0.0.1", "::1")
++
++    def read_json(self, limit=4 << 20):
++        """JSON body of the request (Content-Length required); replies 400 / 413 and returns None when it is unusable."""
++        try:
++            n = int(self.headers.get("Content-Length", ""))
++        except ValueError:
++            self.reply(400, {"error": "missing Content-Length"})
++            return None
++        if n > limit:
++            self.reply(413, {"error": "text too large"})
++            return None
++        raw = b""
++        while len(raw) < n:
++            chunk = self.rfile.read(min(1 << 16, n - len(raw)))
++            if not chunk:
++                self.reply(400, {"error": "short body"})
++                return None
++            raw += chunk
++        try:
++            o = json.loads(raw.decode("utf-8")) if raw else {}
++        except ValueError:
++            self.reply(400, {"error": "bad JSON"})
++            return None
++        if not isinstance(o, dict):
++            self.reply(400, {"error": "bad JSON"})
++            return None
++        return o
++
++    def clip_post(self, path, u):
++        """Text sharing POST routes. /clip (= /p/clip, what phones call): text from another device; the rest is for the window on this PC only."""
++        if path == "/clip":
++            o = self.read_json()
++            if o is None:
++                return
++            text = o.get("text")
++            if not isinstance(text, str) or not text.strip():
++                return self.reply(400, {"error": "empty text"})
++            peer = str(o.get("from") or self.client_address[0])[:60]
++            port = o.get("port")
++            dev = (str(o["id"]), peer, self.client_address[0], port) if isinstance(o.get("id"), str) and isinstance(port, int) else None
++            text_received(text, peer, bool(o.get("quiet")), dev)
++            return self.reply(200, {"ok": True})
++        if not self.is_local():
++            return self.reply(403, {"error": "local only"})
++        o = self.read_json(1 << 20)
++        if o is None:
++            return
++        if path == "/clip/send":
++            ok, err = text_send(str(o.get("to") or ""), o.get("text") if isinstance(o.get("text"), str) else "")
++            return self.reply(200 if ok else 502, {"ok": ok, "error": err})
++        if path == "/clip/delete":
++            text_delete(o["id"] if isinstance(o.get("id"), int) else None)
++            return self.reply(200, {"ok": True})
++        if path == "/clip/settings":
++            return self.reply(200, {"ok": True, "settings": text_settings(**{k: v for k, v in o.items() if isinstance(v, bool)})})
++        return self.reply(404, {"error": "not found"})
++
+     CONVERT_LOCK = threading.Lock()   # one conversion at a time (Word / LibreOffice do not like parallel automation)
+ 
+     def convert(self, u):
+@@ -1715,8 +2002,17 @@ class H(BaseHTTPRequestHandler):
+             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
+                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
+                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
+-                                    "office": office_engine(), "convert": True,
++                                    "office": office_engine(), "convert": True, "clip": True,
+                                     "hard": hard_margin(pr), "trays": printer_bins(pr)})
++        if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
++            if not self.is_local():
++                return self.reply(403, {"error": "local only"})
++            try:
++                since = int((parse_qs(u.query).get("since") or ["0"])[0])
++            except ValueError:
++                since = 0
++            items, last, st = text_snapshot(since)
++            return self.reply(200, {"ok": True, "items": items, "last": last, "settings": st, "devices": devices_now(), "host": socket.gethostname()})
+         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
+             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
+         self.reply(404, {"error": "not found"})
+@@ -1748,6 +2044,9 @@ class H(BaseHTTPRequestHandler):
+             if dropped:
+                 log(f"queue cleared from the window: {dropped} job{'s' if dropped != 1 else ''} dropped")
+             return self.reply(200, {"ok": True, "dropped": dropped})
++        cp = u.path[2:] if u.path.startswith("/p/") else u.path   # phones call /p/clip, the window /clip/...
++        if cp == "/clip" or cp.startswith("/clip/"):
++            return self.clip_post(cp, u)
+         if u.path == "/convert":   # office file -> PDF, only so the app can show a real page preview (nothing is printed)
+             return self.convert(u)
+         if u.path != "/print":
+@@ -1914,6 +2213,7 @@ def serve():
+     threading.Thread(target=print_worker, daemon=True, name="print-worker").start()
+     threading.Thread(target=refresh_printer, daemon=True, name="printer-state").start()
+     threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
++    threading.Thread(target=beacon_listener, daemon=True, name="text-beacons").start()
+     if not all(have_pkg(m) for m, _ in PKGS):
+         threading.Thread(target=ensure_packages, daemon=True).start()
+     ips, ts = pc_addresses()
+@@ -1986,16 +2286,28 @@ def fw_rule_exists():
+     return r.returncode == 0 and FW_RULE in r.stdout
+ 
+ 
++FW_RULE_UDP = "LANSharePrint-Beacons"   # v26: phones' discovery beacons (UDP 48555) for the text window's device list
++
++
++def fw_udp_exists():
++    r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE_UDP}"],
++                       capture_output=True, text=True, errors="replace", creationflags=0x08000000)
++    return r.returncode == 0 and FW_RULE_UDP in r.stdout
++
++
+ def fw_add():
+     for n in ("LANSharePrint", FW_RULE):   # drop the old LAN-only rule and any previous copy of this one
+         subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={n}"], capture_output=True, creationflags=0x08000000)
+     # any network profile (the Tailscale adapter is usually "Public"), but only from the local subnet and the tailnet range
+     subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={FW_RULE}", "dir=in", "action=allow", "protocol=TCP",
+                     f"localport={PORT}", "profile=any", "remoteip=LocalSubnet,100.64.0.0/10"], capture_output=True, creationflags=0x08000000)
++    subprocess.run(["netsh", "advfirewall", "firewall", "delete", "rule", f"name={FW_RULE_UDP}"], capture_output=True, creationflags=0x08000000)
++    subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={FW_RULE_UDP}", "dir=in", "action=allow", "protocol=UDP",
++                    f"localport={BEACON_PORT}", "profile=any", "remoteip=LocalSubnet,100.64.0.0/10"], capture_output=True, creationflags=0x08000000)
+ 
+ 
+ def ensure_firewall():
+-    if fw_rule_exists():
++    if fw_rule_exists() and fw_udp_exists():
+         return True
+     if is_admin():
+         fw_add()
+@@ -2004,7 +2316,7 @@ def ensure_firewall():
+         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{TARGET}" --fw', None, 0)
+         for _ in range(40):
+             time.sleep(1)
+-            if fw_rule_exists():
++            if fw_rule_exists() and fw_udp_exists():
+                 break
+     return fw_rule_exists()
+ 
+@@ -2081,14 +2393,250 @@ def open_path(p):
+         log(f"cannot open {p}: {e}")
+ 
+ 
+-def one_window():
+-    """Only one window at a time (Windows named mutex)."""
+-    h = ctypes.windll.kernel32.CreateMutexW(None, False, "LANSharePrintWindow")
++def one_window(name="LANSharePrintWindow"):
++    """Only one window of each kind at a time (Windows named mutex). The handle is kept alive for the life of the process."""
++    h = ctypes.windll.kernel32.CreateMutexW(None, False, name)
+     if ctypes.windll.kernel32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
+         return None
+     return h
+ 
+ 
++def get_local(path, timeout=3):
++    import urllib.request
++    return urllib.request.urlopen(f"http://127.0.0.1:{PORT}{path}", timeout=timeout).read()
++
++
++def post_json_local(path, obj, timeout=15):
++    import urllib.request
++    return urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=json.dumps(obj).encode("utf-8"), method="POST",
++                                                         headers={"Content-Type": "application/json"}), timeout=timeout).read()
++
++
++def text_window():
++    """'LANShare Text': what phones sent to this PC (copy / open link / delete) and a box to send text or a link to a phone. Talks to the service on localhost."""
++    if WIN and one_window("LANShareTextWindow") is None:
++        return
++    try:
++        import tkinter as tk
++        from tkinter import ttk
++    except ImportError:
++        print("tkinter is not installed; the text window needs it")
++        return
++    if not is_running():
++        start_service()
++    root = tk.Tk()
++    root.title("LANShare Text")
++    root.geometry("640x560")
++    root.minsize(420, 420)
++    BG, FG, DIM = "#10151f", "#d7dde8", "#7d8aa3"
++    root.configure(bg=BG)
++
++    items = []            # what the list shows, oldest first
++    shown = [()]          # ids on screen: the list is rebuilt only when this changes
++    devices = []
++    st = {"autocopy": False, "popup": True}
++
++    top = tk.Frame(root, bg=BG)
++    top.pack(fill="x", padx=10, pady=(10, 4))
++    info = tk.Label(top, text="connecting...", fg=DIM, bg=BG, anchor="w")
++    info.pack(side="left")
++    ontop = tk.BooleanVar(value=False)
++    tk.Checkbutton(top, text="Always on top", variable=ontop, fg=FG, bg=BG, selectcolor=BG, activebackground=BG, activeforeground=FG,
++                   command=lambda: root.attributes("-topmost", ontop.get())).pack(side="right")
++
++    mid = tk.Frame(root, bg=BG)
++    mid.pack(fill="both", expand=True, padx=10, pady=4)
++    lb = tk.Listbox(mid, bg="#0b0f17", fg=FG, selectbackground="#27407a", relief="flat", activestyle="none", font=("Segoe UI", 10), exportselection=False, height=8)
++    sb = tk.Scrollbar(mid, command=lb.yview)
++    lb.configure(yscrollcommand=sb.set)
++    sb.pack(side="right", fill="y")
++    lb.pack(side="left", fill="both", expand=True)
++
++    pv = tk.Text(root, bg="#0b0f17", fg=FG, relief="flat", wrap="word", height=7, state="disabled", font=("Consolas", 10))
++    pv.pack(fill="both", expand=False, padx=10, pady=4)
++
++    acts = tk.Frame(root, bg=BG)
++    acts.pack(fill="x", padx=10)
++
++    def sel():
++        c = lb.curselection()
++        return items[c[0]] if c and c[0] < len(items) else None
++
++    def show_sel(_e=None):
++        e = sel()
++        pv.configure(state="normal")
++        pv.delete("1.0", "end")
++        if e:
++            pv.insert("end", e["text"])
++        pv.configure(state="disabled")
++
++    def copy_sel(_e=None):
++        e = sel() or (items[-1] if items else None)
++        if e:
++            root.clipboard_clear()
++            root.clipboard_append(e["text"])
++            root.update()
++            msg.configure(text="Copied", fg="#6ee7a0")
++
++    def link_of(t):
++        m = re.search(r"https?://[^\s<>\"']+", t or "")
++        return m.group(0).rstrip(".,;:!?)") if m else None
++
++    def open_link():
++        e = sel() or (items[-1] if items else None)
++        u = link_of(e["text"]) if e else None
++        if u:
++            import webbrowser
++            webbrowser.open(u)
++        else:
++            msg.configure(text="No link in this text", fg="#ff7b7b")
++
++    def delete_sel():
++        e = sel()
++        if e:
++            try: post_json_local("/clip/delete", {"id": e["id"]})
++            except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
++            poll(True)
++
++    def clear_all():
++        from tkinter import messagebox
++        if items and messagebox.askyesno("Clear", "Remove all texts from this PC's list?", parent=root):
++            try: post_json_local("/clip/delete", {})
++            except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
++            poll(True)
++
++    for label, cmd in (("Copy", copy_sel), ("Open link", open_link), ("Delete", delete_sel), ("Clear all", clear_all)):
++        tk.Button(acts, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="left", padx=(0, 6))
++    lb.bind("<<ListboxSelect>>", show_sel)
++    lb.bind("<Double-Button-1>", copy_sel)
++
++    tk.Frame(root, bg="#1b2433", height=1).pack(fill="x", padx=10, pady=8)
++    snd = tk.Frame(root, bg=BG)
++    snd.pack(fill="x", padx=10)
++    tk.Label(snd, text="Send to", fg=FG, bg=BG).pack(side="left")
++    dev_var = tk.StringVar()
++    combo = ttk.Combobox(snd, textvariable=dev_var, state="readonly", width=32)
++    combo.pack(side="left", padx=6)
++    inp = tk.Text(root, bg="#0b0f17", fg=FG, insertbackground=FG, relief="flat", wrap="word", height=4, font=("Consolas", 10))
++    inp.pack(fill="x", padx=10, pady=6)
++    row = tk.Frame(root, bg=BG)
++    row.pack(fill="x", padx=10, pady=(0, 10))
++    msg = tk.Label(row, text="", fg=DIM, bg=BG, anchor="w")
++    msg.pack(side="left", fill="x", expand=True)
++
++    def send(_e=None):
++        t = inp.get("1.0", "end").strip()
++        i = combo.current()
++        if not t:
++            msg.configure(text="Type something first", fg="#ff7b7b")
++            return "break"
++        if i < 0 or i >= len(devices):
++            msg.configure(text="No device found yet - it must be on the same network with LANShare open", fg="#ff7b7b")
++            return "break"
++        d = devices[i]
++        msg.configure(text=f"Sending to {d['name']}...", fg=DIM)
++
++        def go():
++            try:
++                r = json.loads(post_json_local("/clip/send", {"to": d["id"], "text": t}, 20))
++                ok, err = r.get("ok"), r.get("error")
++            except Exception as ex:
++                ok, err = False, getattr(ex, "read", lambda: b"")() or str(ex)
++                try: err = json.loads(err).get("error", err)
++                except Exception: err = str(err)
++
++            def done():
++                if ok:
++                    inp.delete("1.0", "end")
++                    msg.configure(text=f"Sent to {d['name']}", fg="#6ee7a0")
++                    poll(True)
++                else:
++                    msg.configure(text=str(err)[:120], fg="#ff7b7b")
++            root.after(0, done)
++        threading.Thread(target=go, daemon=True).start()
++        return "break"
++
++    def paste():
++        try:
++            inp.insert("insert", root.clipboard_get())
++        except tk.TclError:
++            msg.configure(text="Clipboard is empty", fg="#ff7b7b")
++
++    tk.Button(row, text="Paste", command=paste, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(6, 0))
++    tk.Button(row, text="Send  (Ctrl+Enter)", command=send, relief="flat", bg="#1d3a2a", fg="#b3ffd0").pack(side="right")
++    inp.bind("<Control-Return>", send)
++
++    opts = tk.Frame(root, bg=BG)
++    opts.pack(fill="x", padx=10, pady=(0, 8))
++    ac_var, pop_var = tk.BooleanVar(), tk.BooleanVar(value=True)
++
++    def push_settings():
++        try: post_json_local("/clip/settings", {"autocopy": ac_var.get(), "popup": pop_var.get()})
++        except Exception as ex: msg.configure(text=str(ex), fg="#ff7b7b")
++    tk.Checkbutton(opts, text="Copy received text to the clipboard automatically", variable=ac_var, command=push_settings, fg=FG, bg=BG,
++                   selectcolor=BG, activebackground=BG, activeforeground=FG).pack(side="left")
++    tk.Checkbutton(opts, text="Open this window on new text", variable=pop_var, command=push_settings, fg=FG, bg=BG,
++                   selectcolor=BG, activebackground=BG, activeforeground=FG).pack(side="left", padx=12)
++
++    def stamp(ts):
++        t = time.localtime(ts)
++        return time.strftime("%H:%M", t) if time.strftime("%Y%m%d", t) == time.strftime("%Y%m%d") else time.strftime("%d.%m. %H:%M", t)
++
++    def poll(force=False):
++        try:
++            d = json.loads(get_local("/clip", 3))
++        except Exception:
++            info.configure(text="text service not running - restarting it...", fg="#fbbf24")
++            if not force and not getattr(poll, "reviving", False):
++                poll.reviving = True
++                def rev():
++                    try: start_service()
++                    finally: poll.reviving = False
++                threading.Thread(target=rev, daemon=True).start()
++            if not force:
++                root.after(2000, poll)
++            return
++        items[:] = d.get("items", [])
++        ids = tuple((e["id"]) for e in items)
++        if ids != shown[0]:
++            keep = sel()["id"] if sel() else None
++            atend = not lb.curselection() or lb.curselection()[0] >= len(shown[0]) - 1
++            lb.delete(0, "end")
++            for e in items:
++                first = " ".join(e["text"].split())[:90]
++                lb.insert("end", ("→ To " if e["out"] else "← From ") + e["peer"] + "  ·  " + stamp(e["ts"]) + "   " + first)
++                if e["out"]:
++                    lb.itemconfig("end", fg="#ffd9a0")
++            shown[0] = ids
++            if keep is not None and any(e["id"] == keep for e in items):
++                lb.selection_set([e["id"] for e in items].index(keep))
++            elif items and atend:
++                lb.selection_set("end")
++                lb.see("end")
++            show_sel()
++        st.update(d.get("settings", {}))
++        ac_var.set(bool(st.get("autocopy")))
++        pop_var.set(bool(st.get("popup", True)))
++        ds = d.get("devices", [])
++        names = [x["name"] + "  (" + x["ip"] + ")" for x in ds]
++        if names != list(combo["values"]):
++            cur = devices[combo.current()]["id"] if 0 <= combo.current() < len(devices) else None
++            devices[:] = ds
++            combo["values"] = names
++            idx = next((k for k, x in enumerate(ds) if x["id"] == cur), 0 if ds else -1)
++            if idx >= 0:
++                combo.current(idx)
++            else:
++                dev_var.set("")
++        info.configure(text=f"{d.get('host', '')}  ·  {len(ds)} device{'s' if len(ds) != 1 else ''} found", fg=DIM)
++        if not force:
++            root.after(1500, poll)
++
++    root.bind("<Control-c>", lambda e: copy_sel() if root.focus_get() is not inp else None)
++    poll()
++    root.mainloop()
++
++
+ def ui():
+     if WIN:
+         keep = one_window()
+@@ -2166,8 +2714,15 @@ def ui():
+             return
+         messagebox.showinfo("Clear queue", f"{n} waiting job{'s' if n != 1 else ''} cancelled." if n else "Nothing was waiting.")
+ 
++    def open_text():   # separate process: its own window, single instance
++        try:
++            subprocess.Popen([pyw() if WIN else sys.executable, TARGET if os.path.isfile(TARGET) else os.path.abspath(__file__), "--text"],
++                             **({"creationflags": 0x00000008 | 0x08000000, "close_fds": True} if WIN else {}))
++        except Exception as e:
++            log(f"cannot open the text window: {e}")
++
+     for label, cmd in (("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
+-                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page)):
++                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page), ("Text", open_text)):
+         tk.Button(bot, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(0, 6))
+ 
+     pos = [0]
+@@ -2268,6 +2823,8 @@ def main():
+         fw_add()
+     elif "--ui" in a:
+         ui()
++    elif "--text" in a:
++        text_window()
+     elif "--serve" in a or not WIN:
+         if is_running():
+             return

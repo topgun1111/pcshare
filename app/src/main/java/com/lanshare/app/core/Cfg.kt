@@ -46,6 +46,16 @@ object Cfg {
     @Synchronized fun imgAutoCharging(): Boolean = obj.optBoolean("img_auto_chg", false)
     @Synchronized fun setImgAutoCharging(v: Boolean) { obj.put("img_auto_chg", v); save() }
 
+    /** Text sharing: the device that "Send clipboard" (Quick Settings tile / notification), the share-sheet entry and the inbox send to without asking (peer id; "" = ask / the only online device). */
+    @Synchronized fun defTarget(): String = obj.optString("def_target", "")
+    @Synchronized fun setDefTarget(v: String) { obj.put("def_target", v); save() }
+    /** Text that arrives from another device is put on this phone's clipboard at once (default off). Also the opt-in for silent clipboard-sync pushes. */
+    @Synchronized fun autoCopy(): Boolean = obj.optBoolean("auto_copy", false)
+    @Synchronized fun setAutoCopy(v: Boolean) { obj.put("auto_copy", v); save() }
+    /** Copying text while a LANShare screen is open also sends it to the default device (default off). */
+    @Synchronized fun clipSync(): Boolean = obj.optBoolean("clip_sync", false)
+    @Synchronized fun setClipSync(v: Boolean) { obj.put("clip_sync", v); save() }
+
     /** Wi-Fi printers this device has found (kept across restarts / sleep, so they are still offered when mDNS is silent with the screen off). */
     @Synchronized fun printerCache(): JSONArray = obj.optJSONArray("wifi_printers") ?: JSONArray()
     @Synchronized fun setPrinterCache(a: JSONArray) { obj.put("wifi_printers", a); save() }

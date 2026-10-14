@@ -14,4 +14,12 @@
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
     </style>
+    <!-- invisible one-shot activities (ClipSendActivity): no window of their own, only a toast / a picker dialog -->
+    <style name="Theme.LANShare.Clear" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
 </resources>
