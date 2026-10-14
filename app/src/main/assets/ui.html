@@ -3404,7 +3404,7 @@ function lsFocus(n){if(!DU||DU.act===n)return;DU.act=n;DU.wa.classList.toggle('a
   try{(n===1?DU.a:DU.b).contentWindow.lsPane.refreshClip()}catch(e){}}  // clipboard is shared on the server: the pane you tap shows "Paste here"
 function duApply(){
   if(KID)return;
-  const pref=LD('ls_dual','auto'),want=pref==='1'||(pref==='auto'&&innerWidth>=600&&innerHeight>=480);
+  const pref=LD('ls_dual','auto'),fits=innerWidth>=600&&innerHeight>=480,want=fits&&pref!=='0';   // forced split ('1') also drops out when the window shrinks below the split size (fold closed -> phone mode); it comes back on unfold
   const w=$('#dual');
   if(want&&!DU){w.textContent='';
     const mk=n=>{const d=E('div','dw'+(n===1?' act':'')),f=document.createElement('iframe');f.src='/?pane='+n;f.title='Pane '+n;d.append(f);w.append(d);return[d,f]};
