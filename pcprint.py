@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "24"
+VERSION = "25"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1249,7 +1249,11 @@ def send_pdf(pdf, o, pr, sm, notes):
         if o.get("tray") and o["tray"] not in {str(b["id"]) for b in printer_bins(pr)}:
             notes.append("tray " + o["tray"] + " is not offered by this printer, it chose the tray itself")
             o = dict(o, tray="")
-        run_retry(sumatra_args(sm, pdf, o, pr), printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
+        cmd = sumatra_args(sm, pdf, o, pr)
+        log("SumatraPDF: " + subprocess.list2cmdline(cmd))   # exact command, to compare with a manual run when a printer does not print
+        t0 = time.time()
+        run_retry(cmd, printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
+        log(f"SumatraPDF finished in {time.time() - t0:.1f}s")
     else:
         if pr or o["duplex"] or o["color"] or o.get("tray"):
             notes.append("printer / duplex / colour / tray ignored: SumatraPDF is not installed")
@@ -1470,12 +1474,22 @@ def refresh_printer():
         time.sleep(20)
 
 
-def watch_printer(seconds=10, printer=None):
-    """After a file was handed over: wait a few seconds and report what the printer says if the job gets stuck (else None)."""
+def port_hint(info):
+    """WSD / EpsonNet ports are the usual reason an Epson Wi-Fi printer beeps and then never prints."""
+    port = ((info or {}).get("port") or "")
+    if port.upper().startswith(("WSD", "EPSON")):
+        return (f" (port {port}: in Windows > Printer properties > Ports add a Standard TCP/IP port with the printer's IP, "
+                "raw 9100, and select it)")
+    return f" (port {port})" if port else ""
+
+
+def watch_printer(seconds=30, printer=None):
+    """After a file was handed over: wait and report what the printer says if the job gets stuck (else None).
+    A job that is still in the Windows queue at the end is reported too: before, that was logged as 'printed'."""
     if not WIN:
         return None
     end = time.time() + seconds
-    issue = None
+    issue, info = None, None
     while time.time() < end:
         time.sleep(2)
         info = printer_info(printer)
@@ -1486,7 +1500,9 @@ def watch_printer(seconds=10, printer=None):
         issue = job_problem(info) or describe_problem(info)
         if issue and not issue.startswith("low on"):
             PRINTER_PROBLEM[0] = issue
-            return issue
+            return issue + port_hint(info)
+    if info and info["jobs"]:
+        return f"still in the Windows queue after {seconds}s ({', '.join(info['jobs'])}) - the printer is not taking it" + port_hint(info)
     return None
 
 
@@ -1511,11 +1527,14 @@ def print_one(path, evt, res, o):
         pr = o["printer"] or DEFAULT_PRINTER[0]
         d = describe_opts(o)
         log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else ""))
+        info0 = printer_info(o["printer"] or None, max_age=60)
+        if info0:
+            log(f"printer {info0.get('name')}: status={info0.get('status')} port={info0.get('port')} queued={len(info0['jobs'])}{port_hint(info0) if str(info0.get('port') or '').upper().startswith(('WSD', 'EPSON')) else ''}")
         notes = print_file(path, o)
         if notes:
             res["note"] = "; ".join(notes)
             log(f"NOTE {name}: {res['note']}")
-        warn = watch_printer(10, o["printer"] or None)
+        warn = watch_printer(30, o["printer"] or None)
         if warn:
             log(f"WARNING {name}: printer reports {warn}")
             res["warning"] = warn

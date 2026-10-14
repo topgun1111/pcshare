@@ -44,6 +44,7 @@ object WifiPrint {
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
         warns.set(ArrayList())
         tray.set(null)
+        curJob.set(job)
         try {
             val st = WifiPrinters.status(p.id)
             if (!st.optBoolean("ok")) throw IOException("${p.name} is not reachable - is it switched on and on this Wi-Fi? (${st.optString("why")})")
@@ -138,7 +139,8 @@ object WifiPrint {
             if (failed.isEmpty()) {   // sent: look once more whether the printer complains (jam, out of paper ...)
                 try { Thread.sleep(2500) } catch (_: InterruptedException) {}
                 val after = WifiPrinters.status(p.id)
-                val w = if (after.optBoolean("ok") && !after.isNull("problem")) after.optString("problem") else ""
+                // "not accepting jobs" is normal right after sending: Epson inkjets report it while they are busy printing this very job
+                val w = if (after.optBoolean("ok") && !after.isNull("problem")) after.optString("problem").split(", ").filter { it != "not accepting jobs" }.joinToString(", ") else ""
                 if (w.isNotEmpty()) failed.add("sent, but the printer reports $w")
             }
             if (failed.isEmpty()) {
@@ -221,21 +223,73 @@ object WifiPrint {
         var r: Ipp.Resp? = null
         val tp = tray.get()
         if (tp != null) {   // paper tray chosen: first try with it (media-col); if the printer refuses that, print from its own choice of tray and say so
-            val rt = Ipp.printJob(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second), f)
-            if (!rejected(rt)) { if (!rt.ok) throw PrintFail(Ipp.statusText(rt.status)); return }
+            val rt = sendRetry(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second), f)
+            if (!rejected(rt)) { if (!rt.ok) throw PrintFail(Ipp.statusText(rt.status)); waitIdle(p); return }
             warns.get()?.add("the printer does not accept a tray choice, it picked the tray itself")
         }
         for (t in tries) {
             val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}"
             if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}") continue   // nothing new to try
             last = t
-            r = Ipp.printJob(p, name, mime, t, f)
+            r = sendRetry(p, name, mime, t, f)
             if (!rejected(r)) {
                 if (r.ok && jo.sides != null && t.sides == null) warns.get()?.add("two-sided printing was refused by the printer, printed one-sided")
                 break
             }
         }
         if (r == null || !r.ok) throw PrintFail(Ipp.statusText(r?.status ?: 0x0400))
+        waitIdle(p)
+    }
+
+    /** Job that is running now (so waiting for a busy printer can be cancelled and can show a label). */
+    private val curJob = ThreadLocal<Job?>()
+
+    private fun pause(ms: Long) {
+        var left = ms
+        while (left > 0) {
+            if (curJob.get()?.cancel == true) throw Cancelled()
+            val d = minOf(left, 250L)
+            try { Thread.sleep(d) } catch (_: InterruptedException) {}
+            left -= d
+        }
+    }
+
+    /**
+     * Epson inkjets answer "busy" (0x0507) / "not accepting jobs" (0x0506) / HTTP 503 while they still print the previous job, so a long
+     * queue of files failed. Here such an answer is not final: the same job is sent again after a short wait (about 2 minutes in all).
+     */
+    private fun sendRetry(p: WifiPrinters.P, name: String, mime: String, t: Ipp.JobOpts, f: File): Ipp.Resp {
+        var n = 0
+        while (true) {
+            var busy = false
+            var r: Ipp.Resp? = null
+            try {
+                r = Ipp.printJob(p, name, mime, t, f)
+                busy = !r.ok && (r.status == 0x0507 || r.status == 0x0506 || r.status == 0x0502)
+            } catch (e: IOException) {
+                val m = e.message ?: ""
+                if (m.contains("503") || m.contains("busy", true) || m.contains("refused", true) || m.contains("reset", true)) busy = true
+                else throw e
+            }
+            if (!busy && r != null) return r
+            if (++n > 24) { if (r != null) return r; throw PrintFail("the printer stayed busy (try again in a minute)") }
+            val j = curJob.get()
+            if (j != null) j.label = "Waiting for the printer (busy) - retry $n"
+            pause(minOf(2000L + n * 500L, 6000L))
+        }
+    }
+
+    /** After a job is accepted: wait until the printer is idle again (state 3) so the next file does not hit "busy". Stops waiting if it is stopped (jam, no paper). */
+    private fun waitIdle(p: WifiPrinters.P) {
+        val end = System.currentTimeMillis() + 120_000
+        pause(1200)
+        while (System.currentTimeMillis() < end) {
+            val st = try { Ipp.printerAttrs(p).int("printer-state") } catch (_: Exception) { return }
+            if (st != 4) return   // 3 idle, 5 stopped, null unknown
+            val j = curJob.get()
+            if (j != null) j.label = "Printing on ${p.name} - waiting for it to finish"
+            pause(1500)
+        }
     }
 
     private fun fmtList(p: WifiPrinters.P) = p.formats.filter { !it.contains("octet") }.take(4).joinToString(", ")
