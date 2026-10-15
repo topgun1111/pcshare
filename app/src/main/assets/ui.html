@@ -1881,6 +1881,9 @@ function openSettings(){
   sw.append(cb,E('i'));row.append(t,sw);card.append(row);
   {const rn=E('button','set'),tn=E('div','t'),sn=E('small','',$('#nm').dataset.n||'');rn.style.width='100%';rn.style.textAlign='left';tn.append(E('b','','Device name'),sn);rn.append(tn);
     rn.onclick=()=>{close();$('#nm').onclick()};card.append(rn)}
+  if(window.LSAndroid&&LSAndroid.txtDevs){const rT=E('button','set'),tT=E('div','t'),sT=E('small','');rT.style.width='100%';rT.style.textAlign='left';
+    try{sT.textContent='Default device: '+(JSON.parse(LSAndroid.txtDevs()).defName||'ask every time')}catch(e){}
+    tT.append(E('b','','Text sharing'),sT);rT.append(tT);rT.onclick=()=>{close();openTextSettings()};card.append(rT)}
   const THN={light:'Light',dark:'Dark',auto:'Follow system'};LSTH.forEach(t=>THN[t.id]=t.n);
   const THL=[{id:'light',n:'Light',sw:['#ffffff','#1f1f1f','#c25100','#ffdcc2']},{id:'dark',n:'Dark',sw:['#18120d','#e3e3e3','#ffb77c','#7a3e00']},{id:'auto',n:'Follow system',sw:['#ffffff','#1f1f1f','#c25100','#18120d']}].concat(LSTH);
   const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
@@ -1919,6 +1922,22 @@ function openSettings(){
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function openTextSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Text sharing'));
+  const info=E('p','','Default device: where text and links go without asking (Text inbox, share sheet, quick tile, notification reply).');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const list=E('div');card.append(list);
+  const draw=()=>{list.textContent='';let st={def:'',defName:'',devs:[]};try{st=JSON.parse(LSAndroid.txtDevs())}catch(e){}
+    const rows=[{id:'',n:'Ask every time',sub:'Pick a device whenever you send (the only online device is used automatically)'}];
+    st.devs.forEach(d=>rows.push({id:d.id,n:d.name,sub:'Online'}));
+    if(st.def&&!st.devs.some(d=>d.id===st.def))rows.push({id:st.def,n:st.defName||'Saved device',sub:'Offline now'});
+    rows.forEach(x=>{const r=E('button','set'),t=E('div','t');r.style.width='100%';r.style.textAlign='left';
+      t.append(E('b','',(st.def===x.id?'\u2713 ':'')+x.n),E('small','',x.sub));r.append(t);
+      r.onclick=()=>{if(st.def===x.id)return;LSAndroid.txtDefSet(x.id);draw()};list.append(r)})};
+  draw();
+  const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openOcrSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};

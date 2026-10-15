@@ -89,6 +89,22 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openInbox() {
             runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }
         }
+        /** Settings -> Text sharing: {"def": default device id or "", "defName": its name or "", "devs": [{"id","name"} online devices]}. */
+        @JavascriptInterface fun txtDevs(): String {
+            val o = JSONObject()
+            val d = com.lanshare.app.core.Cfg.defTarget()
+            o.put("def", d)
+            o.put("defName", TextSend.defaultName() ?: "")
+            val a = org.json.JSONArray()
+            TextSend.online().forEach { a.put(JSONObject().put("id", it.id).put("name", it.name)) }
+            o.put("devs", a)
+            return o.toString()
+        }
+        /** Settings -> Text sharing: set the default device ("" = ask every time). */
+        @JavascriptInterface fun txtDefSet(id: String) {
+            com.lanshare.app.core.Cfg.setDefTarget(id)
+            Thread { Shortcuts.sync(applicationContext) }.also { it.isDaemon = true }.start()
+        }
         /** Android version, so the UI knows whether HEIC pictures can be decoded natively (API 28+). */
         @JavascriptInterface fun sdk(): Int = Build.VERSION.SDK_INT
         /** Settings -> display size: "interface%,text%". */
