@@ -366,6 +366,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     private var layRow: NlRow? = null
     private var layW = -1
 
+    var tall = 1f          // height of the thumb area relative to its width (2-column / folded layout: taller cards)
+        set(v) { if (field != v) { field = v; requestLayout() } }
     var bare = false       // picture-only card of an image folder: no padding, no caption (ui.html #list.imgf .row.im)
 
     private companion object {
@@ -411,10 +413,10 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
 
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val w = MeasureSpec.getSize(wSpec)
-        if (bare) { setMeasuredDimension(w, w); return }
+        if (bare) { setMeasuredDimension(w, Math.round(w * tall)); return }
         prep(w)
         // every card has the same height: 3 dp + square icon area + 2 dp + two name lines + 2 dp
-        setMeasuredDimension(w, Math.round(3f * d + (w - 6f * d) + 2f * d + 2f * LH * d + 2f * d))
+        setMeasuredDimension(w, Math.round(3f * d + (w - 6f * d) * tall + 2f * d + 2f * LH * d + 2f * d))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
@@ -462,7 +464,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         }
         p.style = Paint.Style.FILL
         val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 3f * d
-        val cx = lx + s / 2f; val cy = ly + s / 2f
+        val sh = if (bare) h - 2f * d else s * tall
+        val cx = lx + s / 2f; val cy = ly + sh / 2f
         // ---- lead ----
         if (r.dir) {
             val k = s / 100f
@@ -470,15 +473,15 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         } else {
             val bm = thumb
             if (bm != null) {
-                val sc = Math.max(s / bm.width, s / bm.height)
-                val sw = (s / sc).toInt(); val sh = (s / sc).toInt()
-                src.set((bm.width - sw) / 2, (bm.height - sh) / 2, (bm.width - sw) / 2 + sw, (bm.height - sh) / 2 + sh)
-                rf.set(lx, ly, lx + s, ly + s)
+                val sc = Math.max(s / bm.width, sh / bm.height)
+                val sw = (s / sc).toInt(); val shh = (sh / sc).toInt()
+                src.set((bm.width - sw) / 2, (bm.height - shh) / 2, (bm.width - sw) / 2 + sw, (bm.height - shh) / 2 + shh)
+                rf.set(lx, ly, lx + s, ly + sh)
                 clip.reset(); clip.addRoundRect(rf, (if (bare) 15f else 12f) * d, (if (bare) 15f else 12f) * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
-                    val right = lx + s - 3f * d; val bottom = ly + s - 3f * d
+                    val right = lx + s - 3f * d; val bottom = ly + sh - 3f * d
                     p.color = 0x99000000.toInt(); rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
                     dubP.color = Color.WHITE
                     val fm = dubP.fontMetrics
@@ -508,7 +511,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         // ---- name (up to two lines, centred) ----
         val fn = nameP.fontMetrics
         nameP.color = if (isSel) pl.onsel else pl.fg
-        var y = ly + s + 2f * d
+        var y = ly + sh + 2f * d
         val lh = LH * d
         val dw = dupP.measureText("duplicate?") + 12f * d
         fun pill(x: Float, mid: Float) {
@@ -1308,7 +1311,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             if (hv is NlGalView) { bindGal(h, hv, pos, p); return }
             val r = rows[pos]
             h.job?.cancel(false); h.job = null; h.key = null
-            if (hv is NlGridView) hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") else (hv as NlRowView).bind(r, p, pos in sel, compact, large, medium)
+            if (hv is NlGridView) { hv.tall = if (spanN <= 2) 1.3f else 1f; hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") } else (hv as NlRowView).bind(r, p, pos in sel, compact, large, medium)
             val key = r.thumbKey ?: return
             val hit = thumbs.get(key)
             if (hit != null) { setThumb(hv, hit.bm, hit.dur); return }
