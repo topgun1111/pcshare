@@ -107,7 +107,7 @@ class LanShareService : Service() {
     /** Changes whenever the notification text would change (scan progress or the running background jobs). */
     private fun noteKey(run: Boolean, done: Int, total: Int): String {
         val jr = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
-        return (if (run) "$done/$total" else "") + "|" + jr.size + ":" + com.lanshare.app.ops.JobView.overallPct(jr) + ":" + (jr.firstOrNull()?.label ?: "")
+        return (if (run) "$done/$total" else "") + "|" + com.lanshare.app.core.Cfg.defTarget() + (try { TextSend.defaultName() } catch (_: Throwable) { null }) + "|" + jr.size + ":" + com.lanshare.app.ops.JobView.overallPct(jr) + ":" + (jr.firstOrNull()?.label ?: "")
     }
 
     /** The one foreground notification: shows scan progress while a picture scan runs, so the scan is covered by a visible foreground service. */
@@ -116,13 +116,15 @@ class LanShareService : Service() {
         val b = NotificationCompat.Builder(this, "lanshare")
             .setSmallIcon(R.drawable.ic_notification).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
         // text sharing: type here (inline box) -> default device, or send the clipboard; both without opening the app
+        val tgt = try { TextSend.defaultName() ?: (if (com.lanshare.app.core.Cfg.defTarget().isEmpty()) "ask each time" else "offline device") } catch (_: Throwable) { "device" }
         val replyFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
         val replyPi = PendingIntent.getBroadcast(this, 2, Intent(this, QuickSendReceiver::class.java).setAction("com.lanshare.app.QUICK_SEND"), replyFlags)
         b.addAction(NotificationCompat.Action.Builder(R.drawable.ic_notification, "Send text", replyPi)
-            .addRemoteInput(androidx.core.app.RemoteInput.Builder(QuickSendReceiver.KEY).setLabel("Text to send").build())
+            .addRemoteInput(androidx.core.app.RemoteInput.Builder(QuickSendReceiver.KEY).setLabel("Text to $tgt").build())
             .setAllowGeneratedReplies(false).build())
-        b.addAction(R.drawable.ic_notification, "Clipboard",
-            PendingIntent.getActivity(this, 3, Intent(this, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+        // device selection: each tap moves the default device on to the next online one (last step = ask every time); Android shows only 3 actions, so this takes the place of "Clipboard" (still on the tile / share sheet)
+        b.addAction(R.drawable.ic_notification, "To: $tgt",
+            PendingIntent.getBroadcast(this, 4, Intent(this, QuickSendReceiver::class.java).setAction(QuickSendReceiver.ACT_CYCLE), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         b.addAction(R.drawable.ic_notification, "Stop",
             PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
         val jobs = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
