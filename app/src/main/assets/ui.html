@@ -1831,31 +1831,36 @@ function openPrintQueue(pc){
   };
   const tick=()=>{if(!alive)return;load().then(()=>{if(alive)tm=setTimeout(tick,2000)})};
   body.append(row('Checking the PC\u2026'));tick()}
-let LASTPC=null;try{LASTPC=JSON.parse(localStorage.getItem('ls_lastpc')||'null')}catch(e){}
+let PCPICK=0,LASTPC=null;try{LASTPC=JSON.parse(localStorage.getItem('ls_lastpc')||'null')}catch(e){}
 const setLastPc=pc=>{if(!pc||!pc.id)return;LASTPC={id:pc.id,name:pc.name};try{localStorage.setItem('ls_lastpc',JSON.stringify(LASTPC))}catch(e){}};
 function openPcScreen(pc){
-  if(!pc){   /* no PC given (side drawer): the last PC used, the only device, or a short list to pick from */
-    const ps=peersSorted().filter(p=>p.ok!==false),last=LASTPC&&S.peers.find(p=>p.id===LASTPC.id);
-    if(last)return openPcScreen(last);if(ps.length===1)return openPcScreen(ps[0]);
+  if(!pc){   /* no PC given (side drawer): list only the devices whose print service (pcprint.py) answers - phones running LANShare are not PCs */
     let o=document.getElementById('pcs');if(!o){o=E('div');o.id='pcs';document.body.append(o)}
-    o.textContent='';o.style.display='flex';const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-    const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close');cb.onclick=close;hd.append(E('h3','','PC screen'),cb);card.append(E('div','handle'),hd);
-    if(!ps.length)card.append(E('div','pqs','No device is online. Open the PC screen from a printer\u2019s print dialog, or wait until the PC shows up.'));
-    ps.forEach(p=>{const r=E('div','set'),t=E('div','t');t.append(E('b','',p.name));r.append(t);r.onclick=()=>openPcScreen(p);card.append(r)});
-    o.append(card);return}
-  setLastPc(pc);
+    o.textContent='';o.style.display='flex';const tok=++PCPICK;const close=()=>{PCPICK++;o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+    const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),body=E('div');cb.onclick=close;hd.append(E('h3','','PC screen'),cb);card.append(E('div','handle'),hd,body);o.append(card);
+    const msg=t=>{body.textContent='';body.append(E('div','pqs',t))};msg('Looking for PCs\u2026');
+    const cand=S.peers.filter(p=>p.ok!==false||p.smb||p.kind==='SMB'),found=[];let left=cand.length;
+    const show=()=>{if(tok!==PCPICK)return;
+      if(!found.length){if(left>0)return msg('Looking for PCs\u2026');return msg('No PC with the print service (pcprint.py) found. Phones are not listed here.')}
+      body.textContent='';found.sort((a,b)=>(b.id===(LASTPC&&LASTPC.id))-(a.id===(LASTPC&&LASTPC.id)));
+      found.forEach(p=>{const r=E('div','set'),t=E('div','t');t.append(E('b','',p.name));if(LASTPC&&p.id===LASTPC.id)t.append(E('small','','Last used'));r.append(t);r.onclick=()=>openPcScreen(p);body.append(r)});
+      if(left>0)body.append(E('div','pqs','Still looking\u2026'))};
+    if(!cand.length)return show();
+    cand.forEach(p=>api('GET','/api/printer?dev='+enc(p.id),null,5000).then(r=>{if(r&&r.ok)found.push(p)}).catch(()=>{}).then(()=>{left--;
+      if(tok===PCPICK&&!left&&found.length===1)return openPcScreen(found[0]);show()}));
+    return}
   /* read-only mirror of the LANShare Print window on a PC: status line + colour-coded live log. Needs pcprint.py 28+. */
   let o=document.getElementById('pcs');if(!o){o=E('div');o.id='pcs';document.body.append(o)}
   o.textContent='';o.style.display='flex';
   let alive=true,tm=0,pos=-1,fails=0,n=0;
   const close=()=>{alive=false;clearTimeout(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),bar=E('div','pcb'),dot=E('span','pcd'),st=E('div','pcst','Connecting\u2026'),log=E('div','pcl');cb.onclick=close;
-  hd.append(E('h3','',pc.name||'PC'),cb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
+  const sw=E('button','tbtn','Switch');sw.onclick=()=>{close();openPcScreen(null)};const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(sw,cb);hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
   const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};
   const draw=r=>{
     if(!r||!r.ok){dot.className='pcd red';st.textContent=(r&&r.why)||'PC not reachable - is pcprint.py running?';return}
     if(r.old){dot.className='pcd red';st.textContent='Update pcprint.py on the PC (needs version 28 or newer)';return}
-    dot.className='pcd '+r.status.dot;st.textContent=r.status.text;
+    setLastPc(pc);    dot.className='pcd '+r.status.dot;st.textContent=r.status.text;
     const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-24;   /* follow the newest line only if the user is at the bottom */
     if(r.reset){log.textContent='';n=0}
     r.lines.forEach(add);pos=r.pos;if(atEnd||r.reset)log.scrollTop=log.scrollHeight};
