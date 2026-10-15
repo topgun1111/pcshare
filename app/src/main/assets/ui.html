@@ -3206,7 +3206,10 @@ function homeShow(){
   drawerClose();o.textContent='';o.style.display='flex';
   const hb=E('div','hb'),mb=E('button');mb.setAttribute('aria-label','Menu');mb.append(ic('menu'));mb.onclick=drawerOpen;
   const mo=E('button');mo.setAttribute('aria-label','Settings');mo.append(ic('settings'));mo.onclick=openSettings;
-  hb.append(mb,E('h1','','LANShare'),mo);
+  const h1=E('h1','','LANShare');
+  {let tz=1;try{tz=(+LSAndroid.uiGet().split(',')[1])/100||1}catch(e){}   // the native file manager bar ignores Settings -> Text size, the WebView applies it as textZoom: cancel it so the title is the same size
+   if(tz!==1)h1.style.fontSize=(18/tz)+'px'}
+  hb.append(mb,h1,mo);
   const bd=E('div','hbd');
   /* storage card: percent from the last known value at once, exact numbers once /api/space answers */
   const hero=E('div','hero');hero.tabIndex=0;hero.setAttribute('role','button');hero.setAttribute('aria-label','Main storage');
