@@ -16,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger
 object Thumbs {
     private const val MAX = 600
     private const val DRAFT = 800
+    private const val COVER_MAX = 1000     // album covers are shown big (2-3 columns): sharper than the 600 px list thumbnails
+    private const val COVER_DRAFT = 1400
+    private const val COVER_Q = 82
     private const val PRINT_MAX = 3508
     private val writes = AtomicInteger()
 
@@ -26,14 +29,19 @@ object Thumbs {
 
     private fun mtimeNs(f: File): Long = f.lastModified() * 1_000_000L
 
-    fun make(f: File): ByteArray {
+    fun make(f: File): ByteArray = cached(f, MAX, DRAFT, 70, "$MAX")
+
+    /** Larger, sharper thumbnail for gallery album covers (<= 1000 px, quality 82); own cache keys, the 600 px thumbnails are untouched. */
+    fun makeCover(f: File): ByteArray = cached(f, COVER_MAX, COVER_DRAFT, COVER_Q, "c$COVER_MAX-q$COVER_Q")
+
+    private fun cached(f: File, max: Int, draft: Int, quality: Int, keyTag: String): ByteArray {
         if (!f.exists()) throw NotFound("No such file or directory")
         if (f.isDirectory) throw IOException("Is a directory")
-        val key = sha1("$MAX|${f.path}|${mtimeNs(f)}|${f.length()}")
+        val key = sha1("$keyTag|${f.path}|${mtimeNs(f)}|${f.length()}")
         val cp = File(File(cacheRoot(), key.substring(0, 2)), "$key.jpg")
         try { if (cp.isFile) return cp.readBytes() } catch (_: IOException) {}
 
-        val data = if (f.name.endsWith(".pdf", true)) renderPdf(f) else render(f)
+        val data = if (f.name.endsWith(".pdf", true)) renderPdf(f) else render(f, max, draft, quality)
         try {
             cp.parentFile?.mkdirs()
             val tmp = File(cp.path + ".tmp" + Thread.currentThread().id)

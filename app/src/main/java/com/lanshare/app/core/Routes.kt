@@ -161,7 +161,8 @@ object Routes {
             "thumb" -> {
                 val e = Jobs.ep(ex.q("dev")).let { (it as? ArcEp)?.base ?: it }
                 if (e !is LocalFs || arcSplit(ex.q("path")) != null) throw BadReq("thumbnails only for this device's own files")
-                val data = Thumbs.make(e.real(vnorm(ex.q("path"))))
+                val rf = e.real(vnorm(ex.q("path")))
+                val data = if (q["big"] == "1") Thumbs.makeCover(rf) else Thumbs.make(rf)   // big=1: album cover (sharper, 1000 px)
                 return ex.reply(200, data, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
             }
             "vthumb" -> {

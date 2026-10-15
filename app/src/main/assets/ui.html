@@ -1243,8 +1243,8 @@ function mkAlbum(i,P0){
     sb.textContent=inf.n?inf.n+(inf.n===1?' item':' items'):(inf.sub?inf.sub+(inf.sub===1?' folder':' folders'):'Empty');
     if(!inf.cover)return;
     const show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)},
-      key='v2|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
-    if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:galVid()?'vid':'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name)),done:show}))});
+      key='v3|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
+    if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:galVid()?'vid':'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name))+'&big=1',done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0,v:galVid()})};
   albHold(c,pth,i.name);
@@ -1479,9 +1479,9 @@ function galForce(){GALT=0;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
 function mkAlbumX(a,P0,V){
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
   c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));
-  const key='v2|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
+  const key='v3|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
     show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
-  if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:a.v?'vid':'img',url:'/api/dl?dev=local&path='+enc(a.cover),done:show}));
+  if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:a.v?'vid':'img',url:'/api/dl?dev=local&path='+enc(a.cover)+'&big=1',done:show}));
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
   const sk=own?own.name:'\u0001'+a.path;if(!own)XM[sk]={name:sk,disp:a.name,dir:true,path:a.path,size:0,v:a.v};
   c.onclick=()=>{if(c._lp){c._lp=false;return}
@@ -1751,8 +1751,8 @@ function thMake(url,kd){return new Promise((res,rej)=>{
   if(kd==='img'){const im=new Image();let done=false,tryFull=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
       if(!tryFull&&im.src.indexOf('/api/thumb?')>=0)return res({u:'/api/thumb?'+url.slice(8),d:0});   // server thumb is already small + disk-cached: use as is (no canvas, no base64)
-      const sc=Math.min(1,400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
-      c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.6),d:0})}catch(e){rej(e)}};
+      const big=url.indexOf('&big=1')>0,sc=Math.min(1,(big?1000:400)/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',big?0.85:0.6),d:0})}catch(e){rej(e)}};
     // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
     im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
     im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8):url;return}
