@@ -217,6 +217,7 @@ object Jobs {
                     .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
                     .put("default", if (o.isNull("default")) JSONObject.NULL else o.optString("default"))
                     .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
+                    .put("quiet", o.optBoolean("quiet", false))   // pcprint.py 27+: this printer's quiet bytes are known, so Quiet / Normal can be offered
                     .put("trays", o.optJSONArray("trays") ?: org.json.JSONArray())   // paper trays of the chosen printer (pcprint.py 21+): [{id, name}]
                     .put("pypdf", o.optBoolean("pypdf", false))
                     .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
@@ -254,7 +255,7 @@ object Jobs {
 
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
-        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot", "tray")
+        "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot", "tray", "quiet")
 
     /** "/print?name=..&nup=4&duplex=long..." - the FinePrint-style options chosen in the app, passed on to pcprint.py. */
     // pcprint.py only knows pdf, jpg/png/bmp/gif/tif, txt/log/md and office files: everything else is converted on the phone first (see PrintPrep)

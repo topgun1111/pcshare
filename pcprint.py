@@ -18,6 +18,8 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v27: Quiet mode (Default / Quiet / Normal) for printers whose "Sessiz Modu" lives in the driver's private DEVMODE data (Epson L1250 built in; others via
+quiet_modes.json, offsets found with quiet_detect.py): the bytes are patched in the per-user printer defaults for the job and restored afterwards.
 v26: text sharing - phones send text / links to this PC (POST /p/clip, same body as between phones) and the "Text" button opens the LANShare Text
 window: received texts (copy, open link, delete, optional automatic copy to the clipboard) and a box to send text to any phone heard on the network
 (UDP beacons on port 48555; the setup adds a firewall rule for it - run the file once more).
@@ -38,7 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "26"
+VERSION = "27"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -258,7 +260,8 @@ def parse_opts(q):
              booklet=g("booklet") == "1", border=g("border") == "1",
              pages=g("pages") if g("pages") in ("odd", "even") else "", reverse=g("reverse") == "1",
              range=re.sub(r"[^0-9,\- ]", "", g("range"))[:80], wm=g("wm")[:60], wm_under=g("wm_under") == "1",
-             hdr=g("hdr")[:120], ftr=g("ftr")[:120], noauto=g("noauto") == "1")
+             hdr=g("hdr")[:120], ftr=g("ftr")[:120], noauto=g("noauto") == "1",
+             quiet=g("quiet") if g("quiet") in ("on", "off") else "")   # printer's quiet mode: "" = leave as is, on = Quiet, off = Normal
     if o["nup"] not in LAYOUT:
         o["nup"] = 1
     if o["booklet"] and not o["duplex"]:
@@ -283,6 +286,7 @@ def describe_opts(o):
     if o["autorot"]: d.append("turn to fit")
     if o["wm"]: d.append("watermark")
     if o["hdr"] or o["ftr"]: d.append("header/footer")
+    if o.get("quiet"): d.append("quiet mode" if o["quiet"] == "on" else "normal speed")
     return ", ".join(d)
 
 
@@ -1264,7 +1268,140 @@ def send_pdf(pdf, o, pr, sm, notes):
             os.startfile(pdf, "print")
 
 
+# ------------------------------------------------------------------ quiet mode (v27)
+# Many inkjets (Epson "Sessiz Modu") keep this switch only in the driver's private DEVMODE area, not in the print schema. quiet_detect.py finds
+# the bytes (OFF/ON snapshot diff); here they are written into the per-user printer defaults (SetPrinter level 9) for the length of one job.
+QUIET_FILE = os.path.join(APP, "quiet_modes.json")   # {"printer name fragment": {"350": [0, 2], "7916": [1, 5]}}  = {DEVMODE offset: [Normal byte, Quiet byte]}
+QUIET_BUILTIN = {"l1250": {350: (0x00, 0x02), 7916: (0x01, 0x05)}}   # Epson L1250 Series: values found with quiet_detect.py (8192-byte DEVMODE)
+QUIET_LOCK = threading.Lock()
+
+
+def quiet_map(pr):
+    """{offset: (normal, quiet)} for that printer, or None when its quiet bytes are not known."""
+    pr = (pr or DEFAULT_PRINTER[0] or "").lower()
+    if not pr:
+        return None
+    tab = {k: dict(v) for k, v in QUIET_BUILTIN.items()}
+    try:
+        with open(QUIET_FILE, encoding="utf-8") as f:
+            for frag, m in (json.load(f) or {}).items():
+                tab[str(frag).lower()] = {int(a): (int(b[0]) & 255, int(b[1]) & 255) for a, b in m.items()}
+    except (OSError, ValueError, TypeError, IndexError):
+        pass
+    for frag, m in tab.items():
+        if frag and frag in pr:
+            return m
+    return None
+
+
+def _devmode_api():
+    w = ctypes.WinDLL("winspool.drv", use_last_error=True)
+    H = ctypes.c_void_p
+    w.OpenPrinterW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(H), ctypes.c_void_p]
+    w.ClosePrinter.argtypes = [H]
+    w.GetPrinterW.argtypes = [H, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    w.SetPrinterW.argtypes = [H, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
+    w.DocumentPropertiesW.argtypes = [ctypes.c_void_p, H, ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+    w.DocumentPropertiesW.restype = ctypes.c_long
+    return w, H
+
+
+def _user_devmode(w, h):
+    """The per-user default DEVMODE as bytes (PRINTER_INFO_9), or None when the user has none."""
+    need = ctypes.c_uint(0)
+    w.GetPrinterW(h, 9, None, 0, ctypes.byref(need))
+    if not need.value:
+        return None
+    buf = ctypes.create_string_buffer(need.value)
+    if not w.GetPrinterW(h, 9, buf, need.value, ctypes.byref(need)):
+        return None
+    ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+    if not ptr:
+        return None
+    size = int.from_bytes(ctypes.string_at(ptr + 68, 2), "little") + int.from_bytes(ctypes.string_at(ptr + 70, 2), "little")   # dmSize + dmDriverExtra
+    return ctypes.string_at(ptr, size)
+
+
+def _set_user_devmode(w, h, dm):
+    """dm = bytes (set) or None (remove the per-user default again)."""
+    buf = ctypes.create_string_buffer(dm, len(dm)) if dm else None
+    info = ctypes.c_void_p(ctypes.addressof(buf) if buf else 0)
+    return bool(w.SetPrinterW(h, 9, ctypes.byref(info), 0))
+
+
+class quiet_mode:
+    """with quiet_mode(printer, "on"/"off", notes): ... - patches the quiet bytes for the job, restores the user's defaults afterwards."""
+
+    def __init__(self, pr, want, notes):
+        self.pr, self.want, self.notes, self.ctx = pr or DEFAULT_PRINTER[0], want, notes, None
+
+    def __enter__(self):
+        if not self.want:
+            return self
+        if not WIN:
+            self.notes.append("quiet mode only works on Windows PCs")
+            return self
+        m = quiet_map(self.pr)
+        if not m:
+            self.notes.append("quiet mode: this printer's quiet bytes are not known (run quiet_detect.py, see quiet_modes.json)")
+            return self
+        QUIET_LOCK.acquire()
+        try:
+            w, H = _devmode_api()
+            h = H()
+            if not w.OpenPrinterW(self.pr, ctypes.byref(h), None):
+                raise OSError("OpenPrinter failed")
+            try:
+                orig = _user_devmode(w, h)
+                n = w.DocumentPropertiesW(None, h, self.pr, None, None, 0)   # size of the effective default DEVMODE
+                cur = ctypes.create_string_buffer(n)
+                if n <= 0 or w.DocumentPropertiesW(None, h, self.pr, cur, None, 2) < 0:   # 2 = DM_OUT_BUFFER
+                    raise OSError("DocumentProperties failed")
+                dm = bytearray(cur.raw[:n])
+                idx = 1 if self.want == "on" else 0
+                if any(o >= len(dm) or dm[o] not in v for o, v in m.items()):
+                    raise OSError("the driver's settings do not look like the known ones (driver update?) - rerun quiet_detect.py")
+                for o, v in m.items():
+                    dm[o] = v[idx]
+                if not _set_user_devmode(w, h, bytes(dm)):
+                    raise OSError(f"SetPrinter failed (error {ctypes.get_last_error()})")
+                self.ctx = (w, h, orig)
+                log(f"quiet mode {self.want} set for {self.pr}")
+            except Exception:
+                w.ClosePrinter(h)
+                raise
+        except Exception as e:
+            QUIET_LOCK.release()
+            log(f"quiet mode skipped: {e}")
+            self.notes.append(f"quiet mode not applied ({str(e)[:120]})")
+        return self
+
+    def __exit__(self, *a):
+        if self.ctx:
+            w, h, orig = self.ctx
+            try:
+                if not _set_user_devmode(w, h, orig):
+                    log("quiet mode: could not restore the printer defaults")
+                else:
+                    log("quiet mode: printer defaults restored")
+            except Exception as e:
+                log(f"quiet mode restore failed: {e!r}")
+            finally:
+                w.ClosePrinter(h)
+                self.ctx = None
+                QUIET_LOCK.release()
+        return False
+
+
 def print_file(path, o):
+    """Prints one file with the chosen options (quiet mode patched in around the job); returns notes (things that could not be honoured)."""
+    notes = []
+    with quiet_mode(o["printer"] or None, o.get("quiet", ""), notes):
+        notes += _print_file(path, o)
+    return notes
+
+
+def _print_file(path, o):
     """Prints one file with the chosen options; returns notes (things that could not be honoured)."""
     notes = []
     pr = o["printer"] or None
@@ -2003,7 +2140,7 @@ class H(BaseHTTPRequestHandler):
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
                                     "office": office_engine(), "convert": True, "clip": True,
-                                    "hard": hard_margin(pr), "trays": printer_bins(pr)})
+                                    "hard": hard_margin(pr), "trays": printer_bins(pr), "quiet": bool(WIN and quiet_map(pr))})
         if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
             if not self.is_local():
                 return self.reply(403, {"error": "local only"})

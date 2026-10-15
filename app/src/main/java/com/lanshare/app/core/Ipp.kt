@@ -39,7 +39,9 @@ object Ipp {
     class JobOpts(val copies: Int = 1, val sides: String? = null, val color: String? = null, val media: String? = null,
                   val scaling: String? = null, val ranges: List<IntArray> = emptyList(),
                   /** paper tray (media-source keyword, e.g. "tray-2") + the size in 1/100 mm [x, y]: sent as media-col instead of "media" */
-                  val source: String? = null, val srcDim: IntArray? = null)
+                  val source: String? = null, val srcDim: IntArray? = null,
+                  /** best-effort "quiet": IPP has no standard quiet attribute, so Quiet = print-quality high (slower head, usually quieter), Normal = print-quality normal (3 = draft, 4 = normal, 5 = high) */
+                  val quality: Int? = null)
 
     private class Req(op: Int, uri: String) {
         val o = ByteArrayOutputStream()
@@ -82,7 +84,7 @@ object Ipp {
         val rq = Req(OP_PRINT_JOB, p.uri)
         rq.str(0x42, "job-name", jobName.take(100))
         rq.str(0x49, "document-format", mime)
-        val hasJob = jo.copies > 1 || jo.sides != null || jo.color != null || jo.media != null || jo.source != null || jo.scaling != null || jo.ranges.isNotEmpty()
+        val hasJob = jo.copies > 1 || jo.sides != null || jo.color != null || jo.media != null || jo.source != null || jo.quality != null || jo.scaling != null || jo.ranges.isNotEmpty()
         if (hasJob) {
             rq.group(0x02)   // job-attributes group
             if (jo.copies > 1) rq.int("copies", jo.copies)
@@ -100,6 +102,7 @@ object Ipp {
                 rq.attr(0x4A, "", "media-source".toByteArray()); rq.attr(0x44, "", src.toByteArray())
                 rq.attr(0x37, "", ByteArray(0))
             }
+            jo.quality?.let { rq.attr(0x23, "print-quality", ByteBuffer.allocate(4).putInt(it).array()) }   // 0x23 = enum
             jo.scaling?.let { rq.str(0x44, "print-scaling", it) }
             jo.ranges.forEachIndexed { i, r ->
                 rq.attr(0x33, if (i == 0) "page-ranges" else "", ByteBuffer.allocate(8).putInt(r[0]).putInt(r[1]).array())

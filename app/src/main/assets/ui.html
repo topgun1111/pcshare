@@ -2197,7 +2197,7 @@ let WIFI=[];
 async function loadWifi(scan){try{WIFI=((await api('GET','/api/wifiprinters'+(scan?'?scan=1':''),null,scan?30000:9000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi',viaId:w.viaId||''}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
 function wifiOptions(pr,files){return new Promise(res=>{
-  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0,tray:''};
+  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0,tray:'',quiet:''};
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull pfx'),redraw=[];
   const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(140,innerHeight*.32)];
@@ -2283,6 +2283,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
   const duo=E('div','pduo');into=duo;sec('Copies',cp);const colour=sec('Colour',seg('color',[['','Default'],['color','Colour'],['mono','B&W']]));tabs.b.append(duo);into=tabs.b;
   const sides=sec('Sides',seg('duplex',[['','Default'],['off','One-sided'],['long','Long edge'],['short','Short edge']]));
   sec('Paper',seg('paper',[['','Default'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']],'g'));
+  sec('Quiet mode',seg('quiet',[['','Default'],['on','Quiet'],['off','Normal']]),E('div','sub','Best effort: Wi-Fi printing has no standard quiet setting, so some printers ignore it. A PC print uses the driver\u2019s own Quiet mode.'));
   /* paper trays: filled in when the printer reports them (media-source-supported); hidden otherwise */
   const trRow=E('div','pgrid g2'),trSec=sec('Tray',trRow),trNote=E('div','sub','');trSec.style.display='none';trNote.style.cssText='font-size:12px;color:var(--mut);margin-top:4px';trSec.append(trNote);
   /* Layout */
@@ -2304,7 +2305,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
   renderSum=()=>{const c2=Math.max(1,st.copies||1),n=lastPaper==null?null:lastPaper*c2;pb.textContent=n==null?'Print':n+' sheet'+(n===1?'':'s');
     const q=[c2+(c2===1?' copy':' copies'),st.duplex==='long'||st.duplex==='short'?'2-sided':st.duplex==='off'?'1-sided':'',st.color==='mono'?'B&W':st.color==='color'?'Colour':''];
     if(st.nup>1)q.push(st.nup+' per sheet');psm.textContent=q.filter(Boolean).join(' · ')};redraw.push(renderSum);
-  k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range','nup','border','tray'].forEach(n=>{if(st[n]!==''&&st[n]!==1&&st[n]!==0)out[n]=st[n]});
+  k.onclick=()=>{const out={};['copies','duplex','color','paper','fit','range','nup','border','tray','quiet'].forEach(n=>{if(st[n]!==''&&st[n]!==1&&st[n]!==0)out[n]=st[n]});
     if(st.fit==='trim'){const tc=imgMode?thumbs.map(t=>pvBBox(t)):(pinfo&&pinfo.img?[pvBBox(pinfo.img)]:null);if(tc)out.crops=tc}
     fin(out)};
   act.append(ps,k);card.append(act);o.append(card);showT('b');redraw.forEach(f=>f());
@@ -2329,7 +2330,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
 /* status line under each PC in the Print picker, e.g. "Office HP \u00b7 ready" or "out of paper" (asked live from the PC's print service) */
 /* FinePrint-style print options for a PC: printer, copies, sides, colour, pages per sheet, booklet, page selection, watermark, header/footer */
 function inkTxt(r){const a=(r&&r.ink)||[];if(!a.length)return null;return{t:a.map(i=>((i.name||'Ink').replace(/\s*(ink|toner|cartridge)s?\b/ig,'').trim()||'Ink')+' '+i.level+'%').join(' \u00b7 '),low:a.some(i=>i.level<=10)}}
-const PRN_DEF={printer:'',tray:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
+const PRN_DEF={printer:'',tray:'',quiet:'',copies:1,duplex:'',color:'',nup:1,booklet:0,border:0,pages:'',range:'',reverse:0,paper:'',fit:'shrink',margin:'',scale:'',align:'',autorot:0,wm:'',wm_under:0,hdr:'',ftr:'',noauto:0,join:0};
 const lsGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
 /* live preview of the print layout (pages per sheet, booklet, page selection, watermark, header/footer, sides, colour) */
 const PV_PAPER={A3:[842,1191],A4:[595,842],A5:[420,595],Letter:[612,792],Legal:[612,1008]},PV_LAY={1:[1,1,0],2:[2,1,1],4:[2,2,0],6:[3,2,1],9:[3,3,0]};
@@ -2584,6 +2585,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
       if(r.printers&&r.printers.length){sel.style.display='block';ptit.style.display='none';chev.style.display='block';if(sel.options.length<2){r.printers.forEach(n=>{const op=E('option','',n+(n===r.default?' (default)':''));op.value=n;sel.append(op)});sel.value=r.printers.includes(st.printer)?st.printer:''}}
       {const h=+r.hard||0;if(h!==hardM){hardM=h;redraw.forEach(f=>f())}}
       trFill(r.trays||[]);
+      if(qSec){qSec.style.display=r.quiet?'':'none';if(!r.quiet)st.quiet='';redraw.forEach(f=>f())}
       if(!r.printer){info.textContent='No default printer set on the PC';info.style.color='var(--err)'}
       else if(r.problem){info.textContent=r.printer+' \u00b7 '+r.problem;info.style.color='var(--err)'}
       else{info.textContent=r.printer+' \u00b7 ready';info.style.color='var(--ok)'}
@@ -2601,6 +2603,8 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     sec('Sides',seg('duplex',[['','Auto'],['off','One-sided'],['long','Long edge'],['short','Short edge']]))}
   if(pdf)sec('Colour',seg('color',[['','Colour'],['mono','B&W']]));
   sec('Paper',seg('paper',[['','Auto'],['A4','A4'],['Letter','Letter'],['A3','A3'],['A5','A5'],['Legal','Legal']],'g'));
+  // quiet mode (pcprint.py 27+): only offered when the PC knows this printer's quiet bytes
+  const qSec=(here||pdf)?null:sec('Quiet mode',seg('quiet',[['','Default'],['on','Quiet'],['off','Normal']]),E('div','sub','Uses the printer driver\u2019s Quiet mode (slower, quieter) for this job only.'));if(qSec)qSec.style.display='none';
   // paper tray: the trays the printer driver offers on the PC (pcprint.py 21+); hidden when it lists none
   const trRow=E('div','pgrid g2'),trSec=(here||pdf)?null:sec('Tray',trRow),trBtns=[];if(trSec)trSec.style.display='none';
   trFill=l=>{if(!trSec)return;trRow.textContent='';trBtns.length=0;

@@ -187,7 +187,8 @@ object WifiPrint {
         // a chosen tray decides the paper size too (when the printer says what is in it), so the layout and the tray agree
         val media = pickMedia(p, tr?.media ?: PAPER[o.optString("paper")])
         tray.set(tr?.let { it.id to (it.dim ?: media?.let { m -> WifiPrinters.mediaDim(m) }) })
-        return Ipp.JobOpts(copies, sides, color, media, scaling, ranges(o.optString("range")))
+        val quality = when (o.optString("quiet")) { "on" -> 5; "off" -> 4; else -> null }   // best effort: no standard IPP quiet attribute
+        return Ipp.JobOpts(copies, sides, color, media, scaling, ranges(o.optString("range")), quality = quality)
     }
 
     /** "1-3,5,8-" -> [1,3] [5,5] [8,MAX] */
@@ -214,6 +215,7 @@ object WifiPrint {
         fun rejected(r: Ipp.Resp) = !r.ok && (r.status == 0x040B || r.status == 0x040E)
         val tries = listOf(
             jo,
+            Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling, jo.ranges),   // 0: no quiet request (print-quality)
             Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, null, jo.ranges),   // 1: no print-scaling
             Ipp.JobOpts(jo.copies, jo.sides, null, jo.media, null, jo.ranges),       // 2: no colour mode either
             Ipp.JobOpts(jo.copies, null, null, jo.media, null, jo.ranges),           // 3: no sides (last resort, keeps paper + range)
@@ -223,16 +225,17 @@ object WifiPrint {
         var r: Ipp.Resp? = null
         val tp = tray.get()
         if (tp != null) {   // paper tray chosen: first try with it (media-col); if the printer refuses that, print from its own choice of tray and say so
-            val rt = sendRetry(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second), f)
+            val rt = sendRetry(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second, jo.quality), f)
             if (!rejected(rt)) { if (!rt.ok) throw PrintFail(Ipp.statusText(rt.status)); waitIdle(p); return }
             warns.get()?.add("the printer does not accept a tray choice, it picked the tray itself")
         }
         for (t in tries) {
-            val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}"
-            if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}") continue   // nothing new to try
+            val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}|${t.quality}"
+            if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}|${last.quality}") continue   // nothing new to try
             last = t
             r = sendRetry(p, name, mime, t, f)
             if (!rejected(r)) {
+                if (r.ok && jo.quality != null && t.quality == null) warns.get()?.add("the printer ignored the quiet-mode request (IPP has no standard quiet setting)")
                 if (r.ok && jo.sides != null && t.sides == null) warns.get()?.add("two-sided printing was refused by the printer, printed one-sided")
                 break
             }
