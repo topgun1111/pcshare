@@ -288,6 +288,12 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
     /** Add this once to the activity root: FrameLayout.LayoutParams(1, MATCH_PARENT); the width is set from the page's drawer width. */
     fun layoutParams(): FrameLayout.LayoutParams = FrameLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT)
 
+    /** App returned from the background: forget the last state so the page's next push is never skipped as "unchanged"; a drawer that is not meant to be open is hidden. */
+    fun resync() {
+        last = ""
+        if (!open) { dp.animate().cancel(); dp.visibility = View.GONE }
+    }
+
     private fun path(s: String): Path? {
         if (pathCache.containsKey(s)) return pathCache[s]
         val p = NlGlyph.parse(s)

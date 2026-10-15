@@ -484,6 +484,9 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
         dls.onTap = { id -> fire("dlx", id.removePrefix("dl:")) }
     }
 
+    /** App returned from the background: the page's next push must not be skipped as "unchanged". */
+    fun resync() { last = "" }
+
     private fun px(v: Double): Int = Math.round((v * d).toFloat())
 
     /** Put [v] on the CSS-px rect [r] = [left, top, width, height]; null hides it. Returns whether it is shown. */

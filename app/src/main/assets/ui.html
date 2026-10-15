@@ -838,7 +838,7 @@ function devPicker(all){
 let pollGen=0,pollTimer;
 async function pollPeers(){
   const g=++pollGen;clearTimeout(pollTimer);
-  try{S.peers=await api('GET','/api/peers',null,5000);
+  try{const pr=await api('GET','/api/peers',null,5000);if(!Array.isArray(pr))throw new Error('bad peers');S.peers=pr;
     S.peers.forEach(p=>S.known[p.id]=p.name);
     S.fails=0;if(S.back){S.back=false;load()}
     renderPeers()}
@@ -851,7 +851,7 @@ function resume(){  // screen unlocked / tab restored / network back
   pollPeers();S.sig='';if(S.dev!=='local')load()}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume()});
 window.addEventListener('pageshow',resume);window.addEventListener('online',resume);window.addEventListener('focus',resume);
-async function pollOnce(){try{S.peers=await api('GET','/api/peers')}catch(e){}}
+async function pollOnce(){try{const pr=await api('GET','/api/peers');if(Array.isArray(pr))S.peers=pr}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;homeHide();
   S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
@@ -1009,7 +1009,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'))||vis($('#home'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
   ['#fab','#toast','#dlw','#jb','#jp'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
-  ['#sheet','#dlg'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
+  ['#sheet','#dlg','#pcs','#pq'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
   const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
   let hd=null;                                                         // native path bar + tool row sit exactly on top of these two rows
   if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
@@ -1032,7 +1032,7 @@ function nlSrPush(){if(!NLSR)return;
   if(!document.body.classList.contains('srch')){if(NLSRJ!=='0'){NLSRJ='0';NL.nlSearch('0')}return}
   const e=$('#srow');if(!e)return;const b=e.getBoundingClientRect();if(!(b.width>0&&b.height>0))return;
   const vis=x=>{if(!x)return false;const c=getComputedStyle(x);return c.display!=='none'&&c.visibility!=='hidden'};
-  let hid=0;['#sheet','#dlg','#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))hid=1});
+  let hid=0;['#sheet','#dlg','#pcs','#pq','#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))hid=1});
   const sc=$('#dscrim');if(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0)hid=1;
   const q=v=>Math.round(v*100)/100,o={r:[q(b.left),q(b.top),q(b.width),q(b.height)],h:hid,p:JSON.parse(nlPal())};
   if(S.q!==NLSRQ)o.x=$('#sq').value;
@@ -1085,7 +1085,7 @@ function nlChPush(){if(!NLCH)return;
   const q2=v=>Math.round(v*100)/100;
   const rc=e=>{if(!vis(e))return null;const b=e.getBoundingClientRect();return(b.width>0&&b.height>0)?[q2(b.left),q2(b.top),q2(b.width),q2(b.height)]:null};
   let modal=0,all=0;
-  ['#sheet','#dlg'].forEach(q=>{if(vis($(q)))modal=1});
+  ['#sheet','#dlg','#pcs','#pq'].forEach(q=>{if(vis($(q)))modal=1});
   ['#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))all=1});
   const sc=$('#dscrim');if(document.body.classList.contains('dopen')||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
   if(all){if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
@@ -1189,6 +1189,8 @@ window.nlDr=(k,i,j,v)=>{
   else if(k==='t'){const b=$('#dtabs').children[j];if(b)b.click()}
   else if(k==='f'){const b=$('#dfoot').children[j];if(b)b.click()}};
 if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
+// app came back from the background: forget what the native side was last told and push everything again (drawer / bars can be out of step after a long pause)
+window.lsNlResync=()=>{try{NLCHJ='';NLDRJ='';NLDRK='?';NLDRQ=0;if(window.nlLay&&NLL)nlLay(true);nlChPush();nlDrTick()}catch(e){}};
 /* ---- gallery albums: the Pictures folder shows its sub-folders as big cover cards ---- */
 const galRoot=()=>S.dev==='local'&&/^\/@(gallery|videos)$/.test(S.path),galVid=()=>S.path==='/@videos';   // virtual locations (not folders): /@gallery = albums of pictures, /@videos = albums of videos; /Pictures and /Movies are plain folders again
 const GALC={};
@@ -3246,11 +3248,11 @@ const JL=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'')||d}catch(e){
 const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devName(dev)):path.split('/').filter(Boolean).pop().replace(/!$/,'');
 const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
-function drawerOpen(){DEVCOL=true;document.body.classList.add('dopen');drawerRender();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();warmWifi()}   // opening the drawer = look for devices now
+function drawerOpen(){DEVCOL=true;if(!Array.isArray(S.peers))S.peers=[];document.body.classList.add('dopen');try{drawerRender()}catch(e){console.log('drawerRender',e)}api('POST','/api/scan',{},4000).catch(()=>{});try{pollPeers()}catch(e){}try{warmWifi()}catch(e){}}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
 // native swipe (MainActivity.dispatchTouchEvent): left-to-right swipe (from the edge or anywhere below the header) toggles file manager <-> Main menu; ignored when something else is on top
 const lsEdgeOk=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
-  for(const id of ['#sheet','#dlg','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
+  for(const id of ['#sheet','#dlg','#pcs','#pq','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
   if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;return true};
 window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
   if(homeOn()){hmFavClose();homeHide();if(window.nlLay)try{nlLay(true)}catch(e){}return true}   // on the Main menu the same swipe goes back to the file manager (the folder that was open)
