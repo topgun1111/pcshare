@@ -18,6 +18,8 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v28: screen mirror - `GET /screen?pos=N` returns what the window shows (status line + coloured log lines, incremental by byte position) so the app can open a
+read-only "code window" that mirrors this PC's output live. The window and the endpoint share log_tag() / status_parts(). /ping has "screen": true.
 v27: Quiet mode (Default / Quiet / Normal) for printers whose "Sessiz Modu" lives in the driver's private DEVMODE data (Epson L1250 built in; others via
 quiet_modes.json, offsets found with quiet_detect.py): the bytes are patched in the per-user printer defaults for the job and restored afterwards.
 v26: text sharing - phones send text / links to this PC (POST /p/clip, same body as between phones) and the "Text" button opens the LANShare Text
@@ -40,7 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "27"
+VERSION = "28"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1989,6 +1991,81 @@ def text_send(did, text):
     return True, None
 
 
+# ------------------------------------------------------------------ screen mirror (the window's content, for the app)
+def log_tag(line):
+    """Colour class of one log line: shared by the window and the app's mirror so both show the same colours."""
+    return ("fail" if any(k in line for k in ("FAILED", "WARNING", "CRASH", "ERROR", "cannot listen"))
+            else "ok" if " printed " in line else "dim" if "ready" in line or "stopped" in line else "")
+
+
+def ips_label(ips, ts):
+    return ("Tailscale " + ts + "  \u00b7  " if ts else "") + ", ".join(x for x in ips if x != ts)
+
+
+def status_parts(info, ips):
+    """(dot colour 'green' | 'amber', text) of the window's status line, from a /ping-shaped dict (queued, printer, problem, busy)."""
+    pr, prob, busy, q = info.get("printer"), info.get("problem"), info.get("busy"), info.get("queued", 0)
+    text = (f"Running  \u00b7  {ips}  \u00b7  port {PORT}  \u00b7  " + (f"printer: {pr}" if pr else "NO DEFAULT PRINTER")
+            + (f"  \u00b7  \u26a0 {prob}" if prob else "") + (f"  \u00b7  printing {busy}" if busy else "") + (f"  \u00b7  {q} waiting" if q else ""))
+    return ("amber" if prob else "green"), text
+
+
+_IPS = [0.0, ""]   # cached ips_label(): pc_addresses() runs ipconfig on Windows, too slow for every poll
+
+
+def ips_cached():
+    if time.time() - _IPS[0] > 60 or not _IPS[1]:
+        ips, ts = pc_addresses()
+        _IPS[0], _IPS[1] = time.time(), ips_label(ips, ts)
+    return _IPS[1]
+
+
+SCREEN_FIRST = 150      # lines sent when a viewer opens (the window shows the same)
+SCREEN_CHUNK = 256_000  # bytes per poll at most; a viewer that is further behind jumps to the tail
+
+
+def screen_read(pos, first=SCREEN_FIRST):
+    """(lines [{t, k}], new position, reset) of the log since byte position `pos`.
+    pos None / negative / beyond the file (log rotated) / too far behind = start over with the last `first` lines (reset=True).
+    Only complete lines are returned: a half-written last line waits for the next poll."""
+    try:
+        size = os.path.getsize(LOG)
+    except OSError:
+        return [], 0, True
+    reset = pos is None or pos < 0 or pos > size or size - pos > SCREEN_CHUNK
+    try:
+        with open(LOG, "rb") as f:
+            if reset:
+                start = max(0, size - 30000)
+                f.seek(start)
+                data = f.read()
+                if start and b"\n" in data:   # the cut may be inside a line: drop that piece
+                    start += data.index(b"\n") + 1
+                    data = data[data.index(b"\n") + 1:]
+            else:
+                start = pos
+                f.seek(pos)
+                data = f.read(SCREEN_CHUNK)
+    except OSError:
+        return [], pos or 0, False
+    cut = data.rfind(b"\n")
+    if cut < 0:
+        return [], start, reset
+    new = start + cut + 1
+    lines = data[:cut].decode("utf-8", "replace").splitlines()
+    if reset:
+        lines = lines[-first:]
+    return [{"t": ln, "k": log_tag(ln)} for ln in lines], new, reset
+
+
+def screen_snapshot(pos, first=SCREEN_FIRST):
+    info = {"queued": PRINTQ.qsize(), "busy": CURRENT[0], "printer": DEFAULT_PRINTER[0], "problem": PRINTER_PROBLEM[0]}
+    dot, text = status_parts(info, ips_cached())
+    lines, new, reset = screen_read(pos, first)
+    return {"ok": True, "version": VERSION, "host": socket.gethostname(), "pos": new, "reset": reset, "lines": lines,
+            "status": {"dot": dot, "text": text, "printer": info["printer"], "problem": info["problem"], "busy": info["busy"], "queued": info["queued"]}}
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "LANSharePrint/" + VERSION
@@ -2139,7 +2216,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine(), "convert": True, "clip": True,
+                                    "office": office_engine(), "convert": True, "clip": True, "screen": True,
                                     "hard": hard_margin(pr), "trays": printer_bins(pr), "quiet": bool(WIN and quiet_map(pr))})
         if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
             if not self.is_local():
@@ -2150,6 +2227,13 @@ class H(BaseHTTPRequestHandler):
                 since = 0
             items, last, st = text_snapshot(since)
             return self.reply(200, {"ok": True, "items": items, "last": last, "settings": st, "devices": devices_now(), "host": socket.gethostname()})
+        if u.path == "/screen":   # the window's content (status line + log), polled by the app's "PC screen" view; read-only, LAN / Tailscale only like /ping and /jobs
+            q = parse_qs(u.query)
+            try:
+                pos = int((q.get("pos") or [""])[0])
+            except ValueError:
+                pos = None
+            return self.reply(200, screen_snapshot(pos, _int((q.get("lines") or [SCREEN_FIRST])[0], SCREEN_FIRST, 1, 500)))
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
@@ -2865,7 +2949,7 @@ def ui():
     pos = [0]
 
     def add(line):
-        tag = "fail" if any(k in line for k in ("FAILED", "WARNING", "CRASH", "ERROR", "cannot listen")) else "ok" if " printed " in line else "dim" if "ready" in line or "stopped" in line else ""
+        tag = log_tag(line)
         txt.configure(state="normal")
         txt.insert("end", line + "\n", tag)
         txt.configure(state="disabled")
@@ -2887,19 +2971,15 @@ def ui():
         root.after(700, poll)
 
     _ips, _ts = pc_addresses()
-    ips = ("Tailscale " + _ts + "  \u00b7  " if _ts else "") + ", ".join(x for x in _ips if x != _ts)
+    ips = ips_label(_ips, _ts)
     def refresh():
         info = ping()
         if info:
             dot.configure(fg="#4ade80")
-            q = info.get("queued", 0)
             btn.configure(text="Stop service", bg="#3a1d24", fg="#ffb3b3")
-            pr = info.get("printer")
-            prob = info.get("problem")
-            dot.configure(fg="#fbbf24" if prob else "#4ade80")
-            busy = info.get("busy")
-            status.configure(text=f"Running  \u00b7  {ips}  \u00b7  port {PORT}  \u00b7  " + (f"printer: {pr}" if pr else "NO DEFAULT PRINTER") + (f"  \u00b7  \u26a0 {prob}" if prob else "")
-                             + (f"  \u00b7  printing {busy}" if busy else "") + (f"  \u00b7  {q} waiting" if q else ""))
+            col, text = status_parts(info, ips)
+            dot.configure(fg="#fbbf24" if col == "amber" else "#4ade80")
+            status.configure(text=text)
         else:
             dot.configure(fg="#f87171")
             btn.configure(text="Start service", bg="#1d3a2a", fg="#b3ffd0")
