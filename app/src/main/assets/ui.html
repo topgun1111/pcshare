@@ -3125,7 +3125,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();
 /* swipe left anywhere = next device (to the right in the chip bar); swipe right is the Main menu swipe (native); the list follows the finger and slides out/in; keep sliding to go further */
-(()=>{let x0=0,y0=0,mode=0,busy=false;const STEP=50;  // mode: 0 undecided, 1 horizontal (ours), 2 ignore
+(()=>{let x0=0,y0=0,mode=0,busy=false;const STEP=50,OFF=true;  // OFF: swipe left = Main menu toggle now (native), so the next-device swipe is disabled; mode: 0 undecided, 1 horizontal (ours), 2 ignore
   const L=()=>$('#list');
   const blocked=t=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex'||$('#pv').style.display==='flex'||$('#gal').style.display==='flex'||$('#home').style.display==='flex'||
     /^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'')||(t&&t.closest&&t.closest('#peers,#crumbs'));
@@ -3138,7 +3138,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     try{await openDev(ids[j])}catch(e){}
     tx(dir>0?'35%':'-35%',0,0);L().offsetWidth;tx('',1,170); // new list slides in from the opposite side
     await wait(170);busy=false;return true};
-  window.addEventListener('touchstart',e=>{mode=(busy||e.touches.length!==1||blocked(e.target))?2:0;
+  window.addEventListener('touchstart',e=>{mode=(OFF||busy||e.touches.length!==1||blocked(e.target))?2:0;
     x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
   window.addEventListener('touchmove',e=>{if(mode===2||busy||window._dnd)return;const c=e.touches[0],dx=c.clientX-x0,dy=c.clientY-y0;
     if(!mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;mode=(Math.abs(dx)>Math.abs(dy)*1.2&&dx<0)?1:2;if(mode===2)return}   // only a swipe to the left is ours (next device); a swipe to the right is the Main menu swipe

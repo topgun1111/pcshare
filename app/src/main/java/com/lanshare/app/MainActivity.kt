@@ -285,8 +285,8 @@ class MainActivity : Activity() {
                     val ok = swEdge || !swTop                                // the header scrolls horizontally itself, except right at the edge
                     val need = if (swEdge) 40f * d else 72f * d
                     val slope = if (swEdge) 0.8f else 0.5f
-                    if (!ok || dx < -24f * d || (Math.abs(dy) > 24f * d && Math.abs(dy) > Math.abs(dx))) swOn = false   // header, swipe to the left (next device) or a vertical scroll: not ours
-                    else if (dx > need && Math.abs(dy) < dx * slope) {
+                    if (!ok || (Math.abs(dy) > 24f * d && Math.abs(dy) > Math.abs(dx))) swOn = false   // header or a vertical scroll: not ours
+                    else if (Math.abs(dx) > need && Math.abs(dy) < Math.abs(dx) * slope) {   // swipe in either direction toggles file manager <-> Main menu
                         swOn = false; swDone = true
                         val c = MotionEvent.obtain(ev); c.action = MotionEvent.ACTION_CANCEL
                         super.dispatchTouchEvent(c); c.recycle()               // list / page stop their own gesture
