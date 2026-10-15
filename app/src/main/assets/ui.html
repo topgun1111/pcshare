@@ -499,9 +499,13 @@ body.dopen{overflow:hidden}
 .fsg{display:flex;flex-wrap:wrap;gap:10px;padding:4px 8px 6px}.fsc{width:38px;height:38px;border-radius:50%;border:0;box-sizing:border-box;padding:0}.fsc.on{box-shadow:0 0 0 2px var(--cont),0 0 0 4px var(--ac)}
 .fsi{width:46px;height:46px;border-radius:13px;border:0;display:flex;align-items:center;justify-content:center;background:var(--hov);color:var(--fg);font-size:18px}.fsi svg{width:24px;height:24px;fill:currentColor}.fsi.on{background:var(--ac);color:var(--onac)}
 /* print queue screen (own overlay, so it can open on top of the print dialog) */
-#pq{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
-#pq .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
-#pq .card>*{flex-shrink:0}.pqh{display:flex;align-items:center;justify-content:space-between}.pqh h3{margin:0;font-size:20px;font-weight:500}.pqs{font-size:13px;color:var(--mut);margin:0 0 4px}
+#pq,#pcs{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
+#pq .card,#pcs .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
+#pq .card>*,#pcs .card>*{flex-shrink:0}.pqh{display:flex;align-items:center;justify-content:space-between}.pqh h3{margin:0;font-size:20px;font-weight:500}.pqs{font-size:13px;color:var(--mut);margin:0 0 4px}
+.pcb{display:flex;align-items:center;gap:8px;margin:2px 0 6px}.pcst{font-size:12px;color:var(--mut);word-break:break-word}
+.pcd{width:10px;height:10px;border-radius:50%;background:#888;flex:none}.pcd.green{background:#4ade80}.pcd.amber{background:#fbbf24}.pcd.red{background:#f87171}
+.pcl{background:#0b0f17;color:#d7dde8;border-radius:12px;padding:10px;height:60vh;overflow:auto;font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.pcln.ok{color:#6ee7a0}.pcln.fail{color:#ff7b7b}.pcln.dim{color:#7d8aa3}
 #pq .pqok{color:var(--ok)}#pq .pqbad{color:var(--err)}.pql{display:inline-block;margin-top:2px;padding:2px 0;border:0;background:transparent;color:var(--ac);font:inherit;font-size:12px;font-weight:700}
 /* SMB (PC drives) sheet */
 .smb .smh{display:flex;align-items:center;gap:14px;padding:0 8px 4px}.smb .smh h3{margin:0}.smb .smt{flex:1;min-width:0}.smb .smt small{display:block;color:var(--mut);font-size:13px}
@@ -1826,6 +1830,26 @@ function openPrintQueue(pc){
   };
   const tick=()=>{if(!alive)return;load().then(()=>{if(alive)tm=setTimeout(tick,2000)})};
   body.append(row('Checking the PC\u2026'));tick()}
+function openPcScreen(pc){
+  /* read-only mirror of the LANShare Print window on a PC: status line + colour-coded live log. Needs pcprint.py 28+. */
+  let o=document.getElementById('pcs');if(!o){o=E('div');o.id='pcs';document.body.append(o)}
+  o.textContent='';o.style.display='flex';
+  let alive=true,tm=0,pos=-1,fails=0,n=0;
+  const close=()=>{alive=false;clearTimeout(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),bar=E('div','pcb'),dot=E('span','pcd'),st=E('div','pcst','Connecting\u2026'),log=E('div','pcl');cb.onclick=close;
+  hd.append(E('h3','',pc.name||'PC'),cb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
+  const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};
+  const draw=r=>{
+    if(!r||!r.ok){dot.className='pcd red';st.textContent=(r&&r.why)||'PC not reachable - is pcprint.py running?';return}
+    if(r.old){dot.className='pcd red';st.textContent='Update pcprint.py on the PC (needs version 28 or newer)';return}
+    dot.className='pcd '+r.status.dot;st.textContent=r.status.text;
+    const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-24;   /* follow the newest line only if the user is at the bottom */
+    if(r.reset){log.textContent='';n=0}
+    r.lines.forEach(add);pos=r.pos;if(atEnd||r.reset)log.scrollTop=log.scrollHeight};
+  const tick=()=>{if(!alive)return;
+    api('GET','/api/pcscreen?dev='+enc(pc.id)+'&pos='+pos,null,6000).then(r=>{fails=0;if(alive)draw(r)}).catch(()=>{if(alive&&++fails>1)draw(null)})
+      .then(()=>{if(alive)tm=setTimeout(tick,1000)})};
+  tick()}
 function openSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -2454,7 +2478,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   const prow=E('div','prow'),pt=E('div','pt'),ptit=E('div','ptit',pdf?'Save as PDF':pc.name),info=E('div','sub','Checking printer\u2026'),chev=E('span','pch');
   prow.innerHTML='<svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
   chev.innerHTML='<svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>';pt.append(ptit,info);prow.append(pt,chev,px);card.append(prow);
-  if(!pdf&&!here&&!pc.wifi&&!/^r?wifi:/.test(pc.id)){const ql=E('button','pql','Print queue \u203a');ql.setAttribute('aria-label','Show the print queue of '+pc.name);ql.onclick=e=>{e.stopPropagation();openPrintQueue(pc)};pt.append(ql)}
+  if(!pdf&&!here&&!pc.wifi&&!/^r?wifi:/.test(pc.id)){const ql=E('button','pql','Print queue \u203a');ql.setAttribute('aria-label','Show the print queue of '+pc.name);ql.onclick=e=>{e.stopPropagation();openPrintQueue(pc)};pt.append(ql);const sl=E('button','pql','PC screen \u203a');sl.style.marginLeft='14px';sl.setAttribute('aria-label','Show the output window of '+pc.name);sl.onclick=e=>{e.stopPropagation();openPcScreen(pc)};pt.append(sl)}
   const pv=E('div','ppv'),strip=E('div','strip'),cap=E('div','');cap.style.cssText='font-size:12px;color:var(--mut);padding:0 2px';const tot=E('div','');tot.style.cssText='font-size:12px;color:var(--fg);padding:2px 2px 0;font-weight:600';pv.append(strip,cap,tot);card.append(pv);let hardM=0;
   let pvr=0;if(!imgMode)pvRotBtn(cap,()=>{pvr=(pvr+90)%360;sched()});
   let pinfo=null,ptm=0,cur=null,hasOffice=false;

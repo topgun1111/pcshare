@@ -2866,11 +2866,10 @@ def ui():
 
     def add(line):
         tag = "fail" if any(k in line for k in ("FAILED", "WARNING", "CRASH", "ERROR", "cannot listen")) else "ok" if " printed " in line else "dim" if "ready" in line or "stopped" in line else ""
-        atend = txt.yview()[1] >= 0.999
         txt.configure(state="normal")
         txt.insert("end", line + "\n", tag)
         txt.configure(state="disabled")
-        if atend: txt.see("end")
+        txt.see("end")   # always follow the newest line
 
     def poll():
         try:

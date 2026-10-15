@@ -240,6 +240,19 @@ object Jobs {
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
+    /** pcprint.py 28+: what the PC window shows. {ok, old?, status:{dot,text}, lines:[{t,k}], pos, reset}. pos < 0 = from the start. */
+    fun pcScreen(dev: String, pos: Long): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/screen?pos=$pos", emptyMap(), 4000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", true).put("old", true)
+                if (r.status != 200) return JSONObject().put("ok", false)
+                JSONObject(String(r.readUpTo(1 shl 20), Charsets.UTF_8)).put("ok", true)
+            } finally { r.close() }
+        } catch (_: Exception) { JSONObject().put("ok", false) }
+    }
+
     /** Cancels one WAITING job on the PC: {ok, result: "ok" | "printing" (already on its way to the printer) | "gone" (printed already) | "old" (pcprint.py < 22)}. */
     fun pcCancel(dev: String, id: Int): JSONObject {
         val (ip, _) = printTarget(dev)

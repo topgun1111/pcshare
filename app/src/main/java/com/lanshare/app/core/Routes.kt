@@ -136,6 +136,7 @@ object Routes {
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
+            "pcscreen" -> return ex.json(Jobs.pcScreen(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC window mirror: status line + live log
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)
