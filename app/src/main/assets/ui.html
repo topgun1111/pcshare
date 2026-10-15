@@ -537,8 +537,8 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home{display:none;position:fixed;inset:0;z-index:8;flex-direction:column;background:var(--bg);color:var(--fg);--hc1:#8e24aa;--hc2:#d81b60;--hc3:#b7791f;--hc4:#546e7a;--hc5:#757575;--hc6:#00897b;--hc7:#f9a825}
 :root[data-theme=dark] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4;--hc7:#ffe082}
 @media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4;--hc7:#ffe082}}
-#home .hb{flex:none;height:calc(52px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 2px 0 4px;display:flex;align-items:center;gap:0;background:var(--bar);color:var(--onbar)}
-#home .hb h1{flex:1;min-width:0;margin:0 0 0 2px;font-size:18px;line-height:24px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#home .hb{flex:none;height:calc(52px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 2px 0 14px;display:flex;align-items:center;gap:0;background:var(--bar);color:var(--onbar)}
+#home .hb h1{flex:1;min-width:0;margin:0;font-size:18px;line-height:24px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #home .hb button{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex:none;color:var(--onbar);transition:background .15s}
 #home .hb button:active{background:var(--hov)}
 #home .hb svg{width:30px;height:30px}#home .hb button:first-child svg{width:32px;height:32px}
@@ -582,6 +582,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 @keyframes hmpop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
 @keyframes hmin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
+#home .ht,#home .hero{animation:none!important}#home .ht{transition:none}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
 #gal .gmh:first-child{padding-top:8px}
 body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint,body.galm #newb,body.galm #sortb{display:none}
