@@ -1796,6 +1796,7 @@ function lsDl(id,name,done,total,speed,st,msg){
 function toggleHidden(quiet){S.hid=!S.hid;try{localStorage.setItem('ls_hidden',S.hid?'1':'0')}catch(e){}
   S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();if(!quiet)toast(S.hid?'Showing hidden files':'Hiding hidden files',1500)}
 function openPrintQueue(pc){
+  setLastPc(pc);
   /* what the print service on a PC is doing: the job being printed, the jobs that still wait (Cancel) and the last finished ones. Needs pcprint.py 22+. */
   try{localStorage.setItem('ls_lastpq',JSON.stringify({id:pc.id,name:pc.name}))}catch(e){}
   let o=document.getElementById('pq');if(!o){o=E('div');o.id='pq';document.body.append(o)}
@@ -1830,7 +1831,19 @@ function openPrintQueue(pc){
   };
   const tick=()=>{if(!alive)return;load().then(()=>{if(alive)tm=setTimeout(tick,2000)})};
   body.append(row('Checking the PC\u2026'));tick()}
+let LASTPC=null;try{LASTPC=JSON.parse(localStorage.getItem('ls_lastpc')||'null')}catch(e){}
+const setLastPc=pc=>{if(!pc||!pc.id)return;LASTPC={id:pc.id,name:pc.name};try{localStorage.setItem('ls_lastpc',JSON.stringify(LASTPC))}catch(e){}};
 function openPcScreen(pc){
+  if(!pc){   /* no PC given (side drawer): the last PC used, the only device, or a short list to pick from */
+    const ps=peersSorted().filter(p=>p.ok!==false),last=LASTPC&&S.peers.find(p=>p.id===LASTPC.id);
+    if(last)return openPcScreen(last);if(ps.length===1)return openPcScreen(ps[0]);
+    let o=document.getElementById('pcs');if(!o){o=E('div');o.id='pcs';document.body.append(o)}
+    o.textContent='';o.style.display='flex';const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+    const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close');cb.onclick=close;hd.append(E('h3','','PC screen'),cb);card.append(E('div','handle'),hd);
+    if(!ps.length)card.append(E('div','pqs','No device is online. Open the PC screen from a printer\u2019s print dialog, or wait until the PC shows up.'));
+    ps.forEach(p=>{const r=E('div','set'),t=E('div','t');t.append(E('b','',p.name));r.append(t);r.onclick=()=>openPcScreen(p);card.append(r)});
+    o.append(card);return}
+  setLastPc(pc);
   /* read-only mirror of the LANShare Print window on a PC: status line + colour-coded live log. Needs pcprint.py 28+. */
   let o=document.getElementById('pcs');if(!o){o=E('div');o.id='pcs';document.body.append(o)}
   o.textContent='';o.style.display='flex';
@@ -2715,7 +2728,7 @@ async function doPrint(preset,cx){
   const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
   const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
   try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-    const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
+    setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsPrintShared=async(names,priv)=>{
@@ -2930,6 +2943,8 @@ function lvFeed(id,j){
   const L=LVS;if(L.id!==id)return false;   // another job already owns the card: this one only uses the bottom bar
   const pct=Math.floor(j.done*100/Math.max(j.total,1)),verb=((j.label||'Working').split(/[\s:]/)[0]||'Working');
   (j.log||[]).forEach(s=>lvLine(L,s[0],s.slice(2)));
+  if(!L.pcb&&/^Print/.test(j.label||'')&&LASTPC){   /* print job: shortcut to the PC's output window */
+    const b=E('button','tbtn','PC screen');b.onclick=()=>{try{L.hide.onclick()}catch(e){}openPcScreen(LASTPC)};L.row.insertBefore(b,L.hide);L.pcb=b}
   if(j.logn!=null)L.n=j.logn;
   const near=L.list.scrollHeight-L.list.scrollTop-L.list.clientHeight<40;if(near)L.list.scrollTop=L.list.scrollHeight;
   L.h.textContent=verb;L.pc.textContent=pct+'%';L.fill.style.width=pct+'%';
@@ -3310,6 +3325,7 @@ function drawerRender(){
       bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Removes all quick folders.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
+    bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
