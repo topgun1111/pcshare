@@ -28,6 +28,11 @@ import com.lanshare.app.core.SNode
 class StoragePie(ctx: Context) : View(ctx) {
     var onTap: ((SNode) -> Unit)? = null
 
+    /** Tap on the hole while [canUp] (the open folder has a parent): the screen goes one folder up. */
+    var onCenter: (() -> Unit)? = null
+    var canUp = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+
     var colBg = Color.WHITE
     var colFg = 0xFF161616.toInt()
     var colDim = 0xFF5F5F5F.toInt()
@@ -289,6 +294,10 @@ class StoragePie(ctx: Context) : View(ctx) {
         tp.typeface = Typeface.DEFAULT; tp.color = colDim; tp.textSize = small
         canvas.drawText(fit(name, maxW), cx, cy - big * 0.75f, tp)
         canvas.drawText(fit(sub, maxW), cx, cy + big * 0.35f + small * 1.6f, tp)
+        if (canUp && k == null) {                                   // hint: the hole is a "back" button
+            tp.color = colAcc; tp.typeface = Typeface.DEFAULT_BOLD
+            canvas.drawText(fit("\u2191 up", maxW), cx, cy + big * 0.35f + small * 3.3f, tp)
+        }
     }
 
     /** "12.3%" ("<0.1%" for tiny shares). */
@@ -330,6 +339,10 @@ class StoragePie(ctx: Context) : View(ctx) {
     /** Slice under the point (ring only). The pulled-out slice is tested at its shifted position first; "smaller items" is not tappable. */
     private fun hit(px: Float, py: Float) {
         if (n == 0 || prog < 1f) return
+        run {
+            val ddx = px - cx; val ddy = py - cy
+            if (Math.sqrt((ddx * ddx + ddy * ddy).toDouble()) < rIn - dp(4f)) { if (canUp) onCenter?.invoke(); return }
+        }
         var found = -1
         for (i in 0 until n) {
             val k = nd[i]

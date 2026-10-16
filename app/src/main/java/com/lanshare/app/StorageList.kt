@@ -148,19 +148,44 @@ class StorageList(ctx: Context) : ListView(ctx) {
         return if (n.cat.coerceIn(0, SCat.COUNT - 1) == cat) n.size else 0L
     }
 
+    /** Sort order of the rows: 0 size (largest first, the scan's own order), 1 name, 2 file count, 3 type, 4 size (smallest first). */
+    private var sort = 0
+    private var query = ""
+
+    fun setSort(m: Int) {
+        if (m == sort) return
+        sort = m; selNode = null
+        rebuild()
+    }
+
+    /** Only rows whose name contains [q] (case-insensitive; empty = all). The "small files" row is hidden while a query is active. */
+    fun setQuery(q: String) {
+        if (q == query) return
+        query = q; selNode = null
+        rebuild()
+    }
+
+    private fun typeKey(n: SNode) = if (n.dir) 0 else 1 + n.cat.coerceIn(0, SCat.COUNT - 1)
+
     private fun rebuild() {
         setBackgroundColor(colBg)
         if (multi || checked.isNotEmpty()) { multi = false; checked.clear(); onMulti?.invoke() }   // new rows: ticks are void
-        if (cat < 0) {
-            kids = src
-            parentSize = if (flat) flatTotal else srcRoot?.size ?: 0L
-        } else {
-            val l = ArrayList<SNode>()
-            for (k in src) if (!k.agg && rowSize(k) > 0) l.add(k)
-            if (!flat) l.sortByDescending { rowSize(it) }
-            kids = l.toTypedArray()
-            parentSize = if (flat) flatTotal else srcRoot?.let { r -> r.cats?.let { if (cat < it.size) it[cat] else 0L } } ?: 0L
+        val l = ArrayList<SNode>(src.size)
+        for (k in src) {
+            if (cat >= 0 && (k.agg || rowSize(k) <= 0)) continue
+            if (query.isNotEmpty() && (k.agg || !k.name.contains(query, ignoreCase = true))) continue
+            l.add(k)
         }
+        when (sort) {
+            1 -> l.sortWith(compareBy<SNode>({ it.agg }, { it.name.lowercase() }))
+            2 -> l.sortWith(compareBy<SNode>({ it.agg }, { -(if (it.dir) it.files else 1L) }, { -rowSize(it) }))
+            3 -> l.sortWith(compareBy<SNode>({ it.agg }, { typeKey(it) }, { -rowSize(it) }))
+            4 -> l.sortWith(compareBy<SNode>({ it.agg }, { rowSize(it) }))
+            else -> if (cat >= 0 && !flat) l.sortByDescending { rowSize(it) }
+        }
+        kids = l.toTypedArray()
+        parentSize = if (cat < 0) (if (flat) flatTotal else srcRoot?.size ?: 0L)
+        else (if (flat) flatTotal else srcRoot?.let { r -> r.cats?.let { if (cat < it.size) it[cat] else 0L } } ?: 0L)
         adapterImpl.notifyDataSetChanged()
         setSelection(0)
     }
@@ -305,7 +330,9 @@ class StorageList(ctx: Context) : ListView(ctx) {
     }
 
     companion object {
+        /** Sort menu entries, index = [setSort] mode. */
+        val SORT_LABELS = arrayOf("Size (largest)", "Name (A\u2013Z)", "Files (most)", "Type", "Size (smallest)")
         /** Category names, SCat order: other img vid aud doc arc app. */
-        private val LABELS = arrayOf("Other", "Images", "Video", "Audio", "Documents", "Archives", "Apps")
+        val LABELS = arrayOf("Other", "Images", "Video", "Audio", "Documents", "Archives", "Apps")
     }
 }

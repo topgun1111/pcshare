@@ -21,6 +21,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -73,6 +77,10 @@ class StorageActivity : Activity() {
     private var selBar: LinearLayout? = null   // part 9a: bar shown instead of the info line while rows are ticked
     private var selTv: TextView? = null
     private var irRow: LinearLayout? = null    // the info line + action button row
+    private var sortMode = 0                   // StorageList sort (kept across rebuilds)
+    private var query = ""                     // name filter of the List / Largest tabs (cleared when another folder is opened)
+    private var qEt: EditText? = null
+    private var sortBtn: TextView? = null
     // part 9b
     private var volPath: String? = null        // absolute path of the OTHER volume (SD card / USB) being analyzed; null = the main storage. Only used while vpath == "/"
     private var volName = ""
@@ -542,6 +550,7 @@ class StorageActivity : Activity() {
             actBtn = act
             val tm = StoragePie(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc
+                onCenter = { cur?.parent?.let { showNode(it) } }       // tap on the hole = one folder up
                 onTap = { nd ->
                     val again = nd === lastTm          // second tap on the same tile = open (folder) / details
                     lastTm = nd
@@ -565,6 +574,7 @@ class StorageActivity : Activity() {
             }
             tmV = tm; lsV = ls; tpV = tp
             tm.hl = hl; ls.setFilter(hl); tp.setFilter(hl)
+            ls.setSort(sortMode); tp.setSort(sortMode); ls.setQuery(query); tp.setQuery(query)
             val views = FrameLayout(this)
             views.addView(tm, FrameLayout.LayoutParams(-1, -1))
             views.addView(ls, FrameLayout.LayoutParams(-1, -1))
@@ -585,6 +595,28 @@ class StorageActivity : Activity() {
                 sw.addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (i > 0) leftMargin = dp(8) })
             }
             wrap.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // tools row: name filter + sort (List / Largest tabs), report (all tabs)
+            val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(12), dp(6)) }
+            val et = EditText(this).apply {
+                hint = "Filter by name"; textSize = 14f; setTextColor(cFg); setHintTextColor(cDim); setSingleLine(true)
+                inputType = InputType.TYPE_CLASS_TEXT; setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(cCard, 10f); setText(query)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                    override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                    override fun afterTextChanged(s: Editable?) {
+                        val q = s?.toString()?.trim() ?: ""
+                        if (q == query) return
+                        query = q; lsV?.setQuery(q); tpV?.setQuery(q)
+                    }
+                })
+            }
+            qEt = et
+            tools.addView(et, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val sb = barBtn("", cCard, cFg) { chooseSort() }
+            sortBtn = sb
+            tools.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            tools.addView(barBtn("Report", cCard, cFg) { shareReport() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            wrap.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             wrap.addView(views, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { setMargins(dp(8), 0, dp(8), 0) })
             val ir = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(6), dp(12), dp(8)) }
             ir.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -616,6 +648,8 @@ class StorageActivity : Activity() {
     private fun showNode(n: SNode) {
         cur = n; lastTm = null
         exitMulti()
+        if (query.isNotEmpty()) qEt?.setText("")                 // the name filter belongs to the folder it was typed in
+        tmV?.canUp = n.parent != null
         tmV?.setRoot(n); lsV?.setRoot(n)
         val atRoot = n === curScan?.root
         volCard.visibility = if (atRoot && !compact) View.VISIBLE else View.GONE      // room for the treemap when drilled in
@@ -636,6 +670,7 @@ class StorageActivity : Activity() {
         tpV?.visibility = if (m == 2) View.VISIBLE else View.GONE
         for (i in 0..2) segB[i]?.let { paintSeg(it, i == m) }
         lastTm = null
+        paintTools()
         paintCats()
         setInfo(null)
     }
@@ -995,6 +1030,58 @@ class StorageActivity : Activity() {
     }
 
     /** Back goes up one folder; at the scan root (or while scanning) it leaves the screen. */
+    /** Filter box + sort button only on the list tabs. */
+    private fun paintTools() {
+        val list = mode != 0
+        qEt?.visibility = if (list) View.VISIBLE else View.GONE
+        sortBtn?.visibility = if (list) View.VISIBLE else View.GONE
+        sortBtn?.text = "\u21C5 " + StorageList.SORT_LABELS[sortMode]
+    }
+
+    private fun chooseSort() {
+        AlertDialog.Builder(this).setTitle("Sort by")
+            .setSingleChoiceItems(StorageList.SORT_LABELS, sortMode) { dlg, i ->
+                sortMode = i; lsV?.setSort(i); tpV?.setSort(i); paintTools(); dlg.dismiss()
+            }.show()
+    }
+
+    /** Plain-text report of the open folder (size, categories, biggest items, biggest files of the scan) through the share sheet. */
+    private fun shareReport() {
+        val c = cur ?: return
+        val sc = curScan
+        val where = subTv.text.toString() + (if (c.parent == null) "" else c.path().let { if (it == "/") "" else it })
+        val sb = StringBuilder()
+        sb.append("Storage report\n").append(where).append('\n')
+        sb.append(fmt(c.size)).append(" \u00b7 ").append(c.files).append(" files \u00b7 ").append(c.folders).append(" folders\n")
+        val end = sc?.t1?.takeIf { it > 0L } ?: System.currentTimeMillis()
+        sb.append(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(end))).append("\n\n")
+        c.cats?.let { cs ->
+            sb.append("By type\n")
+            for (i in 0 until Math.min(cs.size, SCat.COUNT)) if (cs[i] > 0)
+                sb.append("  ").append(StorageList.LABELS[i]).append(": ").append(fmt(cs[i])).append(" (")
+                    .append(String.format(java.util.Locale.US, "%.1f", cs[i] * 100.0 / Math.max(1L, c.size))).append("%)\n")
+            sb.append('\n')
+        }
+        sb.append("Biggest items\n")
+        var k = 0
+        for (n in c.kids) {
+            if (k >= 25) break
+            k++
+            sb.append("  ").append(fmt(n.size)).append("  ")
+                .append(if (n.agg) n.files.toString() + " small files" else n.name + (if (n.dir) "/" else "")).append('\n')
+        }
+        sc?.top?.let { top ->
+            if (top.isNotEmpty()) {
+                sb.append("\nLargest files\n")
+                for (n in top.take(15)) sb.append("  ").append(fmt(n.size)).append("  ").append(n.path()).append('\n')
+            }
+        }
+        try {
+            val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Storage report").putExtra(Intent.EXTRA_TEXT, sb.toString())
+            startActivity(Intent.createChooser(i, "Share report"))
+        } catch (_: Throwable) { toast("Nothing can share the report") }
+    }
+
     override fun onBackPressed() {
         val up = cur?.parent
         if (multiList() != null) exitMulti()                                  // part 9a: Back leaves select mode first
