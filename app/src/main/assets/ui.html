@@ -205,6 +205,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc.sel .ck{display:block}
 #gal.selm .gc:not(.sel)::after{content:'';position:absolute;top:7px;left:7px;width:24px;height:24px;box-sizing:border-box;border-radius:50%;border:2px solid #fff;background:#0003;box-shadow:0 0 4px #0008;z-index:2;pointer-events:none}
 #gal .gb{display:none;flex:none;margin:8px 10px calc(10px + env(safe-area-inset-bottom));padding:6px 4px;background:var(--cont);border:1px solid var(--bd);border-radius:26px;box-shadow:0 6px 24px #0005}
+#gal .gpst{display:none;flex:none;align-items:center;gap:8px;margin:8px 10px calc(10px + env(safe-area-inset-bottom));padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#gal .gpst span{flex:1;min-width:0}#gal .gpst .ibtn{width:36px;height:36px}#gal.selm .gpst{display:none!important}
 #gal.selm .gb{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:2px 0;animation:gbup .18s ease-out}
 #gal .gb .ib{padding:4px 0 2px}#gal .gb .ib .ii{background:var(--hov)}#gal .gb .ib.dng .ii{background:color-mix(in srgb,var(--err) 16%,transparent)}
 #gal .isb{padding:4px 12px 10px;display:flex;flex-direction:column;gap:10px}
@@ -1268,7 +1269,7 @@ function mkAlbum(i,P0){
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
-function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;GCX=null}
+function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;GCX=null}
 /* move-to-album picker: existing albums of the same kind (pictures / videos) + "New album"; resolves the target folder path or null */
 function galPick(a){return new Promise(async res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Move to album'));
@@ -1324,7 +1325,7 @@ function galView(a){
   // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
-  const pb=E('div','gptr');pb.append(E('div'));o.append(hd,sh,pb,sc,gb);
+  const pb=E('div','gptr'),pst=E('div','gpst');pb.append(E('div'));o.append(hd,sh,pb,sc,gb,pst);
   let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>LIST.filter(m=>GS.has(m.name));
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
@@ -1353,6 +1354,19 @@ function galView(a){
       try{const r=await api('POST','/api/rm',{dev:'local',paths:gp()});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
     gb.style.setProperty('--cols',gb.children.length<=5?gb.children.length:Math.ceil(gb.children.length/2))};
+  // copied / cut something and opened this album: a "Paste here" bar (the file browser's own paste bar sits behind this screen); hidden while selecting
+  const pasteUpd=()=>{pst.textContent='';const has=S.clip&&S.clip.paths&&S.clip.paths.length;if(!has){pst.style.display='none';return}
+    pst.style.display='flex';
+    pst.append(E('span','',(S.clip.op==='cut'?'Cut ':'Copied ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
+    const pbn=E('button','tbtn fill','Paste here');
+    pbn.onclick=async()=>{try{const cf=await askConflicts('local',a.path,S.clip.paths,S.clip.dev);if(!cf)return;
+      const r=await api('POST','/api/paste',{dev:'local',dir:a.path,conflict:cf});watchJob(r.job);
+      if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
+      if(o._for===tok)reload()}catch(e){toast('\u26a0 '+e.message,5000)}};
+    const xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Clear clipboard');
+    xb.onclick=async()=>{try{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}catch(e){}};
+    pst.append(pbn,xb)};
+  o._pst=pasteUpd;pasteUpd();
   api('GET','/api/ls?dev=local&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
     const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid'))).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
@@ -2223,6 +2237,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
   {const n=b.children.length;b.style.setProperty('--cols',n<=5?Math.max(n,1):Math.ceil(n/2))}   // more than 5 actions: two rows
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
   document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
+  try{const g=$('#gal');if(g&&g._pst)g._pst()}catch(e){}   // an album is open: refresh its paste bar too
   try{nlChPush()}catch(e){}}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
