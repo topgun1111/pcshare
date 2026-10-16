@@ -11,10 +11,12 @@ import android.graphics.drawable.GradientDrawable
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -32,15 +34,18 @@ import com.lanshare.app.core.SCat
 import com.lanshare.app.core.SNode
 import com.lanshare.app.core.Scan
 import com.lanshare.app.core.StorageScan
+import com.lanshare.app.core.StorageStore
+import com.lanshare.app.core.Volumes
 import com.lanshare.app.core.vbase
 import com.lanshare.app.core.vjoin
 import com.lanshare.app.core.vnorm
 import com.lanshare.app.ops.JobOverlay
+import java.io.File
 
 /**
  * Storage Analyzer, part 3 = the screen shell (part 4 added the treemap, part 5 the size list + Treemap / List switch in the done state, part 6 the navigation: drill-in, breadcrumb, Back goes up, details dialog): header (title + volume Used / Free / Total), scan progress with Cancel,
- * and a summary of the finished scan. Part 7 added the file-type bar (stacked bar + chips: tap = highlight in the treemap / filter in the lists) and the third tab "Largest" (Scan.top). Part 8a added the non-destructive actions (open, share, show in the file manager: [StorageActions], rows in the details dialog, "File manager" button for the open folder); part 8b added deleting a FILE (confirmation, move to the recycle bin on a worker thread, the tree patched in place by [StorageScan.removeFile], views refreshed: [confirmDelete] / [deleteFile] / [afterDelete]); folders follow in part 8c, the rest in part 9
- * (see HANDOVER_STORAGE_ANALYZER.md); [content] is the area they will fill.
+ * and a summary of the finished scan. Part 7 added the file-type bar (stacked bar + chips: tap = highlight in the treemap / filter in the lists) and the third tab "Largest" (Scan.top). Part 8a added the non-destructive actions (open, share, show in the file manager: [StorageActions], rows in the details dialog, "File manager" button for the open folder); part 8b added deleting a FILE (confirmation, move to the recycle bin on a worker thread, the tree patched in place by [StorageScan.removeFile], views refreshed: [confirmDelete] / [deleteNode] / [afterDelete]); part 8c added deleting a FOLDER ([StorageScan.removeNode]); part 9a added the unreadable-part warning and multi-select delete (long-press in the List / Largest tab, [deleteMany]); part 9b added the whole-storage / robustness work (System / other explanation, All files access banner, SD card / USB volumes, saved last result, rescan polish, scan progress bubble); polish + device test in part 10
+ * (see HANDOVER_STORAGE_ANALYZER.md); [content] is the area they filled.
  *
  * Opened from the storage pill of the path bar (ui.html -> LSAndroid.openStorage(path)): path "/" = whole main storage,
  * anything else = that folder (recursive). Reads [StorageScan] directly (no HTTP); the same scan objects the /api/sscan* routes use.
@@ -62,6 +67,19 @@ class StorageActivity : Activity() {
     private var lastTm: SNode? = null   // treemap: node tapped last (second tap on the same node = open / details)
     private var selNode: SNode? = null  // node described in the info line
     private var deleting = false        // part 8b: a delete runs on its worker thread (a second one waits)
+    private var selBar: LinearLayout? = null   // part 9a: bar shown instead of the info line while rows are ticked
+    private var selTv: TextView? = null
+    private var irRow: LinearLayout? = null    // the info line + action button row
+    // part 9b
+    private var volPath: String? = null        // absolute path of the OTHER volume (SD card / USB) being analyzed; null = the main storage. Only used while vpath == "/"
+    private var volName = ""
+    private var vols: List<Volumes.Vol> = emptyList()
+    private var attachSeq = 0                  // bumped by every attach(): an answer of an older one (saved result loading) is ignored
+    private var rescanBtn: Button? = null
+    private var accessBar: LinearLayout? = null
+    private var volScroll: HorizontalScrollView? = null
+    private var volRow: LinearLayout? = null
+    private var pHint: TextView? = null
 
     // palette
     private var cBg = Color.WHITE; private var cFg = 0xFF161616.toInt(); private var cDim = 0xFF5F5F5F.toInt()
@@ -111,6 +129,9 @@ class StorageActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         vpath = vnorm(b?.getString(X_PATH) ?: intent.getStringExtra(X_PATH) ?: "/")
+        vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
+        val wantVol = b?.getString(X_VOL) ?: intent.getStringExtra(X_VOL)
+        if (vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
         night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         if (night) { cBg = 0xFF1E1E1E.toInt(); cFg = 0xFFF2F2F2.toInt(); cDim = 0xFFB0B0B0.toInt(); cLine = 0xFF444444.toInt(); cCard = 0xFF2B2B2B.toInt(); cAcc = 0xFFFF8A3D.toInt(); cErr = 0xFFEF5350.toInt() }
         window.statusBarColor = cBg
@@ -122,14 +143,20 @@ class StorageActivity : Activity() {
         }
         buildUi()
         setContentView(rootView)
-        JobOverlay.install(this)
+        JobOverlay.install(this, StorageScan.JOB_PREFIX)    // the scan's own bubble is hidden here: this screen shows the progress itself
+        paintAccess()
         attach(rescan = false)
     }
 
-    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString(X_PATH, vpath) }
+    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString(X_PATH, vpath); volPath?.let { o.putString(X_VOL, it) } }
 
     override fun onResume() {
         super.onResume()
+        // part 9b: a volume may have been removed / inserted, the All files access setting may have changed (the user comes back from the settings screen)
+        vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
+        if (volPath != null && vols.none { it.path == volPath }) { volPath = null; volName = ""; paintHead(); paintVols(); toast("The SD card / volume is no longer there"); attach(rescan = false); return }
+        paintVols(); paintAccess()
+        scan?.let { sc -> if (sc.limited && !needAccess() && sc.state != "run") { toast("All files access is on now - scanning again"); attach(rescan = true); return } }
         // came back to the screen: show the live state of the scan again (it may have finished while we were away)
         if (scan != null) { shownState = ""; update(); if (scan?.state == "run") { ui.removeCallbacks(tick); ui.post(tick) } }
     }
@@ -153,8 +180,23 @@ class StorageActivity : Activity() {
         subTv = TextView(this).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
         tcol.addView(titleTv); tcol.addView(subTv)
         head.addView(tcol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(Button(this).apply { text = "Rescan"; isAllCaps = false; setOnClickListener { attach(rescan = true) } })
+        rescanBtn = Button(this).apply { text = "Rescan"; isAllCaps = false; setOnClickListener { attach(rescan = true) } }
+        head.addView(rescanBtn)
         rootView.addView(head)
+
+        // part 9b: "All files access" banner (only while the permission is off) and the volume chips (only at the storage root, when an SD card / USB volume is mounted)
+        val ab = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = rounded(cCard, 12f); visibility = View.GONE }
+        ab.addView(TextView(this).apply {
+            text = "All files access is off, so Android hides most folders from this scan and the sizes are far too small."
+            textSize = 13f; setTextColor(cErr)
+        })
+        ab.addView(barBtn("Allow all files access", cAcc, Color.WHITE) { openAccessSettings() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        accessBar = ab
+        rootView.addView(ab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(2), dp(12), dp(6)) })
+        val vr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
+        val vs = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(vr); visibility = View.GONE }
+        volRow = vr; volScroll = vs
+        rootView.addView(vs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // volume card: used bar + Used / Free / Total (moved here from the old spaceInfo sheet)
         val vol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = rounded(cCard, 12f) }
@@ -168,9 +210,83 @@ class StorageActivity : Activity() {
         content = FrameLayout(this)
         rootView.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        titleTv.text = if (vpath == "/") "Storage analyzer" else vbase(vpath)
-        subTv.text = if (vpath == "/") "Whole storage" else vpath
+        paintHead()
+        paintVols()
         fillVolume()
+    }
+
+    // ---------------------------------------------------------------- part 9b: header, volumes, access
+    private fun paintHead() {
+        titleTv.text = if (vpath == "/") "Storage analyzer" else vbase(vpath)
+        subTv.text = if (vpath != "/") vpath else if (volPath != null) volName + " · " + volPath else if (vols.isNotEmpty()) "Internal storage" else "Whole storage"
+    }
+
+    /** One chip per storage volume (Internal storage + every mounted SD card / USB volume); hidden when there is only the main one or a folder is analyzed. */
+    private fun paintVols() {
+        val row = volRow ?: return
+        val sc = volScroll ?: return
+        row.removeAllViews()
+        if (vpath != "/" || vols.isEmpty()) { sc.visibility = View.GONE; return }
+        sc.visibility = View.VISIBLE
+        fun chip(label: String, on: Boolean, fn: () -> Unit) = TextView(this).apply {
+            text = label; textSize = 14f; maxLines = 1; isClickable = true; gravity = Gravity.CENTER
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = rounded(if (on) cAcc else cCard, 16f)
+            setTextColor(if (on) Color.WHITE else cFg)
+            setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
+            setOnClickListener { fn() }
+        }
+        val lp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) } }
+        row.addView(chip("Internal storage", volPath == null) { pickVolume(null) }, lp())
+        for (v in vols) row.addView(chip(v.name, volPath == v.path) { pickVolume(v) }, lp())
+    }
+
+    private fun pickVolume(v: Volumes.Vol?) {
+        val p = v?.path
+        if (p == volPath) return
+        volPath = p; volName = v?.name ?: ""
+        curScan = null; cur = null; selNode = null; lastTm = null; pendingPath = null
+        exitMulti()
+        paintHead(); paintVols()
+        attach(rescan = false)
+    }
+
+    /** All files access (Android 11+) is off: the scan only sees media and this app's files. */
+    private fun needAccess() = Core.storageOk == false
+
+    private fun paintAccess() { accessBar?.visibility = if (needAccess()) View.VISIBLE else View.GONE }
+
+    private fun openAccessSettings() {
+        try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) }
+        catch (_: Throwable) {
+            try { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            catch (e: Throwable) { toast("Cannot open the settings: " + com.lanshare.app.core.errText(e)) }
+        }
+    }
+
+    /** The volume that is analyzed at the storage root: the chosen SD card / USB volume, else the main storage. */
+    private fun volRoot(): File = volPath?.let { File(it) } ?: Core.local.root
+
+    /** Folder that is scanned. */
+    private fun scanDir(): File = if (vpath == "/" && volPath != null) File(volPath!!) else Core.local.real(vpath)
+
+    /** Real file of a node of the current scan (below the other volume when one is chosen). */
+    private fun realOf(n: SNode): File {
+        val vp = volPath
+        return if (vpath == "/" && vp != null) File(vp, n.path().trimStart('/')) else Core.local.real(vjoin(vpath, n.path()))
+    }
+
+    private fun volBase(): File? = if (vpath == "/") volPath?.let { File(it) } else null
+
+    /** "3 h ago" for a scan older than a minute and a half, else "". */
+    private fun ageText(s: Scan): String {
+        val a = System.currentTimeMillis() - s.t1
+        return when {
+            a < 90_000L -> ""
+            a < 3_600_000L -> (a / 60_000L).toString() + " min ago"
+            a < 86_400_000L -> (a / 3_600_000L).toString() + " h ago"
+            else -> (a / 86_400_000L).toString() + " d ago"
+        }
     }
 
     private fun rounded(c: Int, r: Float) = GradientDrawable().apply { setColor(c); cornerRadius = dpf(r) }
@@ -186,7 +302,7 @@ class StorageActivity : Activity() {
     /** Used / Free / Total of the main storage volume (not of the folder: the pill's old sheet showed the same). */
     private fun fillVolume() {
         try {
-            val r = Core.local.root
+            val r = volRoot()
             val total = r.totalSpace; val free = r.usableSpace
             if (total <= 0) { volTv.text = "No size information available."; volBar.progress = 0; return }
             val used = (total - free).coerceAtLeast(0L)
@@ -198,21 +314,22 @@ class StorageActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- scan
-    /** Attach to the running / newest finished scan of this folder, or start one ([rescan] = ignore a finished one). */
+    /**
+     * Attach to the running scan of this folder, else the newest finished one (in memory, else the copy saved on disk by [StorageStore]),
+     * else start a new one. [rescan] = ignore finished / saved results (a running scan is still reused). Part 9b: a result made while
+     * "All files access" was off is not reused once it is on.
+     */
     private fun attach(rescan: Boolean) {
         ui.removeCallbacks(tick)
+        val seq = ++attachSeq
         pendingPath = if (rescan && shownState == "done") cur?.path() else null
         try {
             if (vpath.contains('!')) throw IllegalArgumentException("not inside an archive")
-            val dir = Core.local.real(vpath)
-            val whole = vpath == "/"
+            val dir = scanDir()
             var s = StorageScan.running(dir)
-            if (s == null && !rescan) s = StorageScan.latest(dir)
-            if (s == null) {
-                var used = 0L
-                if (whole) try { val r = Core.local.root; used = maxOf(0L, r.totalSpace - r.usableSpace) } catch (_: Exception) {}   // only feeds the percentage
-                s = StorageScan.start(dir, if (whole) "" else vbase(vpath), used)
-            }
+            if (s == null && !rescan) s = StorageScan.latest(dir)?.takeUnless { it.limited && !needAccess() }
+            if (s == null && !rescan && StorageStore.has(dir)) { loadSaved(dir, seq); return }
+            if (s == null) s = startScan(dir)
             scan = s
         } catch (e: Throwable) {
             scan = null
@@ -225,9 +342,37 @@ class StorageActivity : Activity() {
         if (scan?.state == "run") ui.post(tick)
     }
 
+    /** Starts a new scan of [dir]; at the storage root the used size of the volume feeds the percentage. */
+    private fun startScan(dir: File): Scan {
+        val whole = vpath == "/"
+        var used = 0L
+        if (whole) try { val r = volRoot(); used = maxOf(0L, r.totalSpace - r.usableSpace) } catch (_: Exception) {}
+        return StorageScan.start(dir, if (whole) volName else vbase(vpath), used)
+    }
+
+    /** Read the saved result of [dir] off the main thread; a result that is missing / unreadable / made without All files access (and the access is on now) starts a new scan instead. */
+    private fun loadSaved(dir: File, seq: Int) {
+        scan = null; shownState = "load"
+        showBusy("Loading the last result…")
+        Thread({
+            val l = try { StorageStore.load(dir) } catch (_: Throwable) { null }
+            ui.post {
+                if (seq != attachSeq || isDestroyed || isFinishing) return@post
+                var sc: Scan? = null
+                if (l != null && !(l.limited && !needAccess())) { StorageScan.adopt(l); sc = l }
+                if (sc == null) sc = try { startScan(dir) }
+                    catch (e: Throwable) { showMessage("Cannot analyze this folder", com.lanshare.app.core.errText(e), canRetry = false); return@post }
+                scan = sc; shownState = ""
+                fillVolume(); update()
+                if (sc.state == "run") ui.post(tick)
+            }
+        }, "sscan-load").also { it.isDaemon = true }.start()
+    }
+
     private fun update() {
         val s = scan ?: return
         val st = s.state
+        rescanBtn?.visibility = if (st == "run") View.GONE else View.VISIBLE      // Cancel is in the content while it runs
         if (st != shownState) {
             shownState = st
             when (st) {
@@ -251,6 +396,11 @@ class StorageActivity : Activity() {
         col.addView(pCount)
         pCur = TextView(this).apply { textSize = 12f; setTextColor(cDim); gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setPadding(0, dp(8), 0, 0) }
         col.addView(pCur)
+        pHint = TextView(this).apply {
+            textSize = 12f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0)
+            text = "You can leave this screen: the scan keeps running and shows as a progress bubble and in the notification."
+        }
+        col.addView(pHint)
         col.addView(Button(this).apply {
             text = "Cancel"; isAllCaps = false
             setOnClickListener { scan?.let { StorageScan.cancel(it.id) }; isEnabled = false; text = "Cancelling…"; ui.postDelayed({ update() }, 150) }
@@ -262,7 +412,7 @@ class StorageActivity : Activity() {
         val pc = s.percent()
         pBar?.let { if (pc >= 0) { it.isIndeterminate = false; it.progress = pc } else it.isIndeterminate = true }
         pTitle?.text = if (pc >= 0) "Scanning… $pc%" else "Scanning…"
-        pCount?.text = s.files.get().toString() + " files · " + s.dirs.get() + " folders · " + fmt(s.bytes.get())
+        pCount?.text = s.files.get().toString() + " files · " + s.dirs.get() + " folders · " + fmt(s.bytes.get()) + " · " + (s.millis() / 1000) + " s"
         pCur?.text = s.cur
         // the scan may have ended between two ticks: the next update() switches the state
         if (s.state != "run") ui.post { update() }
@@ -274,8 +424,23 @@ class StorageActivity : Activity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
         col.addView(TextView(this).apply { this.text = title; textSize = 18f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
         col.addView(TextView(this).apply { this.text = text; textSize = 14f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) })
-        if (canRetry) col.addView(Button(this).apply { this.text = "Scan again"; isAllCaps = false; setOnClickListener { attach(rescan = true) } },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+        fun btn(t: String, fn: () -> Unit) = col.addView(Button(this).apply { this.text = t; isAllCaps = false; setOnClickListener { fn() } },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        // part 9b: after Cancel / an error the earlier finished result of this folder is still in memory: offer it instead of leaving nothing
+        val st = scan?.state
+        val prev = if (st == "cancel" || st == "error") try { StorageScan.latest(scanDir()) } catch (_: Throwable) { null } else null
+        if (prev != null) btn("Show the previous result" + ageText(prev).let { if (it.isEmpty()) "" else " ($it)" }) { scan = prev; shownState = ""; fillVolume(); update() }
+        if (canRetry) btn("Scan again") { attach(rescan = true) }
+        if (needAccess()) btn("Allow all files access") { openAccessSettings() }
+        content.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+    }
+
+    /** Part 9b: spinner + text while the saved result is read from disk. */
+    private fun showBusy(text: String) {
+        content.removeAllViews(); volCard.visibility = View.VISIBLE
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(40), dp(24), dp(24)) }
+        col.addView(ProgressBar(this).apply { isIndeterminate = true })
+        col.addView(TextView(this).apply { this.text = text; textSize = 14f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
         content.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
     }
 
@@ -292,23 +457,26 @@ class StorageActivity : Activity() {
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(4)) }
         dBody = col
-        sumSize = TextView(this).apply { textSize = 28f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD) }
+        sumSize = TextView(this).apply { textSize = if (compact) 22f else 28f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD) }
         sumCnt = TextView(this).apply { textSize = 14f; setTextColor(cDim); setPadding(0, 0, 0, dp(4)) }
         col.addView(sumSize); col.addView(sumCnt)
         // notes about the whole scan: only shown while the scan root is open (saves room when drilled in)
         val nb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         notesBox = nb
         if (vpath == "/") {
-            // whole storage: what the scan could not read = used minus scanned (part 9 explains it properly)
-            val gap = s.usedBytes - total
-            if (s.usedBytes > 0 && gap > 0) nb.addView(note("System / other: " + fmt(gap) + " (used space the scan could not see)"))
+            // whole storage / volume: what the scan could not see = used minus scanned (items moved to the bin in this screen are added back: they are still on the volume)
+            val scanned = total + s.removed
+            val gap = s.usedBytes - scanned
+            if (s.usedBytes > 0 && gap > 0) nb.addView(note("System / other: " + fmt(gap) + " (" + Math.round(gap * 100.0 / s.usedBytes) + "% of the used space) · what is this?", true) { sysDialog(s, scanned, gap) })
         }
+        if (s.truncated) nb.addView(note("Very large result: to save memory, the files of some folders are only counted as one \"small files\" block. All sizes and totals are still exact."))
         if (s.denied.get() > 0) nb.addView(note(s.denied.get().toString() + " folder(s) could not be read" + (if (s.deniedSample.isNotEmpty()) ", e.g. " + s.deniedSample.first() else "")))
         if (root == null || total == 0L) nb.addView(note("This folder is empty."))
         col.addView(nb)
         wrap.addView(col, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        volCard.visibility = View.VISIBLE
+        volCard.visibility = if (compact) View.GONE else View.VISIBLE      // part 10: small / split screen -> the treemap gets the room
         tmV = null; lsV = null; tpV = null; catBox = null; infoTv = null; actBtn = null; crumbRow = null; crumbScroll = null
+        selBar = null; selTv = null; irRow = null
         if (root != null && total > 0L) {
             // breadcrumb: Storage > DCIM > Camera (tap a part = go there)
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), 0, dp(8), 0) }
@@ -327,7 +495,7 @@ class StorageActivity : Activity() {
                 setTypeface(typeface, Typeface.BOLD); visibility = View.GONE
                 setOnClickListener {
                     val n = selNode
-                    if (n == null) { cur?.let { c -> StorageActions.reveal(this@StorageActivity, StorageActions.folderOf(vpath, c)) } }   // nothing selected: the open folder in the file manager (part 8a)
+                    if (n == null) { if (volPath == null) cur?.let { c -> StorageActions.reveal(this@StorageActivity, StorageActions.folderOf(vpath, c)) } }   // nothing selected: the open folder in the file manager (part 8a)
                     else if (mode == 2) showIn(n) else if (canOpen(n)) showNode(n) else details(n)
                 }
             }
@@ -344,11 +512,15 @@ class StorageActivity : Activity() {
             val ls = StorageList(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); if (canOpen(nd)) showNode(nd) else details(nd) }   // folder = open at once
+                onMulti = { if (lsV?.multi == true) tpV?.endMulti(); paintSelBar() }               // part 9a: long-press = select several
+                canSelect = volPath == null                                                         // part 9b: delete only on the main storage
             }
             // Largest files: the 100 biggest files of the whole scan as a flat list (part 7); a tap = info + details, the button / dialog shows the file in its folder
             val tp = StorageList(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); details(nd) }
+                onMulti = { if (tpV?.multi == true) lsV?.endMulti(); paintSelBar() }
+                canSelect = volPath == null
                 setFlat(s.top, root.size)
             }
             tmV = tm; lsV = ls; tpV = tp
@@ -378,6 +550,15 @@ class StorageActivity : Activity() {
             ir.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             ir.addView(act, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
             wrap.addView(ir, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            irRow = ir
+            // part 9a: selection bar (replaces the info row while rows are ticked): "N selected · size", Cancel, Delete…
+            val sbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(6), dp(12), dp(8)); visibility = View.GONE }
+            selBar = sbar
+            selTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 2 }
+            sbar.addView(selTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            sbar.addView(barBtn("Cancel", cCard, cFg) { exitMulti() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            sbar.addView(barBtn("Delete…", cErr, Color.WHITE) { onDeleteSelected() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            wrap.addView(sbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             showNode(cur ?: root)
             setMode(mode)
         } else paintSummary()
@@ -386,14 +567,18 @@ class StorageActivity : Activity() {
 
     // ---------------------------------------------------------------- navigation (part 6)
     /** A folder with something inside can be opened (empty / unreadable folders, files and the "small files" node cannot). */
+    /** Part 10: short screens (small phone, split screen, landscape) drop the volume card and use a smaller size line. */
+    private val compact: Boolean get() = resources.configuration.screenHeightDp < 640
+
     private fun canOpen(n: SNode) = n.dir && !n.agg && n.kids.isNotEmpty()
 
     /** Show folder [n] (a node of the current scan) in both views; refreshes summary, breadcrumb, info line. */
     private fun showNode(n: SNode) {
         cur = n; lastTm = null
+        exitMulti()
         tmV?.setRoot(n); lsV?.setRoot(n)
         val atRoot = n === curScan?.root
-        volCard.visibility = if (atRoot) View.VISIBLE else View.GONE      // room for the treemap when drilled in
+        volCard.visibility = if (atRoot && !compact) View.VISIBLE else View.GONE      // room for the treemap when drilled in
         notesBox?.visibility = if (atRoot) View.VISIBLE else View.GONE
         paintSummary()
         paintCrumb()
@@ -403,6 +588,7 @@ class StorageActivity : Activity() {
 
     /** Switch the done-state view: 0 treemap, 1 size list, 2 largest files (part 7). */
     private fun setMode(m: Int) {
+        if (m != mode) exitMulti()
         mode = m
         if (m != 2) lastBase = m
         tmV?.visibility = if (m == 0) View.VISIBLE else View.GONE
@@ -494,8 +680,10 @@ class StorageActivity : Activity() {
         val n = cur
         if (n == null || root == null || n === root) {
             sumSize?.text = fmt(root?.size ?: s.bytes.get())
-            sumCnt?.text = (root?.files ?: s.files.get()).toString() + " files · " + (root?.folders ?: s.dirs.get()) + " folders · scanned in " +
-                String.format(java.util.Locale.US, "%.1f", s.millis() / 1000.0) + " s"
+            val took = String.format(java.util.Locale.US, "%.1f", s.millis() / 1000.0)
+            val age = ageText(s)
+            sumCnt?.text = (root?.files ?: s.files.get()).toString() + " files · " + (root?.folders ?: s.dirs.get()) + " folders · " +
+                (if (age.isEmpty()) "scanned in $took s" else "scanned $age (took $took s)")
         } else {
             val pct = if (root.size > 0) String.format(java.util.Locale.US, "%.1f", n.size * 100.0 / root.size) else "0"
             sumSize?.text = fmt(n.size)
@@ -503,7 +691,7 @@ class StorageActivity : Activity() {
         }
     }
 
-    private fun rootLabel() = if (vpath == "/") "Storage" else vbase(vpath)
+    private fun rootLabel() = if (vpath == "/") (if (volPath != null) volName.ifEmpty { "Volume" } else "Storage") else vbase(vpath)
 
     /** Breadcrumb of the open folder: every part but the last is tappable. */
     private fun paintCrumb() {
@@ -538,10 +726,11 @@ class StorageActivity : Activity() {
             val only = if (hl >= 0) "Only " + CAT_NAMES[hl].lowercase() + " shown (tap its chip again to show all). " else ""
             tv.text = only + when (mode) {
                 0 -> "Tap a tile for details, tap it again to open a folder."
-                1 -> "Tap a folder to open it, a file for details."
-                else -> "The 100 largest files of the whole scan. Tap a file for details."
+                1 -> "Tap a folder to open it, a file for details." + (if (volPath == null) " Long-press to select several." else "")
+                else -> "The 100 largest files of the whole scan. Tap a file for details" + (if (volPath == null) ", long-press to select several." else ".")
             }
             if (mode == 2) b.visibility = View.GONE
+            else if (volPath != null) b.visibility = View.GONE                  // part 9b: the file manager only shows the main storage
             else { b.text = "File manager"; b.visibility = View.VISIBLE }      // part 8a: shows the open folder in the file manager
             return
         }
@@ -556,8 +745,7 @@ class StorageActivity : Activity() {
         val s = curScan ?: return
         val rootSize = s.root?.size ?: 0L
         fun pc(v: Long, of: Long) = if (of > 0) String.format(java.util.Locale.US, "%.1f%%", v * 100.0 / of) else "-"
-        val v = vjoin(vpath, n.path())
-        val real = try { Core.local.real(v).absolutePath } catch (_: Throwable) { v }
+        val real = try { realOf(n).absolutePath } catch (_: Throwable) { vjoin(vpath, n.path()) }
         val sb = StringBuilder()
         if (n.agg) {
             sb.append(n.files).append(" small files kept together\n")
@@ -593,14 +781,14 @@ class StorageActivity : Activity() {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }
         if (!n.dir && !n.agg) {
-            act("Open") { StorageActions.realOrToast(this, vpath, n)?.let { StorageActions.open(this, it) } }
-            act("Open with…") { StorageActions.realOrToast(this, vpath, n)?.let { StorageActions.open(this, it, pick = true) } }
-            act("Share") { StorageActions.realOrToast(this, vpath, n)?.let { StorageActions.share(this, it) } }
+            act("Open") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it) } }
+            act("Open with…") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, pick = true) } }
+            act("Share") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.share(this, it) } }
         }
-        act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }
+        if (volPath == null) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
         if (mode == 2 && up != null) act("Show in folder") { showIn(n) }
         else if (up != null && up !== c) act("Open containing folder") { showNode(up) }
-        if (!n.dir && !n.agg) act("Delete…", cErr) { confirmDelete(n) }       // part 8b (folders: part 8c)
+        if (!n.agg && n.parent != null && volPath == null) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
         dlg.show()
     }
 
@@ -609,22 +797,25 @@ class StorageActivity : Activity() {
 
     /** Ask before deleting file [n]; the file only goes to the recycle bin (restorable), like a delete in the file manager. */
     private fun confirmDelete(n: SNode) {
-        if (n.dir || n.agg) return
+        if (n.agg || n.parent == null || volPath != null) return
         val s = curScan ?: return
+        val what = if (n.dir) n.files.toString() + " files · " + n.folders + " folders\n" else ""
+        val dn = if (n.dir) StorageScan.deniedBelow(n) else 0
+        val warn = if (dn > 0) "\nAndroid did not let the scan read " + (if (dn == 1) "one folder" else "$dn folders") + " inside it, so the size shown is only what was scanned; the real size may be larger.\n" else ""
         AlertDialog.Builder(this)
-            .setTitle("Delete this file?")
-            .setMessage(n.name + "\n" + fmt(n.size) + "\n\nIt is moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days. You can restore it from the recycle bin of the file manager.")
-            .setPositiveButton("Delete") { _, _ -> deleteFile(s, n) }
+            .setTitle(if (n.dir) "Delete this folder?" else "Delete this file?")
+            .setMessage(n.name + "\n" + fmt(n.size) + "\n" + what + warn + "\nIt is moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days. You can restore it from the recycle bin of the file manager.")
+            .setPositiveButton("Delete") { _, _ -> deleteNode(s, n) }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    /** Move file [n] of scan [s] into the recycle bin (worker thread; a rename on the same volume, so it is instant), then patch the tree on the main thread. */
-    private fun deleteFile(s: Scan, n: SNode) {
+    /** Move file or folder [n] of scan [s] into the recycle bin (worker thread; a rename on the same volume, so it is instant), then patch the tree on the main thread. */
+    private fun deleteNode(s: Scan, n: SNode) {
         if (deleting) { toast("Another delete is still running"); return }
         val v = StorageActions.virt(vpath, n)
-        if (Bin.inBin(v)) { toast("This file is already in the recycle bin. Restore or empty it from the file manager."); return }
-        if (!Bin.canTrash(v)) { toast("This file cannot be moved to the recycle bin"); return }
+        if (Bin.inBin(v)) { toast("This item is already in the recycle bin. Restore or empty it from the file manager."); return }
+        if (!Bin.canTrash(v)) { toast("This item cannot be moved to the recycle bin"); return }
         deleting = true
         Thread({
             var err: String? = null
@@ -641,21 +832,121 @@ class StorageActivity : Activity() {
         }, "sscan-del").also { it.isDaemon = true }.start()
     }
 
-    /** The file is gone from the storage: patch the tree (also when the screen is closed meanwhile: the scan object is shared), then refresh what is shown. */
-    private fun afterDelete(s: Scan, n: SNode, msg: String) {
-        val near = StorageScan.removeFile(s, n)
+    /** The item is gone from the storage: patch the tree (also when the screen is closed meanwhile: the scan object is shared), then refresh what is shown. */
+    private fun afterDelete(s: Scan, n: SNode, msg: String) = afterDeleteMany(s, listOf(n), msg)
+
+    /** Part 9a: patch the tree for every node of [nodes] (files and folders, none inside another), then refresh the views ONCE. */
+    private fun afterDeleteMany(s: Scan, nodes: List<SNode>, msg: String) {
+        var any = false
+        for (n in nodes) {
+            val near = if (n.dir) StorageScan.removeNode(s, n) else StorageScan.removeFile(s, n)
+            if (near != null) any = true
+        }
         toast(msg)
-        if (near == null || isDestroyed || isFinishing || curScan !== s || shownState != "done") return
+        if (any) StorageStore.saveAsync(s)                                    // part 9b: the saved copy follows the deletes
+        if (!any || isDestroyed || isFinishing || curScan !== s || shownState != "done") return
         val root = s.root ?: return
         selNode = null; lastTm = null
         if (root.size <= 0L) { shownState = ""; update(); return }          // nothing left: the "empty" summary
-        var c = cur ?: root
-        if (!attached(c, root)) c = near                                      // the open folder became empty and was dropped: go to the nearest one left
+        val c = nearestAttached(cur ?: root, root)                           // the open folder may have been deleted / dropped: nearest one left
         val lp = lsV?.firstVisiblePosition ?: 0
         val tp = tpV?.firstVisiblePosition ?: 0
-        showNode(c)                                                           // both folder views, summary, breadcrumb, file-type bar, info line
+        showNode(c)                                                           // both folder views, summary, breadcrumb, file-type bar, info line (also ends select mode)
         tpV?.setFlat(s.top, root.size)                                        // Largest tab (the category filter stays)
         lsV?.setSelection(lp); tpV?.setSelection(tp)                          // keep the scroll position of the lists
+    }
+
+    /** [n] itself when it is still in the tree, else its nearest ancestor that is (the root at worst). */
+    private fun nearestAttached(n: SNode, root: SNode): SNode {
+        var x: SNode = n
+        while (!attached(x, root)) x = x.parent ?: return root
+        return x
+    }
+
+    // ---------------------------------------------------------------- multi-select delete (part 9a)
+    private fun multiList(): StorageList? = if (lsV?.multi == true) lsV else if (tpV?.multi == true) tpV else null
+
+    /** Selection bar instead of the info row while rows are ticked. */
+    private fun paintSelBar() {
+        val bar = selBar ?: return
+        val l = multiList()
+        if (l == null) { bar.visibility = View.GONE; irRow?.visibility = View.VISIBLE; return }
+        val sel = l.checkedNodes()
+        var sz = 0L
+        for (n in sel) sz += n.size
+        selTv?.text = sel.size.toString() + " selected · " + fmt(sz)
+        bar.visibility = View.VISIBLE; irRow?.visibility = View.GONE
+    }
+
+    private fun exitMulti() { lsV?.endMulti(); tpV?.endMulti() }
+
+    private fun barBtn(t: String, bg: Int, fg: Int, fn: () -> Unit) = TextView(this).apply {
+        text = t; textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
+        setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(bg, 10f); setTextColor(fg); setTypeface(typeface, Typeface.BOLD)
+        setOnClickListener { fn() }
+    }
+
+    private fun onDeleteSelected() {
+        val l = multiList() ?: return
+        val s = curScan ?: return
+        val nodes = StorageScan.pruneNested(l.checkedNodes())
+        if (nodes.isEmpty()) return
+        if (nodes.size == 1) confirmDelete(nodes[0]) else confirmDeleteMany(s, nodes)
+    }
+
+    private fun confirmDeleteMany(s: Scan, nodes: List<SNode>) {
+        var size = 0L; var files = 0L; var folders = 0; var dn = 0
+        for (n in nodes) { size += n.size; files += n.files; if (n.dir) { folders++; dn += StorageScan.deniedBelow(n) } }
+        val sb = StringBuilder()
+        for (i in 0 until Math.min(5, nodes.size)) sb.append(nodes[i].name).append('\n')
+        if (nodes.size > 5) sb.append("and ").append(nodes.size - 5).append(" more\n")
+        sb.append('\n').append(fmt(size)).append(" · ").append(files).append(if (files == 1L) " file" else " files")
+        if (folders > 0) sb.append(" · ").append(folders).append(if (folders == 1) " folder selected" else " folders selected")
+        sb.append('\n')
+        if (dn > 0) sb.append("\nAndroid did not let the scan read ").append(if (dn == 1) "one folder" else "$dn folders").append(" inside them, so the size shown is only what was scanned; the real size may be larger.\n")
+        sb.append("\nThey are moved to the recycle bin and kept there for ").append(Bin.KEEP_DAYS).append(" days. You can restore them from the recycle bin of the file manager.")
+        AlertDialog.Builder(this)
+            .setTitle("Delete " + nodes.size + " items?")
+            .setMessage(sb.toString())
+            .setPositiveButton("Delete") { _, _ -> deleteMany(s, nodes) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Move every node of [nodes] (already without nested ones) into the recycle bin one after the other on one worker thread, then patch the tree and refresh once. */
+    private fun deleteMany(s: Scan, nodes: List<SNode>) {
+        if (deleting) { toast("Another delete is still running"); return }
+        if (volPath != null) return
+        val todo = ArrayList<SNode>(); val vs = ArrayList<String>()
+        var skipped = 0
+        for (n in nodes) {
+            val v = StorageActions.virt(vpath, n)
+            if (Bin.inBin(v) || !Bin.canTrash(v)) { skipped++; continue }
+            todo.add(n); vs.add(v)
+        }
+        if (todo.isEmpty()) { toast("These items cannot be moved to the recycle bin"); return }
+        deleting = true
+        Thread({
+            val ok = ArrayList<SNode>()
+            var gone = 0; var failed = 0; var firstErr: String? = null
+            var bytes = 0L
+            for (i in todo.indices) {
+                try {
+                    val f = Core.local.real(vs[i])
+                    if (!f.exists() && !Core.local.isLink(f)) gone++ else { Bin.trash(vs[i]); bytes += todo[i].size }
+                    ok.add(todo[i])
+                } catch (e: Throwable) { failed++; if (firstErr == null) firstErr = com.lanshare.app.core.errText(e) }
+            }
+            ui.post {
+                deleting = false
+                val sb = StringBuilder()
+                if (ok.isNotEmpty()) sb.append("Moved ").append(ok.size - gone).append(" items to the recycle bin (").append(fmt(bytes)).append(")")
+                if (gone > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(gone).append(" already gone")
+                if (skipped > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(skipped).append(" skipped (already in the bin or not allowed)")
+                if (failed > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(failed).append(" failed: ").append(firstErr)
+                if (ok.isEmpty()) toast(sb.toString()) else afterDeleteMany(s, ok, sb.toString())
+            }
+        }, "sscan-del").also { it.isDaemon = true }.start()
     }
 
     /** Is [n] still reachable from [root] (a folder that became empty is dropped from its parent's kids)? */
@@ -671,7 +962,8 @@ class StorageActivity : Activity() {
     /** Back goes up one folder; at the scan root (or while scanning) it leaves the screen. */
     override fun onBackPressed() {
         val up = cur?.parent
-        if (shownState == "done" && mode == 2) setMode(lastBase)           // Largest tab: back to the folder view first
+        if (multiList() != null) exitMulti()                                  // part 9a: Back leaves select mode first
+        else if (shownState == "done" && mode == 2) setMode(lastBase)           // Largest tab: back to the folder view first
         else if (shownState == "done" && up != null) showNode(up) else super.onBackPressed()
     }
 
@@ -695,11 +987,34 @@ class StorageActivity : Activity() {
         b.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
     }
 
-    private fun note(t: String) = TextView(this).apply { text = t; textSize = 13f; setTextColor(cDim); setPadding(0, dp(4), 0, dp(4)) }
+    private fun note(t: String, tap: Boolean = false, fn: (() -> Unit)? = null) = TextView(this).apply {
+        text = t; textSize = 13f; setTextColor(if (tap) cAcc else cDim); setPadding(0, dp(4), 0, dp(4))
+        if (fn != null) { isClickable = true; setOnClickListener { fn() } }
+    }
+
+    /** Part 9b: what "System / other" is, with the numbers it is made of. */
+    private fun sysDialog(s: Scan, scanned: Long, gap: Long) {
+        val sb = StringBuilder()
+        sb.append("Used on this storage: ").append(fmt(s.usedBytes)).append('\n')
+        sb.append("Found by the scan: ").append(fmt(scanned)).append('\n')
+        sb.append("System / other: ").append(fmt(gap)).append("\n\n")
+        sb.append("This is used space the scan cannot see or count: Android itself and its updates, apps' private data and caches, other users or profiles, and the rounding every file gets on the disk (the scan adds up file sizes, the volume counts whole blocks, which matters most with very many small files).\n")
+        if (Build.VERSION.SDK_INT >= 30) sb.append("\nOn Android 11 and newer the folders Android/data and Android/obb belong to the other apps and are closed to every file manager, even with All files access, so what is in them is always part of this number.\n")
+        if (s.limited) sb.append("\nThis scan was made while All files access was off, so most of it is simply hidden. Turn it on and scan again to see more.\n")
+        if (s.denied.get() > 0) {
+            sb.append("\n").append(s.denied.get()).append(if (s.denied.get() == 1) " folder" else " folders").append(" could not be read")
+            val smp = s.deniedSample.toList()
+            if (smp.isNotEmpty()) { sb.append(", for example:\n"); for (p in smp.take(8)) sb.append(p).append('\n') } else sb.append(".\n")
+        }
+        val b = AlertDialog.Builder(this).setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
+        if (needAccess()) b.setNeutralButton("Allow access") { _, _ -> openAccessSettings() }
+        b.show()
+    }
 
     companion object {
         const val X_PATH = "path"
+        const val X_VOL = "vol"          // part 9b: absolute path of an SD card / USB volume to analyze (with path "/")
         private val CAT_NAMES = arrayOf("Other", "Images", "Video", "Audio", "Documents", "Archives", "Apps")
-        fun intent(c: Context, vpath: String): Intent = Intent(c, StorageActivity::class.java).putExtra(X_PATH, vpath)
+        fun intent(c: Context, vpath: String, vol: String? = null): Intent = Intent(c, StorageActivity::class.java).putExtra(X_PATH, vpath).also { if (vol != null) it.putExtra(X_VOL, vol) }
     }
 }
