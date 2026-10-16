@@ -125,6 +125,8 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
     // part 9b
     /** The scan ran while "All files access" was off (Android 11+): most folders were hidden, so the result is only partial. */
     @Volatile var limited = false
+    /** The scan reads the file list of a ZIP / RAR (sizes are the unpacked sizes); [dir] is the archive file itself. Nothing in it can be opened or deleted from the analyzer. */
+    @Volatile var arc = false
     /** The memory guard stopped keeping single files for some folders (they are only counted in the folder's "small files" node; totals stay exact). */
     @Volatile var truncated = false
     /** Result read back from the disk copy ([StorageStore]) instead of scanned in this session. */
@@ -212,6 +214,72 @@ object StorageScan {
         s.pending.incrementAndGet()
         pool.execute { task(s, root, dir) }
         return s
+    }
+
+    /** Starts an "analysis" of the archive at virtual path [av] (e.g. "/Download/a.zip"): the tree is built from the archive's file list, nothing is unpacked. */
+    fun startArchive(av: String, label: String): Scan {
+        evict()
+        val f = Core.local.real(av)
+        val s = Scan(UUID.randomUUID().toString().replace("-", "").take(8), f, label, 0L)
+        s.arc = true
+        all[s.id] = s
+        val root = SNode("", true, null)
+        s.maxNodes = nodeLimit()
+        s.pending.incrementAndGet()
+        Thread(null, {
+            try {
+                val ix = ArcStore.index(Core.local, av)
+                arcFolder(s, ix, "", root)
+            } catch (t: Throwable) {
+                if (s.error == null) s.error = if (t is OutOfMemoryError) "Out of memory" else errText(t)
+                s.cancel = true
+            } finally {
+                if (s.pending.decrementAndGet() == 0) finishAsync(s, root)
+            }
+        }, "sscan-arc", 16L shl 20).also { it.isDaemon = true }.start()
+        return s
+    }
+
+    /** One folder of an archive (key "" = the archive root): same node layout as [task] makes for a real folder. */
+    private fun arcFolder(s: Scan, ix: ArcIndex, key: String, node: SNode) {
+        if (s.cancel) return
+        val entries = ix.kids[key] ?: emptyList<AEntry>()
+        s.dirs.incrementAndGet()
+        val keepMax = if (s.nodes.get() > s.maxNodes || lowMemory()) 0 else FILES_PER_DIR
+        val heap = PriorityQueue<SNode>(keepMax + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }
+        val subs = ArrayList<SNode>()
+        val subKeys = ArrayList<String>()
+        val cats = LongArray(SCat.COUNT)
+        val catN = IntArray(SCat.COUNT)
+        var ownBytes = 0L
+        var ownFiles = 0L
+        for (e in entries) {
+            if (e.dir) { subs.add(SNode(e.name, true, node)); subKeys.add(e.path); continue }
+            val size = maxOf(e.size, 0L)
+            val c = SCat.of(e.name)
+            ownFiles++; ownBytes += size; cats[c] += size; catN[c]++
+            if (size > 0 && keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
+                heap.add(SNode(e.name, false, node).also { it.size = size; it.files = 1; it.cat = c })
+                if (heap.size > keepMax) heap.poll()
+            }
+            if (size > 0) offerTop(s, e.name, node, size, c)
+        }
+        if (keepMax == 0 && ownFiles > 0) s.truncated = true
+        s.files.addAndGet(ownFiles); s.bytes.addAndGet(ownBytes)
+        for (c in 0 until SCat.COUNT) if (catN[c] > 0) s.catF.addAndGet(c, catN[c].toLong())
+        node.size = ownBytes; node.files = ownFiles
+        if (ownFiles > 0) node.cats = cats
+        val kept = heap.size.toLong()
+        var keptBytes = 0L
+        for (k in heap) keptBytes += k.size
+        val restFiles = ownFiles - kept
+        val arr = ArrayList<SNode>(kept.toInt() + 1 + subs.size)
+        arr.addAll(heap)
+        if (restFiles > 0) arr.add(SNode("", false, node).also { it.agg = true; it.size = ownBytes - keptBytes; it.files = restFiles })
+        arr.addAll(subs)
+        node.kids = arr.toTypedArray()
+        s.nodes.addAndGet(arr.size)
+        for (j in subs.indices) arcFolder(s, ix, subKeys[j], subs[j])
     }
 
     /** A scan read back from disk ([StorageStore.load]) becomes the newest finished scan of its folder. */
@@ -365,7 +433,7 @@ object StorageScan {
                 if (st == "error") j.error = s.error
                 j.end = s.t1; j.state = st
             }
-            if (st == "done") StorageStore.saveAsync(s)   // remember the result across process death
+            if (st == "done" && !s.arc) StorageStore.saveAsync(s)   // remember the result across process death
         }, "sscan-fin", 16L shl 20).also { it.isDaemon = true }.start()
     }
 

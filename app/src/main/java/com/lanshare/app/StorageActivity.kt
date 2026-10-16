@@ -54,6 +54,8 @@ import java.io.File
 class StorageActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private var vpath = "/"
+    private var arcInner: String? = null     // opened from inside an archive: the folder (inside it) to show once the scan is done
+    private val inArc: Boolean get() = vpath.endsWith("!")   // analyzing the file list of a ZIP / RAR: read-only, nothing can be opened / shared / deleted
     private var scan: Scan? = null
     private var night = false
     private var shownState = ""     // what the content area currently shows: run | done | cancel | error
@@ -129,6 +131,7 @@ class StorageActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         vpath = vnorm(b?.getString(X_PATH) ?: intent.getStringExtra(X_PATH) ?: "/")
+        arcSplit(vpath)?.let { (a, inner) -> vpath = "$a!"; arcInner = inner.takeIf { it != "/" } }   // "/x/a.zip!/dir" -> scan the whole archive, then show "dir"
         vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
         val wantVol = b?.getString(X_VOL) ?: intent.getStringExtra(X_VOL)
         if (vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
@@ -217,7 +220,7 @@ class StorageActivity : Activity() {
 
     // ---------------------------------------------------------------- part 9b: header, volumes, access
     private fun paintHead() {
-        titleTv.text = if (vpath == "/") "Storage analyzer" else vbase(vpath)
+        titleTv.text = if (vpath == "/") "Storage analyzer" else vname(vpath)
         subTv.text = if (vpath != "/") vpath else if (volPath != null) volName + " · " + volPath else if (vols.isNotEmpty()) "Internal storage" else "Whole storage"
     }
 
@@ -268,7 +271,7 @@ class StorageActivity : Activity() {
     private fun volRoot(): File = volPath?.let { File(it) } ?: Core.local.root
 
     /** Folder that is scanned. */
-    private fun scanDir(): File = if (vpath == "/" && volPath != null) File(volPath!!) else Core.local.real(vpath)
+    private fun scanDir(): File = if (vpath == "/" && volPath != null) File(volPath!!) else Core.local.real(vpath.removeSuffix("!"))
 
     /** Real file of a node of the current scan (below the other volume when one is chosen). */
     private fun realOf(n: SNode): File {
@@ -324,7 +327,21 @@ class StorageActivity : Activity() {
         val seq = ++attachSeq
         pendingPath = if (rescan && shownState == "done") cur?.path() else null
         try {
-            if (vpath.contains('!')) throw IllegalArgumentException("not inside an archive")
+            if (inArc) {   // an archive: the tree comes from its file list (kept in memory only, not saved); a newer archive file means a new scan
+                val av = vpath.removeSuffix("!")
+                val dir = Core.local.real(av)
+                var a = StorageScan.running(dir)
+                if (a == null && !rescan) a = StorageScan.latest(dir)?.takeUnless { it.arc.not() || it.t1 < dir.lastModified() }
+                if (a == null) a = StorageScan.startArchive(av, vname(vpath))
+                if (pendingPath == null && arcInner != null) pendingPath = arcInner
+                arcInner = null
+                scan = a
+                shownState = ""
+                fillVolume()
+                update()
+                if (scan?.state == "run") ui.post(tick)
+                return
+            }
             val dir = scanDir()
             var s = StorageScan.running(dir)
             if (s == null && !rescan) s = StorageScan.latest(dir)?.takeUnless { it.limited && !needAccess() }
@@ -347,7 +364,7 @@ class StorageActivity : Activity() {
         val whole = vpath == "/"
         var used = 0L
         if (whole) try { val r = volRoot(); used = maxOf(0L, r.totalSpace - r.usableSpace) } catch (_: Exception) {}
-        return StorageScan.start(dir, if (whole) volName else vbase(vpath), used)
+        return StorageScan.start(dir, if (whole) volName else vname(vpath), used)
     }
 
     /** Read the saved result of [dir] off the main thread; a result that is missing / unreadable / made without All files access (and the access is on now) starts a new scan instead. */
@@ -510,14 +527,14 @@ class StorageActivity : Activity() {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); if (canOpen(nd)) showNode(nd) else details(nd) }   // folder = open at once
                 onMulti = { if (lsV?.multi == true) tpV?.endMulti(); paintSelBar() }               // part 9a: long-press = select several
-                canSelect = volPath == null                                                         // part 9b: delete only on the main storage
+                canSelect = volPath == null && !inArc                                               // part 9b: delete only on the main storage (not inside an archive)
             }
             // Largest files: the 100 biggest files of the whole scan as a flat list (part 7); a tap = info + details, the button / dialog shows the file in its folder
             val tp = StorageList(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); details(nd) }
                 onMulti = { if (tpV?.multi == true) lsV?.endMulti(); paintSelBar() }
-                canSelect = volPath == null
+                canSelect = volPath == null && !inArc
                 setFlat(s.top, root.size)
             }
             tmV = tm; lsV = ls; tpV = tp
@@ -688,7 +705,8 @@ class StorageActivity : Activity() {
         }
     }
 
-    private fun rootLabel() = if (vpath == "/") (if (volPath != null) volName.ifEmpty { "Volume" } else "Storage") else vbase(vpath)
+    private fun rootLabel() = if (vpath == "/") (if (volPath != null) volName.ifEmpty { "Volume" } else "Storage") else vname(vpath)
+    private fun vname(p: String) = vbase(p).removeSuffix("!")
 
     /** Breadcrumb of the open folder: every part but the last is tappable. */
     private fun paintCrumb() {
@@ -769,24 +787,26 @@ class StorageActivity : Activity() {
                 setOnClickListener { dlg.dismiss(); fn() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }
-        if (!n.dir && !n.agg) {
+        if (!n.dir && !n.agg && !inArc) {
             act("Open") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it) } }
             act("Open with…") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, pick = true) } }
             act("Share") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.share(this, it) } }
         }
-        if (volPath == null) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
+        if (volPath == null && !inArc) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
         if (mode == 2 && up != null) act("Show in folder") { showIn(n) }
         else if (up != null && up !== c) act("Open containing folder") { showNode(up) }
-        if (!n.agg && n.parent != null && volPath == null) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
+        if (!n.agg && n.parent != null && volPath == null && !inArc) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
         dlg.show()
     }
 
     // ---------------------------------------------------------------- delete (part 8b)
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
+    /** A failed delete: the full message in a dialog (a toast cuts it off). */
+    private fun errBox(title: String, m: String) { try { AlertDialog.Builder(this).setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
 
     /** Ask before deleting file [n]; the file only goes to the recycle bin (restorable), like a delete in the file manager. */
     private fun confirmDelete(n: SNode) {
-        if (n.agg || n.parent == null || volPath != null) return
+        if (n.agg || n.parent == null || volPath != null || inArc) return
         val s = curScan ?: return
         val what = if (n.dir) n.files.toString() + " files · " + n.folders + " folders\n" else ""
         val dn = if (n.dir) StorageScan.deniedBelow(n) else 0
@@ -815,7 +835,7 @@ class StorageActivity : Activity() {
             } catch (e: Throwable) { err = com.lanshare.app.core.errText(e) }
             ui.post {
                 deleting = false
-                if (err != null) toast("Could not delete: " + err)
+                if (err != null) errBox("Could not delete", err)
                 else afterDelete(s, n, if (gone) "It was already gone - removed from the result" else "Moved to the recycle bin: " + n.name + " (" + fmt(n.size) + ")")
             }
         }, "sscan-del").also { it.isDaemon = true }.start()
@@ -905,7 +925,7 @@ class StorageActivity : Activity() {
     /** Move every node of [nodes] (already without nested ones) into the recycle bin one after the other on one worker thread, then patch the tree and refresh once. */
     private fun deleteMany(s: Scan, nodes: List<SNode>) {
         if (deleting) { toast("Another delete is still running"); return }
-        if (volPath != null) return
+        if (volPath != null || inArc) return
         val todo = ArrayList<SNode>(); val vs = ArrayList<String>()
         var skipped = 0
         for (n in nodes) {
@@ -933,7 +953,7 @@ class StorageActivity : Activity() {
                 if (gone > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(gone).append(" already gone")
                 if (skipped > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(skipped).append(" skipped (already in the bin or not allowed)")
                 if (failed > 0) sb.append(if (sb.isEmpty()) "" else ". ").append(failed).append(" failed: ").append(firstErr)
-                if (ok.isEmpty()) toast(sb.toString()) else afterDeleteMany(s, ok, sb.toString())
+                if (ok.isEmpty()) { if (failed > 0) errBox("Could not delete", sb.toString()) else toast(sb.toString()) } else afterDeleteMany(s, ok, sb.toString())
             }
         }, "sscan-del").also { it.isDaemon = true }.start()
     }

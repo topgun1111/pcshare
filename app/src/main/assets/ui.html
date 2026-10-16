@@ -878,9 +878,9 @@ async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
   try{const r=await api('GET','/api/space?dev='+enc(dev)+'&path='+enc(k.seg),null,8000);SP[k.k]={t:Date.now(),v:r}}catch(e){SP[k.k]={t:Date.now()-20000,v:null}}
   if(S.dev===dev)showFree()}
 
-/* storage pill: this phone (main storage root = whole storage, a folder = that folder) opens the native Storage Analyzer; anything else keeps the small sheet */
+/* storage pill: this phone (main storage root = whole storage, a folder = that folder, inside a ZIP / RAR = the archive's contents) opens the native Storage Analyzer; anything else keeps the small sheet */
 function pillTap(){
-  if(S.dev==='local'&&S.path.indexOf('!')<0&&window.LSAndroid&&LSAndroid.openStorage){try{LSAndroid.openStorage(S.path||'/');return}catch(e){}}
+  if(S.dev==='local'&&window.LSAndroid&&LSAndroid.openStorage){try{LSAndroid.openStorage(S.path||'/');return}catch(e){}}
   spaceInfo()}
 /* disk pill tapped: detailed size info (was the grey "x free of y" line above the home button) */
 async function spaceInfo(){

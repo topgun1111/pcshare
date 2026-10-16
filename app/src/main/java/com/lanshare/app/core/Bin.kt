@@ -34,16 +34,28 @@ object Bin {
         if (!src.exists() && !link) throw NotFound("No such file or directory")
         val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
         val box = File(root(), id)
-        if (!box.mkdirs()) throw IOException("could not create the recycle bin")
         val dst = File(box, src.name)
         val isDir = !link && src.isDirectory
         val size = if (!isDir) src.length() else 0L
         val rel = vnorm(v)
+        val meta = JSONObject().put("name", src.name).put("dir", isDir).put("size", size).put("from", rel).put("at", System.currentTimeMillis()).toString()
         try {
-            File(box, META).writeText(JSONObject().put("name", src.name).put("dir", isDir).put("size", size).put("from", rel).put("at", System.currentTimeMillis()).toString())
+            if (!box.mkdirs()) throw IOException("could not create the recycle bin")
+            File(box, META).writeText(meta)
             try { File(root(), ".nomedia").createNewFile() } catch (_: Exception) {}   // keep the gallery from indexing deleted pictures
             if (!src.renameTo(dst)) throw IOException("could not move ${src.name} to the recycle bin")
-        } catch (e: Exception) { box.deleteRecursively(); throw e }
+        } catch (e: Exception) {
+            try { box.deleteRecursively() } catch (_: Exception) {}
+            // Android did not let the app move it (files of other apps, no "All files access"): with Settings > Root access on, do the same move through su
+            if (!(Cfg.rootEnabled() && RootShell.granted())) throw e
+            val q = RootShell::q
+            val r = RootShell.exec("mkdir -p " + q(box.path) + " && printf '%s' " + q(meta) + " > " + q(File(box, META).path) +
+                " && touch " + q(File(root(), ".nomedia").path) + " && mv " + q(src.path) + " " + q(dst.path), 60)
+            if (r.code != 0) {
+                try { RootShell.exec("rm -rf " + q(box.path), 30) } catch (_: Exception) {}
+                throw IOException(e.message + " (root move failed too: " + (r.err.trim().lines().lastOrNull { it.isNotBlank() } ?: "exit " + r.code).take(120) + ")")
+            }
+        }
         progress?.invoke(src.name)
     }
 
