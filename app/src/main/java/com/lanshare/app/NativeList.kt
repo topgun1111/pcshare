@@ -185,10 +185,10 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     var medium = false     // medium thumbnails (ui.html #list.t-md): row 72, lead 62x56
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 16f * d }
-    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 13f * d }
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 16f * d * UiScale.tf }
+    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 13f * d * UiScale.tf }
+    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -223,7 +223,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
         if (r.k == "hdr") {   // "In subfolders (N)" search header: text only, padding 14/16/6, 13px muted
-            smallP.textSize = 13f * d; smallP.color = pl.mut
+            smallP.textSize = 13f * d * UiScale.tf; smallP.color = pl.mut
             val f = smallP.fontMetrics
             val t = TextUtils.ellipsize(r.nm, smallP, w - 32f * d, TextUtils.TruncateAt.END).toString()
             cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
@@ -287,8 +287,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
         // ---- texts ----
         val xr = w - 14f * d
-        nameP.textSize = (if (c) 15f else 16f) * d
-        smallP.textSize = (if (c) 12f else 13f) * d
+        nameP.textSize = (if (c) 15f else 16f) * d * UiScale.tf
+        smallP.textSize = (if (c) 12f else 13f) * d * UiScale.tf
         nameP.color = if (isSel) pl.onsel else pl.fg
         smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var dupW = 0f
@@ -354,9 +354,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     var dur: String? = null
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 17f * d }
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 17f * d * UiScale.tf }
+    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -553,8 +553,8 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     private val du = arrayOfNulls<String>(5)
     private var pressed = -1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()

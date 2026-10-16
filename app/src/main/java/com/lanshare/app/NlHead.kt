@@ -57,13 +57,13 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private val med: Typeface = Fnt.med()
     private val w600: Typeface = Fnt.semi()
     private val fillP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val crumbP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 16f * d }
-    private val curP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 16f * d }
-    private val sumBP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d }
-    private val sumSP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d }
-    private val newP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d }
-    private val sortP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d }
-    private val pillP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 13f * d; letterSpacing = 0.2f / 13f }
+    private val crumbP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 16f * d * UiScale.tf }
+    private val curP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 16f * d * UiScale.tf }
+    private val sumBP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d * UiScale.tf }
+    private val sumSP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d * UiScale.tf }
+    private val newP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = 12f * d * UiScale.tf }
+    private val sortP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = 13f * d * UiScale.tf }
+    private val pillP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 13f * d * UiScale.tf; letterSpacing = 0.2f / 13f }
     private val rf = RectF()
 
     // ---- icons (ui.html IC / HOME / DRIVE; arc flags written with spaces) ----

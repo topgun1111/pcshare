@@ -118,6 +118,15 @@ class MainActivity : Activity() {
         @JavascriptInterface fun winW(): Int = Math.round(web.width / resources.displayMetrics.density)
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
+        /** Settings -> Font: current id and the list as "id|name" lines. */
+        @JavascriptInterface fun fontGet(): String = UiScale.font(this@MainActivity).let { if (Fnt.valid(it)) it else "figtree" }
+        @JavascriptInterface fun fontList(): String = Fnt.LIST.joinToString("\n") { it.first + "|" + it.second }
+        /** Interface size + text size + font in one go (one recreate). */
+        @JavascriptInterface fun uiSet2(i: Int, t: Int, font: String) {
+            UiScale.save(this@MainActivity, i, t)
+            if (Fnt.valid(font)) UiScale.saveFont(this@MainActivity, font)
+            Fnt.reload(applicationContext); runOnUiThread { recreate() }
+        }
         /** Settings -> Text recognition model: "mode,paddleInstalled" (mode 0 automatic, 1 PaddleOCR, 2 ML Kit; installed 0 / 1). */
         @JavascriptInterface fun ocrEngGet(): String = OcrPrefs.engine(this@MainActivity).toString() + "," + (if (PaddleModels.installed(this@MainActivity)) 1 else 0)
         @JavascriptInterface fun ocrEngSet(m: Int) { OcrPrefs.setEngine(this@MainActivity, m); if (m != OcrPrefs.ENG_MLKIT) PaddleModels.installAsync(applicationContext) }
@@ -220,6 +229,12 @@ class MainActivity : Activity() {
                 override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
                     return try {
                         val u = r.url
+                        val up = u.encodedPath ?: ""
+                        if (up.startsWith("/appfont/") && (u.host == "127.0.0.1" || u.host == "localhost")) {      // chosen app font for the page (Settings -> Font)
+                            val id = up.substring(9).removeSuffix(".ttf")
+                            if (Fnt.valid(id) && id != "figtree" && id != "system")
+                                return WebResourceResponse("font/ttf", null, 200, "OK", mapOf("Cache-Control" to "max-age=86400", "Access-Control-Allow-Origin" to "*"), assets.open("fonts/ff_" + id + ".ttf"))
+                        }
                         val x = InProc.serve(r.method, u.host, u.port, u.encodedPath ?: "", u.encodedQuery) ?: return null
                         WebResourceResponse(x.ctype, "utf-8", x.code, x.reason, x.headers, x.body())
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way

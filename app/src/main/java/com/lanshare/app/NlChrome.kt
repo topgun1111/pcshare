@@ -60,7 +60,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     protected val semi: Typeface = Fnt.semi()
 
     protected fun tp(sizeDp: Float, tf: Typeface): TextPaint =
-        TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d }
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d * UiScale.tf }
 
     /** Baseline that centres the text vertically on [cy]. */
     protected fun ty(cy: Float, p: Paint): Float { val fm = p.fontMetrics; return cy - (fm.ascent + fm.descent) / 2f }

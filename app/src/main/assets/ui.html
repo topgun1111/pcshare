@@ -1,5 +1,10 @@
 <!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>/* Settings -> Font: the chosen app font (served by MainActivity as /appfont/<id>.ttf) goes in front of the built-in Figtree */
+(function(){try{if(!(window.LSAndroid&&LSAndroid.fontGet))return;var id=LSAndroid.fontGet();if(!id||id==='figtree')return;var st=document.createElement('style');
+if(id==='system')st.textContent="body,button,input,select{font-family:system-ui,sans-serif!important}";
+else st.textContent="@font-face{font-family:'LS Custom';font-weight:100 900;font-display:swap;src:url(/appfont/"+id+".ttf)}body,button,input,select{font-family:'LS Custom','Figtree LS',system-ui,sans-serif!important}";
+document.head.appendChild(st)}catch(e){}})();</script>
 <script>/* Settings -> Interface size: scale the whole page by a viewport (layout width = screen / f) */
 (function(){function fit(){try{if(!(window.LSAndroid&&LSAndroid.uiGet))return;var f=LSAndroid.uiGet().split(',')[0]/100;if(!f||f===1)return;
 var ww=0;try{ww=LSAndroid.winW?LSAndroid.winW():0}catch(e){}var w=Math.round((ww>0?ww:(window.screen.width||innerWidth))/f);   /* window width (split screen / pop-up), not the whole display */
@@ -1989,9 +1994,16 @@ function openInterfaceSettings(){
     const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.min=80;s.max=160;s.step=5;s.value=v0;s.style.cssText='width:100%;margin:6px 0 2px';
       s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
     const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
+    let fsel=null;
+    if(LSAndroid.fontGet&&LSAndroid.fontList){const fr=E('div','set'),ft=E('div','t');fsel=E('select');fsel.style.cssText='width:100%;margin:6px 0 2px;padding:8px;border-radius:8px;font-size:15px';
+      const f0=LSAndroid.fontGet();LSAndroid.fontList().split('\n').forEach(l=>{const q=l.split('|');if(q.length<2)return;const o=E('option','',q[1]);o.value=q[0];if(q[0]===f0)o.selected=true;fsel.append(o)});
+      const pv=E('div','','The quick brown fox jumps over the lazy dog \u00b7 \u011f\u00fc\u015f\u0131\u00f6\u00e7 \u011e\u00dc\u015e\u0130\u00d6\u00c7 0123456789');pv.style.cssText='margin:6px 0;font-size:16px;line-height:1.4;opacity:.85';
+      const sty=document.createElement('style');sty.id='fpv';document.head.append(sty);
+      fsel.onchange=()=>{const v=fsel.value;sty.textContent=(v==='figtree')?'':(v==='system')?'#fprev{font-family:system-ui,sans-serif!important}':"@font-face{font-family:'LS Prev';font-weight:100 900;src:url(/appfont/"+v+".ttf)}#fprev{font-family:'LS Prev',sans-serif!important}"};pv.id='fprev';
+      ft.append(E('b','','Font'),E('small','','Applies to the whole app (about 45 fonts)'),fsel,pv);fr.append(ft);card.append(fr)}
     const br=E('div','set');br.style.cssText='display:flex;gap:8px;justify-content:flex-end';
     const rs=E('button','tbtn','Reset'),ap=E('button','tbtn fill','Apply');
-    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();LSAndroid.uiSet(100,100)};ap.onclick=()=>LSAndroid.uiSet(+si.value,+st.value);br.append(rs,ap);card.append(br)}
+    rs.onclick=()=>{si.value=st.value=100;si.oninput();st.oninput();if(LSAndroid.uiSet2)LSAndroid.uiSet2(100,100,'figtree');else LSAndroid.uiSet(100,100)};ap.onclick=()=>{if(LSAndroid.uiSet2&&fsel)LSAndroid.uiSet2(+si.value,+st.value,fsel.value);else LSAndroid.uiSet(+si.value,+st.value)};br.append(rs,ap);card.append(br)}
   const d=E('button','tbtn fill','Back');d.style.alignSelf='flex-end';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openGallerySettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
