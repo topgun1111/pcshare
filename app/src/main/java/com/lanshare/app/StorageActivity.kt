@@ -720,15 +720,7 @@ class StorageActivity : Activity() {
         val b = actBtn ?: return
         val c = cur ?: return
         if (n == null) {
-            val only = if (hl >= 0) "Only " + CAT_NAMES[hl].lowercase() + " shown (tap its chip again to show all). " else ""
-            tv.text = only + when (mode) {
-                0 -> "Tap a tile for details, tap it again to open a folder."
-                1 -> "Tap a folder to open it, a file for details." + (if (volPath == null) " Long-press to select several." else "")
-                else -> "The 100 largest files of the whole scan. Tap a file for details" + (if (volPath == null) ", long-press to select several." else ".")
-            }
-            if (mode == 2) b.visibility = View.GONE
-            else if (volPath != null) b.visibility = View.GONE                  // part 9b: the file manager only shows the main storage
-            else { b.text = "File manager"; b.visibility = View.VISIBLE }      // part 8a: shows the open folder in the file manager
+            tv.text = ""; b.visibility = View.GONE      // no hint line and no "File manager" button while nothing is selected
             return
         }
         tv.text = if (mode == 2) describe(n, curScan?.root?.size ?: c.size, true) else describe(n, c.size, false)
