@@ -870,6 +870,10 @@ async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
   try{const r=await api('GET','/api/space?dev='+enc(dev)+'&path='+enc(k.seg),null,8000);SP[k.k]={t:Date.now(),v:r}}catch(e){SP[k.k]={t:Date.now()-20000,v:null}}
   if(S.dev===dev)showFree()}
 
+/* storage pill: this phone (main storage root = whole storage, a folder = that folder) opens the native Storage Analyzer; anything else keeps the small sheet */
+function pillTap(){
+  if(S.dev==='local'&&S.path.indexOf('!')<0&&window.LSAndroid&&LSAndroid.openStorage){try{LSAndroid.openStorage(S.path||'/');return}catch(e){}}
+  spaceInfo()}
 /* disk pill tapped: detailed size info (was the grey "x free of y" line above the home button) */
 async function spaceInfo(){
   const k=spKey();if(!k)return;
@@ -1049,7 +1053,7 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='goto'){go(x);return}   // instant crumb / back: Kotlin already shows this folder; navigate the page to the same path
   if(ev==='newb'){$('#newb').onclick();return}
   if(ev==='sort'){openSort();return}
-  if(ev==='used'){spaceInfo();return}
+  if(ev==='used'){pillTap();return}
   const i=NLL[x];
   if(ev==='refresh'){(async()=>{const fin=()=>{try{NL.nlDone()}catch(e){}},cap=setTimeout(fin,8000);   // an offline device can keep /api/ls waiting for minutes: stop the spinner anyway
     try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
@@ -1501,7 +1505,7 @@ function render(){
   const gm=!AR&&!S.q&&!S.newest&&galRoot();   // Gallery / Videos: albums come from the whole phone, so no folder path, device chips or storage line
   document.body.classList.toggle('galm',!!gm);
   $('#ht').textContent=gm?(galVid()?'Videos':'Gallery'):S.dev==='local'?'Main storage':devName(S.dev);
-  const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used - tap for details';pl.onclick=spaceInfo}else pl.style.display='none';
+  const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used - tap to analyze';pl.onclick=pillTap}else pl.style.display='none';
   cr.scrollLeft=cr.scrollWidth;
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   showFree();
@@ -2758,6 +2762,7 @@ async function doPrint(preset,cx){
     setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
+window.lsGoLocal=p=>openLoc('local',p);   // Storage Analyzer "Show in file manager": this device, that folder
 window.lsPrintShared=async(names,priv)=>{
   try{
     const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */

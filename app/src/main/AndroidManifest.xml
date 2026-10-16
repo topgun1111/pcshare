@@ -116,6 +116,10 @@
         <activity android:name=".InboxActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateHidden"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden"/>
+        <!-- Storage Analyzer (opened by the storage pill of the path bar) -->
+        <activity android:name=".StorageActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:launchMode="standard"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <activity android:name=".ClipSendActivity" android:exported="true" android:theme="@style/Theme.LANShare.Clear"
             android:label="LANShare Text" android:icon="@mipmap/ic_launcher"
             android:launchMode="standard" android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true">

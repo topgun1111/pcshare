@@ -23,7 +23,7 @@ object InProc {
 
     // Only routes that never block on the network or do heavy work. Thumbnails (HTTP-cached by the WebView), downloads (streamed,
     // Range), counts (thread pool), search, and remote/archive listings deliberately stay on the normal HTTP path.
-    private val ROUTES = setOf("/api/ls", "/api/space", "/api/stat", "/api/job", "/api/jobs", "/api/clip", "/api/info", "/api/peers", "/api/smb", "/api/arcjob")
+    private val ROUTES = setOf("/api/ls", "/api/space", "/api/stat", "/api/job", "/api/jobs", "/api/clip", "/api/info", "/api/peers", "/api/smb", "/api/arcjob", "/api/sscanp", "/api/sscannode", "/api/sscantop")
     private val LOCAL_ONLY = setOf("/api/ls", "/api/space", "/api/stat")   // these also reach other devices / archives: those stay on HTTP
     private val SKIP = setOf("content-length", "server", "connection", "content-type")
 

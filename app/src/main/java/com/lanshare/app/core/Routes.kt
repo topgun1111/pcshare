@@ -193,6 +193,12 @@ object Routes {
             "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "smbscan" -> return ex.json(d.smbScan())
+            // ---- Storage Analyzer (scan engine: StorageScan.kt). path "/" = the whole main storage, anything else = that folder, recursive.
+            "sscan" -> return ex.json(sscanStart(vnorm(q["path"] ?: "/"), q["rescan"] == "1"))   // start (or return the running / newest finished scan of that folder)
+            "sscanp" -> return ex.json(sscanProgress(scanOf(ex)))
+            "sscannode" -> return ex.json(sscanNode(scanOf(ex), vnorm(q["path"] ?: "/"), (q["n"]?.toIntOrNull() ?: 60).coerceIn(1, 500)))
+            "sscantop" -> return ex.json(sscanTop(scanOf(ex)))
+            "sscancancel" -> { StorageScan.cancel(ex.q("id")); return ok(ex) }
         }
         val b = ex.bodyJson()
         when (route) {
@@ -289,6 +295,70 @@ object Routes {
         else if (edit.isNotEmpty()) Smb.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optString("share"))
         else Smb.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"))
         ex.json(JSONObject().put("ok", true).put("list", Smb.status()))
+    }
+
+    // ---------------------------------------------------------------- Storage Analyzer API (part 2)
+    private fun scanOf(ex: Exchange): Scan = StorageScan.get(ex.q("id")) ?: throw NotFound("unknown scan (it may have been dropped: scan again)")
+
+    private fun longs(a: LongArray?): JSONArray { val r = JSONArray(); for (i in 0 until SCat.COUNT) r.put(a?.getOrNull(i) ?: 0L); return r }
+
+    /** Starts a scan of this phone's folder [vpath] ("/" = whole main storage) unless one of it is running already; a finished one is reused unless [rescan]. */
+    private fun sscanStart(vpath: String, rescan: Boolean): JSONObject {
+        if (arcSplit(vpath) != null) throw BadReq("not inside an archive")
+        val dir = Core.local.real(vpath)
+        val whole = vpath == "/"
+        var s = StorageScan.running(dir)
+        if (s == null && !rescan) s = StorageScan.latest(dir)
+        if (s == null) {
+            var used = 0L
+            if (whole) try { val r = Core.local.root; used = maxOf(0L, r.totalSpace - r.usableSpace) } catch (_: Exception) {}   // only feeds the percentage
+            s = StorageScan.start(dir, if (whole) "" else vbase(vpath), used)
+        }
+        return JSONObject().put("id", s.id).put("state", s.state).put("path", vpath).put("whole", whole).put("error", s.error ?: JSONObject.NULL)
+    }
+
+    private fun sscanProgress(s: Scan): JSONObject {
+        val o = JSONObject().put("id", s.id).put("state", s.state).put("percent", s.percent()).put("files", s.files.get()).put("dirs", s.dirs.get())
+            .put("bytes", s.bytes.get()).put("used", s.usedBytes).put("cur", s.cur).put("error", s.error ?: JSONObject.NULL).put("ms", s.millis())
+            .put("denied", s.denied.get()).put("keys", JSONArray(SCat.KEYS.toList())).put("catFiles", longs(s.catFiles()))
+        if (s.state == "done") {
+            o.put("catBytes", longs(s.catBytes()))
+            s.root?.let { o.put("total", it.size).put("folders", it.folders) }
+            o.put("deniedSample", JSONArray(s.deniedSample.toList()))
+        }
+        return o
+    }
+
+    /** One folder of a finished scan: its totals + its first [n] kids (already biggest first) + "rest" = the kids that were cut off. */
+    private fun sscanNode(s: Scan, path: String, n: Int): JSONObject {
+        if (s.state != "done") throw BadReq("scan not finished")
+        val node = s.find(path) ?: throw NotFound("folder not in the scan (empty or unknown)")
+        val o = JSONObject().put("id", s.id).put("path", node.path()).put("name", node.name.ifEmpty { s.label }).put("size", node.size)
+            .put("files", node.files).put("folders", node.folders).put("denied", node.denied).put("cats", longs(node.cats))
+        val kids = JSONArray()
+        val m = minOf(n, node.kids.size)
+        for (i in 0 until m) {
+            val k = node.kids[i]
+            val j = JSONObject().put("n", k.name).put("d", k.dir).put("s", k.size).put("f", k.files)
+            if (k.dir) { j.put("fo", k.folders); j.put("cats", longs(k.cats)); if (k.denied) j.put("x", true) }   // x: could not be read
+            else if (k.agg) j.put("a", true)   // "N small files" row
+            else j.put("c", k.cat)
+            kids.put(j)
+        }
+        o.put("kids", kids)
+        if (m < node.kids.size) {
+            var rs = 0L; var rf = 0L
+            for (i in m until node.kids.size) { rs += node.kids[i].size; rf += node.kids[i].files }
+            o.put("rest", JSONObject().put("count", node.kids.size - m).put("s", rs).put("f", rf))
+        }
+        return o
+    }
+
+    private fun sscanTop(s: Scan): JSONObject {
+        if (s.state != "done") throw BadReq("scan not finished")
+        val a = JSONArray()
+        for (k in s.top) a.put(JSONObject().put("n", k.name).put("p", k.path()).put("s", k.size).put("c", k.cat))
+        return JSONObject().put("id", s.id).put("top", a)
     }
 
     // ---------------------------------------------------------------- file download with Range support

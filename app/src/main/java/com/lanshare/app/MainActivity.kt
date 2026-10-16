@@ -37,6 +37,8 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     companion object {
         const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED"
+        const val ACTION_SHOW_PATH = "com.lanshare.app.SHOW_PATH"   // from the Storage Analyzer: show this folder in the file manager
+        const val X_SHOW_PATH = "path"
         const val SHARED_KEEP_DAYS = 7L   // age after which files in "LANShare Shared" are deleted
     }
     private lateinit var web: WebView
@@ -90,6 +92,10 @@ class MainActivity : Activity() {
             runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }
         }
         /** Settings -> Text sharing: {"def": default device id or "", "defName": its name or "", "devs": [{"id","name"} online devices]}. */
+        /** Storage pill: opens the Storage Analyzer for this phone's folder [vpath] ("/" = whole main storage). */
+        @JavascriptInterface fun openStorage(vpath: String) {
+            runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }
+        }
         @JavascriptInterface fun txtDevs(): String {
             val o = JSONObject()
             val d = com.lanshare.app.core.Cfg.defTarget()
@@ -219,7 +225,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runClipShare(); runPrint(); runOpen() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runClipShare(); runPrint(); runOpen(); runShowPath() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -345,6 +351,12 @@ class MainActivity : Activity() {
             pendingPrintPriv = i.getBooleanExtra("priv", false)
             i.action = null
             if (n.isNotEmpty()) { pendingPrint = n; runPrint() }
+            return
+        }
+        if (i != null && i.action == ACTION_SHOW_PATH) {   // Storage Analyzer -> "Show in file manager"
+            pendingShowPath = i.getStringExtra(X_SHOW_PATH)
+            i.action = null   // consume once
+            runShowPath()
             return
         }
         if (i != null && i.action == Intent.ACTION_VIEW && i.data != null) { handleView(i); return }   // "Open with" on an archive
@@ -475,6 +487,16 @@ class MainActivity : Activity() {
                 else Toast.makeText(this, "Could not open the archive", Toast.LENGTH_LONG).show()
             }
         }.start()
+    }
+
+    private var pendingShowPath: String? = null
+
+    /** Opens folder [pendingShowPath] (virtual path on this device) in the file manager page; waits until the page is loaded. */
+    private fun runShowPath() {
+        val p = pendingShowPath ?: return
+        if (!pageReady) return
+        pendingShowPath = null
+        web.postDelayed({ web.evaluateJavascript("window.lsGoLocal&&lsGoLocal(" + JSONObject.quote(p) + ")", null) }, 300)
     }
 
     private fun runOpen() {
