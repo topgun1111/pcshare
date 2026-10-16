@@ -1,5 +1,6 @@
 package com.lanshare.app
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -10,23 +11,21 @@ import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.animation.DecelerateInterpolator
 import com.lanshare.app.core.SCat
 import com.lanshare.app.core.SNode
 
 /**
- * Storage Analyzer: the pie chart view (replaces the treemap in the first tab). A plain custom [View] (no dependencies) that draws the
- * direct children of the open folder ([SNode.kids], biggest first) as a donut chart:
- *  - slice angle = share of the folder's size; files are coloured by category ([StorageTreemap.CAT_COL]), folders by their biggest
- *    category (darker), the "N small files" node is grey;
- *  - slices under [MIN_DEG] degrees are merged into one grey "smaller items" slice (not tappable);
- *  - name + size inside the slice when it is wide enough to read them;
- *  - the hole shows the open folder (name, size); with a slice selected it shows that slice (name, size, share);
- *  - tap = the slice under the finger is selected (pulled out, accent outline) and reported through [onTap]; the same node tapped again
- *    is handled by StorageActivity (folder = open, file = details), exactly like the treemap did.
- * Same public surface as [StorageTreemap]: [onTap], [colBg] / [colFg] / [colDim] / [colAcc], [hl] (category highlight), [setRoot], [selected].
+ * Storage Analyzer: the pie chart view (donut) of the open folder's direct children ([SNode.kids], biggest first).
+ *  - slice angle = share of the folder's size; files coloured by category ([StorageTreemap.CAT_COL]), folders by their biggest
+ *    category (darker), "N small files" grey; slices under [MIN_DEG] degrees are merged into one grey, non-tappable "smaller items" slice;
+ *  - labels are sized to the room a slice really has (arc length x ring thickness, depending on its angle), not to fixed degree limits;
+ *  - the hole shows the open folder (name, size, files) or the selected slice (name, size, share);
+ *  - tap = select (animated pull-out, accent outline) + [onTap]; the same node tapped again is handled by StorageActivity;
+ *  - opening another folder grows the ring from 12 o'clock; all strings / colours are computed once per layout, onDraw does not allocate.
+ * Public surface unchanged: [onTap], [colBg] / [colFg] / [colDim] / [colAcc], [hl], [setRoot], [selected].
  */
 class StoragePie(ctx: Context) : View(ctx) {
-    /** Called with the node under the finger (file, folder or the synthetic "N small files" node). */
     var onTap: ((SNode) -> Unit)? = null
 
     var colBg = Color.WHITE
@@ -40,11 +39,15 @@ class StoragePie(ctx: Context) : View(ctx) {
 
     private var root: SNode? = null
     private var selNode: SNode? = null
+    private var prevSel: SNode? = null
 
-    // slice store: slice i = nd[i] (null = the merged "smaller items" slice), start angle st[i] and sweep sw[i] in degrees (0 = 12 o'clock, clockwise)
+    // slice i = nd[i] (null = merged "smaller items"), start angle st[i], sweep sw[i] in degrees (0 = 12 o'clock, clockwise)
     private val nd = arrayOfNulls<SNode>(MAXS)
     private val st = FloatArray(MAXS)
     private val sw = FloatArray(MAXS)
+    private val col = IntArray(MAXS)
+    private val nm = arrayOfNulls<String>(MAXS)
+    private val sz = arrayOfNulls<String>(MAXS)
     private var n = 0
     private var total = 0.0
 
@@ -52,7 +55,7 @@ class StoragePie(ctx: Context) : View(ctx) {
     private fun dp(v: Float) = v * d
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND }
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
     private val outer = RectF()
@@ -61,18 +64,33 @@ class StoragePie(ctx: Context) : View(ctx) {
     private var downX = 0f
     private var downY = 0f
 
-    // geometry of the last layout
     private var cx = 0f
     private var cy = 0f
     private var rOut = 0f
     private var rIn = 0f
 
+    // animations: prog = ring grow-in (0..1), selT = pull-out of the selected slice (0..1)
+    private var prog = 1f
+    private var selT = 1f
+    private val grow = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 480; interpolator = DecelerateInterpolator(1.6f)
+        addUpdateListener { prog = it.animatedValue as Float; invalidate() }
+    }
+    private val pullAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 200; interpolator = DecelerateInterpolator()
+        addUpdateListener { selT = it.animatedValue as Float; invalidate() }
+    }
+
     init { contentDescription = "Pie chart" }
 
     /** The folder whose content is shown (null = nothing). */
     fun setRoot(r: SNode?) {
-        root = r; selNode = null
-        relayout(); invalidate()
+        val same = r === root
+        root = r; selNode = null; prevSel = null; selT = 1f
+        pullAnim.cancel()
+        relayout()
+        if (!same && n > 0) { prog = 0f; grow.cancel(); grow.start() } else { grow.cancel(); prog = 1f }
+        invalidate()
     }
 
     /** Currently selected node (null = none). */
@@ -83,15 +101,20 @@ class StoragePie(ctx: Context) : View(ctx) {
         relayout(); invalidate()
     }
 
+    override fun onDetachedFromWindow() {
+        grow.cancel(); pullAnim.cancel()
+        super.onDetachedFromWindow()
+    }
+
     // ---------------------------------------------------------------- layout
     private fun relayout() {
         n = 0; total = 0.0
         val w = width.toFloat(); val h = height.toFloat()
         val r = root
         if (r == null || w <= 0f || h <= 0f) return
-        val margin = dp(18f)                       // room for the pulled-out selected slice
+        val margin = dp(18f)                       // room for the pulled-out slice
         rOut = (Math.min(w, h) / 2f - margin).coerceAtLeast(dp(40f))
-        rIn = rOut * 0.5f
+        rIn = rOut * 0.52f
         cx = w / 2f; cy = h / 2f
         for (k in r.kids) if (k.size > 0) total += k.size.toDouble()
         if (total <= 0.0) return
@@ -105,6 +128,13 @@ class StoragePie(ctx: Context) : View(ctx) {
             a += deg
         }
         if (restSweep > 0.05f) { nd[n] = null; st[n] = a; sw[n] = restSweep; n++ }
+        for (i in 0 until n) {                      // strings + colours once per layout
+            val k = nd[i]
+            col[i] = sliceColor(i)
+            nm[i] = when { k == null -> "smaller items"; k.agg -> k.files.toString() + " small files"; else -> k.name }
+            sz[i] = if (k != null) NlModel.fmt(k.size) else null
+        }
+        contentDescription = "Pie chart: " + (if (r.name.isEmpty()) "Storage" else r.name) + ", " + NlModel.fmt(r.size) + ", " + n + " slices"
     }
 
     // ---------------------------------------------------------------- colours
@@ -154,6 +184,16 @@ class StoragePie(ctx: Context) : View(ctx) {
         path.close()
     }
 
+    /** Current pull-out distance of slice [i] in px (selected grows, the previously selected one shrinks). */
+    private fun pullOf(i: Int): Float {
+        val k = nd[i] ?: return 0f
+        return when {
+            k === selNode -> dp(9f) * selT
+            k === prevSel -> dp(9f) * (1f - selT)
+            else -> 0f
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         canvas.drawColor(colBg)
         if (n == 0) {
@@ -162,49 +202,66 @@ class StoragePie(ctx: Context) : View(ctx) {
             return
         }
         val ts = dp(11f) * resources.configuration.fontScale
-        var selI = -1
-        for (i in 0 until n) if (nd[i] != null && nd[i] === selNode) selI = i
-        stroke.color = colBg; stroke.strokeWidth = dp(1.5f)
+        var selI = -1; var prevI = -1
         for (i in 0 until n) {
-            if (i == selI) continue                         // drawn last (pulled out, on top)
-            drawSlice(canvas, i, 0f, 0f, ts, false)
+            val k = nd[i] ?: continue
+            if (k === selNode) selI = i else if (k === prevSel) prevI = i
         }
-        if (selI >= 0) {
-            val mid = Math.toRadians((st[selI] + sw[selI] / 2f - 90f).toDouble())
-            val pull = dp(8f)
-            drawSlice(canvas, selI, (Math.cos(mid) * pull).toFloat(), (Math.sin(mid) * pull).toFloat(), ts, true)
-        }
+        for (i in 0 until n) if (i != selI && i != prevI) drawSlice(canvas, i, ts, false)   // selected / previous drawn last (on top)
+        if (prevI >= 0) drawSlice(canvas, prevI, ts, false)
+        if (selI >= 0) drawSlice(canvas, selI, ts, true)
         drawCenter(canvas, selI)
     }
 
-    private fun drawSlice(canvas: Canvas, i: Int, ox: Float, oy: Float, ts: Float, selected: Boolean) {
-        var c = sliceColor(i)
-        if (hl >= 0 && faded(i)) c = mix(c, colBg, 0.8f)       // category highlight
+    private fun drawSlice(canvas: Canvas, i: Int, ts: Float, selected: Boolean) {
+        var c = col[i]
+        if (hl >= 0 && faded(i)) c = mix(c, colBg, 0.8f)
+        val from = st[i] * prog
+        val sweep = sw[i] * prog
+        val pull = pullOf(i)
+        var ox = 0f; var oy = 0f
+        if (pull > 0f) {
+            val m = Math.toRadians((st[i] + sw[i] / 2f - 90f).toDouble())
+            ox = (Math.cos(m) * pull).toFloat(); oy = (Math.sin(m) * pull).toFloat()
+        }
         fill.color = c
-        sector(st[i], sw[i], rIn, rOut, ox, oy)
+        sector(from, sweep, rIn, rOut, ox, oy)
         canvas.drawPath(path, fill)
         if (selected) { stroke.color = colAcc; stroke.strokeWidth = dp(2.5f) } else { stroke.color = colBg; stroke.strokeWidth = dp(1.5f) }
         canvas.drawPath(path, stroke)
-        stroke.color = colBg; stroke.strokeWidth = dp(1.5f)
-        val k = nd[i]
-        if (sw[i] < LABEL_DEG) return
-        // label at the middle of the ring, horizontal, as wide as the ring is thick
-        val mid = Math.toRadians((st[i] + sw[i] / 2f - 90f).toDouble())
+
+        val la = ((prog - 0.6f) / 0.4f).coerceIn(0f, 1f)           // labels fade in at the end of the grow-in
+        if (la <= 0f) return
+        // room the slice really has: arc length along the ring, ring thickness across it
         val rm = (rIn + rOut) / 2f
-        val lx = cx + ox + (Math.cos(mid) * rm).toFloat()
-        val ly = cy + oy + (Math.sin(mid) * rm).toFloat()
-        val maxW = (rOut - rIn) * 0.95f
+        val thick = rOut - rIn
+        val arc = Math.toRadians(sw[i].toDouble()).toFloat() * rm
+        val midDeg = st[i] + sw[i] / 2f
+        val rad = Math.toRadians(midDeg.toDouble())
+        val ac = Math.abs(Math.cos(rad)).toFloat()                  // 1 at 12 / 6 o'clock (text runs along the arc)
+        val as_ = Math.abs(Math.sin(rad)).toFloat()                 // 1 at 3 / 9 o'clock (text runs across the ring)
+        val availW = ac * arc + as_ * thick
+        val availH = ac * thick + as_ * arc
+        if (availH < ts * 1.25f) return
+        val twoLines = sz[i] != null && availH >= ts * 2.5f
+        val mp = Math.toRadians((midDeg * prog - 90f).toDouble())
+        val lx = cx + ox + (Math.cos(mp) * rm).toFloat()
+        val ly = cy + oy + (Math.sin(mp) * rm).toFloat()
+        val maxW = availW * 0.92f
         tp.textAlign = Paint.Align.CENTER; tp.textSize = ts
         tp.color = if (lum(c) > 0.6) 0xFF111111.toInt() else Color.WHITE
-        val name = when { k == null -> "smaller items"; k.agg -> k.files.toString() + " small files"; else -> k.name }
+        tp.alpha = (la * 255f).toInt()
         tp.typeface = Typeface.DEFAULT_BOLD
-        if (sw[i] >= SIZE_DEG && k != null) {
-            canvas.drawText(fit(name, maxW), lx, ly - ts * 0.15f, tp)
+        val name = fit(nm[i] ?: "", maxW)
+        if (name.length < 3 && (nm[i]?.length ?: 0) > 3) return    // not even a readable stub fits
+        if (twoLines) {
+            canvas.drawText(name, lx, ly - ts * 0.15f, tp)
             tp.typeface = Typeface.DEFAULT
-            canvas.drawText(fit(NlModel.fmt(k.size), maxW), lx, ly + ts * 1.1f, tp)
+            canvas.drawText(fit(sz[i] ?: "", maxW), lx, ly + ts * 1.1f, tp)
         } else {
-            canvas.drawText(fit(name, maxW), lx, ly + ts * 0.35f, tp)
+            canvas.drawText(name, lx, ly + ts * 0.35f, tp)
         }
+        tp.alpha = 255
     }
 
     /** The hole: the selected slice (name, size, share) or the open folder (name, total). */
@@ -215,23 +272,29 @@ class StoragePie(ctx: Context) : View(ctx) {
         val sizeS: String
         val sub: String
         if (k != null) {
-            name = if (k.agg) k.files.toString() + " small files" else k.name
-            sizeS = NlModel.fmt(k.size)
-            sub = String.format("%.1f%%", k.size * 100.0 / total)
+            name = nm[selI] ?: ""
+            sizeS = sz[selI] ?: ""
+            sub = pct(k.size)
         } else {
             name = if (r.name.isEmpty()) "Storage" else r.name
             sizeS = NlModel.fmt(r.size)
             sub = r.files.toString() + (if (r.files == 1L) " file" else " files")
         }
         val maxW = rIn * 1.7f
-        val big = dp(18f) * resources.configuration.fontScale
+        val big = dp(20f) * resources.configuration.fontScale
         val small = dp(12f) * resources.configuration.fontScale
         tp.textAlign = Paint.Align.CENTER
         tp.typeface = Typeface.DEFAULT_BOLD; tp.color = colFg; tp.textSize = big
-        canvas.drawText(fit(sizeS, maxW), cx, cy - small * 0.2f, tp)
+        canvas.drawText(fit(sizeS, maxW), cx, cy + big * 0.35f, tp)
         tp.typeface = Typeface.DEFAULT; tp.color = colDim; tp.textSize = small
-        canvas.drawText(fit(name, maxW), cx, cy - big - small * 0.2f, tp)
-        canvas.drawText(fit(sub, maxW), cx, cy + small * 1.5f, tp)
+        canvas.drawText(fit(name, maxW), cx, cy - big * 0.75f, tp)
+        canvas.drawText(fit(sub, maxW), cx, cy + big * 0.35f + small * 1.6f, tp)
+    }
+
+    /** "12.3%" ("<0.1%" for tiny shares). */
+    private fun pct(size: Long): String {
+        val p = size * 100.0 / total
+        return if (p < 0.1) "<0.1%" else String.format(java.util.Locale.US, "%.1f%%", p)
     }
 
     /** [s] cut to [maxW] pixels with an ellipsis (uses the current paint). */
@@ -253,30 +316,42 @@ class StoragePie(ctx: Context) : View(ctx) {
 
     override fun performClick(): Boolean = super.performClick()
 
-    /** Slice under the point (ring only; the hole and the outside do nothing). The "smaller items" slice is not tappable. */
-    private fun hit(px: Float, py: Float) {
-        if (n == 0) return
-        val dx = px - cx; val dy = py - cy
+    /** Is the point inside slice [i] drawn with its centre moved by ([ox], [oy])? */
+    private fun inSlice(i: Int, px: Float, py: Float, ox: Float, oy: Float): Boolean {
+        val dx = px - cx - ox; val dy = py - cy - oy
         val dist = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-        if (dist < rIn || dist > rOut + dp(10f)) return
-        var a = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f      // 0 = 12 o'clock, clockwise
+        if (dist < rIn - dp(4f) || dist > rOut + dp(10f)) return false
+        var a = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
         if (a < 0f) a += 360f
         if (a >= 360f) a -= 360f
+        return a >= st[i] && a < st[i] + sw[i]
+    }
+
+    /** Slice under the point (ring only). The pulled-out slice is tested at its shifted position first; "smaller items" is not tappable. */
+    private fun hit(px: Float, py: Float) {
+        if (n == 0 || prog < 1f) return
+        var found = -1
         for (i in 0 until n) {
-            if (a >= st[i] && a < st[i] + sw[i]) {
-                val k = nd[i] ?: return
-                selNode = k
-                invalidate()
-                onTap?.invoke(k)
-                return
+            val k = nd[i]
+            if (k != null && k === selNode) {
+                val m = Math.toRadians((st[i] + sw[i] / 2f - 90f).toDouble())
+                val pull = pullOf(i)
+                if (inSlice(i, px, py, (Math.cos(m) * pull).toFloat(), (Math.sin(m) * pull).toFloat())) { found = i; break }
             }
         }
+        if (found < 0) for (i in 0 until n) if (inSlice(i, px, py, 0f, 0f)) { found = i; break }
+        if (found < 0) return
+        val k = nd[found] ?: return
+        if (k !== selNode) {
+            prevSel = selNode; selNode = k; selT = 0f
+            pullAnim.cancel(); pullAnim.start()
+        }
+        invalidate()
+        onTap?.invoke(k)
     }
 
     companion object {
         private const val MAXS = 120              // max slices (including the merged one)
         private const val MIN_DEG = 1.5f          // slices narrower than this are merged into "smaller items"
-        private const val LABEL_DEG = 14f         // name only
-        private const val SIZE_DEG = 24f          // name + size
     }
 }

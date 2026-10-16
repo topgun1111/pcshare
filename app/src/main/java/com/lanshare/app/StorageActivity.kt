@@ -88,6 +88,30 @@ class StorageActivity : Activity() {
     private var cBg = Color.WHITE; private var cFg = 0xFF161616.toInt(); private var cDim = 0xFF5F5F5F.toInt()
     private var cLine = 0xFFDDDDDD.toInt(); private var cCard = 0xFFF3F3F3.toInt(); private var cAcc = 0xFFC25100.toInt()
     private var cErr = 0xFFC62828.toInt()
+    private var cOnAcc = Color.WHITE            // text / icon colour on cAcc
+    private var sysNight = false
+    private var palSig: String? = null          // app theme palette this screen was built with
+
+    /** App theme first (the palette the page pushed, AppPal), the system day / night mode only when the page never sent one. */
+    private fun applyTheme() {
+        sysNight = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        palSig = AppPal.json(this)
+        val p = AppPal.load(this)
+        if (p != null) {
+            cBg = p.bg; cFg = p.fg; cDim = p.mut; cLine = p.bd; cCard = p.cont; cAcc = p.ac; cOnAcc = p.onac
+        } else if (sysNight) {
+            cBg = 0xFF1E1E1E.toInt(); cFg = 0xFFF2F2F2.toInt(); cDim = 0xFFB0B0B0.toInt(); cLine = 0xFF444444.toInt(); cCard = 0xFF2B2B2B.toInt(); cAcc = 0xFFFF8A3D.toInt(); cOnAcc = Color.WHITE
+        }
+        night = lumOf(cBg) < 0.5
+        cErr = if (night) 0xFFEF5350.toInt() else 0xFFC62828.toInt()
+    }
+
+    override fun onConfigurationChanged(c: Configuration) {
+        super.onConfigurationChanged(c)
+        // no palette from the page: follow the system mode live; with a palette the page pushes the new one (checked in onResume)
+        val nn = (c.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        if (palSig == null && nn != sysNight) recreate()
+    }
 
     // views
     private lateinit var titleTv: TextView
@@ -136,8 +160,8 @@ class StorageActivity : Activity() {
         vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
         val wantVol = b?.getString(X_VOL) ?: intent.getStringExtra(X_VOL)
         if (vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
-        night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        if (night) { cBg = 0xFF1E1E1E.toInt(); cFg = 0xFFF2F2F2.toInt(); cDim = 0xFFB0B0B0.toInt(); cLine = 0xFF444444.toInt(); cCard = 0xFF2B2B2B.toInt(); cAcc = 0xFFFF8A3D.toInt(); cErr = 0xFFEF5350.toInt() }
+        applyTheme()
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(cBg))
         window.statusBarColor = cBg
         window.navigationBarColor = cBg
         if (!night && Build.VERSION.SDK_INT >= 23) {
@@ -156,6 +180,7 @@ class StorageActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (AppPal.json(this) != palSig) { recreate(); return }      // the app theme was changed meanwhile
         // part 9b: a volume may have been removed / inserted, the All files access setting may have changed (the user comes back from the settings screen)
         vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
         if (volPath != null && vols.none { it.path == volPath }) { volPath = null; volName = ""; paintHead(); paintVols(); toast("The SD card / volume is no longer there"); attach(rescan = false); return }
@@ -194,7 +219,7 @@ class StorageActivity : Activity() {
             text = "All files access is off, so Android hides most folders from this scan and the sizes are far too small."
             textSize = 13f; setTextColor(cErr)
         })
-        ab.addView(barBtn("Allow all files access", cAcc, Color.WHITE) { openAccessSettings() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        ab.addView(barBtn("Allow all files access", cAcc, cOnAcc) { openAccessSettings() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         accessBar = ab
         rootView.addView(ab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(2), dp(12), dp(6)) })
         val vr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
@@ -236,7 +261,7 @@ class StorageActivity : Activity() {
             text = label; textSize = 14f; maxLines = 1; isClickable = true; gravity = Gravity.CENTER
             setPadding(dp(14), dp(8), dp(14), dp(8))
             background = rounded(if (on) cAcc else cCard, 16f)
-            setTextColor(if (on) Color.WHITE else cFg)
+            setTextColor(if (on) cOnAcc else cFg)
             setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
             setOnClickListener { fn() }
         }
@@ -506,7 +531,7 @@ class StorageActivity : Activity() {
             infoTv = info
             val act = TextView(this).apply {
                 textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
-                setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(cAcc, 10f); setTextColor(Color.WHITE)
+                setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(cAcc, 10f); setTextColor(cOnAcc)
                 setTypeface(typeface, Typeface.BOLD); visibility = View.GONE
                 setOnClickListener {
                     val n = selNode
@@ -993,7 +1018,7 @@ class StorageActivity : Activity() {
 
     private fun paintSeg(b: TextView, on: Boolean) {
         b.background = rounded(if (on) cAcc else cCard, 10f)
-        b.setTextColor(if (on) Color.WHITE else cFg)
+        b.setTextColor(if (on) cOnAcc else cFg)
         b.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
     }
 

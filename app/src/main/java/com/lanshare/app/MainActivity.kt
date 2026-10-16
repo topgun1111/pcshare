@@ -145,7 +145,7 @@ class MainActivity : Activity() {
                 } catch (_: Throwable) { }
             }
         }
-        @JavascriptInterface fun nlPalette(json: String) { runOnUiThread { nl.setPalette(json) } }
+        @JavascriptInterface fun nlPalette(json: String) { try { AppPal.save(applicationContext, json) } catch (_: Throwable) { }; runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
             splash.noteItems(key, items)
