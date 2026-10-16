@@ -68,6 +68,9 @@ class ImageViewerActivity : Activity() {
         private const val MAX_ITEMS = 2000
         private const val SLIDE_MS = 4000L
         private const val REQ_EDIT = 41
+        /** Set after a picture was deleted / replaced here: MainActivity refreshes the file list and an open album when it comes back to the front. */
+        @Volatile private var changed = false
+        fun consumeChanged(): Boolean { val c = changed; changed = false; return c }
     }
 
     private class Item(val name: String, val url: String, val size: Long, val mtime: Long = 0L)
@@ -200,7 +203,8 @@ class ImageViewerActivity : Activity() {
             PopupMenu(this, more).apply {
                 menu.add(0, 1, 0, if (slide) "Stop slideshow" else "Slideshow")
                 menu.add(0, 2, 1, "Details")
-                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; else -> false } }
+                menu.add(0, 3, 2, "Delete")
+                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; else -> false } }
             }.show()
         }
         top.addView(back)
@@ -316,16 +320,21 @@ class ImageViewerActivity : Activity() {
         pending = null
         val parsed = try { if (json == null) null else parse(json) } catch (_: Exception) { null }
         if (parsed == null || parsed.first.isEmpty()) { finish(); return }
+        install(parsed.first, parsed.second)
+    }
+
+    /** Shows [list] from page [start]: every per-page cache is dropped first (they are keyed by page number). */
+    private fun install(list: List<Item>, start: Int) {
         gen++
         loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); ocrOn.clear(); ocrNone.clear(); ocrBad.clear(); ocrWork = -1; ocrWant = -1; ocrFails = 0
         ui.removeCallbacks(autoRun)
         selBar.visibility = View.GONE
         File(cacheDir, "img").deleteRecursively()
-        items = parsed.first
+        items = list
         pager.adapter = Ad()
-        pager.setCurrentItem(parsed.second, false)
-        updateTitle(parsed.second)
-        prefetch(parsed.second)
+        pager.setCurrentItem(start, false)
+        updateTitle(start)
+        prefetch(start)
     }
 
     private fun parse(json: String): Pair<List<Item>, Int> {
@@ -452,6 +461,38 @@ class ImageViewerActivity : Activity() {
         val it = items.getOrNull(pager.currentItem) ?: return
         if (slide) setSlide(false)
         phonePrint.start(org.json.JSONObject().put("items", org.json.JSONArray().put(org.json.JSONObject().put("url", it.url).put("name", it.name))).toString())
+    }
+
+    /** More > Delete: asks, then moves the picture to the Recycle bin (this phone) / deletes it (other devices) and shows the next picture. */
+    private fun deleteCurrent() {
+        val pos = pager.currentItem
+        val it = items.getOrNull(pos) ?: return
+        if (slide) setSlide(false)
+        android.app.AlertDialog.Builder(this).setTitle("Delete this picture?")
+            .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                val u = android.net.Uri.parse(it.url)
+                val dev = u.getQueryParameter("dev") ?: "local"
+                val path = u.getQueryParameter("path") ?: ""
+                Thread {
+                    try {
+                        com.lanshare.app.core.Jobs.removeUser(com.lanshare.app.core.Jobs.ep(dev), com.lanshare.app.core.vnorm(path))
+                        runOnUiThread { afterDelete(it) }
+                    } catch (e: Exception) {
+                        runOnUiThread { Toast.makeText(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                    }
+                }.start()
+            }.show()
+    }
+
+    private fun afterDelete(gone: Item) {
+        changed = true
+        val i = items.indexOfFirst { x -> x === gone }
+        if (i < 0) return
+        val left = items.toMutableList().also { l -> l.removeAt(i) }
+        if (left.isEmpty()) { finish(); return }
+        install(left, minOf(i, left.size - 1))
     }
 
     private fun share() {
@@ -662,6 +703,7 @@ class ImageViewerActivity : Activity() {
         super.onActivityResult(req, res, data)
         if (req != REQ_EDIT || res != RESULT_OK || data == null || !data.getBooleanExtra(ImageEditActivity.R_REPLACED, false)) return
         // özgün dosyanın üstüne yazıldı: bu sayfanın önbelleğini at, yeniden yükle
+        changed = true
         val pos = pager.currentItem
         val old = items.getOrNull(pos) ?: return
         items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
