@@ -355,7 +355,7 @@ class MainActivity : Activity() {
         if (::chrome.isInitialized) chrome.resync()
         if (::web.isInitialized) web.evaluateJavascript("window.lsNlResync&&lsNlResync()", null)
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
-        if (::web.isInitialized && TextEditorActivity.consumeChanged()) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file: refresh the list
+        if (::web.isInitialized && (TextEditorActivity.consumeChanged() or ImageViewerActivity.consumeChanged())) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file / the picture viewer deleted or edited one: refresh the list and an open album
     }
 
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleShare(i) }

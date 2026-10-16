@@ -1269,7 +1269,7 @@ function mkAlbum(i,P0){
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
-function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;GCX=null}
+function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;o._reload=null;GCX=null}
 /* move-to-album picker: existing albums of the same kind (pictures / videos) + "New album"; resolves the target folder path or null */
 function galPick(a){return new Promise(async res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Move to album'));
@@ -1366,7 +1366,7 @@ function galView(a){
     const xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Clear clipboard');
     xb.onclick=async()=>{try{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}catch(e){}};
     pst.append(pbn,xb)};
-  o._pst=pasteUpd;pasteUpd();
+  o._pst=pasteUpd;o._reload=reload;pasteUpd();
   api('GET','/api/ls?dev=local&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
     const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid'))).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
@@ -1624,7 +1624,7 @@ function doNewNote(){
   if(S.dev!=='local'&&S.path==='/'){toast('\u26a0 Open a folder first',3000);return}
   try{LSAndroid.editText(JSON.stringify({dev:S.dev,dir:S.path,isNew:true}))}catch(e){toast('\u26a0 '+e.message,4000)}}
 /* the editor saved something: reload the open folder */
-window.lsRefresh=()=>{try{load()}catch(e){}};
+window.lsRefresh=()=>{try{load()}catch(e){}try{const g=$('#gal');if(g&&g._reload&&g.style.display!=='none')g._reload()}catch(e){}};
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});
 function mediaList(){return cxl().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
