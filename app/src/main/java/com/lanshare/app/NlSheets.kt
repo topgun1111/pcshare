@@ -70,8 +70,8 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val gal: Boolean = j.optInt("gal") == 1       // Gallery / Videos home (album cards): only the column count applies there
         val autoCols: Int = j.optInt("ec", 2)        // what "automatic" means on this screen (2, or 4 from 600 dp)
         var ff: Boolean = j.optInt("ff", 1) == 1     // folders first
-        var sort: String = j.optString("sort", "name")
-        var asc: Boolean = j.optInt("asc", 1) == 1
+        var sort: String = j.optString("sort", "date")
+        var asc: Boolean = j.optInt("asc", 0) == 1
         var hid: Boolean = j.optInt("hid") == 1
         var aa = false
         val lb: JSONObject = j.optJSONObject("lb") ?: JSONObject()
