@@ -182,7 +182,7 @@ class StorageActivity : Activity() {
         head.addView(tcol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         rescanBtn = Button(this).apply { text = "Rescan"; isAllCaps = false; setOnClickListener { attach(rescan = true) } }
         head.addView(rescanBtn)
-        rootView.addView(head)
+        // header (back / title / path / Rescan) is intentionally not attached: the screen starts with the volume chips / treemap (system Back still works)
 
         // part 9b: "All files access" banner (only while the permission is off) and the volume chips (only at the storage root, when an SD card / USB volume is mounted)
         val ab = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = rounded(cCard, 12f); visibility = View.GONE }
@@ -204,7 +204,7 @@ class StorageActivity : Activity() {
         vol.addView(volBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)))
         volTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setPadding(0, dp(8), 0, 0) }
         vol.addView(volTv)
-        rootView.addView(vol, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(4), dp(12), dp(8)) })
+        // volume card (Used / Free / Total) intentionally not attached to the screen; the views stay alive so the fill / visibility code keeps working
         volCard = vol
 
         content = FrameLayout(this)
@@ -458,7 +458,7 @@ class StorageActivity : Activity() {
         dBody = col
         sumSize = TextView(this).apply { textSize = if (compact) 22f else 28f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD) }
         sumCnt = TextView(this).apply { textSize = 14f; setTextColor(cDim); setPadding(0, 0, 0, dp(4)) }
-        col.addView(sumSize); col.addView(sumCnt)
+        // big size + "N files · N folders · scanned ..." lines intentionally not attached (sumSize / sumCnt stay as detached views)
         // notes about the whole scan: only shown while the scan root is open (saves room when drilled in)
         val nb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         notesBox = nb
