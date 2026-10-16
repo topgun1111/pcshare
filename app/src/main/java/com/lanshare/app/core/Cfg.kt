@@ -46,6 +46,10 @@ object Cfg {
     @Synchronized fun imgAutoCharging(): Boolean = obj.optBoolean("img_auto_chg", false)
     @Synchronized fun setImgAutoCharging(v: Boolean) { obj.put("img_auto_chg", v); save() }
 
+    /** Root support (su, see RootShell / RootFs): off until the user switches it on in Settings > Root access. */
+    @Synchronized fun rootEnabled(): Boolean = obj.optBoolean("root_on", false)
+    @Synchronized fun setRootEnabled(v: Boolean) { obj.put("root_on", v); save() }
+
     /** Text sharing: the device that "Send clipboard" (Quick Settings tile / notification), the share-sheet entry and the inbox send to without asking (peer id; "" = ask / the only online device). */
     @Synchronized fun defTarget(): String = obj.optString("def_target", "")
     @Synchronized fun setDefTarget(v: String) { obj.put("def_target", v); save() }

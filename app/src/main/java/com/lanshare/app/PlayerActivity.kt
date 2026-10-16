@@ -306,9 +306,9 @@ class PlayerActivity : Activity() {
             val sa = it.optJSONArray("subs")
             if (sa != null) for (j in 0 until minOf(sa.length(), 8)) {
                 val s = sa.getJSONObject(j)
-                if (local(s.getString("url"))) subs.add(Sub(s.optString("name"), s.getString("url")))
+                if (local(s.getString("url"))) subs.add(Sub(s.optString("name"), com.lanshare.app.core.RootShell.sign(s.getString("url"))))
             }
-            out.add(Item(it.optString("name"), url, it.optString("key", url), subs))
+            out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optString("key", url), subs))
         }
         val st = o.optInt("start", 0).coerceIn(0, maxOf(out.size - 1, 0))
         return out to st

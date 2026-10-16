@@ -87,7 +87,7 @@ class PhonePrint(private val act: Activity) {
         val skipped = ArrayList<String>()
         for (i in 0 until minOf(arr.length(), 60)) {
             val o = arr.getJSONObject(i)
-            val url = o.getString("url")
+            val url = com.lanshare.app.core.RootShell.sign(o.getString("url"))
             val name = o.optString("name", "file")
             val host = URL(url).host
             if (host != "127.0.0.1" && host != "localhost") throw IOException("bad address")

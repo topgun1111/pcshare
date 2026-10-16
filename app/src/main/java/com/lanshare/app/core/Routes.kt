@@ -8,10 +8,23 @@ import java.io.IOException
 
 // HTTP routing: the /p/ routes are what other devices call, the /api/ routes are what this device's own UI calls. Mirrors the Python H class.
 object Routes {
+    /** True when this request comes from the app's own screen: loopback AND it carries the per-run root token (cookie `lsroot`, header `x-ls-root` or query `rt`). Other apps / devices cannot know the token. */
+    private fun rootTrusted(ex: Exchange): Boolean {
+        val ip = ex.remoteIp
+        if (!(ip == "::1" || ip.startsWith("127.") || ip.startsWith("0:0:0:0:0:0:0:1") || ip.contains("127.0.0.1"))) return false
+        val t = RootShell.token
+        if (ex.query["rt"] == t || ex.header("x-ls-root") == t) return true
+        val c = ex.header("cookie") ?: return false
+        return c.split(';').any { it.trim() == "lsroot=$t" }
+    }
+
     fun handle(ex: Exchange) {
+        val trusted = rootTrusted(ex)
+        RootShell.untrusted.set(!trusted)   // Jobs.ep("root") reads this on the request thread
         try {
             val p = ex.path
             if (!p.startsWith("/p/")) ex.readBody()   // always consume UI request bodies so they never bleed into the next keep-alive request
+            if (p.startsWith("/api/") && !trusted && ex.query["dev"] == "root") throw Denied("Root is only available from the app's own screen")   // also covers cached thumbnails
             when {
                 p == "/p/hello" -> ex.json(Core.disc.hello())
                 p.startsWith("/p/") -> peer(ex, p.substring(3))
@@ -28,7 +41,8 @@ object Routes {
         } catch (e: JSONException) { ex.fail(400, errText(e))
         } catch (e: FileNotFoundException) { ex.fail(if ((e.message ?: "").contains("denied", true)) 403 else 404, errText(e))
         } catch (e: Exception) { ex.fail(500, errText(e))
-        } catch (e: Throwable) { ex.fail(500, "internal error: " + errText(e)) }   // OutOfMemoryError, LinkageError (a library missing on this Android version) ...
+        } catch (e: Throwable) { ex.fail(500, "internal error: " + errText(e))   // OutOfMemoryError, LinkageError (a library missing on this Android version) ...
+        } finally { RootShell.untrusted.remove() }
     }
 
     private fun ok(ex: Exchange) = ex.json(JSONObject().put("ok", true))
@@ -90,6 +104,8 @@ object Routes {
                     .put("seen", p.seen / 1000.0).put("via", viaOf(p.ip)).put("kind", "LANShare")
                     .put("vias", JSONArray((listOf(p.ip) + p.ips).map { viaOf(it) }.distinct())))
                 for (s in Smb.peers()) { val v = viaOf(Smb.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "SMB").put("vias", JSONArray(listOf(v)))) }
+                if (Cfg.rootEnabled() && RootShell.granted())   // Settings > Root access is on: the whole file system shows up as one more place
+                    a.put(JSONObject().put("id", "root").put("name", "Root").put("ip", "").put("ok", true).put("seen", System.currentTimeMillis() / 1000.0).put("via", "su").put("kind", "Root").put("vias", JSONArray(listOf("su"))))
                 return ex.json(a)
             }
             "diag" -> return ex.json(JSONObject().put("me", Cfg.name).put("id", Cfg.id).put("port", d.port)
@@ -192,6 +208,7 @@ object Routes {
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
+            "root" -> if (ex.method == "GET") return ex.json(rootStatus())   // POST = switch on / off (below)
             "smbscan" -> return ex.json(d.smbScan())
             // ---- Storage Analyzer (scan engine: StorageScan.kt). path "/" = the whole main storage, anything else = that folder, recursive.
             "sscan" -> return ex.json(sscanStart(vnorm(q["path"] ?: "/"), q["rescan"] == "1"))   // start (or return the running / newest finished scan of that folder)
@@ -234,6 +251,16 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
+            "root" -> {   // Settings > Root access: "enable" asks su (the root manager shows its grant prompt) and only then stores the switch; "disable" = off + forget
+                if (RootShell.untrusted.get() == true) throw Denied("Root is only available from the app's own screen")
+                when (b.optString("op")) {
+                    "enable" -> { if (RootShell.check()) Cfg.setRootEnabled(true) else Cfg.setRootEnabled(false) }
+                    "disable" -> { Cfg.setRootEnabled(false); RootShell.forget() }
+                    "check" -> RootShell.check()
+                    else -> throw BadReq("unknown op")
+                }
+                ex.json(rootStatus())
+            }
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }
@@ -287,6 +314,8 @@ object Routes {
             else -> ex.fail(404, "unknown api")
         }
     }
+
+    private fun rootStatus(): JSONObject = JSONObject().put("enabled", Cfg.rootEnabled()).put("state", RootShell.stateName()).put("why", RootShell.why)
 
     private fun smbUpdate(ex: Exchange, b: JSONObject) {
         val remove = b.optString("remove")

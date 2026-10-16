@@ -49,6 +49,7 @@ object Core {
             try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
             try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
+            if (Cfg.rootEnabled()) Thread({ try { RootShell.check() } catch (_: Throwable) {} }, "root-check").also { it.isDaemon = true }.start()   // switched on earlier: ask su again (the manager remembers the grant)
             var srv: MiniHttp? = null
             var port = BASE_PORT
             for (p in BASE_PORT until BASE_PORT + 20) {

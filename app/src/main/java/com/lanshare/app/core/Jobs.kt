@@ -660,6 +660,7 @@ object Jobs {
 
     fun ep(dev: String): Endpoint = ArcEp(when {   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
         dev == "local" -> Core.local
+        dev == "root" -> RootShell.fs()   // su file access: throws unless Settings > Root access is on, granted, and the request comes from the app's own screen
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })

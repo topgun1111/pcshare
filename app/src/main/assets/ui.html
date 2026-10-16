@@ -695,6 +695,8 @@ function clearQ(){S.q='';NLSRQ='';$('#sq').value='';document.body.classList.remo
 const enc=encodeURIComponent;
 const jn=(a,b)=>(b&&b.charCodeAt(0)===1)?b.slice(1):(a==='/'?'':a)+'/'+b;   // a name starting with \u0001 is a full path (gallery album that lives outside the open folder)
 const XM={};   // \u0001+path -> {name:key,disp,dir:true,path}
+function rootCk(){try{if(window.LSAndroid&&LSAndroid.rootToken)document.cookie='lsroot='+LSAndroid.rootToken()+'; path=/'}catch(e){}}   // root support: proves that requests come from this screen (the token only exists inside this app, see RootShell)
+rootCk();
 async function api(m,u,b,ms){
   const ac=ms?new AbortController():null,tm=ms?setTimeout(()=>ac.abort(),ms):0;let r,t;
   try{for(let k=0;;k++){
@@ -852,6 +854,7 @@ async function pollPeers(){
   if(g===pollGen)pollTimer=setTimeout(pollPeers,S.lost?2500:1200)}
 let lastResume=0;
 function resume(){  // screen unlocked / tab restored / network back
+  rootCk();
   const n=Date.now();if(n-lastResume<3000)return;lastResume=n;
   api('POST','/api/scan',{},4000).catch(()=>{});
   pollPeers();S.sig='';if(S.dev!=='local')load()}
@@ -1904,6 +1907,16 @@ function openSettings(){
   const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
   rb.onclick=()=>{close();openSmb()};card.append(rb);
   api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
+  {const rr=E('button','set'),tr=E('div','t'),sr=E('small','','Checking…');rr.style.width='100%';rr.style.textAlign='left';tr.append(E('b','','Root access'),sr);rr.append(tr);
+    const isOn=r=>!!(r&&r.enabled&&r.state==='granted');
+    const txt=r=>isOn(r)?'On - \"Root\" is in the device list (whole file system). Tap to switch off':(r&&r.state==='denied'&&r.why?'Off - '+r.why:'Off - needs a rooted phone; the root manager asks once');
+    api('GET','/api/root').then(r=>{rr._r=r;sr.textContent=txt(r)}).catch(()=>{sr.textContent=''});
+    rr.onclick=async()=>{if(!rr._r)return;const on=!isOn(rr._r);
+      if(on&&!await dlg({title:'Turn on root access?',msg:'This app can then read and change ANY file on the phone as root, including other apps data and system files. Deleting there is permanent (no Recycle bin). Only turn it on if you know what you are doing.',ok:'Turn on',danger:true}))return;
+      try{if(on)sr.textContent='Waiting for the root manager…';const r=await api('POST','/api/root',{op:on?'enable':'disable'});rr._r=r;sr.textContent=txt(r);
+        if(on&&!isOn(r))toast('⚠ '+(r.why||'Root access was not granted'),5000);
+        if(!on&&S.dev==='root'){openDev('local')}
+        pollPeers()}catch(e){sr.textContent=txt(rr._r);toast('⚠ '+e.message,5000)}};card.append(rr)}
   const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden item'+(HGAL.length===1?'':'s'):'Hidden items, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
   rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
