@@ -5,6 +5,9 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowBackground">@color/white</item>
+        <!-- glass themes: the window is translucent and shows the system wallpaper; MainActivity.glassWindow() switches the real background at runtime -->
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowShowWallpaper">true</item>
         <item name="android:colorPrimary">@color/brand</item>
         <item name="android:colorAccent">@color/accent</item>
         <item name="android:colorControlActivated">@color/accent</item>

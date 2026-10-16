@@ -760,6 +760,7 @@ object Jobs {
                                 var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
+                                        .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
                                     try { q.put("srcMtime", src.stat(sp).optLong("mtime")) } catch (_: Exception) {}
                                     act = job.waitAnswer(q)
                                     if (act == "replace_all") { sticky = "replace"; act = "replace" }

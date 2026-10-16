@@ -138,6 +138,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun bars(color: String, light: Boolean) {
             runOnUiThread {
                 try {
+                    if (glassOn) { androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }; return@runOnUiThread }   // glass: bars stay transparent
                     val c = Color.parseColor(color)
                     window.statusBarColor = c; window.navigationBarColor = c
                     val ic = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
@@ -145,6 +146,8 @@ class MainActivity : Activity() {
                 } catch (_: Throwable) { }
             }
         }
+        /** Glass theme on / off: translucent window over the wallpaper (blurred on Android 12+ when the device allows it), transparent WebView and system bars. [light] = dark text / icons. */
+        @JavascriptInterface fun glass(on: Boolean, light: Boolean) { getSharedPreferences("ls_theme", MODE_PRIVATE).edit().putBoolean("glass", on).putBoolean("glassLight", light).apply(); runOnUiThread { glassWindow(on, light) } }
         @JavascriptInterface fun nlPalette(json: String) { try { AppPal.save(applicationContext, json) } catch (_: Throwable) { }; runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
@@ -274,6 +277,7 @@ class MainActivity : Activity() {
             addView(drawer.panel, drawer.layoutParams())            // native side drawer: topmost, GONE until the page opens its drawer; swallows touches inside its own width only
         }
         setContentView(root)
+        getSharedPreferences("ls_theme", MODE_PRIVATE).let { if (it.getBoolean("glass", false)) glassWindow(true, it.getBoolean("glassLight", false)) }   // glass from the very first frame (no white flash)
         edgeInit(root)
         splash = NlSplash(this, nl, web, root)
         if (b == null) splash.start()      // cold start: draw the last screen natively while the page loads
@@ -344,6 +348,19 @@ class MainActivity : Activity() {
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) tryClipSend() }
+
+    @Volatile private var glassOn = false
+    private fun glassWindow(on: Boolean, light: Boolean) {
+        try {
+            glassOn = on
+            if (::web.isInitialized) web.setBackgroundColor(if (on) Color.TRANSPARENT else Color.WHITE)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(if (on) (if (light) 0x66FFFFFF else 0x73000000) else Color.WHITE))   // dim layer over the wallpaper keeps text readable
+            if (on) { window.statusBarColor = Color.TRANSPARENT; window.navigationBarColor = Color.TRANSPARENT }
+            if (Build.VERSION.SDK_INT >= 31) window.setBackgroundBlurRadius(if (on) 70 else 0)   // real frosted glass: blurs the wallpaper behind (needs "window blurs" enabled on the device)
+            val ic = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            ic.isAppearanceLightStatusBars = on && light; ic.isAppearanceLightNavigationBars = on && light
+        } catch (_: Throwable) { }
+    }
 
     override fun onPause() { super.onPause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
@@ -583,7 +600,7 @@ class MainActivity : Activity() {
     }
 
     /** One progress notification per operation (determinate bar; indeterminate if the size is unknown). */
-    private fun notifyProgress(nid: Int, title: String, text: String, done: Long, total: Long, st: String) {
+    private fun notifyProgress(nid: Int, title: String, text: String, done: Long, total: Long, st: String, alert: Boolean = false) {   // alert: final result with sound / heads-up (app in the background)
         try {
             val nm = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= 26)
@@ -591,9 +608,13 @@ class MainActivity : Activity() {
             val open = PendingIntent.getActivity(this, 0,
                 Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val b = NotificationCompat.Builder(this, "lanshare_transfers")
+            if (alert && Build.VERSION.SDK_INT >= 26)
+                nm.createNotificationChannel(NotificationChannel("lanshare_results", "Job results", NotificationManager.IMPORTANCE_HIGH))
+            val b = NotificationCompat.Builder(this, if (alert) "lanshare_results" else "lanshare_transfers")
                 .setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(text)
-                .setContentIntent(open).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_PROGRESS)
+                .setContentIntent(open).setOnlyAlertOnce(!alert)
+                .setCategory(if (alert) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
+            if (alert) b.setStyle(NotificationCompat.BigTextStyle().bigText(text)).setPriority(NotificationCompat.PRIORITY_HIGH)
             if (st == "run") b.setOngoing(true).setProgress(100, if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0, total <= 0)
             else b.setOngoing(false).setAutoCancel(true).setProgress(0, 0, false)
             nm.notify(nid, b.build())
@@ -612,9 +633,12 @@ class MainActivity : Activity() {
                     val j = JSONObject(body)
                     val label = j.optString("label", "Working")
                     val done = j.optLong("done"); val total = j.optLong("total", 1).coerceAtLeast(1)
+                    // the final result alerts (sound / heads-up) when the app is in the background and the job was a print, a long one (>= 10 s) or failed
+                    val isPrint = label.startsWith("Print")
+                    val loud = ClipPush.front == null && (isPrint || j.optLong("elapsed") >= 10 || j.optString("state") == "error")
                     when (j.optString("state")) {
-                        "error" -> { notifyProgress(nid, label, "Failed: " + (if (j.isNull("error")) "" else j.optString("error")), 0, 0, "err"); break }
-                        "done" -> { notifyProgress(nid, label, "Done", 0, 0, "done"); break }
+                        "error" -> { notifyProgress(nid, if (isPrint) "Print failed" else "$label failed", (if (j.isNull("error")) "" else j.optString("error")).ifBlank { label }, 0, 0, "err", loud); break }
+                        "done" -> { notifyProgress(nid, if (isPrint) "Print finished" else label, if (isPrint) label else "Done", 0, 0, "done", loud); break }
                         "cancel" -> { notifyProgress(nid, label, "Cancelled", 0, 0, "cancel"); break }
                     }
                     val now = System.nanoTime()
