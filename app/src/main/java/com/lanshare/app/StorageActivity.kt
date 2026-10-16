@@ -358,9 +358,8 @@ class StorageActivity : Activity() {
             val l = try { StorageStore.load(dir) } catch (_: Throwable) { null }
             ui.post {
                 if (seq != attachSeq || isDestroyed || isFinishing) return@post
-                var sc: Scan? = null
-                if (l != null && !(l.limited && !needAccess())) { StorageScan.adopt(l); sc = l }
-                if (sc == null) sc = try { startScan(dir) }
+                val sc: Scan = if (l != null && !(l.limited && !needAccess())) { StorageScan.adopt(l); l }
+                    else try { startScan(dir) }
                     catch (e: Throwable) { showMessage("Cannot analyze this folder", com.lanshare.app.core.errText(e), canRetry = false); return@post }
                 scan = sc; shownState = ""
                 fillVolume(); update()
