@@ -16,7 +16,7 @@ import java.io.File
 
 /**
  * Storage Analyzer, part 8a: the non-destructive actions on a node of the scan tree (open, share, show in the file manager).
- * Delete (via Bin) and patching the tree afterwards live in StorageActivity (part 8b: files; folders come in 8c) and StorageScan.removeFile.
+ * Delete (via Bin) and patching the tree afterwards live in StorageActivity (parts 8b + 8c) and StorageScan.removeFile.
  *
  * A node path is relative to the scan root; for a folder scan the screen's own virtual path has to be put in front
  * ([virt]), then [Core.local] turns it into the real file. Everything here runs on the main thread and only starts intents.
@@ -32,8 +32,9 @@ object StorageActions {
     }
 
     /** Real file of [n], or null (with a toast) when it cannot be resolved or is gone since the scan. */
-    fun realOrToast(a: Activity, scanPath: String, n: SNode): File? {
-        val f = try { Core.local.real(virt(scanPath, n)) } catch (e: Throwable) { toast(a, "Cannot find it: " + errText(e)); return null }
+    fun realOrToast(a: Activity, scanPath: String, n: SNode, base: File? = null): File? {
+        // part 9b: [base] = root of another volume (SD card): the node path is simply below it
+        val f = try { if (base != null) File(base, n.path().trimStart('/')) else Core.local.real(virt(scanPath, n)) } catch (e: Throwable) { toast(a, "Cannot find it: " + errText(e)); return null }
         if (!f.exists()) { toast(a, "It no longer exists (deleted or moved since the scan)"); return null }
         return f
     }
@@ -45,7 +46,7 @@ object StorageActions {
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
         val uri = try { FileProvider.getUriForFile(a, a.packageName + ".fileprovider", f) }
-                  catch (_: IllegalArgumentException) { toast(a, "Cannot open files outside the main storage from here"); return }
+                  catch (_: IllegalArgumentException) { toast(a, "Cannot open this file from here"); return }
         fun go(m: String) {
             val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             a.startActivity(if (pick) Intent.createChooser(v, "Open with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) else v)

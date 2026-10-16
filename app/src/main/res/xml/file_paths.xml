@@ -2,4 +2,6 @@
 <paths>
     <cache-path name="open" path="open/"/>
     <external-path name="storage" path="."/>
+    <!-- part 9b: files on an SD card / USB volume (Storage analyzer: Open / Share) -->
+    <root-path name="root" path=""/>
 </paths>

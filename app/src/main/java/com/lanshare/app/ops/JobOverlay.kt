@@ -31,6 +31,8 @@ import androidx.core.view.WindowInsetsCompat
  */
 class JobOverlay private constructor(private val act: Activity) : FrameLayout(act) {
     private val dp = resources.displayMetrics.density
+    /** Part 9b: rows whose job id starts with this are not shown in THIS overlay (the analyzer screen shows its own scan progress; the notification still lists it). */
+    var hidePrefix: String? = null
     private fun px(v: Int) = (v * dp).toInt()
     private val ui = Handler(Looper.getMainLooper())
     private val prefs = act.getSharedPreferences("ops_overlay", Context.MODE_PRIVATE)
@@ -118,7 +120,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
     private fun poll(again: Boolean) {
         ui.removeCallbacks(tick)
         val pip = try { act.isInPictureInPictureMode } catch (_: Throwable) { false }
-        rows = if (pip) emptyList() else try { JobView.rows() } catch (_: Throwable) { emptyList() }
+        rows = if (pip) emptyList() else try { JobView.rows().let { r -> hidePrefix?.let { p -> r.filter { !it.id.startsWith(p) } } ?: r } } catch (_: Throwable) { emptyList() }
         render(rows)
         if (again) ui.postDelayed(tick, if (rows.isEmpty()) 800L else 400L)
     }
@@ -305,10 +307,10 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         private const val CORNER_BOTTOM_START = 2; private const val CORNER_BOTTOM_END = 3
 
         /** Call once at the end of onCreate (after setContentView). Idempotent. */
-        fun install(act: Activity) {
+        fun install(act: Activity, hidePrefix: String? = null) {
             val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
             if (root.findViewWithTag<View>(TAG) != null) return
-            root.addView(JobOverlay(act), ViewGroup.LayoutParams(-1, -1))
+            root.addView(JobOverlay(act).also { it.hidePrefix = hidePrefix }, ViewGroup.LayoutParams(-1, -1))
         }
     }
 }

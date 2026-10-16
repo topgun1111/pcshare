@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicLongArray
  *   StorageScan.get(id): Scan?   StorageScan.cancel(id)   StorageScan.latest(dir: File): Scan?  (newest finished scan of that folder)
  *   Scan.state "run"|"done"|"cancel"|"error", Scan.percent() (-1 unknown), Scan.files/dirs/bytes (live counters), Scan.cur (folder being read)
  *   Scan.root (SNode, null until done), Scan.top, Scan.catBytes(), Scan.catFiles(), Scan.find("/DCIM/Camera"), SNode.path()
+ * Part 9b added: Scan.limited / truncated / loaded / removed, the job entry (progress bubble + notification), adopt(), the heap based node limit,
+ * the node budget of the scans kept in memory, and the disk copy of finished results ([StorageStore]).
  * NOT compiled / NOT device-tested (no Android SDK in the authoring environment).
  */
 
@@ -108,7 +110,7 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
     val bytes = AtomicLong()
     val denied = AtomicInteger()
     @Volatile var cur = ""               // folder being read now (updated about 6 times a second)
-    val t0 = System.currentTimeMillis()
+    @Volatile var t0 = System.currentTimeMillis()   // var: a result loaded from disk sets it from the saved duration
     @Volatile var t1 = 0L                // end time, 0 while running
     @Volatile var root: SNode? = null    // set when the scan is done
     @Volatile var top: List<SNode> = emptyList()   // the largest files of the whole scan, biggest first
@@ -120,6 +122,21 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
     internal val topHeap = PriorityQueue<SNode>(StorageScan.TOP_FILES + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }   // min-heap: smallest of the top on top
     @Volatile internal var tick = 0L
     @Volatile internal var topMin = 0L
+    // part 9b
+    /** The scan ran while "All files access" was off (Android 11+): most folders were hidden, so the result is only partial. */
+    @Volatile var limited = false
+    /** The memory guard stopped keeping single files for some folders (they are only counted in the folder's "small files" node; totals stay exact). */
+    @Volatile var truncated = false
+    /** Result read back from the disk copy ([StorageStore]) instead of scanned in this session. */
+    @Volatile var loaded = false
+    /** Bytes taken out of the tree by deletes in the analyzer (they are in the recycle bin, still on the volume): "System / other" = used - (root.size + removed). Written under synchronized(scan). */
+    @Volatile var removed = 0L
+    /** Kept-node budget of this scan (memory guard), set at start from the heap size. */
+    @Volatile internal var maxNodes = StorageScan.MAX_NODES
+    /** The progress bubble / notification entry of this scan ([Jobs.all] key "sscan:<id>"); null for a loaded result. */
+    @Volatile internal var job: Job? = null
+    @Volatile internal var saveDirty = false
+    internal val saving = java.util.concurrent.atomic.AtomicBoolean()
 
     /** 0..99 while running (scanned bytes / used bytes of the volume; reaches 100 only when done), -1 when the used size is unknown. */
     fun percent(): Int {
@@ -133,7 +150,7 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
     /** Bytes per category of the whole scan (empty array of zeros until done). */
     fun catBytes(): LongArray = root?.cats?.copyOf() ?: LongArray(SCat.COUNT)
 
-    /** Files per category of the whole scan (live while running). */
+    /** Files per category of the whole scan (live while running). Part 9a: NOT adjusted after a folder delete (the tree keeps bytes per category, not file counts, and the "small files" nodes do not know their categories); nothing in the UI reads it once a scan is done. */
     fun catFiles(): LongArray = LongArray(SCat.COUNT) { catF.get(it) }
 
     /** Node of a virtual path below the scan root ("/" = root, "/DCIM/Camera"); null when unknown or when the folder was pruned (empty). */
@@ -153,7 +170,9 @@ object StorageScan {
     const val MAX_NODES = 400_000      // after this many kept file nodes new files are only counted (memory guard)
     const val DENIED_SAMPLE = 20
     private const val THREADS = 4
-    private const val KEEP_SCANS = 3   // finished scans kept in memory
+    private const val KEEP_SCANS = 3   // finished scans kept in memory ...
+    private const val NODE_BUDGET = 700_000   // ... but only while their kept nodes together stay below this (the newest scan is always kept)
+    const val JOB_PREFIX = "sscan:"
 
     private val all = ConcurrentHashMap<String, Scan>()
     private val pool = Executors.newFixedThreadPool(THREADS) { r -> Thread(r, "sscan").also { it.isDaemon = true } }
@@ -183,15 +202,49 @@ object StorageScan {
         val ok = try { dir.isDirectory } catch (_: Exception) { false }
         if (!ok) { s.error = "Not a folder"; s.state = "error"; s.t1 = System.currentTimeMillis(); return s }
         if (dir.list() == null) { s.error = "Permission denied"; s.state = "error"; s.t1 = System.currentTimeMillis(); return s }
+        s.limited = Core.storageOk == false
+        s.maxNodes = nodeLimit()
+        // progress bubble + foreground notification: the scan shows up as a normal job (Cancel there sets the same flag)
+        val j = Job("Analyzing " + (if (label.isEmpty()) "storage" else label))
+        j.id = JOB_PREFIX + s.id; j.bytes = true; j.total = if (usedBytes > 0) usedBytes else 0L
+        s.job = j
+        Jobs.all[j.id] = j
         s.pending.incrementAndGet()
         pool.execute { task(s, root, dir) }
         return s
     }
 
-    /** Keeps the newest [KEEP_SCANS] finished scans, drops older ones (a finished tree can hold some MB). */
+    /** A scan read back from disk ([StorageStore.load]) becomes the newest finished scan of its folder. */
+    fun adopt(s: Scan) { evict(); all[s.id] = s }
+
+    /** Kept-node limit from the heap size (about 700 bytes per kept node with its name, array slot and the Largest copy), between 150,000 and [MAX_NODES]. */
+    private fun nodeLimit(): Int = (Runtime.getRuntime().maxMemory() / 700L).coerceIn(150_000L, MAX_NODES.toLong()).toInt()
+
+    /** Less than 32 MB of heap left: stop keeping single files, only count them. */
+    private fun lowMemory(): Boolean {
+        val r = Runtime.getRuntime()
+        return r.maxMemory() - (r.totalMemory() - r.freeMemory()) < (32L shl 20)
+    }
+
+    /** Copies the live numbers to the job entry (and the job's Cancel to the scan). Called about 6 times a second from the walking threads. */
+    private fun mirror(s: Scan) {
+        val j = s.job ?: return
+        if (j.cancel) s.cancel = true
+        j.cur = s.cur
+        val t = j.total
+        j.done = if (t > 1L) minOf(s.bytes.get(), t * 99 / 100) else s.bytes.get()   // never 100 % before the end
+    }
+
+    /** Keeps the newest [KEEP_SCANS] finished scans while their kept nodes together fit [NODE_BUDGET] (the newest is always kept), drops older ones (a finished tree can hold tens of MB). A screen that still shows a dropped scan keeps its own reference. */
     private fun evict() {
         val done = all.values.filter { it.state != "run" }.sortedByDescending { it.t1 }
-        for (i in KEEP_SCANS until done.size) all.remove(done[i].id)
+        var budget = NODE_BUDGET
+        for (i in done.indices) {
+            val d = done[i]
+            val cost = if (d.state == "done") d.nodes.get() else 0
+            if (i < KEEP_SCANS && (i == 0 || cost <= budget)) budget -= cost
+            else { all.remove(d.id); Jobs.all.remove(JOB_PREFIX + d.id) }
+        }
     }
 
     // ------------------------------------------------------------------ one folder = one task
@@ -199,7 +252,7 @@ object StorageScan {
         try {
             if (s.cancel) return
             val now = System.currentTimeMillis()
-            if (now - s.tick > 150) { s.tick = now; s.cur = dir.path }
+            if (now - s.tick > 150) { s.tick = now; s.cur = dir.path; mirror(s) }
             val entries = dir.listFiles()
             if (entries == null) {
                 node.denied = true
@@ -208,7 +261,7 @@ object StorageScan {
             }
             s.dirs.incrementAndGet()
             val modern = Build.VERSION.SDK_INT >= 26
-            val keepMax = if (s.nodes.get() > MAX_NODES) 0 else FILES_PER_DIR
+            val keepMax = if (s.nodes.get() > s.maxNodes || lowMemory()) 0 else FILES_PER_DIR   // memory guard (part 9b: limit from the heap size + live check)
             val heap = PriorityQueue<SNode>(keepMax + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }   // this folder's largest files
             val subs = ArrayList<SNode>()
             val subFiles = ArrayList<File>()
@@ -241,6 +294,7 @@ object StorageScan {
                 }
                 if (size > 0) offerTop(s, f.name, node, size, c)
             }
+            if (keepMax == 0 && ownFiles > 0) s.truncated = true
             // counters + this folder's own numbers (sub-folder totals are added by the finishing pass)
             s.files.addAndGet(ownFiles); s.bytes.addAndGet(ownBytes)
             for (c in 0 until SCat.COUNT) if (catN[c] > 0) s.catF.addAndGet(c, catN[c].toLong())
@@ -302,8 +356,16 @@ object StorageScan {
                 if (s.error == null) s.error = if (t is OutOfMemoryError) "Out of memory" else errText(t)
             }
             s.t1 = System.currentTimeMillis()
-            s.state = if (s.error != null) "error" else if (s.cancel) "cancel" else "done"
+            val st = if (s.error != null) "error" else if (s.cancel) "cancel" else "done"
+            if (st != "done") synchronized(s.topLock) { s.topHeap.clear() }   // nothing is kept of a cancelled / failed scan
+            s.state = st
             s.cur = ""
+            s.job?.let { j ->
+                j.cur = ""; if (st == "done") j.done = j.total
+                if (st == "error") j.error = s.error
+                j.end = s.t1; j.state = st
+            }
+            if (st == "done") StorageStore.saveAsync(s)   // remember the result across process death
         }, "sscan-fin", 16L shl 20).also { it.isDaemon = true }.start()
     }
 
@@ -346,7 +408,17 @@ object StorageScan {
             a.cats?.let { it[cat] = maxOf(0L, it[cat] - size) }
             a = a.parent
         }
-        // 3. folders that became empty are dropped (never the root)
+        // 3 + 4. emptied folders dropped, kids re-sorted
+        val near = dropEmptyAndResort(p)
+        // 5. the largest-files list and the live counters
+        if (s.top.isNotEmpty()) s.top = s.top.filter { !(it.parent === p && it.name == n.name) }
+        s.files.addAndGet(-1L); s.bytes.addAndGet(-size); s.catF.addAndGet(cat, -1L)
+        s.removed += size
+        return near
+    }
+
+    /** Folders that became empty are dropped (never the root), then sizes changed: kids biggest first again along the chain. Returns the nearest folder still in the tree. */
+    private fun dropEmptyAndResort(p: SNode): SNode {
         var near: SNode = p
         while (true) {
             val up = near.parent ?: break
@@ -355,16 +427,76 @@ object StorageScan {
             up.kids = up.kids.filter { it !== dead }.toTypedArray()
             near = up
         }
-        // 4. sizes changed: biggest first again
         var b: SNode? = p
         while (b != null) {
             if (b.kids.size > 1) b.kids = b.kids.sortedByDescending { it.size }.toTypedArray()
             b = b.parent
         }
-        // 5. the largest-files list and the live counters
-        if (s.top.isNotEmpty()) s.top = s.top.filter { !(it.parent === p && it.name == n.name) }
-        s.files.addAndGet(-1L); s.bytes.addAndGet(-size); s.catF.addAndGet(cat, -1L)
         return near
+    }
+
+    /** Part 8c: a whole folder [n] left the storage (moved to the bin). Detaches it, subtracts its size / files / folders / categories up the chain, drops emptied ancestors, removes every Largest-list entry below it. Returns the nearest folder still in the tree; null = not a folder of this scan (nothing changed). */
+    fun removeNode(s: Scan, n: SNode): SNode? {
+        synchronized(s) { return removeNodeLocked(s, n) }
+    }
+
+    private fun removeNodeLocked(s: Scan, n: SNode): SNode? {
+        if (s.root == null || !n.dir || n.agg) return null
+        val p = n.parent ?: return null                       // the scan root cannot be removed
+        if (p.kids.none { it === n }) return null             // already detached
+        val size = n.size
+        val files = n.files
+        val folders = 1L + n.folders
+        val cats = n.cats
+        p.kids = p.kids.filter { it !== n }.toTypedArray()
+        var a: SNode? = p
+        while (a != null) {
+            a.size = maxOf(0L, a.size - size)
+            a.files = maxOf(0L, a.files - files)
+            a.folders = maxOf(0L, a.folders - folders)
+            val ac = a.cats
+            if (ac != null && cats != null) for (c in 0 until SCat.COUNT) ac[c] = maxOf(0L, ac[c] - cats[c])
+            a = a.parent
+        }
+        val near = dropEmptyAndResort(p)
+        // Largest list: drop every file whose parent chain contains n (identity)
+        if (s.top.isNotEmpty()) s.top = s.top.filter { t ->
+            var x: SNode? = t.parent
+            while (x != null && x !== n) x = x.parent
+            x == null
+        }
+        s.files.addAndGet(-files); s.bytes.addAndGet(-size)   // catF is bytes-only per node: left alone (used while running only)
+        s.removed += size
+        return near
+    }
+
+    /** Part 9a: how many unreadable (denied) folders lie inside [n] (itself included). Their content was never scanned, so the size shown for [n] is only a lower bound. */
+    fun deniedBelow(n: SNode): Int {
+        var c = if (n.dir && n.denied) 1 else 0
+        for (k in n.kids) if (k.dir) c += deniedBelow(k)
+        return c
+    }
+
+    /**
+     * Part 9a (batch delete): [list] without duplicates and without every node that lies inside another node of the list
+     * (a file inside a selected folder goes with the folder) and without a second node for the same file (kept node + its Largest-list copy). The agg node and the scan root are dropped. Order kept.
+     */
+    fun pruneNested(list: List<SNode>): List<SNode> {
+        val set = java.util.IdentityHashMap<SNode, Boolean>()
+        for (n in list) if (!n.agg && n.parent != null) set[n] = true
+        val done = java.util.IdentityHashMap<SNode, Boolean>()
+        val twins = HashSet<String>()                       // a kept file node and its copy from the Largest list stand for the same file: only one of them
+        val out = ArrayList<SNode>()
+        for (n in list) {
+            if (!set.containsKey(n) || done.containsKey(n)) continue
+            done[n] = true
+            if (!n.dir && !twins.add(System.identityHashCode(n.parent).toString() + "/" + n.name)) continue
+            var x: SNode? = n.parent
+            var nested = false
+            while (x != null) { if (set.containsKey(x)) { nested = true; break }; x = x.parent }
+            if (!nested) out.add(n)
+        }
+        return out
     }
 
     /** Post-order: folder size / files / folders / categories include everything below; kids sorted biggest first; empty folders dropped. */

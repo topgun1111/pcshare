@@ -19,6 +19,7 @@ import com.lanshare.app.core.SNode
  * length is the share of the folder. The "N small files" node is a row too. Tap = [onTap] + selected row highlight.
  * Same data and colours as [StorageTreemap] (it shares [StorageTreemap.CAT_COL]); drill-in / breadcrumb are in StorageActivity (part 6).
  * Part 7: [setFilter] (one file category), [setFlat] (Largest files tab, rows show the folder), [select].
+ * Part 9a: multi-select (long-press a row = select mode, tap toggles a tick box, [checkedNodes], [endMulti]) for the batch delete.
  * NOT compiled / NOT device-tested.
  */
 class StorageList(ctx: Context) : ListView(ctx) {
@@ -45,6 +46,34 @@ class StorageList(ctx: Context) : ListView(ctx) {
     /** Currently selected node (null = none). */
     val selected: SNode? get() = selNode
 
+    // part 9a: multi-select (batch delete). Long-press starts it, a tap toggles a row, [onMulti] tells the screen to repaint its bar.
+    var onMulti: (() -> Unit)? = null
+    private val checked = java.util.LinkedHashSet<SNode>()
+    /** True while the list is in select mode (taps toggle ticks instead of opening / describing). */
+    var multi = false
+        private set
+    /** Part 9b: false on another volume (delete is only offered on the main storage), so a long-press does nothing. */
+    var canSelect = true
+
+    /** Ticked nodes in the order they were ticked (copy). */
+    fun checkedNodes(): List<SNode> = ArrayList(checked)
+
+    /** Leave select mode and drop all ticks. */
+    fun endMulti() {
+        if (!multi && checked.isEmpty()) return
+        multi = false; checked.clear()
+        adapterImpl.notifyDataSetChanged()
+        onMulti?.invoke()
+    }
+
+    private fun toggle(n: SNode) {
+        if (n.agg) return                       // the "small files" node cannot be deleted from here
+        if (!checked.remove(n)) checked.add(n)
+        if (checked.isEmpty()) multi = false    // last tick removed: select mode ends
+        adapterImpl.notifyDataSetChanged()
+        onMulti?.invoke()
+    }
+
     private val d = resources.displayMetrics.density
     private fun dp(v: Float) = v * d
 
@@ -54,7 +83,7 @@ class StorageList(ctx: Context) : ListView(ctx) {
         override fun getItemId(position: Int) = position.toLong()
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
             val v = (convertView as? RowView) ?: RowView(context)
-            v.bind(kids[position], kids[position] === selNode)
+            v.bind(kids[position], kids[position] === selNode, multi, checked.contains(kids[position]))
             return v
         }
     }
@@ -67,10 +96,18 @@ class StorageList(ctx: Context) : ListView(ctx) {
         setAdapter(adapterImpl)
         setOnItemClickListener { _, _, pos, _ ->
             if (pos in kids.indices) {
+                if (multi) { toggle(kids[pos]); return@setOnItemClickListener }   // select mode: a tap ticks / unticks
                 selNode = kids[pos]
                 adapterImpl.notifyDataSetChanged()
                 onTap?.invoke(kids[pos])
             }
+        }
+        setOnItemLongClickListener { _, _, pos, _ ->
+            if (canSelect && pos in kids.indices && !kids[pos].agg) {
+                if (!multi) { multi = true; selNode = null }
+                if (!checked.contains(kids[pos])) toggle(kids[pos]) else adapterImpl.notifyDataSetChanged()
+                true
+            } else false
         }
     }
 
@@ -113,6 +150,7 @@ class StorageList(ctx: Context) : ListView(ctx) {
 
     private fun rebuild() {
         setBackgroundColor(colBg)
+        if (multi || checked.isNotEmpty()) { multi = false; checked.clear(); onMulti?.invoke() }   // new rows: ticks are void
         if (cat < 0) {
             kids = src
             parentSize = if (flat) flatTotal else srcRoot?.size ?: 0L
@@ -139,6 +177,8 @@ class StorageList(ctx: Context) : ListView(ctx) {
     private inner class RowView(ctx: Context) : View(ctx) {
         private var nd: SNode? = null
         private var sel = false
+        private var inMulti = false
+        private var tick = false
         private val fill = Paint().apply { style = Paint.Style.FILL }
         private val tp = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -146,8 +186,8 @@ class StorageList(ctx: Context) : ListView(ctx) {
 
         private fun rowH() = (dp(56f) * Math.max(1f, resources.configuration.fontScale)).toInt()
 
-        fun bind(n: SNode, selected: Boolean) {
-            nd = n; sel = selected
+        fun bind(n: SNode, selected: Boolean, multiMode: Boolean, ticked: Boolean) {
+            nd = n; sel = selected; inMulti = multiMode; tick = ticked
             layoutParams = AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowH())
             invalidate()
         }
@@ -161,13 +201,29 @@ class StorageList(ctx: Context) : ListView(ctx) {
             val w = width.toFloat(); val h = height.toFloat()
             val fs = Math.max(1f, resources.configuration.fontScale)
             val padX = dp(14f)
-            if (sel) { fill.color = mix(colBg, colAcc, 0.16f); canvas.drawRect(0f, 0f, w, h, fill) }
+            if (sel || tick) { fill.color = mix(colBg, colAcc, if (tick) 0.22f else 0.16f); canvas.drawRect(0f, 0f, w, h, fill) }
+            // part 9a: tick box at the left in select mode (the "small files" row has none)
+            val shift = if (inMulti) dp(30f) else 0f
+            if (inMulti && !n.agg) {
+                val bx = padX; val by0 = (h - dp(20f)) / 2f; val bs = dp(20f)
+                if (tick) {
+                    fill.color = colAcc; canvas.drawRoundRect(bx, by0, bx + bs, by0 + bs, dp(4f), dp(4f), fill)
+                    tp.style = Paint.Style.STROKE; tp.strokeWidth = dp(2.2f); tp.color = Color.WHITE; tp.strokeCap = Paint.Cap.ROUND
+                    canvas.drawLine(bx + bs * 0.24f, by0 + bs * 0.54f, bx + bs * 0.43f, by0 + bs * 0.72f, tp)
+                    canvas.drawLine(bx + bs * 0.43f, by0 + bs * 0.72f, bx + bs * 0.78f, by0 + bs * 0.30f, tp)
+                    tp.style = Paint.Style.FILL; tp.strokeWidth = 0f
+                } else {
+                    tp.style = Paint.Style.STROKE; tp.strokeWidth = dp(1.6f); tp.color = colDim
+                    canvas.drawRoundRect(bx + 1f, by0 + 1f, bx + bs - 1f, by0 + bs - 1f, dp(4f), dp(4f), tp)
+                    tp.style = Paint.Style.FILL; tp.strokeWidth = 0f
+                }
+            }
 
             val cat = if (n.agg) SCat.OTHER else if (n.dir) (if (this@StorageList.cat >= 0) this@StorageList.cat else domCat(n)) else n.cat.coerceIn(0, SCat.COUNT - 1)
             val chipCol = if (n.agg) mix(colBg, colFg, 0.30f) else StorageTreemap.CAT_COL[cat]
 
             // chip: file = filled square, folder = darker square with a lighter inner square (reads as "box")
-            val cs = dp(12f); val cx = padX; val cy = dp(12f)
+            val cs = dp(12f); val cx = padX + shift; val cy = dp(12f)
             fill.color = if (n.dir && !n.agg) mix(chipCol, 0xFF000000.toInt(), 0.28f) else chipCol
             canvas.drawRoundRect(cx, cy, cx + cs, cy + cs, dp(2f), dp(2f), fill)
             if (n.dir && !n.agg) { fill.color = chipCol; canvas.drawRect(cx + dp(3f), cy + dp(3f), cx + cs - dp(3f), cy + cs - dp(3f), fill) }
