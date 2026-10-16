@@ -60,14 +60,14 @@ class StorageActivity : Activity() {
     private var scan: Scan? = null
     private var night = false
     private var shownState = ""     // what the content area currently shows: run | done | cancel | error
-    private var mode = 1            // done state view: 0 = treemap, 1 = size list, 2 = largest files (kept across rebuilds / rotation)
+    private var mode = 1            // done state view: 0 = pie chart, 1 = size list, 2 = largest files (kept across rebuilds / rotation)
     private var lastBase = 1        // last of the two folder views (0 / 1): where Back and "show in folder" return to from the Largest tab
     private var hl = -1             // part 7: highlighted / filtered file category (SCat index, -1 = none)
     // navigation (part 6)
     private var curScan: Scan? = null   // the scan `cur` belongs to (a new scan object = tree rebuilt = cur must be looked up again)
-    private var cur: SNode? = null      // folder shown by the treemap / list
+    private var cur: SNode? = null      // folder shown by the pie chart / list
     private var pendingPath: String? = null   // Rescan: scan-relative path to go back to once the new scan is done
-    private var lastTm: SNode? = null   // treemap: node tapped last (second tap on the same node = open / details)
+    private var lastTm: SNode? = null   // pie chart: node tapped last (second tap on the same node = open / details)
     private var selNode: SNode? = null  // node described in the info line
     private var deleting = false        // part 8b: a delete runs on its worker thread (a second one waits)
     private var selBar: LinearLayout? = null   // part 9a: bar shown instead of the info line while rows are ticked
@@ -111,11 +111,11 @@ class StorageActivity : Activity() {
     private var crumbScroll: HorizontalScrollView? = null
     private var infoTv: TextView? = null
     private var actBtn: TextView? = null
-    private var tmV: StorageTreemap? = null
+    private var tmV: StoragePie? = null
     private var lsV: StorageList? = null
     private var tpV: StorageList? = null              // Largest files (flat list)
     private var catBox: LinearLayout? = null          // file-type bar + chips
-    private val segB = arrayOfNulls<TextView>(3)      // Treemap / List / Largest buttons
+    private val segB = arrayOfNulls<TextView>(3)      // Pie / List / Largest buttons
 
     private val tick = object : Runnable {
         override fun run() {
@@ -515,7 +515,7 @@ class StorageActivity : Activity() {
                 }
             }
             actBtn = act
-            val tm = StorageTreemap(this).apply {
+            val tm = StoragePie(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc
                 onTap = { nd ->
                     val again = nd === lastTm          // second tap on the same tile = open (folder) / details
@@ -550,9 +550,9 @@ class StorageActivity : Activity() {
             catBox = cb
             wrap.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-            // Treemap / List / Largest switch
+            // Pie / List / Largest switch
             val sw = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(8)) }
-            val names = arrayOf("Treemap", "List", "Largest")
+            val names = arrayOf("Pie", "List", "Largest")
             for (i in 0..2) {
                 val b = segButton(names[i])
                 segB[i] = b
@@ -601,7 +601,7 @@ class StorageActivity : Activity() {
         setInfo(null)
     }
 
-    /** Switch the done-state view: 0 treemap, 1 size list, 2 largest files (part 7). */
+    /** Switch the done-state view: 0 pie chart, 1 size list, 2 largest files (part 7). */
     private fun setMode(m: Int) {
         if (m != mode) exitMulti()
         mode = m
@@ -985,7 +985,7 @@ class StorageActivity : Activity() {
         else n.path() + " · " + fmt(n.size) + " · " + pct + of + (if (n.dir) " · " + n.files + " files" else "") + (if (n.denied) " · not readable" else "")
     }
 
-    /** Segment button of the Treemap / List switch. */
+    /** Segment button of the Pie / List switch. */
     private fun segButton(t: String) = TextView(this).apply {
         text = t; textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40)
         setPadding(dp(12), dp(8), dp(12), dp(8))
