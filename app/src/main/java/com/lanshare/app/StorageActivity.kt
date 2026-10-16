@@ -57,8 +57,8 @@ class StorageActivity : Activity() {
     private var scan: Scan? = null
     private var night = false
     private var shownState = ""     // what the content area currently shows: run | done | cancel | error
-    private var mode = 0            // done state view: 0 = treemap, 1 = size list, 2 = largest files (kept across rebuilds / rotation)
-    private var lastBase = 0        // last of the two folder views (0 / 1): where Back and "show in folder" return to from the Largest tab
+    private var mode = 1            // done state view: 0 = treemap, 1 = size list, 2 = largest files (kept across rebuilds / rotation)
+    private var lastBase = 1        // last of the two folder views (0 / 1): where Back and "show in folder" return to from the Largest tab
     private var hl = -1             // part 7: highlighted / filtered file category (SCat index, -1 = none)
     // navigation (part 6)
     private var curScan: Scan? = null   // the scan `cur` belongs to (a new scan object = tree rebuilt = cur must be looked up again)
