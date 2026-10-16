@@ -466,10 +466,8 @@ class StorageActivity : Activity() {
             // whole storage / volume: what the scan could not see = used minus scanned (items moved to the bin in this screen are added back: they are still on the volume)
             val scanned = total + s.removed
             val gap = s.usedBytes - scanned
-            if (s.usedBytes > 0 && gap > 0) nb.addView(note("System / other: " + fmt(gap) + " (" + Math.round(gap * 100.0 / s.usedBytes) + "% of the used space) · what is this?", true) { sysDialog(s, scanned, gap) })
         }
         if (s.truncated) nb.addView(note("Very large result: to save memory, the files of some folders are only counted as one \"small files\" block. All sizes and totals are still exact."))
-        if (s.denied.get() > 0) nb.addView(note(s.denied.get().toString() + " folder(s) could not be read" + (if (s.deniedSample.isNotEmpty()) ", e.g. " + s.deniedSample.first() else "")))
         if (root == null || total == 0L) nb.addView(note("This folder is empty."))
         col.addView(nb)
         wrap.addView(col, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
