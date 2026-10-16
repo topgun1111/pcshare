@@ -93,7 +93,7 @@ class RootFs : Endpoint {
     override fun ls(v: String): List<Item> {
         val p = real(v)
         val o = run(
-            "d=${RootShell.q(p)}; d=§{d%/}; [ -e \"§d\" ] || [ -L \"§d\" ] || exit 2; [ -d \"§d/\" ] || exit 4; " +
+            "d=${RootShell.q(p)}; d=§{d%/}; [ -z \"§d\" ] || [ -e \"§d\" ] || [ -L \"§d\" ] || exit 2; [ -d \"§d/\" ] || exit 4; " +
             "out=§(find \"§d/\" -mindepth 1 -maxdepth 1 -exec stat -c '%F|%s|%Y|%n' {} + 2>/dev/null); " +
             "if [ -z \"§out\" ]; then out=§(for f in \"§d\"/* \"§d\"/.[!.]* \"§d\"/..?*; do [ -e \"§f\" ] || [ -L \"§f\" ] || continue; stat -c '%F|%s|%Y|%n' \"§f\"; done 2>/dev/null); fi; " +
             "[ -n \"§out\" ] && printf '%s\\n' \"§out\"; echo '@@L'; " +
