@@ -335,7 +335,7 @@ class ImageViewerActivity : Activity() {
             val it = arr.getJSONObject(i)
             val url = it.getString("url")
             if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))   // only the app's own server
-                out.add(Item(it.optString("name"), url, it.optLong("size", 0L), it.optLong("mtime", 0L)))
+                out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optLong("size", 0L), it.optLong("mtime", 0L)))
         }
         return out to o.optInt("start", 0).coerceIn(0, maxOf(out.size - 1, 0))
     }

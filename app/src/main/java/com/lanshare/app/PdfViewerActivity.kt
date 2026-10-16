@@ -343,7 +343,7 @@ class PdfViewerActivity : Activity() {
         zf.reset()
         pageAd.notifyDataSetChanged()
         name = o.optString("name").ifEmpty { "document.pdf" }
-        url = u
+        url = com.lanshare.app.core.RootShell.sign(u)
         srcSize = o.optLong("size", 0L)
         key = o.optString("key")
         file = null

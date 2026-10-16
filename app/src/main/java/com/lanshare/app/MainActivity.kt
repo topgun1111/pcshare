@@ -62,6 +62,8 @@ class MainActivity : Activity() {
             swipeTop = if (vw > 0 && ::web.isInitialized) (top * web.width / vw).toFloat() else 0f
         }
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
+        /** Root support: the per-run token the page keeps in a cookie so its requests count as "from the app's own screen" (see RootShell). Other apps cannot call this bridge. */
+        @JavascriptInterface fun rootToken(): String = com.lanshare.app.core.RootShell.token
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
@@ -639,7 +641,7 @@ class MainActivity : Activity() {
             var f: File? = null
             try {
                 dlUi(id, name, 0, 0, 0.0, "run")
-                val c = URL(url).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
+                val c = URL(com.lanshare.app.core.RootShell.sign(url)).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
                 c.getHeaderField("Content-Disposition")?.let {
                     Regex("filename\\*=UTF-8''([^;]+)").find(it)?.let { m ->
                         name = URLDecoder.decode(m.groupValues[1], "UTF-8") }
@@ -700,7 +702,7 @@ class MainActivity : Activity() {
                     var n = 1
                     while (t.exists()) { t = File(dir, "${t.nameWithoutExtension} ($n)${if (t.extension.isEmpty()) "" else "." + t.extension}"); n++ }
                     out.add(t)
-                    val c = URL(ob.getString("url")).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
+                    val c = URL(com.lanshare.app.core.RootShell.sign(ob.getString("url"))).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
                     c.getInputStream().use { i -> t.outputStream().use { o ->
                         val buf = ByteArray(1 shl 16)
                         while (true) {
