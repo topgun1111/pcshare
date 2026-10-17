@@ -343,10 +343,24 @@ object Jobs {
         val fails = ArrayList<String>()
         var failCount = 0
         var removed = 0
+        val handled = HashSet<String>()   // several entries of one ZIP: removed in a single rewrite of the archive
         try {
+            if (e is ArcEp) {
+                val groups = LinkedHashMap<String, MutableList<String>>()
+                for (p0 in paths) { val p = vnorm(p0); val a = arcSplit(p) ?: continue; if (a.second != "/") groups.getOrPut(a.first) { ArrayList() }.add(p) }
+                for ((arc, ps) in groups) {
+                    if (ps.size < 2) continue
+                    if (job.cancel) throw Cancelled()
+                    job.label = "Deleting ${ps.size} items from ${vbase(arc)}"
+                    try { removed += e.removeMany(ps); handled.addAll(ps); job.files = removed }
+                    catch (x: Cancelled) { throw x
+                    } catch (x: Exception) { handled.addAll(ps); failCount++; job.failed = failCount; job.addProblem("${vbase(arc)}: ${errText(x)}"); if (fails.size < 50) fails.add("${vbase(arc)}: ${errText(x)}") }
+                }
+            }
             for ((i, p0) in paths.withIndex()) {
                 if (job.cancel) throw Cancelled()
                 val p = vnorm(p0)
+                if (p in handled) { job.done = (i + 1).toLong(); continue }
                 val top = vbase(p)
                 job.label = "Deleting ${i + 1}/${paths.size}: $top" + (if (removed > 0) " ($removed items removed)" else "")
                 try {
@@ -706,7 +720,7 @@ object Jobs {
         prune()
         val job = Job(label)
         all[jid] = job
-        val cutOk = cut && paths.none { arcSplit(it) != null }   // nothing can be moved out of an archive: it is copied
+        val cutOk = cut && paths.none { arcSplit(it) != null } && arcSplit(vnorm(ddir)) == null   // nothing can be moved out of / into an archive: it is copied
         Thread({ work(job, src, dst, srcId, paths, ddir, cutOk, conflict) }, "job-$jid").also { it.isDaemon = true }.start()
         return jid
     }

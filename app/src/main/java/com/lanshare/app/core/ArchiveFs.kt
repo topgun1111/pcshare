@@ -25,7 +25,8 @@ import java.util.zip.ZipFile
  *
  * A virtual path "/Download/a.zip!/docs/x.txt" means "docs/x.txt inside /Download/a.zip": the segment that ends with '!' is the
  * archive itself. Everything that already works on folders (browse, search, download, copy to another folder / device, send,
- * print, details) therefore works inside archives. Archives are read-only; "extract" is simply a copy of "a.zip!" out of it.
+ * print, details) therefore works inside archives. RAR archives are read-only; ZIP files on this phone can also be edited (delete entries,
+ * add files / folders - see [ZipEdit]); "extract" is simply a copy of "a.zip!" out of it.
  */
 
 private val ARC_EXT = setOf("zip", "rar", "cbz", "cbr")
@@ -531,7 +532,7 @@ object ArcStore {
 class ArcEp(val base: Endpoint) : Endpoint by base {
     private fun ar(v: String): Pair<String, String>? = arcSplit(v)
     private fun key(inner: String) = inner.trim('/')
-    private fun ro(): Nothing = throw Denied("Archives are read-only - copy or extract files out of it")
+    private fun ro(): Nothing = throw Denied("Not possible inside an archive - copy or extract files out of it")
     private fun need(ix: ArcIndex, k: String): AEntry = ix.all[k] ?: throw NotFound("No such file or folder in the archive")
 
     override fun ls(v: String): List<Item> {
@@ -625,9 +626,44 @@ class ArcEp(val base: Endpoint) : Endpoint by base {
 
     fun archiveSize(archive: String): Long = if (base is LocalFs) 0L else ArcStore.sizeOf(base, archive)
 
-    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) { if (ar(v) != null) ro(); base.write(v, input, size, cb) }
-    override fun mkdir(v: String) { if (ar(v) != null) ro(); base.mkdir(v) }
-    override fun remove(v: String, progress: ((String) -> Unit)?) { if (ar(v) != null) ro(); base.remove(v, progress) }
+    /** The ZIP file behind [v] and the entry path inside it - only ZIP files on this phone can be edited (RAR, other devices: read-only). */
+    private fun editable(v: String): Pair<java.io.File, String> {
+        val a = ar(v) ?: throw IOException("not inside an archive")
+        val ext = a.first.substringAfterLast('.', "").lowercase()
+        if (ext != "zip" && ext != "cbz") throw Denied("Only ZIP files can be edited - RAR archives are read-only")
+        val lb = base as? LocalFs ?: throw Denied("A ZIP can be edited only on this phone - copy it here first")
+        val f = lb.real(a.first)
+        if (!f.isFile) throw NotFound("No such archive")
+        if (!f.canWrite()) throw Denied("This ZIP file is read-only")
+        return f to key(a.second)
+    }
+
+    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
+        if (ar(v) == null) { base.write(v, input, size, cb); return }
+        val (f, k) = editable(v)
+        if (k.isEmpty()) throw Denied("choose a place inside the ZIP")
+        ZipEdit.add(f, k, input, cb)
+    }
+
+    override fun mkdir(v: String) {
+        if (ar(v) == null) { base.mkdir(v); return }
+        val (f, k) = editable(v)
+        if (k.isEmpty()) throw Denied("choose a place inside the ZIP")
+        ZipEdit.add(f, k, null)
+    }
+
+    override fun remove(v: String, progress: ((String) -> Unit)?) {
+        if (ar(v) == null) { base.remove(v, progress); return }
+        val (f, k) = editable(v)
+        ZipEdit.remove(f, listOf(k), progress)
+    }
+
+    /** Several entries of the same ZIP in one rewrite (one pass over the archive instead of one per entry). */
+    fun removeMany(vs: List<String>, progress: ((String) -> Unit)? = null): Int {
+        val ed = vs.map { editable(it) }
+        return ZipEdit.remove(ed.first().first, ed.map { it.second }, progress)
+    }
+
     override fun rename(v: String, newName: String) { if (ar(v) != null) ro(); base.rename(v, newName) }
     override fun move(v: String, toV: String) { if (ar(v) != null || ar(toV) != null) ro(); base.move(v, toV) }
 }
