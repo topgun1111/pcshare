@@ -27,14 +27,10 @@
     <!-- uniform AlertDialog: 28 dp corners, same width everywhere (90 % of a portrait screen, 400 dp otherwise) -->
     <style name="Theme.LANShare.Dialog" parent="android:Theme.Material.Light.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dlg_bg</item>
-        <item name="android:windowFixedWidthMinor">90%</item>
-        <item name="android:windowFixedWidthMajor">400dp</item>
         <item name="android:colorAccent">@color/accent</item>
     </style>
     <style name="Theme.LANShare.Dialog.Dark" parent="android:Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dlg_bg_dark</item>
-        <item name="android:windowFixedWidthMinor">90%</item>
-        <item name="android:windowFixedWidthMajor">400dp</item>
         <item name="android:colorAccent">@color/accent</item>
     </style>
 </resources>
