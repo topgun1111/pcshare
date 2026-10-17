@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +21,8 @@ import com.lanshare.app.core.SNode
  * Same data and colours as [StorageTreemap] (it shares [StorageTreemap.CAT_COL]); drill-in / breadcrumb are in StorageActivity (part 6).
  * Part 7: [setFilter] (one file category), [setFlat] (Largest files tab, rows show the folder), [select].
  * Part 9a: multi-select (long-press a row = select mode, tap toggles a tick box, [checkedNodes], [endMulti]) for the batch delete.
+ * Tree view (WizTree style): folders expand in place under their own row (chevron at the left, indented children, % / bar relative to the parent folder).
+ * Tap the chevron = expand / collapse; tap the row = [onTap] as before.
  * NOT compiled / NOT device-tested.
  */
 class StorageList(ctx: Context) : ListView(ctx) {
@@ -33,7 +36,13 @@ class StorageList(ctx: Context) : ListView(ctx) {
     var colLine = 0xFFDDDDDD.toInt()
 
     private var kids: Array<SNode> = SNode.NONE     // rows shown (after the category filter)
-    private var parentSize = 0L                     // 100 % of the share bar / percent column
+    private var parentSize = 0L                     // 100 % of the share bar / percent column (top level)
+    // tree view: rows are the visible nodes in depth-first order; [depths] / [psz] (parent size = 100 %) run parallel to [kids]
+    private val expanded = java.util.HashSet<SNode>()
+    private var depths = IntArray(0)
+    private var psz = LongArray(0)
+    private var treeOn = false
+    private var topList = ArrayList<SNode>()
     private var selNode: SNode? = null
 
     // part 7: source of the rows, category filter, flat mode (Largest files tab)
@@ -83,7 +92,7 @@ class StorageList(ctx: Context) : ListView(ctx) {
         override fun getItemId(position: Int) = position.toLong()
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
             val v = (convertView as? RowView) ?: RowView(context)
-            v.bind(kids[position], kids[position] === selNode, multi, checked.contains(kids[position]))
+            v.bind(kids[position], kids[position] === selNode, multi, checked.contains(kids[position]), depths[position], psz[position])
             return v
         }
     }
@@ -94,8 +103,9 @@ class StorageList(ctx: Context) : ListView(ctx) {
         dividerHeight = 0
         isVerticalScrollBarEnabled = true
         setAdapter(adapterImpl)
-        setOnItemClickListener { _, _, pos, _ ->
+        setOnItemClickListener { _, view, pos, _ ->
             if (pos in kids.indices) {
+                if ((view as? RowView)?.hitChevron() == true) { toggleExpand(kids[pos]); return@setOnItemClickListener }   // chevron: expand / collapse in place
                 if (multi) { toggle(kids[pos]); return@setOnItemClickListener }   // select mode: a tap ticks / unticks
                 selNode = kids[pos]
                 adapterImpl.notifyDataSetChanged()
@@ -114,7 +124,7 @@ class StorageList(ctx: Context) : ListView(ctx) {
     /** The folder whose kids are listed (null = empty list). The list scrolls back to the top. */
     fun setRoot(r: SNode?) {
         flat = false; srcRoot = r; src = r?.kids ?: SNode.NONE
-        selNode = null
+        selNode = null; expanded.clear()
         rebuild()
     }
 
@@ -167,11 +177,10 @@ class StorageList(ctx: Context) : ListView(ctx) {
 
     private fun typeKey(n: SNode) = if (n.dir) 0 else 1 + n.cat.coerceIn(0, SCat.COUNT - 1)
 
-    private fun rebuild() {
-        setBackgroundColor(colBg)
-        if (multi || checked.isNotEmpty()) { multi = false; checked.clear(); onMulti?.invoke() }   // new rows: ticks are void
-        val l = ArrayList<SNode>(src.size)
-        for (k in src) {
+    /** Rows of [arr] after the category filter / name query, in the chosen sort order. */
+    private fun prepare(arr: Array<SNode>): ArrayList<SNode> {
+        val l = ArrayList<SNode>(arr.size)
+        for (k in arr) {
             if (cat >= 0 && (k.agg || rowSize(k) <= 0)) continue
             if (query.isNotEmpty() && (k.agg || !k.name.contains(query, ignoreCase = true))) continue
             l.add(k)
@@ -183,9 +192,43 @@ class StorageList(ctx: Context) : ListView(ctx) {
             4 -> l.sortWith(compareBy<SNode>({ it.agg }, { rowSize(it) }))
             else -> if (cat >= 0 && !flat) l.sortByDescending { rowSize(it) }
         }
-        kids = l.toTypedArray()
+        return l
+    }
+
+    private fun isExpandable(n: SNode) = n.dir && !n.agg && n.kids.isNotEmpty()
+
+    /** Visible rows = top level + the kids of every expanded folder below it (depth first). Ticks and scroll position stay. */
+    private fun flatten() {
+        treeOn = !flat && query.isEmpty()
+        val outN = ArrayList<SNode>(topList.size)
+        val outD = ArrayList<Int>(topList.size)
+        val outP = ArrayList<Long>(topList.size)
+        fun add(list: List<SNode>, depth: Int, p: Long) {
+            for (n in list) {
+                outN.add(n); outD.add(depth); outP.add(p)
+                if (treeOn && expanded.contains(n) && isExpandable(n)) add(prepare(n.kids), depth + 1, rowSize(n))
+            }
+        }
+        add(topList, 0, parentSize)
+        kids = outN.toTypedArray()
+        depths = IntArray(outD.size) { outD[it] }
+        psz = LongArray(outP.size) { outP[it] }
+    }
+
+    private fun toggleExpand(n: SNode) {
+        if (!isExpandable(n)) return
+        if (!expanded.remove(n)) expanded.add(n)
+        flatten()
+        adapterImpl.notifyDataSetChanged()
+    }
+
+    private fun rebuild() {
+        setBackgroundColor(colBg)
+        if (multi || checked.isNotEmpty()) { multi = false; checked.clear(); onMulti?.invoke() }   // new rows: ticks are void
+        topList = prepare(src)
         parentSize = if (cat < 0) (if (flat) flatTotal else srcRoot?.size ?: 0L)
         else (if (flat) flatTotal else srcRoot?.let { r -> r.cats?.let { if (cat < it.size) it[cat] else 0L } } ?: 0L)
+        flatten()
         adapterImpl.notifyDataSetChanged()
         setSelection(0)
     }
@@ -204,6 +247,9 @@ class StorageList(ctx: Context) : ListView(ctx) {
         private var sel = false
         private var inMulti = false
         private var tick = false
+        private var depth = 0
+        private var parentSz = 0L
+        private var downX = 0f
         private val fill = Paint().apply { style = Paint.Style.FILL }
         private val tp = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -211,8 +257,21 @@ class StorageList(ctx: Context) : ListView(ctx) {
 
         private fun rowH() = (dp(56f) * Math.max(1f, resources.configuration.fontScale)).toInt()
 
-        fun bind(n: SNode, selected: Boolean, multiMode: Boolean, ticked: Boolean) {
-            nd = n; sel = selected; inMulti = multiMode; tick = ticked
+        override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) downX = e.x
+            return super.onTouchEvent(e)
+        }
+
+        /** True when the last touch landed on this row's chevron (a folder that can be expanded). */
+        fun hitChevron(): Boolean {
+            val n = nd ?: return false
+            if (!treeOn || !isExpandable(n)) return false
+            val x0 = dp(14f) + (if (inMulti) dp(30f) else 0f) + dp(16f) * depth
+            return downX >= x0 - dp(6f) && downX <= x0 + dp(34f)
+        }
+
+        fun bind(n: SNode, selected: Boolean, multiMode: Boolean, ticked: Boolean, dep: Int, parentBytes: Long) {
+            nd = n; sel = selected; inMulti = multiMode; tick = ticked; depth = dep; parentSz = parentBytes
             layoutParams = AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowH())
             invalidate()
         }
@@ -248,14 +307,23 @@ class StorageList(ctx: Context) : ListView(ctx) {
             val chipCol = if (n.agg) mix(colBg, colFg, 0.30f) else StorageTreemap.CAT_COL[cat]
 
             // chip: file = filled square, folder = darker square with a lighter inner square (reads as "box")
-            val cs = dp(12f); val cx = padX + shift; val cy = dp(12f)
+            val indent = if (treeOn) dp(16f) * depth + dp(20f) else 0f
+            val cs = dp(12f); val cx = padX + shift + indent; val cy = dp(12f)
+            if (treeOn && isExpandable(n)) {      // chevron: right = collapsed, down = expanded
+                val x0 = padX + shift + dp(16f) * depth; val yc = cy + cs / 2f
+                val path = Path()
+                if (expanded.contains(n)) { path.moveTo(x0 + dp(3f), yc - dp(3f)); path.lineTo(x0 + dp(13f), yc - dp(3f)); path.lineTo(x0 + dp(8f), yc + dp(4f)) }
+                else { path.moveTo(x0 + dp(5f), yc - dp(5f)); path.lineTo(x0 + dp(5f), yc + dp(5f)); path.lineTo(x0 + dp(12f), yc) }
+                path.close()
+                fill.color = colDim; canvas.drawPath(path, fill)
+            }
             fill.color = if (n.dir && !n.agg) mix(chipCol, 0xFF000000.toInt(), 0.28f) else chipCol
             canvas.drawRoundRect(cx, cy, cx + cs, cy + cs, dp(2f), dp(2f), fill)
             if (n.dir && !n.agg) { fill.color = chipCol; canvas.drawRect(cx + dp(3f), cy + dp(3f), cx + cs - dp(3f), cy + cs - dp(3f), fill) }
 
             // right column: size (bold) + % of the folder
             val sz = rowSize(n)
-            val pct = if (parentSize > 0) sz * 100.0 / parentSize else 0.0
+            val pct = if (parentSz > 0) sz * 100.0 / parentSz else 0.0
             val sizeTxt = NlModel.fmt(sz)
             val pctTxt = if (pct < 0.1 && sz > 0) "<0.1%" else String.format(java.util.Locale.US, "%.1f%%", pct)
             tp.typeface = Typeface.DEFAULT_BOLD; tp.textSize = dp(14f) * fs; tp.textAlign = Paint.Align.RIGHT
@@ -284,10 +352,10 @@ class StorageList(ctx: Context) : ListView(ctx) {
 
             // share bar along the bottom
             val bh = dp(4f); val by = h - dp(8f) - bh
-            val bx0 = padX; val bx1 = w - padX
+            val bx0 = if (treeOn) cx else padX; val bx1 = w - padX
             fill.color = colLine
             canvas.drawRoundRect(bx0, by, bx1, by + bh, bh / 2, bh / 2, fill)
-            val frac = if (parentSize > 0) (sz.toDouble() / parentSize).coerceIn(0.0, 1.0) else 0.0
+            val frac = if (parentSz > 0) (sz.toDouble() / parentSz).coerceIn(0.0, 1.0) else 0.0
             val fw = Math.max(if (sz > 0) dp(2f) else 0f, ((bx1 - bx0) * frac).toFloat())
             if (fw > 0f) { fill.color = chipCol; canvas.drawRoundRect(bx0, by, bx0 + fw, by + bh, bh / 2, bh / 2, fill) }
         }

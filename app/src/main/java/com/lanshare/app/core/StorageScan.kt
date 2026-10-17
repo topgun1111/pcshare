@@ -167,7 +167,7 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
 }
 
 object StorageScan {
-    const val FILES_PER_DIR = 200      // files kept as nodes per folder (the rest is folded into one "agg" node)
+    const val FILES_PER_DIR = 1_000_000 // effectively unlimited: every file is its own node (the "agg" fold only remains as the low-memory guard)
     const val TOP_FILES = 100          // largest files of the whole scan
     const val MAX_NODES = 400_000      // after this many kept file nodes new files are only counted (memory guard)
     const val DENIED_SAMPLE = 20
@@ -246,7 +246,7 @@ object StorageScan {
         val entries = ix.kids[key] ?: emptyList<AEntry>()
         s.dirs.incrementAndGet()
         val keepMax = if (s.nodes.get() > s.maxNodes || lowMemory()) 0 else FILES_PER_DIR
-        val heap = PriorityQueue<SNode>(keepMax + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }
+        val heap = PriorityQueue<SNode>(minOf(keepMax, 1024) + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }
         val subs = ArrayList<SNode>()
         val subKeys = ArrayList<String>()
         val cats = LongArray(SCat.COUNT)
@@ -258,7 +258,7 @@ object StorageScan {
             val size = maxOf(e.size, 0L)
             val c = SCat.of(e.name)
             ownFiles++; ownBytes += size; cats[c] += size; catN[c]++
-            if (size > 0 && keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
+            if (keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
                 heap.add(SNode(e.name, false, node).also { it.size = size; it.files = 1; it.cat = c })
                 if (heap.size > keepMax) heap.poll()
             }
@@ -330,7 +330,7 @@ object StorageScan {
             s.dirs.incrementAndGet()
             val modern = Build.VERSION.SDK_INT >= 26
             val keepMax = if (s.nodes.get() > s.maxNodes || lowMemory()) 0 else FILES_PER_DIR   // memory guard (part 9b: limit from the heap size + live check)
-            val heap = PriorityQueue<SNode>(keepMax + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }   // this folder's largest files
+            val heap = PriorityQueue<SNode>(minOf(keepMax, 1024) + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }   // this folder's largest files
             val subs = ArrayList<SNode>()
             val subFiles = ArrayList<File>()
             val cats = LongArray(SCat.COUNT)
@@ -355,7 +355,7 @@ object StorageScan {
                 if (size < 0) size = 0
                 val c = SCat.of(f.name)
                 ownFiles++; ownBytes += size; cats[c] += size; catN[c]++
-                if (size > 0 && keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
+                if (keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
                     val fn = SNode(f.name, false, node).also { it.size = size; it.files = 1; it.cat = c }
                     heap.add(fn)
                     if (heap.size > keepMax) heap.poll()
