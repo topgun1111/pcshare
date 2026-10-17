@@ -688,7 +688,8 @@ try{if(localStorage.getItem('ls_sortmig')!=='1'){G.sort='date';G.asc=false;for(c
 const pfKey=()=>S.dev+'|'+S.path;
 const uiF=()=>{try{const f=LSAndroid.uiGet().split(',')[0]/100;return f>0?f:1}catch(e){return 1}};   // Interface size factor (1 = 100%)
 const wideScr=()=>window.innerWidth*uiF()>=600;   // real dp (page width is screen/f): unfolded phone / tablet; a folded phone is narrower
-let LSW=wideScr(),lswT=0;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}try{nlLay(true);nlChPush()}catch(e){}},300)});
+let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}try{const g=$('#gal'),w=window.innerWidth;if(g&&g._redraw&&g.style.display!=='none'&&window._gw&&Math.abs(w-window._gw)>40)g._redraw();window._gw=w}catch(e){}   // folded <-> unfolded while an album is open: redraw so the thumbnails are fetched in the new size
+try{nlLay(true);nlChPush()}catch(e){}},300)});
 function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
   S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
   S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
@@ -1266,7 +1267,7 @@ function mkAlbum(i,P0){
     sb.textContent=inf.n?inf.n+(inf.n===1?' item':' items'):(inf.sub?inf.sub+(inf.sub===1?' folder':' folders'):'Empty');
     if(!inf.cover)return;
     const show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)},
-      key='v3|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
+      key='v5|'+S.dev+'|'+pth+'/'+inf.cover.name+'|'+inf.cover.size+'|'+(inf.cover.mtime||0),hit=thGet(key);
     if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:galVid()?'vid':'img',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(pth,inf.cover.name))+'&big=1',done:show}))});
   c.onclick=()=>{if(c._lp){c._lp=false;return}
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0,v:galVid()})};
@@ -1322,6 +1323,10 @@ function pullBind(sc,box,go,ok){
   const end=()=>{if(!on)return;on=false;
     if(dy>=16&&dy*0.5>=TH){box.classList.add('go');lab.textContent='Refreshing\u2026';setH(46);setTimeout(go,150)}else reset()};
   sc.addEventListener('touchend',end);sc.addEventListener('touchcancel',end)}
+/* video thumbnail size for the album grid: a wide frame is centre-cropped to a square cell, so its long side must be ~1.8 x the cell width in device pixels (folded vs unfolded phone, 2-7 columns) or it gets upscaled and grainy */
+function vidTier(gg,img){const W=(gg&&gg.clientWidth)||window.innerWidth,pc=+getComputedStyle(gg).getPropertyValue('--pc')||(window.innerWidth>=900?7:window.innerWidth>=600?5:3),cell=W/pc*(window.devicePixelRatio||1);
+  if(img){const n=cell*1.4;return n<=620?0:n<=980?960:1400}   // photos: base 600 px thumbnail; 4:3 cropped to a square
+  const n=cell*1.8;return n<=420?0:n<=660?640:1000}
 function galView(a){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
@@ -1383,11 +1388,12 @@ function galView(a){
     const mk=m=>{const k=kind(m),c=E('div','gc'+(GS.has(m.name)?' sel':''));els.set(m.name,c);c.append(ic('check','ck'));
       if(k==='vid')c.append(E('span','gd','\u25B6'));
       if(!NOTH.test(m.name)&&(k==='vid'||m.size<30e6)){
-        const key='v2|local|'+jn(a.path,m.name)+'|'+m.size+'|'+(m.mtime||0),
+        const vt=k==='vid'?vidTier(gg):k==='img'?vidTier(gg,1):0,
+          key='v3|local|'+jn(a.path,m.name)+'|'+m.size+'|'+(m.mtime||0)+(vt?'|t'+vt:''),
           show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;c.insertBefore(im,c.firstChild);
             if(k==='vid'&&t.d>0){const g=c.querySelector('.gd');if(g)g.textContent='\u25B6 '+fmtDur(t.d)}},
           hit=thGet(key);
-        if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name)),done:show}))}
+        if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name))+(vt?'&s='+vt:''),done:show}))}
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
         else if(k==='vid')playVid(m);else viewImg(m)};
@@ -1482,7 +1488,7 @@ function isView(sdir,sname,m0){
     if(!LIST.length){gg.append(E('div','ge','Nothing found for \u201c'+q+'\u201d'));return}
     sb.textContent=LIST.length+(LIST.length===1?' result':' results');
     LIST.forEach(m=>{const c=E('div','gc'),im=E('img');els.set(key(m),c);c.append(ic('check','ck'));
-      im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p);c.append(im);
+      im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p)+'&q=95';c.append(im);
       if(mode==='v')c.append(E('span','gp',Math.round((m.score||0)*100)+'%'));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
@@ -1515,7 +1521,7 @@ function galForce(){GALT=0;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
 function mkAlbumX(a,P0,V){
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
   c.append(cv,E('b','',a.name),E('small','',a.n+(a.n===1?' item':' items')));
-  const key='v3|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
+  const key='v5|local|'+a.cover+'|'+a.size+'|'+(a.mtime||0),hit=thGet(key),
     show=t=>{if(!t||!t.u)return;const im=E('img');im.alt='';im.src=t.u;cv.textContent='';cv.append(im)};
   if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:a.v?'vid':'img',url:'/api/dl?dev=local&path='+enc(a.cover)+'&big=1',done:show}));
   const par=a.path.replace(/\/[^\/]*$/,'')||'/',p0=P0.replace(/\/+$/,'')||'/',own=par===p0?V.find(x=>x.dir&&x.name===a.name):null;
@@ -1771,7 +1777,7 @@ function openMedia(first){
   load(0)}
 /* ---- video thumbnails: made in the browser from the video itself, cached ---- */
 const THQ=[];let thBusy=0;const thMem={};
-const thKey=i=>'v2|'+S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
+const thKey=i=>'v3|'+S.dev+'|'+S.path+'/'+i.name+'|'+i.size+'|'+(i.mtime||0);
 const fmtDur=d=>{d=Math.round(d);const h=Math.floor(d/3600),m=Math.floor(d%3600/60),x=d%60,z=n=>(n<10?'0':'')+n;return h?h+':'+z(m)+':'+z(x):m+':'+z(x)};
 function thGet(k){if(thMem[k])return thMem[k];try{const v=localStorage.getItem('ls_th:'+k);if(v){thMem[k]=JSON.parse(v);return thMem[k]}}catch(e){}return null}
 function thPut(k,t){thMem[k]=t;if(!t.u)return;
@@ -1786,15 +1792,17 @@ function thPump(){
 function thMake(url,kd){return new Promise((res,rej)=>{
   if(kd==='img'){const im=new Image();let done=false,tryFull=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
-      if(!tryFull&&im.src.indexOf('/api/thumb?')>=0)return res({u:'/api/thumb?'+url.slice(8),d:0});   // server thumb is already small + disk-cached: use as is (no canvas, no base64)
+      if(!tryFull&&im.src.indexOf('/api/thumb?')>=0)return res({u:'/api/thumb?'+url.slice(8)+'&q=95',d:0});   // server thumb is already small + disk-cached: use as is (no canvas, no base64)
       const big=url.indexOf('&big=1')>0,sc=Math.min(1,(big?1000:400)/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
-      c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',big?0.85:0.6),d:0})}catch(e){rej(e)}};
+      c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.95),d:0})}catch(e){rej(e)}};
     // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
     im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
-    im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8):url;return}
+    im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8)+'&q=95':url;return}
   /* Android app: the phone grabs the frame natively (MKV/AVI/HEVC ... that the WebView cannot decode); on failure the in-browser method below runs */
   if(kd==='vid'&&window.LSAndroid&&url.indexOf('/api/dl?')===0){
-    fetch('/api/vthumb?'+url.slice(8)).then(r=>{if(!r.ok)throw new Error('vthumb');const d=parseInt(r.headers.get('X-Duration')||'0',10)/1000;return r.blob().then(b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok({u:fr.result,d:d});fr.onerror=no;fr.readAsDataURL(b)}))})
+    fetch('/api/vthumb?'+url.slice(8)).then(r=>{if(!r.ok)throw new Error('vthumb');const d=parseInt(r.headers.get('X-Duration')||'0',10)/1000;
+      if(/[&?](big|s)=/.test(url))return r.blob().then(()=>({u:'/api/vthumb?'+url.slice(8)+'&q=95',d:d}));   // sharper sizes: keep only the URL (phone-side disk cache + HTTP cache), a base64 copy of each would fill localStorage
+      return r.blob().then(b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok({u:fr.result,d:d});fr.onerror=no;fr.readAsDataURL(b)}))})
       .then(res,()=>thMake(url,'vid-browser').then(res,rej));return}
   /* Video element must live in the DOM and use preload=auto: detached/metadata-only <video> in Android WebView never decodes a frame. */
   const v=document.createElement('video');v.muted=true;v.defaultMuted=true;v.playsInline=true;v.preload='auto';
@@ -1805,7 +1813,7 @@ function thMake(url,kd){return new Promise((res,rej)=>{
   tm=setTimeout(()=>end(false),40000);
   const grab=()=>{try{const w=v.videoWidth,h=v.videoHeight;if(!w||!h)return end(false);
     const sc=Math.min(1,400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
-    c.getContext('2d').drawImage(v,0,0,c.width,c.height);end(true,{u:c.toDataURL('image/jpeg',0.6),d:v.duration||0})}catch(e){end(false)}};
+    c.getContext('2d').drawImage(v,0,0,c.width,c.height);end(true,{u:c.toDataURL('image/jpeg',0.95),d:v.duration||0})}catch(e){end(false)}};
   v.onerror=()=>end(false);
   v.onloadedmetadata=()=>{const d=v.duration||0;try{v.currentTime=(isFinite(d)&&d>2)?Math.min(d*0.1,10):0.1}catch(e){end(false)}};
   v.onseeked=()=>{if(seeked)return;seeked=true;
@@ -2186,7 +2194,7 @@ function renderSR(l){
     const k=kind(i),r=E('div','row'),lead=E('div','lead k-'+k);
     if(i.dir)lead.append(raw(FOLD,'fold'));else{lead.append(ic(k,'kd'));
       if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6)){   // previews for hits, same rules as ordinary rows
-        const key='v2|'+S.dev+'|'+i.path+'|'+(i.size||0)+'|'+(i.mtime||0);
+        const key='v3|'+S.dev+'|'+i.path+'|'+(i.size||0)+'|'+(i.mtime||0);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
         const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(i.path),done:showR}))}}

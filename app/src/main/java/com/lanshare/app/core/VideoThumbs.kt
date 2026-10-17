@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 
 /** Video thumbnails made natively (MediaMetadataRetriever): any endpoint (this phone, other devices, SMB, archives) via its Source. */
 object VideoThumbs {
@@ -31,8 +33,36 @@ object VideoThumbs {
         override fun close() { try { src.close() } catch (_: Exception) {} }
     }
 
+    /** Longest side to make for a cell [cellPx] wide: a wide frame is centre-cropped to the square cell, so its long side must be ~1.8 x the cell width (otherwise the picture is upscaled and looks grainy). 400 / 640 / 1000 px. */
+    fun tierFor(cellPx: Float): Int { val need = cellPx * 1.8f; return if (need <= 420f) MAX else if (need <= 660f) 640 else 1000 }
+
+    private fun cacheFile(tag: String): File {
+        val k = MessageDigest.getInstance("SHA-1").digest(tag.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return File(File(File(Cfg.dir ?: File("/data/local/tmp"), "vthumbcache"), k.substring(0, 2)), "$k.v")
+    }
+
+    /** Same as [make] with a size tier and an on-disk cache: [cacheKey] (device | path | size | mtime) + the tier name the cache file; null = no cache. */
+    fun make(src: Source, maxSide: Int, cacheKey: String?): Pair<ByteArray, Long> {
+        val cf = if (cacheKey != null) cacheFile("$cacheKey|$maxSide|q95") else null
+        if (cf != null) try {
+            if (cf.isFile) { val b = cf.readBytes(); if (b.size > 8) { val d = java.nio.ByteBuffer.wrap(b, 0, 8).long; src.close(); return b.copyOfRange(8, b.size) to d } }
+        } catch (_: Exception) {}
+        val r = make(src, maxSide)
+        if (cf != null) try {
+            cf.parentFile?.mkdirs()
+            val tmp = File(cf.path + ".tmp" + Thread.currentThread().id)
+            tmp.writeBytes(java.nio.ByteBuffer.allocate(8).putLong(r.second).array() + r.first)
+            if (!tmp.renameTo(cf)) { cf.delete(); if (!tmp.renameTo(cf)) tmp.delete() }
+        } catch (_: Exception) {}
+        return r
+    }
+
     /** JPEG bytes + duration in ms. */
-    fun make(src: Source): Pair<ByteArray, Long> {
+    fun make(src: Source): Pair<ByteArray, Long> = make(src, MAX)
+
+    fun make(src: Source, maxSide: Int): Pair<ByteArray, Long> {
+        val MAX = maxSide.coerceIn(200, 1200)
+        val quality = 95
         if (!src.seekable) { src.close(); throw IOException("video source is not seekable") }
         val r = MediaMetadataRetriever()
         val ds = SrcDs(src)
@@ -50,7 +80,7 @@ object VideoThumbs {
                     .also { if (it !== frame) frame.recycle() }
             } else frame
             val out = ByteArrayOutputStream()
-            val ok = bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            val ok = bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
             bmp.recycle()
             if (!ok) throw IOException("could not encode the thumbnail")
             return out.toByteArray() to dur

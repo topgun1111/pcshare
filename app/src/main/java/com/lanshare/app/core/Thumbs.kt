@@ -18,7 +18,7 @@ object Thumbs {
     private const val DRAFT = 800
     private const val COVER_MAX = 1000     // album covers are shown big (2-3 columns): sharper than the 600 px list thumbnails
     private const val COVER_DRAFT = 1400
-    private const val COVER_Q = 82
+    private const val COVER_Q = 95   // every thumbnail is JPEG quality 95
     private const val PRINT_MAX = 3508
     private val writes = AtomicInteger()
 
@@ -29,10 +29,17 @@ object Thumbs {
 
     private fun mtimeNs(f: File): Long = f.lastModified() * 1_000_000L
 
-    fun make(f: File): ByteArray = cached(f, MAX, DRAFT, 70, "$MAX")
+    fun make(f: File): ByteArray = cached(f, MAX, DRAFT, 95, "$MAX-q95")
 
     /** Larger, sharper thumbnail for gallery album covers (<= 1000 px, quality 82); own cache keys, the 600 px thumbnails are untouched. */
     fun makeCover(f: File): ByteArray = cached(f, COVER_MAX, COVER_DRAFT, COVER_Q, "c$COVER_MAX-q$COVER_Q")
+
+    /** Photo thumbnail for a cell [cellPx] wide: a 4:3 picture is centre-cropped to the square cell, so its long side must be ~1.4 x the cell width. 600 (default) / 960 / 1400 px. */
+    fun tierFor(cellPx: Float): Int { val need = cellPx * 1.4f; return if (need <= 620f) MAX else if (need <= 980f) 960 else 1400 }
+
+    /** Thumbnail with its own size tier (own cache keys); the default tier is the ordinary 600 px thumbnail. */
+    fun makeSized(f: File, side: Int): ByteArray =
+        if (side <= MAX) make(f) else cached(f, side, side * 4 / 3, 95, "s$side-q95")
 
     private fun cached(f: File, max: Int, draft: Int, quality: Int, keyTag: String): ByteArray {
         if (!f.exists()) throw NotFound("No such file or directory")
@@ -76,7 +83,7 @@ object Thumbs {
                     pg.render(full, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     val bmp = if (h > w) Bitmap.createBitmap(full, 0, 0, w, w).also { full.recycle() } else full
                     val out = ByteArrayOutputStream()
-                    val ok = bmp.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                    val ok = bmp.compress(Bitmap.CompressFormat.JPEG, 95, out)
                     bmp.recycle()
                     if (!ok) throw IOException("could not encode the thumbnail")
                     out.toByteArray()
@@ -85,7 +92,7 @@ object Thumbs {
         } finally { try { pfd.close() } catch (_: IOException) {} }
     }
 
-    private fun render(f: File, max: Int = MAX, draft: Int = DRAFT, quality: Int = 70): ByteArray {
+    private fun render(f: File, max: Int = MAX, draft: Int = DRAFT, quality: Int = 95): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.path, bounds)
         val w0 = bounds.outWidth
