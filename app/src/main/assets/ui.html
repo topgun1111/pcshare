@@ -2225,7 +2225,6 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
-    if(!A&&it.some(i=>i.dir))btn('dup','Similar images',()=>doDups(null,true));
     if(!A&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
@@ -2830,6 +2829,9 @@ window.lsPrintShared=async(names,priv)=>{
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
 async function doDups(ps,similar){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders. similar: same picture in another size / quality (perceptual hash)
   if(!Array.isArray(ps))ps=null;
+  if(similar===undefined){   // ask which kind of search
+    const m=await dlg({title:'Find duplicates',msg:'Exact copies: byte-identical files (any file type, fast).\nSimilar images: the same picture in another size, quality or format (slower, pictures only).',ok:'Similar images',alt:'Exact copies'});
+    if(!m)return;similar=m!=='alt'}
   const dev=ps?'local':S.dev,paths=ps||selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   let jid=null,stop=false;
