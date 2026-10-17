@@ -73,6 +73,17 @@ class StorageActivity : Activity() {
     private var pendingPath: String? = null   // Rescan: scan-relative path to go back to once the new scan is done
     private var lastTm: SNode? = null   // pie chart: node tapped last (second tap on the same node = open / details)
     private var selNode: SNode? = null  // node described in the info line
+    private var wiz: WizScreen? = null         // WizTree view (StorageWiz.kt) while it is shown; null = classic screens
+    private val wizOn: Boolean get() = getSharedPreferences("storage_ui", MODE_PRIVATE).getBoolean("wiz", true)
+    private fun setWizOn(v: Boolean) { getSharedPreferences("storage_ui", MODE_PRIVATE).edit().putBoolean("wiz", v).apply(); val s = curScan ?: return; wiz = null; buildDone(s) }
+    private val wizHost = object : WizHost {
+        override val label: String get() = rootLabel()
+        override fun details(n: SNode) { if (cur == null) cur = curScan?.root; this@StorageActivity.details(n) }
+        override fun classic() = setWizOn(false)
+        override fun rescan() = attach(rescan = true)
+        override fun volume(): LongArray? = try { val r = volRoot(); val t = r.totalSpace; val f = r.usableSpace; if (t > 0 && vpath == "/") longArrayOf((t - f).coerceAtLeast(0L), f, t) else null } catch (_: Throwable) { null }
+        override fun nearest(n: SNode): SNode { val r = curScan?.root ?: return n; return nearestAttached(n, r) }
+    }
     private var deleting = false        // part 8b: a delete runs on its worker thread (a second one waits)
     private var selBar: LinearLayout? = null   // part 9a: bar shown instead of the info line while rows are ticked
     private var selTv: TextView? = null
@@ -504,6 +515,14 @@ class StorageActivity : Activity() {
         }
         val root = s.root
         val total = root?.size ?: s.bytes.get()
+        if (wizOn && root != null && total > 0L) {      // WizTree view
+            volCard.visibility = View.GONE
+            val w = WizScreen(this, s, wizHost)
+            wiz = w
+            content.addView(w.view, FrameLayout.LayoutParams(-1, -1))
+            return
+        }
+        wiz = null
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(4)) }
         dBody = col
@@ -615,6 +634,7 @@ class StorageActivity : Activity() {
             val sb = barBtn("", cCard, cFg) { chooseSort() }
             sortBtn = sb
             tools.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            tools.addView(barBtn("WizTree", cCard, cFg) { setWizOn(true) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
             tools.addView(barBtn("Report", cCard, cFg) { shareReport() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
             wrap.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             wrap.addView(views, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { setMargins(dp(8), 0, dp(8), 0) })
@@ -646,6 +666,7 @@ class StorageActivity : Activity() {
 
     /** Show folder [n] (a node of the current scan) in both views; refreshes summary, breadcrumb, info line. */
     private fun showNode(n: SNode) {
+        wiz?.let { it.select(n); return }
         cur = n; lastTm = null
         exitMulti()
         if (query.isNotEmpty()) qEt?.setText("")                 // the name filter belongs to the folder it was typed in
@@ -918,6 +939,7 @@ class StorageActivity : Activity() {
         val root = s.root ?: return
         selNode = null; lastTm = null
         if (root.size <= 0L) { shownState = ""; update(); return }          // nothing left: the "empty" summary
+        wiz?.let { it.refresh(); return }
         val c = nearestAttached(cur ?: root, root)                           // the open folder may have been deleted / dropped: nearest one left
         val lp = lsV?.firstVisiblePosition ?: 0
         val tp = tpV?.firstVisiblePosition ?: 0
@@ -1084,6 +1106,7 @@ class StorageActivity : Activity() {
 
     override fun onBackPressed() {
         val up = cur?.parent
+        if (wiz?.onBack() == true) return
         if (multiList() != null) exitMulti()                                  // part 9a: Back leaves select mode first
         else if (shownState == "done" && mode == 2) setMode(lastBase)           // Largest tab: back to the folder view first
         else if (shownState == "done" && up != null) showNode(up) else super.onBackPressed()
