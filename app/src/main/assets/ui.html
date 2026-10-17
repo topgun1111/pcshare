@@ -172,11 +172,11 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #list.v-grid.imgf .row.im .lead .thi{border-radius:15px}
 @media(min-width:600px){#list.v-grid.imgf{grid-template-columns:repeat(3,1fr)}}
 /* gallery albums (Pictures): sub-folders as big square cover cards, like a gallery app */
-.albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px;padding:12px 12px 10px;background:var(--bg)}
+.albums{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:12px 4px;padding:4px 4px 10px;background:var(--bg)}
 @media(min-width:600px){.albums{grid-template-columns:repeat(3,1fr)}}
 @media(min-width:900px){.albums{grid-template-columns:repeat(4,1fr)}}
 .alb{display:flex;flex-direction:column;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-.alb .acv{position:relative;width:100%;aspect-ratio:4/3;border-radius:20px;overflow:hidden;background:var(--hov);display:grid;place-items:center;margin-bottom:6px}
+.alb .acv{position:relative;width:100%;aspect-ratio:1/1;border-radius:12px;overflow:hidden;background:var(--hov);display:grid;place-items:center;margin-bottom:6px}
 .alb .acv img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;object-position:50% 35%;display:block}
 .alb .acv svg{width:38%;height:auto;opacity:.55}
 .alb:active .acv{filter:brightness(.9)}
@@ -3510,7 +3510,13 @@ async function askConflicts(dev,dir,paths,srcDev){
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
     const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-    [['Ask for each file','ask','tbtn fill'],['Replace all','replace','tbtn'],['Replace if newer','newer','tbtn'],['Keep both','rename','tbtn'],['Skip existing','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
+    const gr=E('div');gr.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px';   // option boxes
+    [['Ask for each file','Decide per file','ask','fill'],['Replace all','Overwrite the existing files','replace','red'],['Replace if newer','Only when the new one is newer','newer',''],['Keep both','Rename the new ones','rename',''],['Skip existing','Keep what is there','skip','']].forEach(a=>{
+      const b=E('button','tbtn'+(a[3]==='fill'?' fill':''));b.append(E('b','',a[0]),E('small','',a[1]));
+      b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:72px;padding:10px 8px;border-radius:14px;text-align:center;border:1.5px solid var(--line,#C9C9C9)'+(a[3]==='red'?';background:var(--err,#C62828);border-color:var(--err,#C62828);color:#fff':'');
+      b.firstChild.style.fontSize='14px';b.lastChild.style.cssText='font-size:11.5px;opacity:.85;font-weight:400';
+      b.onclick=()=>fin(a[2]);gr.append(b)});
+    const cx=E('button','tbtn','Cancel');cx.style.alignSelf='stretch';cx.onclick=()=>fin(null);card.append(gr,cx);
     o.append(card)})}
 async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
   let paths,dir;
