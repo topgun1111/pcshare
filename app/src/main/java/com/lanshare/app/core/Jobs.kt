@@ -1,5 +1,6 @@
 package com.lanshare.app.core
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -538,7 +539,7 @@ object Jobs {
         "docx", "xlsx", "pptx", "odt", "ods", "odp", "epub", "pdf")
 
     /** Packs files and folders of one device into a new .zip in a folder of the same device. */
-    fun startZip(devId: String, paths: List<String>, dir: String, name: String, replace: Boolean = false): String {   // replace: reuse the exact name when it exists (the old file goes only after the new ZIP is complete)
+    fun startZip(devId: String, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList()): String {   // replace: reuse the exact name when it exists (the old file goes only after the new ZIP is complete)
         val e = ep(devId)
         val ps = paths.map { vnorm(it) }
         if (ps.isEmpty()) throw BadReq("nothing selected")
@@ -552,11 +553,42 @@ object Jobs {
         prune()
         val job = Job("Zipping")
         all[jid] = job
-        Thread({ zipWork(job, e, ps, d, n, replace) }, "zip-$jid").also { it.isDaemon = true }.start()
+        Thread({ zipWork(job, e, ps, d, n, replace, exclude.map { vnorm(it) }) }, "zip-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
-    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false) {
+    /** Folders (and file kinds) that are build output / dependencies: left out when "skip build folders" is on. */
+    private val BUILD_DIRS = setOf("build", "dist", "node_modules", "__pycache__", "venv", ".venv", "target", ".gradle", ".idea", ".git")
+    private fun isBuildPart(seg: String) = seg in BUILD_DIRS || seg.endsWith(".pyc") || seg.endsWith(".class")
+
+    /**
+     * What the ZIP dialog offers to leave out: inside the selected items, the topmost hidden entry (name starts with ".") or build / dependency folder of every branch
+     * with its size and file count, e.g. {path:"/Proj/app/.gradle", rel:"app/.gradle", dir:true, kind:"hidden", size, files}. The selected items themselves are never listed.
+     */
+    fun zipScan(devId: String, paths: List<String>): JSONArray {
+        val e = ep(devId)
+        val res = LinkedHashMap<String, JSONObject>()
+        for (p0 in paths) {
+            val p = vnorm(p0)
+            if (p == "/") continue
+            for (w in e.walk(p)) {
+                if (w.rel.isEmpty() || w.skip) continue
+                val segs = w.rel.split('/')
+                val at = segs.indexOfFirst { it.startsWith(".") || isBuildPart(it) }
+                if (at < 0) continue
+                val relTop = segs.subList(0, at + 1).joinToString("/")
+                val o = res.getOrPut(p + "/" + relTop) {
+                    JSONObject().put("path", p + "/" + relTop).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
+                        .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L)
+                }
+                if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1) }
+                if (res.size >= 400) break
+            }
+        }
+        return JSONArray(res.values.toList())
+    }
+
+    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList()) {
         val dst: Endpoint = (e as? ArcEp)?.base ?: e
         var tmp: File? = null
         var uploading = false
@@ -566,12 +598,14 @@ object Jobs {
             val items = ArrayList<ZItem>()
             val tops = HashSet<String>()
             var skipped = 0
+            var filtered = 0
             for (p in paths) {
                 if (job.cancel) throw Cancelled()
                 val walked = e.walk(p)
                 val top = uniqueName(destName(p), tops, walked.firstOrNull()?.dir ?: false)
                 tops.add(top)
                 for (w in walked) {
+                    if (exclude.isNotEmpty() && w.rel.isNotEmpty()) { val ap = p + "/" + w.rel; if (exclude.any { ap == it || ap.startsWith("$it/") }) { if (!w.dir) filtered++; continue } }
                     if (w.skip) { skipped++; continue }
                     items.add(ZItem(if (w.rel.isEmpty()) p else p + "/" + w.rel, if (w.rel.isEmpty()) top else top + "/" + w.rel, w.dir, w.size))
                 }
@@ -643,7 +677,7 @@ object Jobs {
             }
             job.done = job.total
             job.label = "Created $finalName"
-            job.note = "Created $finalName" + (if (skipped > 0) " - $skipped item(s) (links or unreadable folders) were left out" else "")
+            job.note = "Created $finalName" + (if (skipped > 0) " - $skipped item(s) (links or unreadable folders) were left out" else "") + (if (filtered > 0) " - $filtered file(s) left out by your choice" else "")
             job.state = "done"
         } catch (x: Cancelled) {
             job.state = "cancel"

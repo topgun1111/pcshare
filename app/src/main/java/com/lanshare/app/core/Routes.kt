@@ -277,7 +277,8 @@ object Routes {
             })
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("similar"))))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
-                b.getString("dir"), b.getString("name"), b.optBoolean("replace", false))))
+                b.getString("dir"), b.getString("name"), b.optBoolean("replace", false), b.optJSONArray("exclude")?.strings() ?: emptyList())))
+            "zipscan" -> ex.json(JSONObject().put("items", Jobs.zipScan(b.getString("dev"), b.getJSONArray("paths").strings())))
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"
                 val dev = b.getString("dev")
                 val ps = b.getJSONArray("paths").strings().map { vnorm(it) }.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
