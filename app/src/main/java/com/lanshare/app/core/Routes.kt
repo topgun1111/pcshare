@@ -275,7 +275,7 @@ object Routes {
                 "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part", b.optString("dir", ""))
                 else -> throw BadReq("unknown op")
             })
-            "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings())))
+            "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("similar"))))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"), b.optBoolean("replace", false))))
             "extract" -> {   // unpack archives (or parts of one) into a folder: a copy job out of "a.zip!"

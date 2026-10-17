@@ -2224,7 +2224,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files&&window.LSAndroid&&LSAndroid.editText)btn('doc','Edit',()=>{const i=selItems()[0];S.sel.clear();render();editFile(i)});
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
-    if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',doDups);
+    if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
+    if(!A&&it.some(i=>i.dir))btn('dup','Similar images',()=>doDups(null,true));
     if(!A&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
@@ -2827,12 +2828,13 @@ window.lsPrintShared=async(names,priv)=>{
   }catch(e){toast('\u26a0 '+e.message,5000)}};
 
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
-async function doDups(ps){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders
+async function doDups(ps,similar){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders. similar: same picture in another size / quality (perceptual hash)
+  if(!Array.isArray(ps))ps=null;
   const dev=ps?'local':S.dev,paths=ps||selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   let jid=null,stop=false;
   const close=()=>{stop=true;o.style.display='none';o.onclick=null};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Duplicate finder'));
+  const card=E('div','card');card.append(E('div','handle'),E('h3','',similar?'Similar images':'Duplicate finder'));
   const msg=E('p','','Starting…');msg.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;word-break:break-all';
   const box=E('div');box.style.cssText='max-height:55vh;overflow-y:auto;overflow-x:hidden';
   const row=E('div','set');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
@@ -2840,7 +2842,7 @@ async function doDups(ps){   // ps: explicit folder paths on this phone (gallery
   cb.onclick=async()=>{if(jid&&!stop&&cb.textContent==='Cancel'){try{await api('POST','/api/jobcancel?id='+jid)}catch(e){}}close()};
   row.append(cb);card.append(msg,box,row);o.append(card);
   o.onclick=e=>{if(e.target===o&&cb.textContent!=='Cancel')close()};
-  try{jid=(await api('POST','/api/dups',{dev:dev,paths:paths})).job}catch(e){msg.textContent='⚠ '+e.message;cb.textContent='Close';return}
+  try{jid=(await api('POST','/api/dups',{dev:dev,paths:paths,similar:!!similar})).job}catch(e){msg.textContent='⚠ '+e.message;cb.textContent='Close';return}
   let j;
   for(;;){
     if(stop)return;
@@ -2858,10 +2860,13 @@ async function doDups(ps){   // ps: explicit folder paths on this phone (gallery
   const del=E('button','tbtn fill dng');
   const upd=()=>{del.textContent='Delete '+chk.size+' selected';del.disabled=!chk.size};
   R.groups.forEach(g=>{
-    const h=E('div','set'),ht=E('div','t');ht.append(E('b','',vbase0(g.files[0])),E('small','',g.files.length+' identical files · '+fmt(g.size)+' each'));h.append(ht);box.append(h);
-    g.files.forEach(f=>{const r=E('label','set'),t=E('div','t'),sw=E('span','sw'),c=E('input');c.type='checkbox';c.checked=chk.has(f);
+    const h=E('div','set'),ht=E('div','t');ht.append(E('b','',vbase0(g.files[0])),E('small','',R.similar?g.files.length+' similar pictures · the biggest stays unticked':g.files.length+' identical files · '+fmt(g.size)+' each'));h.append(ht);box.append(h);
+    g.files.forEach((f,fi)=>{const r=E('label','set'),t=E('div','t'),sw=E('span','sw'),c=E('input');c.type='checkbox';c.checked=chk.has(f);
       c.onchange=()=>{c.checked?chk.add(f):chk.delete(f);upd()};
-      t.append(E('b','',vbase0(f)),E('small','',f.slice(0,f.lastIndexOf('/'))||'/'));sw.append(c,E('i'));r.append(t,sw);box.append(r)})});
+      const dr=f.slice(0,f.lastIndexOf('/'))||'/';
+      t.append(E('b','',vbase0(f)),E('small','',R.similar&&g.sizes?fmt(g.sizes[fi])+' · '+g.dims[fi]+' · '+dr:dr));sw.append(c,E('i'));
+      if(R.similar&&dev==='local'){const im=E('img');im.alt='';im.style.cssText='width:44px;height:44px;object-fit:cover;border-radius:6px;margin-right:10px;flex:none';im.onerror=()=>{im.style.display='none'};im.src='/api/thumb?dev=local&path='+enc(f);r.append(im)}
+      r.append(t,sw);box.append(r)})});
   if(R.total>R.groups.length)box.append(E('div','dnote','Showing the '+R.groups.length+' largest of '+R.total+' groups'));
   upd();
   del.onclick=async()=>{

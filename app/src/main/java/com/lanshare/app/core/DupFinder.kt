@@ -1,5 +1,8 @@
 package com.lanshare.app.core
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -7,22 +10,29 @@ import java.util.UUID
 
 /**
  * Exact duplicate finder (only inside the selected folders and their subfolders, never the rest of the disk): files of equal size, equal hash of the first 64 KB, then equal SHA-256 of the whole content (byte-identical).
+ * "Similar images" mode (similar = true): the same picture saved with another size / quality / format. Every image gets a 256-bit difference hash (17 x 16 grey grid,
+ * bit = left pixel brighter than right one) and a width / height; pictures with about the same shape whose hashes differ in <= [SIM_BITS] bits are grouped, the biggest
+ * (most pixels, then bytes) comes first and is the one that stays ticked. Only images up to 40 MB; others are skipped.
  * Runs as a [Job] ("Finding duplicates"); the groups come back in the job's `result`.
  */
 object DupFinder {
     private const val HEAD = 64 * 1024
     private const val MAX_GROUPS = 500
+    private const val SIM_BITS = 20                    // of 256: about 8 % different
+    private const val MAX_IMG = 40L * 1024 * 1024
+    private const val MAX_BUCKET = 3000                // a hash byte shared by more pictures than this (e.g. all-white pages) is not compared pairwise
+    private val IMG_EXT = setOf("jpg", "jpeg", "png", "webp", "bmp")
 
     private class F(val path: String, val size: Long)
 
-    fun start(devId: String, paths: List<String>): String {
+    fun start(devId: String, paths: List<String>, similar: Boolean = false): String {
         val e = Jobs.ep(devId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
-        val job = Job("Finding duplicates")
+        val job = Job(if (similar) "Finding similar images" else "Finding duplicates")
         job.bytes = true
         job.total = 1
         Jobs.all[jid] = job
-        Thread({ work(job, e, paths) }, "dup-$jid").also { it.isDaemon = true }.start()
+        Thread({ work(job, e, paths, similar) }, "dup-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -41,7 +51,7 @@ object DupFinder {
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun work(job: Job, e: Endpoint, paths: List<String>) {
+    private fun work(job: Job, e: Endpoint, paths: List<String>, similar: Boolean = false) {
         try {
             val files = ArrayList<F>()
             // only the selected folders: root (= whole disk) refused, duplicates and folders nested in another selected folder dropped (else files would match themselves)
@@ -61,6 +71,7 @@ object DupFinder {
                 }
                 job.label = "$label (${files.size} files)"
             }
+            if (similar) { similarPass(job, e, files); job.end = System.currentTimeMillis(); return }
             val bySize = files.groupBy { it.size }.filter { it.value.size > 1 }
             val cand = bySize.values.sumOf { g -> g.sumOf { it.size } }
             job.total = maxOf(cand, 1L); job.done = 0
@@ -98,6 +109,98 @@ object DupFinder {
         } catch (x: Cancelled) { job.state = "cancel"
         } catch (x: Exception) { job.error = errText(x); job.state = "error" }
         job.end = System.currentTimeMillis()
+    }
+
+    private class Sig(val path: String, val size: Long, val w: Int, val h: Int, val b: LongArray)
+
+    private fun grey(c: Int): Int {   // transparent pixels count as white
+        val a = Color.alpha(c)
+        val g = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000
+        return (g * a + 255 * (255 - a)) / 255
+    }
+
+    /** Difference hash of one image, null when it cannot be decoded. */
+    private fun sig(e: Endpoint, f: F): Sig? {
+        val bytes = e.open(f.path).use { it.readBytes() }
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        var s = 1
+        while (o.outWidth / (s * 2) >= 68 && o.outHeight / (s * 2) >= 64) s *= 2
+        val bm = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s }) ?: return null
+        val sm = Bitmap.createScaledBitmap(bm, 68, 64, true)
+        if (sm !== bm) bm.recycle()
+        val px = IntArray(68 * 64)
+        sm.getPixels(px, 0, 68, 0, 0, 68, 64); sm.recycle()
+        val g = Array(16) { y -> IntArray(17) { x ->
+            var sum = 0
+            for (dy in 0 until 4) for (dx in 0 until 4) sum += grey(px[(y * 4 + dy) * 68 + x * 4 + dx])
+            sum / 16 } }
+        val bits = LongArray(4)
+        for (y in 0 until 16) for (x in 0 until 16) if (g[y][x] > g[y][x + 1]) { val i = y * 16 + x; bits[i ushr 6] = bits[i ushr 6] or (1L shl (i and 63)) }
+        return Sig(f.path, f.size, o.outWidth, o.outHeight, bits)
+    }
+
+    private fun near(a: Sig, b: Sig): Boolean {
+        // about the same shape (resized copies keep it) ...
+        if (Math.abs(a.w.toLong() * b.h - b.w.toLong() * a.h) > 0.04 * a.w.toDouble() * b.h) return false
+        var d = 0
+        for (i in 0 until 4) d += java.lang.Long.bitCount(a.b[i] xor b.b[i])
+        return d <= SIM_BITS
+    }
+
+    private fun similarPass(job: Job, e: Endpoint, files: List<F>) {
+        val imgs = files.filter { it.size in 1..MAX_IMG && it.path.substringAfterLast('.', "").lowercase() in IMG_EXT }
+        job.bytes = false; job.total = maxOf(imgs.size, 1).toLong(); job.done = 0
+        val sigs = arrayOfNulls<Sig>(imgs.size)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(3) { r -> Thread(r, "sim").also { it.isDaemon = true } }
+        val cnt = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val fut = imgs.mapIndexed { i, f ->
+                pool.submit(Runnable {
+                    if (!job.cancel) {
+                        try { sigs[i] = sig(e, f) } catch (_: Throwable) {}
+                        job.done = cnt.incrementAndGet().toLong()
+                        job.label = "Reading pictures ${cnt.get()}/${imgs.size}: ${vbase(f.path)}"
+                    }
+                })
+            }
+            for (x in fut) { x.get(); if (job.cancel) throw Cancelled() }
+        } finally { pool.shutdownNow() }
+        if (job.cancel) throw Cancelled()
+        val all = sigs.filterNotNull()
+        job.label = "Comparing ${all.size} pictures"
+        val parent = IntArray(all.size) { it }
+        fun find(x: Int): Int { var r = x; while (parent[r] != r) r = parent[r]; var c = x; while (parent[c] != r) { val nx = parent[c]; parent[c] = r; c = nx }; return r }
+        // every pair within 20 of 256 bits shares at least one of the 32 hash bytes: only pictures sharing a byte are compared
+        for (chunk in 0 until 32) {
+            if (job.cancel) throw Cancelled()
+            val buckets = HashMap<Int, MutableList<Int>>()
+            val word = chunk ushr 3; val shift = (chunk and 7) * 8
+            for (i in all.indices) buckets.getOrPut(((all[i].b[word] ushr shift) and 0xFF).toInt()) { ArrayList() }.add(i)
+            for (l in buckets.values) {
+                if (l.size < 2 || l.size > MAX_BUCKET) continue
+                for (x in 0 until l.size) for (y in x + 1 until l.size) {
+                    val a = l[x]; val b = l[y]
+                    if (find(a) != find(b) && near(all[a], all[b])) parent[find(a)] = find(b)
+                }
+            }
+        }
+        val byRoot = HashMap<Int, MutableList<Sig>>()
+        for (i in all.indices) byRoot.getOrPut(find(i)) { ArrayList() }.add(all[i])
+        val groups = byRoot.values.filter { it.size > 1 }.map { g -> g.sortedWith(compareBy<Sig>({ -(it.w.toLong() * it.h) }, { -it.size }, { it.path })) }
+            .sortedByDescending { g -> g.drop(1).sumOf { it.size } }
+        val arr = JSONArray()
+        var wasted = 0L; var extra = 0
+        for (g in groups) {
+            wasted += g.drop(1).sumOf { it.size }; extra += g.size - 1
+            if (arr.length() < MAX_GROUPS) arr.put(JSONObject().put("size", g[0].size)
+                .put("files", JSONArray(g.map { it.path })).put("sizes", JSONArray(g.map { it.size })).put("dims", JSONArray(g.map { "${it.w}x${it.h}" })))
+        }
+        job.result = JSONObject().put("groups", arr).put("total", groups.size).put("extra", extra).put("wasted", wasted).put("scanned", imgs.size).put("similar", true)
+        job.done = job.total
+        job.note = if (groups.isEmpty()) "No similar images found (${imgs.size} pictures checked)" else "$extra similar pictures in ${groups.size} groups, ${fmtBytes(wasted)} can be freed"
+        job.state = "done"
     }
 
     private fun fmtBytes(n: Long): String {
