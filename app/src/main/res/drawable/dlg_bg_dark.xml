@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- dark AlertDialog window: 28 dp rounded corners (Theme.LANShare.Dialog.Dark) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#2B2B2B" />
+    <corners android:radius="28dp" />
+</shape>
