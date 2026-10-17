@@ -700,6 +700,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     val overlay = NlOverlay(act, web)
     private val srl = SwipeRefreshLayout(act)
     private val rv = RecyclerView(act)
+    private val sb = PdfScrollBar(act)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
     private var lm: LinearLayoutManager = LinearLayoutManager(act)
     private var gridOn = false
     private var spanN = 1
@@ -780,9 +781,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) }; if (dy != 0) preload(dy > 0) }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy) }
         })
+        sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
+        overlay.addView(sb, FrameLayout.LayoutParams(1, 1))     // above the list, same rect (see layout()); only the thumb takes touches
         overlay.addView(head, FrameLayout.LayoutParams(1, 1))
         head.visibility = View.GONE
         search.visibility = View.GONE
@@ -791,6 +794,38 @@ class NativeList(private val act: Activity, private val web: WebView) {
         search.onBack = { search.hideKeyboard(); web.evaluateJavascript("window.nlSr&&nlSr('back',0)", null) }
         head.onAct = { ev, i -> if (ev == "crumb") crumbTo(i) else raw(ev, i) }      // crumb: instant (rows from `built`), page confirms; newb / sort -> ui.html nlOn
         overlay.visibility = View.GONE
+    }
+
+    /** Thumb follows the list; shown only when the folder is longer than about two screens. */
+    private fun syncScroller(r: RecyclerView, dy: Int) {
+        if (sb.dragging) return
+        val ext = r.computeVerticalScrollExtent(); val span = r.computeVerticalScrollRange() - ext
+        if (ext <= 0 || span < ext * 1.5f) return
+        sb.fraction = when {
+            !r.canScrollVertically(1) -> 1f
+            !r.canScrollVertically(-1) -> 0f
+            else -> (r.computeVerticalScrollOffset().toFloat() / span).coerceIn(0f, 1f)
+        }
+        if (dy != 0) sb.flash()
+    }
+
+    /** Thumb dragged to [f] (0..1): jump to that row and name the spot in the bubble (initial / size / month by the current sort). */
+    private fun scrollerTo(f: Float) {
+        val n = rv.adapter?.itemCount ?: 0
+        if (n <= 0) return
+        val pos = Math.round(f * (n - 1)).coerceIn(0, n - 1)
+        lm.scrollToPositionWithOffset(pos, 0)
+        sb.label = scrollerLabel(rows.getOrNull(pos).takeIf { pos < galStart })
+    }
+
+    private fun scrollerLabel(r: NlRow?): String {
+        if (r == null) return ""
+        return when (curCfg.substringBefore(',')) {
+            "size" -> if (r.dir) "" else NlModel.fmt(r.size)
+            "date" -> if (r.mtime <= 0L) "" else java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(if (r.mtime < 100_000_000_000L) r.mtime * 1000 else r.mtime))
+            "type" -> if (r.dir) "Folder" else r.nm.substringAfterLast('.', "").uppercase().ifEmpty { "-" }
+            else -> r.nm.take(1).uppercase()
+        }
     }
 
     private fun raw(ev: String, i: Int) { web.evaluateJavascript("window.nlOn&&nlOn('$ev',$i)", null) }
@@ -1087,7 +1122,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setPalette(json: String) {
         if (json == palJson) return
         palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
-        rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac)
+        rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac)
         ad.notifyDataSetChanged()
     }
 
@@ -1155,6 +1190,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
         if (lp.leftMargin != nl || lp.topMargin != nt || lp.width != nw || lp.height != nh) {   // a dim-only change (drawer fade) must not re-measure the list
             lp.leftMargin = nl; lp.topMargin = nt; lp.width = nw; lp.height = nh
             srl.layoutParams = lp
+            val sp = sb.layoutParams as FrameLayout.LayoutParams
+            sp.leftMargin = nl; sp.topMargin = nt; sp.width = nw; sp.height = nh
+            sb.layoutParams = sp
         }
         overlay.listRect.set(l, t, l + w, t + h)
         val hs = ArrayList<RectF>(); val o = j.optJSONArray("o")

@@ -1188,6 +1188,9 @@ internal class PdfScrollBar(c: Context) : View(c) {
 
     init { alpha = 0f }
 
+    /** Thumb colour (ARGB; the alpha is forced to ~90 %). */
+    fun setThumbColor(c: Int) { thumbP.color = (c and 0x00FFFFFF) or 0xE6000000.toInt(); invalidate() }
+
     private fun travel() = maxOf(1f, height - padT - padB - th)
     private fun thumbTop() = padT + fraction * travel()
 

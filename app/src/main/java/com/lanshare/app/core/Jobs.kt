@@ -740,8 +740,8 @@ object Jobs {
                 for (w in wl) {
                     if (job.cancel) throw Cancelled()
                     if (w.skip) { skipped++; continue }   // link / unreadable folder: not copied
-                    val target = if (w.rel.isEmpty()) d else d + "/" + w.rel
-                    val shown = if (w.rel.isEmpty()) nn else nn + "/" + w.rel
+                    var target = if (w.rel.isEmpty()) d else d + "/" + w.rel
+                    var shown = if (w.rel.isEmpty()) nn else nn + "/" + w.rel
                     try {
                         if (w.dir) {
                             if (merge) {
@@ -757,7 +757,7 @@ object Jobs {
                             if (ex != null) {
                                 if (ex.dir) throw IOException("a folder with this name is in the way")
                                 existed = true
-                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; else -> null }
+                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
                                         .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
@@ -765,6 +765,18 @@ object Jobs {
                                     act = job.waitAnswer(q)
                                     if (act == "replace_all") { sticky = "replace"; act = "replace" }
                                     else if (act == "skip_all") { sticky = "skip"; act = "skip" }
+                                    else if (act == "newer_all") { sticky = "newer"; act = "newer" }
+                                    else if (act == "both_all") { sticky = "both"; act = "both" }
+                                }
+                                if (act == "newer") {   // replace only when the new file is newer (2 s tolerance: FAT / SMB clocks)
+                                    val sm = try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+                                    act = if (sm > ex.mtime + 2) "replace" else "skip"
+                                }
+                                if (act == "both") {    // keep both: the new file gets "name (1).ext" next to the existing one
+                                    val nm = uniqueName(vbase(target), listing(vdir(target)).keys, false)
+                                    target = vjoin(vdir(target), nm)
+                                    shown = shown.substringBeforeLast('/', "").let { if (it.isEmpty()) nm else "$it/$nm" }
+                                    existed = false
                                 }
                                 if (act == "skip") {
                                     job.files++

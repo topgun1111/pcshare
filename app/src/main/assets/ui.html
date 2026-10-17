@@ -3061,10 +3061,11 @@ function lvFeed(id,j){
         pv=E('div');pv.style.cssText='display:flex;gap:8px;margin-bottom:8px';
         pv.append(side('Existing',a.dPath,a.dstSize,a.dstMtime,a.srcSize,a.srcMtime),side('New',a.sPath,a.srcSize,a.srcMtime,a.dstSize,a.dstMtime))}
       const g=E('div');g.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
-      [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Replace all','replace_all','tbtn'],['Skip all','skip_all','tbtn']].forEach(x=>{
-        const b=E('button',x[2],x[0]);b.onclick=()=>{L.answered=a.q;L.askBox.style.display='none';
-          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+x[1]).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
-      L.askBox.append(E('div','','Already exists - replace?'),nm,...(pv?[pv]:[]),info,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
+      const allC=E('label'),allI=E('input');allI.type='checkbox';allC.style.cssText='display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px';allC.append(allI,document.createTextNode('Do this for all remaining files'));
+      [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Keep both','both','tbtn'],['Replace if newer','newer','tbtn']].forEach(x=>{
+        const b=E('button',x[2],x[0]);b.onclick=()=>{const ans=allI.checked?x[1]+'_all':x[1];L.answered=a.q;L.askBox.style.display='none';
+          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+ans).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
+      L.askBox.append(E('div','','Already exists - replace?'),nm,...(pv?[pv]:[]),info,allC,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden||!lvOn())lvShow();
     if(L.askSeen!==a.q){L.askSeen=a.q;setTimeout(()=>{try{L.askBox.scrollIntoView({block:'nearest'})}catch(e){}},60)}
   }else L.askBox.style.display='none';
@@ -3502,7 +3503,7 @@ async function askConflicts(dev,dir,paths,srcDev){
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
     const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
-    [['Ask for each file','ask','tbtn fill'],['Replace all','replace','tbtn'],['Skip existing','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
+    [['Ask for each file','ask','tbtn fill'],['Replace all','replace','tbtn'],['Replace if newer','newer','tbtn'],['Keep both','rename','tbtn'],['Skip existing','skip','tbtn'],['Cancel',null,'tbtn']].forEach(a=>{const b=E('button',a[2],a[0]);b.style.alignSelf='stretch';b.onclick=()=>fin(a[1]);card.append(b)});
     o.append(card)})}
 async function doExtract(m){  // 0: archives selected in a folder, 1: items selected inside an archive, 2: the whole open archive
   let paths,dir;
