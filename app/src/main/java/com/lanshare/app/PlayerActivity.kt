@@ -123,11 +123,8 @@ class PlayerActivity : Activity() {
     private lateinit var playBtn: RoundBtn
     private lateinit var prevBtn: RoundBtn
     private lateinit var nextBtn: RoundBtn
-    private lateinit var rotLBtn: RoundBtn
-    private lateinit var scrBtn: RoundBtn
     private lateinit var shareBtn: RoundBtn
     private lateinit var delBtn: RoundBtn
-    private lateinit var rotRBtn: RoundBtn
     private lateinit var moreBtn: RoundBtn
     private lateinit var hud: TextView
     private lateinit var errTv: TextView
@@ -213,7 +210,7 @@ class PlayerActivity : Activity() {
         titleTv.setTextColor(pal.text); dateTv.setTextColor(pal.text); resTv.setTextColor(pal.text)
         calIcon.pal = pal; pill.pal = pal
         spin.indeterminateTintList = android.content.res.ColorStateList.valueOf(pal.fill)
-        for (b in listOf(backBtn, playBtn, prevBtn, nextBtn, rotLBtn, scrBtn, shareBtn, delBtn, rotRBtn, moreBtn)) b.pal = pal
+        for (b in listOf(backBtn, playBtn, prevBtn, nextBtn, shareBtn, delBtn, moreBtn)) b.pal = pal
     }
 
     // ---------------------------------------------------------------- UI (built in code; only the PlayerView comes from a tiny layout, see player_texture_view.xml)
@@ -262,19 +259,15 @@ class PlayerActivity : Activity() {
         playBtn = RoundBtn(this, PIc.PLAY).apply { contentDescription = "Play / pause"; setOnClickListener { togglePlay() } }
         prevBtn = RoundBtn(this, PIc.PREV).apply { contentDescription = "Previous video"; setOnClickListener { player?.seekToPreviousMediaItem() } }
         nextBtn = RoundBtn(this, PIc.NEXT).apply { contentDescription = "Next video"; setOnClickListener { player?.seekToNextMediaItem() } }
-        row1.addView(pill); row1.addView(prevBtn); row1.addView(nextBtn); row1.addView(playBtn)
-        row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL }
-        rotLBtn = RoundBtn(this, PIc.ROT_L).apply { contentDescription = "Turn video left"; setOnClickListener { rotateVideo(-90) } }
-        scrBtn = RoundBtn(this, PIc.SCREEN).apply {
-            contentDescription = "Screen rotation"
-            setOnClickListener { toggleScreenOrientation() }
-            setOnLongClickListener { screenAuto(); true }
-        }
+        row1.addView(pill); row1.addView(playBtn)
+        row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         shareBtn = RoundBtn(this, PIc.SHARE).apply { contentDescription = "Share"; setOnClickListener { shareCurrent() } }
         delBtn = RoundBtn(this, PIc.TRASH).apply { contentDescription = "Delete"; setOnClickListener { deleteCurrent() } }
-        rotRBtn = RoundBtn(this, PIc.ROT_R).apply { contentDescription = "Turn video right"; setOnClickListener { rotateVideo(90) } }
         moreBtn = RoundBtn(this, PIc.MORE).apply { contentDescription = "More"; setOnClickListener { showMore() } }
-        for (b in listOf(rotLBtn, scrBtn, shareBtn, delBtn, rotRBtn, moreBtn)) row2.addView(b)
+        // previous / next on the left, share / delete / more on the right (turn video and screen rotation live in the More menu)
+        row2.addView(prevBtn); row2.addView(nextBtn)
+        row2.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        for (b in listOf(shareBtn, delBtn, moreBtn)) row2.addView(b)
         bottom.addView(row1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bottom.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         root.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
@@ -325,13 +318,15 @@ class PlayerActivity : Activity() {
         header.setPadding(insL + dp(10), insT + dp(8), insR + dp(12), dp(22))
         bottom.setPadding(insL + m, 0, insR + m, insB + dp(10))
         val innerW = root.width - insL - insR - 2 * m
-        val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 5 * gap) / 6).coerceAtLeast(dp(30))
+        val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 4 * gap) / 5).coerceAtLeast(dp(30))
         if (bs != lastBs) {
             lastBs = bs
             fun lp(w: Int, h: Int, start: Int) = LinearLayout.LayoutParams(w, h).apply { marginStart = start }
             pill.layoutParams = LinearLayout.LayoutParams(0, bs, 1f)
-            for (b in listOf(prevBtn, nextBtn, playBtn)) b.layoutParams = lp(bs, bs, gap)
-            for (b in listOf(rotLBtn, scrBtn, shareBtn, delBtn, rotRBtn, moreBtn)) b.layoutParams = lp(bs, bs, gap)
+            playBtn.layoutParams = lp(bs, bs, gap)
+            prevBtn.layoutParams = lp(bs, bs, 0)
+            nextBtn.layoutParams = lp(bs, bs, gap)
+            for (b in listOf(shareBtn, delBtn, moreBtn)) b.layoutParams = lp(bs, bs, gap)
         }
         subtitlePadding()
     }
@@ -771,6 +766,10 @@ class PlayerActivity : Activity() {
         labels += "Playback speed (" + speedText(player?.playbackParameters?.speed ?: 1f) + ")"; acts += { pickSpeed() }
         labels += "Audio track"; acts += { pickTrack(C.TRACK_TYPE_AUDIO) }
         labels += "Subtitles"; acts += { pickTrack(C.TRACK_TYPE_TEXT) }
+        labels += "Turn video left"; acts += { rotateVideo(-90) }
+        labels += "Turn video right"; acts += { rotateVideo(90) }
+        labels += "Rotate screen (portrait / landscape)"; acts += { toggleScreenOrientation() }
+        labels += "Auto screen rotation"; acts += { screenAuto() }
         labels += "Aspect ratio: " + names[resizeIdx]; acts += { cycleAspect() }
         labels += if (fullscreen) "Exit full screen" else "Full screen"; acts += { setFullscreen(!fullscreen) }
         if (Build.VERSION.SDK_INT >= 26) { labels += "Picture-in-picture"; acts += { enterPip() } }
