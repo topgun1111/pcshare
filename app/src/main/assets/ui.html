@@ -3517,7 +3517,7 @@ async function doExtract(m){  // 0: archives selected in a folder, 1: items sele
   if(inArc()){const ar=arcRoot();dir=pdir(ar.slice(0,-1));paths=m===2?[ar]:selPaths()}
   else{dir=S.path;paths=selItems().filter(isArcF).map(i=>jn(S.path,i.name))}
   if(!paths.length)return;
-  const to=await pickExtractDir(dir);if(!to)return;dir=to;   // ask where to extract (starts in the archive's own folder)
+  const to=await pickExtractDir('/');if(!to)return;dir=to;   // ask where to extract: the picker always starts at the storage root
   const cf=await askConflicts(S.dev,dir,paths,S.dev);if(!cf)return;   // same name already there: replace / keep both / skip
   const inside=inArc();S.sel.clear();render();
   try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir,conflict:cf});watchJob(r.job);
