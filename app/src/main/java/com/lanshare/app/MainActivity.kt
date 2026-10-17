@@ -286,7 +286,7 @@ class MainActivity : Activity() {
     }
 
 
-    // ---- swipe right = Main menu <-> file manager. From the left screen edge (short swipe) or anywhere below the header (longer, mostly horizontal swipe). ----
+    // ---- swipe = Main menu <-> file manager, from anywhere below the header (longer, mostly horizontal swipe). Not from the left screen edge (system Back gesture). ----
     @Volatile private var swipeOk = false     // set by ui.html (edgeOk): false while a dialog / viewer / selection / search / the side drawer is open
     @Volatile private var swipeTop = 0f       // px: the header (path bar, device chips) ends here; swipes that start inside it scroll those strips instead
     private var swOn = false                  // the current touch is being watched
@@ -295,24 +295,16 @@ class MainActivity : Activity() {
     private var swTop = false                 // the touch started in the header
     private var swX = 0f; private var swY = 0f
 
-    /** Android 10+ gesture navigation would turn an edge swipe into "Back": ask the system to leave a strip of the left edge to the app. */
-    private fun edgeInit(root: View) {
-        if (Build.VERSION.SDK_INT < 29) return
-        root.addOnLayoutChangeListener { v, _, t, _, b, _, _, _, _ ->
-            val d = resources.displayMetrics.density
-            val h = b - t; val strip = Math.min(h, Math.round(200f * d))   // the system allows at most 200 dp per edge
-            val top = (h - strip) / 2
-            if (Build.VERSION.SDK_INT >= 29) v.systemGestureExclusionRects = listOf(Rect(0, top, Math.round(32f * d), top + strip))
-        }
-    }
+    /** The left screen edge belongs to the phone's Back gesture: no gesture-exclusion strip is requested and swipes that start there are never ours. */
+    private fun edgeInit(root: View) { }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         val d = resources.displayMetrics.density
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 swDone = false
-                swOn = swipeOk && ev.pointerCount == 1
-                swEdge = ev.rawX <= 28f * d
+                swEdge = ev.rawX <= 36f * d                                       // system Back-gesture zone: leave it alone
+                swOn = swipeOk && ev.pointerCount == 1 && !swEdge
                 swTop = ev.rawY < swipeTop
                 swX = ev.rawX; swY = ev.rawY
             }

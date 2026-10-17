@@ -3347,7 +3347,7 @@ const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;if(!Array.isArray(S.peers))S.peers=[];document.body.classList.add('dopen');try{drawerRender()}catch(e){console.log('drawerRender',e)}api('POST','/api/scan',{},4000).catch(()=>{});try{pollPeers()}catch(e){}try{warmWifi()}catch(e){}}   // opening the drawer = look for devices now
 function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
-// native swipe (MainActivity.dispatchTouchEvent): left-to-right swipe (from the edge or anywhere below the header) toggles file manager <-> Main menu; ignored when something else is on top
+// native swipe (MainActivity.dispatchTouchEvent): swipe (anywhere below the header, not from the left screen edge) toggles file manager <-> Main menu; ignored when something else is on top
 const lsEdgeOk=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
   for(const id of ['#sheet','#dlg','#pcs','#pq','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
   if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;return true};
