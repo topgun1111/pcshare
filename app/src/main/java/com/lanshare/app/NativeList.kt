@@ -863,7 +863,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     for (m in v) {
                         val b = base(m.nm); val sj = JSONArray()
                         for (x in subs) { val c = base(x.nm); if (c == b || c.startsWith("$b.")) sj.put(JSONObject().put("name", x.nm).put("url", url(x.nm))) }
-                        items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("key", key(m.nm, m.size)).put("subs", sj))
+                        items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("key", key(m.nm, m.size)).put("subs", sj).put("mtime", m.mtime).put("size", m.size))
                     }
                     val at = Math.max(0, v.indexOfFirst { it.nm == r.nm })
                     PlayerActivity.pending = JSONObject().put("start", at).put("items", items).toString()

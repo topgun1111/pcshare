@@ -1666,7 +1666,7 @@ function nativePlay(i){
   const subs=(GCX?GCX.all:vis()).filter(x=>!x.dir&&/\.(srt|vtt|ass|ssa)$/i.test(x.name));
   const url=m=>location.origin+'/api/dl?dev='+enc(cxd())+'&path='+enc(jn(cxp(),m.name));
   const base=n=>n.replace(/\.[^.]+$/,'').toLowerCase();
-  const items=V.map(m=>{const b=base(m.name);return{name:m.name,url:url(m),key:cxd()+'|'+cxp()+'/'+m.name+'|'+(m.size||0),
+  const items=V.map(m=>{const b=base(m.name);return{name:m.name,url:url(m),key:cxd()+'|'+cxp()+'/'+m.name+'|'+(m.size||0),mtime:m.mtime||0,size:m.size||0,
     subs:subs.filter(s=>{const c=base(s.name);return c===b||c.indexOf(b+'.')===0}).map(s=>({name:s.name,url:url(s)}))}});
   const at=Math.max(0,V.findIndex(m=>m.name===i.name));
   try{LSAndroid.play(JSON.stringify({start:at,items}));return true}catch(e){return false}}
