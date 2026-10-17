@@ -66,7 +66,7 @@ body{margin:0;font:500 15px/1.4 'Figtree LS',Figtree,system-ui,sans-serif;-webki
 /* pull to refresh */
 /* hidden items shown via "Show hidden files": faded */
 .row.hdn>.lead,.row.hdn>.nm{opacity:.45}.vc.hdn{opacity:.5}
-#ptr{position:fixed;left:0;right:0;top:0;height:0;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;z-index:4;font-size:13px;pointer-events:none}
+#ptr{position:fixed;left:0;right:0;top:0;height:0;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;z-index:6;font-size:13px;pointer-events:none}
 #ptr div{margin:0 0 8px;padding:6px 14px;border-radius:16px;background:var(--cont);color:var(--mut);box-shadow:var(--sh)}#ptr.go div{color:var(--ac);font-weight:700}
 .gptr{flex:none;height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;font-size:13px;pointer-events:none}
 .gptr div{margin:0 0 8px;padding:6px 14px;border-radius:16px;background:var(--cont);color:var(--mut);box-shadow:var(--sh)}.gptr.go div{color:var(--ac);font-weight:700}
@@ -188,7 +188,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gt{flex:1;min-width:0;display:flex;flex-direction:column;padding-left:4px}
 #gal .gt b{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #gal .gt small{font-size:12.5px;color:var(--mut)}
-#gal .gs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
+#gal .gs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 #gal .gg{display:grid;grid-template-columns:repeat(var(--pc,3),1fr);gap:2px}
 @media(min-width:600px){#gal .gg{grid-template-columns:repeat(var(--pc,5),1fr)}}
 @media(min-width:900px){#gal .gg{grid-template-columns:repeat(var(--pc,7),1fr)}}
@@ -1315,8 +1315,8 @@ function pullBind(sc,box,go,ok){
   sc.addEventListener('touchstart',e=>{on=false;if(e.touches.length!==1||sc.scrollTop>0||(ok&&!ok()))return;y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
   sc.addEventListener('touchmove',e=>{if(!on)return;dy=e.touches[0].clientY-y0;
     if(dy<=0||sc.scrollTop>0){if(dy<=0){on=false;setH(0)}return}
+    if(e.cancelable)e.preventDefault();   // claim the pull at once: otherwise WebView starts its own scroll gesture during the first 16 px and the later moves can no longer be cancelled
     if(dy<16)return;
-    if(e.cancelable)e.preventDefault();
     box.style.transition='';const h=Math.min(dy*0.5,TH+20);setH(h);const rd=h>=TH;box.classList.toggle('go',rd);
     lab.textContent=rd?'\u21bb Release to refresh':'\u2193 Pull to refresh'},{passive:false});
   const end=()=>{if(!on)return;on=false;
@@ -3204,11 +3204,12 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
   const modal=()=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex';
   window.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1||!atTop()||modal())return;
     if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#gal,#sheet,#dlg,#top,button'))return;
+    try{box.style.top=Math.max(0,Math.round($('#top').getBoundingClientRect().bottom))+'px'}catch(_){}   // bubble grows right below the header
     y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
   window.addEventListener('touchmove',e=>{if(!on||window._dnd)return;dy=e.touches[0].clientY-y0;
     if(dy<=0||!atTop()){if(dy<=0){on=false;setH(0)}return}
-    if(dy<16)return;
     if(e.cancelable)e.preventDefault();
+    if(dy<16)return;
     const h=Math.min(dy*0.5,TH+20);setH(h);const ready=h>=TH;box.classList.toggle('go',ready);
     lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
   const end=async()=>{if(!on)return;on=false;
