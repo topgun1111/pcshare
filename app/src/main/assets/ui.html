@@ -2819,8 +2819,18 @@ async function doPrint(preset,cx){
   try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
     setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
-window.lsOpenArc=p=>openLoc('local',p+'!');   // "Open with LANShare" on a zip / rar: browse inside the archive
-window.lsGoLocal=p=>openLoc('local',p);   // Storage Analyzer "Show in file manager": this device, that folder
+/* an archive / folder opened from outside the app must end up on top: close every page that could cover it (album page, viewer, dialogs, sheets, selection, search) first */
+function lsCloseOverlays(){
+  try{if($('#hmfav'))hmFavClose()}catch(e){}
+  try{drawerClose()}catch(e){}
+  try{const pv=$('#pv');if(pv&&pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}}}catch(e){}
+  try{const g=$('#gal');if(g&&g.style.display!=='none'){g.classList.remove('selm');galClose()}}catch(e){}
+  try{for(const id of ['#dlg','#sheet','#pcs','#pq']){const o=$(id);if(o&&o.style.display==='flex')o.style.display='none'}}catch(e){}
+  try{S.sel.clear()}catch(e){}
+  try{if(document.body.classList.contains('srch')){clearQ()}}catch(e){}
+}
+window.lsOpenArc=p=>{lsCloseOverlays();openLoc('local',p+'!')};   // "Open with LANShare" on a zip / rar: browse inside the archive
+window.lsGoLocal=p=>{lsCloseOverlays();openLoc('local',p)};   // Storage Analyzer "Show in file manager": this device, that folder
 window.lsPrintShared=async(names,priv)=>{
   try{
     const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */
