@@ -3463,7 +3463,7 @@ async function peOpenOnPc(){
     const pc=await pePickPc();if(!pc)return;
     const r=await api('POST','/api/pcphone?dev='+enc(pc.id)+'&port='+st.port+'&user='+enc(st.user)+'&pin='+enc(st.pin),{},10000);
     if(r&&r.ok){setLastPc(pc);toast('Opened on '+pc.name,3000)}
-    else toast('⚠ Update pcprint.py on the PC (version 29 or newer)',6000)
+    else toast('\u26a0 The PC service (pcprint.py v'+(r&&r.version||'?')+') has no Phone Explorer support. Run tools/patch_pcprint.py on the PC, then restart the service',9000)
   }catch(e){toast('⚠ '+e.message,5000)}finally{PEBUSY=false}}
 function openPhoneExplorer(){
   const B=window.LSAndroid;if(!B||!B.peState)return;

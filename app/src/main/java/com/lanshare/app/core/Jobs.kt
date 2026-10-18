@@ -264,7 +264,11 @@ object Jobs {
             val path = "/phoneshare?port=$port&user=" + URLEncoder.encode(user, "UTF-8") + "&pin=" + URLEncoder.encode(pin, "UTF-8")
             val r = Http.request(ip, PRINT_PORT, "POST", path, mapOf("Content-Length" to "0"), 8000)
             try {
-                if (r.status == 404) return JSONObject().put("ok", false).put("result", "old")
+                if (r.status == 404) {   // the running service has no /phoneshare: report which version it is
+                    var v = "?"
+                    try { Http.request(ip, PRINT_PORT, "GET", "/ping", emptyMap(), 3000).let { pr -> try { v = JSONObject(String(pr.readUpTo(32768), Charsets.UTF_8)).optString("version", "?") } finally { pr.close() } } } catch (_: Exception) {}
+                    return JSONObject().put("ok", false).put("result", "old").put("version", v)
+                }
                 val o = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
                 if (r.status != 200) throw IOException(o.optString("error", "PC answered " + r.status))
                 JSONObject().put("ok", true).put("result", "ok")
