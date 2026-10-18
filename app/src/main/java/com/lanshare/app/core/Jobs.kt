@@ -41,6 +41,8 @@ class Job(@Volatile var label: String) {
     @Volatile var filesTotal = 0
     @Volatile var failed = 0
     @Volatile var dest: String? = null
+    @Volatile var rid: String? = null          // resume id this job continues (set by [Jobs.resume]); dropped from [Partials] when it ends fine
+    @Volatile var resumeId: String? = null     // set when the job ended with an error and can be continued: the UI shows a Resume button
     private val problems = ArrayList<String>()
     @Synchronized fun addProblem(s: String) { if (problems.size < 30) problems.add(s) }
     @Synchronized private fun problemsJson() = org.json.JSONArray(problems.toList())
@@ -118,6 +120,7 @@ class Job(@Volatile var label: String) {
             if (files > 0 || filesTotal > 0) it.put("files", files).put("filesTotal", filesTotal)
             if (failed > 0) it.put("failed", failed).put("problems", problemsJson())
             dest?.let { d -> it.put("dest", d) }
+            if (state == "error") resumeId?.let { r -> it.put("resume", r) }
             note?.let { n -> it.put("note", n) }
             result?.let { r -> it.put("result", r) }
             if (live) {
@@ -725,13 +728,61 @@ object Jobs {
         return jid
     }
 
-    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename") {
+    /**
+     * Continues a copy / move that ended with an error ([Partials] keeps what is left): finished files are skipped (same size), a file with a
+     * kept ".lspart" continues where it stopped, the rest is copied. Items go back to the destination names the first run chose.
+     */
+    fun resume(rid: String): String {
+        val sp = Partials.job(rid) ?: throw NotFound("Nothing to resume (the record expired or was already finished)")
+        val src = ep(sp.getString("src"))
+        val dst = ep(sp.getString("dst"))
+        val arr = sp.getJSONArray("paths")
+        val paths = (0 until arr.length()).map { arr.getString(it) }
+        val nm = sp.optJSONObject("names") ?: JSONObject()
+        val forced = HashMap<String, String>().also { m -> for (k in nm.keys()) m[k] = nm.getString(k) }
+        val jid = UUID.randomUUID().toString().replace("-", "").take(8)
+        prune()
+        val job = Job(sp.optString("label", "Copying"))
+        job.rid = rid
+        all[jid] = job
+        val ddir = sp.optString("ddir", "/")
+        val cut = sp.optBoolean("cut")
+        Thread({ work(job, src, dst, src.id, paths, ddir, cut, "resume", forced) }, "job-$jid").also { it.isDaemon = true }.start()
+        return jid
+    }
+
+    /** What the interrupted-transfer list shows: id, label, how many items are left, where to. */
+    fun resumable(): JSONArray {
+        val a = JSONArray()
+        for ((id, sp) in Partials.jobs()) a.put(JSONObject().put("id", id).put("label", sp.optString("label")).put("left", sp.optJSONArray("paths")?.length() ?: 0)
+            .put("dst", sp.optString("ddir")).put("t", sp.optLong("t") / 1000.0))
+        return a
+    }
+
+    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename", forced: Map<String, String>? = null) {
         var dest: String? = null
+        val pending = LinkedHashMap<String, String>()   // top-level items started but not finished cleanly: path -> destination name used
+        var planned: List<String> = emptyList()
+        var visited = 0                                  // how many planned items were started
         val same = src.id == dst.id
         val fails = ArrayList<String>()   // what went wrong, one line each (first 50)
         var failCount = 0
         var skippedTotal = 0
         fun fail(what: String, e: Throwable) { failCount++; job.failed = failCount; job.addProblem("$what: ${errText(e)}"); if (fails.size < 50) fails.add("$what: ${errText(e)}") }
+        /** The run ended with an error: remember what is left so "Resume" can continue it (also after the app was closed). */
+        fun saveResume() {
+            if (same && cut) return   // same-device moves are renames: nothing partial
+            val left = JSONArray(); val names = JSONObject()
+            for ((i, p) in planned.withIndex()) {
+                val nn = pending[p]
+                if (nn != null) { left.put(p); names.put(p, nn) } else if (i >= visited) left.put(p)
+            }
+            if (left.length() == 0) { job.rid?.let { Partials.dropJob(it) }; return }
+            val id = job.rid ?: UUID.randomUUID().toString().replace("-", "").take(8)
+            Partials.putJob(id, JSONObject().put("src", src.id).put("dst", dst.id).put("ddir", vnorm(ddir)).put("cut", cut).put("label", job.label)
+                .put("paths", left).put("names", names))
+            job.resumeId = id
+        }
         try {
             val ddirN = vnorm(ddir)
             job.dest = dst.name + " \u203a " + ddirN
@@ -746,6 +797,7 @@ object Jobs {
                 try { plan.add(p to (if (same && cut) null else src.walk(p))) }
                 catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }   // one unreadable item must not stop the others
             }
+            planned = plan.map { it.first }
             if (same && cut) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
             job.filesTotal = if (same && cut) plan.size else plan.sumOf { (_, w) -> w!!.count { !it.dir && !it.skip } }
@@ -764,12 +816,14 @@ object Jobs {
             var kept = 0                 // files the user chose to skip while moving: their originals stay
             for ((p, walked) in plan) {
                 if (job.cancel) throw Cancelled()
+                visited++
                 val isDir = walked?.firstOrNull()?.dir ?: false
                 val dn = destName(p)
                 val clash = dn in taken
                 val selfHit = same && vjoin(ddirN, dn) == p                      // never merge an item into itself: keep both instead
-                val merge = clash && !selfHit && conflict != "rename"
-                val nn = if (merge) dn else uniqueName(dn, taken, isDir)
+                val fname = forced?.get(p)                                       // resume: the name the interrupted run used - merge into it
+                val merge = if (fname != null) true else clash && !selfHit && conflict != "rename"
+                val nn = if (fname != null) fname else if (merge) dn else uniqueName(dn, taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
                 val fastMove = same && cut && !merge
@@ -780,6 +834,7 @@ object Jobs {
                     job.done += 1; job.files++
                     continue
                 }
+                pending[p] = nn
                 val wl: List<WalkItem> = walked ?: src.walk(p)   // a move onto an existing name is done as copy + delete of the original
                 val counting = !(same && cut)
                 var bad = 0
@@ -805,7 +860,7 @@ object Jobs {
                             if (ex != null) {
                                 if (ex.dir) throw IOException("a folder with this name is in the way")
                                 existed = true
-                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; else -> null }
+                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
                                         .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
@@ -816,6 +871,8 @@ object Jobs {
                                     else if (act == "newer_all") { sticky = "newer"; act = "newer" }
                                     else if (act == "both_all") { sticky = "both"; act = "both" }
                                 }
+                                if (act == "resume") act = if (ex.size == w.size) "done" else "replace"   // continuing: a complete file stays, anything else is copied again (from its .lspart when there is one)
+                                if (act == "done") { job.files++; if (counting) job.done += w.size; continue }   // verified complete: neither "kept" nor "skipped"
                                 if (act == "newer") {   // replace only when the new file is newer (2 s tolerance: FAT / SMB clocks)
                                     val sm = try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
                                     act = if (sm > ex.mtime + 2) "replace" else "skip"
@@ -846,6 +903,7 @@ object Jobs {
                         if (w.rel.isEmpty() && w.dir) break   // the top folder itself could not be used: its content has no place to go
                     }
                 }
+                if (bad == 0) pending.remove(p)
                 skippedTotal += skipped
                 kept += keptHere
                 if (!counting) { job.done += 1; job.files++ }
@@ -865,52 +923,89 @@ object Jobs {
             job.done = job.total
             if (failCount == 0) {
                 job.state = "done"
+                job.rid?.let { Partials.dropJob(it) }
                 if (skippedTotal > 0 && !job.live) job.note = "Done - $skippedTotal item(s) (links or unreadable folders) were skipped"
                 if (cut && Clip.paths.isNotEmpty() && Clip.dev == srcId) Clip.clear()
             } else {
                 job.error = (if (failCount == 1) fails[0] else "$failCount problems - " + fails.take(3).joinToString("; ") + (if (failCount > 3) "; ..." else ""))
                 job.state = "error"
+                saveResume()
             }
         } catch (e: Cancelled) {
             job.state = "cancel"
             val d = dest
             if (d != null && !(same && cut)) try { dst.remove(d) } catch (_: Exception) {}   // drop the half-copied item; finished ones stay
+            job.rid?.let { Partials.dropJob(it) }   // cancelled on purpose: no Resume offer any more
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             job.error = errText(e)
             job.state = "error"
+            try { saveResume() } catch (_: Throwable) {}
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
         }
     }
 
+    private const val RESUME_MIN = 4L shl 20   // smaller files are simply copied again
+
+    /**
+     * Copies one file. When both ends allow it (file >= 4 MB, readable from any offset, destination can resume) an interrupted copy continues
+     * where it stopped - in this loop after a dropped connection, and in a later run (Resume / copy again) because the destination keeps
+     * "name.lspart" and [Partials] remembers which version of the source it belongs to. Attempts that make progress do not count as failures.
+     */
     private fun copyFile(job: Job, src: Endpoint, dst: Endpoint, sp: String, target: String, count: Boolean = true) {
-        for (attempt in 0..3) {
+        var stalls = 0          // failed attempts in a row that got (almost) nowhere
+        var tries = 0           // all attempts: a hard stop so a link that always breaks after a little progress cannot loop for ever
+        var best = 0L           // furthest point of this file that was ever in the destination
+        var resumeTried = false
+        while (true) {
             var sent = 0L
+            var reached = 0L
             try {
                 val f = src.open(sp)
                 try {
+                    val can = dst.resumable && f.seekable && f.size >= RESUME_MIN
+                    resumeTried = resumeTried || can
+                    var off = 0L
+                    var tag = ""
+                    if (can) {
+                        val mt = try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+                        tag = "${f.size}:$mt"
+                        off = dst.partial(target, tag)
+                        if (off !in 1 until f.size) off = 0L
+                    }
                     job.begin(vbase(sp), f.size)
-                    dst.write(target, f, f.size) { n ->
+                    if (off > 0) { f.seek(off); job.curDone = off; sent = off; reached = off; if (count) job.done += off }
+                    val cb: (Int) -> Unit = { n ->
                         if (job.cancel) throw Cancelled()
-                        sent += n
+                        sent += n; reached += n
                         job.curDone += n
                         if (count) job.done += n
                     }
+                    if (can) dst.writeResume(target, f, f.size, off, tag, cb) else dst.write(target, f, f.size, cb)
                 } finally { f.close() }
                 if (count) job.files++
                 return
             } catch (e: Cancelled) { throw e
-            } catch (e: NotFound) { if (count) job.done -= sent; throw e
-            } catch (e: Denied) { if (count) job.done -= sent; throw e
-            } catch (e: Exists) { if (count) job.done -= sent; throw e
-            } catch (e: BadReq) { if (count) job.done -= sent; throw e
-            } catch (e: Full) { if (count) job.done -= sent; throw e   // retrying cannot create space
-            } catch (e: Exception) {   // IOException or a raw library error: retry a few times
+            } catch (e: Exception) {
                 if (count) job.done -= sent
-                if (attempt == 3) throw IOException(errText(e))
+                val fatal = e is NotFound || e is Denied || e is Exists || e is Full || (e is BadReq && !(e.message ?: "").startsWith("resume offset"))
+                if (fatal) throw e   // retrying cannot help (Full: the part stays, free some space and resume)
+                tries++
+                if (reached >= best + (1L shl 20)) stalls = 0 else stalls++
+                best = maxOf(best, reached)
+                val maxStalls = if (resumeTried) 6 else 3
+                if (stalls > maxStalls || tries > 40) {
+                    throw IOException(errText(e) + if (resumeTried && best > 0) " - the copied part is kept: Resume (or copy again) continues from ${best / 1048576} MB" else "")
+                }
                 if (job.cancel) throw Cancelled()
-                Thread.sleep(1500L * (attempt + 1))
+                val wait = if (resumeTried) minOf(2000L shl minOf(stalls, 4), 30_000L) else 1500L * (stalls + 1)
+                val until = System.currentTimeMillis() + wait
+                while (System.currentTimeMillis() < until) {   // the card shows why it stands still; Cancel works while waiting
+                    job.cur = "Connection lost - retrying (${minOf(stalls + 1, maxStalls)}/$maxStalls): ${vbase(sp)}"
+                    if (job.cancel) throw Cancelled()
+                    Thread.sleep(250)
+                }
             }
         }
     }

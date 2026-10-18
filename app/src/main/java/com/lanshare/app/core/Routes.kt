@@ -63,9 +63,16 @@ object Routes {
             "file" -> sendFile(ex, L.open(ex.q("path")), vbase(ex.q("path")), false)
             "put" -> {
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
-                L.write(ex.q("path"), ex.body, n)
+                val tag = ex.query["tag"]
+                if (tag != null) {   // resumable upload: the first `offset` bytes of `total` are already here (see "partial"); a broken upload keeps what arrived
+                    val off = ex.query["offset"]?.toLongOrNull() ?: 0L
+                    val total = ex.query["total"]?.toLongOrNull() ?: throw BadReq("missing total")
+                    if (off < 0 || off > total || n != total - off) throw BadReq("Content-Length does not match total - offset")
+                    L.writeResume(ex.q("path"), ex.body, total, off, tag)
+                } else L.write(ex.q("path"), ex.body, n)
                 ok(ex)
             }
+            "partial" -> ex.json(JSONObject().put("have", L.partial(ex.q("path"), ex.q("tag"))))   // how much of an interrupted upload of this file (same source version) is still here
             "wifiprinters" -> ex.json(WifiPrinters.listJson())   // this device's Wi-Fi printers, for printing on them from another device
             "ipp" -> {   // forwards one IPP request from another device to a printer this device discovered (not to arbitrary hosts)
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
@@ -191,6 +198,9 @@ object Routes {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true
                 return ok(ex)
             }
+            "resumable" -> return ex.json(Jobs.resumable())   // interrupted copies / moves that can be continued (survive an app restart)
+            "jobresume" -> return ex.json(JSONObject().put("job", Jobs.resume(ex.q("id"))))   // continue one of them: a new job id comes back
+            "resumedrop" -> { Partials.dropJob(ex.q("id")); return ok(ex) }   // give up on one: forget the record (partial files are purged after 7 days)
             "job" -> return ex.json((Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).toJson(ex.query["since"]?.toIntOrNull() ?: -1))
             "jobs" -> {   // every running job (copy / move / send / extract / zip / delete / print / scans) + ones finished in the last 10 s: feeds the floating progress bubble
                 val now = System.currentTimeMillis()

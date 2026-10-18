@@ -41,6 +41,7 @@ object Core {
             appCtx = app
             Cfg.load(File(app.filesDir, "lanshare.json"), phoneModel(), "")
             holdAwake(app)
+            try { Partials.init(app.filesDir); Thread({ Partials.purge() }, "partials-purge").also { it.isDaemon = true }.start() } catch (_: Throwable) {}   // interrupted copies: reload the registry, drop what is older than a week
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}

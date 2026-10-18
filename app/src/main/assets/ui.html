@@ -1925,6 +1925,9 @@ function openSettings(){
   sw.append(cb,E('i'));row.append(t,sw);card.append(row);
   {const rn=E('button','set'),tn=E('div','t'),sn=E('small','',$('#nm').dataset.n||'');rn.style.width='100%';rn.style.textAlign='left';tn.append(E('b','','Device name'),sn);rn.append(tn);
     rn.onclick=()=>{close();$('#nm').onclick()};card.append(rn)}
+  {const rq=E('button','set'),tq=E('div','t'),sq=E('small','');rq.style.width='100%';rq.style.textAlign='left';rq.style.display='none';tq.append(E('b','','Interrupted transfers'),sq);rq.append(tq);
+    api('GET','/api/resumable').then(l=>{if(l&&l.length){sq.textContent=l.length+(l.length===1?' copy':' copies')+' can be continued';rq.style.display=''}}).catch(()=>{});
+    rq.onclick=()=>{close();openResumable()};card.append(rq)}
   if(window.LSAndroid&&LSAndroid.txtDevs){const rT=E('button','set'),tT=E('div','t'),sT=E('small','');rT.style.width='100%';rT.style.textAlign='left';
     try{sT.textContent='Default device: '+(JSON.parse(LSAndroid.txtDevs()).defName||'ask every time')}catch(e){}
     tT.append(E('b','','Text sharing'),sT);rT.append(tT);rT.onclick=()=>{close();openTextSettings()};card.append(rT)}
@@ -3007,6 +3010,20 @@ async function doMkdir(){
   const n=await dlg({title:'New folder',input:{label:'Folder name'},ok:'Create'});if(!n)return;
   try{await api('POST','/api/op',{dev:S.dev,op:'mkdir',path:jn(S.path,n)});load()}catch(e){toast('⚠ '+e.message,4000)}}
 /* mirror a copy/move/send job in the Android notification shade (no-op in a browser) */
+function openResumable(){   // copies / moves that stopped with an error and can be continued (the list survives closing the app)
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Interrupted transfers'));
+  const note=E('small','','Finished files are kept, a half-copied file continues where it stopped. Parts are deleted after 7 days.');note.style.cssText='display:block;color:var(--mut);margin:0 0 8px';card.append(note);
+  const box=E('div');card.append(box);
+  const draw=l=>{box.textContent='';if(!l.length){box.append(E('small','','Nothing to continue.'));return}
+    l.forEach(it=>{const row=E('div','set'),t=E('div','t'),b=E('b','',it.label||'Copying'),sm=E('small','',it.left+(it.left===1?' item':' items')+' left'+(it.dst?' \u2192 '+it.dst:'')+(it.t?' \u00b7 '+new Date(it.t*1000).toLocaleString():''));
+      t.append(b,sm);const go=E('button','tbtn fill','Resume'),no=E('button','tbtn','Forget');
+      go.onclick=async()=>{go.disabled=true;try{const r=await api('POST','/api/jobresume?id='+encodeURIComponent(it.id));close();watchJob(r.job);track(r.job)}catch(e){go.disabled=false;toast('\u26a0 '+e.message,5000)}};
+      no.onclick=async()=>{try{await api('POST','/api/resumedrop?id='+encodeURIComponent(it.id));row.remove();if(!box.children.length)draw([])}catch(e){toast('\u26a0 '+e.message,4000)}};
+      const ac=E('div');ac.style.cssText='display:flex;gap:6px;flex:none';ac.append(go,no);row.style.cssText='display:flex;align-items:center;gap:8px';row.append(t,ac);box.append(row)})};
+  api('GET','/api/resumable').then(draw).catch(e=>{box.textContent='';box.append(E('small','','\u26a0 '+e.message))});
+  const rowb=E('div','dact'),cl=E('button','tbtn','Close');cl.onclick=close;rowb.append(cl);card.append(rowb);o.append(card)}
 function watchJob(id){try{if(window.LSAndroid&&LSAndroid.watch)LSAndroid.watch(location.origin,id)}catch(e){}}
 function etaTxt(s){s=Math.round(s);if(s<10)return 'a few seconds';if(s<60)return Math.round(s/5)*5+' s';
   if(s<3600){const m=Math.floor(s/60),r=s%60;return m+' min'+(m<10&&r>=30?' 30 s':'')}
@@ -3116,7 +3133,10 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;const vis=lvOn();
   if(j.state==='error'&&j.retry>0){const rb=E('button','tbtn fill','Retry failed ('+j.retry+')');
     rb.onclick=async()=>{rb.disabled=true;try{const r=await api('POST','/api/printretry?id='+id);L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rb.disabled=false;toast('\u26a0 '+e.message,5000)}};
     L.hide.className='tbtn';L.row.insertBefore(rb,L.hide)}
-  const bad=(j.problems||[]).length>1||j.retry>0;
+  if(j.state==='error'&&j.resume){const rs=E('button','tbtn fill','Resume');
+    rs.onclick=async()=>{rs.disabled=true;try{const r=await api('POST','/api/jobresume?id='+encodeURIComponent(j.resume));L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rs.disabled=false;toast('\u26a0 '+e.message,5000)}};
+    L.hide.className='tbtn';L.row.insertBefore(rs,L.hide)}   // continues from the kept .lspart parts: finished files are skipped
+  const bad=(j.problems||[]).length>1||j.retry>0||!!j.resume;
   if(!vis&&ok)return false;                 // minimized and fine: the toast says it
   if(!vis&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
   lvShow();return true}

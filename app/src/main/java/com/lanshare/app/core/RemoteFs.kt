@@ -176,6 +176,31 @@ class RemoteFs(peer: Peer) : Endpoint {
         callRaw("POST", "put", mapOf("path" to v), body = input, size = size, onSent = cb).close()
     }
 
+    /** null = not asked yet, false = the other device runs a build without the "partial" route (it then gets plain, non-resumable uploads). */
+    @Volatile private var resumeOk: Boolean? = null
+    override val resumable: Boolean get() = resumeOk != false
+
+    override fun partial(v: String, tag: String): Long {
+        if (resumeOk == false) return 0L
+        return try {
+            val o = JSONObject(String(bytes("GET", "partial", mapOf("path" to v, "tag" to tag), 15_000), Charsets.UTF_8))
+            resumeOk = true
+            o.optLong("have", 0L).coerceAtLeast(0L)
+        } catch (e: NotFound) {
+            if ((e.message ?: "").contains("unknown route", true)) resumeOk = false   // an older LANShare build on the other side
+            0L
+        } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+    }
+
+    override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
+        if (resumeOk != true) {   // the other side was never confirmed to understand "offset": send the whole file the old way
+            if (offset != 0L) throw BadReq("the other device cannot resume a copy")
+            return write(v, input, size, cb)
+        }
+        callRaw("POST", "put", mapOf("path" to v, "tag" to tag, "offset" to offset.toString(), "total" to size.toString()),
+            body = input, size = size - offset, onSent = cb).close()
+    }
+
     override fun stat(v: String): JSONObject = try {
         JSONObject(String(bytes("GET", "stat", mapOf("path" to v)), Charsets.UTF_8))
     } catch (e: NotFound) {

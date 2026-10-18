@@ -262,6 +262,57 @@ class LocalFs(rootPath: String) : Endpoint {
             }
         } finally {
             if (tmp.exists()) tmp.delete()
+            Partials.forget(tmp.path)
+        }
+    }
+
+    override val resumable: Boolean get() = true
+
+    override fun partial(v: String, tag: String): Long {
+        val tmp = File(real(v).path + ".lspart")
+        return if (tmp.isFile && Partials.matches(tmp.path, tag)) tmp.length() else 0L
+    }
+
+    override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
+        if (size < 0) throw BadReq("missing size")
+        if (offset < 0 || offset > size) throw BadReq("bad resume offset")
+        val p = real(v)
+        try {   // only what is still missing needs room
+            val free = root.usableSpace
+            val need = size - offset
+            if (need > 0 && free > 0 && need + (5L shl 20) > free)
+                throw Full("Not enough free space on $name (needs ${need / 1048576} MB more, ${free / 1048576} MB free)")
+        } catch (e: SecurityException) {}
+        p.parentFile?.mkdirs()
+        val tmp = File(p.path + ".lspart")
+        if (offset > 0 && !(tmp.isFile && tmp.length() == offset && Partials.matches(tmp.path, tag)))
+            throw BadReq("resume offset mismatch (have ${if (tmp.isFile) tmp.length() else 0})")   // the sender asks again and continues from there
+        Partials.put(tmp.path, tag)
+        var keep = true
+        try {
+            java.io.FileOutputStream(tmp, offset > 0).use { o ->   // append when continuing, else start over
+                val buf = ByteArray(CHUNK)
+                var left = size - offset
+                while (left > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) throw IOException("connection lost")
+                    o.write(buf, 0, n)
+                    left -= n
+                    cb?.invoke(n)
+                }
+                o.flush()
+                try { o.fd.sync() } catch (_: Exception) {}
+            }
+            if (!tmp.renameTo(p)) {   // keep the old file until the new one is in place
+                val bak = File(p.path + ".lsold")
+                val hadOld = p.exists() && p.renameTo(bak)
+                if (!tmp.renameTo(p)) { if (hadOld) bak.renameTo(p); throw IOException("could not move the file into place") }
+                if (hadOld) bak.delete()
+            }
+            keep = false
+        } catch (e: Cancelled) { keep = false; throw e
+        } finally {
+            if (!keep) { if (tmp.exists()) tmp.delete(); Partials.forget(tmp.path) }
         }
     }
 

@@ -41,6 +41,22 @@ interface Endpoint {
     fun walkEach(v: String, visit: (WalkItem) -> Unit) { for (w in walk(v)) visit(w) }
     fun open(v: String): Source
     fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)? = null)
+    /** True when this place can continue an interrupted file copy ([partial] / [writeResume]). */
+    val resumable: Boolean get() = false
+    /**
+     * Bytes of an unfinished copy of [v] that can be continued, 0 = none. [tag] identifies the version of the source file ("size:mtime"):
+     * a partial of another version is never reused. Never throws for "nothing there".
+     */
+    fun partial(v: String, tag: String): Long = 0L
+    /**
+     * Like [write], but for a file of [size] bytes ([size] = the WHOLE file) of which the first [offset] bytes are already there (from [partial]).
+     * [input] starts AT [offset]. A failure other than [Cancelled] keeps the part written so far so the next try can continue; a cancel removes it.
+     * Places that cannot resume (default) only accept offset 0 and behave exactly like [write].
+     */
+    fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)? = null) {
+        if (offset != 0L) throw BadReq("this place cannot resume a copy")
+        write(v, input, size, cb)
+    }
     fun mkdir(v: String)
     /** [progress] is called with the name of every entry that was deleted; it may throw [Cancelled] to stop. */
     fun remove(v: String, progress: ((String) -> Unit)? = null)

@@ -623,6 +623,59 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         }
     }
 
+    override val resumable: Boolean get() = true
+
+    private fun pkey(p: String) = "smb|$id|$p.lspart"
+
+    override fun partial(v: String, tag: String): Long = try {
+        op(v) { s, rv ->
+            val p = wrel(rv)
+            val tmp = "$p.lspart"
+            if (p.isEmpty() || !Partials.matches(pkey(p), tag) || !s.fileExists(tmp)) 0L
+            else s.getFileInformation(tmp).standardInformation.endOfFile
+        }
+    } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+
+    override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
+        if (size < 0 || offset < 0 || offset > size) throw BadReq("bad resume offset")
+        op(v, retry = false) { s, rv ->
+            val p = wrel(rv)
+            if (p.isEmpty()) throw BadReq("invalid path")
+            mkdirs(s, p.substringBeforeLast('\\', ""))
+            val tmp = "$p.lspart"
+            if (offset > 0) {
+                val have = if (Partials.matches(pkey(p), tag) && s.fileExists(tmp)) s.getFileInformation(tmp).standardInformation.endOfFile else -1L
+                if (have != offset) throw BadReq("resume offset mismatch (have ${maxOf(have, 0L)})")
+            }
+            Partials.put(pkey(p), tag)
+            var keep = true
+            try {
+                s.openFile(tmp, EnumSet.of(AccessMask.GENERIC_WRITE, AccessMask.DELETE),
+                    EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL), EnumSet.noneOf(SMB2ShareAccess::class.java),
+                    if (offset > 0) SMB2CreateDisposition.FILE_OPEN else SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                    EnumSet.noneOf(SMB2CreateOptions::class.java)).use { f ->
+                    val buf = ByteArray(CHUNK)
+                    var left = size - offset
+                    var off = offset
+                    while (left > 0) {
+                        val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                        if (n < 0) throw IOException("connection lost")
+                        f.write(buf, off, 0, n)
+                        off += n
+                        left -= n
+                        cb?.invoke(n)
+                    }
+                    f.flush()
+                    f.rename(p, true)   // replace an existing file of that name
+                }
+                keep = false
+            } catch (e: Cancelled) { keep = false; throw e
+            } finally {
+                if (!keep) { try { s.rm(tmp) } catch (_: Exception) {}; Partials.forget(pkey(p)) }
+            }
+        }
+    }
+
     override fun mkdir(v: String) { op(v) { s, rv -> mkdirs(s, wrel(rv)) } }
 
     /** Like rel(), but every segment is made Windows-safe: used for names we create (copy targets, new folders). */
