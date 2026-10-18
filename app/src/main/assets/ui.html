@@ -3432,6 +3432,50 @@ async function showPrinters(){
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
   const busy=WIFI_BUSY&&WIFI_P?WIFI_P:(WIFI.length?null:loadWifi());   // list already known: show it now; search running / nothing yet: open at once with "Searching printers…"
   await choosePrinter(here,busy)}
+/* ---- Phone Explorer: the phone storage as an FTP share that Windows Explorer opens (ftp://phone:PIN@IP:PORT/). Kotlin: pe/PeService.kt + MainActivity.Bridge.pe*; PC helper: tools/phone_explorer.py ---- */
+function peCopy(t){try{navigator.clipboard.writeText(t).then(()=>toast('Copied'),()=>{throw 0})}catch(e){const a=E('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.append(a);a.select();try{document.execCommand('copy');toast('Copied')}catch(x){}a.remove()}}
+function openPhoneExplorer(){
+  const B=window.LSAndroid;if(!B||!B.peState)return;
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{clearInterval(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  let tm=0,wait=0,st=JSON.parse(B.peState());
+  const card=E('div','card'),det=E('div','det'),row=(k,v)=>{const r=E('div','dr'),d=E('span','dv',v);r.append(E('span','dk',k),d);det.append(r);return d};
+  card.append(E('div','handle'),E('h3','','Phone Explorer'),E('div','dnote','Shows this phone’s storage in Windows Explorer (same Wi-Fi). Browse, copy, rename and delete files from the PC.'));
+  const vSt=row('Status',''),vAd=row('Address',''),vPin=row('PIN','');
+  card.append(det);
+  const act=E('div','dact'),go=E('button','tbtn fill'),cp=E('button','tbtn','Copy link'),np=E('button','tbtn','New PIN');act.append(np,cp,go);card.append(act);
+  const qr=E('canvas');qr.style.cssText='display:none;margin:8px auto;border-radius:8px;max-width:100%;image-rendering:pixelated';card.append(qr);
+  const qb=E('button','set'),qt=E('div','t');qb.style.cssText='width:100%;text-align:left';qt.append(E('b','','Pairing QR code'),E('small','','For the PC tool: scan with any QR reader, paste the link there'));qb.append(qt);card.append(qb);
+  qb.onclick=()=>{if(qr.style.display!=='none'){qr.style.display='none';return}
+    const rows=(B.peQr()||'').split('\n').filter(Boolean);if(!rows.length){toast('⚠ QR code failed');return}
+    const n=rows.length,z=6;qr.width=qr.height=n*z;const g=qr.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,n*z,n*z);g.fillStyle='#000';
+    rows.forEach((r,y)=>{for(let x=0;x<n;x++)if(r[x]==='1')g.fillRect(x*z,y*z,z,z)});qr.style.display='block';qr.style.width=Math.min(240,n*z)+'px';qr.style.height=qr.style.width}
+  const sw=(title,sub,key)=>{const r=E('label','set'),t=E('div','t'),s=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=!!st[key];
+    t.append(E('b','',title),E('small','',sub));cb.onchange=()=>{B.peSet(JSON.stringify({[key]:cb.checked}))};s.append(cb,E('i'));r.append(t,s);card.append(r)};
+  sw('Read-only','The PC can look and copy, not change anything','ro');
+  sw('Start automatically','After the phone restarts or the app updates','auto');
+  const fld=(label,ph,val,type,key,fix)=>{const w=E('div'),l=E('small','',label),i=E('input','tf');w.style.cssText='margin:8px 4px 0';l.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
+    i.type=type;i.placeholder=ph;i.value=val;i.style.cssText='height:48px;margin:0';i.autocomplete='off';
+    i.onchange=()=>{let v=fix(i.value);i.value=v;B.peSet(JSON.stringify({[key]:v}));if(key==='port'&&st.run)toast('Stop and start sharing to use the new port',3500)};w.append(l,i);card.append(w)};
+  fld('Shared folders (empty = everything)','e.g. DCIM, Download',st.wl,'text','wl',v=>v.trim());
+  fld('Port','2121',st.port,'number','port',v=>String(Math.min(65535,Math.max(1024,parseInt(v)||2121))));
+  const hint=E('div','dnote','Windows: type the address into Explorer’s address bar, or run tools/phone_explorer.py (finds the phone itself, only needs the PIN). Android 11+ keeps Android/data and Android/obb closed to every app.');hint.style.marginTop='12px';card.append(hint);
+  const url=()=>'ftp://'+st.user+':'+st.pin+'@'+st.ip+':'+st.port+'/';
+  const upd=()=>{
+    if(st.run)wait=0;
+    vSt.textContent=!st.access?'All-files access is needed':st.run?'Sharing'+(st.clients?' · '+st.clients+(st.clients===1?' connection':' connections'):''):wait>0?'Starting…':st.err?'⚠ '+st.err:'Stopped';
+    vAd.textContent=st.ip?'ftp://'+st.ip+':'+st.port:'No Wi-Fi address (connect to Wi-Fi)';
+    vPin.textContent=st.pin+'  ·  user: '+st.user;
+    go.textContent=!st.access?'Grant access':st.run?'Stop':'Start sharing';go.disabled=wait>0&&!st.run;
+    cp.disabled=!st.ip;};
+  go.onclick=()=>{if(!st.access){B.peGrant();return}
+    if(st.run){B.peStop();wait=0;st.run=false;upd();return}
+    wait=6;if(!B.peStart())wait=0;upd()};
+  cp.onclick=()=>{if(st.ip)peCopy(url())};
+  np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd();
+    if(qr.style.display!=='none'){qr.style.display='none';qb.click()}};
+  o.append(card);upd();
+  tm=setInterval(()=>{if(!card.isConnected||o.style.display==='none'){clearInterval(tm);return}try{st=JSON.parse(B.peState());if(wait>0&&!st.run)wait--;upd()}catch(e){}},1000)}
 function drawerRender(){
   $('#dtabs').textContent='';
   const bd=$('#dbody'),keep=bd.scrollTop;bd.textContent='';
@@ -3469,6 +3513,7 @@ function drawerRender(){
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
+    if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Phone storage in Windows Explorer',onclick:()=>{drawerClose();openPhoneExplorer()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};

@@ -89,6 +89,52 @@ class MainActivity : Activity() {
         @JavascriptInterface fun editText(json: String) {
             runOnUiThread { try { startActivity(TextEditorActivity.intent(this@MainActivity, json)) } catch (_: Throwable) { } }
         }
+        /** Menu -> "Phone Explorer": state of the FTP share (phone storage in Windows Explorer). */
+        @JavascriptInterface fun peState(): String {
+            val c = applicationContext
+            val o = JSONObject()
+            o.put("run", com.lanshare.app.pe.PeService.isRunning)
+            o.put("err", com.lanshare.app.pe.PeService.lastError ?: "")
+            o.put("clients", com.lanshare.app.pe.PeService.clients)
+            o.put("pin", com.lanshare.app.pe.PePrefs.pin(c))
+            o.put("port", com.lanshare.app.pe.PePrefs.port(c))
+            o.put("ip", com.lanshare.app.pe.PePrefs.localIp() ?: "")
+            o.put("ro", com.lanshare.app.pe.PePrefs.readOnly(c))
+            o.put("auto", com.lanshare.app.pe.PePrefs.autoStart(c))
+            o.put("wl", com.lanshare.app.pe.PePrefs.whitelistText(c))
+            o.put("user", com.lanshare.app.pe.PePrefs.USER)
+            o.put("access", Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager())
+            o.put("link", com.lanshare.app.pe.PePrefs.pairingLink(c, Build.MODEL ?: "Android"))
+            return o.toString()
+        }
+        /** Starts the share; without all-files access it opens that Android setting instead and returns false. */
+        @JavascriptInterface fun peStart(): Boolean {
+            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) { peGrant(); return false }
+            return try { com.lanshare.app.pe.PeService.start(applicationContext); true } catch (_: Throwable) { false }
+        }
+        @JavascriptInterface fun peStop() { com.lanshare.app.pe.PeService.stop(applicationContext) }
+        @JavascriptInterface fun peGrant() {
+            runOnUiThread {
+                try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) }
+                catch (_: Throwable) { try { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Throwable) { } }
+            }
+        }
+        /** Saves settings {ro, auto, wl, port}; read-only / folders apply at once, a new port after Stop + Start. */
+        @JavascriptInterface fun peSet(json: String) {
+            val j = JSONObject(json); val c = applicationContext
+            if (j.has("ro")) com.lanshare.app.pe.PePrefs.setReadOnly(c, j.getBoolean("ro"))
+            if (j.has("auto")) com.lanshare.app.pe.PePrefs.setAutoStart(c, j.getBoolean("auto"))
+            if (j.has("wl")) com.lanshare.app.pe.PePrefs.setWhitelistText(c, j.getString("wl"))
+            if (j.has("port")) com.lanshare.app.pe.PePrefs.setPort(c, j.getInt("port"))
+        }
+        @JavascriptInterface fun peNewPin(): String = com.lanshare.app.pe.PePrefs.newPin(applicationContext)
+        /** QR code of the pairing link as rows of 0 / 1 (the page draws it on a canvas). */
+        @JavascriptInterface fun peQr(): String = try {
+            val link = com.lanshare.app.pe.PePrefs.pairingLink(applicationContext, Build.MODEL ?: "Android")
+            val m = com.google.zxing.qrcode.QRCodeWriter().encode(link, com.google.zxing.BarcodeFormat.QR_CODE, 1, 1,
+                mapOf<com.google.zxing.EncodeHintType, Any>(com.google.zxing.EncodeHintType.MARGIN to 1))
+            (0 until m.height).joinToString("\n") { y -> (0 until m.width).joinToString("") { x -> if (m.get(x, y)) "1" else "0" } }
+        } catch (_: Throwable) { "" }
         /** Menu -> "Text inbox": the native send / receive text screen (InboxActivity). */
         @JavascriptInterface fun openInbox() {
             runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }

@@ -1,0 +1,18 @@
+name: Build Phone Explorer PC tool
+on:
+  push:
+    paths: ['tools/phone_explorer.py', '.github/workflows/build-phone-explorer-exe.yml']
+  workflow_dispatch:
+jobs:
+  pc-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyinstaller pystray pillow
+      - run: pyinstaller --onefile --windowed --name PhoneExplorer tools/phone_explorer.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoneExplorer-exe
+          path: dist/PhoneExplorer.exe
