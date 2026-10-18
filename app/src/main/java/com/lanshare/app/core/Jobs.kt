@@ -257,6 +257,21 @@ object Jobs {
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
+    /** Phone Explorer, one tap: asks the PC (pcprint.py 29+) to open Windows Explorer on this phone's FTP share. {ok, result: "ok" | "old" (pcprint.py < 29)}. The PC takes the phone's address from the connection itself. */
+    fun pcOpenPhone(dev: String, port: Int, user: String, pin: String): JSONObject {
+        val (ip, _) = printTarget(dev)
+        return try {
+            val path = "/phoneshare?port=$port&user=" + URLEncoder.encode(user, "UTF-8") + "&pin=" + URLEncoder.encode(pin, "UTF-8")
+            val r = Http.request(ip, PRINT_PORT, "POST", path, mapOf("Content-Length" to "0"), 8000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", false).put("result", "old")
+                val o = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
+                if (r.status != 200) throw IOException(o.optString("error", "PC answered " + r.status))
+                JSONObject().put("ok", true).put("result", "ok")
+            } finally { r.close() }
+        } catch (e: IOException) { throw e } catch (e: Exception) { throw IOException("PC not reachable (${errText(e)})") }
+    }
+
     /** Cancels one WAITING job on the PC: {ok, result: "ok" | "printing" (already on its way to the printer) | "gone" (printed already) | "old" (pcprint.py < 22)}. */
     fun pcCancel(dev: String, id: Int): JSONObject {
         val (ip, _) = printTarget(dev)

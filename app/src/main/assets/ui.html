@@ -3434,6 +3434,37 @@ async function showPrinters(){
   await choosePrinter(here,busy)}
 /* ---- Phone Explorer: the phone storage as an FTP share that Windows Explorer opens (ftp://phone:PIN@IP:PORT/). Kotlin: pe/PeService.kt + MainActivity.Bridge.pe*; PC helper: tools/phone_explorer.py ---- */
 function peCopy(t){try{navigator.clipboard.writeText(t).then(()=>toast('Copied'),()=>{throw 0})}catch(e){const a=E('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.append(a);a.select();try{document.execCommand('copy');toast('Copied')}catch(x){}a.remove()}}
+/* one tap: start the share, find the PC (its print service answers), the PC opens Explorer on this phone - no address, no PIN to type. PC side: pcprint.py POST /phoneshare, app route /api/pcphone */
+function pePickPc(){return new Promise(res=>{
+  const cand=S.peers.filter(p=>p.ok!==false||p.smb||p.kind==='SMB'),found=[];let left=cand.length,done=false;
+  const fin=pc=>{if(done)return;done=true;res(pc)};
+  const choose=()=>{if(done)return;
+    if(!found.length){toast('⚠ No PC with the LANShare print service (pcprint.py) found',5000);return fin(null)}
+    const last=found.find(p=>LASTPC&&p.id===LASTPC.id);
+    if(found.length===1||last)return fin(last||found[0]);
+    const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Open on which PC?'));
+    const shut=pc=>{o.style.display='none';o.onclick=null;fin(pc)};o.onclick=e=>{if(e.target===o)shut(null)};
+    found.forEach(p=>{const r=E('button','set'),t=E('div','t');r.style.cssText='width:100%;text-align:left';t.append(E('b','',p.name));r.append(t);r.onclick=()=>shut(p);card.append(r)});o.append(card)};
+  if(!cand.length)return choose();
+  cand.forEach(p=>api('GET','/api/printer?dev='+enc(p.id),null,5000).then(r=>{if(r&&r.ok)found.push(p)}).catch(()=>{}).then(()=>{left--;
+    if(!done&&LASTPC&&found.some(x=>x.id===LASTPC.id))return choose();   // the PC used last answered: go at once
+    if(!left)choose()}))})}
+let PEBUSY=false;
+async function peOpenOnPc(){
+  const B=window.LSAndroid;if(!B||!B.peState||PEBUSY)return;PEBUSY=true;
+  try{
+    let st=JSON.parse(B.peState());
+    if(!st.access){B.peGrant();toast('Allow “All files access”, then tap again',4500);return}
+    if(!st.ip){toast('⚠ Connect to Wi-Fi first',3500);return}
+    if(!st.run){toast('Starting…',1500);B.peStart();
+      for(let i=0;i<20&&!st.run;i++){await new Promise(r=>setTimeout(r,300));st=JSON.parse(B.peState());if(st.err)break}
+      if(!st.run){toast('⚠ '+(st.err||'Sharing did not start'),5000);return}}
+    toast('Looking for your PC…',1500);
+    const pc=await pePickPc();if(!pc)return;
+    const r=await api('POST','/api/pcphone?dev='+enc(pc.id)+'&port='+st.port+'&user='+enc(st.user)+'&pin='+enc(st.pin),{},10000);
+    if(r&&r.ok){setLastPc(pc);toast('Opened on '+pc.name,3000)}
+    else toast('⚠ Update pcprint.py on the PC (version 29 or newer)',6000)
+  }catch(e){toast('⚠ '+e.message,5000)}finally{PEBUSY=false}}
 function openPhoneExplorer(){
   const B=window.LSAndroid;if(!B||!B.peState)return;
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -3443,6 +3474,7 @@ function openPhoneExplorer(){
   card.append(E('div','handle'),E('h3','','Phone Explorer'),E('div','dnote','Shows this phone’s storage in Windows Explorer (same Wi-Fi). Browse, copy, rename and delete files from the PC.'));
   const vSt=row('Status',''),vAd=row('Address',''),vPin=row('PIN','');
   card.append(det);
+  const op=E('button','tbtn fill','Open on PC');op.style.cssText='display:block;width:calc(100% - 8px);margin:4px 4px 0;height:44px';op.onclick=()=>{close();peOpenOnPc()};card.append(op);
   const act=E('div','dact'),go=E('button','tbtn fill'),cp=E('button','tbtn','Copy link'),np=E('button','tbtn','New PIN');act.append(np,cp,go);card.append(act);
   const qr=E('canvas');qr.style.cssText='display:none;margin:8px auto;border-radius:8px;max-width:100%;image-rendering:pixelated';card.append(qr);
   const qb=E('button','set'),qt=E('div','t');qb.style.cssText='width:100%;text-align:left';qt.append(E('b','','Pairing QR code'),E('small','','For the PC tool: scan with any QR reader, paste the link there'));qb.append(qt);card.append(qb);
@@ -3513,7 +3545,7 @@ function drawerRender(){
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
-    if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Phone storage in Windows Explorer',onclick:()=>{drawerClose();openPhoneExplorer()}}));
+    if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};

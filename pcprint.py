@@ -42,7 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "28"
+VERSION = "29"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -2265,6 +2265,23 @@ class H(BaseHTTPRequestHandler):
             if dropped:
                 log(f"queue cleared from the window: {dropped} job{'s' if dropped != 1 else ''} dropped")
             return self.reply(200, {"ok": True, "dropped": dropped})
+        if u.path == "/phoneshare":   # phone says "open my storage here": Explorer opens the phone's FTP share (the phone's address is the caller's, nothing to type)
+            q = parse_qs(u.query)
+            user, pin = q.get("user", ["phone"])[0], q.get("pin", [""])[0]
+            if not (re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", user) and re.fullmatch(r"[A-Za-z0-9]{1,32}", pin)):
+                return self.reply(400, {"error": "bad user / pin"})
+            ip = self.client_address[0].split("%")[0]
+            if ":" in ip:
+                return self.reply(400, {"error": "IPv4 only"})
+            url = f"ftp://{user}:{pin}@{ip}:{_int(q.get('port', ['2121'])[0], 2121, 1, 65535)}/"
+            try:
+                if WIN: subprocess.Popen(["explorer.exe", url])   # explorer.exe (not os.startfile): ftp: may be bound to a browser, this forces the Explorer folder view
+                else: subprocess.Popen(["xdg-open", url])
+            except Exception as e:
+                log(f"phone storage: cannot open Explorer: {e}")
+                return self.reply(500, {"error": str(e)})
+            log(f"phone storage opened: ftp://{user}:***@{ip}")
+            return self.reply(200, {"ok": True})
         cp = u.path[2:] if u.path.startswith("/p/") else u.path   # phones call /p/clip, the window /clip/...
         if cp == "/clip" or cp.startswith("/clip/"):
             return self.clip_post(cp, u)

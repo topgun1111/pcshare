@@ -160,6 +160,7 @@ object Routes {
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
             "pcscreen" -> return ex.json(Jobs.pcScreen(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC window mirror: status line + live log
+            "pcphone" -> return ex.json(Jobs.pcOpenPhone(ex.q("dev"), (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: ""))   // Phone Explorer: PC opens this phone's storage in Explorer
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)
