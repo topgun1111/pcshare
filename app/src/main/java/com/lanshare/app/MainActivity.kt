@@ -103,6 +103,7 @@ class MainActivity : Activity() {
             o.put("auto", com.lanshare.app.pe.PePrefs.autoStart(c))
             o.put("wl", com.lanshare.app.pe.PePrefs.whitelistText(c))
             o.put("user", com.lanshare.app.pe.PePrefs.USER)
+            o.put("name", Build.MODEL ?: "Android")
             o.put("access", Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager())
             o.put("link", com.lanshare.app.pe.PePrefs.pairingLink(c, Build.MODEL ?: "Android"))
             return o.toString()

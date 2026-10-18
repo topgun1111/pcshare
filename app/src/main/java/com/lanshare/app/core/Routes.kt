@@ -160,7 +160,11 @@ object Routes {
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
             "pcscreen" -> return ex.json(Jobs.pcScreen(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC window mirror: status line + live log
-            "pcphone" -> return ex.json(Jobs.pcOpenPhone(ex.q("dev"), (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: ""))   // Phone Explorer: PC opens this phone's storage in Explorer
+            "pcfind" -> return ex.json(JSONArray().also { a -> com.lanshare.app.pe.PePc.find().forEach { a.put(JSONObject().put("ip", it.ip).put("name", it.name).put("port", it.port)) } })   // Phone Explorer: PCs running phone_explorer.py
+            "pcphone" -> {   // Phone Explorer: that PC opens this phone's storage in Explorer
+                com.lanshare.app.pe.PePc.open(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: "", q["name"] ?: "Phone")
+                return ex.json(JSONObject().put("ok", true))
+            }
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)
