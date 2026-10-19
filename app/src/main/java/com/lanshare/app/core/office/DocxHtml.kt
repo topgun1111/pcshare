@@ -11,12 +11,13 @@ object DocxHtml {
         ".page{background:#fff;max-width:816px;margin:8px auto;padding:24px 28px;box-sizing:border-box;overflow-wrap:anywhere}" +
         "p{margin:0 0 .6em;white-space:pre-wrap;line-height:1.3}h1,h2,h3,h4,h5,h6{margin:.8em 0 .4em;line-height:1.2}" +
         "h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4,h5,h6{font-size:1.05em}" +
-        "table{border-collapse:collapse;margin:0 0 .8em;table-layout:fixed;max-width:100%}td,th{padding:3px 5px;vertical-align:top;overflow-wrap:anywhere}" +
+        "table{border-collapse:collapse;margin:0 0 .8em;table-layout:fixed;max-width:100%;box-sizing:border-box}td,th{padding:3px 5px;vertical-align:top;overflow-wrap:anywhere}" +
         "table.b td,table.b th{border:1px solid #888}td>p:last-child{margin-bottom:0}img{max-width:100%;height:auto}" +
         ".li>.lb{display:inline-block;text-indent:0}.pb{border:0;border-top:1px dashed #aaa;margin:1em 0}" +
         ".hf{color:#666;font-size:.85em;border-bottom:1px solid #ddd;margin-bottom:1em}.hf.f{border:0;border-top:1px solid #ddd;margin:1em 0 0}" +
         ".fn{border-top:1px solid #aaa;margin-top:1.5em;padding-top:.5em;font-size:.85em}.noimg{color:#888;font-style:italic}" +
-        "sup a,.fn a{text-decoration:none}.tr{background:#fff3cd;padding:4px 8px;font-size:.8em}"
+        "sup a,.fn a{text-decoration:none}.tr{background:#fff3cd;padding:4px 8px;font-size:.8em}" +
+        "@media(max-width:700px){.page{padding:12px 10px;margin:0 auto}td,th{padding:2px 3px}}"
 
     fun esc(s: String): String {
         val sb = StringBuilder(s.length + 8)
@@ -127,9 +128,10 @@ object DocxHtml {
     private fun table(doc: DDoc, t: DTable, sb: StringBuilder, img: (DImage) -> String?, note: (String) -> Int) {
         val total = t.grid.sum() / 15
         sb.append("<table").append(if (t.borders) " class=b" else "")
-        if (total > 0) sb.append(" style=\"width:").append(total).append("px\"")
+        // fixed px widths overflowed the white page on phones (text ran onto the grey body): use % so the table always fits its container
+        if (total > 0) sb.append(" style=\"width:100%;max-width:").append(total).append("px\"")
         sb.append('>')
-        if (t.grid.isNotEmpty()) { sb.append("<colgroup>"); for (w in t.grid) sb.append("<col style=\"width:").append(w / 15).append("px\">"); sb.append("</colgroup>") }
+        if (t.grid.isNotEmpty()) { val gs = t.grid.sum().toDouble().coerceAtLeast(1.0); sb.append("<colgroup>"); for (w in t.grid) sb.append("<col style=\"width:").append(String.format(java.util.Locale.US, "%.2f", w * 100.0 / gs)).append("%\">"); sb.append("</colgroup>") }
         // grid start column of every cell, for vMerge row spans
         val starts = t.rows.map { r -> var c = 0; r.cells.map { val s = c; c += maxOf(1, it.span); s } }
         for ((ri, row) in t.rows.withIndex()) {

@@ -28,7 +28,7 @@ class OfficeViewerActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         web = WebView(this)
-        setContentView(web)
+        buildBar()
         web.settings.apply { javaScriptEnabled = false; setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
             allowFileAccess = false; allowContentAccess = false; useWideViewPort = true; loadWithOverviewMode = true }
         web.webViewClient = object : WebViewClient() {
@@ -45,11 +45,74 @@ class OfficeViewerActivity : Activity() {
             try { contentResolver.openInputStream(u)?.use { i -> t.outputStream().use { i.copyTo(it) } } ?: return finish() } catch (e: Throwable) { return finish() }
             t
         }
-        file = f; title = f.name
+        file = f; title = f.name; bar?.findViewById<android.widget.TextView>(android.R.id.title)?.text = f.name
         dev = intent.getStringExtra("dev")?.takeIf { it.isNotEmpty() }; rpath = intent.getStringExtra("rpath")?.takeIf { it.isNotEmpty() }
         val rd = dev; val rp = rpath
         if (rd != null && rp != null) OfficeShortcutActivity.Recent.add(applicationContext, rd, rp, rp.substringAfterLast('/'))   // launcher "recent office files"
         load(f)
+    }
+
+    // The theme has no ActionBar, so the options menu was never shown: own top bar (title, find, overflow) above the WebView.
+    private var bar: android.widget.LinearLayout? = null
+    private var findRow: android.widget.LinearLayout? = null
+
+    private fun buildBar() {
+        val d = resources.displayMetrics.density
+        fun dp(v: Int) = (v * d).toInt()
+        val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()) }
+        fun btn(txt: String, desc: String, click: (android.view.View) -> Unit) = android.widget.TextView(this).apply {
+            text = txt; textSize = 22f; gravity = android.view.Gravity.CENTER; setTextColor(0xFF202124.toInt()); contentDescription = desc
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48)); setOnClickListener(click)
+            val tv = android.util.TypedValue(); if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)) setBackgroundResource(tv.resourceId)
+        }
+        val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(0xFFFFFFFF.toInt()) }
+        top.addView(btn("\u2190", "Back") { finish() })
+        top.addView(android.widget.TextView(this).apply {
+            id = android.R.id.title; text = title; textSize = 16f; setTextColor(0xFF202124.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        top.addView(btn("\uD83D\uDD0D", "Find") { toggleFind() })
+        top.addView(btn("\u22EE", "More") { v -> showMore(v) })
+        bar = top
+        val fr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0); visibility = android.view.View.GONE; setBackgroundColor(0xFFF1F3F4.toInt()) }
+        val et = android.widget.EditText(this).apply {
+            hint = "Find in document"; setSingleLine(); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(44), 1f)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(e: android.text.Editable?) { val q = e?.toString().orEmpty(); if (q.isEmpty()) web.clearMatches() else web.findAllAsync(q) }
+                override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d2: Int) {}
+                override fun onTextChanged(a: CharSequence?, b: Int, c: Int, d2: Int) {}
+            })
+            setOnEditorActionListener { _, _, _ -> web.findNext(true); true }
+        }
+        fr.addView(et)
+        fr.addView(btn("\u2191", "Previous") { web.findNext(false) })
+        fr.addView(btn("\u2193", "Next") { web.findNext(true) })
+        findRow = fr
+        root.addView(top, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+        root.addView(fr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(root)
+    }
+
+    private fun toggleFind() {
+        val r = findRow ?: return
+        if (r.visibility == android.view.View.VISIBLE) { r.visibility = android.view.View.GONE; web.clearMatches(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(r.windowToken, 0) }
+        else { r.visibility = android.view.View.VISIBLE; (r.getChildAt(0) as android.widget.EditText).requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(r.getChildAt(0), 0) }
+    }
+
+    private fun showMore(anchor: android.view.View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        val m = pm.menu
+        m.add(0, 3, 0, "Print / save as PDF")
+        if (od?.isSheet == true) m.add(0, 4, 1, "Export sheet as CSV")
+        if (od?.editable == true && dev != null && rpath != null) {
+            if (od?.isSheet == true) { m.add(0, 5, 2, "Edit cell..."); m.add(0, 6, 3, "Insert row...") }
+            else { m.add(0, 5, 2, "Find and replace..."); m.add(0, 6, 3, "Add paragraph...") }
+        }
+        if (undoStack.isNotEmpty()) m.add(0, 7, 4, "Undo last edit")
+        pm.setOnMenuItemClickListener { onOptionsItemSelected(it) }
+        pm.show()
     }
 
     private fun load(f: File) {
@@ -58,7 +121,7 @@ class OfficeViewerActivity : Activity() {
                 val enc = e.message.orEmpty().contains("password", true) || e.message.orEmpty().contains("zip", true) || e.message.orEmpty().contains("end header", true)
                 "<body style=\"font:15px sans-serif;padding:16px\">" + (if (enc) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: " + e.message) + "</body>"
             }
-            runOnUiThread { if (!isDestroyed) { invalidateOptionsMenu(); web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) } }
+            runOnUiThread { if (!isDestroyed) { web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) } }
         }.start()
     }
 
@@ -89,32 +152,7 @@ class OfficeViewerActivity : Activity() {
         }.start()
     }
 
-    override fun onCreateOptionsMenu(m: Menu): Boolean {
-        val sv = SearchView(this)
-        sv.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(q: String): Boolean { web.findAllAsync(q); return true }
-            override fun onQueryTextChange(q: String): Boolean { if (q.isEmpty()) web.clearMatches() else web.findAllAsync(q); return true }
-        })
-        m.add(0, 1, 0, "Find").setActionView(sv).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW)
-        m.add(0, 2, 1, "Next").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        m.add(0, 3, 2, "Print / save as PDF").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        if (od?.isSheet == true) m.add(0, 4, 3, "Export sheet as CSV").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        return true
-    }
-
-    override fun onPrepareOptionsMenu(m: Menu): Boolean {   // the viewer builds off-thread: show the CSV item once a sheet is loaded
-        if (m.findItem(4) == null && od?.isSheet == true) m.add(0, 4, 3, "Export sheet as CSV").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        if (m.findItem(5) == null && od?.editable == true && dev != null && rpath != null) {   // docx / xlsx opened from the file list
-            if (od?.isSheet == true) { m.add(0, 5, 4, "Edit cell...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER); m.add(0, 6, 5, "Insert row...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER) }
-            else { m.add(0, 5, 4, "Find and replace...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER); m.add(0, 6, 5, "Add paragraph...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER) }
-        }
-        if (undoStack.isEmpty()) m.removeItem(7)
-        else if (m.findItem(7) == null) m.add(0, 7, 6, "Undo last edit").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        return super.onPrepareOptionsMenu(m)
-    }
-
     override fun onOptionsItemSelected(i: MenuItem): Boolean = when (i.itemId) {
-        2 -> { web.findNext(true); true }
         3 -> { printPage(); true }
         4 -> { exportCsv(); true }
         5 -> { if (od?.isSheet == true) askCell() else askReplace(); true }
