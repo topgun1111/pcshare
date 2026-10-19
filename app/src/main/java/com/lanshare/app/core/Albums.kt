@@ -70,28 +70,57 @@ object Albums {
         }
         return JSONObject().put("albums", arr).put("video", video)
     }
-    /** Total of ALL pictures (or videos) of this phone: (files, bytes). Same sources and filters as [json]. */
+    /** Folder names (any level) that only ever hold generated / temporary pictures: thumbnails, caches, trash. */
+    private val JUNK_DIRS = setOf("thumbnails", "thumbnail", "thumbs", "thumb", "cache", "caches", "tmp", "temp", "trash", "recycle", "recycler", "lost.dir", ".trash", ".thumbnails")
+    /** Top-level folders of the storage that belong to the system or to apps, not to the user's pictures. */
+    private val SYS_TOP = setOf("android", "data", "obb", "miui", "lost.dir", "lanshare shared", "lanshare")
+    /** Pictures smaller than this (longest side, px) are thumbnails / icons, not full-sized images. */
+    private const val MIN_SIDE = 500
+    /** Fallback when the size in pixels is unknown (plain folder walk): files below this are thumbnails. */
+    private const val MIN_BYTES = 20_000L
+
+    /** Start-menu count: a full-sized picture the user would expect in a gallery (no thumbnails, no system / app / cache folders). */
+    private fun fullSized(rel: String, w: Int, h: Int, size: Long): Boolean {
+        val dir = rel.substringBeforeLast('/')
+        val parts = dir.split('/').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return false
+        if (parts[0].lowercase() in SYS_TOP) return false
+        if (parts.any { it.startsWith(".") || it.lowercase() in JUNK_DIRS }) return false
+        val name = rel.substringAfterLast('/').lowercase()
+        if (name.startsWith(".") || name.contains("thumb") || name.startsWith("cache_") || name.endsWith(".tmp")) return false
+        return if (w > 0 && h > 0) maxOf(w, h) >= MIN_SIDE else size >= MIN_BYTES
+    }
+
+    /** Total of the full-sized pictures (or all videos) of this phone: (files, bytes). Pictures: thumbnails, system / app / cache folders are not counted; videos: same sources as [json]. */
     fun total(video: Boolean = false): Pair<Long, Long> {
         val rootFile = Core.local.root
         val root = rootFile.path.trimEnd('/')
         val roots = listOf(root, "/storage/emulated/0", "/sdcard", try { Environment.getExternalStorageDirectory().path.trimEnd('/') } catch (_: Exception) { root }).distinct()
         val seen = HashSet<String>()
         var n = 0L; var bytes = 0L
-        fun add(path: String, size: Long) {
+        fun add(path: String, size: Long, w: Int, h: Int) {
             val pre = roots.firstOrNull { path.startsWith("$it/") } ?: return
-            if (skip(path.removePrefix(pre).substringBeforeLast('/'))) return
-            if (!seen.add(path.removePrefix(pre))) return
+            val rel = path.removePrefix(pre)
+            if (skip(rel.substringBeforeLast('/'))) return
             val f = File(path)
+            val sz = if (size > 0) size else f.length()
+            if (!video && !fullSized(rel, w, h, sz)) return
+            if (!seen.add(rel)) return
             if (!f.exists()) return   // MediaStore can still list deleted files
-            n++; bytes += if (size > 0) size else f.length()
+            n++; bytes += sz
         }
         try {
+            val cols = if (video) arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.SIZE)
+                else arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT)
             Core.appCtx?.contentResolver?.query(if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.SIZE), null, null, null)?.use { c ->
-                while (c.moveToNext()) { val p = c.getString(0); if (p != null) add(p, c.getLong(1)) }
+                cols, null, null, null)?.use { c ->
+                while (c.moveToNext()) {
+                    val p = c.getString(0)
+                    if (p != null) add(p, c.getLong(1), if (video) 0 else c.getInt(2), if (video) 0 else c.getInt(3))
+                }
             }
         } catch (_: Exception) {}
-        if (n == 0L) try { walk(rootFile, 0, intArrayOf(20000), if (video) VID else IMG) { p, sz, _ -> add(p, sz) } } catch (_: Exception) {}
+        if (n == 0L) try { walk(rootFile, 0, intArrayOf(20000), if (video) VID else IMG) { p, sz, _ -> add(p, sz, 0, 0) } } catch (_: Exception) {}
         return n to bytes
     }
 }

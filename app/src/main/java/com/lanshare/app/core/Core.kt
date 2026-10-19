@@ -50,6 +50,12 @@ object Core {
             try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
             try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
+            Thread({   // "LANShare Shared": cleaned at start and then every day while the app / service is alive
+                while (true) {
+                    cleanShared()
+                    try { Thread.sleep(6 * 3_600_000L) } catch (_: InterruptedException) { return@Thread }
+                }
+            }, "shared-clean").also { it.isDaemon = true }.start()
             if (Cfg.rootEnabled()) Thread({ try { RootShell.check() } catch (_: Throwable) {} }, "root-check").also { it.isDaemon = true }.start()   // switched on earlier: ask su again (the manager remembers the grant)
             var srv: MiniHttp? = null
             var port = BASE_PORT
@@ -82,6 +88,16 @@ object Core {
             Log.e(TAG, "startup failed", e)
             started = false
         }
+    }
+
+    /** Files in <storage>/LANShare Shared (shared-in, opened archives, printed PDFs) are deleted once they are older than [SHARED_KEEP_MS] (one day). */
+    const val SHARED_KEEP_MS = 24 * 3_600_000L
+    fun cleanShared() {
+        try {
+            val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
+            val cut = System.currentTimeMillis() - SHARED_KEEP_MS
+            dir.listFiles()?.forEach { if (it.isFile && it.lastModified() < cut) it.delete() }
+        } catch (_: Throwable) { }
     }
 
     /** Wi-Fi / hotspot changed: refresh own IPs and sweep the subnet. */
