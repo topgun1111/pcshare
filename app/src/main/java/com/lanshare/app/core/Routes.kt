@@ -299,10 +299,10 @@ object Routes {
                 val ps = b.getJSONArray("paths").strings().map { vnorm(it) }.map { if (arcSplit(it) == null && isArcName(vbase(it))) "$it!" else it }
                 ex.json(JSONObject().put("job", Jobs.start(dev, ps, dev, b.getString("dir"), false, "Extracting", b.optString("conflict", "rename"))))
             }
-            "addzip" -> {   // add files / folders of this phone into a ZIP (dir = "/x/a.zip!/inner"): a copy job whose destination is the archive
+            "addzip" -> {   // add files / folders of this phone into an archive (dir = "/x/a.zip!/inner"): a copy job whose destination is the archive
                 val ps = b.getJSONArray("paths").strings().map { vnorm(it) }
                 if (ps.any { arcSplit(it) != null }) throw BadReq("choose files that are not inside an archive")
-                ex.json(JSONObject().put("job", Jobs.start("local", ps, "local", b.getString("dir"), false, "Adding to ZIP", b.optString("conflict", "rename"))))
+                ex.json(JSONObject().put("job", Jobs.start("local", ps, "local", b.getString("dir"), false, "Adding to archive", b.optString("conflict", "rename"))))
             }
             "addip" -> {
                 if (!d.addIp(b.getString("ip").trim())) throw IOException("no LANShare device found at that address")

@@ -804,7 +804,7 @@ function openView(){
 const ARC_RE=/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)$/i;
 const isArcF=i=>!i.dir&&ARC_RE.test(i.name);
 const inArc=()=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(S.path);
-const zipEd=()=>S.dev==='local'&&/\.(zip|cbz)!(\/|$)/i.test(S.path);   // a ZIP on this phone is open: it can be edited (add / delete); RAR and ZIPs on other devices stay read-only
+const zipEd=()=>S.dev==='local'&&/(\.tar\.(gz|bz2|xz)|\.(zip|cbz|jar|war|aar|xpi|apks|xapk|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz))!(\/|$)/i.test(S.path);   // an editable archive (ZIP, 7z, TAR family) on this phone is open (add / delete); RAR, single .gz/.bz2/.xz and archives on other devices stay read-only
 const arcRoot=()=>{const m=S.path.match(/^(.*?\.(?:zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!)/i);return m?m[1]:null};
 const pdir=p=>p.slice(0,p.lastIndexOf('/'))||'/';
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
@@ -1539,7 +1539,7 @@ function mkAlbumX(a,P0,V){
 function render(){
   applyPrefs();
   const AR=inArc();
-  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR&&!zipEd()?'extract':'newfolder'),document.createTextNode(zipEd()?'Edit ZIP':AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')))}
+  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR&&!zipEd()?'extract':'newfolder'),document.createTextNode(zipEd()?'Edit archive':AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')))}
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
@@ -2908,7 +2908,7 @@ const vbase0=p=>p.slice(p.lastIndexOf('/')+1);
 async function doDelete(){
   const n=S.sel.size;
   const L=S.dev==='local'&&!inArc();
-  if(!await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the ZIP?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the ZIP is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L}))return;
+  if(!await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L}))return;
   try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -3680,9 +3680,9 @@ function doNew(){
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
   opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
-/* ZIP on this phone is open: Add files / New folder / Paste / Extract all */
+/* editable archive on this phone is open: Add files / New folder / Paste / Extract all */
 function doZipMenu(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Edit ZIP'));
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Edit archive'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
   opt('newfolder','Add files or folders\u2026',doAddToZip);
@@ -3695,7 +3695,7 @@ function pickAddFiles(){return new Promise(res=>{   // browse this phone, tick f
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const draw=async(p)=>{const my=++tk;let items=[],err='';
     try{const r=await api('GET','/api/ls?dev=local&path='+enc(p));if(my!==tk)return;p=r.path||p;items=(r.items||[]).filter(i=>S.hid||(i.name[0]!=='.'&&!i.hid)).sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name))}catch(e){if(my!==tk)return;err=e.message}
-    cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','','Add to ZIP'));
+    cur=p;o.textContent='';const card=E('div','card');card.append(E('div','handle'),E('h3','','Add to archive'));
     const loc=E('small','',p);loc.style.cssText='color:var(--mut);margin:-4px 0 6px;word-break:break-all';card.append(loc);
     if(p!=='/'){const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('back'));lt.append(E('span','','..'));b.append(ld,lt);b.onclick=()=>draw(pdir(p));card.append(b)}
     if(err)card.append(E('p','','\u26a0 '+err));else if(!items.length)card.append(E('p','','Empty folder.'));
@@ -3711,7 +3711,7 @@ function pickAddFiles(){return new Promise(res=>{   // browse this phone, tick f
 async function doAddToZip(){
   if(!zipEd())return;const ps=await pickAddFiles();if(!ps||!ps.length)return;
   const cf=await askConflicts(S.dev,S.path,ps,'local');if(!cf)return;
-  try{const r=await api('POST','/api/addzip',{paths:ps,dir:S.path,conflict:cf});watchJob(r.job);toast('Adding to ZIP\u2026',0,0);if(await track(r.job))load()}catch(e){toast('\u26a0 '+e.message,5000)}}
+  try{const r=await api('POST','/api/addzip',{paths:ps,dir:S.path,conflict:cf});watchJob(r.job);toast('Adding to archive\u2026',0,0);if(await track(r.job))load()}catch(e){toast('\u26a0 '+e.message,5000)}}
 $('#fab').onclick=()=>inArc()?(zipEd()?doZipMenu():doExtract(2)):doNew();
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{const a=shown().map(i=>i.name);S.sel=(a.length&&S.sel.size>=a.length&&a.every(n=>S.sel.has(n)))?new Set():new Set(a);render()};   // second tap with everything selected = unselect all

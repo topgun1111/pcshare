@@ -21,3 +21,8 @@ Hiçbiri derlenmedi / cihazda denenmedi (Android SDK yok). Önce push -> Actions
 - Treemap başlık çubuğunda `－ ＋ 1:1` düğmeleri ve `×N` göstergesi; Back önce zoom'u sıfırlar. Klasör değişince zoom sıfırlanır.
 - Classic (StorageTreemap) ekranına eklenmedi.
 - (2026-10-19) Classic ekran (`StoragePie`, halka grafik) da zoom aldı: iki parmakla büyüt (1x-12x), büyükken sürükleyerek kaydır, sağ üstte `×N ✕` çipi ve Back zoom'u sıfırlar; klasör değişince sıfırlanır. Küçük dilimler (MIN_DEG altı) zoom'da da "smaller items" içinde kalır. `StorageTreemap.kt` hiçbir yerde kullanılmıyor (sadece CAT_COL).
+
+## 4. Tüm arşiv türlerinde düzenleme (2026-10-19, derlenmedi)
+- `core/ArcEdit.kt` (YENİ): 7z, TAR, TAR.GZ/TGZ, TAR.BZ2/TBZ, TAR.XZ/TXZ için ekle / sil / yeni klasör (commons-compress ile `<ad>.edit.part`'a yeniden yazıp rename). ZIP ailesi (zip, cbz, jar, war, aar, xpi, apks, xapk) eskisi gibi `ZipEdit` ile yerinde. Aynı isim = değiştirir.
+- `ArchiveFs.kt`: `ArcEp.editable()` formata göre karar verir; RAR (yazıcı yok) ve tek dosyalı gz/bz2/xz salt okunur, net hata mesajı verir.
+- `ui.html`: `zipEd()` yeni uzantıları kapsar, metinler "archive" oldu. `Routes.kt`: iş etiketi "Adding to archive".
