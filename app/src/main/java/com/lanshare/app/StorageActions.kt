@@ -13,6 +13,8 @@ import com.lanshare.app.core.errText
 import com.lanshare.app.core.vdir
 import com.lanshare.app.core.vjoin
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Storage Analyzer, part 8a: the non-destructive actions on a node of the scan tree (open, share, show in the file manager).
@@ -39,9 +41,74 @@ object StorageActions {
         return f
     }
 
+    private val IMG = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
+    private val VID = setOf("mp4", "mkv", "mov", "avi", "webm", "3gp", "m4v", "mpg", "mpeg", "flv", "ogv", "m2ts", "mts")
+    private val OFFICE = setOf("doc", "docx", "odt", "xls", "xlsx", "ods", "pptx", "odp")
+    private val ED by lazy { TEXT_EXT + setOf("txt", "md", "log", "jsonc", "twig", "tpl", "text", "jsonl", "ndjson", "ass", "ssa", "diff", "patch",
+        "swift", "dart", "lua", "pl", "r", "scala", "vue", "svelte", "graphql", "proto", "rst", "ini") }
+
+    /**
+     * Open with LANShare's own viewers when it supports the format (video player, picture viewer, PDF reader, Office viewer, text editor),
+     * exactly like a tap in the file manager. [v] = the file's virtual path (null for another volume, which the file manager cannot address).
+     * Returns false when the file is not a supported kind (the caller then hands it to another app).
+     */
+    private fun openNative(a: Activity, f: File, v: String?): Boolean {
+        if (v == null) return false
+        val ext = f.extension.lowercase()
+        val origin = Core.url
+        fun enc(x: String) = java.net.URLEncoder.encode(x, "UTF-8").replace("+", "%20")
+        fun url(vp: String) = origin + "/api/dl?dev=local&path=" + enc(vp)
+        try {
+            when {
+                ext in TEXT_EXT || ext in ED -> {
+                    if (ext == "svg" || f.length() > 8L shl 20) return false
+                    a.startActivity(TextEditorActivity.intent(a, JSONObject().put("dev", "local").put("path", v).toString())); return true
+                }
+                ext in OFFICE -> {
+                    if (f.length() > 60L shl 20) return false
+                    val d = File(a.cacheDir, "office").apply { mkdirs() }
+                    val c = File(d, f.name)
+                    Thread {
+                        try {
+                            f.copyTo(c, overwrite = true)
+                            a.runOnUiThread { a.startActivity(Intent(a, OfficeViewerActivity::class.java).putExtra("path", c.absolutePath).putExtra("dev", "local").putExtra("rpath", v)) }
+                        } catch (e: Throwable) { a.runOnUiThread { toast(a, "Cannot open: " + errText(e)) } }
+                    }.start()
+                    return true
+                }
+                origin == null -> return false
+                ext == "pdf" -> {
+                    PdfViewerActivity.pending = JSONObject().put("name", f.name).put("url", url(v)).put("size", f.length())
+                        .put("key", "local|" + v + "|" + f.length()).toString()
+                    a.startActivity(Intent(a, PdfViewerActivity::class.java)); return true
+                }
+                ext in IMG -> {
+                    if (ext in setOf("heic", "heif") && android.os.Build.VERSION.SDK_INT < 28) return false
+                    val dir = vdir(v)
+                    val sib = (f.parentFile?.listFiles { x -> x.isFile && x.extension.lowercase() in IMG } ?: arrayOf(f)).sortedBy { it.name.lowercase() }
+                    val items = JSONArray()
+                    for (x in sib) items.put(JSONObject().put("name", x.name).put("url", url(vjoin(dir, x.name))).put("size", x.length()).put("mtime", x.lastModified()))
+                    ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, sib.indexOfFirst { it.name == f.name })).put("items", items).toString()
+                    a.startActivity(Intent(a, ImageViewerActivity::class.java)); return true
+                }
+                ext in VID -> {
+                    val dir = vdir(v)
+                    val sib = (f.parentFile?.listFiles { x -> x.isFile && x.extension.lowercase() in VID } ?: arrayOf(f)).sortedBy { it.name.lowercase() }
+                    val items = JSONArray()
+                    for (x in sib) items.put(JSONObject().put("name", x.name).put("url", url(vjoin(dir, x.name)))
+                        .put("key", "local|" + vjoin(dir, x.name) + "|" + x.length()).put("subs", JSONArray()).put("mtime", x.lastModified()).put("size", x.length()))
+                    PlayerActivity.pending = JSONObject().put("start", Math.max(0, sib.indexOfFirst { it.name == f.name })).put("items", items).toString()
+                    a.startActivity(Intent(a, PlayerActivity::class.java)); return true
+                }
+            }
+        } catch (_: Throwable) { }
+        return false
+    }
+
     /** Open a file with an installed app (source / text files go to a text editor, like in the file manager); [pick] = always ask which app. */
-    fun open(a: Activity, f: File, pick: Boolean = false) {
+    fun open(a: Activity, f: File, pick: Boolean = false, virtPath: String? = null) {
         if (!f.isFile) { toast(a, "Only files can be opened"); return }
+        if (!pick && openNative(a, f, virtPath)) return
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"

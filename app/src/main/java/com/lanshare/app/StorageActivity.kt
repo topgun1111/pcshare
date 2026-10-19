@@ -871,7 +871,7 @@ class StorageActivity : Activity() {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }
         if (!n.dir && !n.agg && !inArc) {
-            act("Open") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it) } }
+            act("Open") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, virtPath = if (volBase() == null) StorageActions.virt(vpath, n) else null) } }   // own viewers first (video / picture / PDF / Office / text), other apps for the rest
             act("Open with…") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, pick = true) } }
             act("Share") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.share(this, it) } }
         }
