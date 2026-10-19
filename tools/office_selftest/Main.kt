@@ -9,6 +9,12 @@ fun check(name: String, got: String, want: String) { println((if (got == want) "
 fun main(a: Array<String>) {
     if (a.isNotEmpty() && a[0] == "--edit") { editTest(); return }
     if (a.isNotEmpty() && a[0] == "--docx") { docxTest(); return }
+    if (a.size > 1 && a[0] == "--export") {   // Part 8: text + CSV of any office file
+        val f = java.io.File(a[1]); println("TEXT:"); println(OfficeExport.text(f))
+        OfficeOpen(f).use { o -> if (o.isSheet) { println("CSV:"); print(OfficeExport.sheetToCsv(o.readSheet(o.sheets.first { !it.hidden }.index))) } }
+        println("contains(Bold)=" + OfficeExport.containsOrFalse(f, "bold") + " contains(zzzz)=" + OfficeExport.containsOrFalse(f, "zzzz"))
+        return
+    }
     check("general int", NumFmt.format(42.0, "General"), "42")
     check("general frac", NumFmt.format(3.14159, "General"), "3.14159")
     check("0.00", NumFmt.format(3.14159, "0.00"), "3.14")
@@ -36,7 +42,16 @@ fun main(a: Array<String>) {
     val seen = ArrayList<String>()
     while (true) { val t = m.next(); if (t == MiniXml.T.EOF) break; seen.add(t.name + ":" + (if (t == MiniXml.T.TEXT) m.text else m.name)) }
     check("xml events", seen.joinToString(" "), "START:a START:b END:b START:c TEXT:hi & bye END:c END:a")
+    if (a.isNotEmpty() && (a[0].endsWith(".odt", true) || a[0].endsWith(".ods", true))) { dumpOdf(File(a[0])); return }
     if (a.isNotEmpty() && a[0].endsWith(".docx", true)) dumpDocx(File(a[0]))
+    else if (a.isNotEmpty() && a[0].endsWith(".doc", true)) dumpDoc(File(a[0]))
+    else if (a.isNotEmpty() && a[0].endsWith(".xls", true)) XlsReader(File(a[0])).use { r ->
+        for (s in r.sheets) {
+            val sh = r.readSheet(s.index, 20)
+            println("== ${s.name} (hidden=${s.hidden}) rows<=${sh.maxRow + 1} cols<=${sh.maxCol + 1} merges=${sh.merges.size} frozen=${sh.frozenRows}/${sh.frozenCols} trunc=${sh.truncated}")
+            for ((_, row) in sh.rows.entries.take(8)) println(row.joinToString(" | ") { it.ref + "=" + it.text })
+        }
+    }
     else if (a.isNotEmpty()) XlsxReader(File(a[0])).use { r ->
         for (s in r.sheets) {
             val sh = r.readSheet(s.index, 20)
@@ -118,4 +133,39 @@ fun docxTest() {
     DocxEditor.clearUndo(f); ok("undo cleared", !DocxEditor.undo(f))
     DocxWriter.fromText(f, "a\tb\nsecond"); ok("plain text", txt().contains("second"))
     println("docx test done")
+}
+
+/** Part 6b: legacy .doc -> DDoc, same dump format as dumpDocx (formatting is not read from .doc: no '*' marks, no headings). */
+fun dumpDoc(f: File) = DocReader(f).use { r ->
+    val d = r.read()
+    fun dump(bs: List<DBlock>, ind: String) {
+        for (b in bs) when (b) {
+            is DPara -> println(ind + "P " + b.runs.joinToString("") { (when (it.kind) { DRun.TAB -> "<tab>"; DRun.BREAK -> "<br>"; DRun.PAGE -> "<page>"; else -> it.text }) + (if (it.link != null) "{" + it.link + "}" else "") })
+            is DTable -> { println(ind + "TABLE rows=" + b.rows.size + " grid=" + b.grid.size); for (row in b.rows) { println(ind + " row cells=" + row.cells.size); for (c in row.cells) dump(c.blocks, ind + "   ") } }
+        }
+    }
+    dump(d.body, "")
+    java.io.File(f.path + ".html").writeText(DocxHtml.render(d, title = f.name))
+    println("trunc=" + d.truncated)
+}
+
+/** Part 6c: .odt / .ods through the OfficeOpen dispatcher; also writes <file>.html */
+fun dumpOdf(f: File) = OfficeOpen(f).use { o ->
+    println("format=" + o.format)
+    if (!o.isSheet) {
+        val d = o.readDoc()
+        fun dump(bs: List<DBlock>, ind: String) {
+            for (b in bs) when (b) {
+                is DPara -> println(ind + "P" + (if (b.heading > 0) "[h" + b.heading + "]" else "") + (if (b.label != null) "[" + b.label + "]" else "") + " " + b.runs.joinToString("") { (when (it.kind) { DRun.TAB -> "<tab>"; DRun.BREAK -> "<br>"; DRun.IMAGE -> "<img " + it.image!!.part + ">"; DRun.NOTE -> "<fn" + it.text + ">"; else -> (if (it.bold) "*" else "") + it.text }) + (if (it.link != null) "{" + it.link + "}" else "") })
+                is DTable -> { println(ind + "TABLE rows=" + b.rows.size + " grid=" + b.grid.size); for (row in b.rows) { println(ind + " row cells=" + row.cells.size); for (c in row.cells) { println(ind + "  cell span=" + c.span + " vm=" + c.vMerge); dump(c.blocks, ind + "    ") } } }
+            }
+        }
+        dump(d.body, ""); println("footnotes=" + d.footnotes.keys + " trunc=" + d.truncated)
+        File(f.path + ".html").writeText(DocxHtml.render(d, title = f.name))
+    } else {
+        val tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
+        for (s in o.sheets) { val sh = o.readSheet(s.index); println("sheet " + s.name + " hidden=" + s.hidden + " frozen=" + sh.frozenRows + "/" + sh.frozenCols + " merges=" + sh.merges.size + " maxRow=" + sh.maxRow)
+            for ((r, cs) in sh.rows) for (c in cs) println("  " + c.ref + " = " + c.text + " [" + c.kind + "]" + (if (c.formula != null) " {" + c.formula + "}" else "")) }
+        File(f.path + ".html").writeText(XlsxHtml.render(o.readSheet(tabs.first().first), tabs, tabs.first().first))
+    }
 }

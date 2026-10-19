@@ -84,6 +84,38 @@ class MainActivity : Activity() {
         @JavascriptInterface fun viewPdf(json: String) {
             runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java)) }
         }
+        /** Word / Excel / ODF tapped: copy to cache (max 60 MB) and open the Office viewer. [json] = {name, url, size} */
+        @JavascriptInterface fun viewOffice(json: String) {
+            val o = JSONObject(json); val nm = o.optString("name", "file").replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            Thread {
+                try {
+                    val d = java.io.File(cacheDir, "office").apply { mkdirs(); listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() > 3600_000) it.delete() } }
+                    val f = java.io.File(d, nm)
+                    val c = java.net.URL(o.getString("url")).openConnection() as java.net.HttpURLConnection
+                    c.connectTimeout = 15000; c.readTimeout = 60000
+                    c.inputStream.use { i -> f.outputStream().use { out -> var t = 0L; val b = ByteArray(65536); while (true) { val n = i.read(b); if (n < 0) break; t += n; if (t > 60L shl 20) throw java.io.IOException("too big"); out.write(b, 0, n) } } }
+                    runOnUiThread { startActivity(Intent(this@MainActivity, OfficeViewerActivity::class.java).putExtra("path", f.absolutePath).putExtra("dev", o.optString("dev")).putExtra("rpath", o.optString("path"))) }
+                } catch (e: Throwable) { runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Cannot open: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG).show() } }
+            }.start()
+        }
+        /** + menu -> "Word document" / "Excel workbook": [json] = {dev, dir, kind:"docx"|"xlsx"}. Creates an empty file with a free name in that folder. */
+        @JavascriptInterface fun newOffice(json: String) {
+            val o = JSONObject(json)
+            Thread {
+                try {
+                    val kind = if (o.optString("kind") == "xlsx") "xlsx" else "docx"
+                    val ep = com.lanshare.app.core.Jobs.ep(o.getString("dev")); val dir = o.optString("dir", "/")
+                    val taken = ep.names(dir).map { it.lowercase() }.toSet()
+                    val base = if (kind == "xlsx") "New workbook" else "New document"
+                    var nm = "$base.$kind"; var n = 2
+                    while (nm.lowercase() in taken) nm = "$base ($n).$kind".also { n++ }
+                    val tmp = java.io.File(cacheDir, "new-$nm")
+                    if (kind == "xlsx") com.lanshare.app.core.office.XlsxWriter.createEmpty(tmp) else com.lanshare.app.core.office.DocxWriter.createEmpty(tmp)
+                    try { tmp.inputStream().use { ep.write(com.lanshare.app.core.vjoin(dir, nm), it, tmp.length()) } } finally { tmp.delete() }
+                    runOnUiThread { try { web.evaluateJavascript("window.lsRefresh&&window.lsRefresh()", null) } catch (_: Throwable) {}; android.widget.Toast.makeText(this@MainActivity, "Created $nm", android.widget.Toast.LENGTH_SHORT).show() }
+                } catch (e: Throwable) { runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Cannot create: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG).show() } }
+            }.start()
+        }
         /** Text / code file tapped, or "New note": open the Keep-style editor. [json] = {dev, path} or {dev, dir, isNew:true} */
         @JavascriptInterface fun editText(json: String) {
             runOnUiThread { try { startActivity(TextEditorActivity.intent(this@MainActivity, json)) } catch (_: Throwable) { } }

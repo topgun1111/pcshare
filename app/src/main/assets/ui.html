@@ -731,7 +731,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const arcP=p=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
 const isHid=i=>i.name[0]==='.'||!!i.hid||(S.dev==='local'&&hidP(jn(S.path,i.name)));   // hidden item (only on screen while "Show hidden files" is on): drawn faded
@@ -1088,7 +1088,7 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='long'){S.sel.add(i.name);renderBar();return}
   if(ev==='tap'){const k=kind(i);
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);renderBar()}
-    else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isEd(i))editFile(i);else openFile(i)}};
+    else if(i.dir)go(jn(NLP0,i.name));else if(isArcF(i))go(jn(NLP0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(k==='office'&&nativeOffice(i));else if(isEd(i))editFile(i);else openFile(i)}};
 /* native app chrome (Kotlin: NlChrome.kt): top bar / selection bar, New-folder button, bottom dock + clipboard strip, snackbar, download cards.
    Same scheme as the path bar: the HTML elements stay underneath and keep all behaviour; Kotlin draws on top of their exact rects and a tap comes back as nlCh() which clicks the HTML twin.
    Hidden (so the page's own look shows) while a dialog / sheet / drawer / viewer / split screen is up. Kill switches: localStorage ls_nlc='0' or NlChrome.ENABLED=false. */
@@ -1583,7 +1583,7 @@ function render(){
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
-      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(isEd(i))editFile(i);else openFile(i)};
+      if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(k==='office'&&nativeOffice(i));else if(isEd(i))editFile(i);else openFile(i)};
     holdMenu(r,i);r._it=i;dragRow(r,i);
     if(i.dir)r.addEventListener('pointerdown',()=>prefetch(S.dev,jn(P0,i.name)));
     return r};
@@ -1635,12 +1635,15 @@ $('#newb').onclick=()=>{S.newest=!S.newest;S.sel.clear();render()};
 function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
 /* Android app: text / code files open in the native Keep-style editor (this phone, other devices, SMB shares; inside archives read-only) */
-const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log','docx'];
+const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log'];
 const isEd=i=>{if(i.dir||!(window.LSAndroid&&LSAndroid.editText))return false;const e=(i.name.split('.').pop()||'').toLowerCase();return PV_TXT.includes(e)||ED_MORE.includes(e)};
 function editFile(i){try{LSAndroid.editText(JSON.stringify({dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){openFile(i);return false}}
 function doNewNote(){
   if(S.dev!=='local'&&S.path==='/'){toast('\u26a0 Open a folder first',3000);return}
   try{LSAndroid.editText(JSON.stringify({dev:S.dev,dir:S.path,isNew:true}))}catch(e){toast('\u26a0 '+e.message,4000)}}
+function doNewOffice(kind){
+  if(S.dev!=='local'&&S.path==='/'){toast('\u26a0 Open a folder first',3000);return}
+  try{LSAndroid.newOffice(JSON.stringify({dev:S.dev,dir:S.path,kind}))}catch(e){toast('\u26a0 '+e.message,4000)}}
 /* the editor saved something: reload the open folder */
 window.lsRefresh=()=>{try{load()}catch(e){}try{const g=$('#gal');if(g&&g._reload&&g.style.display!=='none')g._reload()}catch(e){}};
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
@@ -1664,6 +1667,11 @@ function nativePdf(i){
   const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   try{LSAndroid.viewPdf(JSON.stringify({name:i.name,url,size:i.size||0,key:S.dev+'|'+S.path+'/'+i.name+'|'+(i.size||0)}));return true}catch(e){return false}}
 function viewPdf(i){if(!nativePdf(i))openFile(i)}
+/* Android app: Word / Excel / ODF files open in the native Office viewer (read-only; remote files are copied to cache first) */
+function nativeOffice(i){
+  if(!(window.LSAndroid&&LSAndroid.viewOffice))return false;
+  const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+  try{LSAndroid.viewOffice(JSON.stringify({name:i.name,url,size:i.size||0,dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){return false}}
 /* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
 function nativePlay(i){
   if(!(window.LSAndroid&&LSAndroid.play))return false;
@@ -3678,7 +3686,7 @@ function doNew(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Create new'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
-  opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);
+  opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);if(window.LSAndroid&&LSAndroid.newOffice){opt('doc','Word document',()=>doNewOffice('docx'));opt('doc','Excel workbook',()=>doNewOffice('xlsx'))}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
 /* editable archive on this phone is open: Add files / New folder / Paste / Extract all */
 function doZipMenu(){

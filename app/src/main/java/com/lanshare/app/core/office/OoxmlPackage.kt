@@ -36,7 +36,7 @@ class OoxmlPackage(private val file: File, private val maxPart: Int = 64 shl 20)
     fun xml(name: String): MiniXml? = read(name)?.let { MiniXml(it) }
     fun size(name: String): Long = index[norm(name)]?.let { zip.getEntry(it)?.size } ?: -1L
 
-    /** Parsed `_rels/*.rels` of [part] (e.g. "xl/workbook.xml" -> xl/_rels/workbook.xml.rels): id -> Rel. Targets are resolved to package paths. */
+    /** Parsed `_rels/NAME.rels` of [part] (e.g. "xl/workbook.xml" -> xl/_rels/workbook.xml.rels): id -> Rel. Targets are resolved to package paths. */
     fun rels(part: String): Map<String, Rel> {
         val dir = part.substringBeforeLast('/', "")
         val base = part.substringAfterLast('/')

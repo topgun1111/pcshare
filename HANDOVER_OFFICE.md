@@ -1,7 +1,27 @@
 # HANDOVER - Word / Excel support (2026-10-19)
 
-Status: **Parts 1-2 + 3a + 3b + 4 + 5 of 8 written; this zip is the FULL app (Part 1 base + Parts 2-5). NOT compiled, NOT run on a device** (no Kotlin compiler / Android SDK in the authoring sandbox).
-First step next session: push -> let Actions build -> paste compile errors; or run the JVM self-test (below) to check Part 1 alone.
+
+## STATUS SUMMARY (read this first)
+This zip is the FULL app (all parts below included). Compile state: only `core/office` + `tools/office_selftest` were ever compiled (kotlinc 2.0.21, JVM) and self-tested, and only up to Part 6c. **Everything else is UNCOMPILED and NOT device-tested**: the Android side (`OfficeViewerActivity`, `MainActivity`, `Routes.kt`, `LocalFs.kt`, `ui.html`, manifest) and the Part 8 code (`OfficeExport.kt`, `OfficeThumb.kt`). First step next session: push -> let Actions build -> paste compile errors.
+
+### Completed
+| Part | What | State |
+|---|---|---|
+| 1 | Core + xlsx reader (`MiniXml`, `OoxmlPackage`, `NumFmt`, `XlsxModel`, `XlsxReader`) | done, compiled + JVM-tested |
+| 2 | docx reader (`DocxModel`, `DocxReader`) | done, compiled + JVM-tested |
+| 3a / 3b | `DocxHtml`, `XlsxHtml`, `OfficeViewerActivity` (WebView, find, zoom) | done, viewer UNCOMPILED |
+| 4 | xlsx editing + creation (`XlsxEditor`, `XlsxWriter`) | done, compiled + JVM-tested |
+| 5 | docx editing + creation (`DocxEditor`, `DocxWriter`) | done, compiled + JVM-tested |
+| 6a / 6b / 6c | `.xls` (`OleFile`, `XlsReader`), `.doc` (`DocReader`), `.odt/.ods` (`OdfReader`), `OfficeOpen` dispatcher, password message | done, compiled + JVM-tested |
+| 7 | UI integration: open + hand-off from file list, manifest VIEW + SEND filters, embedded-preview thumbnails route (`OfficeThumb`, `/api/thumb`), "Word document" / "Excel workbook" in + menu (`LSAndroid.newOffice`), viewer Edit actions (xlsx: edit cell, insert row; docx: find/replace, add paragraph; uploaded back to the source at once) | done except items below, UNCOMPILED |
+| 8 (partial) | `OfficeExport` (CSV of a sheet, plain text, content match), `LocalFs.searchOfficeContent`, viewer "Print / save as PDF" and "Export sheet as CSV" | partial, UNCOMPILED |
+
+### Missing / TODO
+- **Part 7:** launcher `Shortcuts` (plan line unclear; `Shortcuts.kt` only publishes send-text targets); `ui.html` grid tiles do not yet request `/api/thumb` for office files (route only); `.ppt/.pptx` untouched.
+- **Part 3 leftover:** `Routes.kt` `/api/office/*` so the PC web UI can preview office files.
+- **Part 8:** Routes endpoint + `ui.html` toggle for office content search (`searchOfficeContent` is not called by anything; SMB/remote folders not covered); `pcprint.py` / `tools/phone_explorer.py` PC-side preview; big-file streaming; delete dead `DocxText.kt` and the docx branch in `TextEditorActivity`; more tests.
+- **Known limits:** no undo for viewer edits; edits only when opened from the file list (not via VIEW/SEND from other apps); editors cover docx/xlsx only (doc/xls/odt/ods read-only); see "Known gaps" below for format limits (theme colours, shared formulas, locale).
+
 
 ## Goal
 Replace the read-only "docx -> Markdown text" viewer (`core/DocxText.kt`, used by `TextEditorActivity`) with proper Office support:
@@ -24,9 +44,9 @@ create new files, wire into the file manager UI, search, print/export.
 | 3 | **HTML renderers + viewer**: `DocxHtml`, `XlsxHtml` (sticky header/row numbers, column letters, frozen panes, merged cells, sheet tabs, cell styles), `OfficeViewerActivity` (WebView, find-in-page, zoom), image extraction as data: URIs/cache; `Routes.kt` endpoint `/api/office/*` so the PC web UI can preview too | **3a DocxHtml DONE (uncompiled)**; **3b DONE (uncompiled; API assumptions verified against Part 1 sources)**: `XlsxHtml`, `OfficeViewerActivity`; `Routes.kt` TODO |
 | 4 | **Excel editing + creation**: `XlsxEditor` - set cell value/formula/type in sheet XML (inline strings, style kept), add/delete/rename sheet, insert/delete row, save via temp file + swap; `XlsxWriter` for brand-new workbooks (CSV -> xlsx) | **DONE (uncompiled)** |
 | 5 | **Word editing + creation**: `DocxEditor` - replace paragraph text keeping run formatting of the first run, insert/delete paragraph, find & replace across split runs, table cell edit; `DocxWriter` for new documents (from Markdown/plain text); undo stack | **DONE (uncompiled)** |
-| 6 | **Legacy + ODF**: `.xls` (BIFF8 via OLE compound file: SST, number formats, dates), `.doc` (text from WordDocument stream + piece table, read-only), `.odt` / `.ods` (content.xml) -> same models as Parts 1-2 | TODO |
-| 7 | **UI integration**: `ui.html` (open .docx/.xlsx/.xls/.doc/.odt/.ods from the browser list, preview pane `PV_OFFICE`, "Edit" actions, file-type icons, "new Word/Excel file" in the + menu), `TextEditorActivity` hand-off (remove docx special-case), `AndroidManifest` intent filters (open-with / share-to), thumbnails for office files (`Thumbs.kt`), `Shortcuts` | TODO |
-| 8 | **Search, print, export, polish**: office text in the folder keyword search (`ImgSearch`/`NlSearch` family), CSV/PDF export of a sheet, print via existing `PrintPrep`, password-protected files message, big-file streaming, HANDOVER cleanup, `pcprint.py` / `tools/phone_explorer.py` PC-side preview, tests | TODO |
+| 6 | **Legacy + ODF**: `.xls` (BIFF8 via OLE compound file: SST, number formats, dates), `.doc` (text from WordDocument stream + piece table, read-only), `.odt` / `.ods` (content.xml) -> same models as Parts 1-2 | **Split 6a / 6b / 6c.** 6a DONE (uncompiled): `OleFile` + `XlsReader`. 6b DONE (compiled + JVM-tested): `DocReader`. 6c DONE (compiled + JVM-tested): `OdfReader` + `OfficeOpen` dispatcher, wired into `OfficeViewerActivity` |
+| 7 | **UI integration**: `ui.html` (open .docx/.xlsx/.xls/.doc/.odt/.ods from the browser list, preview pane `PV_OFFICE`, "Edit" actions, file-type icons, "new Word/Excel file" in the + menu), `TextEditorActivity` hand-off (remove docx special-case), `AndroidManifest` intent filters (open-with / share-to), thumbnails for office files (`Thumbs.kt`), `Shortcuts` | **7 DONE (uncompiled)** except launcher `Shortcuts` (not done, scope unclear) |
+| 8 | **Search, print, export, polish**: office text in the folder keyword search (`ImgSearch`/`NlSearch` family), CSV/PDF export of a sheet, print via existing `PrintPrep`, password-protected files message, big-file streaming, HANDOVER cleanup, `pcprint.py` / `tools/phone_explorer.py` PC-side preview, tests | **8 PARTIAL (uncompiled)**: `OfficeExport` (text, CSV), `LocalFs.searchOfficeContent`, viewer Print + CSV export done; Routes/UI hookup of content search, PC-side preview, `DocxText.kt` removal TODO |
 
 ## Part 1 - what exists (all new files in `app/src/main/java/com/lanshare/app/core/office/`)
 - `MiniXml.kt` - pull parser: `next()` -> START/END/TEXT/EOF, `attr(local)`, `rawAttr(raw)`, `readText()`, `skip()`, `isEmptyElement()`, entity + `_xHHHH_` OOXML unescape, UTF-8/16 BOM decode. CDATA, comments, PIs, DOCTYPE handled.
@@ -73,6 +93,35 @@ create new files, wire into the file manager UI, search, print/export.
 - Risk spots for the compiler: `Doc.use { }` on a private `AutoCloseable` class, `Regex.split` with zero-width lookarounds in `DocxWriter.run`, `StringBuilder.append(xml, last, start)` in `replaceIn`, the `when` without subject in `DocxWriter.runsOf`. Unused by any UI (Part 7).
 - Next: Part 6 (legacy `.xls` / `.doc` + ODF `.odt` / `.ods` readers into the Part 1-2 models).
 
+## Part 6a - what exists (`core/office/OleFile.kt`, `XlsReader.kt`; no `android.*`)
+- `OleFile(file)`: OLE2/CFB reader (header, FAT + DIFAT, mini-FAT/mini-stream, directory). `open(name): ByteArray?` (stream by name, case-insens.), `has(name)`, `entries`, `OleFile.isOle(File)`. Reused by 6b (`.doc`: streams `WordDocument`, `0Table`/`1Table`). `EncryptedPackage` stream = password-protected xlsx/docx.
+- `XlsReader(file).use { it.sheets; it.readSheet(i, maxRows, maxCols, maxCells) }` - **same API and models as `XlsxReader`** (`XSheet`, `XCell`, `XStyles`, `XSheetInfo` with `part = ""`), so `XlsxHtml.render(sheet, tabs, i)` works unchanged. Handles: BIFF8 only, worksheets (hidden / very hidden), SST + CONTINUE, LABEL/LABELSST/NUMBER/RK/MULRK/BOOLERR/FORMULA cached value (+STRING), FORMAT + built-in ids -> `NumFmt` (dates, 1904), XF (font, fill colour, halign, wrap, valign), PALETTE, MERGEDCELLS, COLINFO, hidden rows, frozen PANE (WINDOW2), nested BOF (charts) skipped.
+- Gaps: formula text not decoded (`XCell.formula == null`, cached value shown); BIFF5 / Excel 95 throws "BIFF5 not supported"; FILEPASS throws `IllegalStateException("File is password protected")` (the viewer's catch already prints a message; add a `password` match); no rich text, comments, BLANK/MULBLANK style-only cells; fills = one entry per XF (`XXf.fillId` = xf index).
+- Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample.xls` (branch added to `Main.kt`; `sample.xls` made with `soffice --convert-to xls` from sample.xlsx). Expect the same cells as the xlsx run (Name/Date/Total, 1,234.50, TRUE, 1 merge, frozen 1/1, sheet "Hidden" hidden). **Not run: no kotlinc in the authoring sandbox**; brackets balanced by script.
+- Risk spots for the compiler: `continue` inside `when` inside `while` (init loop), local funs `put` / `num` mutating captured `var`s in `readSheet`, `arrayOf(null, "left", ...)` type inference for `hal` / `val_`.
+- **Next: 6b** `DocReader` (FIB, piece table in 1Table/0Table, text -> `DDoc` paragraphs split on `\r`, special chars 0x07 cell mark / 0x0C page / 0x13-0x15 fields, read-only). **6c** `OdfReader` (`.odt` -> `DDoc`, `.ods` -> `XSheet`; content.xml via `OoxmlPackage` + `MiniXml`) and an `OfficeOpen` dispatcher by magic bytes (zip+`mimetype`/`xl/`/`word/`, OLE + `Workbook`/`WordDocument`) so `OfficeViewerActivity` / Part 7 need no per-format code; wire `.xls` into the viewer there.
+
+## Part 6b - what exists (`core/office/DocReader.kt`; no `android.*`) - COMPILED + JVM-tested
+- `DocReader(file).use { it.read(maxParagraphs = 20000): DDoc }` - same model as `DocxReader`, so `DocxHtml.render(doc, ...)` works unchanged. Read-only.
+- FIB (nFib >= 0xC1, i.e. Word 97-2003; Word 6/95 throws), `fEncrypted` -> `IllegalStateException("File is password protected")` (same text as `XlsReader`), table stream by `fWhichTblStm`. Text = piece table (Clx pair 33): compressed pieces cp1252, others UTF-16LE; fallback one run from `fcMin` when no Clx. Main text only (`ccpText`).
+- Characters: `\r` paragraph end, `\a` (0x07) cell / row end, 0x09 tab, 0x0B line break, 0x0C page break, 0x1E -> `-`, 0x13/0x14/0x15 fields (instruction dropped, result kept; `HYPERLINK "url"` -> `DRun.link`, `\l` -> `#bookmark`), other control chars dropped.
+- Tables: PlcfBtePapx (pair 13) -> paragraph FKPs -> sprmPFInTable (0x2416) / sprmPFTtp (0x2417) per paragraph CP range; row ends from fTtp, cells from 0x07, several paragraphs per cell kept. Without PAPX a guess from the 0x07 marks is used. Column widths NOT read: `grid` = equal 1400-twip columns, no merges, `borders = true`.
+- Not read: character formatting (no bold / size / colour), styles (no headings, no list labels), images, headers / footers, footnotes, text boxes, comments. Add by reading STSH + CHPX FKPs (pair 12) if wanted.
+- Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample.doc` (`sample.doc` made with `soffice --convert-to doc` from sample.docx). Expect: `P Title` / `P Bold and plain` / `P First` / `P Second` / `P link{https://example.com/}` / `TABLE rows=2 grid=2` (row 1: one cell "Merged"; row 2: A, B). Also checked a table with empty cells + a 2-paragraph cell + Turkish letters (all correct).
+- **Fixed in Part 1 while compiling:** `OoxmlPackage.kt` KDoc contained `_rels/*.rels` -> Kotlin nested-comment "Unclosed comment" broke the whole file (and everything using it). Now `_rels/NAME.rels`. With this the whole `core/office/` package + `Main.kt` compiles cleanly; `--edit`, `--docx` self-tests print no FAIL.
+- **Open bug (Part 5, not touched):** `java -jar /tmp/ost.jar --docx` prints `FAIL replace split runs` (`DocxEditor.replaceAll` across split runs); everything else OK. First thing for a later session.
+- Compile it yourself: kotlinc 2.0.21 from `github.com/JetBrains/kotlin/releases` works in the sandbox (see command under Part 1).
+- **Next: 6c** `OdfReader` (`.odt` -> `DDoc`, `.ods` -> `XSheet`) + `OfficeOpen` dispatcher by magic bytes (zip + `word/` / `xl/` / `mimetype`; OLE + `WordDocument` -> `DocReader`, `Workbook` -> `XlsReader`, `EncryptedPackage` -> password message); wire `.doc` / `.xls` / ODF into `OfficeViewerActivity` there.
+
+## Part 6c - what exists (`core/office/OdfReader.kt`, `OfficeOpen.kt`; no `android.*`) - COMPILED + JVM-tested
+- `OdfReader(file)`: `.odt` -> `read(): DDoc` (same model as DocxReader), `.ods` -> `sheets` / `readSheet(i, ...)` (same `XSheet` as XlsxReader). Read-only. Encrypted (manifest `encryption-data`) -> `IllegalStateException("File is password protected")`; `.odp` refused.
+- odt: styles from styles.xml + content.xml (parent chain): bold/italic/underline/strike/caps/colour/size(pt)/sub-sup/background -> nearest highlight name; paragraph align / margins / page-break-before; `text:h` outline level; lists with number/bullet labels per level; spans, links, `text:s`/tab/line-break; images (`Pictures/..`, `DImage.part`), text boxes (text only), footnotes/endnotes; tables with col widths, header rows, colspan/rowspan (-> `span` / `vMerge` 1-2), cell fill. Not read: headers/footers, tracked changes, percent font sizes, fields beyond their cached text.
+- ods: formatted text from `text:p` (as saved by the producer), kinds NUMBER/DATE/BOOL/TEXT, formula converted `of:=SUM([.A1:.A3])` -> `=SUM(A1:A3)`, repeated rows/cols (capped), merges, col widths, hidden cols/rows/sheets, frozen panes from settings.xml (**frozen not verified: LibreOffice headless export wrote no split info**).
+- `OfficeOpen(file)`: detects by content (zip: `mimetype` -> ODF, `xl/workbook.xml` -> xlsx, `word/document.xml` -> docx; OLE: `Workbook` -> xls, `WordDocument` -> doc, `EncryptedPackage` -> password message). API: `format`, `isSheet`, `editable`, `sheets`, `readSheet(i)`, `readDoc()`, `image(part)`. `OfficeViewerActivity` now uses it for all six formats.
+- Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample.odt|sample.ods` (made with soffice from sample.docx/xlsx). odt expect: h1 Title / Bold and plain+fn / 1. First / 2. Second / link / table (Merged span=2; A, B). ods expect: sheet Data cells as xlsx, 1 merge (2x2 at A5-ish), sheet Hidden hidden.
+- Not compiled against android.jar: `OfficeViewerActivity` edit (only `core/office` compiled on JVM).
+- **Next: Part 7** UI integration (ui.html, TextEditorActivity hand-off, manifest intent filters incl. .doc/.xls/.odt/.ods).
+
 ## Known gaps / things to double-check in Part 1
 - Never compiled. Likely trouble spots: `when` branches with `;`-free formatting in `NumFmt.fmtDate`, `break`/`continue` inside `when` in `XlsxReader.readSheet`, unused-variable warnings.
 - Conditional sections like `[>100]0.0;0.00` are not evaluated (first/second/third section rule only). Fractions (`# ?/?`) approximate to decimals. Locale: always English month/day names and `.`/`,` separators.
@@ -88,3 +137,24 @@ create new files, wire into the file manager UI, search, print/export.
 - `TextEditorActivity.kt` lines ~448-761: docx special-case (`DOCX_MAX`, read-only banner).
 - `assets/ui.html` line ~1638 `ED_MORE` (editable ext list, contains `docx`) and ~2473 `PV_OFFICE`.
 - Handover style of this repo: short, factual, "derlenmedi" flags. Older handovers are Turkish; this one is English.
+
+## Part 7 - what exists (uncompiled, not device-tested)
+- `ui.html`: new ext kind `office` (doc docx odt xls xlsx ods); both click dispatchers call `nativeOffice(i)` -> `LSAndroid.viewOffice`; falls back to the old path if the bridge is missing. `docx` removed from `ED_MORE`, so `TextEditorActivity` no longer receives Word files (its docx code is now dead; `DocxText.kt` can go in Part 8).
+- `MainActivity.viewOffice(json)`: downloads `url` to `cache/office/` (60 MB cap, files >1 h old purged), starts `OfficeViewerActivity` with `path`.
+- `OfficeViewerActivity`: if no `path` extra, copies `intent.data` / `EXTRA_STREAM` to cache. Manifest: `exported=true` + VIEW filter (content/file, six office MIME types).
+- TODO: `Thumbs.kt` office thumbnails, `Shortcuts`, "New Word/Excel" in + menu, Edit action wired to Part 4-5 editors, SEND filter, `.ppt/.pptx` untouched.
+
+## Part 8 - what exists (partial, UNCOMPILED: no kotlinc in the authoring sandbox)
+- `core/office/OfficeExport.kt` (no `android.*`): `sheetToCsv(XSheet)` (RFC 4180, UTF-8 BOM, CRLF, hidden rows/cols skipped, shown text), `csvName`, `text(file)` (docx/doc/odt body+header+footer; sheets as `## name` + tab rows; 400k char cap), `textOrNull`, `containsOrFalse(file, q)` (false for encrypted/corrupt/>30 MB), `isOffice(name)`.
+- `LocalFs.searchOfficeContent(v, q)`: recursive content search over office files (100 results, 20 s). **Not yet called by anything**: needs a `Routes.kt` endpoint (e.g. `/api/search?content=1`) + a ui.html toggle; SMB/remote folders not covered.
+- `OfficeViewerActivity`: overflow menu "Print / save as PDF" (`WebView.createPrintDocumentAdapter`, so it goes through the system print dialog / PcPrintService) and "Export sheet as CSV" (`ACTION_CREATE_DOCUMENT`, request code 77, current sheet only). Menu is rebuilt with `invalidateOptionsMenu()` after load.
+- Self-test: `java -jar /tmp/ost.jar --export tools/office_selftest/sample.xlsx` prints text, CSV and contains() results (also works on .xls/.ods/.docx/.doc/.odt).
+- Password-protected message already existed (Part 6c `OfficeOpen`); no change.
+- **TODO (Part 8 rest):** Routes/UI for content search; `pcprint.py` / `tools/phone_explorer.py` preview; big-file streaming; delete dead `DocxText.kt` + its `TextEditorActivity` docx branch; Part 7 leftovers (thumbnails, Shortcuts, "New Word/Excel", Edit action, SEND filter).
+
+## Part 7 - completed (UNCOMPILED, not device-tested)
+- **SEND filter**: `OfficeViewerActivity` also accepts `ACTION_SEND` for the six office MIME types (reads `EXTRA_STREAM`, already handled).
+- **Thumbnails**: `core/office/OfficeThumb.kt` returns the preview image embedded by the producing app (`docProps/thumbnail.*`, `Thumbnails/thumbnail.png`). `Routes.kt` `/api/thumb` serves it for office files, 404 when absent (files made by this app, .doc/.xls). **`ui.html` grid tiles do not request thumbs for office files yet** (only the route exists).
+- **New Word / Excel**: `ui.html` + menu entries "Word document" / "Excel workbook" -> `doNewOffice` -> `LSAndroid.newOffice({dev,dir,kind})` -> `MainActivity.newOffice` (free name "New document (2).docx", `DocxWriter/XlsxWriter.createEmpty`, written with `Jobs.ep(dev).write`, then `lsRefresh()`).
+- **Edit action** (docx/xlsx opened from the file list; `viewOffice` now passes `dev` + `rpath` to the viewer): xlsx = "Edit cell..." (`XlsxEditor.setCell`) and "Insert row..."; docx = "Find and replace..." (`DocxEditor.replaceAll`, case-insensitive) and "Add paragraph...". Each edit runs on the cache copy, is uploaded back at once (`Jobs.ep(dev).write`), then the viewer reloads (same sheet). No undo; no edit when opened via VIEW/SEND from another app (no source path).
+- **Not done**: launcher `Shortcuts` (the part 7 plan line is ambiguous; `Shortcuts.kt` today only publishes send-text targets), `.ppt/.pptx`.

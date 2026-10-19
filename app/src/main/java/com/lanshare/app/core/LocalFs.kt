@@ -141,6 +141,27 @@ class LocalFs(rootPath: String) : Endpoint {
         return SearchResult(out, false)
     }
 
+    /** Part 8: like [search] but matches the TEXT of office files (docx/xlsx/doc/xls/odt/ods) instead of the name. Slow: tight caps; non-office files are skipped. */
+    fun searchOfficeContent(v: String, q: String, limit: Int = 100, secs: Int = 20): SearchResult {
+        val out = ArrayList<Item>()
+        val end = System.currentTimeMillis() + secs * 1000L
+        val stack = ArrayDeque<Pair<File, String>>()
+        stack.addLast(real(v) to vnorm(v))
+        while (stack.isNotEmpty()) {
+            val (dir, vdir) = stack.removeLast()
+            val kids = dir.listFiles() ?: emptyArray()
+            for (f in kids) {
+                if (System.currentTimeMillis() > end) return SearchResult(out, true)
+                if (f.isDirectory || !com.lanshare.app.core.office.OfficeExport.containsOrFalse(f, q)) continue
+                out.add(Item(f.name, false, f.length(), f.lastModified() / 1000, null, vjoin(vdir, f.name)))
+                if (out.size >= limit) return SearchResult(out, true)
+            }
+            for (d in kids.filter { it.isDirectory }.reversed()) if (!isLink(d)) stack.addLast(d to vjoin(vdir, d.name))
+        }
+        out.sortBy { it.name.lowercase() }
+        return SearchResult(out, false)
+    }
+
     /** Started at the storage root = "search everything": far higher result and time limits than a search inside one folder. */
     override fun search(v: String, q: String) =
         if (vnorm(v) == "/") search(v, q, 20_000, 80) else search(v, q, 300, 15)
