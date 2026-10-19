@@ -210,7 +210,7 @@ internal class WizMap(ctx: Context) : View(ctx) {
     }
 
     private val sgd = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(d: ScaleGestureDetector): Boolean { zoomBy(d.scaleFactor, d.focusX, d.focusY); return true }
+        override fun onScale(d: ScaleGestureDetector): Boolean { zoomBy(Math.pow(d.scaleFactor.toDouble(), 1.8).toFloat(), d.focusX, d.focusY); return true }
     })
 
     private val gd = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
@@ -343,6 +343,259 @@ internal class WizMap(ctx: Context) : View(ctx) {
         if (w < 5f || h < 5f) {
             fill.shader = null; fill.color = WizUtil.shade(base, 0.7f)
             c.drawRect(x, y, x + w, y + h, fill)
+            return
+        }
+        if (w < 22f * d || h < 22f * d) {      // small tile: flat colour + light top-left edge (no shader; thousands of these are drawn zoomed out)
+            fill.shader = null; fill.color = WizUtil.shade(base, 0.85f)
+            c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f, fill)
+            if (w >= 8f && h >= 8f) { fill.color = WizUtil.shade(base, 1.25f); c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + 2f, fill) }
+            labelOf(c, n, x, y, w, h)
+            return
+        }
+        fill.shader = RadialGradient(x + w * 0.35f, y + h * 0.3f, maxOf(w, h) * 0.85f,
+            intArrayOf(WizUtil.shade(base, 1.4f), base, WizUtil.shade(base, 0.4f)), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f, fill)
+        fill.shader = null
+        labelOf(c, n, x, y, w, h)
+    }
+
+    /** Name (extension kept) and size inside the visible part of a tile; the text size follows the tile, so names appear as you zoom in. */
+    private fun labelOf(c: Canvas, n: SNode, x: Float, y: Float, w: Float, h: Float) {
+        val vx = maxOf(x, 0f); val vy = maxOf(y, 0f)
+        val vw = minOf(x + w, width.toFloat()) - vx; val vh = minOf(y + h, height.toFloat()) - vy
+        if (vw < 34f * d || vh < 13f * d) return
+        val ts = (vh * 0.42f).coerceIn(8.5f * d, 12.5f * d)
+        txt.textSize = ts
+        val nm = if (n.agg) n.files.toString() + " small files" else n.name
+        val s = TextUtils.ellipsize(nm, android.text.TextPaint(txt), vw - 6f * d, if (n.dir || n.agg) TextUtils.TruncateAt.END else TextUtils.TruncateAt.MIDDLE).toString()
+        val ty0 = vy + ts + 1.5f * d
+        txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(s, vx + 3f * d, ty0, txt)
+        txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(s, vx + 3f * d, ty0, txt)
+        if (vh > ts * 2.9f) {
+            val z = NlModel.fmt(n.size)
+            val ty1 = ty0 + ts + 1f * d
+            txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(z, vx + 3f * d, ty1, txt)
+            txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(z, vx + 3f * d, ty1, txt)
+        }
+    }
+
+    override fun onDraw(c: Canvas) {
+        p.color = Color.rgb(0x2A, 0x2A, 0x2A); c.drawRect(0f, 1f * d, width.toFloat(), height - 1f * d, p)
+        p.color = fillCol; c.drawRect(0f, 1f * d, width * frac.coerceIn(0f, 1f), height - 1f * d, p)
+        p.color = Color.WHITE; p.textSize = 11f * d; p.textAlign = Paint.Align.CENTER
+        c.drawText(label, width / 2f, height / 2f + 4f * d, p)
+    }
+}
+
+/** Squarified treemap of every FILE below a folder, "cushion" shaded, coloured by extension (see [WizUtil.stats]). */
+internal class WizMap(ctx: Context) : View(ctx) {
+    var onPick: ((SNode) -> Unit)? = null     // single tap on a tile
+    var onOpen: ((SNode) -> Unit)? = null     // double tap on a folder tile: make it the shown folder
+    var onLong: ((SNode) -> Unit)? = null     // long press: details
+    var hl: String? = null                    // highlighted extension: its files red, everything else dark grey
+        set(v) { if (field != v) { field = v; render() } }
+    var sel: SNode? = null
+        set(v) { field = v; invalidate() }
+
+    private var root: SNode? = null
+    private var colors: Map<String, Int> = emptyMap()
+    private val d = resources.displayMetrics.density
+    private val MAXR = 7000
+    private val MAXZ = 60f
+    private val tx = FloatArray(MAXR)
+    private val ty = FloatArray(MAXR)
+    private val tw = FloatArray(MAXR)
+    private val th = FloatArray(MAXR)
+    private val tn = arrayOfNulls<SNode>(MAXR)
+    private var cnt = 0
+    private var bmp: Bitmap? = null
+    private val fill = Paint()
+    private val txt = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
+    // ---- zoom / pan: the layout is recomputed for the visible part only, so zooming in shows real detail (small files become tiles)
+    private var zoom = 1f                 // current zoom (1 = whole folder fits the view)
+    private var offX = 0f                 // current pan: virtual content pixel (at [zoom]) shown at the view's left edge
+    private var offY = 0f
+    private var rZoom = 1f                // state the bitmap was rendered with (used to preview a gesture with a matrix)
+    private var rOffX = 0f
+    private var rOffY = 0f
+    private var gesturing = false
+    private val pv = Matrix()
+    private val settle = Runnable { gesturing = false; relayout() }
+    /** Called after every zoom change with the new zoom factor (1 = not zoomed). */
+    var onZoom: ((Float) -> Unit)? = null
+
+    val zoomed: Boolean get() = zoom > 1.01f
+    val zoomLevel: Float get() = zoom
+
+    private fun clampOff() {
+        val maxX = (width * zoom - width).coerceAtLeast(0f); val maxY = (height * zoom - height).coerceAtLeast(0f)
+        offX = offX.coerceIn(0f, maxX); offY = offY.coerceIn(0f, maxY)
+    }
+
+    /** Zoom by [f] around the view point ([fx],[fy]); the picture follows the fingers at once (matrix) and is re-laid-out when the gesture settles. */
+    fun zoomBy(f: Float, fx: Float = width / 2f, fy: Float = height / 2f) {
+        val nz = (zoom * f).coerceIn(1f, MAXZ)
+        if (nz == zoom) return
+        val nx = (fx + offX) / zoom; val ny = (fy + offY) / zoom      // content point under the focus (zoom independent)
+        zoom = nz
+        offX = nx * zoom - fx; offY = ny * zoom - fy
+        clampOff()
+        afterChange()
+    }
+
+    fun resetZoom() { if (zoom == 1f && offX == 0f && offY == 0f) return; zoom = 1f; offX = 0f; offY = 0f; settle.run(); onZoom?.invoke(zoom) }
+
+    private fun afterChange() {
+        gesturing = true
+        invalidate()
+        removeCallbacks(settle)
+        postDelayed(settle, 160)
+        onZoom?.invoke(zoom)
+    }
+
+    private val sgd = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(d: ScaleGestureDetector): Boolean { zoomBy(Math.pow(d.scaleFactor.toDouble(), 1.8).toFloat(), d.focusX, d.focusY); return true }
+    })
+
+    private val gd = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent) = true
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean { hit(e.x, e.y)?.let { onPick?.invoke(it) }; return true }
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            val t = hit(e.x, e.y)
+            if (t != null && t.dir && t.kids.isNotEmpty()) onOpen?.invoke(t)       // folder tile: make it the shown folder (as before)
+            else zoomBy(2.5f, e.x, e.y)                                              // file / empty: zoom in there
+            return true
+        }
+        override fun onLongPress(e: MotionEvent) { if (!sgd.isInProgress) hit(e.x, e.y)?.let { onLong?.invoke(it) } }
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (sgd.isInProgress || zoom <= 1f) return false
+            offX += dx; offY += dy; clampOff(); afterChange()
+            return true
+        }
+    })
+
+    fun setData(r: SNode?, cols: Map<String, Int>) {
+        if (r !== root) { zoom = 1f; offX = 0f; offY = 0f; onZoom?.invoke(zoom) }
+        root = r; colors = cols; relayout()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); clampOff(); relayout() }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        sgd.onTouchEvent(e)
+        gd.onTouchEvent(e)
+        return true
+    }
+
+    private fun relayout() {
+        cnt = 0
+        val r = root
+        if (r == null || width < 8 || height < 8) { bmp = null; invalidate(); return }
+        // the whole folder is laid out at [zoom] x the view size, shifted by the pan; parts outside the view are skipped
+        lay(r, -offX, -offY, width * zoom, height * zoom, 0)
+        rZoom = zoom; rOffX = offX; rOffY = offY
+        render()
+    }
+
+    /** True when the rectangle is (partly) inside the view. */
+    private fun vis(x: Float, y: Float, w: Float, h: Float) = x < width && y < height && x + w > 0f && y + h > 0f
+
+    private fun add(n: SNode, x: Float, y: Float, w: Float, h: Float) {
+        if (cnt >= MAXR || w < 0.6f || h < 0.6f) return
+        tx[cnt] = x; ty[cnt] = y; tw[cnt] = w; th[cnt] = h; tn[cnt] = n; cnt++
+    }
+
+    private fun lay(n: SNode, x: Float, y: Float, w: Float, h: Float, depth: Int) {
+        if (w < 0.6f || h < 0.6f || !vis(x, y, w, h)) return
+        if (!n.dir || n.kids.isEmpty() || depth > 24 || (depth > 0 && w * h < 10f * d * d)) { add(n, x, y, w, h); return }
+        squarify(n, x, y, w, h, depth)
+    }
+
+    private fun place(k: SNode, x: Float, y: Float, w: Float, h: Float, depth: Int) {
+        if (k.dir && k.kids.isNotEmpty() && w > 7f && h > 7f) lay(k, x + 1f, y + 1f, w - 2f, h - 2f, depth + 1) else lay(k, x, y, w, h, depth + 1)
+    }
+
+    private fun squarify(p: SNode, x0: Float, y0: Float, w0: Float, h0: Float, depth: Int) {
+        val kids = p.kids
+        var rem = 0.0
+        for (k in kids) rem += k.size
+        if (rem <= 0.0) { add(p, x0, y0, w0, h0); return }
+        var x = x0; var y = y0; var w = w0; var h = h0
+        var i = 0
+        while (i < kids.size && cnt < MAXR && kids[i].size > 0 && rem > 0.0 && w >= 1f && h >= 1f) {
+            val side = minOf(w, h).toDouble()
+            val scale = w.toDouble() * h / rem
+            var j = i
+            var rs = 0.0; var mx = 0.0; var mn = Double.MAX_VALUE; var worst = Double.MAX_VALUE
+            while (j < kids.size && kids[j].size > 0) {
+                val a = kids[j].size * scale
+                val nrs = rs + a; val nmx = maxOf(mx, a); val nmn = minOf(mn, a)
+                val nw = maxOf(side * side * nmx / (nrs * nrs), nrs * nrs / (side * side * nmn))
+                if (j > i && nw > worst) break
+                rs = nrs; mx = nmx; mn = nmn; worst = nw; j++
+            }
+            if (j == i) j = i + 1
+            val thick = rs / side
+            var off = 0.0
+            var used = 0.0
+            for (k in i until j) {
+                val a = kids[k].size * scale
+                val len = if (thick > 0) a / thick else 0.0
+                if (w >= h) place(kids[k], x, (y + off).toFloat(), thick.toFloat(), len.toFloat(), depth)
+                else place(kids[k], (x + off).toFloat(), y, len.toFloat(), thick.toFloat(), depth)
+                off += len
+                used += kids[k].size
+            }
+            if (w >= h) { x += thick.toFloat(); w -= thick.toFloat() } else { y += thick.toFloat(); h -= thick.toFloat() }
+            rem -= used
+            i = j
+        }
+    }
+
+    private fun colorOf(n: SNode): Int {
+        val h = hl
+        if (n.agg) return if (h != null) WizUtil.DIM else WizUtil.GRAY
+        if (n.dir) {
+            if (h != null) return WizUtil.DIM
+            val cs = n.cats ?: return WizUtil.GRAY
+            var b = 0
+            for (i in cs.indices) if (cs[i] > cs[b]) b = i
+            return WizUtil.shade(WizUtil.CATC[b.coerceIn(0, WizUtil.CATC.size - 1)], 0.8f)
+        }
+        val key = WizUtil.extOf(n.name)
+        if (h != null) return if (key == h) WizUtil.RED else WizUtil.DIM
+        return colors[key] ?: WizUtil.GRAY
+    }
+
+    private fun render() {
+        val w = width; val hh = height
+        if (w < 8 || hh < 8) return
+        var b = bmp
+        if (b == null || b.width != w || b.height != hh) { b = Bitmap.createBitmap(w, hh, Bitmap.Config.ARGB_8888); bmp = b }
+        val c = Canvas(b)
+        c.drawColor(Color.BLACK)
+        txt.textSize = 11f * d
+        for (i in 0 until cnt) tile(c, i)
+        invalidate()
+    }
+
+    private fun tile(c: Canvas, i: Int) {
+        val x = tx[i]; val y = ty[i]; val w = tw[i]; val h = th[i]
+        val n = tn[i] ?: return
+        val base = colorOf(n)
+        if (w < 5f || h < 5f) {
+            fill.shader = null; fill.color = WizUtil.shade(base, 0.7f)
+            c.drawRect(x, y, x + w, y + h, fill)
+            return
+        }
+        if (w < 22f * d || h < 22f * d) {      // small tile: flat colour + light top-left edge (no shader; thousands of these are drawn zoomed out)
+            fill.shader = null; fill.color = WizUtil.shade(base, 0.85f)
+            c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f, fill)
+            if (w >= 8f && h >= 8f) { fill.color = WizUtil.shade(base, 1.25f); c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + 2f, fill) }
+            labelOf(c, n, x, y, w, h)
             return
         }
         fill.shader = RadialGradient(x + w * 0.35f, y + h * 0.3f, maxOf(w, h) * 0.85f,
@@ -495,7 +748,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private val tmTitle = TextView(act)
     private val status = TextView(act)
     private val statusR = TextView(act)
-    private val tabV = arrayOfNulls<TextView>(3)
+    private val tabV = arrayOfNulls<TextView>(4)
     private lateinit var treeList: ListView
     private lateinit var fileBox: LinearLayout
     private lateinit var typeBox: LinearLayout
@@ -549,8 +802,8 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     private fun buildTabs(): View {
         val r = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(cBg); setPadding(dp(4), dp(4), dp(4), 0) }
-        val names = arrayOf("Tree View", "File View", "Types")
-        for (i in 0..2) {
+        val names = arrayOf("Tree View", "File View", "Types", "Treemap")
+        for (i in 0..3) {
             val t = TextView(act).apply {
                 text = names[i]; textSize = 13f; gravity = Gravity.CENTER; setPadding(dp(14), dp(8), dp(14), dp(8)); isClickable = true
                 setOnClickListener { showTab(i) }
@@ -612,7 +865,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val yb = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         yb.addView(colHeader(Triple("Extension", 70, Gravity.START), Triple("File type", 0, Gravity.START), Triple("Percent", 58, Gravity.CENTER), Triple("Size", 58, Gravity.END), Triple("Files", 48, Gravity.END)))
         typeList = ListView(act).apply { divider = null; dividerHeight = 0; setBackgroundColor(cBg); adapter = typeAdapter }
-        typeList.setOnItemClickListener { _, _, pos, _ -> if (pos in stats.indices) toggleHl(stats[pos].key) }
+        typeList.setOnItemClickListener { _, _, pos, _ -> if (pos in stats.indices) { toggleHl(stats[pos].key); if (hlKey != null) showTab(3) } }
         typeList.setOnItemLongClickListener { _, _, pos, _ ->
             if (pos in stats.indices && stats[pos].key != WizUtil.AGG) { val k = stats[pos].key; filterEt.setText(if (k.isEmpty()) "!*.*" else "*.$k"); showTab(1); true } else false
         }
@@ -621,9 +874,12 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         host2.addView(tb, android.widget.FrameLayout.LayoutParams(-1, -1))
         host2.addView(fb, android.widget.FrameLayout.LayoutParams(-1, -1))
         host2.addView(yb, android.widget.FrameLayout.LayoutParams(-1, -1))
+        mapBox = buildMapBox()
+        host2.addView(mapBox, android.widget.FrameLayout.LayoutParams(-1, -1))    // Treemap: its own full-screen tab
     }
 
     private lateinit var treeBox: LinearLayout
+    private lateinit var mapBox: View
 
     private fun buildMapBox(): View {
         val b = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg); setPadding(0, dp(2), 0, 0) }
@@ -652,7 +908,8 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         treeBox.visibility = if (i == 0) View.VISIBLE else View.GONE
         fileBox.visibility = if (i == 1) View.VISIBLE else View.GONE
         typeBox.visibility = if (i == 2) View.VISIBLE else View.GONE
-        for (k in 0..2) tabV[k]?.apply {
+        mapBox.visibility = if (i == 3) View.VISIBLE else View.GONE
+        for (k in 0..3) tabV[k]?.apply {
             setTextColor(if (k == i) Color.WHITE else cDim)
             setBackgroundColor(if (k == i) cHdr else cBg)
             setTypeface(null, if (k == i) Typeface.BOLD else Typeface.NORMAL)
@@ -1007,13 +1264,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         expanded.add(root)
         view.addView(buildHeader(), LinearLayout.LayoutParams(-1, -2))
         view.addView(buildTabs(), LinearLayout.LayoutParams(-1, -2))
-        val body = LinearLayout(act)
-        val land = act.resources.configuration.screenWidthDp > act.resources.configuration.screenHeightDp
-        body.orientation = if (land) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        val lists = android.widget.FrameLayout(act)
-        buildLists(lists)
-        body.addView(lists, if (land) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(buildMapBox(), if (land) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, 0, 1f))
+        // every tab (Tree View, File View, Types, Treemap) gets the whole body, one at a time
+        val body = android.widget.FrameLayout(act)
+        buildLists(body)
         view.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         view.addView(status.also { styleStatus(it) }, LinearLayout.LayoutParams(-1, -2))
         map.onPick = { n -> pickFromMap(n) }
