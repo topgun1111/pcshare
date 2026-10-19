@@ -732,7 +732,7 @@ function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'b
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
 const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf doc docx odt xls xlsx csv ppt pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
-const arcP=p=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
+const arcP=p=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
 const isHid=i=>i.name[0]==='.'||!!i.hid||(S.dev==='local'&&hidP(jn(S.path,i.name)));   // hidden item (only on screen while "Show hidden files" is on): drawn faded
 const showHid=()=>S.hid&&S.dev==='local';   // "Show hidden files" only applies to this device: other devices / PC (SMB) never show hidden items
@@ -801,11 +801,11 @@ function openView(){
     card.append(E('hr'),E('div','sh','Others'),cbrow('Show hidden files',S.hid,()=>{toggleHidden(true);draw()}))};
   draw()}
 /* archives: a .zip/.rar opens like a folder; its virtual path is "/dir/a.zip!/inner" */
-const ARC_RE=/\.(zip|rar|cbz|cbr)$/i;
+const ARC_RE=/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)$/i;
 const isArcF=i=>!i.dir&&ARC_RE.test(i.name);
-const inArc=()=>/\.(zip|rar|cbz|cbr)!(\/|$)/i.test(S.path);
+const inArc=()=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(S.path);
 const zipEd=()=>S.dev==='local'&&/\.(zip|cbz)!(\/|$)/i.test(S.path);   // a ZIP on this phone is open: it can be edited (add / delete); RAR and ZIPs on other devices stay read-only
-const arcRoot=()=>{const m=S.path.match(/^(.*?\.(?:zip|rar|cbz|cbr)!)/i);return m?m[1]:null};
+const arcRoot=()=>{const m=S.path.match(/^(.*?\.(?:zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!)/i);return m?m[1]:null};
 const pdir=p=>p.slice(0,p.lastIndexOf('/'))||'/';
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}

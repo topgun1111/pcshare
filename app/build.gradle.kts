@@ -71,6 +71,8 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")          // MD4/RC4 for NTLM (Android's BC lacks them)
     implementation("org.slf4j:slf4j-android:1.7.36")
     implementation("com.github.junrar:junrar:7.5.5")                  // RAR (v4) reader, pure Java; ZIP uses java.util.zip
+    implementation("org.apache.commons:commons-compress:1.21")        // 7z / TAR / GZ / BZ2 / XZ readers (1.21: works on API 24, newer ones need API 26)
+    implementation("org.tukaani:xz:1.9")                              // XZ / 7z LZMA2 decoder used by commons-compress
     implementation("androidx.media3:media3-exoplayer:1.3.1")           // dedicated video player (PlayerActivity)
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")         // native file browser (BrowserActivity)

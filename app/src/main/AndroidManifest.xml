@@ -34,7 +34,7 @@
             </intent-filter>
             <!-- Direct Share targets (one per online device, published by Shortcuts.kt) -->
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
-            <!-- "Open with" for archives (zip / rar / cbz / cbr): the archive opens inside LANShare's own browser -->
+            <!-- "Open with" for archives (zip / rar / 7z / tar / gz / cbz / cbr): the archive opens inside LANShare's own browser -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -51,6 +51,13 @@
                 <data android:mimeType="application/vnd.comicbook-rar"/>
                 <data android:mimeType="application/x-cbz"/>
                 <data android:mimeType="application/x-cbr"/>
+                <data android:mimeType="application/x-7z-compressed"/>
+                <data android:mimeType="application/x-tar"/>
+                <data android:mimeType="application/gzip"/>
+                <data android:mimeType="application/x-gzip"/>
+                <data android:mimeType="application/x-bzip2"/>
+                <data android:mimeType="application/x-xz"/>
+                <data android:mimeType="application/x-compressed-tar"/>
             </intent-filter>
             <!-- same, for apps that hand over the file with a generic type: matched by the file name -->
             <intent-filter>
@@ -62,6 +69,14 @@
                 <data android:pathPattern=".*\\.rar"/>
                 <data android:pathPattern=".*\\.cbz"/>
                 <data android:pathPattern=".*\\.cbr"/>
+                <data android:pathPattern=".*\\.7z"/>
+                <data android:pathPattern=".*\\.tar"/>
+                <data android:pathPattern=".*\\.tgz"/>
+                <data android:pathPattern=".*\\.tbz2"/>
+                <data android:pathPattern=".*\\.txz"/>
+                <data android:pathPattern=".*\\.gz"/>
+                <data android:pathPattern=".*\\.bz2"/>
+                <data android:pathPattern=".*\\.xz"/>
                 <data android:pathPattern=".*\\.ZIP"/>
                 <data android:pathPattern=".*\\.RAR"/>
             </intent-filter>
@@ -74,6 +89,14 @@
                 <data android:pathPattern=".*\\.rar"/>
                 <data android:pathPattern=".*\\.cbz"/>
                 <data android:pathPattern=".*\\.cbr"/>
+                <data android:pathPattern=".*\\.7z"/>
+                <data android:pathPattern=".*\\.tar"/>
+                <data android:pathPattern=".*\\.tgz"/>
+                <data android:pathPattern=".*\\.tbz2"/>
+                <data android:pathPattern=".*\\.txz"/>
+                <data android:pathPattern=".*\\.gz"/>
+                <data android:pathPattern=".*\\.bz2"/>
+                <data android:pathPattern=".*\\.xz"/>
                 <data android:pathPattern=".*\\.ZIP"/>
                 <data android:pathPattern=".*\\.RAR"/>
             </intent-filter>

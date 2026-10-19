@@ -1,7 +1,13 @@
 package com.lanshare.app.core
 
 import com.github.junrar.Archive
+import org.apache.commons.compress.archivers.sevenz.SevenZFile
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -21,15 +27,33 @@ import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
 /*
- * Archives (ZIP / RAR) as folders.
+ * Archives (ZIP, RAR 4, 7z, TAR, TAR.GZ / TGZ, TAR.BZ2, TAR.XZ and single GZ / BZ2 / XZ files) as folders.
  *
  * A virtual path "/Download/a.zip!/docs/x.txt" means "docs/x.txt inside /Download/a.zip": the segment that ends with '!' is the
  * archive itself. Everything that already works on folders (browse, search, download, copy to another folder / device, send,
- * print, details) therefore works inside archives. RAR archives are read-only; ZIP files on this phone can also be edited (delete entries,
+ * print, details) therefore works inside archives. RAR, 7z and TAR archives are read-only; ZIP files on this phone can also be edited (delete entries,
  * add files / folders - see [ZipEdit]); "extract" is simply a copy of "a.zip!" out of it.
  */
 
-private val ARC_EXT = setOf("zip", "rar", "cbz", "cbr")
+private val ARC_EXT = setOf("zip", "rar", "cbz", "cbr", "7z", "cb7", "tar", "cbt", "tgz", "tbz", "tbz2", "txz", "gz", "bz2", "xz",
+    "jar", "war", "aar", "xpi", "apks", "xapk")
+
+/** Reader to use for an archive name: "zip", "rar", "7z", "tar" / "tgz" / "tbz" / "txz" (tar, plain or compressed) or "gz" / "bz2" / "xz" (one compressed file). */
+fun arcFmt(name: String): String {
+    val n = name.lowercase()
+    return when {
+        n.endsWith(".rar") || n.endsWith(".cbr") -> "rar"
+        n.endsWith(".7z") || n.endsWith(".cb7") -> "7z"
+        n.endsWith(".tar.gz") || n.endsWith(".tgz") -> "tgz"
+        n.endsWith(".tar.bz2") || n.endsWith(".tbz") || n.endsWith(".tbz2") -> "tbz"
+        n.endsWith(".tar.xz") || n.endsWith(".txz") -> "txz"
+        n.endsWith(".tar") || n.endsWith(".cbt") -> "tar"
+        n.endsWith(".gz") -> "gz"
+        n.endsWith(".bz2") -> "bz2"
+        n.endsWith(".xz") -> "xz"
+        else -> "zip"
+    }
+}
 
 fun isArcName(n: String): Boolean {
     val i = n.lastIndexOf('.')
@@ -65,7 +89,8 @@ class AEntry(val path: String, val dir: Boolean, val size: Long, val mtime: Long
 /** A ZIP that stays on another device / SMB share: only its file list is fetched, entries are read with ranged reads on demand. */
 class RemoteZip(val base: Endpoint, val path: String, val mtime: Long)
 
-class ArcIndex(val file: File?, val rar: Boolean, val charset: Charset, val rz: RemoteZip? = null, private val remoteTag: String = "") {
+class ArcIndex(val file: File?, val fmt: String, val charset: Charset, val rz: RemoteZip? = null, private val remoteTag: String = "") {
+    val rar: Boolean get() = fmt == "rar"
     /** Identity of the archive's content: the names of cached extracted files are derived from it. */
     val tag: String get() = if (file != null) file.path + "|" + file.length() + "|" + file.lastModified() else remoteTag
     val all = LinkedHashMap<String, AEntry>()           // "dir/sub/file.txt" -> entry (no leading slash)
@@ -88,9 +113,57 @@ class ArcIndex(val file: File?, val rar: Boolean, val charset: Charset, val rz: 
     }
 
     companion object {
-        fun read(file: File, rar: Boolean): ArcIndex {
-            if (rar) {
-                val ix = ArcIndex(file, true, Charsets.UTF_8)
+        /** The stream of a compressed file / tar archive, unpacked on the fly. */
+        fun unpack(fmt: String, raw: InputStream): InputStream {
+            val b = BufferedInputStream(raw, 1 shl 16)
+            return when (fmt) {
+                "tgz", "gz" -> GzipCompressorInputStream(b, true)
+                "tbz", "bz2" -> BZip2CompressorInputStream(b, true)
+                "txz", "xz" -> XZCompressorInputStream(b, true)
+                else -> b
+            }
+        }
+
+        private fun isTar(fmt: String) = fmt == "tar" || fmt == "tgz" || fmt == "tbz" || fmt == "txz"
+
+        /** Name of the one file inside a plain .gz / .bz2 / .xz: the archive name without its last extension. */
+        fun singleName(file: File): String = file.name.substringBeforeLast('.').ifEmpty { file.name }
+
+        fun read(file: File, fmt: String): ArcIndex {
+            if (fmt == "7z") {
+                val ix = ArcIndex(file, fmt, Charsets.UTF_8)
+                try {
+                    SevenZFile(file).use { z ->
+                        for (e in z.entries) ix.add(e.name ?: continue, e.isDirectory, if (e.isDirectory) 0L else e.size,
+                            if (e.hasLastModifiedDate) e.lastModifiedDate.time / 1000 else 0L)
+                    }
+                } catch (e: Exception) { throw IOException(otherMsg("7z", e)) }
+                return ix
+            }
+            if (isTar(fmt)) {
+                val ix = ArcIndex(file, fmt, Charsets.UTF_8)
+                try {
+                    TarArchiveInputStream(unpack(fmt, file.inputStream()), "UTF-8").use { t ->
+                        while (true) {
+                            val e = t.nextTarEntry ?: break
+                            if (e.isDirectory) ix.add(e.name, true, 0L, e.modTime.time / 1000)
+                            else if (e.isFile) ix.add(e.name, false, e.size, e.modTime.time / 1000)   // links, devices: not listed
+                        }
+                    }
+                } catch (e: Exception) { throw IOException(otherMsg(fmt, e)) }
+                return ix
+            }
+            if (fmt == "gz" || fmt == "bz2" || fmt == "xz") {
+                val ix = ArcIndex(file, fmt, Charsets.UTF_8)
+                try {
+                    var n = 0L
+                    unpack(fmt, file.inputStream()).use { i -> val b = ByteArray(1 shl 16); while (true) { val r = i.read(b); if (r < 0) break; n += r } }
+                    ix.add(singleName(file), false, n, file.lastModified() / 1000)
+                } catch (e: Exception) { throw IOException(otherMsg(fmt, e)) }
+                return ix
+            }
+            if (fmt == "rar") {
+                val ix = ArcIndex(file, fmt, Charsets.UTF_8)
                 try {
                     Archive(file).use { a ->
                         for (h in a.fileHeaders) ix.add(h.fileName, h.isDirectory, h.fullUnpackSize, (h.mTime?.time ?: 0L) / 1000)
@@ -102,7 +175,7 @@ class ArcIndex(val file: File?, val rar: Boolean, val charset: Charset, val rz: 
             // names are UTF-8 in modern archives; older Windows tools wrote the Turkish code page
             for (cs in listOf(Charsets.UTF_8, Charset.forName("windows-1254"))) {
                 try {
-                    val ix = ArcIndex(file, false, cs)
+                    val ix = ArcIndex(file, "zip", cs)
                     ZipFile(file, cs).use { z ->
                         val en = z.entries()
                         while (en.hasMoreElements()) {
@@ -115,6 +188,12 @@ class ArcIndex(val file: File?, val rar: Boolean, val charset: Charset, val rz: 
                 } catch (e: ZipException) { throw IOException("not a valid ZIP file: " + errText(e)) }
             }
             throw IOException("could not read the file names of this ZIP")
+        }
+
+        fun otherMsg(fmt: String, e: Exception): String {
+            val m = (e.message ?: "") + " " + e.javaClass.simpleName
+            return if (m.contains("password", true) || m.contains("encrypt", true) || m.contains("Cannot read encrypted", true)) "this archive is password-protected"
+                else "cannot read this ${fmt.uppercase()} file: " + errText(e)
         }
 
         fun rarMsg(e: Exception): String {
@@ -241,7 +320,7 @@ object RangeZip {
         if (cdSize > MAX_CD) throw IOException("this ZIP has too many files to open over the network - copy it to this device first")
         if (cdOff < 0 || cdOff + cdSize > size) throw ZipFormat("damaged ZIP central directory")
         val cd = readAt(s, cdOff, cdSize.toInt())
-        val ix = ArcIndex(null, false, Charsets.UTF_8, rz, tag)
+        val ix = ArcIndex(null, "zip", Charsets.UTF_8, rz, tag)
         val cp = Charset.forName("windows-1254")
         var p = 0
         var n = 0L
@@ -413,8 +492,8 @@ object ArcStore {
     fun sizeOf(base: Endpoint, ap: String): Long = try { statOf(base, ap).optLong("size") } catch (_: Exception) { 0L }
 
     fun index(base: Endpoint, ap: String): ArcIndex {
-        val rar = ap.substringAfterLast('.', "").lowercase().let { it == "rar" || it == "cbr" }
-        if (base !is LocalFs && !rar) {
+        val fmt = arcFmt(ap)
+        if (base !is LocalFs && fmt == "zip") {
             // a ZIP on another device / SMB share: read just its file list. Only when that is impossible (odd ZIP layouts) is it downloaded.
             val st = statOf(base, ap)
             val sz = st.optLong("size")
@@ -433,7 +512,7 @@ object ArcStore {
         val f = materialize(base, ap)
         val key = f.path + "|" + f.length() + "|" + f.lastModified()
         synchronized(lock) { idx[key]?.let { return it } }
-        val ix = ArcIndex.read(f, rar)
+        val ix = ArcIndex.read(f, fmt)
         synchronized(lock) { idx[key] = ix }
         return ix
     }
@@ -449,7 +528,7 @@ object ArcStore {
                 trim(e.size)
                 val tmp = File(out.path + ".part")
                 try {
-                    tmp.outputStream().buffered(1 shl 16).use { o -> if (ix.rar) rarExtract(f, e.raw, o) else zipExtract(f, ix.charset, e.raw, o) }
+                    tmp.outputStream().buffered(1 shl 16).use { o -> when (ix.fmt) { "rar" -> rarExtract(f, e.raw, o); "zip" -> zipExtract(f, ix.charset, e.raw, o); else -> otherExtract(f, ix.fmt, e.raw, o) } }
                     if (!tmp.renameTo(out)) throw IOException("could not store the extracted file")
                 } finally { if (tmp.exists()) tmp.delete() }
             }
@@ -509,6 +588,27 @@ object ArcStore {
         } catch (e: ZipException) {
             throw IOException("cannot extract this file (password-protected or damaged): " + errText(e))
         }
+    }
+
+    /** 7z, tar (plain / gz / bz2 / xz) and single compressed files. A tar has no index: it is read up to the entry. */
+    private fun otherExtract(file: File, fmt: String, raw: String, o: OutputStream) {
+        try {
+            when (fmt) {
+                "7z" -> SevenZFile(file).use { z ->
+                    val e = z.entries.firstOrNull { it.name == raw && !it.isDirectory } ?: throw NotFound("entry not found in the archive")
+                    z.getInputStream(e).use { it.copyTo(o, 1 shl 16) }
+                }
+                "gz", "bz2", "xz" -> ArcIndex.unpack(fmt, file.inputStream()).use { it.copyTo(o, 1 shl 16) }
+                else -> TarArchiveInputStream(ArcIndex.unpack(fmt, file.inputStream()), "UTF-8").use { t ->
+                    while (true) {
+                        val e = t.nextTarEntry ?: throw NotFound("entry not found in the archive")
+                        if (e.isFile && e.name == raw) { t.copyTo(o, 1 shl 16); break }
+                    }
+                }
+            }
+        } catch (e: IOException) { throw e
+        } catch (e: NotFound) { throw e
+        } catch (e: Exception) { throw IOException(ArcIndex.otherMsg(fmt, e)) }
     }
 
     private fun rarExtract(file: File, raw: String, o: OutputStream) {
