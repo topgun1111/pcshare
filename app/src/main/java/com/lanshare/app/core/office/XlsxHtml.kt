@@ -32,7 +32,7 @@ object XlsxHtml {
     /** [styles]: pass the reader's `styles` to show bold / italic / colours / fills / alignment; null = plain. */
     fun render(sh: XSheet, tabs: List<Pair<Int, String>>, active: Int, styles: XStyles? = null): String {
         val sb = StringBuilder(32 * 1024)
-        sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><style>")
+        sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes\"><style>")
             .append(CSS).append("</style></head><body>")
         if (tabs.size > 1) {
             sb.append("<div class=tabs>")

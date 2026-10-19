@@ -29,7 +29,7 @@ object DocxHtml {
         val notes = LinkedHashMap<String, Int>()
         fun noteNo(id: String) = notes.getOrPut(id) { notes.size + 1 }
         val sb = StringBuilder(16 * 1024)
-        sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>")
+        sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes\"><title>")
             .append(esc(title)).append("</title><style>").append(CSS)
         if (doc.defaultSize > 0) sb.append(".page{font-size:").append(doc.defaultSize / 2.0).append("pt}")
         sb.append("</style></head><body><div class=page>")
