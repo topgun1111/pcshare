@@ -111,6 +111,7 @@ object Routes {
                     .put("seen", p.seen / 1000.0).put("via", viaOf(p.ip)).put("kind", "LANShare")
                     .put("vias", JSONArray((listOf(p.ip) + p.ips).map { viaOf(it) }.distinct())))
                 for (s in Smb.peers()) { val v = viaOf(Smb.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "SMB").put("vias", JSONArray(listOf(v)))) }
+                for (s in Ftp.peers()) { val v = viaOf(Ftp.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "FTP").put("vias", JSONArray(listOf(v)))) }
                 if (Cfg.rootEnabled() && RootShell.granted())   // Settings > Root access is on: the whole file system shows up as one more place
                     a.put(JSONObject().put("id", "root").put("name", "Root").put("ip", "").put("ok", true).put("seen", System.currentTimeMillis() / 1000.0).put("via", "su").put("kind", "Root").put("vias", JSONArray(listOf("su"))))
                 return ex.json(a)
@@ -245,6 +246,7 @@ object Routes {
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
+            "ftp" -> if (ex.method == "GET") return ex.json(Ftp.status())
             "root" -> if (ex.method == "GET") return ex.json(rootStatus())   // POST = switch on / off (below)
             "smbscan" -> return ex.json(d.smbScan())
             // ---- Storage Analyzer (scan engine: StorageScan.kt). path "/" = the whole main storage, anything else = that folder, recursive.
@@ -288,6 +290,7 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
+            "ftp" -> ftpUpdate(ex, b)
             "root" -> {   // Settings > Root access: "enable" asks su (the root manager shows its grant prompt) and only then stores the switch; "disable" = off + forget
                 if (RootShell.untrusted.get() == true) throw Denied("Root is only available from the app's own screen")
                 when (b.optString("op")) {
@@ -367,6 +370,15 @@ object Routes {
         else if (edit.isNotEmpty()) Smb.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optString("share"))
         else Smb.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"))
         ex.json(JSONObject().put("ok", true).put("list", Smb.status()))
+    }
+
+    private fun ftpUpdate(ex: Exchange, b: JSONObject) {
+        val remove = b.optString("remove")
+        val edit = b.optString("edit")
+        if (remove.isNotEmpty()) Ftp.remove(remove)
+        else if (edit.isNotEmpty()) Ftp.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"))
+        else Ftp.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"))
+        ex.json(JSONObject().put("ok", true).put("list", Ftp.status()))
     }
 
     // ---------------------------------------------------------------- Storage Analyzer API (part 2)

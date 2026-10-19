@@ -203,6 +203,7 @@ object Jobs {
             val c = Smb.cfg(dev) ?: throw IOException("that SMB share was removed")
             Smb.split(c.getString("host")).first to c.optString("name").ifEmpty { c.getString("host") }
         }
+        dev.startsWith("ftp:") -> throw BadReq("an FTP server cannot print")
         else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).let { it.ip to it.name }
     }
 
@@ -732,6 +733,7 @@ object Jobs {
         dev == "local" -> Core.local
         dev == "root" -> RootShell.fs()   // su file access: throws unless Settings > Root access is on, granted, and the request comes from the app's own screen
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
+        dev.startsWith("ftp:") -> FtpFs.create(Ftp.cfg(dev) ?: throw IOException("that FTP server was removed"))
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 

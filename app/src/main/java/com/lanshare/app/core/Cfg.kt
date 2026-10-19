@@ -23,6 +23,10 @@ object Cfg {
     @Synchronized fun smb(): JSONArray = obj.optJSONArray("smb") ?: JSONArray()
     @Synchronized fun setSmb(a: JSONArray) { obj.put("smb", a) }
 
+    /** Saved FTP / FTPS servers (see FtpFs.kt): [{id:"ftp:xxxxxx", host, user, password, name, ftps, dir}]. */
+    @Synchronized fun ftp(): JSONArray = obj.optJSONArray("ftp") ?: JSONArray()
+    @Synchronized fun setFtp(a: JSONArray) { obj.put("ftp", a) }
+
     /** Remote (tailnet / other-subnet) device IPs that are re-probed on every scan; filled by "+ IP" and by Tailscale addresses peers advertise. */
     @Synchronized fun pins(): List<String> { val a = obj.optJSONArray("pins") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) } }
     @Synchronized fun addPin(ip: String): Boolean {
