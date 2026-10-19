@@ -680,11 +680,16 @@ S.theme=LD('ls_theme','light');if(['light','dark','auto'].concat(LSTH.map(t=>t.i
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
 setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(()=>nlTheme(),50))}catch(e){}
 // view/sort preferences: global default + per-folder overrides ("Apply to all folders" promotes to global)
+// the app keeps a native copy of these two (SharedPreferences): localStorage is per origin (http://127.0.0.1:port) and starts empty whenever the port or the web storage changes
+const NPG=k=>{try{return (window.LSAndroid&&LSAndroid.prefGet&&LSAndroid.prefGet(k))||''}catch(e){return ''}};
+const NPS=(k,v)=>{try{if(window.LSAndroid&&LSAndroid.prefSet)LSAndroid.prefSet(k,v)}catch(e){}};
+try{const ng=NPG('ls_g'),np=NPG('ls_pf');if(ng||np){localStorage.setItem('ls_sortmig','1');if(ng)localStorage.setItem('ls_g',ng);if(np)localStorage.setItem('ls_pf',np)}}catch(e){}   // restore (and never run the old reset below on restored data)
 let G={view:S.view,sort:S.sort,asc:S.asc,thumb:'s',cols:0,colsW:0};try{Object.assign(G,JSON.parse(localStorage.getItem('ls_g')||'{}'))}catch(e){}
 let PF={};try{PF=JSON.parse(localStorage.getItem('ls_pf')||'{}')}catch(e){}
 // one-time migration: default sort for ALL folders = Date, newest first (saved global + per-folder sort choices from older versions are reset once; view / thumbnail choices stay)
 try{if(localStorage.getItem('ls_sortmig')!=='1'){G.sort='date';G.asc=false;for(const k in PF){if(PF[k]){delete PF[k].sort;delete PF[k].asc}}
   if(localStorage.getItem('ls_g'))localStorage.setItem('ls_g',JSON.stringify(G));if(localStorage.getItem('ls_pf'))localStorage.setItem('ls_pf',JSON.stringify(PF));localStorage.setItem('ls_sortmig','1')}}catch(e){}
+try{const a=localStorage.getItem('ls_g'),b=localStorage.getItem('ls_pf');if(a&&!NPG('ls_g'))NPS('ls_g',a);if(b&&!NPG('ls_pf'))NPS('ls_pf',b)}catch(e){}   // existing users: copy what is already saved
 const pfKey=()=>S.dev+'|'+S.path;
 const uiF=()=>{try{const f=LSAndroid.uiGet().split(',')[0]/100;return f>0?f:1}catch(e){return 1}};   // Interface size factor (1 = 100%)
 const wideScr=()=>window.innerWidth*uiF()>=600;   // real dp (page width is screen/f): unfolded phone / tablet; a folded phone is narrower
@@ -699,7 +704,7 @@ function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
 function setPref(p){p=Object.assign({},p);if('cols'in p){const wd=wideScr(),n=+p.cols||0;p.lastW=wd?1:0;p.cell=n?Math.round(window.innerWidth*uiF()/n):0;if(n===0){p.cols=0;p.colsW=0}else if(wd){p.colsW=n;delete p.cols}}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
   const cur=Object.assign({},G,PF[pfKey()]||{},{view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
-  try{localStorage.setItem('ls_g',JSON.stringify(G));localStorage.setItem('ls_pf',JSON.stringify(PF))}catch(e){}
+  try{const g=JSON.stringify(G),pf=JSON.stringify(PF);localStorage.setItem('ls_g',g);localStorage.setItem('ls_pf',pf);NPS('ls_g',g);NPS('ls_pf',pf)}catch(e){}
   render()}
 var NLSRQ='';   // last query typed in the NATIVE search box (see nlSr / nlSrPush)
 function clearQ(){S.q='';NLSRQ='';$('#sq').value='';document.body.classList.remove('srch')}

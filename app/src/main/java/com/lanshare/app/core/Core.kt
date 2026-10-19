@@ -53,10 +53,22 @@ object Core {
             if (Cfg.rootEnabled()) Thread({ try { RootShell.check() } catch (_: Throwable) {} }, "root-check").also { it.isDaemon = true }.start()   // switched on earlier: ask su again (the manager remembers the grant)
             var srv: MiniHttp? = null
             var port = BASE_PORT
-            for (p in BASE_PORT until BASE_PORT + 20) {
+            // The page's localStorage (sort / view per folder, theme ...) belongs to the origin http://127.0.0.1:<port>: a different port = empty storage.
+            // So the port used last time is tried first (and retried briefly: the previous process may still be closing after an update / restart).
+            val sp = app.getSharedPreferences("core_port", Context.MODE_PRIVATE)
+            val last = sp.getInt("last", 0).takeIf { it in BASE_PORT until BASE_PORT + 20 }
+            if (last != null) {
+                for (i in 0 until 12) {
+                    val m = MiniHttp(last) { ex -> Routes.handle(ex) }
+                    try { srv = m.bind(); port = last; break } catch (_: IOException) { m.stop() }
+                    try { Thread.sleep(250) } catch (_: InterruptedException) {}
+                }
+            }
+            if (srv == null) for (p in BASE_PORT until BASE_PORT + 20) {
                 val m = MiniHttp(p) { ex -> Routes.handle(ex) }
                 try { srv = m.bind(); port = p; break } catch (_: IOException) { m.stop() }
             }
+            if (srv != null) try { sp.edit().putInt("last", port).apply() } catch (_: Throwable) {}
             if (srv == null) throw IOException("No free port found")
             disc = Discovery(port)
             server = srv

@@ -165,6 +165,9 @@ class MainActivity : Activity() {
         /** Settings -> display size: "interface%,text%". */
         /** Width of the WebView in dp: in split screen / multi-window it is narrower than the display (window.screen.width reports the whole display). */
         @JavascriptInterface fun winW(): Int = Math.round(web.width / resources.displayMetrics.density)
+        /** Page preferences that must survive a change of the page's origin (port) or cleared web storage: per-folder sort / view (ls_g, ls_pf). */
+        @JavascriptInterface fun prefGet(k: String): String = try { getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).getString(k, "") ?: "" } catch (_: Throwable) { "" }
+        @JavascriptInterface fun prefSet(k: String, v: String) { try { if (k.startsWith("ls_") && v.length < 1_500_000) getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).edit().putString(k, v).apply() } catch (_: Throwable) { } }
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
         /** Settings -> Font: current id and the list as "id|name" lines. */
