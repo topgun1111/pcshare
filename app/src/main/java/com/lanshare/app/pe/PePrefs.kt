@@ -23,6 +23,13 @@ object PePrefs {
     fun readOnly(c: Context): Boolean = sp(c).getBoolean("readonly", false)
     fun setReadOnly(c: Context, v: Boolean) { sp(c).edit().putBoolean("readonly", v).apply() }
 
+    /** FTPS (explicit TLS, AUTH TLS) offered next to plain FTP; applies after Stop + Start. */
+    fun tls(c: Context): Boolean = sp(c).getBoolean("tls", false)
+    fun setTls(c: Context, v: Boolean) { sp(c).edit().putBoolean("tls", v).apply() }
+    /** Plain FTP logins / data connections are refused (Windows Explorer cannot connect then). Only counts while FTPS is on. */
+    fun tlsRequired(c: Context): Boolean = sp(c).getBoolean("tls_req", false)
+    fun setTlsRequired(c: Context, v: Boolean) { sp(c).edit().putBoolean("tls_req", v).apply() }
+
     fun autoStart(c: Context): Boolean = sp(c).getBoolean("autostart", false)
     fun setAutoStart(c: Context, v: Boolean) { sp(c).edit().putBoolean("autostart", v).apply() }
 

@@ -70,6 +70,7 @@ dependencies {
     implementation("com.hierynomus:smbj:0.13.0")                      // SMB2/3 client (pure Java)
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")          // MD4/RC4 for NTLM (Android's BC lacks them)
     implementation("commons-net:commons-net:3.9.0")                   // FTP / FTPS client (core/FtpFs.kt)
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")          // Phone Explorer FTPS: self-signed certificate (pe/PeTls.kt)
     implementation("org.slf4j:slf4j-android:1.7.36")
     implementation("com.github.junrar:junrar:7.5.5")                  // RAR (v4) reader, pure Java; ZIP uses java.util.zip
     implementation("org.apache.commons:commons-compress:1.21")        // 7z / TAR / GZ / BZ2 / XZ readers (1.21: works on API 24, newer ones need API 26)

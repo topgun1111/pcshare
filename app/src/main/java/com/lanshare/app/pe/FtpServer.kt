@@ -12,6 +12,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +31,9 @@ import java.util.concurrent.atomic.AtomicLong
  *            LIST NLST MLSD MLST RETR STOR APPE DELE MKD RMD RNFR RNTO SIZE MDTM REST ABOR
  * Optional read-only mode and folder whitelist (virtual paths such as "/DCIM").
  * Only LAN-type client addresses are accepted (private, link-local, loopback, CGNAT/Tailscale).
+ *
+ * FTPS (explicit TLS, RFC 4217): when [tls] returns a context the server offers AUTH TLS / PBSZ / PROT (FileZilla, Android clients ...);
+ * plain FTP keeps working for Windows Explorer unless [tlsRequired] is true (then login needs AUTH TLS first and data must be PROT P).
  */
 class FtpServer(
     private val root: File,
@@ -37,7 +42,9 @@ class FtpServer(
     private val passwordProvider: () -> String,
     private val readOnly: () -> Boolean = { false },
     private val allowedDirs: () -> List<String> = { emptyList() },
-    private val log: (String) -> Unit = {}
+    private val log: (String) -> Unit = {},
+    private val tls: () -> SSLContext? = { null },
+    private val tlsRequired: () -> Boolean = { false }
 ) {
     @Volatile private var running = false
     private var server: ServerSocket? = null
@@ -104,8 +111,11 @@ class FtpServer(
     }
 
     private inner class Session(private val ctrl: Socket) {
-        private val input = BufferedReader(InputStreamReader(ctrl.getInputStream(), Charsets.UTF_8))
-        private val out: OutputStream = ctrl.getOutputStream()
+        private var input = BufferedReader(InputStreamReader(ctrl.getInputStream(), Charsets.UTF_8))
+        private var out: OutputStream = ctrl.getOutputStream()
+        private var tlsOn = false     // control connection is encrypted (after AUTH TLS)
+        private var pbsz = false
+        private var protP = false     // data connections are encrypted (PROT P)
         private var userOk = false
         private var loggedIn = false
         private var cwd = "/"
@@ -196,11 +206,31 @@ class FtpServer(
             s.soTimeout = 60000
         }
 
+        /** PROT P: the data connection is wrapped in TLS (the server is the TLS server on both passive and active connections). */
+        private fun wrapData(s: Socket): Socket {
+            if (!protP) return s
+            val ctx = tls() ?: return s
+            try {
+                val ss = ctx.socketFactory.createSocket(s, s.inetAddress.hostAddress, s.port, true) as SSLSocket
+                ss.useClientMode = false
+                ss.soTimeout = 60000
+                ss.startHandshake()
+                return ss
+            } catch (e: Exception) {
+                try { s.close() } catch (_: Exception) {}
+                throw e
+            }
+        }
+
         private fun openData(): Socket? {
             val p = pasv
             val a = activeAddr
             if (p == null && a == null) {
                 reply("425 Use PASV or PORT first")
+                return null
+            }
+            if (tlsRequired() && !protP) {
+                reply("522 Data connection must be encrypted (PROT P)")
                 return null
             }
             reply("150 Opening data connection")
@@ -215,14 +245,14 @@ class FtpServer(
                         null
                     } else {
                         configure(s)
-                        s
+                        wrapData(s)
                     }
                 } else {
                     activeAddr = null
                     val s = Socket()
                     s.connect(a, 20000)
                     configure(s)
-                    s
+                    wrapData(s)
                 }
             } catch (e: Exception) {
                 closePasv()
@@ -320,7 +350,41 @@ class FtpServer(
 
         private fun handle(cmd: String, arg: String): Boolean {
             when (cmd) {
+                "AUTH" -> {
+                    val ctx = tls()
+                    val m = arg.trim().uppercase(Locale.ROOT)
+                    if (ctx == null) { reply("502 TLS is not enabled"); return true }
+                    if (m != "TLS" && m != "TLS-C" && m != "SSL" && m != "TLS-P") { reply("504 Unknown AUTH type"); return true }
+                    if (tlsOn) { reply("503 Already using TLS"); return true }
+                    reply("234 Proceed with negotiation")
+                    try {
+                        val ss = ctx.socketFactory.createSocket(ctrl, ctrl.inetAddress.hostAddress, ctrl.port, false) as SSLSocket
+                        ss.useClientMode = false
+                        ss.soTimeout = 15 * 60 * 1000
+                        ss.startHandshake()
+                        input = BufferedReader(InputStreamReader(ss.inputStream, Charsets.UTF_8))
+                        out = ss.outputStream
+                        tlsOn = true
+                        userOk = false; loggedIn = false; pbsz = false; protP = false   // RFC 4217: start over after the handshake
+                    } catch (e: Exception) { return false }
+                    return true
+                }
+                "PBSZ" -> {
+                    if (!tlsOn) reply("503 AUTH TLS first") else { pbsz = true; reply("200 PBSZ=0") }
+                    return true
+                }
+                "PROT" -> {
+                    val l = arg.trim().uppercase(Locale.ROOT)
+                    when {
+                        !tlsOn || !pbsz -> reply("503 AUTH TLS and PBSZ first")
+                        l == "P" -> { protP = true; reply("200 Data connections are now encrypted") }
+                        l == "C" -> if (tlsRequired()) reply("534 Policy requires encrypted data connections") else { protP = false; reply("200 Data connections are now plain") }
+                        else -> reply("504 Only PROT P and PROT C are supported")
+                    }
+                    return true
+                }
                 "USER" -> {
+                    if (tlsRequired() && !tlsOn) { reply("534 Policy requires TLS (send AUTH TLS first)"); return true }
                     userOk = arg == user
                     reply("331 Password required")
                     return true
@@ -342,7 +406,7 @@ class FtpServer(
                 "OPTS" -> { reply("200 OK"); return true }
                 "SYST" -> { reply("215 UNIX Type: L8"); return true }
                 "FEAT" -> {
-                    reply("211-Features:\r\n UTF8\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n EPSV\r\n MLST type*;size*;modify*;perm*;\r\n211 End")
+                    reply("211-Features:\r\n UTF8\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n EPSV\r\n MLST type*;size*;modify*;perm*;" + (if (tls() != null) "\r\n AUTH TLS\r\n PBSZ\r\n PROT" else "") + "\r\n211 End")
                     return true
                 }
             }

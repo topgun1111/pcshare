@@ -3570,6 +3570,9 @@ function openPhoneExplorer(){
     t.append(E('b','',title),E('small','',sub));cb.onchange=()=>{B.peSet(JSON.stringify({[key]:cb.checked}))};s.append(cb,E('i'));r.append(t,s);card.append(r)};
   sw('Read-only','The PC can look and copy, not change anything','ro');
   sw('Start automatically','After the phone restarts or the app updates','auto');
+  sw('FTPS (TLS encryption)','For FileZilla and other apps (AUTH TLS). Windows Explorer cannot use it, plain FTP stays available. Stop and start sharing to apply','tls');
+  sw('Require FTPS','Refuse plain FTP: logins and transfers must be encrypted','tlsreq');
+  if(st.fp){const fp=E('div','dnote','FTPS certificate (self-signed), SHA-256: '+st.fp);fp.style.cssText='margin:6px 8px;font-size:11px;overflow-wrap:anywhere';card.append(fp)}
   const fld=(label,ph,val,type,key,fix)=>{const w=E('div'),l=E('small','',label),i=E('input','tf');w.style.cssText='margin:8px 4px 0';l.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
     i.type=type;i.placeholder=ph;i.value=val;i.style.cssText='height:48px;margin:0';i.autocomplete='off';
     i.onchange=()=>{let v=fix(i.value);i.value=v;B.peSet(JSON.stringify({[key]:v}));if(key==='port'&&st.run)toast('Stop and start sharing to use the new port',3500)};w.append(l,i);card.append(w)};

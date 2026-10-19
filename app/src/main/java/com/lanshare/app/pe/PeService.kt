@@ -31,6 +31,7 @@ class PeService : Service() {
     private var lastTick = 0L
     private var lastText = ""
     @Volatile private var binding = false
+    @Volatile private var tlsCtx: javax.net.ssl.SSLContext? = null   // set at start when FTPS is switched on
 
     /** Notification refresh once a second: live speed + current file while files move. */
     private val tick = object : Runnable {
@@ -54,7 +55,7 @@ class PeService : Service() {
         else -> "$b B/s"
     }
 
-    private fun idleText() = "ftp://${PePrefs.localIp() ?: "?"}:${PePrefs.port(this)}" + (if (PePrefs.readOnly(this)) "  (read-only)" else "")
+    private fun idleText() = "ftp://${PePrefs.localIp() ?: "?"}:${PePrefs.port(this)}" + (if (tlsCtx != null) "  (FTPS)" else "") + (if (PePrefs.readOnly(this)) "  (read-only)" else "")
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,10 +78,12 @@ class PeService : Service() {
             root = Environment.getExternalStorageDirectory(), port = port, user = PePrefs.USER,
             passwordProvider = { PePrefs.pin(this) },
             readOnly = { PePrefs.readOnly(this) },
-            allowedDirs = { PePrefs.whitelist(this) })
+            allowedDirs = { PePrefs.whitelist(this) },
+            tls = { tlsCtx }, tlsRequired = { tlsCtx != null && PePrefs.tlsRequired(this) })
         // bind off the main thread; the UI sees the state through isRunning (polled)
         Thread {
             try {
+                tlsCtx = if (PePrefs.tls(this)) try { PeTls.context(filesDir) } catch (_: Throwable) { null } else null   // certificate problem: plain FTP only
                 srv.start()
                 handler.post {
                     binding = false

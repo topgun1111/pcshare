@@ -132,6 +132,9 @@ class MainActivity : Activity() {
             o.put("ip", com.lanshare.app.pe.PePrefs.localIp() ?: "")
             o.put("ro", com.lanshare.app.pe.PePrefs.readOnly(c))
             o.put("auto", com.lanshare.app.pe.PePrefs.autoStart(c))
+            o.put("tls", com.lanshare.app.pe.PePrefs.tls(c))
+            o.put("tlsreq", com.lanshare.app.pe.PePrefs.tlsRequired(c))
+            o.put("fp", com.lanshare.app.pe.PeTls.fingerprint(filesDir))
             o.put("wl", com.lanshare.app.pe.PePrefs.whitelistText(c))
             o.put("user", com.lanshare.app.pe.PePrefs.USER)
             o.put("name", Build.MODEL ?: "Android")
@@ -156,6 +159,8 @@ class MainActivity : Activity() {
             val j = JSONObject(json); val c = applicationContext
             if (j.has("ro")) com.lanshare.app.pe.PePrefs.setReadOnly(c, j.getBoolean("ro"))
             if (j.has("auto")) com.lanshare.app.pe.PePrefs.setAutoStart(c, j.getBoolean("auto"))
+            if (j.has("tls")) com.lanshare.app.pe.PePrefs.setTls(c, j.getBoolean("tls"))
+            if (j.has("tlsreq")) com.lanshare.app.pe.PePrefs.setTlsRequired(c, j.getBoolean("tlsreq"))
             if (j.has("wl")) com.lanshare.app.pe.PePrefs.setWhitelistText(c, j.getString("wl"))
             if (j.has("port")) com.lanshare.app.pe.PePrefs.setPort(c, j.getInt("port"))
         }
