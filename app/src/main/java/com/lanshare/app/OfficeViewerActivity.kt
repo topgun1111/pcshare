@@ -104,7 +104,8 @@ class OfficeViewerActivity : Activity() {
     private fun showMore(anchor: android.view.View) {
         val pm = android.widget.PopupMenu(this, anchor)
         val m = pm.menu
-        m.add(0, 3, 0, "Print / save as PDF")
+        m.add(0, 8, 0, "Print on PC")
+        m.add(0, 3, 0, "Print / save as PDF (Android)")
         if (od?.isSheet == true) m.add(0, 4, 1, "Export sheet as CSV")
         if (od?.editable == true && dev != null && rpath != null) {
             if (od?.isSheet == true) { m.add(0, 5, 2, "Edit cell..."); m.add(0, 6, 3, "Insert row...") }
@@ -154,11 +155,33 @@ class OfficeViewerActivity : Activity() {
 
     override fun onOptionsItemSelected(i: MenuItem): Boolean = when (i.itemId) {
         3 -> { printPage(); true }
+        8 -> { printOnPc(); true }
         4 -> { exportCsv(); true }
         5 -> { if (od?.isSheet == true) askCell() else askReplace(); true }
         6 -> { if (od?.isSheet == true) askRow() else askParagraph(); true }
         7 -> { undoEdit(); true }
         else -> super.onOptionsItemSelected(i)
+    }
+
+    /** Sends the document itself (pcprint.py prints docx/xlsx/doc/xls/odt/ods natively) to LANShare's PC print dialog: copy into "LANShare Shared", then the same hand-off PcPrintService uses. */
+    private fun printOnPc() {
+        val f = file ?: return
+        Thread {
+            try {
+                val dir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "LANShare Shared")
+                if (!dir.isDirectory && !dir.mkdirs()) throw java.io.IOException("No storage access - allow \"All files access\" for LANShare")
+                val ext = f.name.substringAfterLast('.', "")
+                val base = f.name.removeSuffix(if (ext.isEmpty()) "" else ".$ext")
+                var t = java.io.File(dir, f.name); var k = 1
+                while (t.exists()) { t = java.io.File(dir, "$base ($k)" + (if (ext.isEmpty()) "" else ".$ext")); k++ }
+                f.copyTo(t)
+                runOnUiThread {
+                    startActivity(android.content.Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_PRINT_SHARED)
+                        .putExtra("names", arrayOf(t.name)).putExtra("nid", 0)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                }
+            } catch (e: Throwable) { runOnUiThread { Toast.makeText(this, "Print on PC failed: " + e.message, Toast.LENGTH_LONG).show() } }
+        }.start()
     }
 
     /** System print dialog (also offers "Save as PDF" and the app's own print service). */
