@@ -50,7 +50,8 @@ object DocxText {
         fun close(): String { if (i) mark("*", false); if (b) mark("**", false); i = false; b = false; return sb.toString() }
     }
 
-    private fun on(p: XmlPullParser): Boolean { val v = p.getAttributeValue(null, "w:val") ?: p.getAttributeValue(null, "val"); return v == null || !(v == "0" || v == "false" || v == "none") }
+    private fun attr(p: XmlPullParser): String? { for (k in 0 until p.attributeCount) if (p.getAttributeName(k).substringAfterLast(':') == "val") return p.getAttributeValue(k); return null }
+    private fun on(p: XmlPullParser): Boolean { val v = attr(p); return v == null || !(v == "0" || v == "false" || v == "none") }
 
     private fun convert(xml: ByteArray): String {
         val p = Xml.newPullParser(); p.setInput(ByteArrayInputStream(xml), "UTF-8")
@@ -68,35 +69,35 @@ object DocxText {
         }
         while (ev != XmlPullParser.END_DOCUMENT) {
             when (ev) {
-                XmlPullParser.START_TAG -> when (p.name) {
-                    "w:p" -> { inP = true; style = ""; list = -1; line = Line() }
-                    "w:pStyle" -> style = p.getAttributeValue(null, "w:val") ?: ""
-                    "w:ilvl" -> list = (p.getAttributeValue(null, "w:val") ?: "0").toIntOrNull() ?: 0
-                    "w:numPr" -> if (list < 0) list = 0
-                    "w:r" -> { rb = false; ri = false }
-                    "w:rPr" -> inRPr = true
-                    "w:b" -> if (inRPr) rb = on(p)
-                    "w:i" -> if (inRPr) ri = on(p)
-                    "w:t" -> inT = true
-                    "w:tab" -> if (!inRPr && inP) line.sb.append("\t")
-                    "w:br", "w:cr" -> if (inP) line.sb.append(' ')
-                    "w:tbl" -> { tbl++; if (tbl == 1) rows = ArrayList() }
-                    "w:tr" -> if (tbl == 1) cells = ArrayList()
-                    "w:tc" -> if (tbl == 1) cell = StringBuilder()
+                XmlPullParser.START_TAG -> when (p.name.substringAfterLast(':')) {
+                    "p" -> { if (inP && tbl == 0) { val t0 = para(); if (t0.isNotBlank()) out.append(t0).append("\n\n") }; inP = true; style = ""; list = -1; line = Line() }
+                    "pStyle" -> style = attr(p) ?: ""
+                    "ilvl" -> list = (attr(p) ?: "0").toIntOrNull() ?: 0
+                    "numPr" -> if (list < 0) list = 0
+                    "r" -> { rb = false; ri = false }
+                    "rPr" -> inRPr = true
+                    "b" -> if (inRPr) rb = on(p)
+                    "i" -> if (inRPr) ri = on(p)
+                    "t" -> inT = true
+                    "tab" -> if (!inRPr && inP) line.sb.append("\t")
+                    "br", "cr" -> if (inP) line.sb.append(' ')
+                    "tbl" -> { tbl++; if (tbl == 1) rows = ArrayList() }
+                    "tr" -> if (tbl == 1) cells = ArrayList()
+                    "tc" -> if (tbl == 1) cell = StringBuilder()
                 }
                 XmlPullParser.TEXT -> if (inT && inP) line.add(p.text, rb, ri)
-                XmlPullParser.END_TAG -> when (p.name) {
-                    "w:t" -> inT = false
-                    "w:rPr" -> inRPr = false
-                    "w:p" -> {
+                XmlPullParser.END_TAG -> when (p.name.substringAfterLast(':')) {
+                    "t" -> inT = false
+                    "rPr" -> inRPr = false
+                    "p" -> {
                         inP = false
                         val t = para()
                         if (tbl > 0) { if (t.isNotBlank()) { if (cell.isNotEmpty()) cell.append(' '); cell.append(t.trimStart('#', ' ', '-')) } }
                         else out.append(t).append("\n\n")
                     }
-                    "w:tc" -> if (tbl == 1) cells.add(cell.toString().replace('|', '/').trim())
-                    "w:tr" -> if (tbl == 1) rows.add(cells)
-                    "w:tbl" -> {
+                    "tc" -> if (tbl == 1) cells.add(cell.toString().replace('|', '/').trim())
+                    "tr" -> if (tbl == 1) rows.add(cells)
+                    "tbl" -> {
                         tbl--
                         if (tbl == 0 && rows.isNotEmpty()) {
                             val n = rows.maxOf { it.size }.coerceAtLeast(1)
