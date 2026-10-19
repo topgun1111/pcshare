@@ -4,6 +4,11 @@ import android.app.Activity
 import android.content.Intent
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.graphics.RectF
+import android.media.MediaMetadataRetriever
+import android.util.LruCache
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -48,6 +53,7 @@ interface WizHost {
     fun classic()                       // back to the pie / list screens
     fun rescan()
     fun volume(): LongArray?            // [used, free, total] of the analyzed volume, null when unknown
+    fun realFile(n: SNode): java.io.File?   // the real file of a node (for image / video thumbnails in the treemap), null when unknown
     fun nearest(n: SNode): SNode        // [n] when still in the tree, else its nearest ancestor that is (after a delete)
 }
 
@@ -251,6 +257,7 @@ internal class WizMap(ctx: Context) : View(ctx) {
         // the whole folder is laid out at [zoom] x the view size, shifted by the pan; parts outside the view are skipped
         lay(r, -offX, -offY, width * zoom, height * zoom, 0)
         rZoom = zoom; rOffX = offX; rOffY = offY
+        reqGen++                          // thumbnail requests of the previous layout are outdated
         render()
     }
 
@@ -324,6 +331,94 @@ internal class WizMap(ctx: Context) : View(ctx) {
         return colors[key] ?: WizUtil.GRAY
     }
 
+    // ---- image / video thumbnails: drawn inside big enough tiles, loaded in the background (cached, newest layout first)
+    var fileOf: ((SNode) -> java.io.File?)? = null
+    @Volatile private var reqGen = 0
+    private val thumbs = object : LruCache<String, Bitmap>(32 * 1024 * 1024) { override fun sizeOf(k: String, v: Bitmap) = v.byteCount }
+    private val want = HashMap<String, Int>()            // key -> layout generation it was requested for (main thread only)
+    private val missing = HashSet<String>()              // keys that could not be decoded: never asked again
+    private var renderQueued = false
+    private val ui = Handler(Looper.getMainLooper())
+    private val pool = java.util.concurrent.ThreadPoolExecutor(3, 3, 5L, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingDeque<Runnable>(), java.util.concurrent.ThreadFactory { r -> Thread(r, "wiz-thumb").also { it.isDaemon = true } })
+    private val bmpPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val srcR = Rect()
+    private val dstR = RectF()
+
+    private fun mediaKind(n: SNode): Int {            // 0 none, 1 image, 2 video
+        if (n.dir || n.agg) return 0
+        return when (WizUtil.extOf(n.name)) {
+            "jpg", "jpeg", "jfif", "png", "webp", "gif", "bmp", "heic", "heif" -> 1
+            "mp4", "m4v", "mkv", "mov", "avi", "webm", "3gp" -> 2
+            else -> 0
+        }
+    }
+
+    private fun bucketOf(px: Float): Int = if (px <= 150f * d) 160 else if (px <= 300f * d) 320 else 640
+
+    /** Best thumbnail we have for [n] (the wanted size, else a smaller one); asks for the wanted one when it is missing. */
+    private fun thumbFor(n: SNode, px: Float, kind: Int): Bitmap? {
+        val b = bucketOf(px)
+        val k0 = n.path() + "#" + b
+        thumbs.get(k0)?.let { return it }
+        if (k0 !in missing && want[k0] != reqGen) {
+            want[k0] = reqGen
+            val gen = reqGen
+            pool.execute { load(n, kind, b, k0, gen) }
+        }
+        var s = b / 2
+        while (s >= 160) { thumbs.get(n.path() + "#" + s)?.let { return it }; s /= 2 }
+        return null
+    }
+
+    private fun load(n: SNode, kind: Int, side: Int, key: String, gen: Int) {
+        if (gen != reqGen) return                      // the view moved on; it asks again if the tile is still wanted
+        var bm: Bitmap? = null
+        try {
+            val f = fileOf?.invoke(n)
+            if (f != null && f.isFile) bm = if (kind == 1) decodeImage(f, side) else decodeVideo(f, side)
+        } catch (_: Throwable) {}
+        val res = bm
+        ui.post {
+            want.remove(key)
+            if (res == null) { missing.add(key); return@post }
+            thumbs.put(key, res)
+            if (!renderQueued) { renderQueued = true; ui.postDelayed({ renderQueued = false; render() }, 90) }
+        }
+    }
+
+    private fun decodeImage(f: java.io.File, side: Int): Bitmap? {
+        val o = BitmapFactory.Options(); o.inJustDecodeBounds = true
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        var ss = 1
+        while (maxOf(o.outWidth, o.outHeight) / (ss * 2) >= side) ss *= 2
+        val o2 = BitmapFactory.Options(); o2.inSampleSize = ss; o2.inPreferredConfig = Bitmap.Config.RGB_565
+        return BitmapFactory.decodeFile(f.absolutePath, o2)
+    }
+
+    private fun decodeVideo(f: java.io.File, side: Int): Bitmap? {
+        val r = MediaMetadataRetriever()
+        try {
+            r.setDataSource(f.absolutePath)
+            val fr = r.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: r.getFrameAtTime(0L) ?: return null
+            val m = maxOf(fr.width, fr.height)
+            if (m <= side) return fr
+            val k = side.toFloat() / m
+            return Bitmap.createScaledBitmap(fr, (fr.width * k).toInt().coerceAtLeast(1), (fr.height * k).toInt().coerceAtLeast(1), true)
+        } finally { try { r.release() } catch (_: Throwable) {} }
+    }
+
+    /** Centre-crops [bm] into the tile; true when drawn. */
+    private fun drawThumb(c: Canvas, bm: Bitmap, x: Float, y: Float, w: Float, h: Float) {
+        val sc = maxOf(w / bm.width, h / bm.height)
+        val sw = (w / sc).toInt().coerceIn(1, bm.width); val sh = (h / sc).toInt().coerceIn(1, bm.height)
+        val sx = (bm.width - sw) / 2; val sy = (bm.height - sh) / 2
+        srcR.set(sx, sy, sx + sw, sy + sh)
+        dstR.set(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f)
+        c.drawBitmap(bm, srcR, dstR, bmpPaint)
+    }
+
     private fun render() {
         val w = width; val hh = height
         if (w < 8 || hh < 8) return
@@ -351,6 +446,16 @@ internal class WizMap(ctx: Context) : View(ctx) {
             if (w >= 8f && h >= 8f) { fill.color = WizUtil.shade(base, 1.25f); c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + 2f, fill) }
             labelOf(c, n, x, y, w, h)
             return
+        }
+        if (hl == null) {                       // picture / video tile that is big enough: show the real thumbnail
+            val kind = mediaKind(n)
+            if (kind != 0) {
+                val vw0 = minOf(x + w, width.toFloat()) - maxOf(x, 0f); val vh0 = minOf(y + h, height.toFloat()) - maxOf(y, 0f)
+                if (vw0 >= 36f * d && vh0 >= 36f * d) {
+                    val bm = thumbFor(n, maxOf(w, h), kind)
+                    if (bm != null) { drawThumb(c, bm, x, y, w, h); labelOf(c, n, x, y, w, h); return }
+                }
+            }
         }
         fill.shader = RadialGradient(x + w * 0.35f, y + h * 0.3f, maxOf(w, h) * 0.85f,
             intArrayOf(WizUtil.shade(base, 1.4f), base, WizUtil.shade(base, 0.4f)), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
@@ -1030,6 +1135,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         buildLists(body)
         view.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         view.addView(status.also { styleStatus(it) }, LinearLayout.LayoutParams(-1, -2))
+        map.fileOf = { n -> host.realFile(n) }
         map.onPick = { n -> pickFromMap(n) }
         map.onOpen = { n -> if (n.kids.isNotEmpty()) pick(n) }
         map.onLong = { n -> host.details(n) }

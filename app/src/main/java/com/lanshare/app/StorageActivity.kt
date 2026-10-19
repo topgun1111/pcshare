@@ -82,6 +82,7 @@ class StorageActivity : Activity() {
         override fun classic() = setWizOn(false)
         override fun rescan() = attach(rescan = true)
         override fun volume(): LongArray? = try { val r = volRoot(); val t = r.totalSpace; val f = r.usableSpace; if (t > 0 && vpath == "/") longArrayOf((t - f).coerceAtLeast(0L), f, t) else null } catch (_: Throwable) { null }
+        override fun realFile(n: SNode): File? = try { realOf(n) } catch (_: Throwable) { null }
         override fun nearest(n: SNode): SNode { val r = curScan?.root ?: return n; return nearestAttached(n, r) }
     }
     private var deleting = false        // part 8b: a delete runs on its worker thread (a second one waits)
