@@ -1635,7 +1635,7 @@ $('#newb').onclick=()=>{S.newest=!S.newest;S.sel.clear();render()};
 function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
 /* Android app: text / code files open in the native Keep-style editor (this phone, other devices, SMB shares; inside archives read-only) */
-const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log'];
+const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log','docx'];
 const isEd=i=>{if(i.dir||!(window.LSAndroid&&LSAndroid.editText))return false;const e=(i.name.split('.').pop()||'').toLowerCase();return PV_TXT.includes(e)||ED_MORE.includes(e)};
 function editFile(i){try{LSAndroid.editText(JSON.stringify({dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){openFile(i);return false}}
 function doNewNote(){
