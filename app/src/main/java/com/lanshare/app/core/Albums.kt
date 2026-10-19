@@ -71,7 +71,7 @@ object Albums {
         return JSONObject().put("albums", arr).put("video", video)
     }
     /** Folder names (any level) that only ever hold generated / temporary pictures: thumbnails, caches, trash. */
-    private val JUNK_DIRS = setOf("thumbnails", "thumbnail", "thumbs", "thumb", "cache", "caches", "tmp", "temp", "trash", "recycle", "recycler", "lost.dir", ".trash", ".thumbnails")
+    private val JUNK_DIRS = setOf("thumbnails", "thumbnail", "thumbs", "thumb", "cache", "caches", "tmp", "temp", "trash", "recycle", "recycler", "lost.dir", ".trash", ".thumbnails", ".cache", "thumbcache", "image_cache", "imagecache", "glide", "picasso", "stickers", "sticker", ".statuses", "cropped", "emoji", "emojis")
     /** Top-level folders of the storage that belong to the system or to apps, not to the user's pictures. */
     private val SYS_TOP = setOf("android", "data", "obb", "miui", "lost.dir", "lanshare shared", "lanshare")
     /** Pictures smaller than this (longest side, px) are thumbnails / icons, not full-sized images. */
@@ -87,7 +87,7 @@ object Albums {
         if (parts[0].lowercase() in SYS_TOP) return false
         if (parts.any { it.startsWith(".") || it.lowercase() in JUNK_DIRS }) return false
         val name = rel.substringAfterLast('/').lowercase()
-        if (name.startsWith(".") || name.contains("thumb") || name.startsWith("cache_") || name.endsWith(".tmp")) return false
+        if (name.startsWith(".") || name.contains("thumb") || name.contains("_small") || name.startsWith("tmp_") || name.startsWith("cache_") || name.endsWith(".tmp")) return false
         return if (w > 0 && h > 0) maxOf(w, h) >= MIN_SIDE else size >= MIN_BYTES
     }
 
