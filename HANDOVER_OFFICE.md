@@ -1,8 +1,23 @@
-# HANDOVER - Word / Excel / PowerPoint support (2026-10-19)
+# HANDOVER - Word / Excel / PowerPoint support (2026-10-19, through Part 10b)
 
 
 ## STATUS SUMMARY (read this first)
-This zip is the FULL app (all parts below included). Compile state: only `core/office` + `tools/office_selftest` were ever compiled (kotlinc 2.0.21, JVM) and self-tested, and only up to Part 6c. **Everything else is UNCOMPILED and NOT device-tested**: the Android side (`OfficeViewerActivity`, `MainActivity`, `Routes.kt`, `LocalFs.kt`, `ui.html`, manifest) and the Part 8 code (`OfficeExport.kt`, `OfficeThumb.kt`). First step next session: push -> let Actions build -> paste compile errors.
+This zip is the FULL app (all parts below included). Compile state: only `core/office` + `tools/office_selftest` were ever compiled (kotlinc 2.0.21, JVM) and self-tested, and only up to Part 6c. **Everything else is UNCOMPILED and NOT device-tested**: the Android side (`OfficeViewerActivity`, `MainActivity`, `Routes.kt`, `LocalFs.kt`, `NlModel.kt`, `NativeList.kt`, `ui.html`, manifest) and the Part 8-10b code (`OfficeExport.kt`, `OfficeThumb.kt`). First step next session: push -> let Actions build -> paste compile errors.
+
+### WHAT'S LEFT (summary after Part 10b, 2026-10-19)
+**Top priority:** push -> Actions build -> paste compile errors. The Android-side code of Parts 7-10b has never been compiled or run on a device. Likely trouble spots: the new `Routes.kt` branches (`search`, `office`), `OfficeWeb` (`android.util.Base64`), `XlsxHtml` local funs `sticky` / `look`, the undo code in `OfficeViewerActivity` (`removeLastOrNull`, snapshot thread), `NlModel` / `NativeList` office thumbnail branches.
+
+**Features still open:**
+- Launcher `Shortcuts` for office files: unclear what is wanted (`Shortcuts.kt` only publishes send-text targets) - ASK the user before building.
+- Remote devices / SMB: office thumbnails (page only sends paths for `S.dev === 'local'`) and content search cover this phone only.
+- Old binary `.ppt`: unsupported (viewer says "save as .pptx").
+- `.pptx` / `.odp`: text, pictures and notes only (no shapes, layout, tables as grids, animations).
+- Big files: content search skips > 30 MB, `/api/office` refuses > 60 MB; no streaming.
+- PC-side preview in `pcprint.py` / `tools/phone_explorer.py`: none (PC web UI uses `/api/office`; `.odp` there untested, `OfficeWeb` goes through `OfficeOpen` so it should work).
+
+**Known limits:** editing only for docx / xlsx opened from the file list, undo only within the current viewer session; doc / xls / odt / ods / pptx / odp read-only; xlsx theme colours, shared formulas, formulas not adjusted after row insert / delete; docx theme colours unresolved; `.doc` has no character formatting.
+
+If the build comes back clean, only the Shortcuts decision remains.
 
 ### Completed
 | Part | What | State |
@@ -28,13 +43,31 @@ This zip is the FULL app (all parts below included). Compile state: only `core/o
 | **Dead code removed**: `core/DocxText.kt` and the docx branch / `DOCX_MAX` in `TextEditorActivity`. | |
 | Self-test: `tools/office_selftest/sample.pptx` + `java -jar /tmp/ost.jar tools/office_selftest/sample.pptx` (expect: slide "Opening" first [h2], then "First slide"; `OK content search`). | `Main.kt` |
 
-### Still missing / TODO
+### Part 10a (2026-10-19, UNCOMPILED + NOT device-tested; no kotlinc / network in the authoring sandbox, brackets balanced by script)
+| What | Where |
+|---|---|
+| **Native list office thumbnails**: zip-based office files (docx xlsx odt ods pptx, 1 B - 60 MB, this phone only) get a thumbnail path in the row, `loadTh` branch `k == "office"` reads `OfficeThumb.embedded` directly (no HTTP). No embedded image -> decode skipped -> key goes to `failed` -> icon stays. Works for list / compact / grid rows (same row views as images). | `NlModel.rows` (`OFFICE_TH`), `NativeList.loadTh`, `ui.html` `nlOffTh` + both `nlBuild` branches |
+| **Kind twin fixed**: `NlModel.EXT` mapped docx/xls/... to `doc`, ui.html maps them to `office` (`doc` = txt md rtf csv ppt only). Page-built rows therefore had `k="office"` (generic file icon, different `sig`) while Kotlin-built rows had `doc`. Now both `office`; `NlIcons.path("office")` falls back to the `doc` icon. | `NlModel.kt`, `NativeList.kt` (`NlIcons.path`) |
+| **Viewer "Undo last edit"** (overflow menu, any format the viewer edits: docx + xlsx): `mutate` copies the cache file to `cache/office-undo/<name>.<nanos>.u~` before each edit (max 10; dropped when the edit changed nothing or failed); undo restores the copy, uploads it to the source like any edit, reloads. Snapshots + `DocxEditor.clearUndo` run in `onDestroy`. | `OfficeViewerActivity.kt` |
+
+Check on device after the first build: office rows show thumbnails only for files that carry one (Word/Excel/LibreOffice saves do; files made by this app do not); "Undo last edit" appears after the first edit and disappears when the stack is empty.
+
+### Part 10b (2026-10-19, UNCOMPILED + NOT device-tested: still no kotlinc; XML structure checked by hand against files made with soffice / python-pptx, brackets balanced by script)
+| What | Where |
+|---|---|
+| **.pptx pictures + speaker notes**: `p:pic` -> inline image paragraph (`blip r:embed` via the slide's rels, size from `a:ext` EMU, alt = `descr`); notes = body placeholder text of the slide's `notesSlide` rel, one italic grey "Notes: a / b" paragraph after the slide. `OfficeOpen.image()` now serves pptx parts (viewer inlines them like docx images, < 3 MB each). | `PptxReader.kt`, `OfficeOpen.kt` |
+| **.odp read-only text view** (new format `odp`): `OdpReader` - "Slide N - <page name>" headings, `presentation:class="title"` frames = sub-headings, text:p / text:h plain, `draw:image` inline (frame size), notes (`presentation:notes`) as "Notes: ...". Encrypted -> password message. `OfficeOpen` detects by `mimetype` containing "presentation" (before `OdfReader`, which refuses odp). Added to `OfficeExport.EXTS` (content search), manifest VIEW + SEND mime, ui.html `EXT` (`office`), `NlModel` twin, `OFFICE_TH`, `nlOffTh`. | `OdpReader.kt`, `OfficeOpen.kt`, `OfficeExport.kt`, manifest, `ui.html`, `NlModel.kt` |
+| Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample.odp` (made from sample.pptx with soffice; expect `format=odp`, `[h1] Slide 1 - Opening`, `[h2] Opening`, `Intro & Welcome split`, `Slide 2 - First slide` with page break, `OK content search`) and `tools/office_selftest/sample_pics.pptx` (python-pptx; expect slide 1: `[h2] Pictures`, `[img ppt/media/image1.png 1828800x1371600 ok]`, `Notes: Say hello first. Then show the picture.`; slide 2 `No notes` and no Notes line). Same `dumpPptx` for both. | `tools/office_selftest/` |
+
+Not done in 10b (decided): launcher `Shortcuts` for office (nothing to add: Shortcuts.kt only publishes send-text targets and the plan line stays ambiguous - ask the user what it should be before building); `pcprint.py` PC preview (the PC web UI already previews through `/api/office`; add odp there only if wanted - `OfficeWeb` goes through `OfficeOpen`, so it should already work, untested). Old binary `.ppt` stays unsupported ("save as .pptx").
+
+### Still missing / TODO (next: compile errors first - push, Actions build, paste errors)
 - **First step next session: push -> Actions build -> paste compile errors** (everything above and Parts 7-8 never saw a compiler on the Android side). Risk spots: `Routes.kt` new `search` / `office` branches, `OfficeWeb` (`android.util.Base64`), `XlsxHtml` local funs `sticky` / `look`.
-- Native file list (`NativeList.kt` / `nlRender`) does NOT draw office thumbnails yet (only the web-UI list rows do); grid tiles of the native list need the same `/api/thumb` call.
-- Launcher `Shortcuts` for office (plan line ambiguous, not done). `.ppt` (binary) and `.odp` unsupported; `.pptx` shows text only (no images / shapes / notes).
+- ~~Native list office thumbnails~~ done in 10a. Still open: remote devices / SMB rows get no office thumbnails (the page only sends paths for `S.dev === 'local'`).
+- Launcher `Shortcuts` for office (plan line ambiguous, not done). `.ppt` (binary) unsupported; `.pptx` / `.odp` show text, pictures and notes only (no shapes, layout, tables as grids, animations).
 - Content search: SMB / remote folders not covered; no big-file streaming (files > 30 MB are skipped by search, > 60 MB refused by `/api/office`).
 - PC-side preview in `pcprint.py` / `tools/phone_explorer.py` not done (the PC web UI uses `/api/office` instead).
-- Known limits unchanged: no undo for viewer edits; edit only when opened from the file list; doc/xls/odt/ods/pptx read-only; theme colours, shared formulas, locale.
+- Known limits unchanged: viewer undo only covers edits made in the current viewer session (10a); edit only when opened from the file list; doc/xls/odt/ods/pptx read-only; theme colours, shared formulas, locale.
 
 ## Goal
 Replace the read-only "docx -> Markdown text" viewer (`core/DocxText.kt`, used by `TextEditorActivity`) with proper Office support:

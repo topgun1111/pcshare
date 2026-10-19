@@ -137,6 +137,7 @@
                 <data android:mimeType="application/vnd.oasis.opendocument.text"/>
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
@@ -148,6 +149,7 @@
                 <data android:mimeType="application/vnd.oasis.opendocument.text"/>
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
             </intent-filter>
         </activity>
         <activity android:name=".TextEditorActivity" android:exported="false" android:theme="@style/Theme.LANShare"

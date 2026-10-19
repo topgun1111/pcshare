@@ -70,7 +70,7 @@ object NlIcons {
     private val cache = HashMap<String, Path>()
     fun path(k: String): Path? {
         cache[k]?.let { return it }
-        val s = raw[k] ?: return null
+        val s = raw[k] ?: (if (k == "office") raw["doc"] else null) ?: return null   // office files use the document icon
         val p = PathParser.createPathFromPathData(s) ?: return null
         cache[k] = p
         return p
@@ -1312,6 +1312,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             }
             else if (r.k == "vid") { val (data, ms) = VideoThumbs.make(Core.local.open(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) } }
             else if (r.k == "pdf") { val data = Thumbs.make(Core.local.real(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, "PDF") } }   // first page, small "PDF" pill like the video duration
+            else if (r.k == "office") { val data = com.lanshare.app.core.office.OfficeThumb.embedded(Core.local.real(r.path!!)); if (data == null) null else BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, null) } }   // embedded preview, none -> icon stays (key goes to `failed`)
             else { val data = Thumbs.make(Core.local.real(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, null) } }
         } catch (_: Throwable) { null }
         if (th != null) {

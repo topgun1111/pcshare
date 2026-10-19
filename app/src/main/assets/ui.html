@@ -731,7 +731,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods pptx odp']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const arcP=p=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
 const isHid=i=>i.name[0]==='.'||!!i.hid||(S.dev==='local'&&hidP(jn(S.path,i.name)));   // hidden item (only on screen while "Show hidden files" is on): drawn faded
@@ -995,12 +995,14 @@ const NEWSEC=60,isNew=i=>!!i.mtime&&(Date.now()/1000-i.mtime)<NEWSEC;   // modif
 let NEWN=-1;setInterval(()=>{try{if(!S.items)return;const n=S.items.filter(isNew).length;if(NEWN>0&&n<NEWN)render();NEWN=n}catch(e){}},10000);
 const nlA=(i,CP)=>{const dt=CP&&i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'';
   const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);return CP?(S.sort==='date'&&dt?dt:sz):sz};
+/* Part 10a: native list office thumbnails = embedded preview image of zip based files on this phone (Kotlin twin: NlModel OFFICE_TH) */
+const nlOffTh=(k,i)=>k==='office'&&S.dev==='local'&&/\.(docx|xlsx|odt|ods|pptx|odp)$/i.test(i.name)&&i.size>0&&i.size<60e6;
 function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effects). Kotlin twin: NlModel.rows()
   const CP=S.view==='compact';
   const dt=i=>i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(CP?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
   const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h){const o={n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1},k=o.k;
       /* subfolder-search hits get previews too (full path + size + date = thumbnail key), same rules as ordinary rows */
-      if(!i.dir&&!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6))){o.p=i.path;o.s=i.size||0;o.t=i.mtime||0}
+      if(!i.dir&&!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=i.path;o.s=i.size||0;o.t=i.mtime||0}
       return o};
     const k=kind(i),o={n:i.name,k:k,a:nlA(i,CP),b:CP?'':dt(i)};
     if(x>=GN)o.v=1;
@@ -1008,7 +1010,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
     if(isHid(i))o.x=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}const fs=FSTY[S.dev+'|'+jn(P0,i.name)];if(fs){if(fs.c)o.fc=nlCol(fs.c);if(fs.i){o.g=fs.i;o.gc=nlCol(fsIc(fs))}}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
-      if(!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
+      if(!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
 const nlCfg=()=>[S.sort,S.asc?1:0,showHid()?1:0,S.gal?1:0,S.view,S.thumb].join(',');

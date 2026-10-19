@@ -47,7 +47,8 @@ object NlModel {
             "pdf" to "pdf",
             "zip" to "zip rar 7z tar gz cbz cbr",
             "apk" to "apk",
-            "doc" to "txt md rtf doc docx odt xls xlsx csv ppt pptx"
+            "doc" to "txt md rtf csv ppt",
+            "office" to "doc docx odt xls xlsx ods pptx odp"   // twin of ui.html EXT (Part 10a: was "doc" here, so page rows and these rows disagreed)
         ).forEach { (k, s) -> s.split(' ').forEach { m[it] = k } }
     }
 
@@ -87,6 +88,9 @@ object NlModel {
         for (v in g.values) if (v.size > 1) out.addAll(v)
         return out
     }
+
+    /** Office formats that can carry an embedded preview image (zip based; .doc/.xls never do). */
+    private val OFFICE_TH = setOf("docx", "xlsx", "odt", "ods", "pptx", "odp")
 
     private val NOTHUMB = if (android.os.Build.VERSION.SDK_INT >= 28) Regex("\\.svg$", RegexOption.IGNORE_CASE) else Regex("\\.(svg|heic|heif)$", RegexOption.IGNORE_CASE)   // HEIC/HEIF decode natively from API 28
 
@@ -164,7 +168,7 @@ object NlModel {
             } else {
                 if (i.name in dups) dup = true
                 size = i.size                                   // every file row carries its size (viewers need it); ui.html nlBuild sends `s` for all files too
-                if (((k == "img" || k == "vid") && !NOTHUMB.containsMatchIn(i.name) && (k == "vid" || i.size < 30_000_000L)) || (k == "pdf" && i.size in 1L..60_000_000L)) {   // PDFs: first page (this phone only)
+                if (((k == "img" || k == "vid") && !NOTHUMB.containsMatchIn(i.name) && (k == "vid" || i.size < 30_000_000L)) || (k == "pdf" && i.size in 1L..60_000_000L) || (k == "office" && OFFICE_TH.contains(extOf(i.name)) && i.size in 1L..60_000_000L)) {   // PDFs: first page; zip-based office files: the preview image embedded by the producing app (this phone only; none embedded -> icon stays)
                     path = (if (p0 == "/") "" else p0) + "/" + i.name; size = i.size; mt = i.mtime
                 }
             }

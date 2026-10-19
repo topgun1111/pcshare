@@ -8,7 +8,7 @@ import java.io.File
  * Password-protected files throw IllegalStateException("File is password protected").
  */
 class OfficeOpen(private val file: File) : AutoCloseable {
-    /** docx, xlsx, doc, xls, odt, ods, pptx (text only) */
+    /** docx, xlsx, doc, xls, odt, ods, pptx / odp (text, pictures, notes) */
     val format: String
     val isSheet: Boolean get() = format == "xlsx" || format == "xls" || format == "ods"
     /** true when Part 4/5 editors can patch the file (docx / xlsx) */
@@ -27,6 +27,7 @@ class OfficeOpen(private val file: File) : AutoCloseable {
             val p = OoxmlPackage(file); pkg = p
             try {
                 format = when {
+                    (p.has("mimetype") || p.has("META-INF/manifest.xml")) && (p.read("mimetype")?.toString(Charsets.US_ASCII).orEmpty().contains("presentation")) -> "odp"   // Part 10b
                     p.has("mimetype") || p.has("META-INF/manifest.xml") -> { val o = OdfReader(file); odf = o; if (o.isSheet) "ods" else "odt" }
                     p.has("xl/workbook.xml") -> "xlsx"
                     p.has("word/document.xml") -> "docx"
@@ -66,11 +67,12 @@ class OfficeOpen(private val file: File) : AutoCloseable {
         "doc" -> DocReader(file).use { it.read(maxParagraphs) }
         "odt" -> odf!!.read(maxParagraphs)
         "pptx" -> PptxReader(file).use { it.read(maxParagraphs) }
+        "odp" -> OdpReader(file).use { it.read(maxParagraphs) }
         else -> throw IllegalStateException("Not a text document")
     }
 
-    /** Bytes of an image part referenced by [DImage.part] (docx / odt); null for others or when missing. */
-    fun image(part: String): ByteArray? = if (format == "docx" || format == "odt") try { pkg?.read(part) } catch (_: Throwable) { null } else null
+    /** Bytes of an image part referenced by [DImage.part] (docx / odt / pptx); null for others or when missing. */
+    fun image(part: String): ByteArray? = if (format == "docx" || format == "odt" || format == "pptx" || format == "odp") try { pkg?.read(part) } catch (_: Throwable) { null } else null
 
     override fun close() { try { xlsx?.close() } catch (_: Throwable) {}; try { xls?.close() } catch (_: Throwable) {}; try { odf?.close() } catch (_: Throwable) {}; try { pkg?.close() } catch (_: Throwable) {} }
 }

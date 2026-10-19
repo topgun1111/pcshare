@@ -43,7 +43,7 @@ fun main(a: Array<String>) {
     while (true) { val t = m.next(); if (t == MiniXml.T.EOF) break; seen.add(t.name + ":" + (if (t == MiniXml.T.TEXT) m.text else m.name)) }
     check("xml events", seen.joinToString(" "), "START:a START:b END:b START:c TEXT:hi & bye END:c END:a")
     if (a.isNotEmpty() && (a[0].endsWith(".odt", true) || a[0].endsWith(".ods", true))) { dumpOdf(File(a[0])); return }
-    if (a.isNotEmpty() && a[0].endsWith(".pptx", true)) { dumpPptx(File(a[0])); return }   // Part 9: expect Slide 1 / [h2] Opening / Intro & Welcome split / Slide 2 / [h2] First slide / Alpha split
+    if (a.isNotEmpty() && (a[0].endsWith(".pptx", true) || a[0].endsWith(".odp", true))) { dumpPptx(File(a[0])); return }   // Part 10b: .odp too   // Part 9: expect Slide 1 / [h2] Opening / Intro & Welcome split / Slide 2 / [h2] First slide / Alpha split
     if (a.isNotEmpty() && a[0].endsWith(".docx", true)) dumpDocx(File(a[0]))
     else if (a.isNotEmpty() && a[0].endsWith(".doc", true)) dumpDoc(File(a[0]))
     else if (a.isNotEmpty() && a[0].endsWith(".xls", true)) XlsReader(File(a[0])).use { r ->
@@ -177,7 +177,7 @@ fun dumpOdf(f: File) = OfficeOpen(f).use { o ->
 fun dumpPptx(f: File) {
     OfficeOpen(f).use { o ->
         println("format=" + o.format + " sheet=" + o.isSheet)
-        for (b in o.readDoc().body) if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
+        for (b in o.readDoc().body) if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + b.runs.filter { it.kind == DRun.IMAGE }.joinToString("") { " [img " + it.image?.part + " " + it.image?.widthEmu + "x" + it.image?.heightEmu + (if (o.image(it.image?.part.orEmpty()) != null) " ok" else " MISSING") + "]" } + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
     }
     println(if (OfficeExport.containsOrFalse(f, "welcome")) "OK   content search" else "FAIL content search")
 }

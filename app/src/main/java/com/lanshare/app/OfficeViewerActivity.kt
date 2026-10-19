@@ -23,6 +23,7 @@ class OfficeViewerActivity : Activity() {
     private var dev: String? = null      // source device + path (set when opened from the file list): edits are uploaded back there
     private var rpath: String? = null
     private var pendingCsv: String? = null
+    private val undoStack = ArrayList<File>()   // Part 10a: copies of the cache file taken before each edit (any format); newest last, max 10
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -105,6 +106,8 @@ class OfficeViewerActivity : Activity() {
             if (od?.isSheet == true) { m.add(0, 5, 4, "Edit cell...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER); m.add(0, 6, 5, "Insert row...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER) }
             else { m.add(0, 5, 4, "Find and replace...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER); m.add(0, 6, 5, "Add paragraph...").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER) }
         }
+        if (undoStack.isEmpty()) m.removeItem(7)
+        else if (m.findItem(7) == null) m.add(0, 7, 6, "Undo last edit").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return super.onPrepareOptionsMenu(m)
     }
 
@@ -114,6 +117,7 @@ class OfficeViewerActivity : Activity() {
         4 -> { exportCsv(); true }
         5 -> { if (od?.isSheet == true) askCell() else askReplace(); true }
         6 -> { if (od?.isSheet == true) askRow() else askParagraph(); true }
+        7 -> { undoEdit(); true }
         else -> super.onOptionsItemSelected(i)
     }
 
@@ -140,10 +144,31 @@ class OfficeViewerActivity : Activity() {
             var msg: String
             try {
                 od?.close(); od = null
-                msg = job(f)
+                val snap = File(File(cacheDir, "office-undo").apply { mkdirs() }, f.name + "." + System.nanoTime() + ".u~")
+                f.copyTo(snap, overwrite = true)
+                msg = try { job(f) } catch (e: Throwable) { snap.delete(); throw e }
+                if (f.length() == snap.length() && f.readBytes().contentEquals(snap.readBytes())) snap.delete()   // nothing changed (e.g. "Nothing found"): no undo step
+                else { undoStack.add(snap); while (undoStack.size > 10) undoStack.removeAt(0).delete() }
                 val d = dev; val rp = rpath
                 if (d != null && rp != null) f.inputStream().use { com.lanshare.app.core.Jobs.ep(d).write(rp, it, f.length()) }
             } catch (e: Throwable) { msg = "Edit failed: " + (e.message ?: "error") }
+            runOnUiThread { if (!isDestroyed) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); load(f) } }
+        }.start()
+    }
+
+    /** Puts the cache copy back to the state before the last edit, uploads it to the source and reloads. */
+    private fun undoEdit() {
+        val f = file ?: return
+        val snap = undoStack.removeLastOrNull() ?: return
+        Thread {
+            var msg: String
+            try {
+                od?.close(); od = null
+                snap.copyTo(f, overwrite = true); snap.delete()
+                val d = dev; val rp = rpath
+                if (d != null && rp != null) f.inputStream().use { com.lanshare.app.core.Jobs.ep(d).write(rp, it, f.length()) }
+                msg = "Edit undone"
+            } catch (e: Throwable) { msg = "Undo failed: " + (e.message ?: "error") }
             runOnUiThread { if (!isDestroyed) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); load(f) } }
         }.start()
     }
@@ -195,5 +220,10 @@ class OfficeViewerActivity : Activity() {
         catch (e: Throwable) { Toast.makeText(this, "Save failed: " + e.message, Toast.LENGTH_LONG).show() }
     }
 
-    override fun onDestroy() { try { od?.close() } catch (_: Throwable) {}; web.destroy(); super.onDestroy() }
+    override fun onDestroy() {
+        undoStack.forEach { it.delete() }; undoStack.clear()
+        file?.let { try { DocxEditor.clearUndo(it) } catch (_: Throwable) {} }   // the editor's own .undoN~ copies next to the cache file
+        try { od?.close() } catch (_: Throwable) {}
+        web.destroy(); super.onDestroy()
+    }
 }
