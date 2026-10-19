@@ -1334,7 +1334,7 @@ function pullBind(sc,box,go,ok){
 function vidTier(gg,img){const W=(gg&&gg.clientWidth)||window.innerWidth,pc=+getComputedStyle(gg).getPropertyValue('--pc')||(window.innerWidth>=900?7:window.innerWidth>=600?5:3),cell=W/pc*(window.devicePixelRatio||1);
   if(img){const n=cell*1.4;return n<=620?0:n<=980?960:1400}   // photos: base 600 px thumbnail; 4:3 cropped to a square
   const n=cell*1.8;return n<=420?0:n<=660?640:1000}
-function galView(a){
+function galView(a,keepTop){   // keepTop: scroll offset of the album to restore after a reload (delete / move / paste / return from the player)
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
@@ -1349,7 +1349,7 @@ function galView(a){
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
     LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
-  const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
+  const reload=()=>{GALP=null;GALPK=null;galFetch();const cs=o.querySelector('.gs');galView(a,cs?cs.scrollTop:0)};   // same scroll position after the reload, not the top
   pullBind(sc,pb,reload,()=>!GS.size);   // pull down = rescan the album (also video albums)
   const upd=()=>{
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
@@ -1418,6 +1418,7 @@ function galView(a){
       sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';gg.append(sent);more();
       if(n<it.length){if(window.IntersectionObserver){io=new IntersectionObserver(es=>{if(!sent||!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}};
     o._redraw=draw;draw();
+    if(keepTop>0){while(n<it.length&&sc.scrollHeight<keepTop+sc.clientHeight+50)more();sc.scrollTop=keepTop}   // draw enough rows to reach the old spot (the browser clamps it when the album got shorter, e.g. the last file was deleted)
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
 /* ---- image search (on-device CLIP + OCR): overlay #gal is reused so back / hide-list logic keeps working; backend = /api/imgs (ImgSearch.kt, ClipEngine.kt) ---- */
 function isView(sdir,sname,m0){
