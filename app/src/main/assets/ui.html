@@ -603,7 +603,7 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
-  <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
+  <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=scont aria-label="Search inside Word / Excel / PowerPoint files" title="Search inside Word / Excel / PowerPoint files" style="font:600 12px sans-serif;width:auto;padding:0 8px">In files</button><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div><div id=free></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
   <div id=toolrow><div id=sum></div><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
@@ -731,7 +731,7 @@ function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textCont
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
 function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
-const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
+const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods pptx']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const arcP=p=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
 const isHid=i=>i.name[0]==='.'||!!i.hid||(S.dev==='local'&&hidP(jn(S.path,i.name)));   // hidden item (only on screen while "Show hidden files" is on): drawn faded
@@ -1570,7 +1570,7 @@ function render(){
     const lead=E('div','lead k-'+k);
     if(i.dir){const fs=fsGet(jn(S.path,i.name));lead.append(raw(fs&&fs.c?foldSvg(fs.c):FOLD,'fold'));let bd=BADGE[i.name.toLowerCase()];if(fs&&fs.i)bd=[fs.i,fsIc(fs)];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
-      if(!AR&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
+      if(!AR&&(k==='img'||k==='vid'||(k==='office'&&S.dev==='local'))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
         const key=thKey(i),pth0=jn(S.path,i.name);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
@@ -1669,7 +1669,9 @@ function nativePdf(i){
 function viewPdf(i){if(!nativePdf(i))openFile(i)}
 /* Android app: Word / Excel / ODF files open in the native Office viewer (read-only; remote files are copied to cache first) */
 function nativeOffice(i){
-  if(!(window.LSAndroid&&LSAndroid.viewOffice))return false;
+  if(!(window.LSAndroid&&LSAndroid.viewOffice)){   /* PC browser: read-only HTML preview made by the phone (this device's own files only) */
+    if(S.dev!=='local')return false;
+    window.open('/api/office?dev=local&path='+enc(jn(S.path,i.name)),'_blank');return true}
   const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   try{LSAndroid.viewOffice(JSON.stringify({name:i.name,url,size:i.size||0,dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){return false}}
 /* Android app: videos open in the dedicated native player (folder = playlist, sidecar .srt/.vtt/.ass picked up); browsers keep the built-in viewer */
@@ -1803,13 +1805,13 @@ function thPump(){
   while(thBusy<4&&THQ.length){const j=THQ.shift();if(j.gen!==S.rg)continue;thBusy++;
     thMake(j.url,j.k).then(t=>{thPut(j.key,t);if(j.gen===S.rg)j.done(t)}).catch(()=>{thMem[j.key]={u:null,d:0}}).then(()=>{thBusy--;thPump()})}}
 function thMake(url,kd){return new Promise((res,rej)=>{
-  if(kd==='img'){const im=new Image();let done=false,tryFull=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
+  if(kd==='img'||kd==='office'){const im=new Image();let done=false,tryFull=false;const tm=setTimeout(()=>{if(!done){done=true;im.src='';rej(new Error('thumb'))}},20000);
     im.onload=()=>{if(done)return;done=true;clearTimeout(tm);try{const w=im.naturalWidth,h=im.naturalHeight;if(!w||!h)return rej(new Error('thumb'));
       if(!tryFull&&im.src.indexOf('/api/thumb?')>=0)return res({u:'/api/thumb?'+url.slice(8)+'&q=95',d:0});   // server thumb is already small + disk-cached: use as is (no canvas, no base64)
       const big=url.indexOf('&big=1')>0,sc=Math.min(1,(big?1000:400)/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*sc);c.height=Math.round(h*sc);
       c.getContext('2d').drawImage(im,0,0,c.width,c.height);res({u:c.toDataURL('image/jpeg',0.95),d:0})}catch(e){rej(e)}};
     // phone-made small JPEG first (Pillow); fall back to the original if the server can't make one
-    im.onerror=()=>{if(done)return;if(!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
+    im.onerror=()=>{if(done)return;if(kd==='img'&&!tryFull&&url.indexOf('/api/dl?')===0){tryFull=true;im.src=url;return}done=true;clearTimeout(tm);rej(new Error('thumb'))};
     im.decoding='async';im.src=url.indexOf('/api/dl?')===0?'/api/thumb?'+url.slice(8)+'&q=95':url;return}
   /* Android app: the phone grabs the frame natively (MKV/AVI/HEVC ... that the WebView cannot decode); on failure the in-browser method below runs */
   if(kd==='vid'&&window.LSAndroid&&url.indexOf('/api/dl?')===0){
@@ -2223,9 +2225,11 @@ async function goFind(dir,name){S.path=dir;S.sel.clear();clearQ();await load();
 function doSearch(){
   const q=S.q;if(!q||q.length<2)return;const dev=S.dev,path=S.path;
   S.sr={q,dev,path,items:null};render();
-  api('GET','/api/search?dev='+enc(dev)+'&path='+enc(path)+'&q='+enc(q),null,path==='/'?120000:45000)
+  api('GET','/api/search?dev='+enc(dev)+'&path='+enc(path)+'&q='+enc(q)+(S.cont?'&content=1':''),null,S.cont?60000:(path==='/'?120000:45000))
     .then(r=>{if(S.sr&&S.sr.q===q){S.sr.items=r.items;S.sr.partial=r.partial;render()}})
     .catch(e=>{if(S.sr&&S.sr.q===q){S.sr.items=[];S.sr.err=e.message;render()}})}
+/* search switch: file names (default) <-> text inside Word / Excel / ODF / PowerPoint files (this device only, slower) */
+(function(){const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>S.items.filter(i=>S.sel.has(i.name)).concat([...S.sel].filter(k=>XM[k]).map(k=>XM[k]));

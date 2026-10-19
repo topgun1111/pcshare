@@ -74,14 +74,14 @@ class OfficeViewerActivity : Activity() {
         tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
         val first = (tabs.firstOrNull { it.first == curSheet } ?: tabs.firstOrNull())?.first ?: return "<body style=\"font:15px sans-serif;padding:16px\">No visible sheets.</body>"
         curSheet = first
-        return XlsxHtml.render(o.readSheet(first), tabs, first)
+        return XlsxHtml.render(o.readSheet(first), tabs, first, o.styles)
     }
 
     private fun showSheet(i: Int) {
         val r = od ?: return
         curSheet = i
         Thread {
-            val html = try { XlsxHtml.render(r.readSheet(i), tabs, i) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
+            val html = try { XlsxHtml.render(r.readSheet(i), tabs, i, r.styles) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) }
         }.start()
     }

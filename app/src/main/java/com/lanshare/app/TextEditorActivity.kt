@@ -87,7 +87,6 @@ class TextEditorActivity : Activity() {
         private const val X_DIR = "dir"
         private const val X_NEW = "new"
         private const val MAX_BYTES = 3 shl 20
-        private const val DOCX_MAX = 40 shl 20
         private const val UNDO_CHARS = 6_000_000L
         private const val SNAP_MS = 700L
         private const val HL_MAX = 300_000
@@ -445,8 +444,7 @@ class TextEditorActivity : Activity() {
     private fun numsOn(): Boolean = prefs.getBoolean("lines", isCode())
     private fun applyNums() { body.setNumbers(numsOn()) }
 
-    private val docx get() = path?.let { com.lanshare.app.core.DocxText.isDocx(it) } == true
-    private fun isMd(): Boolean { val p = path?.lowercase() ?: return false; return p.endsWith(".md") || p.endsWith(".markdown") || p.endsWith(".mdx") || docx }
+    private fun isMd(): Boolean { val p = path?.lowercase() ?: return false; return p.endsWith(".md") || p.endsWith(".markdown") || p.endsWith(".mdx") }
 
     // ---- syntax colours (code files): tokens are found on the io thread, then painted as spans on the text
     private class HlSpan(c: Int) : ForegroundColorSpan(c)
@@ -735,31 +733,27 @@ class TextEditorActivity : Activity() {
                 var total = 0
                 e.open(p).use { src ->
                     val buf = ByteArray(64 * 1024)
-                    val lim = if (docx) DOCX_MAX else MAX_BYTES
-                    while (total <= lim) {
-                        val n = src.read(buf, 0, minOf(buf.size, lim + 1 - total))
+                    while (total <= MAX_BYTES) {
+                        val n = src.read(buf, 0, minOf(buf.size, MAX_BYTES + 1 - total))
                         if (n < 0) break
                         bo.write(buf, 0, n); total += n
                     }
                 }
-                val isDocx = docx
-                val trunc = !isDocx && total > MAX_BYTES
+                val trunc = total > MAX_BYTES
                 var data = bo.toByteArray()
                 if (trunc) data = data.copyOf(MAX_BYTES)
-                val wordTxt = if (isDocx) com.lanshare.app.core.DocxText.toMarkdown(data) else null
-                val dec = if (isDocx) wordTxt?.let { Dec(it, Charsets.UTF_8, ByteArray(0), false) } else decode(data, trunc)
+                val dec = decode(data, trunc)
                 ui.post {
                     if (isDestroyed) return@post
                     busy(false)
                     devName = e.name
                     locTv.text = "${e.name} › ${vdir(p)}"
-                    if (dec == null) { failLoad(if (isDocx) "Cannot read this Word file (damaged, encrypted or too large)." else "This doesn't look like a text file (binary content)."); return@post }
+                    if (dec == null) { failLoad("This doesn't look like a text file (binary content)."); return@post }
                     cs = dec.cs; bom = dec.bom; crlf = dec.crlf
                     diskMtime = st?.optLong("mtime", -1L) ?: -1L
                     diskSize = st?.optLong("size", -1L) ?: -1L
                     diskSizeShown = if (trunc) total.toLong() else data.size.toLong()
-                    if (isDocx) { readOnly = true; showBanner("Word document: text view, read-only.") }
-                    else if (trunc) { readOnly = true; showBanner("Large file: showing the first ${MAX_BYTES shr 20} MB, read-only.") }
+                    if (trunc) { readOnly = true; showBanner("Large file: showing the first ${MAX_BYTES shr 20} MB, read-only.") }
                     else if (readOnly) showBanner("Inside an archive: read-only. Extract the file to edit it.")
                     loaded = true
                     setBody(dec.text, keepUndo = false)

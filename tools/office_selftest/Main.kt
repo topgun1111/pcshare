@@ -43,6 +43,7 @@ fun main(a: Array<String>) {
     while (true) { val t = m.next(); if (t == MiniXml.T.EOF) break; seen.add(t.name + ":" + (if (t == MiniXml.T.TEXT) m.text else m.name)) }
     check("xml events", seen.joinToString(" "), "START:a START:b END:b START:c TEXT:hi & bye END:c END:a")
     if (a.isNotEmpty() && (a[0].endsWith(".odt", true) || a[0].endsWith(".ods", true))) { dumpOdf(File(a[0])); return }
+    if (a.isNotEmpty() && a[0].endsWith(".pptx", true)) { dumpPptx(File(a[0])); return }   // Part 9: expect Slide 1 / [h2] Opening / Intro & Welcome split / Slide 2 / [h2] First slide / Alpha split
     if (a.isNotEmpty() && a[0].endsWith(".docx", true)) dumpDocx(File(a[0]))
     else if (a.isNotEmpty() && a[0].endsWith(".doc", true)) dumpDoc(File(a[0]))
     else if (a.isNotEmpty() && a[0].endsWith(".xls", true)) XlsReader(File(a[0])).use { r ->
@@ -117,6 +118,8 @@ fun docxTest() {
     }
     val n0 = DocxEditor.paragraphCount(f)
     ok("paragraph count", n0 >= 7)
+    // run BEFORE setParagraphText below: that call overwrites the "Hello **bold** and" paragraph this test searches across (the old FAIL was a test-order bug, not an editor bug)
+    ok("replace split runs", DocxEditor.replaceAll(f, "bold and", "BOLD AND") == 1 && txt().contains("BOLD AND") && DocxEditor.replaceAll(f, "nomatch", "x") == 0)
     DocxEditor.setParagraphText(f, 1, "Changed & <ok>\tTab")
     ok("set paragraph", DocxEditor.paragraphText(f, 1) == "Changed & <ok>\tTab" && txt().contains("Changed & <ok>"))
     DocxEditor.insertParagraph(f, 0, "First!")
@@ -126,7 +129,6 @@ fun docxTest() {
     ok("cell text", DocxEditor.cellText(f, 0, 1, 1) == "y")
     DocxEditor.setCellText(f, 0, 1, 1, "Z")
     ok("set cell", DocxEditor.cellText(f, 0, 1, 1) == "Z" && DocxEditor.cellText(f, 0, 0, 0) == "H1")
-    ok("replace split runs", DocxEditor.replaceAll(f, "bold and", "BOLD AND") == 1 && txt().contains("BOLD AND") && DocxEditor.replaceAll(f, "nomatch", "x") == 0)
     ok("replace whole word", DocxEditor.replaceAll(f, "one", "uno", false, true) == 1 && txt().contains("uno"))
     ok("undo depth", DocxEditor.undoDepth(f) >= 6)
     val before = txt(); ok("undo", DocxEditor.undo(f) && txt() != before)
@@ -168,4 +170,14 @@ fun dumpOdf(f: File) = OfficeOpen(f).use { o ->
             for ((r, cs) in sh.rows) for (c in cs) println("  " + c.ref + " = " + c.text + " [" + c.kind + "]" + (if (c.formula != null) " {" + c.formula + "}" else "")) }
         File(f.path + ".html").writeText(XlsxHtml.render(o.readSheet(tabs.first().first), tabs, tabs.first().first))
     }
+}
+
+
+/** Part 9: java -jar ost.jar tools/office_selftest/sample.pptx  (slide ORDER comes from presentation.xml, not file names) */
+fun dumpPptx(f: File) {
+    OfficeOpen(f).use { o ->
+        println("format=" + o.format + " sheet=" + o.isSheet)
+        for (b in o.readDoc().body) if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
+    }
+    println(if (OfficeExport.containsOrFalse(f, "welcome")) "OK   content search" else "FAIL content search")
 }

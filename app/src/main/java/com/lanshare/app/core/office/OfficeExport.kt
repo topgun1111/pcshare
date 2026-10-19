@@ -8,7 +8,7 @@ import java.io.File
  * ([textOrNull] / [containsOrFalse] are the "never throws" variants meant for bulk search).
  */
 object OfficeExport {
-    val EXTS = setOf("doc", "docx", "odt", "xls", "xlsx", "xlsm", "ods")
+    val EXTS = setOf("doc", "docx", "odt", "xls", "xlsx", "xlsm", "ods", "pptx")
 
     fun isOffice(name: String) = name.substringAfterLast('.', "").lowercase() in EXTS
 

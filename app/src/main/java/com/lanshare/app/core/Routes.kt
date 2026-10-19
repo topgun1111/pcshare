@@ -151,7 +151,25 @@ object Routes {
                 } catch (_: Exception) {}
                 return ex.json(JSONObject().put("path", path).put("items", jarr(items.map { it.toJson() })).put("used", used))
             }
-            "search" -> return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
+            "search" -> {
+                if (q["content"] == "1") {   // Part 8: match the TEXT of Word / Excel / ODF / PowerPoint files instead of the name (this device's own files only)
+                    val e = Jobs.ep(ex.q("dev")).let { (it as? ArcEp)?.base ?: it }
+                    if (e !is LocalFs) throw BadReq("content search only for this device's own files")
+                    if (ex.q("q").length < 2) throw BadReq("type at least 2 letters")
+                    return ex.json(e.searchOfficeContent(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
+                }
+                return ex.json(Jobs.ep(ex.q("dev")).search(vnorm(q["path"] ?: "/"), ex.q("q")).toJson())
+            }
+            "office" -> {   // Part 3 leftover: read-only HTML preview of an office file for the PC web UI
+                val e = Jobs.ep(ex.q("dev")).let { (it as? ArcEp)?.base ?: it }
+                if (e !is LocalFs || arcSplit(ex.q("path")) != null) throw BadReq("office preview only for this device's own files")
+                val rf = e.real(vnorm(ex.q("path")))
+                if (!rf.isFile || !com.lanshare.app.core.office.OfficeExport.isOffice(rf.name)) throw NotFound("Not an office file")
+                if (rf.length() > (60L shl 20)) throw BadReq("file too large to preview (over 60 MB)")
+                val link = "/api/office?dev=" + java.net.URLEncoder.encode(ex.q("dev"), "UTF-8") + "&path=" + java.net.URLEncoder.encode(ex.q("path"), "UTF-8") + "&sheet="
+                val html = OfficeWeb.page(rf, (q["sheet"] ?: "0").toIntOrNull() ?: 0, link)
+                return ex.reply(200, html.toByteArray(Charsets.UTF_8), "text/html; charset=utf-8", mapOf("Cache-Control" to "no-store", "Content-Security-Policy" to "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"))
+            }
             "bin" -> if (ex.method == "GET") return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("task", Bin.status() ?: JSONObject.NULL)
                 .also { if (q["items"] != "0") it.put("items", jarr(Bin.list().map { e -> e.toJson() })) })   // POST falls through to the task starter below
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))

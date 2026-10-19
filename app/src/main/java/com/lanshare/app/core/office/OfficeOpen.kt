@@ -8,12 +8,14 @@ import java.io.File
  * Password-protected files throw IllegalStateException("File is password protected").
  */
 class OfficeOpen(private val file: File) : AutoCloseable {
-    /** docx, xlsx, doc, xls, odt, ods */
+    /** docx, xlsx, doc, xls, odt, ods, pptx (text only) */
     val format: String
     val isSheet: Boolean get() = format == "xlsx" || format == "xls" || format == "ods"
     /** true when Part 4/5 editors can patch the file (docx / xlsx) */
     val editable: Boolean get() = format == "docx" || format == "xlsx"
     val sheets: List<XSheetInfo>
+    /** cell styles for [XlsxHtml.render] (xlsx / xls); null for ods (its text is already as saved) */
+    val styles: XStyles? get() = xlsx?.styles ?: xls?.styles
     private var pkg: OoxmlPackage? = null
     private var xlsx: XlsxReader? = null
     private var xls: XlsReader? = null
@@ -28,6 +30,7 @@ class OfficeOpen(private val file: File) : AutoCloseable {
                     p.has("mimetype") || p.has("META-INF/manifest.xml") -> { val o = OdfReader(file); odf = o; if (o.isSheet) "ods" else "odt" }
                     p.has("xl/workbook.xml") -> "xlsx"
                     p.has("word/document.xml") -> "docx"
+                    p.has("ppt/presentation.xml") -> "pptx"
                     else -> throw IllegalArgumentException("Not a supported Office file")
                 }
             } catch (e: Throwable) { close(); throw e }
@@ -37,7 +40,8 @@ class OfficeOpen(private val file: File) : AutoCloseable {
                 o.has("EncryptedPackage") -> throw IllegalStateException("File is password protected")
                 o.has("Workbook") || o.has("Book") -> "xls"
                 o.has("WordDocument") -> "doc"
-                else -> throw IllegalArgumentException("Unsupported legacy Office file (PowerPoint etc.)")
+                o.has("PowerPoint Document") -> throw IllegalArgumentException("Old .ppt files are not supported (save as .pptx)")
+                else -> throw IllegalArgumentException("Unsupported legacy Office file")
             }
         } else throw IllegalArgumentException("Not a supported Office file")
         try {
@@ -61,6 +65,7 @@ class OfficeOpen(private val file: File) : AutoCloseable {
         "docx" -> DocxReader(file).use { it.read(maxParagraphs) }
         "doc" -> DocReader(file).use { it.read(maxParagraphs) }
         "odt" -> odf!!.read(maxParagraphs)
+        "pptx" -> PptxReader(file).use { it.read(maxParagraphs) }
         else -> throw IllegalStateException("Not a text document")
     }
 

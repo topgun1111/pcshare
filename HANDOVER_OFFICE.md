@@ -1,4 +1,4 @@
-# HANDOVER - Word / Excel support (2026-10-19)
+# HANDOVER - Word / Excel / PowerPoint support (2026-10-19)
 
 
 ## STATUS SUMMARY (read this first)
@@ -16,12 +16,25 @@ This zip is the FULL app (all parts below included). Compile state: only `core/o
 | 7 | UI integration: open + hand-off from file list, manifest VIEW + SEND filters, embedded-preview thumbnails route (`OfficeThumb`, `/api/thumb`), "Word document" / "Excel workbook" in + menu (`LSAndroid.newOffice`), viewer Edit actions (xlsx: edit cell, insert row; docx: find/replace, add paragraph; uploaded back to the source at once) | done except items below, UNCOMPILED |
 | 8 (partial) | `OfficeExport` (CSV of a sheet, plain text, content match), `LocalFs.searchOfficeContent`, viewer "Print / save as PDF" and "Export sheet as CSV" | partial, UNCOMPILED |
 
-### Missing / TODO
-- **Part 7:** launcher `Shortcuts` (plan line unclear; `Shortcuts.kt` only publishes send-text targets); `ui.html` grid tiles do not yet request `/api/thumb` for office files (route only); `.ppt/.pptx` untouched.
-- **Part 3 leftover:** `Routes.kt` `/api/office/*` so the PC web UI can preview office files.
-- **Part 8:** Routes endpoint + `ui.html` toggle for office content search (`searchOfficeContent` is not called by anything; SMB/remote folders not covered); `pcprint.py` / `tools/phone_explorer.py` PC-side preview; big-file streaming; delete dead `DocxText.kt` and the docx branch in `TextEditorActivity`; more tests.
-- **Known limits:** no undo for viewer edits; edits only when opened from the file list (not via VIEW/SEND from other apps); editors cover docx/xlsx only (doc/xls/odt/ods read-only); see "Known gaps" below for format limits (theme colours, shared formulas, locale).
+### Part 9 - completion pass (2026-10-19, UNCOMPILED + NOT device-tested: still no kotlinc / network in the authoring sandbox)
+| What | Where |
+|---|---|
+| **`replaceAll` "bug" was a test-order bug**: the self-test overwrote the "Hello **bold** and" paragraph (`setParagraphText`) before searching it. Test moved before that call; `DocxEditor` itself unchanged. | `tools/office_selftest/Main.kt` |
+| **Frozen panes + cell styles** in the sheet view: sticky rows/cols (fixed 22 px rows), bold / italic / underline / font colour / fill / h-align / wrap. `XlsxHtml.render(sheet, tabs, active, styles)`; `OfficeOpen.styles` (xlsx / xls; ods = null). Theme colours still unresolved -> only plain `#RRGGBB` shown. | `XlsxHtml.kt`, `OfficeOpen.kt`, `OfficeViewerActivity.kt` |
+| **PowerPoint .pptx, read-only text view** (slides in `presentation.xml` order, "Slide N" headings, title placeholders = sub-headings, page break per slide). Old `.ppt` -> message "save as .pptx". Opens through the viewer, VIEW/SEND filters (manifest), content search, embedded thumbnail. | `PptxReader.kt`, `OfficeOpen.kt`, `OfficeExport.EXTS`, manifest, ui.html `EXT` |
+| **`/api/office?dev=local&path=..&sheet=N`**: HTML preview for the PC web UI (same renderers as the viewer; images inlined; sandbox CSP; <= 60 MB; local files only). ui.html `nativeOffice` opens it in a new tab when the Android bridge is missing. | `core/OfficeWeb.kt`, `Routes.kt`, `ui.html` |
+| **Content search**: `/api/search?...&content=1` -> `LocalFs.searchOfficeContent` (local only, q >= 2 chars); "In files" toggle button in the search row (`#scont`, `S.cont`). | `Routes.kt`, `ui.html` |
+| **Office thumbnails in the file list** (list/compact rows, local device): `thMake` kind `office` = `/api/thumb` only (404 -> icon stays). | `ui.html` |
+| **Dead code removed**: `core/DocxText.kt` and the docx branch / `DOCX_MAX` in `TextEditorActivity`. | |
+| Self-test: `tools/office_selftest/sample.pptx` + `java -jar /tmp/ost.jar tools/office_selftest/sample.pptx` (expect: slide "Opening" first [h2], then "First slide"; `OK content search`). | `Main.kt` |
 
+### Still missing / TODO
+- **First step next session: push -> Actions build -> paste compile errors** (everything above and Parts 7-8 never saw a compiler on the Android side). Risk spots: `Routes.kt` new `search` / `office` branches, `OfficeWeb` (`android.util.Base64`), `XlsxHtml` local funs `sticky` / `look`.
+- Native file list (`NativeList.kt` / `nlRender`) does NOT draw office thumbnails yet (only the web-UI list rows do); grid tiles of the native list need the same `/api/thumb` call.
+- Launcher `Shortcuts` for office (plan line ambiguous, not done). `.ppt` (binary) and `.odp` unsupported; `.pptx` shows text only (no images / shapes / notes).
+- Content search: SMB / remote folders not covered; no big-file streaming (files > 30 MB are skipped by search, > 60 MB refused by `/api/office`).
+- PC-side preview in `pcprint.py` / `tools/phone_explorer.py` not done (the PC web UI uses `/api/office` instead).
+- Known limits unchanged: no undo for viewer edits; edit only when opened from the file list; doc/xls/odt/ods/pptx read-only; theme colours, shared formulas, locale.
 
 ## Goal
 Replace the read-only "docx -> Markdown text" viewer (`core/DocxText.kt`, used by `TextEditorActivity`) with proper Office support:
