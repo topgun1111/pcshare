@@ -124,6 +124,8 @@
         <activity android:name=".PdfViewerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"
             android:launchMode="singleTop" android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
+        <activity android:name=".OfficeViewerActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <activity android:name=".TextEditorActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="standard" android:windowSoftInputMode="adjustResize|stateUnchanged"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
