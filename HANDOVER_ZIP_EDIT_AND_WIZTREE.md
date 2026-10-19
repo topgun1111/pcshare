@@ -15,3 +15,9 @@ Hiçbiri derlenmedi / cihazda denenmedi (Android SDK yok). Önce push -> Actions
 - `StorageActivity.kt`: `wiz`/`wizHost`, varsayılan açık (`storage_ui` prefs `wiz`). Header'daki "Classic" ile eski ekrana, eski ekrandaki "WizTree" düğmesiyle geri. Silme (details diyaloğu) sonrası `wiz.refresh()`, Back = üst klasör.
 - Bilinen eksikler: "Allocated" boyutu yok; File View yalnızca boyuta göre sıralı; çok büyük taramalarda "small files" (agg) düğümleri Types'ta tek satır; açık/koyu tema sabit koyu.
 - Sonraki adım: derleme hatalarını düzelt, cihazda treemap hızı (MAXR=7000 karo) ve Types renklerini kontrol et.
+
+## 3. Treemap zoom (2026-10-19, derlenmedi)
+- `StorageWiz.kt` / `WizMap`: pinch-zoom (1x-60x, odak noktasına), iki parmak/tek parmak kaydırma (zoom>1 iken), çift dokun: dosya karosu/boş yer = 2.5x yakınlaştır, klasör karosu = eskisi gibi klasöre gir. Zoom'da yerleşim sadece görünen bölge için yeniden hesaplanır (küçük dosyalar gerçek karo olur); hareket sırasında eski bitmap matrix ile önizlenir, 160 ms sonra yeniden çizilir.
+- Treemap başlık çubuğunda `－ ＋ 1:1` düğmeleri ve `×N` göstergesi; Back önce zoom'u sıfırlar. Klasör değişince zoom sıfırlanır.
+- Classic (StorageTreemap) ekranına eklenmedi.
+- (2026-10-19) Classic ekran (`StoragePie`, halka grafik) da zoom aldı: iki parmakla büyüt (1x-12x), büyükken sürükleyerek kaydır, sağ üstte `×N ✕` çipi ve Back zoom'u sıfırlar; klasör değişince sıfırlanır. Küçük dilimler (MIN_DEG altı) zoom'da da "smaller items" içinde kalır. `StorageTreemap.kt` hiçbir yerde kullanılmıyor (sadece CAT_COL).

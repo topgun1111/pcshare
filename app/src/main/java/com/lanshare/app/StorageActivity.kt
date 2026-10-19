@@ -1107,6 +1107,7 @@ class StorageActivity : Activity() {
     override fun onBackPressed() {
         val up = cur?.parent
         if (wiz?.onBack() == true) return
+        if (tmV?.visibility == View.VISIBLE && tmV?.zoomed == true) { tmV?.resetZoom(); return }     // Classic chart: Back resets the zoom first
         if (multiList() != null) exitMulti()                                  // part 9a: Back leaves select mode first
         else if (shownState == "done" && mode == 2) setMode(lastBase)           // Largest tab: back to the folder view first
         else if (shownState == "done" && up != null) showNode(up) else super.onBackPressed()

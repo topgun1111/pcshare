@@ -16,7 +16,9 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
 import android.text.TextWatcher
+import android.graphics.Matrix
 import android.view.GestureDetector
+import android.view.ScaleGestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -153,6 +155,7 @@ internal class WizMap(ctx: Context) : View(ctx) {
     private var colors: Map<String, Int> = emptyMap()
     private val d = resources.displayMetrics.density
     private val MAXR = 7000
+    private val MAXZ = 60f
     private val tx = FloatArray(MAXR)
     private val ty = FloatArray(MAXR)
     private val tw = FloatArray(MAXR)
@@ -164,26 +167,95 @@ internal class WizMap(ctx: Context) : View(ctx) {
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
+    // ---- zoom / pan: the layout is recomputed for the visible part only, so zooming in shows real detail (small files become tiles)
+    private var zoom = 1f                 // current zoom (1 = whole folder fits the view)
+    private var offX = 0f                 // current pan: virtual content pixel (at [zoom]) shown at the view's left edge
+    private var offY = 0f
+    private var rZoom = 1f                // state the bitmap was rendered with (used to preview a gesture with a matrix)
+    private var rOffX = 0f
+    private var rOffY = 0f
+    private var gesturing = false
+    private val pv = Matrix()
+    private val settle = Runnable { gesturing = false; relayout() }
+    /** Called after every zoom change with the new zoom factor (1 = not zoomed). */
+    var onZoom: ((Float) -> Unit)? = null
+
+    val zoomed: Boolean get() = zoom > 1.01f
+    val zoomLevel: Float get() = zoom
+
+    private fun clampOff() {
+        val maxX = (width * zoom - width).coerceAtLeast(0f); val maxY = (height * zoom - height).coerceAtLeast(0f)
+        offX = offX.coerceIn(0f, maxX); offY = offY.coerceIn(0f, maxY)
+    }
+
+    /** Zoom by [f] around the view point ([fx],[fy]); the picture follows the fingers at once (matrix) and is re-laid-out when the gesture settles. */
+    fun zoomBy(f: Float, fx: Float = width / 2f, fy: Float = height / 2f) {
+        val nz = (zoom * f).coerceIn(1f, MAXZ)
+        if (nz == zoom) return
+        val nx = (fx + offX) / zoom; val ny = (fy + offY) / zoom      // content point under the focus (zoom independent)
+        zoom = nz
+        offX = nx * zoom - fx; offY = ny * zoom - fy
+        clampOff()
+        afterChange()
+    }
+
+    fun resetZoom() { if (zoom == 1f && offX == 0f && offY == 0f) return; zoom = 1f; offX = 0f; offY = 0f; settle.run(); onZoom?.invoke(zoom) }
+
+    private fun afterChange() {
+        gesturing = true
+        invalidate()
+        removeCallbacks(settle)
+        postDelayed(settle, 160)
+        onZoom?.invoke(zoom)
+    }
+
+    private val sgd = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(d: ScaleGestureDetector): Boolean { zoomBy(d.scaleFactor, d.focusX, d.focusY); return true }
+    })
+
     private val gd = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean { hit(e.x, e.y)?.let { onPick?.invoke(it) }; return true }
-        override fun onDoubleTap(e: MotionEvent): Boolean { hit(e.x, e.y)?.let { if (it.dir) onOpen?.invoke(it) }; return true }
-        override fun onLongPress(e: MotionEvent) { hit(e.x, e.y)?.let { onLong?.invoke(it) } }
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            val t = hit(e.x, e.y)
+            if (t != null && t.dir && t.kids.isNotEmpty()) onOpen?.invoke(t)       // folder tile: make it the shown folder (as before)
+            else zoomBy(2.5f, e.x, e.y)                                              // file / empty: zoom in there
+            return true
+        }
+        override fun onLongPress(e: MotionEvent) { if (!sgd.isInProgress) hit(e.x, e.y)?.let { onLong?.invoke(it) } }
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (sgd.isInProgress || zoom <= 1f) return false
+            offX += dx; offY += dy; clampOff(); afterChange()
+            return true
+        }
     })
 
-    fun setData(r: SNode?, cols: Map<String, Int>) { root = r; colors = cols; relayout() }
+    fun setData(r: SNode?, cols: Map<String, Int>) {
+        if (r !== root) { zoom = 1f; offX = 0f; offY = 0f; onZoom?.invoke(zoom) }
+        root = r; colors = cols; relayout()
+    }
 
-    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); relayout() }
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); clampOff(); relayout() }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean = gd.onTouchEvent(e)
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        sgd.onTouchEvent(e)
+        gd.onTouchEvent(e)
+        return true
+    }
 
     private fun relayout() {
         cnt = 0
         val r = root
         if (r == null || width < 8 || height < 8) { bmp = null; invalidate(); return }
-        lay(r, 0f, 0f, width.toFloat(), height.toFloat(), 0)
+        // the whole folder is laid out at [zoom] x the view size, shifted by the pan; parts outside the view are skipped
+        lay(r, -offX, -offY, width * zoom, height * zoom, 0)
+        rZoom = zoom; rOffX = offX; rOffY = offY
         render()
     }
+
+    /** True when the rectangle is (partly) inside the view. */
+    private fun vis(x: Float, y: Float, w: Float, h: Float) = x < width && y < height && x + w > 0f && y + h > 0f
 
     private fun add(n: SNode, x: Float, y: Float, w: Float, h: Float) {
         if (cnt >= MAXR || w < 0.6f || h < 0.6f) return
@@ -191,7 +263,7 @@ internal class WizMap(ctx: Context) : View(ctx) {
     }
 
     private fun lay(n: SNode, x: Float, y: Float, w: Float, h: Float, depth: Int) {
-        if (w < 0.6f || h < 0.6f) return
+        if (w < 0.6f || h < 0.6f || !vis(x, y, w, h)) return
         if (!n.dir || n.kids.isEmpty() || depth > 24 || (depth > 0 && w * h < 10f * d * d)) { add(n, x, y, w, h); return }
         squarify(n, x, y, w, h, depth)
     }
@@ -277,15 +349,18 @@ internal class WizMap(ctx: Context) : View(ctx) {
             intArrayOf(WizUtil.shade(base, 1.4f), base, WizUtil.shade(base, 0.4f)), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
         c.drawRect(x + 0.5f, y + 0.5f, x + w - 0.5f, y + h - 0.5f, fill)
         fill.shader = null
-        if (w > 74f * d && h > 30f * d) {   // big tile: its name (and size) in white with a dark outline, like the labels of other treemap tools
+        // labels sit in the visible part of the tile (when zoomed in a tile can reach far outside the view)
+        val vx = maxOf(x, 0f); val vy = maxOf(y, 0f)
+        val vw = minOf(x + w, width.toFloat()) - vx; val vh = minOf(y + h, height.toFloat()) - vy
+        if (vw > 74f * d && vh > 30f * d) {   // big tile: its name (and size) in white with a dark outline, like the labels of other treemap tools
             val nm = if (n.agg) n.files.toString() + " small files" else n.name
-            val s = TextUtils.ellipsize(nm, android.text.TextPaint(txt), w - 8f * d, TextUtils.TruncateAt.END).toString()
-            txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(s, x + 4f * d, y + 14f * d, txt)
-            txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(s, x + 4f * d, y + 14f * d, txt)
-            if (h > 46f * d) {
+            val s = TextUtils.ellipsize(nm, android.text.TextPaint(txt), vw - 8f * d, TextUtils.TruncateAt.END).toString()
+            txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(s, vx + 4f * d, vy + 14f * d, txt)
+            txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(s, vx + 4f * d, vy + 14f * d, txt)
+            if (vh > 46f * d) {
                 val z = NlModel.fmt(n.size)
-                txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(z, x + 4f * d, y + 27f * d, txt)
-                txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(z, x + 4f * d, y + 27f * d, txt)
+                txt.style = Paint.Style.STROKE; txt.strokeWidth = 2.5f; txt.color = Color.BLACK; c.drawText(z, vx + 4f * d, vy + 27f * d, txt)
+                txt.style = Paint.Style.FILL; txt.color = Color.WHITE; c.drawText(z, vx + 4f * d, vy + 27f * d, txt)
             }
         }
     }
@@ -293,6 +368,12 @@ internal class WizMap(ctx: Context) : View(ctx) {
     override fun onDraw(c: Canvas) {
         val b = bmp
         if (b == null) { c.drawColor(Color.BLACK); return }
+        if (gesturing) {            // preview: the last picture moved / scaled to the current zoom and pan; the exact one follows when the fingers rest
+            val k = zoom / rZoom
+            pv.reset(); pv.postScale(k, k); pv.postTranslate(rOffX * k - offX, rOffY * k - offY)
+            c.drawBitmap(b, pv, null)
+            return
+        }
         c.drawBitmap(b, 0f, 0f, null)
         val s = sel ?: return
         if (s === root) return
@@ -549,6 +630,12 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val tr = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(cPanel); setPadding(dp(6), dp(3), dp(6), dp(3)) }
         tmTitle.apply { textSize = 11f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         tr.addView(tmTitle, LinearLayout.LayoutParams(0, -2, 1f))
+        val zl = txt("", 11f, cDim).apply { setPadding(dp(4), dp(2), dp(4), dp(2)) }
+        map.onZoom = { z -> zl.text = if (z > 1.01f) String.format(Locale.US, "×%.1f", z) else "" }
+        tr.addView(zl)
+        tr.addView(txt("－", 15f, cAcc).apply { setPadding(dp(8), dp(0), dp(8), dp(0)); isClickable = true; setOnClickListener { map.zoomBy(1f / 1.8f) } })
+        tr.addView(txt("＋", 15f, cAcc).apply { setPadding(dp(8), dp(0), dp(8), dp(0)); isClickable = true; setOnClickListener { map.zoomBy(1.8f) } })
+        tr.addView(txt("1:1", 11f, cAcc).apply { setPadding(dp(6), dp(2), dp(6), dp(2)); isClickable = true; setOnClickListener { map.resetZoom() } })
         tr.addView(txt("▲ Up", 11f, cAcc).apply { setPadding(dp(8), dp(2), dp(4), dp(2)); isClickable = true; setOnClickListener { focus.parent?.let { pick(it) } } })
         b.addView(tr)
         b.addView(map, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -642,6 +729,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     }
 
     fun onBack(): Boolean {
+        if (map.zoomed) { map.resetZoom(); return true }
         if (hlKey != null) { toggleHl(hlKey!!); return true }
         val up = focus.parent
         if (up != null) { pick(up); return true }

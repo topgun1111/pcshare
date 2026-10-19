@@ -8,7 +8,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
@@ -90,6 +92,7 @@ class StoragePie(ctx: Context) : View(ctx) {
 
     /** The folder whose content is shown (null = nothing). */
     fun setRoot(r: SNode?) {
+        if (r !== root) { zoom = 1f; offX = 0f; offY = 0f }
         val same = r === root
         root = r; selNode = null; prevSel = null; selT = 1f
         pullAnim.cancel()
@@ -207,6 +210,8 @@ class StoragePie(ctx: Context) : View(ctx) {
             return
         }
         val ts = dp(11f) * resources.configuration.fontScale
+        val zm = zoom > 1.001f
+        if (zm) { canvas.save(); canvas.translate(offX, offY); canvas.scale(zoom, zoom, cx, cy) }
         var selI = -1; var prevI = -1
         for (i in 0 until n) {
             val k = nd[i] ?: continue
@@ -216,7 +221,15 @@ class StoragePie(ctx: Context) : View(ctx) {
         if (prevI >= 0) drawSlice(canvas, prevI, ts, false)
         if (selI >= 0) drawSlice(canvas, selI, ts, true)
         drawCenter(canvas, selI)
+        if (zm) {
+            canvas.restore()
+            chipRect(chip)                                   // "1x" reset chip (screen space, not zoomed)
+            fill2.color = mix(colBg, colFg, 0.18f); canvas.drawRoundRect(chip, dp(8f), dp(8f), fill2)
+            tp.color = colFg; tp.typeface = Typeface.DEFAULT_BOLD; tp.textAlign = Paint.Align.CENTER; tp.textSize = dp(12f)
+            canvas.drawText(String.format(java.util.Locale.US, "×%.1f ✕", zoom), chip.centerX(), chip.centerY() + dp(4f), tp)
+        }
     }
+    private val fill2 = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
     private fun drawSlice(canvas: Canvas, i: Int, ts: Float, selected: Boolean) {
         var c = col[i]
@@ -315,11 +328,55 @@ class StoragePie(ctx: Context) : View(ctx) {
     }
 
     // ---------------------------------------------------------------- touch
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y }
-            MotionEvent.ACTION_UP -> if (Math.abs(e.x - downX) <= slop && Math.abs(e.y - downY) <= slop) { performClick(); hit(e.x, e.y) }
+    // ---- zoom / pan (pinch, drag when zoomed in; the "1x" chip or Back resets): the whole chart is drawn through a canvas transform
+    private var zoom = 1f
+    private var offX = 0f
+    private var offY = 0f
+    val zoomed: Boolean get() = zoom > 1.01f
+
+    private fun clampOff() {
+        val mx = (zoom - 1f) * width / 2f; val my = (zoom - 1f) * height / 2f
+        offX = offX.coerceIn(-mx, mx); offY = offY.coerceIn(-my, my)
+    }
+
+    private fun zoomAt(f: Float, fx: Float, fy: Float) {
+        val nz = (zoom * f).coerceIn(1f, 12f)
+        if (nz == zoom) return
+        val px = cx + (fx - cx - offX) / zoom; val py = cy + (fy - cy - offY) / zoom     // chart point under the focus
+        zoom = nz
+        offX = fx - cx - (px - cx) * zoom; offY = fy - cy - (py - cy) * zoom
+        clampOff(); invalidate()
+    }
+
+    fun resetZoom() { zoom = 1f; offX = 0f; offY = 0f; invalidate() }
+
+    private fun chipRect(r: RectF) { r.set(width - dp(64f), dp(8f), width - dp(8f), dp(36f)) }
+    private val chip = RectF()
+
+    private val sgd = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(d: ScaleGestureDetector): Boolean { zoomAt(d.scaleFactor, d.focusX, d.focusY); return true }
+    })
+
+    private val gd = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent) = true
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            performClick()
+            chipRect(chip)
+            if (zoomed && chip.contains(e.x, e.y)) { resetZoom(); return true }
+            hit(cx + (e.x - cx - offX) / zoom, cy + (e.y - cy - offY) / zoom)     // screen point -> chart point
+            return true
         }
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (sgd.isInProgress || !zoomed) return false
+            offX -= dx; offY -= dy; clampOff(); invalidate()
+            return true
+        }
+    })
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        sgd.onTouchEvent(e)
+        gd.onTouchEvent(e)
         return true
     }
 
