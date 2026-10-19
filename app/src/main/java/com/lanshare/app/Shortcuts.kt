@@ -20,10 +20,12 @@ object Shortcuts {
         try {
             val on = TextSend.online()
             val def = com.lanshare.app.core.Cfg.defTarget()
-            val key = on.joinToString("|") { it.id + ":" + it.name } + "#" + def
+            val recent = OfficeShortcutActivity.Recent.list(ctx)
+            val key = on.joinToString("|") { it.id + ":" + it.name } + "#" + def + "#" + recent.joinToString("|") { it.dev + ":" + it.path }
             if (key == last) return
             last = key
-            val max = minOf(ShortcutManagerCompat.getMaxShortcutCountPerActivity(ctx), 6)
+            val cap = ShortcutManagerCompat.getMaxShortcutCountPerActivity(ctx)
+            val max = (cap - 2).coerceIn(0, 6)   // two slots stay free for "New Word document" / "New Excel workbook"
             val list = on.sortedByDescending { it.id == def }.take(max).mapIndexed { n, p ->
                 ShortcutInfoCompat.Builder(ctx, "peer:" + p.id)
                     .setShortLabel(p.name.take(24).ifBlank { "Device" })
@@ -35,7 +37,15 @@ object Shortcuts {
                     .setRank(n)
                     .build()
             }
-            ShortcutManagerCompat.setDynamicShortcuts(ctx, list)
+            // office: new Word / Excel file (always), then the most recently opened office files while there is room (rank after the devices)
+            fun office(id: String, short: String, long: String, i: Intent, rank: Int) = ShortcutInfoCompat.Builder(ctx, id)
+                .setShortLabel(short.take(24)).setLongLabel(long).setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher)).setIntent(i).setRank(rank).build()
+            val more = ArrayList<ShortcutInfoCompat>()
+            more.add(office("office:new:docx", "New Word doc", "New Word document", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "docx"), 50))
+            more.add(office("office:new:xlsx", "New Excel", "New Excel workbook", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "xlsx"), 51))
+            for ((n, r) in recent.withIndex()) more.add(office("office:recent:" + n, r.name, "Open " + r.name,
+                Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_OPEN).putExtra("dev", r.dev).putExtra("rpath", r.path).putExtra("name", r.name), 60 + n))
+            ShortcutManagerCompat.setDynamicShortcuts(ctx, (list + more).take(cap.coerceAtLeast(1)))
         } catch (_: Throwable) { last = "" }   // rate-limited or not supported: try again at the next change
     }
 }

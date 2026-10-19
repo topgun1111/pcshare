@@ -8,10 +8,10 @@ This zip is the FULL app (all parts below included). Compile state: only `core/o
 **Top priority:** push -> Actions build -> paste compile errors. The Android-side code of Parts 7-10b has never been compiled or run on a device. Likely trouble spots: the new `Routes.kt` branches (`search`, `office`), `OfficeWeb` (`android.util.Base64`), `XlsxHtml` local funs `sticky` / `look`, the undo code in `OfficeViewerActivity` (`removeLastOrNull`, snapshot thread), `NlModel` / `NativeList` office thumbnail branches.
 
 **Features still open:**
-- Launcher `Shortcuts` for office files: unclear what is wanted (`Shortcuts.kt` only publishes send-text targets) - ASK the user before building.
+- ~~Launcher Shortcuts for office~~ done in 10d.
 - Remote devices / SMB: office thumbnails (page only sends paths for `S.dev === 'local'`) and content search cover this phone only.
 - Old binary `.ppt`: unsupported (viewer says "save as .pptx").
-- `.pptx` / `.odp`: text, pictures and notes only (no shapes, layout, tables as grids, animations).
+- `.pptx`: text, pictures, notes, tables (Part 10c); `.odp`: text, pictures, notes (no shapes, layout, animations; `.odp` tables still plain text).
 - Big files: content search skips > 30 MB, `/api/office` refuses > 60 MB; no streaming.
 - PC-side preview in `pcprint.py` / `tools/phone_explorer.py`: none (PC web UI uses `/api/office`; `.odp` there untested, `OfficeWeb` goes through `OfficeOpen` so it should work).
 
@@ -60,6 +60,21 @@ Check on device after the first build: office rows show thumbnails only for file
 | Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample.odp` (made from sample.pptx with soffice; expect `format=odp`, `[h1] Slide 1 - Opening`, `[h2] Opening`, `Intro & Welcome split`, `Slide 2 - First slide` with page break, `OK content search`) and `tools/office_selftest/sample_pics.pptx` (python-pptx; expect slide 1: `[h2] Pictures`, `[img ppt/media/image1.png 1828800x1371600 ok]`, `Notes: Say hello first. Then show the picture.`; slide 2 `No notes` and no Notes line). Same `dumpPptx` for both. | `tools/office_selftest/` |
 
 Not done in 10b (decided): launcher `Shortcuts` for office (nothing to add: Shortcuts.kt only publishes send-text targets and the plan line stays ambiguous - ask the user what it should be before building); `pcprint.py` PC preview (the PC web UI already previews through `/api/office`; add odp there only if wanted - `OfficeWeb` goes through `OfficeOpen`, so it should already work, untested). Old binary `.ppt` stays unsupported ("save as .pptx").
+
+### Part 10c (2026-10-19; `core/office` + self-test COMPILED with kotlinc 2.0.21 and run on JVM; Android side still uncompiled)
+| What | Where |
+|---|---|
+| **.pptx tables** (`a:tbl`) are now real tables (`DTable`: grid from `gridCol` EMU->twips, gridSpan / hMerge / rowSpan / vMerge, first row = header when `firstRow="1"`) instead of one paragraph per cell. **Hidden slides** (`show="0"`) get "(hidden)" in the heading. | `PptxReader.kt` |
+| Self-test: `java -jar /tmp/ost.jar tools/office_selftest/sample_table.pptx` (python-pptx; expect `TABLE grid=[2880, 2880, 2880] header=true`, row 2 = `2:r1c0 r1c1 | 1:r1c2`, `[h1] Slide 2 (hidden)`; `FAIL content search` there is expected, the sample has no "welcome"). sample.pptx / sample_pics.pptx / sample.odp outputs unchanged. | `Main.kt` `dumpPptx`, `sample_table.pptx` |
+
+### Part 10d - launcher Shortcuts for office (2026-10-19, UNCOMPILED + NOT device-tested; brackets balanced by script)
+User decision: do all three. Long-press the launcher icon shows **New Word doc**, **New Excel** and up to 3 **recent office files**.
+| What | Where |
+|---|---|
+| `OfficeShortcutActivity` (invisible, theme `Theme.LANShare.Clear`, not exported): `ACT_NEW` (+`kind`) creates an empty docx / xlsx with a free name in local `/Documents` (`NEW_DIR`, folder is created) and opens it in the viewer; `ACT_OPEN` (+`dev`,`rpath`) copies the file from any device / share to `cache/office` (60 MB cap) and opens it. Waits up to 6 s for `Core.local` (process may have been killed). Nested `Recent` (prefs `office_recent`, newest first, max 3). | `OfficeShortcutActivity.kt`, manifest |
+| `Shortcuts.sync`: devices now use `cap - 2` slots (max 6), then `office:new:docx`, `office:new:xlsx` (ranks 50/51), then `office:recent:N` (60+) while the launcher's cap allows; sync key includes the recent list. `setDynamicShortcuts` replaces all, so everything stays in this one function. | `Shortcuts.kt` |
+| `OfficeViewerActivity.onCreate`: opened from the file list (`dev` + `rpath` set) -> `Recent.add` (republishes shortcuts). Files opened from other apps are not recorded. | `OfficeViewerActivity.kt` |
+Check on device: long-press icon shows the entries (launchers show ~4: devices come first, so with many online devices the office entries may be cut); New Word doc creates `/Documents/New document.docx` and opens it; a recent entry opens the same file again.
 
 ### Still missing / TODO (next: compile errors first - push, Actions build, paste errors)
 - **First step next session: push -> Actions build -> paste compile errors** (everything above and Parts 7-8 never saw a compiler on the Android side). Risk spots: `Routes.kt` new `search` / `office` branches, `OfficeWeb` (`android.util.Base64`), `XlsxHtml` local funs `sticky` / `look`.

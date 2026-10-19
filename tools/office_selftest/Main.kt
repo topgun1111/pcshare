@@ -177,7 +177,7 @@ fun dumpOdf(f: File) = OfficeOpen(f).use { o ->
 fun dumpPptx(f: File) {
     OfficeOpen(f).use { o ->
         println("format=" + o.format + " sheet=" + o.isSheet)
-        for (b in o.readDoc().body) if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + b.runs.filter { it.kind == DRun.IMAGE }.joinToString("") { " [img " + it.image?.part + " " + it.image?.widthEmu + "x" + it.image?.heightEmu + (if (o.image(it.image?.part.orEmpty()) != null) " ok" else " MISSING") + "]" } + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
+        for (b in o.readDoc().body) if (b is DTable) println("TABLE grid=" + b.grid + " header=" + b.rows.firstOrNull()?.header + " rows=" + b.rows.joinToString(" / ") { r -> r.cells.joinToString(" | ") { c -> c.span.toString() + ":" + c.blocks.joinToString(" ") { (it as DPara).text } } }) else if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + b.runs.filter { it.kind == DRun.IMAGE }.joinToString("") { " [img " + it.image?.part + " " + it.image?.widthEmu + "x" + it.image?.heightEmu + (if (o.image(it.image?.part.orEmpty()) != null) " ok" else " MISSING") + "]" } + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
     }
     println(if (OfficeExport.containsOrFalse(f, "welcome")) "OK   content search" else "FAIL content search")
 }

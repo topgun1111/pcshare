@@ -47,6 +47,8 @@ class OfficeViewerActivity : Activity() {
         }
         file = f; title = f.name
         dev = intent.getStringExtra("dev")?.takeIf { it.isNotEmpty() }; rpath = intent.getStringExtra("rpath")?.takeIf { it.isNotEmpty() }
+        val rd = dev; val rp = rpath
+        if (rd != null && rp != null) OfficeShortcutActivity.Recent.add(applicationContext, rd, rp, rp.substringAfterLast('/'))   // launcher "recent office files"
         load(f)
     }
 
