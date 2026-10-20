@@ -407,7 +407,7 @@ class MainActivity : Activity() {
                         swOn = false; swDone = true
                         val c = MotionEvent.obtain(ev); c.action = MotionEvent.ACTION_CANCEL
                         super.dispatchTouchEvent(c); c.recycle()               // list / page stop their own gesture
-                        if (::web.isInitialized) web.evaluateJavascript("window.lsEdgeOpen&&lsEdgeOpen()", null)
+                        if (::web.isInitialized) web.evaluateJavascript("window.lsEdgeOpen&&lsEdgeOpen(" + (if (dx > 0) 1 else -1) + ")", null)   // direction drives the slide / light-sweep transition
                         return true
                     }
                 }
