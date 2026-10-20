@@ -1,5 +1,18 @@
 <!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>/* PERF-DEBUG (temporary): collectors for Settings -> Debug: performance. Remove this script, the PERF-DEBUG block in the main script and the Kotlin marks to delete the feature. */
+(function(){var P=window.PERF={fn:{},api:{},long:[],paint:{},frames:null,
+ rec:function(o,k,d){var r=o[k]||(o[k]={n:0,sum:0,max:0});r.n++;r.sum+=d;if(d>r.max)r.max=d},
+ f:function(k,d){this.rec(this.fn,k,d)},
+ reset:function(){this.fn={};this.api={};this.long=[];this.frames=null}};
+ try{new PerformanceObserver(function(l){l.getEntries().forEach(function(e){P.long.push([Math.round(e.startTime),Math.round(e.duration)]);if(P.long.length>300)P.long.shift()})}).observe({type:'longtask',buffered:true})}catch(e){}
+ try{new PerformanceObserver(function(l){l.getEntries().forEach(function(e){P.paint[e.name]=Math.round(e.startTime)})}).observe({type:'paint',buffered:true})}catch(e){}
+ var si=window.setInterval;window.setInterval=function(f,ms){if(typeof f!=='function')return si.apply(window,arguments);
+  var key='interval '+ms+'ms: '+(f.name||String(f).replace(/\s+/g,' ').slice(0,60)),a=[].slice.call(arguments,2);
+  return si.apply(window,[function(){var t=performance.now();try{return f.apply(this,arguments)}finally{P.f(key,performance.now()-t)}},ms].concat(a))};
+ var st=window.setTimeout;window.setTimeout=function(f,ms){if(typeof f!=='function'||(ms|0)<500)return st.apply(window,arguments);   /* only slow timers: short ones are mostly debounce noise */
+  var key='timeout: '+(f.name||String(f).replace(/\s+/g,' ').slice(0,60)),a=[].slice.call(arguments,2);
+  return st.apply(window,[function(){var t=performance.now();try{return f.apply(this,arguments)}finally{P.f(key,performance.now()-t)}},ms].concat(a))}})();</script>
 <script>/* Settings -> Font: the chosen app font (served by MainActivity as /appfont/<id>.ttf) goes in front of the built-in Figtree */
 (function(){try{if(!(window.LSAndroid&&LSAndroid.fontGet))return;var id=LSAndroid.fontGet();if(!id||id==='figtree')return;var st=document.createElement('style');
 if(id==='system')st.textContent="body,button,input,select{font-family:system-ui,sans-serif!important}";
@@ -616,6 +629,64 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 <script>
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+/* PERF-DEBUG (temporary) */
+PERF.scriptStart=performance.now();
+['nlLay','nlRender','nlBuild','nlHeadPush','nlChPush','nlSrPush','nlDrPush','nlDrTick','nlTheme','homeShow','drawerOpen','drawerRender','renderPeers','renderTools','pollPeers','pollOnce','loadMain','load','openLoc','openDev','render','galView','refreshClip'].forEach(n=>{
+  const f=window[n];if(typeof f!=='function')return;
+  window[n]=function(){const t=performance.now();let r;try{r=f.apply(this,arguments)}catch(e){PERF.f(n,performance.now()-t);throw e}
+    if(r&&typeof r.then==='function')return r.finally(()=>PERF.f(n+' (until done)',performance.now()-t));
+    PERF.f(n,performance.now()-t);return r}});
+{const f=window.api;window.api=function(m,u){const t=performance.now(),k=m+' '+String(u).split('?')[0].split('/').slice(0,3).join('/');
+  return f.apply(this,arguments).finally(()=>PERF.rec(PERF.api,k,performance.now()-t))}}
+const perfMs=v=>v==null?'-':(Math.round(v*10)/10)+'';
+function perfRows(o,top){return Object.entries(o).map(([k,r])=>({k,...r})).sort((a,b)=>b.sum-a.sum).slice(0,top)}
+function perfFrames(sec,done){const d=[];let last=performance.now();const end=last+sec*1000;
+  const step=t=>{d.push(t-last);last=t;if(t<end)requestAnimationFrame(step);else{const sum=d.reduce((a,b)=>a+b,0);
+    PERF.frames={sec,n:d.length,fps:Math.round(d.length*1000/sum),slow:d.filter(x=>x>33.4).length,bad:d.filter(x=>x>100).length,worst:Math.round(Math.max(...d))};done()}};
+  requestAnimationFrame(step)}
+function perfReport(){
+  const L=[],nav=(performance.getEntriesByType('navigation')||[])[0]||{},now=performance.now();
+  let nat=null;try{nat=JSON.parse(LSAndroid.perfGet())}catch(e){}
+  L.push('LANShare performance report  '+new Date().toLocaleTimeString());
+  L.push('');L.push('== Native startup (ms since process start) ==');
+  if(nat){const m=nat.marks||{};['onCreate','loadStart','coreReady','pageFinished','firstScreen'].forEach(k=>L.push('  '+k.padEnd(14)+(m[k]==null?'-':m[k])));
+    if(m.onCreate!=null&&m.loadStart!=null)L.push('  WebView + setup '+(m.loadStart-m.onCreate)+' ms');
+    if(m.loadStart!=null&&m.coreReady!=null)L.push('  Server start wait '+(m.coreReady-m.loadStart)+' ms');
+    if(m.coreReady!=null&&m.pageFinished!=null)L.push('  Page load (ui.html) '+(m.pageFinished-m.coreReady)+' ms');
+    if(m.pageFinished!=null&&m.firstScreen!=null)L.push('  Page done -> first screen '+(m.firstScreen-m.pageFinished)+' ms');
+    if(m.onCreate!=null&&m.firstScreen!=null)L.push('  TOTAL onCreate -> first screen '+(m.firstScreen-m.onCreate)+' ms')}
+  else L.push('  (no native data)');
+  L.push('');L.push('== Page (ms since page navigation start) ==');
+  L.push('  response end '+perfMs(nav.responseEnd)+' | DOM ready '+perfMs(nav.domContentLoadedEventEnd)+' | load '+perfMs(nav.loadEventEnd));
+  L.push('  first paint '+perfMs(PERF.paint['first-paint'])+' | first content '+perfMs(PERF.paint['first-contentful-paint']));
+  L.push('  main script starts at '+perfMs(PERF.scriptStart)+', top-level run '+perfMs(PERF.scriptEnd-PERF.scriptStart)+' ms');
+  L.push('  ui.html '+Math.round((nav.decodedBodySize||0)/1024)+' KB | DOM nodes '+document.getElementsByTagName('*').length+(performance.memory?' | JS heap '+Math.round(performance.memory.usedJSHeapSize/1048576)+' MB':''));
+  const lt=PERF.long,lts=lt.reduce((a,x)=>a+x[1],0);
+  L.push('');L.push('== Long tasks (>50 ms, main thread blocked) ==');
+  L.push('  '+lt.length+' tasks, '+lts+' ms total, worst '+(lt.length?Math.max(...lt.map(x=>x[1])):0)+' ms');
+  lt.slice(-8).forEach(x=>L.push('  at '+x[0]+' ms: '+x[1]+' ms'));
+  L.push('');L.push('== Functions and timers (total ms, calls, avg, max) ==');
+  perfRows(PERF.fn,22).forEach(r=>L.push('  '+perfMs(r.sum).padStart(8)+' ms '+String(r.n).padStart(5)+'x  avg '+perfMs(r.sum/r.n).padStart(6)+' max '+perfMs(r.max).padStart(7)+'  '+r.k));
+  L.push('');L.push('== API calls (wait incl. network/server) ==');
+  perfRows(PERF.api,14).forEach(r=>L.push('  '+perfMs(r.sum).padStart(8)+' ms '+String(r.n).padStart(5)+'x  avg '+perfMs(r.sum/r.n).padStart(6)+' max '+perfMs(r.max).padStart(7)+'  '+r.k));
+  L.push('');L.push('== Frame sample (WebView only; the native list is not counted) ==');
+  const F=PERF.frames;L.push(F?'  '+F.sec+' s: '+F.n+' frames, ~'+F.fps+' fps, '+F.slow+' slower than 33 ms, '+F.bad+' slower than 100 ms, worst '+F.worst+' ms':'  not recorded: tap "Record 5 s", then scroll / swipe / open screens');
+  L.push('');L.push('Page uptime '+Math.round(now/1000)+' s');
+  return L.join('\n')}
+function openPerfDebug(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Debug: performance (temporary)'));
+  const pre=E('pre');pre.style.cssText='font:11px/1.35 monospace;white-space:pre;overflow:auto;max-height:55vh;margin:0 0 8px;padding:8px;background:var(--cont);border-radius:12px;user-select:text;-webkit-user-select:text';
+  const draw=()=>{pre.textContent=perfReport()};draw();card.append(pre);
+  const bar=E('div');bar.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end';
+  const btn=(t,f)=>{const b=E('button','tbtn',t);b.onclick=f;bar.append(b);return b};
+  btn('Refresh',draw);
+  btn('Reset counters',()=>{PERF.reset();draw()});
+  btn('Record 5 s',()=>{close();toast('Recording 5 s: scroll, swipe, open screens…',5200);perfFrames(5,()=>{openPerfDebug()})});
+  btn('Copy',async()=>{const t=perfReport();try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){const a=E('textarea');a.value=t;document.body.append(a);a.select();try{document.execCommand('copy');toast('Copied')}catch(e2){toast('Select the text and copy it by hand',3000)}a.remove()}});
+  const d=E('button','tbtn fill','Back');d.onclick=()=>{close();openSettings()};bar.append(d);card.append(bar);o.append(card)}
+/* /PERF-DEBUG */
 const IC={
 hide:'M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z',
 dup:'M10 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h5v2h2V1h-2v2zm0 15H5l5-6v6zm9-15h-5v2h5v13l-5-6v9h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
@@ -1980,6 +2051,7 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
+  {const rD=E('button','set'),tD=E('div','t');rD.style.width='100%';rD.style.textAlign='left';tD.append(E('b','','Debug: performance (temporary)'),E('small','','Startup, slow functions, timers, API calls, frame drops'));rD.append(tD);rD.onclick=()=>{close();openPerfDebug()};card.append(rD)}   /* PERF-DEBUG */
   {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
     const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
     api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
@@ -3913,4 +3985,5 @@ duApply();
   document.title='LANShare - '+i.name;if(i.storage_ok===false)toast('⚠ Files are hidden by Android - allow "All files access" for LANShare',9000);
   await pollOnce();renderPeers();load();refreshClip();pollPeers();
   try{if(!window.LSAndroid||!LSAndroid.homeStart||LSAndroid.homeStart())homeShow()}catch(e){homeShow()}})();
+PERF.scriptEnd=performance.now();/* PERF-DEBUG */
 </script></body></html>
