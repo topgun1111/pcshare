@@ -49,12 +49,16 @@ class MainActivity : Activity() {
     private var pageReady = false
     private var uiBooted = false   // the page's first screen is drawn (nlBoot / nlLayout / nlHide): a pending print dialog may open now
     private var showHome = false
+    private val perfMarks = java.util.concurrent.ConcurrentHashMap<String, Long>()   // PERF-DEBUG (temporary): Settings -> Debug: performance
+    private fun mark(k: String) { perfMarks.putIfAbsent(k, android.os.SystemClock.elapsedRealtime()) }   // PERF-DEBUG
     private val dlSeq = AtomicInteger()
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     inner class Bridge {
         /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
         @JavascriptInterface fun homeStart(): Boolean = showHome
+        /** PERF-DEBUG (temporary): startup marks, ms since this process started. */
+        @JavascriptInterface fun perfGet(): String { val base = android.os.Process.getStartElapsedRealtime(); val o = JSONObject(); perfMarks.forEach { (k, v) -> o.put(k, v - base) }; return JSONObject().put("marks", o).toString() }
         /** ui.html tells whether the swipe-right (Main menu <-> file manager) may act now, and where the header ends (CSS px; [vw] = page width in CSS px). */
         @JavascriptInterface fun edgeOk(ok: Boolean, top: Double, vw: Double) {
             swipeOk = ok
@@ -251,12 +255,12 @@ class MainActivity : Activity() {
             } catch (_: Throwable) { } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
-        @JavascriptInterface fun nlLayout(json: String) { runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
-        @JavascriptInterface fun nlHide() { runOnUiThread { nl.hide(); splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlLayout(json: String) { mark("firstScreen"); runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlHide() { mark("firstScreen"); runOnUiThread { nl.hide(); splash.dismiss(); uiBooted = true; runPrint() } }
         /** Path bar + tool row content (NlHead.kt): JSON from ui.html nlHeadPush(). */
         @JavascriptInterface fun nlHead(json: String) { runOnUiThread { try { nl.setHead(json) } catch (_: Throwable) { } } }
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
-        @JavascriptInterface fun nlBoot() { runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlBoot() { mark("firstScreen"); runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
         /** Native search box (NlSearch.kt): ui.html nlSrPush() geometry / state, the query the next nlItems was filtered by, focus request. */
         @JavascriptInterface fun nlSearch(json: String) { runOnUiThread { try { nl.setSearch(json) } catch (_: Throwable) { } } }
@@ -296,6 +300,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        mark("onCreate")   // PERF-DEBUG
         showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
         Fnt.init(applicationContext)
         web = WebView(this).apply {
@@ -328,7 +333,7 @@ class MainActivity : Activity() {
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
                 override fun onPageFinished(v: WebView, u: String) {
-                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { pageReady = true; runShare(); runClipShare(); runPrint(); runOpen(); runShowPath() }
+                    if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { mark("pageFinished"); pageReady = true; runShare(); runClipShare(); runPrint(); runOpen(); runShowPath() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
@@ -365,6 +370,7 @@ class MainActivity : Activity() {
         if (b == null) splash.start()      // cold start: draw the last screen natively while the page loads
         askPermissions()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
+        mark("loadStart")   // PERF-DEBUG
         loadWhenReady()
         cleanShared()
         handleShare(intent)
@@ -878,6 +884,7 @@ class MainActivity : Activity() {
                 if (url == null && err == null) Thread.sleep(25)      // was 300 ms (+300 ms before the first check): up to 0.6 s of pure waiting
             }
             runOnUiThread {
+                mark("coreReady")   // PERF-DEBUG
                 if (url != null) { web.loadUrl(url); web.postDelayed({ splash.dismiss() }, 8000) }   // watchdog: never leave the start picture up
                 else { splash.dismiss(); web.loadDataWithBaseURL(null,
                     page("Server did not start. Close and reopen the app.", err ?: "timeout"), "text/html", "utf-8", null) }
