@@ -301,6 +301,8 @@ class MainActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         mark("onCreate")   // PERF-DEBUG
+        // Start the local server right away on a background thread (it used to wait for the foreground service to come up). Core.start is idempotent: the service's later call returns at once.
+        Thread { Core.start(applicationContext, android.os.Environment.getExternalStorageDirectory().absolutePath) }.apply { isDaemon = true; start() }
         showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
         Fnt.init(applicationContext)
         web = WebView(this).apply {
