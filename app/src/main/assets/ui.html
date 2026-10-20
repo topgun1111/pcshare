@@ -600,7 +600,9 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home.hm-out .hmlt{animation:hmsweep var(--d,280ms) cubic-bezier(.3,.1,.3,1) both;animation-direction:normal}
 @keyframes hmslin{from{opacity:0;transform:translateX(calc(var(--dir,1)*-14%)) scale(.985)}to{opacity:1;transform:none}}
 @keyframes hmslout{from{opacity:1;transform:none}to{opacity:0;transform:translateX(calc(var(--dir,1)*14%)) scale(.985)}}
-@keyframes hmsweep{0%{opacity:0;transform:translateX(calc(var(--dir,1)*-60%))}25%{opacity:.9}70%{opacity:.7}100%{opacity:0;transform:translateX(calc(var(--dir,1)*60%))}}
+@keyframes hmsweep{0%{opacity:0;transform:translateX(calc(var(--dir,1)*-60%))}25%{opacity:calc(.9*var(--li,1))}70%{opacity:calc(.7*var(--li,1))}100%{opacity:0;transform:translateX(calc(var(--dir,1)*60%))}}
+#home.fx-fade.hm-in{animation-name:hmfdin}#home.fx-fade.hm-out{animation-name:hmfdout}
+@keyframes hmfdin{from{opacity:0}to{opacity:1}}@keyframes hmfdout{from{opacity:1}to{opacity:0}}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
 #gal .gmh:first-child{padding-top:8px}
 body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint,body.galm #newb,body.galm #sortb{display:none}
@@ -1992,6 +1994,8 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
+  {const rF=E('button','set'),tF=E('div','t');rF.style.width='100%';rF.style.textAlign='left';
+    tF.append(E('b','','Transition effects'),E('small','',FX_MODES[LD('ls_fx_mode','both')]||FX_MODES.both));rF.append(tF);rF.onclick=()=>{close();openTransitionSettings()};card.append(rF)}
   {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
     const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
     api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
@@ -2011,6 +2015,27 @@ function openSettings(){
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+const FX_MODES={both:'Slide + light sweep',light:'Light sweep only',slide:'Slide only',off:'Off'};
+function openTransitionSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Transition effects'));
+  const info=E('p','','Animation when you swipe between the file manager and the Main menu. Also skipped when the phone’s animations are reduced.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const list=E('div');card.append(list);
+  const groups=[
+    ['ls_fx_mode','both','Effect',[['both','Slide + light sweep','The menu slides in and a light band sweeps across'],['light','Light sweep only','Fade with a light band, no movement'],['slide','Slide only','The menu slides, no light'],['off','Off','Switch instantly']]],
+    ['ls_fx_speed','normal','Speed',[['fast','Fast','About 0.3 s'],['normal','Normal','About 0.4 s'],['slow','Slow','About 0.7 s']]],
+    ['ls_fx_light','normal','Light brightness',[['soft','Soft','Subtle glow'],['normal','Normal','Balanced'],['bright','Bright','Strong sweep']]]];
+  const draw=()=>{list.textContent='';groups.forEach(([key,def,head,opts])=>{
+    list.append(E('div','dsec',head));const cur=LD(key,def);
+    opts.forEach(([id,n,sub])=>{const r=E('button','set'),t=E('div','t');r.style.width='100%';r.style.textAlign='left';
+      t.append(E('b','',(cur===id?'✓ ':'')+n),E('small','',sub));r.append(t);
+      r.onclick=()=>{if(cur===id)return;SV(key,id);draw()};list.append(r)})})};
+  draw();
+  const pv=E('button','tbtn','Try it');pv.onclick=()=>{close();setTimeout(()=>{try{lsEdgeOpen(1)}catch(e){}},60)};   // toggles the Main menu with the chosen effect
+  const d=E('button','tbtn fill','Back');d.onclick=()=>{close();openSettings()};
+  const br=E('div');br.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:8px';br.append(pv,d);card.append(br);o.append(card)}
 function openTextSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -3501,12 +3526,14 @@ window.lsEdgeOpen=dir=>{if(HMA||!lsEdgeOk())return false;dir=dir<0?-1:1;
   homeShow(dir);return true};
 /* swipe transition: the menu slides in / out in the swipe direction while a soft accent-coloured light band sweeps across it (CSS .hm-in / .hm-out / .hmlt) */
 let HMA=0;
+const FX_SPD={fast:.65,normal:1,slow:1.6},FX_LIT={soft:.55,normal:1,bright:1.1};   // Settings -> Transition effects (localStorage ls_fx_mode / ls_fx_speed / ls_fx_light)
 function hmAnim(kind,dir,done){
-  if(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches){done&&done();return}
-  const o=$('#home'),ms=kind==='in'?420:280,l=E('div','hmlt');
-  HMA=1;l.style.setProperty('--d',ms+'ms');o.style.setProperty('--dir',dir);o.style.setProperty('--d',ms+'ms');
-  o.append(l);o.classList.add('hm-'+kind);
-  setTimeout(()=>{o.classList.remove('hm-in','hm-out');o.style.removeProperty('--dir');o.style.removeProperty('--d');l.remove();HMA=0;done&&done()},ms+30)}
+  const m=LD('ls_fx_mode','both');
+  if(m==='off'||(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches)){done&&done();return}
+  const o=$('#home'),ms=Math.round((kind==='in'?420:280)*(FX_SPD[LD('ls_fx_speed','normal')]||1)),l=m==='slide'?null:E('div','hmlt');
+  HMA=1;o.style.setProperty('--dir',dir);o.style.setProperty('--d',ms+'ms');o.style.setProperty('--li',FX_LIT[LD('ls_fx_light','normal')]||1);
+  if(l)o.append(l);o.classList.add('hm-'+kind);if(m==='light')o.classList.add('fx-fade');
+  setTimeout(()=>{o.classList.remove('hm-in','hm-out','fx-fade');['--dir','--d','--li'].forEach(p=>o.style.removeProperty(p));if(l)l.remove();HMA=0;done&&done()},ms+30)}
 /* tell the native side when the swipe is allowed and where the header ends (a swipe that starts in the header scrolls the path / device chips instead) */
 (()=>{let k='';setInterval(()=>{if(!window.LSAndroid||!LSAndroid.edgeOk)return;const ok=lsEdgeOk(),top=ok&&!homeOn()?Math.round($('#top').getBoundingClientRect().bottom):0,n=ok+'|'+top;if(n===k)return;k=n;
   try{LSAndroid.edgeOk(ok,top,window.innerWidth)}catch(e){}},200)})();
