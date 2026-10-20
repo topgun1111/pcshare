@@ -49,7 +49,7 @@ class MainActivity : Activity() {
     private var pageReady = false
     private var uiBooted = false   // the page's first screen is drawn (nlBoot / nlLayout / nlHide): a pending print dialog may open now
     private var showHome = false
-    private val perfMarks = java.util.concurrent.ConcurrentHashMap<String, Long>()   // PERF-DEBUG (temporary): Settings -> Debug: performance
+    private val perfMarks get() = com.lanshare.app.core.PerfMarks.marks   // PERF-DEBUG (temporary): Settings -> Debug: performance
     private fun mark(k: String) { perfMarks.putIfAbsent(k, android.os.SystemClock.elapsedRealtime()) }   // PERF-DEBUG
     private val dlSeq = AtomicInteger()
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
@@ -302,9 +302,10 @@ class MainActivity : Activity() {
         super.onCreate(b)
         mark("onCreate")   // PERF-DEBUG
         // Start the local server right away on a background thread (it used to wait for the foreground service to come up). Core.start is idempotent: the service's later call returns at once.
-        Thread { Core.start(applicationContext, android.os.Environment.getExternalStorageDirectory().absolutePath) }.apply { isDaemon = true; start() }
+        Thread { mark("core.threadStart"); Core.start(applicationContext, android.os.Environment.getExternalStorageDirectory().absolutePath) }.apply { isDaemon = true; start() }
         showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
         Fnt.init(applicationContext)
+        mark("fontInit")   // PERF-DEBUG
         web = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -356,9 +357,11 @@ class MainActivity : Activity() {
                 saveToDownloads(url, URLUtil.guessFileName(url, cd, null))
             }
         }
+        mark("webCreated")   // PERF-DEBUG
         nl = NativeList(this, web)
         chrome = NlChrome(this) { ev, x -> web.evaluateJavascript("window.nlCh&&nlCh(" + JSONObject.quote(ev) + "," + JSONObject.quote(x) + ")", null) }
         drawer = NlDrawer(this) { k, i, j, v -> web.evaluateJavascript("window.nlDr&&nlDr(" + JSONObject.quote(k) + "," + i + "," + j + "," + v + ")", null) }
+        mark("nativeViews")   // PERF-DEBUG
         val root = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(-1, -1))
             addView(nl.overlay, FrameLayout.LayoutParams(-1, -1))   // native file list: above the page, invisible until ui.html sends a layout
@@ -367,10 +370,13 @@ class MainActivity : Activity() {
             addView(drawer.panel, drawer.layoutParams())            // native side drawer: topmost, GONE until the page opens its drawer; swallows touches inside its own width only
         }
         setContentView(root)
+        mark("contentSet")   // PERF-DEBUG
         edgeInit(root)
         splash = NlSplash(this, nl, web, root)
         if (b == null) splash.start()      // cold start: draw the last screen natively while the page loads
+        mark("splashStarted")   // PERF-DEBUG
         askPermissions()
+        mark("permissionsAsked")   // PERF-DEBUG
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
         mark("loadStart")   // PERF-DEBUG
         loadWhenReady()

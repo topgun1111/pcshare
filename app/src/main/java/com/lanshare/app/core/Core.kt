@@ -39,14 +39,19 @@ object Core {
         try {
             val app = ctx.applicationContext
             appCtx = app
+            PerfMarks.mark("core.begin")   // PERF-DEBUG
             Cfg.load(File(app.filesDir, "lanshare.json"), phoneModel(), "")
+            PerfMarks.mark("core.cfgLoaded")   // PERF-DEBUG
             holdAwake(app)
+            PerfMarks.mark("core.locks")   // PERF-DEBUG
             try { Partials.init(app.filesDir); Thread({ Partials.purge() }, "partials-purge").also { it.isDaemon = true }.start() } catch (_: Throwable) {}   // interrupted copies: reload the registry, drop what is older than a week
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
+            PerfMarks.mark("core.cleanup")   // PERF-DEBUG
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
+            PerfMarks.mark("core.pageAndFs")   // PERF-DEBUG
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             Thread({   // "LANShare Shared": cleaned at start and then every day while the app / service is alive
                 while (true) {
@@ -74,11 +79,14 @@ object Core {
             }
             if (srv != null) try { sp.edit().putInt("last", port).apply() } catch (_: Throwable) {}
             if (srv == null) throw IOException("No free port found")
+            PerfMarks.mark("core.portBound")   // PERF-DEBUG
             disc = Discovery(port)
             server = srv
             srv.start()
             disc.start()
+            PerfMarks.mark("core.discoveryStarted")   // PERF-DEBUG
             url = "http://127.0.0.1:$port"   // published first: the screen waits for this, so the slower setup below must not delay it
+            PerfMarks.mark("core.url")   // PERF-DEBUG
             try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
             try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
