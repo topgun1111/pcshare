@@ -47,8 +47,6 @@ object Core {
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
-            try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
-            try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             Thread({   // "LANShare Shared": cleaned at start and then every day while the app / service is alive
                 while (true) {
@@ -80,8 +78,10 @@ object Core {
             server = srv
             srv.start()
             disc.start()
+            url = "http://127.0.0.1:$port"   // published first: the screen waits for this, so the slower setup below must not delay it
+            try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
+            try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
             try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
-            url = "http://127.0.0.1:$port"
             Log.i(TAG, "running on $port, sharing ${local.root}, device ${Cfg.name}")
         } catch (e: Throwable) {
             error = e.stackTraceToString().takeLast(1500)
