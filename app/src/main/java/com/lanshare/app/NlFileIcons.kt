@@ -23,7 +23,7 @@ object NlFileIcons {
     private val WORD_X = setOf("doc", "docx", "docm", "dot", "dotx", "odt", "rtf")
     private val XLS_X = setOf("xls", "xlsx", "xlsm", "xlsb", "xlt", "xltx", "ods", "csv")
     private val PPT_X = setOf("ppt", "pptx", "pptm", "pps", "ppsx", "pot", "potx", "odp")
-    private val TXT_X = setOf("txt", "md", "log", "ini", "cfg", "conf")
+    private val TXT_X = setOf("txt", "md", "ini", "cfg", "conf")
 
     fun extOf(name: String): String { val p = name.lastIndexOf('.'); return if (p >= 0) name.substring(p + 1).lowercase() else "" }
 
@@ -41,6 +41,9 @@ object NlFileIcons {
             kind == "img" -> img(cv)
             kind == "vid" -> vid(cv)
             kind == "aud" -> aud(cv)
+            e == "py" || e == "pyw" -> py(cv)
+            e == "json" || e == "jsonl" -> json(cv)
+            e == "log" -> log(cv)
             e in TXT_X -> page(cv, 0xFFFFFFFF.toInt(), 0xFFCFD8DC.toInt(), true)
             else -> page(cv, 0xFFECEFF1.toInt(), 0xFFB0BEC5.toInt(), false)
         }
@@ -106,6 +109,34 @@ object NlFileIcons {
             for (yy in floatArrayOf(22f, 28f, 34f, 40f)) cv.drawLine(14f, yy, if (yy == 40f) 26f else 34f, yy, q)
             q.style = Paint.Style.FILL
         }
+    }
+
+    private fun py(cv: Canvas) {
+        fillRound(cv, 5f, 4f, 31f, 30f, 8f, 0xFF3776AB.toInt())
+        fillRound(cv, 17f, 18f, 43f, 44f, 8f, 0xFFFFD43B.toInt())
+        q.style = Paint.Style.FILL
+        q.color = Color.WHITE; cv.drawCircle(13f, 12f, 2.4f, q)
+        q.color = 0xFF3776AB.toInt(); cv.drawCircle(35f, 36f, 2.4f, q)
+        q.color = 0xFF2B5B84.toInt(); rf.set(11f, 19f, 24f, 24f); cv.drawRoundRect(rf, 2.5f, 2.5f, q)
+        q.color = 0xFFE0B52B.toInt(); rf.set(24f, 24f, 37f, 29f); cv.drawRoundRect(rf, 2.5f, 2.5f, q)
+    }
+
+    private fun json(cv: Canvas) {
+        foldedPage(cv, 8f, 3f, 40f, 45f, 11f, 0xFFFFFFFF.toInt(), 0xFFFFE0B2.toInt(), BORDER)
+        letter(cv, "{ }", 24f, 29f, 16f, 0xFFF57C00.toInt())
+        q.style = Paint.Style.STROKE; q.strokeWidth = 2f; q.color = 0xFFFFCC80.toInt()
+        cv.drawLine(14f, 40f, 34f, 40f, q); q.style = Paint.Style.FILL
+    }
+
+    private fun log(cv: Canvas) {
+        foldedPage(cv, 8f, 3f, 40f, 45f, 11f, 0xFFFFFFFF.toInt(), 0xFFCFD8DC.toInt(), BORDER)
+        val cols = intArrayOf(0xFF43A047.toInt(), 0xFFFB8C00.toInt(), 0xFFE53935.toInt(), 0xFF43A047.toInt())
+        val ys = floatArrayOf(21f, 27f, 33f, 39f)
+        for (i in 0..3) {
+            q.style = Paint.Style.FILL; q.color = cols[i]; rf.set(13f, ys[i] - 1.7f, 17f, ys[i] + 1.7f); cv.drawRoundRect(rf, 1f, 1f, q)
+            q.style = Paint.Style.STROKE; q.strokeWidth = 2f; q.color = 0xFF78909C.toInt(); cv.drawLine(20f, ys[i], if (i == 3) 29f else 35f, ys[i], q)
+        }
+        q.style = Paint.Style.FILL
     }
 
     private fun zip(cv: Canvas) {
