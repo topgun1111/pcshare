@@ -61,6 +61,8 @@ interface Endpoint {
     val setsMtime: Boolean get() = false
     /** Sets the modification time (epoch seconds) of [v]; the caller ignores failures. */
     fun setMtime(v: String, sec: Long) {}
+    /** Copies the file [v] to [toV] inside this place without moving its bytes through the phone (FTP: SITE CPFR / CPTO). False = not possible, the caller copies normally. */
+    fun copyWithin(v: String, toV: String): Boolean = false
     fun mkdir(v: String)
     /** [progress] is called with the name of every entry that was deleted; it may throw [Cancelled] to stop. */
     fun remove(v: String, progress: ((String) -> Unit)? = null)

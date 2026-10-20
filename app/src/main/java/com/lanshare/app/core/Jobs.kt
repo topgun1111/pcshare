@@ -997,9 +997,17 @@ object Jobs {
             var sent = 0L
             var reached = 0L
             try {
+                if (src.id == dst.id && src.id.startsWith("ftp:") && !sp.contains("!/") && !target.contains("!/")) {   // same FTP server: it copies by itself, nothing travels through the phone
+                    val sz = try { src.stat(sp).optLong("size") } catch (e: Cancelled) { throw e } catch (_: Exception) { -1L }
+                    if (sz >= 0 && (try { dst.copyWithin(sp, target) } catch (e: Cancelled) { throw e } catch (_: Exception) { false })) {
+                        job.begin(vbase(sp), sz); job.curDone = sz
+                        if (count) { job.done += sz; job.files++ }
+                        return
+                    }
+                }
                 val f = src.open(sp)
                 try {
-                    val keepMt = (src is FtpFs || dst is FtpFs) && dst.setsMtime   // copies to / from an FTP server keep the original date
+                    val keepMt = (src.id.startsWith("ftp:") || dst.id.startsWith("ftp:")) && dst.setsMtime   // copies to / from an FTP server keep the original date
                     val statMt = { try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L } }
                     val smt = if (keepMt) statMt() else -1L
                     val can = dst.resumable && f.seekable && f.size >= RESUME_MIN

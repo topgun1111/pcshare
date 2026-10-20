@@ -376,8 +376,8 @@ object Routes {
         val remove = b.optString("remove")
         val edit = b.optString("edit")
         if (remove.isNotEmpty()) Ftp.remove(remove)
-        else if (edit.isNotEmpty()) Ftp.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true))
-        else Ftp.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true))
+        else if (edit.isNotEmpty()) Ftp.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true), b.optString("timeout").toIntOrNull() ?: 60, b.optString("encoding"), b.optBoolean("hidden"), b.optBoolean("sftp"))
+        else Ftp.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true), b.optString("timeout").toIntOrNull() ?: 60, b.optString("encoding"), b.optBoolean("hidden"), b.optBoolean("sftp"))
         ex.json(JSONObject().put("ok", true).put("list", Ftp.status()))
     }
 

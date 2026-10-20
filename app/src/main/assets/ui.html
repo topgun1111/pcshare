@@ -2100,7 +2100,7 @@ async function openFtp(){
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card smb');
   const head=E('div','smh'),hi=E('span','smi'),ht=E('div','smt');hi.append(ic('ftp'));
-  ht.append(E('h3','','FTP servers'),E('small','','FTP and FTPS (explicit TLS): NAS boxes, routers, web hosts'));head.append(hi,ht);
+  ht.append(E('h3','','FTP servers'),E('small','','FTP, FTPS (explicit TLS) and SFTP (SSH): NAS boxes, routers, web hosts'));head.append(hi,ht);
   card.append(E('div','handle'),head);
   const main=E('div'),pane=E('div');pane.style.display='none';card.append(main,pane);
   const refresh=()=>{S.sig='';pollPeers()};
@@ -2113,8 +2113,8 @@ async function openFtp(){
     if(!l.length){const e=E('div','smempty');e.append(E('b','','No servers yet'),E('small','','Tap Add server and type its address.'));list.append(e)}
     l.forEach(x=>{const r=E('div','smr'),av=E('div','sma'),dot=E('i','smd'+(x.ok?'':' off')),t=E('div','smb2'),ed=E('button','smx'),rm=E('button','smx dng');
       av.append(ic('ftp'),dot);
-      const sub=E('small','','ftp'+(x.ftps?'s':'')+'://'+x.host+(x.dir||''));
-      const pl=E('div','smpl');pl.append(pill(x.user||'anonymous',x.user?'':'g'));if(x.ftps)pl.append(pill('TLS'));if(x.mode==='active')pl.append(pill('Active'));
+      const sub=E('small','',(x.proto==='sftp'?'sftp':'ftp'+(x.ftps?'s':''))+'://'+x.host+(x.dir||''));
+      const pl=E('div','smpl');pl.append(pill(x.user||'anonymous',x.user?'':'g'));if(x.ftps)pl.append(pill('TLS'));if(x.proto==='sftp')pl.append(pill('SSH'));if(x.mode==='active')pl.append(pill('Active'));
       t.append(E('b','',x.name),sub,pl);
       ed.append(ic('edit'));ed.title='Edit';rm.append(ic('del'));rm.title='Remove';
       let armed=0,tm=0;
@@ -2133,7 +2133,9 @@ async function openFtp(){
       ['user','Username','Empty = anonymous','text',v.user||''],
       ['password','Password',edit?'•••••• (unchanged)':'','password',''],
       ['name','Display name','Optional','text',v.name||''],
-      ['dir','Start folder','Optional, e.g. /pub (empty = the server’s root)','text',v.dir||'']];
+      ['dir','Start folder','Optional, e.g. /pub (empty = the server’s root)','text',v.dir||''],
+      ['timeout','Timeout (seconds)','60 (5 - 300)','text',v.timeout&&v.timeout!==60?String(v.timeout):''],
+      ['encoding','File name encoding','Empty = UTF-8 (automatic); old servers: ISO-8859-9','text',v.encoding||'']];
     defs.forEach(([k,lb,ph,ty,val])=>{const w=E('label','smf'),i=E('input','tf');w.append(E('span','',lb));
       i.placeholder=ph;i.type=ty;i.value=val;i.autocomplete='off';i.autocapitalize='off';i.spellcheck=false;F[k]=i;
       if(k==='password'){const row=E('div','smpw'),sh=E('button','smshow','Show');sh.type='button';
@@ -2143,12 +2145,12 @@ async function openFtp(){
     const tw=E('label','smf'),cb=E('input'),tx=E('b','','Encrypt with TLS (FTPS)');cb.type='checkbox';cb.checked=!!v.ftps;
     tw.style.cssText='display:flex;align-items:center;gap:12px;margin:0 8px 12px';cb.style.cssText='width:22px;height:22px;flex:none';tx.style.fontWeight='500';tw.append(cb,tx);pane.append(tw);
     const opt=(txt,on)=>{const w=E('label','smf'),k=E('input'),t=E('b','',txt);k.type='checkbox';k.checked=on;w.style.cssText='display:flex;align-items:center;gap:12px;margin:0 8px 12px';k.style.cssText='width:22px;height:22px;flex:none';t.style.fontWeight='500';w.append(k,t);pane.append(w);return k};
-    const cAct=opt('Active mode (the server connects back to this phone)',v.mode==='active'),cNat=opt('Fix private passive address (servers behind NAT / routers)',v.natfix!==false),cVer=opt('Verify uploads (size + checksum)',v.verify!==false);
+    const cAct=opt('Active mode (the server connects back to this phone)',v.mode==='active'),cNat=opt('Fix private passive address (servers behind NAT / routers)',v.natfix!==false),cVer=opt('Verify uploads (size + checksum)',v.verify!==false),cHid=opt('Show hidden files (LIST -a)',!!v.hidden),cSftp=opt('SFTP (SSH, port 22): password login; the FTPS and mode options do not apply',v.proto==='sftp');
     const err=E('div','smerr');err.style.display='none';pane.append(err);
     const bar=E('div','dact'),cn=E('button','tbtn','Cancel'),sv=E('button','tbtn fill',edit?'Save':'Connect');
     const back=()=>{pane.style.display='none';pane.textContent='';main.style.display=''};
     cn.onclick=back;
-    sv.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;b.ftps=cb.checked;b.mode=cAct.checked?'active':'passive';b.natfix=cNat.checked;b.verify=cVer.checked;
+    sv.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;b.ftps=cb.checked;b.mode=cAct.checked?'active':'passive';b.natfix=cNat.checked;b.verify=cVer.checked;b.hidden=cHid.checked;b.sftp=cSftp.checked;
       if(!b.host.trim()){err.textContent='Enter the server’s address';err.style.display='';F.host.focus();return}
       if(edit)b.edit=x.id;
       err.style.display='none';sv.disabled=cn.disabled=true;sv.textContent=edit?'Saving…':'Connecting…';

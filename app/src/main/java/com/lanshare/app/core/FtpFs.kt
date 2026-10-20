@@ -79,27 +79,31 @@ object Ftp {
     }
 
     /** What the address field may carry besides the host: "ftps://" switches TLS on, "/pub/x" after the host becomes the start folder. */
-    private class Parsed(val host: String, val ftps: Boolean?, val dir: String)
+    private class Parsed(val host: String, val ftps: Boolean?, val dir: String, val sftp: Boolean)
     private fun parse(h0: String): Parsed {
         val t = h0.trim()
         val scheme = if (t.contains("://")) t.substringBefore("://").lowercase() else ""
         val rest = t.substringAfter("://")
         val dir = if (rest.contains('/')) "/" + rest.substringAfter('/').trim('/') else ""
-        return Parsed(rest.substringBefore('/').trim(), if (scheme == "ftps") true else null, if (dir == "/") "" else dir)
+        return Parsed(rest.substringBefore('/').trim(), if (scheme == "ftps") true else null, if (dir == "/") "" else dir, scheme == "sftp")
     }
 
-    private fun build(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir0: String, mode: String, natfix: Boolean, verify: Boolean): JSONObject {
+    private fun build(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir0: String, mode: String, natfix: Boolean, verify: Boolean, timeout: Int, encoding: String, hidden: Boolean, sftpFlag: Boolean): JSONObject {
         val p = parse(host0)
+        val sftp = p.sftp || sftpFlag
+        val hostS = if (sftp && p.host.count { it == ':' } != 1) p.host + ":22" else p.host   // SFTP: port 22 unless the address names one
         if (p.host.isEmpty()) throw BadReq("enter the server's address")
         val dir = dir0.trim().ifEmpty { p.dir }.let { if (it.isEmpty()) "" else vnorm(it) }
-        return JSONObject().put("id", id).put("host", p.host).put("user", user.trim()).put("password", password)
-            .put("name", name.trim().take(40).ifEmpty { split(p.host).first }).put("ftps", p.ftps ?: ftps).put("dir", dir)
+        return JSONObject().put("id", id).put("host", hostS).put("user", user.trim()).put("password", password)
+            .put("name", name.trim().take(40).ifEmpty { split(p.host).first }).put("ftps", (p.ftps ?: ftps) && !sftp).put("proto", if (sftp) "sftp" else "ftp").put("dir", dir)
             .put("mode", if (mode == "active") "active" else "passive").put("natfix", natfix).put("verify", verify)
+            .put("timeout", timeout.coerceIn(5, 300)).put("hidden", hidden)
+            .put("encoding", encoding.trim().let { if (it.isNotEmpty() && try { java.nio.charset.Charset.isSupported(it) } catch (_: Exception) { false }) it else "" })
     }
 
     /** Tests the login (lists the start folder: throws a readable error if address or login is wrong), then saves the server. Returns its id. */
-    fun add(host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true): String {
-        val c = build("ftp:" + java.util.UUID.randomUUID().toString().replace("-", "").take(6), host0, user, password, name, ftps, dir, mode, natfix, verify)
+    fun add(host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true, timeout: Int = 60, encoding: String = "", hidden: Boolean = false, sftp: Boolean = false): String {
+        val c = build("ftp:" + java.util.UUID.randomUUID().toString().replace("-", "").take(6), host0, user, password, name, ftps, dir, mode, natfix, verify, timeout, encoding, hidden, sftp)
         FtpFs.create(c).ls("/")
         val list = ArrayList<JSONObject>()
         val cur = Cfg.ftp()
@@ -112,9 +116,10 @@ object Ftp {
     }
 
     /** Edits a saved server in place (same id and position). An empty [password] keeps the stored one. Tested first; nothing changes when it fails. */
-    fun update(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true): String {
+    fun update(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true, timeout: Int = 60, encoding: String = "", hidden: Boolean = false, sftp: Boolean = false): String {
         val old = cfg(id) ?: throw BadReq("this server is no longer in the list")
-        val c = build(id, host0, user, if (password.isEmpty()) old.optString("password", "") else password, name, ftps, dir, mode, natfix, verify)
+        val c = build(id, host0, user, if (password.isEmpty()) old.optString("password", "") else password, name, ftps, dir, mode, natfix, verify, timeout, encoding, hidden, sftp)
+        if (old.optString("hostkey").isNotEmpty() && old.optString("host") == c.optString("host") && old.optString("proto") == c.optString("proto")) c.put("hostkey", old.optString("hostkey")).put("hostkeytype", old.optString("hostkeytype"))   // the pinned SSH host key stays
         FtpFs.create(c).ls("/")
         val cur = Cfg.ftp()
         val list = ArrayList<JSONObject>()
@@ -155,12 +160,13 @@ object Ftp {
             JSONObject().put("id", c.getString("id")).put("name", c.getString("name")).put("host", c.getString("host"))
                 .put("user", c.optString("user", "")).put("ftps", c.optBoolean("ftps", false)).put("dir", c.optString("dir", ""))
                 .put("mode", c.optString("mode", "passive")).put("natfix", c.optBoolean("natfix", true)).put("verify", c.optBoolean("verify", true))
+                .put("proto", c.optString("proto", "ftp")).put("timeout", c.optInt("timeout", 60)).put("encoding", c.optString("encoding", "")).put("hidden", c.optBoolean("hidden", false))
                 .put("ok", state[c.getString("id")] ?: true)
         }
     })
 }
 
-internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null }   // most servers allow only a few logins per client
+internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null; @Volatile var noCopy = false }   // most servers allow only a few logins per client
 
 /** One borrowed control connection. [release] puts it back (keep = true, only when no transfer is pending) or closes it. */
 internal class Lease(val c: FTPClient, private val pool: FtpPool) {
@@ -252,6 +258,9 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     private val ftps: Boolean = c.optBoolean("ftps", false)
     private val active: Boolean = c.optString("mode", "passive") == "active"   // active mode: the server connects back to this phone
     private val natfix: Boolean = c.optBoolean("natfix", true)                 // replace a private address in the PASV reply by the server address
+    private val timeoutMs: Int = c.optInt("timeout", 60).coerceIn(5, 300) * 1000
+    private val encoding: String = c.optString("encoding", "")                  // empty = UTF-8 with auto-detect
+    private val hidden: Boolean = c.optBoolean("hidden", false)                // LIST -a for servers that hide dot files
     private val verify: Boolean = c.optBoolean("verify", true)                 // check size + checksum after an upload
     private val base: String = c.optString("dir", "").let { if (it.isEmpty()) "" else vnorm(it) }.let { if (it == "/") "" else it }
 
@@ -259,14 +268,14 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     companion object {
         private val pools = ConcurrentHashMap<String, FtpPool>()
-        fun create(cfg: JSONObject): Endpoint = FtpFs(cfg)
+        fun create(cfg: JSONObject): Endpoint = if (cfg.optString("proto") == "sftp") SftpFs(cfg) else FtpFs(cfg)
         /** A server was removed / edited: close its idle connections now. */
-        fun forget(id: String) { pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
+        fun forget(id: String) { SftpFs.forget(id); pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
         private val IDLE_MAX_MS = 25_000L
         private const val HASH_MAX = 512L shl 20   // larger files: size check only (the server would need minutes to hash them)
     }
 
-    private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$ftps|$active|$natfix"
+    private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$ftps|$active|$natfix|$timeoutMs|$encoding|$hidden"
     private val pool: FtpPool get() = pools.getOrPut(poolKey) { FtpPool() }
 
     // ------------------------------------------------------------------ connections
@@ -280,15 +289,15 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             override fun createSocket(a: InetAddress, p: Int): Socket = Net.newSocket(ip).also { it.connect(InetSocketAddress(a, p)) }
             override fun createSocket(a: InetAddress, p: Int, la: InetAddress, lp: Int): Socket = Net.newSocket(ip).also { it.connect(InetSocketAddress(a, p)) }
         })
-        c.controlEncoding = "UTF-8"
-        c.setAutodetectUTF8(true)
+        if (encoding.isEmpty()) { c.controlEncoding = "UTF-8"; c.setAutodetectUTF8(true) } else c.controlEncoding = encoding
+        c.setListHiddenFiles(hidden)
         c.connectTimeout = 8_000
-        c.defaultTimeout = 30_000
+        c.defaultTimeout = minOf(timeoutMs, 30_000)
         c.setBufferSize(256 * 1024)
         try {
             c.connect(ip, port)
-            c.soTimeout = 60_000
-            c.setDataTimeout(60_000)
+            c.soTimeout = timeoutMs
+            c.setDataTimeout(timeoutMs)
             if (!FTPReply.isPositiveCompletion(c.replyCode)) throw IOException("The server refused the connection: " + c.replyString.trim())
             val u = user.ifEmpty { "anonymous" }
             if (!c.login(u, if (user.isEmpty() && pw.isEmpty()) "anonymous@" else pw)) throw Denied("Access denied - check the username and password")
@@ -587,6 +596,20 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     // ------------------------------------------------------------------ writing
     override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) = upload(v, input, size, 0L, null, cb)
+
+    /** Server-side copy (ProFTPD mod_copy: SITE CPFR / CPTO). False when the server has no such command or refuses; the size of the copy is checked. */
+    override fun copyWithin(v: String, toV: String): Boolean {
+        if (pool.noCopy || vnorm(v) == "/" || vnorm(toV) == "/") return false
+        val a = fp(v); val b = fp(toV)
+        return op(false) { c ->
+            mkdirs(c, b.substringBeforeLast('/', ""))
+            if (c.sendCommand("SITE", "CPFR $a") !in 300..399) { if (c.replyCode in 500..504) pool.noCopy = true; return@op false }
+            if (c.sendCommand("SITE", "CPTO $b") !in 200..299) return@op false
+            val sa = c.getSize(a)?.trim()?.toLongOrNull(); val sb = c.getSize(b)?.trim()?.toLongOrNull()
+            if (sa != null && sb != sa) { try { c.deleteFile(b) } catch (_: Exception) {}; return@op false }   // incomplete copy: copy the normal way
+            true
+        }
+    }
 
     override val setsMtime: Boolean get() = true
 
