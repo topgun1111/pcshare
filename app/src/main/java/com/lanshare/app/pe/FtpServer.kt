@@ -12,6 +12,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.MessageDigest
+import java.util.zip.CRC32
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import java.text.SimpleDateFormat
@@ -27,7 +29,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Minimal FTP server (RFC 959 subset) made for Windows Explorer's built-in FTP client.
  * Pure JDK, no Android classes, so it can be unit-tested on a PC.
  *
- * Supported: USER PASS QUIT SYST FEAT OPTS NOOP PWD CWD CDUP TYPE MODE STRU PASV EPSV PORT EPRT
+ * Supported: USER PASS QUIT SYST FEAT OPTS NOOP MFMT MFF HASH XCRC XMD5 XSHA1 XSHA256 PWD CWD CDUP TYPE MODE STRU PASV EPSV PORT EPRT
  *            LIST NLST MLSD MLST RETR STOR APPE DELE MKD RMD RNFR RNTO SIZE MDTM REST ABOR
  * Optional read-only mode and folder whitelist (virtual paths such as "/DCIM").
  * Only LAN-type client addresses are accepted (private, link-local, loopback, CGNAT/Tailscale).
@@ -116,6 +118,7 @@ class FtpServer(
         private var tlsOn = false     // control connection is encrypted (after AUTH TLS)
         private var pbsz = false
         private var protP = false     // data connections are encrypted (PROT P)
+        private var hashAlgo = "SHA-256" // chosen with OPTS HASH, used by HASH
         private var userOk = false
         private var loggedIn = false
         private var cwd = "/"
@@ -306,6 +309,85 @@ class FtpServer(
             }
         }
 
+        // ---- modification time (MFMT / MFF) and checksums (HASH / X*) -------------------------
+
+        private val hashNames = listOf("SHA-256", "SHA-1", "MD5", "CRC32")
+
+        private fun hashName(s: String): String? = when (s.trim().uppercase(Locale.ROOT).replace("_", "-")) {
+            "SHA-256", "SHA256" -> "SHA-256"
+            "SHA-1", "SHA1" -> "SHA-1"
+            "MD5" -> "MD5"
+            "CRC32", "CRC-32" -> "CRC32"
+            else -> null
+        }
+
+        private fun ftpTime(ms: Long): String =
+            SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(ms))
+
+        /** "YYYYMMDDHHMMSS[.sss]" (UTC) -> epoch millis, null when malformed. */
+        private fun parseFtpTime(s: String): Long? = try {
+            val fmt = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC"); isLenient = false }
+            val base = s.substringBefore('.')
+            if (base.length != 14) null else {
+                var ms = fmt.parse(base)?.time ?: return null
+                val frac = s.substringAfter('.', "")
+                if (frac.isNotEmpty() && frac.all { it.isDigit() }) ms += (frac + "00").take(3).toLong()
+                ms
+            }
+        } catch (_: Exception) { null }
+
+        /** Hex checksum of [len] bytes of [f] from [start] (len < 0 = to the end). Upper case, CRC32 as 8 digits. */
+        private fun checksum(f: File, algo: String, start: Long = 0, len: Long = -1): String {
+            val md = if (algo == "CRC32") null else MessageDigest.getInstance(algo)
+            val crc = CRC32()
+            val buf = ByteArray(64 * 1024)
+            RandomAccessFile(f, "r").use { raf ->
+                raf.seek(start)
+                var left = if (len < 0) Long.MAX_VALUE else len
+                while (left > 0) {
+                    val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) break
+                    if (md != null) md.update(buf, 0, n) else crc.update(buf, 0, n)
+                    left -= n
+                }
+            }
+            return if (md != null) md.digest().joinToString("") { "%02X".format(it) } else "%08X".format(crc.value)
+        }
+
+        /** HASH path -> "213 SHA-256 0-<last> <hex> <path>" (draft-bryan-ftpext-hash, whole file). */
+        private fun doHash(arg: String) {
+            val v = resolve(arg.trim())
+            val f = toFile(v)
+            if (!f.isFile || !canRead(v)) { reply("550 File not found"); return }
+            try {
+                val sum = checksum(f, hashAlgo)
+                reply("213 $hashAlgo 0-${maxOf(f.length() - 1, 0L)} $sum $v")
+            } catch (e: Exception) { reply("450 Cannot read the file") }
+        }
+
+        /** XCRC / XMD5 / XSHA1 / XSHA256: "<cmd> path" or "<cmd> path start length" -> "250 <hex>". */
+        private fun doXsum(arg: String, algo: String) {
+            var p = arg.trim()
+            var start = 0L
+            var len = -1L
+            if (!toFile(resolve(p)).exists()) {   // the name did not match: maybe "path start length"
+                val t = p.split(" ")
+                val a = t.getOrNull(t.size - 2)?.toLongOrNull()
+                val b = t.lastOrNull()?.toLongOrNull()
+                if (t.size >= 3 && a != null && b != null && a >= 0 && b >= 0) { start = a; len = b; p = t.dropLast(2).joinToString(" ") }
+            }
+            val v = resolve(p)
+            val f = toFile(v)
+            if (!f.isFile || !canRead(v)) { reply("550 File not found"); return }
+            try { reply("250 " + checksum(f, algo, start, len)) } catch (e: Exception) { reply("450 Cannot read the file") }
+        }
+
+        /** Sets the modification time of [v]; false when not allowed / not possible. */
+        private fun setMtime(v: String, ms: Long): Boolean {
+            val f = toFile(v)
+            return canWrite(v) && f.exists() && f.setLastModified(ms)
+        }
+
         private fun doList(arg: String, mode: Int) { // mode: 0 = LIST, 1 = NLST, 2 = MLSD
             var target = arg.trim()
             while (target.startsWith("-")) {                  // ignore options such as -l -a
@@ -403,10 +485,17 @@ class FtpServer(
                 }
                 "QUIT" -> { reply("221 Bye"); return false }
                 "NOOP" -> { reply("200 OK"); return true }
-                "OPTS" -> { reply("200 OK"); return true }
+                "OPTS" -> {
+                    val a = arg.trim().split(" ", limit = 2)
+                    if (a[0].uppercase(Locale.ROOT) == "HASH") {
+                        if (a.size < 2 || a[1].isBlank()) reply("200 $hashAlgo")
+                        else { val n = hashName(a[1]); if (n == null) reply("501 Unknown hash algorithm") else { hashAlgo = n; reply("200 $n") } }
+                    } else reply("200 OK")
+                    return true
+                }
                 "SYST" -> { reply("215 UNIX Type: L8"); return true }
                 "FEAT" -> {
-                    reply("211-Features:\r\n UTF8\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n EPSV\r\n MLST type*;size*;modify*;perm*;" + (if (tls() != null) "\r\n AUTH TLS\r\n PBSZ\r\n PROT" else "") + "\r\n211 End")
+                    reply("211-Features:\r\n UTF8\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n EPSV\r\n MLST type*;size*;modify*;perm*;\r\n MFMT\r\n MFF modify;\r\n HASH " + hashNames.joinToString(";") { if (it == hashAlgo) "$it*" else it } + ";\r\n XCRC\r\n XMD5\r\n XSHA1\r\n XSHA256" + (if (tls() != null) "\r\n AUTH TLS\r\n PBSZ\r\n PROT" else "") + "\r\n211 End")
                     return true
                 }
             }
@@ -579,6 +668,29 @@ class FtpServer(
                     restart = arg.trim().toLongOrNull() ?: 0L
                     reply("350 Restarting at $restart")
                 }
+                "MFMT" -> {
+                    val sp = arg.trim().indexOf(' ')
+                    val ms = if (sp > 0) parseFtpTime(arg.trim().substring(0, sp)) else null
+                    if (ms == null) { reply("501 Usage: MFMT YYYYMMDDHHMMSS path"); return true }
+                    val v = resolve(arg.trim().substring(sp + 1).trim())
+                    if (!toFile(v).exists() || !canRead(v)) reply("550 Not found")
+                    else if (setMtime(v, ms)) reply("213 Modify=${ftpTime(ms)}; $v") else reply("550 Cannot change the time (read-only or folder not allowed)")
+                }
+                "MFF" -> {
+                    val sp = arg.trim().indexOf(' ')
+                    if (sp <= 0) { reply("501 Usage: MFF facts path"); return true }
+                    val facts = arg.trim().substring(0, sp).split(';').filter { it.isNotBlank() }
+                    val v = resolve(arg.trim().substring(sp + 1).trim())
+                    val mod = facts.firstOrNull { it.startsWith("modify=", ignoreCase = true) }?.substringAfter('=')?.let { parseFtpTime(it) }
+                    if (mod == null) reply("504 Only the modify fact is supported")
+                    else if (!toFile(v).exists() || !canRead(v)) reply("550 Not found")
+                    else if (setMtime(v, mod)) reply("213 modify=${ftpTime(mod)}; $v") else reply("550 Cannot change the time (read-only or folder not allowed)")
+                }
+                "HASH" -> doHash(arg)
+                "XCRC" -> doXsum(arg, "CRC32")
+                "XMD5" -> doXsum(arg, "MD5")
+                "XSHA1" -> doXsum(arg, "SHA-1")
+                "XSHA256" -> doXsum(arg, "SHA-256")
                 "ABOR" -> reply("226 OK")
                 else -> reply("502 Command not implemented")
             }

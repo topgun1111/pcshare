@@ -35,6 +35,21 @@ ml = []
 ftp.retrlines("MLSD", ml.append)
 assert any("type=file" in x for x in ml), "MLSD failed"
 print("MLSD:", ml[0])
+# MFMT / MFF (keep the modified time) and HASH / XCRC (checksums)
+import hashlib
+import zlib
+name = names[0]
+print("MFMT:", ftp.sendcmd(f"MFMT 20200102030405 {name}"))
+assert ftp.sendcmd(f"MDTM {name}").endswith("20200102030405"), "MFMT did not change the time"
+print("MFF:", ftp.sendcmd(f"MFF modify=20210203040506; {name}"))
+assert ftp.sendcmd(f"MDTM {name}").endswith("20210203040506"), "MFF did not change the time"
+data = b"hello phone"
+h = ftp.sendcmd(f"HASH {name}")
+print("HASH:", h)
+assert hashlib.sha256(data).hexdigest().upper() in h, "HASH mismatch"
+assert ftp.sendcmd(f"XCRC {name}").split()[-1] == f"{zlib.crc32(data):08X}", "XCRC mismatch"
+assert hashlib.md5(data).hexdigest().upper() in ftp.sendcmd(f"XMD5 {name}"), "XMD5 mismatch"
+print("OPTS HASH:", ftp.sendcmd("OPTS HASH MD5"), "->", ftp.sendcmd(f"HASH {name}"))
 ftp.delete(names[0])
 ftp.cwd("..")
 ftp.rmd("PE_TEST")
