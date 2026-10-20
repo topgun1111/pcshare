@@ -155,6 +155,8 @@ class TextEditorActivity : Activity() {
     private var pinching = false
     private val hlRun = Runnable { runHighlight() }
     private val pvText = ArrayList<Pair<TextView, Float>>()   // preview text views and their size factor (relative to sizeSp)
+    private class PvHead(val level: Int, val title: String, val slug: String, val tv: TextView, val off: Int)
+    private val pvHeads = ArrayList<PvHead>()               // headings of the Markdown preview: #anchor links and the outline jump to these
     private lateinit var scaleDet: ScaleGestureDetector
 
     // undo / redo (snapshots, debounced)
@@ -400,7 +402,7 @@ class TextEditorActivity : Activity() {
         sizeBtn = tvBtn("Aa", 17f).apply { typeface = Fnt.semi(); setOnClickListener { sizeMenu(it) } }
         undoBtn = tvBtn("↶", 22f).apply { setOnClickListener { doUndo() } }
         redoBtn = tvBtn("↷", 22f).apply { setOnClickListener { doRedo() } }
-        modeBtn = tvBtn("\uD83D\uDC41", 20f).apply { setOnClickListener { setPreview(!previewOn) }; visibility = View.GONE }
+        modeBtn = tvBtn("\uD83D\uDC41", 20f).apply { setOnClickListener { setPreview(!previewOn) }; setOnLongClickListener { if (previewOn) { showOutline(); true } else false }; visibility = View.GONE }
         status = TextView(this).apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = Fnt.med(); gravity = Gravity.CENTER_VERTICAL or Gravity.END
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), 0, dp(12), 0)
@@ -509,6 +511,7 @@ class TextEditorActivity : Activity() {
 
     private fun openLink(u: String) {
         try {
+            if (u.startsWith("#")) { jumpTo(MdRender.slug(android.net.Uri.decode(u.substring(1)))); return }
             val uri = android.net.Uri.parse(u)
             val sc = uri.scheme?.lowercase()
             if (sc == "http" || sc == "https" || sc == "mailto" || sc == "tel") startActivity(Intent(Intent.ACTION_VIEW, uri)) else toast(u)
@@ -590,18 +593,43 @@ class TextEditorActivity : Activity() {
     }
 
     private fun refreshPreview() {
-        previewBox.removeAllViews(); pvText.clear()
+        val keep = previewBox.visibility == View.VISIBLE   // rebuilt while shown (theme / text size): stay where the reader is
+        val sy = scroll.scrollY
+        previewBox.removeAllViews(); pvText.clear(); pvHeads.clear()
         val blocks = MdRender.blocks(body.text.toString(), textColor, night, resources.displayMetrics.density) { openLink(it) }
         var first = true
         for (bl in blocks) {
             val v: View = when (bl) {
-                is MdRender.Block.Text -> pvTextView(bl.text)
+                is MdRender.Block.Text -> pvTextView(bl.text).also { tv -> for (h in bl.heads) pvHeads.add(PvHead(h.level, h.title, h.slug, tv, h.offset)) }
                 is MdRender.Block.Code -> codeCard(bl)
                 is MdRender.Block.Table -> tableView(bl)
             }
             previewBox.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (!first) topMargin = dp(10) })
             first = false
         }
+        if (keep) scroll.post { scroll.scrollTo(0, sy) }
+    }
+
+    /** Scrolls the preview so that heading [h] is at the top. */
+    private fun scrollToHead(h: PvHead) {
+        var y = 0
+        var v: View? = h.tv
+        while (v != null && v !== scroll) { y += v.top; v = v.parent as? View }
+        val lay = h.tv.layout
+        if (lay != null) y += lay.getLineTop(lay.getLineForOffset(h.off.coerceIn(0, h.tv.text.length)))
+        scroll.smoothScrollTo(0, (y - dp(8)).coerceAtLeast(0))
+    }
+
+    private fun jumpTo(slug: String) {
+        val h = pvHeads.firstOrNull { it.slug == slug }
+        if (h == null) toast("Section not found") else scrollToHead(h)
+    }
+
+    /** List of the headings of the open Markdown preview (long-press the preview button, or ⋮ > Outline). */
+    private fun showOutline() {
+        if (pvHeads.isEmpty()) { toast("No headings"); return }
+        val items = pvHeads.map { "\u2003".repeat((it.level - 1).coerceAtMost(4)) + it.title }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Outline").setItems(items) { _, k -> scrollToHead(pvHeads[k]) }.show()
     }
 
     /** Formatted (Markdown) view of the note instead of the raw text. The raw text stays in [body]; nothing is changed or saved by this. */
@@ -934,6 +962,7 @@ class TextEditorActivity : Activity() {
         m.menu.add(0, 4, 7, "Share as text")
         m.menu.add(0, 5, 8, "Copy all")
         m.menu.add(0, 6, 9, "Details")
+        if (previewOn && pvHeads.isNotEmpty()) m.menu.add(0, 11, 0, "Outline")
         m.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> showFind()
@@ -952,6 +981,7 @@ class TextEditorActivity : Activity() {
                 4 -> shareText()
                 5 -> { (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("note", body.text.toString())); toast("Copied") }
                 6 -> details()
+                11 -> showOutline()
             }
             true
         }
