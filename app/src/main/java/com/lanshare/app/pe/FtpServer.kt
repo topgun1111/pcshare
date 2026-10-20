@@ -328,8 +328,8 @@ class FtpServer(
         private fun parseFtpTime(s: String): Long? = try {
             val fmt = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC"); isLenient = false }
             val base = s.substringBefore('.')
-            if (base.length != 14) null else {
-                var ms = fmt.parse(base)?.time ?: return null
+            if (base.length != 14) null else fmt.parse(base)?.time?.let { t0 ->
+                var ms = t0
                 val frac = s.substringAfter('.', "")
                 if (frac.isNotEmpty() && frac.all { it.isDigit() }) ms += (frac + "00").take(3).toLong()
                 ms
