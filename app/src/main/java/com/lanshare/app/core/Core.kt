@@ -22,6 +22,9 @@ object Core {
     lateinit var disc: Discovery
     lateinit var page: ByteArray
     private var started = false
+    private val firstScreen = java.util.concurrent.CountDownLatch(1)
+    /** The UI drew its first screen (MainActivity): the deferred heavy start-up work may begin now. */
+    fun firstScreenDrawn() = firstScreen.countDown()
     private var server: MiniHttp? = null
     private val held = ArrayList<Any>()   // wake/wifi/multicast locks - kept referenced for the life of the process
 
@@ -87,8 +90,13 @@ object Core {
             PerfMarks.mark("core.discoveryStarted")   // PERF-DEBUG
             url = "http://127.0.0.1:$port"   // published first: the screen waits for this, so the slower setup below must not delay it
             PerfMarks.mark("core.url")   // PERF-DEBUG
-            try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // image search: engine ready at once when the model files are already downloaded
-            try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
+            Thread({   // image search engine + new-picture watcher: heavy (model load), so they wait until the first screen is drawn instead of competing with the page load
+                try { firstScreen.await(6, java.util.concurrent.TimeUnit.SECONDS) } catch (_: InterruptedException) {}   // no activity (service-only start): go after 6 s
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+                try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // engine ready when the model files are already downloaded
+                PerfMarks.mark("core.clipLoaded")   // PERF-DEBUG
+                try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
+            }, "late-init").also { it.isDaemon = true; it.start() }
             try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
             Log.i(TAG, "running on $port, sharing ${local.root}, device ${Cfg.name}")
         } catch (e: Throwable) {

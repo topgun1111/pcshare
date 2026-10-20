@@ -255,12 +255,12 @@ class MainActivity : Activity() {
             } catch (_: Throwable) { } }
         @JavascriptInterface fun nlPatch(json: String) { runOnUiThread { try { nl.patch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlSel(sel: String) { try { val s = NativeList.parseSel(sel); runOnUiThread { nl.setSel(s) } } catch (_: Throwable) { } }
-        @JavascriptInterface fun nlLayout(json: String) { mark("firstScreen"); runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
-        @JavascriptInterface fun nlHide() { mark("firstScreen"); runOnUiThread { nl.hide(); splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlLayout(json: String) { mark("firstScreen"); Core.firstScreenDrawn(); runOnUiThread { try { nl.layout(json) } catch (_: Throwable) { }; splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlHide() { mark("firstScreen"); Core.firstScreenDrawn(); runOnUiThread { nl.hide(); splash.dismiss(); uiBooted = true; runPrint() } }
         /** Path bar + tool row content (NlHead.kt): JSON from ui.html nlHeadPush(). */
         @JavascriptInterface fun nlHead(json: String) { runOnUiThread { try { nl.setHead(json) } catch (_: Throwable) { } } }
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
-        @JavascriptInterface fun nlBoot() { mark("firstScreen"); runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
+        @JavascriptInterface fun nlBoot() { mark("firstScreen"); Core.firstScreenDrawn(); runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
         /** Native search box (NlSearch.kt): ui.html nlSrPush() geometry / state, the query the next nlItems was filtered by, focus request. */
         @JavascriptInterface fun nlSearch(json: String) { runOnUiThread { try { nl.setSearch(json) } catch (_: Throwable) { } } }
