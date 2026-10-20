@@ -59,7 +59,7 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
-    packaging { resources { excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/versions/9/module-info.class", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
+    packaging { resources { excludes += setOf("META-INF/versions/*/OSGI-INF/MANIFEST.MF", "META-INF/OSGI-INF/MANIFEST.MF", "META-INF/versions/9/module-info.class", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     lint { checkReleaseBuilds = false; abortOnError = false }  // lintVital must never block the APK
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
