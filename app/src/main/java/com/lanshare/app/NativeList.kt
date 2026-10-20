@@ -279,9 +279,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                     cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
                 }
             } else {
-                val kb = pl.kb[r.k] ?: pl.kb["file"] ?: 0; val kc = pl.kc[r.k] ?: pl.kc["file"] ?: 0
-                p.color = kb; rf.set(lcx - tile, cy - tile, lcx + tile, cy + tile); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
-                icon(r.k, lcx - ico / 2f, cy - ico / 2f, ico, kc, cv)
+                NlFileIcons.draw(cv, r.nm, r.k, lcx - tile, cy - tile, tile * 2f)   // realistic coloured type icon (Word / Excel / PowerPoint / PDF ...)
             }
         }
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
@@ -439,7 +437,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     }
 
     /** File without a thumbnail: grey page with a folded corner and a white badge holding the type icon (page is 100 units wide, the badge sticks out 20 units on the left). */
-    private fun page(cv: Canvas, ox: Float, oy: Float, k: Float, kind: String) {
+    private fun page(cv: Canvas, ox: Float, oy: Float, k: Float, kind: String, name: String) {
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
         p.style = Paint.Style.FILL; p.color = 0xFF85908C.toInt(); cv.drawPath(PAGE, p)
         p.color = 0xFFAAB5B0.toInt(); cv.drawPath(FOLD, p)
@@ -448,7 +446,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         rf.set(-20.3f, 28.8f, 59.6f, 107.9f)
         p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 6.6f, 6.6f, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFA8A8A8.toInt(); cv.drawRoundRect(rf, 6.6f, 6.6f, p)
-        icon(kind, 19.65f - 26f, 68.35f - 26f, 52f, 0xFF5F6E69.toInt(), cv)
+        NlFileIcons.draw(cv, name, kind, 19.65f - 30f, 68.35f - 30f, 60f)   // coloured type icon inside the white badge
         cv.restore()
     }
 
@@ -489,7 +487,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 }
             } else {
                 val k = 0.93f * s / 120.3f
-                page(cv, lx + (s - 120.3f * k) / 2f + 20.3f * k, cy - 127.7f * k / 2f, k, r.k)
+                page(cv, lx + (s - 120.3f * k) / 2f + 20.3f * k, cy - 127.7f * k / 2f, k, r.k, r.nm)
             }
         }
         p.style = Paint.Style.FILL
