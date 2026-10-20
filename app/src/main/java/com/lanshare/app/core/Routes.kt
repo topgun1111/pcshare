@@ -376,8 +376,8 @@ object Routes {
         val remove = b.optString("remove")
         val edit = b.optString("edit")
         if (remove.isNotEmpty()) Ftp.remove(remove)
-        else if (edit.isNotEmpty()) Ftp.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"))
-        else Ftp.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"))
+        else if (edit.isNotEmpty()) Ftp.update(edit, b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true))
+        else Ftp.add(b.optString("host"), b.optString("user"), b.optString("password"), b.optString("name"), b.optBoolean("ftps"), b.optString("dir"), b.optString("mode", "passive"), b.optBoolean("natfix", true), b.optBoolean("verify", true))
         ex.json(JSONObject().put("ok", true).put("list", Ftp.status()))
     }
 

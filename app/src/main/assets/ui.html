@@ -2114,7 +2114,7 @@ async function openFtp(){
     l.forEach(x=>{const r=E('div','smr'),av=E('div','sma'),dot=E('i','smd'+(x.ok?'':' off')),t=E('div','smb2'),ed=E('button','smx'),rm=E('button','smx dng');
       av.append(ic('ftp'),dot);
       const sub=E('small','','ftp'+(x.ftps?'s':'')+'://'+x.host+(x.dir||''));
-      const pl=E('div','smpl');pl.append(pill(x.user||'anonymous',x.user?'':'g'));if(x.ftps)pl.append(pill('TLS'));
+      const pl=E('div','smpl');pl.append(pill(x.user||'anonymous',x.user?'':'g'));if(x.ftps)pl.append(pill('TLS'));if(x.mode==='active')pl.append(pill('Active'));
       t.append(E('b','',x.name),sub,pl);
       ed.append(ic('edit'));ed.title='Edit';rm.append(ic('del'));rm.title='Remove';
       let armed=0,tm=0;
@@ -2142,11 +2142,13 @@ async function openFtp(){
       pane.append(w)});
     const tw=E('label','smf'),cb=E('input'),tx=E('b','','Encrypt with TLS (FTPS)');cb.type='checkbox';cb.checked=!!v.ftps;
     tw.style.cssText='display:flex;align-items:center;gap:12px;margin:0 8px 12px';cb.style.cssText='width:22px;height:22px;flex:none';tx.style.fontWeight='500';tw.append(cb,tx);pane.append(tw);
+    const opt=(txt,on)=>{const w=E('label','smf'),k=E('input'),t=E('b','',txt);k.type='checkbox';k.checked=on;w.style.cssText='display:flex;align-items:center;gap:12px;margin:0 8px 12px';k.style.cssText='width:22px;height:22px;flex:none';t.style.fontWeight='500';w.append(k,t);pane.append(w);return k};
+    const cAct=opt('Active mode (the server connects back to this phone)',v.mode==='active'),cNat=opt('Fix private passive address (servers behind NAT / routers)',v.natfix!==false),cVer=opt('Verify uploads (size + checksum)',v.verify!==false);
     const err=E('div','smerr');err.style.display='none';pane.append(err);
     const bar=E('div','dact'),cn=E('button','tbtn','Cancel'),sv=E('button','tbtn fill',edit?'Save':'Connect');
     const back=()=>{pane.style.display='none';pane.textContent='';main.style.display=''};
     cn.onclick=back;
-    sv.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;b.ftps=cb.checked;
+    sv.onclick=async()=>{const b={};for(const k in F)b[k]=F[k].value;b.ftps=cb.checked;b.mode=cAct.checked?'active':'passive';b.natfix=cNat.checked;b.verify=cVer.checked;
       if(!b.host.trim()){err.textContent='Enter the server’s address';err.style.display='';F.host.focus();return}
       if(edit)b.edit=x.id;
       err.style.display='none';sv.disabled=cn.disabled=true;sv.textContent=edit?'Saving…':'Connecting…';

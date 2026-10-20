@@ -287,6 +287,9 @@ class LocalFs(rootPath: String) : Endpoint {
         }
     }
 
+    override val setsMtime: Boolean get() = true
+    override fun setMtime(v: String, sec: Long) { if (sec > 0) try { real(v).setLastModified(sec * 1000) } catch (_: Exception) {} }
+
     override val resumable: Boolean get() = true
 
     override fun partial(v: String, tag: String): Long {

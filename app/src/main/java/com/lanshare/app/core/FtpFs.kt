@@ -17,6 +17,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.security.MessageDigest
+import java.util.Locale
+import java.util.zip.CRC32
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -85,17 +88,18 @@ object Ftp {
         return Parsed(rest.substringBefore('/').trim(), if (scheme == "ftps") true else null, if (dir == "/") "" else dir)
     }
 
-    private fun build(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir0: String): JSONObject {
+    private fun build(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir0: String, mode: String, natfix: Boolean, verify: Boolean): JSONObject {
         val p = parse(host0)
         if (p.host.isEmpty()) throw BadReq("enter the server's address")
         val dir = dir0.trim().ifEmpty { p.dir }.let { if (it.isEmpty()) "" else vnorm(it) }
         return JSONObject().put("id", id).put("host", p.host).put("user", user.trim()).put("password", password)
             .put("name", name.trim().take(40).ifEmpty { split(p.host).first }).put("ftps", p.ftps ?: ftps).put("dir", dir)
+            .put("mode", if (mode == "active") "active" else "passive").put("natfix", natfix).put("verify", verify)
     }
 
     /** Tests the login (lists the start folder: throws a readable error if address or login is wrong), then saves the server. Returns its id. */
-    fun add(host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String): String {
-        val c = build("ftp:" + java.util.UUID.randomUUID().toString().replace("-", "").take(6), host0, user, password, name, ftps, dir)
+    fun add(host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true): String {
+        val c = build("ftp:" + java.util.UUID.randomUUID().toString().replace("-", "").take(6), host0, user, password, name, ftps, dir, mode, natfix, verify)
         FtpFs.create(c).ls("/")
         val list = ArrayList<JSONObject>()
         val cur = Cfg.ftp()
@@ -108,9 +112,9 @@ object Ftp {
     }
 
     /** Edits a saved server in place (same id and position). An empty [password] keeps the stored one. Tested first; nothing changes when it fails. */
-    fun update(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String): String {
+    fun update(id: String, host0: String, user: String, password: String, name: String, ftps: Boolean, dir: String, mode: String = "passive", natfix: Boolean = true, verify: Boolean = true): String {
         val old = cfg(id) ?: throw BadReq("this server is no longer in the list")
-        val c = build(id, host0, user, if (password.isEmpty()) old.optString("password", "") else password, name, ftps, dir)
+        val c = build(id, host0, user, if (password.isEmpty()) old.optString("password", "") else password, name, ftps, dir, mode, natfix, verify)
         FtpFs.create(c).ls("/")
         val cur = Cfg.ftp()
         val list = ArrayList<JSONObject>()
@@ -150,12 +154,13 @@ object Ftp {
             val c = a.getJSONObject(it)
             JSONObject().put("id", c.getString("id")).put("name", c.getString("name")).put("host", c.getString("host"))
                 .put("user", c.optString("user", "")).put("ftps", c.optBoolean("ftps", false)).put("dir", c.optString("dir", ""))
+                .put("mode", c.optString("mode", "passive")).put("natfix", c.optBoolean("natfix", true)).put("verify", c.optBoolean("verify", true))
                 .put("ok", state[c.getString("id")] ?: true)
         }
     })
 }
 
-internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>() }   // most servers allow only a few logins per client
+internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null }   // most servers allow only a few logins per client
 
 /** One borrowed control connection. [release] puts it back (keep = true, only when no transfer is pending) or closes it. */
 internal class Lease(val c: FTPClient, private val pool: FtpPool) {
@@ -245,6 +250,9 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     private val user: String = c.optString("user", "")
     private val pw: String = c.optString("password", "")
     private val ftps: Boolean = c.optBoolean("ftps", false)
+    private val active: Boolean = c.optString("mode", "passive") == "active"   // active mode: the server connects back to this phone
+    private val natfix: Boolean = c.optBoolean("natfix", true)                 // replace a private address in the PASV reply by the server address
+    private val verify: Boolean = c.optBoolean("verify", true)                 // check size + checksum after an upload
     private val base: String = c.optString("dir", "").let { if (it.isEmpty()) "" else vnorm(it) }.let { if (it == "/") "" else it }
 
     init { val (h, p) = Ftp.split(c.getString("host")); host = h; port = p }
@@ -255,9 +263,10 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         /** A server was removed / edited: close its idle connections now. */
         fun forget(id: String) { pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
         private val IDLE_MAX_MS = 25_000L
+        private const val HASH_MAX = 512L shl 20   // larger files: size check only (the server would need minutes to hash them)
     }
 
-    private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$ftps"
+    private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$ftps|$active|$natfix"
     private val pool: FtpPool get() = pools.getOrPut(poolKey) { FtpPool() }
 
     // ------------------------------------------------------------------ connections
@@ -284,7 +293,8 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             val u = user.ifEmpty { "anonymous" }
             if (!c.login(u, if (user.isEmpty() && pw.isEmpty()) "anonymous@" else pw)) throw Denied("Access denied - check the username and password")
             if (c is FTPSClient) { c.execPBSZ(0); c.execPROT("P") }   // data connections encrypted too
-            c.enterLocalPassiveMode()
+            if (active) c.enterLocalActiveMode() else c.enterLocalPassiveMode()
+            if (!natfix) c.setPassiveNatWorkaroundStrategy(null)   // the server's PASV address is trusted as it is
             c.setFileType(FTP.BINARY_FILE_TYPE)
             c.setControlKeepAliveTimeout(20)   // NOOP on the control line while a long transfer runs (idle timeouts of servers)
             c.setControlKeepAliveReplyTimeout(5_000)
@@ -321,20 +331,38 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     }
 
     /** Runs [fn] on a pooled connection. The connection goes back to the pool only when the call ended cleanly. */
-    private fun <T> op(fn: (FTPClient) -> T): T {
-        val l = try { lease() } catch (e: Throwable) { val m = mapErr(e); Ftp.state[id] = m is Denied && (Ftp.state[id] ?: true); throw m }
-        var keep = false
-        try {
-            val r = fn(l.c)
-            keep = true
-            Ftp.state[id] = true
-            return r
-        } catch (e: Throwable) {
-            val m = mapErr(e)
-            keep = m is NotFound || m is Denied || m is Exists || m is BadReq || m is Full
-            if (m !is NotFound && m !is Exists && m !is BadReq && m !is Cancelled) Ftp.state[id] = m is Denied && (Ftp.state[id] ?: true)
-            throw m
-        } finally { l.release(keep) }
+    /** A dropped / refused connection (not a "no", a bad password or a certificate problem): worth another try. */
+    private fun transient(e: Throwable) = e is FTPConnectionClosedException || e is java.net.SocketException || e is SocketTimeoutException ||
+        e is java.io.EOFException || (e is IOException && e.message?.startsWith("The server closed") == true)
+
+    /**
+     * Runs [fn] on a pooled connection. The connection goes back to the pool only when the call ended cleanly.
+     * A connection that cannot be opened is retried twice (0.7 s, 1.4 s); a call that fails in the middle is retried too when it is [idem]potent.
+     */
+    private fun <T> op(idem: Boolean = true, fn: (FTPClient) -> T): T {
+        var attempt = 0
+        while (true) {
+            val l = try { lease() } catch (e: Throwable) {
+                if (transient(e) && attempt < 2) { attempt++; Thread.sleep(700L * attempt); continue }
+                val m = mapErr(e); Ftp.state[id] = m is Denied && (Ftp.state[id] ?: true); throw m
+            }
+            var keep = false
+            try {
+                val r = fn(l.c)
+                keep = true
+                Ftp.state[id] = true
+                return r
+            } catch (e: Throwable) {
+                val m = mapErr(e)
+                keep = m is NotFound || m is Denied || m is Exists || m is BadReq || m is Full
+                if (!(idem && transient(e) && attempt < 2)) {
+                    if (m !is NotFound && m !is Exists && m !is BadReq && m !is Cancelled) Ftp.state[id] = m is Denied && (Ftp.state[id] ?: true)
+                    throw m
+                }
+            } finally { l.release(keep) }
+            attempt++
+            Thread.sleep(700L * attempt)
+        }
     }
 
     /** The reply the server just sent, as the matching error. */
@@ -425,7 +453,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     override fun search(v: String, q: String): SearchResult {
         val out = ArrayList<Item>()
         val end = System.currentTimeMillis() + 15_000L
-        val partial = op { c -> searchIn(c, v, q.lowercase(), out, end) }
+        val partial = op(false) { c -> searchIn(c, v, q.lowercase(), out, end) }
         if (!partial) out.sortWith(compareBy<Item>({ !it.dir }, { it.name.lowercase() }))
         return SearchResult(out, partial)
     }
@@ -502,41 +530,168 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     override fun mkdir(v: String) { op { c -> mkdirs(c, fp(v)) } }
 
-    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
+    // ------------------------------------------------------------------ checksums
+    private class HashPlan(val cmd: String, val jdk: String?, val len: Int, val opt: String?)
+
+    private class Sum(p: HashPlan) {
+        private val md: MessageDigest? = p.jdk?.let { MessageDigest.getInstance(it) }
+        private val crc: CRC32? = if (md == null) CRC32() else null
+        fun update(b: ByteArray, o: Int, n: Int) { if (md != null) md.update(b, o, n) else crc!!.update(b, o, n) }
+        fun hex(): String = if (md != null) md.digest().joinToString("") { "%02x".format(it) } else "%08x".format(crc!!.value)
+    }
+
+    /** What the server says it can do (FEAT), asked once per server. */
+    private fun feats(c: FTPClient): Set<String> {
+        pool.feat?.let { return it }
+        val s = HashSet<String>()
+        try {
+            if (c.sendCommand("FEAT") == 211) {
+                for (ln in c.replyStrings) {
+                    val t = ln.trim()
+                    if (t.isEmpty() || t.startsWith("211")) continue
+                    val key = t.substringBefore(' ').uppercase(Locale.ROOT)
+                    s.add(key)
+                    if (key == "HASH") t.substringAfter(' ', "").split(';').forEach { a ->
+                        val n = a.trim().trimEnd('*').uppercase(Locale.ROOT)
+                        if (n.isNotEmpty()) s.add("HASH:$n")
+                    }
+                }
+            }
+        } catch (e: IOException) { return s }
+        pool.feat = s
+        return s
+    }
+
+    private fun hashPlan(f: Set<String>): HashPlan? = when {
+        "XSHA256" in f -> HashPlan("XSHA256", "SHA-256", 64, null)
+        "XSHA1" in f -> HashPlan("XSHA1", "SHA-1", 40, null)
+        "XMD5" in f -> HashPlan("XMD5", "MD5", 32, null)
+        "XCRC" in f -> HashPlan("XCRC", null, 8, null)
+        "HASH:SHA-256" in f -> HashPlan("HASH", "SHA-256", 64, "SHA-256")
+        "HASH:SHA-1" in f -> HashPlan("HASH", "SHA-1", 40, "SHA-1")
+        "HASH:MD5" in f -> HashPlan("HASH", "MD5", 32, "MD5")
+        else -> null
+    }
+
+    /** The server's checksum of [path] (lower-case hex), null when it refuses. An IOException (timeout) leaves the connection unusable. */
+    private fun remoteHash(c: FTPClient, p: HashPlan, path: String): String? {
+        val old = c.soTimeout
+        try {
+            c.soTimeout = 300_000   // the server reads the whole file
+            if (p.opt != null && c.sendCommand("OPTS", "HASH " + p.opt) !in 200..299) return null
+            if (c.sendCommand(p.cmd, path) !in 200..299) return null
+            val line = c.replyString.trim().substringAfter(' ')
+            return Regex("(?<![0-9a-fA-F])[0-9a-fA-F]{${p.len}}(?![0-9a-fA-F])").find(line)?.value?.lowercase(Locale.ROOT)
+        } finally { try { c.soTimeout = old } catch (_: Exception) {} }
+    }
+
+    // ------------------------------------------------------------------ writing
+    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) = upload(v, input, size, 0L, null, cb)
+
+    override val setsMtime: Boolean get() = true
+
+    /** Gives the stored file its original modification time (MFMT, UTC) when the server has it. */
+    override fun setMtime(v: String, sec: Long) {
+        if (sec <= 0 || vnorm(v) == "/") return
+        val path = fp(v)
+        op { c ->
+            if ("MFMT" in feats(c)) {
+                val f = java.text.SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                c.sendCommand("MFMT", f.format(java.util.Date(sec * 1000)) + " " + path)
+            }
+            Unit
+        }
+    }
+
+    override val resumable: Boolean get() = true
+
+    private fun pkey(tmp: String) = "ftp|$id|$tmp"
+
+    override fun partial(v: String, tag: String): Long = try {
+        val tmp = fp(v) + ".lspart"
+        if (vnorm(v) == "/" || !Partials.matches(pkey(tmp), tag)) 0L
+        else op { c -> c.getSize(tmp)?.trim()?.toLongOrNull() ?: 0L }
+    } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+
+    override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
+        if (size < 0 || offset < 0 || offset > size) throw BadReq("bad resume offset")
+        upload(v, input, size, offset, tag, cb)
+    }
+
+    private fun commit(c: FTPClient, p: String, tmp: String) {
+        try { c.deleteFile(p) } catch (_: Exception) {}   // replace an existing file of that name
+        if (!c.rename(tmp, p)) throw replyErr(c)
+    }
+
+    /**
+     * Stores [input] (which starts AT [offset]) as "name.lspart", checks it (size, and checksum when the server has XSHA256 / XSHA1 / XMD5 / XCRC / HASH
+     * and the whole file went through this call), then renames it. With a [tag] (resumable copy) the .lspart stays after a failure and the next try
+     * continues with APPE; a cancel, a mismatch or a failed check removes it.
+     */
+    private fun upload(v: String, input: InputStream, size: Long, offset: Long, tag: String?, cb: ((Int) -> Unit)?) {
         val p = fp(v)
         if (vnorm(v) == "/") throw BadReq("invalid path")
         val tmp = "$p.lspart"
+        val pk = pkey(tmp)
         var ok = false
+        var keep = tag != null
         try {
             val l = lease()
             var clean = false
             try {
                 val c = l.c
                 mkdirs(c, p.substringBeforeLast('/', ""))
-                val os = c.storeFileStream(tmp) ?: throw replyErr(c)
+                if (offset > 0) {
+                    val have = c.getSize(tmp)?.trim()?.toLongOrNull() ?: -1L
+                    if (tag == null || !Partials.matches(pk, tag) || have != offset) throw BadReq("resume offset mismatch (have ${maxOf(have, 0L)})")
+                }
+                if (tag != null) Partials.put(pk, tag)
+                val plan = if (verify && offset == 0L && size in 1..HASH_MAX) hashPlan(feats(c)) else null
+                val sum = plan?.let { Sum(it) }
+                val os = (if (offset > 0) c.appendFileStream(tmp) else c.storeFileStream(tmp))
+                    ?: throw (if (offset > 0 && c.replyCode in 500..504) BadReq("resume offset mismatch (this server cannot append)") else replyErr(c))
                 try {
                     val buf = ByteArray(CHUNK)
-                    var left = size
+                    var left = size - offset
                     while (left > 0) {
                         val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
                         if (n < 0) throw IOException("connection lost")
                         os.write(buf, 0, n)
+                        sum?.update(buf, 0, n)
                         left -= n
                         cb?.invoke(n)
                     }
                 } finally { try { os.close() } catch (_: Exception) {} }
                 if (!c.completePendingCommand()) throw replyErr(c)
-                try { c.deleteFile(p) } catch (_: Exception) {}   // replace an existing file of that name
-                if (!c.rename(tmp, p)) throw replyErr(c)
-                clean = true; ok = true
+                if (verify && size > 0) {   // size check: cheap, works on nearly every server
+                    val got = c.getSize(tmp)?.trim()?.toLongOrNull()
+                    if (got != null && got != size) {
+                        if (got > size) keep = false
+                        throw IOException("Upload incomplete: the server has $got of $size bytes")
+                    }
+                }
+                var reconnect = false
+                if (sum != null && plan != null) {
+                    var remote: String? = null
+                    try { remote = remoteHash(c, plan, tmp) } catch (_: IOException) { reconnect = true }   // slow server: skip the check, the size matched
+                    if (remote != null && !remote.equals(sum.hex(), ignoreCase = true)) {
+                        keep = false
+                        throw IOException("Upload check failed: the file on the server differs from the original (checksum) - try again")
+                    }
+                    if (reconnect) l.release(false)
+                }
+                if (reconnect) op(false) { c2 -> commit(c2, p, tmp) } else commit(c, p, tmp)
+                clean = !reconnect; ok = true
                 Ftp.state[id] = true
             } catch (e: Throwable) {
                 val m = mapErr(e)
+                if (m is Cancelled || m is BadReq) keep = false
                 if (m !is NotFound && m !is Exists && m !is BadReq && m !is Cancelled) Ftp.state[id] = m is Denied && (Ftp.state[id] ?: true)
                 throw m
             } finally { l.release(clean) }
         } finally {
-            if (!ok) try { op { c -> c.deleteFile(tmp) } } catch (_: Exception) {}   // never leave a half file behind
+            if (ok || !keep) Partials.forget(pk)
+            if (!ok && !keep) try { op { c -> c.deleteFile(tmp) } } catch (_: Exception) {}   // never leave a half file behind
         }
     }
 
@@ -562,7 +717,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     override fun remove(v: String, progress: ((String) -> Unit)?) {
         val n = vnorm(v)
         if (n == "/") throw Denied("cannot delete the server root")
-        op { c ->
+        op(false) { c ->
             val me = entry(c, n) ?: return@op
             val fails = ArrayList<String>()
             if (me.dir) {
@@ -581,7 +736,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
         if (vnorm(v) == "/") throw BadReq("cannot rename the root")
         val dst = vjoin(vdir(v), newName)
-        op { c ->
+        op(false) { c ->
             val clash = entry(c, dst)
             if (clash != null && !vbase(v).equals(newName, ignoreCase = true)) throw Exists("name already exists")
             if (!c.rename(fp(v), fp(dst))) throw replyErr(c)
@@ -590,7 +745,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     }
 
     override fun move(v: String, toV: String) {
-        op { c ->
+        op(false) { c ->
             if (entry(c, toV) != null) throw Exists("name already exists")
             mkdirs(c, fp(vdir(toV)))
             if (!c.rename(fp(v), fp(toV))) throw replyErr(c)

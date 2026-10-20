@@ -57,6 +57,10 @@ interface Endpoint {
         if (offset != 0L) throw BadReq("this place cannot resume a copy")
         write(v, input, size, cb)
     }
+    /** True when [setMtime] works here (used to keep the original modification time of copies to / from an FTP server). */
+    val setsMtime: Boolean get() = false
+    /** Sets the modification time (epoch seconds) of [v]; the caller ignores failures. */
+    fun setMtime(v: String, sec: Long) {}
     fun mkdir(v: String)
     /** [progress] is called with the name of every entry that was deleted; it may throw [Cancelled] to stop. */
     fun remove(v: String, progress: ((String) -> Unit)? = null)

@@ -20,6 +20,7 @@ class LanShareService : Service() {
                 try {
                     Thread.sleep(1500)
                     Core.rescan()
+                    com.lanshare.app.core.Jobs.autoResume()   // interrupted FTP copies continue by themselves
                 } catch (_: Exception) {}
             }.start()
         }

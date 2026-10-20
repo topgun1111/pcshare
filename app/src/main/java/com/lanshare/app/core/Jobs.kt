@@ -772,6 +772,20 @@ object Jobs {
         return jid
     }
 
+    private val autoTried = HashMap<String, Long>()
+
+    /** The network came back: continues interrupted copies that involve an FTP server (younger than 30 min, each at most once per 2 min, never while running). */
+    @Synchronized fun autoResume() {
+        val now = System.currentTimeMillis()
+        for ((rid, sp) in Partials.jobs()) {
+            if (!(sp.optString("src").startsWith("ftp:") || sp.optString("dst").startsWith("ftp:"))) continue
+            if (now - sp.optLong("t") > 30 * 60_000L || (autoTried[rid] ?: 0L) > now - 120_000L) continue
+            if (all.values.any { it.rid == rid && it.state == "run" }) continue
+            autoTried[rid] = now
+            try { resume(rid) } catch (_: Exception) {}
+        }
+    }
+
     /** What the interrupted-transfer list shows: id, label, how many items are left, where to. */
     fun resumable(): JSONArray {
         val a = JSONArray()
@@ -985,12 +999,15 @@ object Jobs {
             try {
                 val f = src.open(sp)
                 try {
+                    val keepMt = (src is FtpFs || dst is FtpFs) && dst.setsMtime   // copies to / from an FTP server keep the original date
+                    val statMt = { try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L } }
+                    val smt = if (keepMt) statMt() else -1L
                     val can = dst.resumable && f.seekable && f.size >= RESUME_MIN
                     resumeTried = resumeTried || can
                     var off = 0L
                     var tag = ""
                     if (can) {
-                        val mt = try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L }
+                        val mt = if (smt >= 0) smt else statMt()
                         tag = "${f.size}:$mt"
                         off = dst.partial(target, tag)
                         if (off !in 1 until f.size) off = 0L
@@ -1004,6 +1021,7 @@ object Jobs {
                         if (count) job.done += n
                     }
                     if (can) dst.writeResume(target, f, f.size, off, tag, cb) else dst.write(target, f, f.size, cb)
+                    if (smt > 0) try { dst.setMtime(target, smt) } catch (e: Cancelled) { throw e } catch (_: Exception) {}
                 } finally { f.close() }
                 if (count) job.files++
                 return
