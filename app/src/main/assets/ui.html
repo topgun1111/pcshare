@@ -649,7 +649,7 @@ function perfReport(){
   let nat=null;try{nat=JSON.parse(LSAndroid.perfGet())}catch(e){}
   L.push('LANShare performance report  '+new Date().toLocaleTimeString());
   L.push('');L.push('== Native startup (ms since process start) ==');
-  if(nat){const m=nat.marks||{};['onCreate','loadStart','coreReady','pageFinished','firstScreen'].forEach(k=>L.push('  '+k.padEnd(14)+(m[k]==null?'-':m[k])));
+  if(nat){const m=nat.marks||{};let pv=null;Object.entries(m).sort((x,y)=>x[1]-y[1]).forEach(([k,v])=>{L.push('  '+k.padEnd(22)+String(v).padStart(6)+(pv==null?'':'   +'+(v-pv)));pv=v});   /* every mark in time order, +ms since the previous one (core.* run on the server thread, the rest on the UI thread) */
     if(m.onCreate!=null&&m.loadStart!=null)L.push('  WebView + setup '+(m.loadStart-m.onCreate)+' ms');
     if(m.loadStart!=null&&m.coreReady!=null)L.push('  Server start wait '+(m.coreReady-m.loadStart)+' ms');
     if(m.coreReady!=null&&m.pageFinished!=null)L.push('  Page load (ui.html) '+(m.pageFinished-m.coreReady)+' ms');
