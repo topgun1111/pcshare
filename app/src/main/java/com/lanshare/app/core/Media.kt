@@ -130,7 +130,7 @@ object Media {
                     if (fps > 0) t.put("fps", Math.round(fps * 1000) / 1000.0)
                     num(fm, MediaFormat.KEY_PROFILE)?.toInt()?.let { p -> profileName(mime, p)?.let { t.put("profile", it) } }
                     num(fm, "color-transfer")?.toInt()?.let { tr ->   // MediaFormat.KEY_COLOR_TRANSFER (API 24): 6 = PQ (HDR10), 7 = HLG
-                        if (tr == 6) t.put("hdr", "HDR10 / PQ") else if (tr == 7) t.put("hdr", "HLG")
+                        when (tr) { 6 -> t.put("hdr", "HDR10 / PQ"); 7 -> t.put("hdr", "HLG"); else -> Unit }
                     }
                 } else if (kind == "audio") {
                     num(fm, MediaFormat.KEY_SAMPLE_RATE)?.let { if (it > 0) t.put("rate", it.toInt()) }
