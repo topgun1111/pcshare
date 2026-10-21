@@ -93,6 +93,7 @@ class OfficeViewerActivity : Activity() {
         root.addView(fr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+        com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
     }
 
     private fun toggleFind() {

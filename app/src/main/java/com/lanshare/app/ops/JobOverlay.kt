@@ -109,6 +109,11 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
     private val tick = object : Runnable { override fun run() { poll(true) } }
 
     override fun onAttachedToWindow() { super.onAttachedToWindow(); requestApplyInsets(); poll(true) }
+    /** Activity stopped / app in the background: stop the 400-800 ms polling, resume when visible again. */
+    override fun onWindowVisibilityChanged(v: Int) {
+        super.onWindowVisibilityChanged(v)
+        if (v == View.VISIBLE) poll(true) else ui.removeCallbacks(tick)
+    }
     override fun onDetachedFromWindow() { ui.removeCallbacks(tick); super.onDetachedFromWindow() }
 
     override fun onConfigurationChanged(c: Configuration) {

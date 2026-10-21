@@ -944,6 +944,7 @@ async function pollPeers(){
 let lastResume=0;
 function resume(){  // screen unlocked / tab restored / network back
   rootCk();
+  try{jbKick()}catch(e){}   // the job poll loop stops when idle; wake it for jobs started elsewhere
   const n=Date.now();if(n-lastResume<3000)return;lastResume=n;
   api('POST','/api/scan',{},4000).catch(()=>{});
   pollPeers();S.sig='';if(S.dev!=='local')load()}

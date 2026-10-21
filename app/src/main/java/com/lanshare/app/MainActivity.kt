@@ -451,6 +451,7 @@ class MainActivity : Activity() {
         if (::chrome.isInitialized) chrome.resync()
         if (::web.isInitialized) web.evaluateJavascript("window.lsNlResync&&lsNlResync()", null)
         if (::web.isInitialized) web.evaluateJavascript("window.lsDlSweep&&lsDlSweep()", null)
+        if (::web.isInitialized) web.evaluateJavascript("window.jbKick&&jbKick()", null)   // restart the job poll loop (it stops when idle): a scan / job started in another screen shows the bubble again
         if (::web.isInitialized && (TextEditorActivity.consumeChanged() or ImageViewerActivity.consumeChanged() or PlayerActivity.consumeChanged())) web.evaluateJavascript("window.lsRefresh&&lsRefresh()", null)   // the editor saved a file / the picture viewer deleted or edited one: refresh the list and an open album
     }
 

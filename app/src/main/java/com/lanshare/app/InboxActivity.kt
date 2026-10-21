@@ -89,6 +89,7 @@ class InboxActivity : Activity() {
         root.addView(row)
 
         setContentView(root)
+        com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
         refresh()
     }
 
