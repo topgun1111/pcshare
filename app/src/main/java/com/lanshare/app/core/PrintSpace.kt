@@ -16,8 +16,10 @@ import java.util.UUID
  * Because the files live under the shared root, the existing print pipeline can already print them: pass the virtual path from [vpath] as a "local" path
  * (ui.html doPrint(preset, {items, full:true, dev:'local', ...})). Nothing here talks to printers.
  *
- * Part 1 of the Print space plan (HANDOVER.md 9.7). Only pictures of THIS phone can be added for now (remote devices come in part 3).
+ * Part 1 of the Print space plan (HANDOVER.md 9.7). Part 3b: pictures of other devices / shares are streamed in too (`dev` in {op:"add"}).
  * Part 8: clean-up settings ([days] = remove copies older than N days, [mb] = storage limit for new copies), kept in "<root>/.LANShare Print/settings.json".
+ * Part 9a: undo for remove / clear (the copies are moved to "<root>/.LANShare Print/.undo" and can be brought back with {op:"undo"} until the next remove / clear,
+ * the next app start or the age clean-up), and {op:"set"} for several pictures at once ([ids], [rotBy]).
  * NOT compiled / NOT device-tested.
  */
 object PrintSpace {
@@ -49,6 +51,10 @@ object PrintSpace {
     /** Copies removed by the age clean-up since the list was last sent to the screen (reported once, then reset). */
     private var swept = 0
 
+    /** Part 9a: the last remove / clear, kept for one undo: (position in the list, item). The folders wait in [UNDO]. Memory only: a new start deletes them for good. */
+    private val undoList = ArrayList<Pair<Int, Item>>()
+    private const val UNDO = ".undo"
+
     private fun root(): File = File(Core.local.root, NAME)
 
     /** True for the print space folder itself or anything inside it (never added to itself, never offered to the gallery). */
@@ -62,6 +68,8 @@ object PrintSpace {
         if (loaded) return
         loaded = true
         items.clear()
+        undoList.clear()
+        try { File(root(), UNDO).deleteRecursively() } catch (_: Exception) {}   // an undo never survives an app start
         loadSettings()
         val mf = File(root(), MANIFEST)
         if (!mf.isFile) return
@@ -158,6 +166,7 @@ object PrintSpace {
         for (i in items) { bytes += i.size; a.put(i.toJson()) }
         val res = JSONObject().put("items", a).put("count", items.size).put("bytes", bytes).put("max", MAX_ITEMS)
             .put("cfg", JSONObject().put("days", days).put("mb", mb))
+        if (undoList.isNotEmpty()) res.put("undo", undoList.size)
         if (swept > 0) { res.put("swept", swept); swept = 0 }
         return res
     }
@@ -177,39 +186,67 @@ object PrintSpace {
     /** Virtual path of one stored picture (for the print pipeline), or null. */
     @Synchronized fun pathOf(id: String): String? { load(); return items.firstOrNull { it.id == id }?.path() }
 
-    /** Copies pictures of this phone into the space. Returns {added:[items], skipped:[{name, why}]}. */
-    @Synchronized fun add(paths: List<String>): JSONObject {
+    /** Largest single picture taken from another device (bigger ones are skipped, they would block the request for minutes). */
+    private const val MAX_REMOTE = 60L * 1024 * 1024
+
+    /**
+     * Copies pictures into the space. [dev] = "local" (this phone) or any other device / share id known to [Jobs.ep] (part 3b: the bytes are
+     * streamed into the copy, nothing is kept on the other device). Returns {added:[items], skipped:[{name, why}]}.
+     */
+    @Synchronized fun add(paths: List<String>, dev: String = "local"): JSONObject {
         load()
         sweep()
         val added = JSONArray()
         val skipped = JSONArray()
         fun skip(n: String, why: String) { skipped.put(JSONObject().put("name", n).put("why", why)) }
+        val remote = dev != "local"
+        val ep: Endpoint? = if (remote) {
+            try { Jobs.ep(dev) } catch (e: Exception) {
+                for (p in paths) skip(vnorm(p).substringAfterLast('/'), errText(e).take(120))
+                return JSONObject().put("added", added).put("skipped", skipped)
+            }
+        } else null
         for (p in paths) {
             val v = vnorm(p)
             val nm = v.substringAfterLast('/')
             try {
                 if (items.size >= MAX_ITEMS) { skip(nm, "print space is full ($MAX_ITEMS pictures)"); continue }
-                if (inSpace(v) || Bin.inBin(v)) { skip(nm, "already in the print space or in the recycle bin"); continue }
-                if (arcSplit(v) != null) { skip(nm, "inside an archive"); continue }
-                val src = Core.local.real(v)
-                if (!src.exists()) { skip(nm, "not found"); continue }
-                if (src.isDirectory) { skip(nm, "folder (select pictures)"); continue }
-                if (!isPicture(src.name)) { skip(nm, "not a picture"); continue }
-                if (mb > 0 && items.sumOf { x -> x.size } + src.length() > mb * 1024L * 1024L) { skip(nm, "storage limit reached ($mb MB)"); continue }
+                if (!remote && (inSpace(v) || Bin.inBin(v))) { skip(nm, "already in the print space or in the recycle bin"); continue }
+                if (!remote && arcSplit(v) != null) { skip(nm, "inside an archive"); continue }
+                if (!isPicture(nm)) { skip(nm, "not a picture"); continue }
+                var srcLen = 0L
+                var src: File? = null
+                if (!remote) {
+                    val f = Core.local.real(v)
+                    if (!f.exists()) { skip(nm, "not found"); continue }
+                    if (f.isDirectory) { skip(nm, "folder (select pictures)"); continue }
+                    src = f
+                    srcLen = f.length()
+                } else {
+                    try {
+                        val st = ep!!.stat(v)
+                        if (st.optBoolean("dir")) { skip(nm, "folder (select pictures)"); continue }
+                        srcLen = st.optLong("size", 0L)
+                    } catch (e: Exception) { skip(nm, errText(e).take(120)); continue }
+                    if (srcLen > MAX_REMOTE) { skip(nm, "too big to take from another device (max ${MAX_REMOTE / 1048576} MB)"); continue }
+                }
+                if (mb > 0 && items.sumOf { x -> x.size } + srcLen > mb * 1024L * 1024L) { skip(nm, "storage limit reached ($mb MB)"); continue }
                 val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
                 val box = File(root(), id)
                 if (!box.mkdirs()) { skip(nm, "could not create the folder"); continue }
-                val dst = File(box, src.name)
-                val part = File(box, src.name + ".part")
+                val fname = src?.name ?: nm
+                val dst = File(box, fname)
+                val part = File(box, "$fname.part")
                 try {
-                    src.copyTo(part, overwrite = true)
+                    if (src != null) src.copyTo(part, overwrite = true)
+                    else ep!!.open(v).use { ins -> part.outputStream().use { out -> ins.copyTo(out) } }
                     if (!part.renameTo(dst)) throw IOException("could not store the copy")
                 } catch (e: Exception) {
                     try { box.deleteRecursively() } catch (_: Exception) {}
                     skip(nm, errText(e).take(120))
                     continue
                 }
-                val it = Item(id, src.name, dst.length(), v, System.currentTimeMillis(), 1, 0)
+                val it = Item(id, fname, dst.length(), if (remote) "$dev:$v" else v, System.currentTimeMillis(), 1, 0)
                 items.add(it)
                 added.put(it.toJson())
             } catch (e: Exception) {
@@ -220,17 +257,71 @@ object PrintSpace {
         return JSONObject().put("added", added).put("skipped", skipped)
     }
 
+    /**
+     * Part 3b (share intent): stores ONE picture that arrives as a stream (Android share sheet). [mime] is only used to give a name without
+     * a picture extension one ("image/jpeg" -> ".jpg"). Returns null when it was added, otherwise the reason it was not.
+     */
+    @Synchronized fun addStream(name: String, mime: String?, open: () -> java.io.InputStream?): String? {
+        load()
+        sweep()
+        var fname = name.replace("/", "_").ifEmpty { "shared_" + System.currentTimeMillis() }
+        if (!isPicture(fname)) {
+            val sub = (mime ?: "").substringAfter("image/", "").substringBefore(';').lowercase()
+            val ext = when (sub) { "jpeg", "pjpeg" -> "jpg"; "heic", "heif", "png", "webp", "gif", "bmp", "avif" -> sub; else -> "" }
+            if (ext.isEmpty()) return "not a picture"
+            fname = "$fname.$ext"
+        }
+        if (items.size >= MAX_ITEMS) return "print space is full ($MAX_ITEMS pictures)"
+        if (mb > 0 && items.sumOf { x -> x.size } >= mb * 1024L * 1024L) return "storage limit reached ($mb MB)"
+        val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
+        val box = File(root(), id)
+        if (!box.mkdirs()) return "could not create the folder"
+        val dst = File(box, fname)
+        val part = File(box, "$fname.part")
+        try {
+            val ins = open() ?: throw IOException("could not read the shared picture")
+            ins.use { i -> part.outputStream().use { o -> i.copyTo(o) } }
+            if (!part.renameTo(dst)) throw IOException("could not store the copy")
+        } catch (e: Exception) {
+            try { box.deleteRecursively() } catch (_: Exception) {}
+            return errText(e).take(120)
+        }
+        items.add(Item(id, fname, dst.length(), "share", System.currentTimeMillis(), 1, 0))
+        save()
+        return null
+    }
+
+    /** Part 9a: deletes the folders of the previous undo for good (called before a new remove / clear and when the age clean-up runs). */
+    @Synchronized private fun dropUndo() {
+        if (undoList.isEmpty()) return
+        undoList.clear()
+        try { File(root(), UNDO).deleteRecursively() } catch (_: Exception) {}
+    }
+
+    /** Part 9a: takes the picture folder out of the list but keeps it for one undo (a failed move deletes it for good: no undo for that picture). */
+    private fun park(index: Int, x: Item) {
+        val dst = File(File(root(), UNDO), x.id)
+        try {
+            dst.parentFile?.mkdirs()
+            if (File(root(), x.id).renameTo(dst)) { undoList.add(Pair(index, x)); return }
+        } catch (_: Exception) {}
+        try { File(root(), x.id).deleteRecursively() } catch (_: Exception) {}
+    }
+
     @Synchronized fun remove(ids: List<String>): Int {
         load()
+        dropUndo()
         val gone = ids.toHashSet()
         var n = 0
+        var idx = 0
         val it = items.iterator()
         while (it.hasNext()) {
             val x = it.next()
-            if (x.id !in gone) continue
-            try { File(root(), x.id).deleteRecursively() } catch (_: Exception) {}
-            it.remove()
-            n++
+            if (x.id in gone) {
+                park(idx, x)
+                it.remove()
+                n++
+            } else idx++
         }
         if (n > 0) save()
         return n
@@ -238,10 +329,29 @@ object PrintSpace {
 
     @Synchronized fun clear(): Int {
         load()
+        dropUndo()
         val n = items.size
-        for (x in items) try { File(root(), x.id).deleteRecursively() } catch (_: Exception) {}
+        for ((i, x) in items.withIndex()) park(i, x)
         items.clear()
         save()
+        return n
+    }
+
+    /** Part 9a: brings back what the last remove / clear took out, at the old positions. Returns how many pictures came back. */
+    @Synchronized fun undo(): Int {
+        load()
+        var n = 0
+        for ((index, x) in undoList.sortedBy { p -> p.first }) {
+            if (items.size >= MAX_ITEMS) break
+            val src = File(File(root(), UNDO), x.id)
+            if (!src.isDirectory) continue
+            val dst = File(root(), x.id)
+            if (dst.exists() || !src.renameTo(dst)) continue
+            items.add(index.coerceIn(0, items.size), x)
+            n++
+        }
+        dropUndo()
+        if (n > 0) save()
         return n
     }
 
@@ -264,20 +374,41 @@ object PrintSpace {
         save()
     }
 
-    /** POST /api/ps body: {op:"add", paths:[...]} | {op:"rm", ids:[...]} | {op:"clear"} | {op:"move", id, to} | {op:"set", id, copies?, rot?} | {op:"cfg", days?, mb?}. Answers the new list. */
+    /** Part 9a: [copies] and / or [rot] for several pictures; [rotBy] turns each picture by that many degrees from its OWN rotation. null leaves a value alone. Returns how many changed. */
+    @Synchronized fun setMany(ids: List<String>, copies: Int?, rot: Int?, rotBy: Int?): Int {
+        load()
+        val want = ids.toHashSet()
+        var n = 0
+        for (x in items) {
+            if (x.id !in want) continue
+            if (copies != null) x.copies = clampCopies(copies)
+            if (rot != null) x.rot = clampRot(rot)
+            if (rotBy != null) x.rot = clampRot(x.rot + rotBy)
+            n++
+        }
+        if (n > 0) save()
+        return n
+    }
+
+    /** POST /api/ps body: {op:"add", paths:[...]} | {op:"rm", ids:[...]} | {op:"clear"} | {op:"move", id, to} | {op:"set", id | ids, copies?, rot?, rotBy?} | {op:"undo"} | {op:"cfg", days?, mb?}. Answers the new list. */
     fun post(b: JSONObject): JSONObject {
         val res = JSONObject()
         when (val op = b.optString("op")) {
             "add" -> {
-                if (b.optString("dev", "local") != "local") throw BadReq("Print space takes pictures from this phone only (other devices: later part)")
-                val r = add(b.getJSONArray("paths").strings())
+                val r = add(b.getJSONArray("paths").strings(), b.optString("dev", "local").ifEmpty { "local" })
                 res.put("added", r.getJSONArray("added")).put("skipped", r.getJSONArray("skipped"))
             }
             "rm" -> res.put("removed", remove(b.getJSONArray("ids").strings()))
             "clear" -> res.put("removed", clear())
             "move" -> move(b.getString("id"), b.getInt("to"))
             "cfg" -> setSettings(if (b.has("days")) b.getInt("days") else null, if (b.has("mb")) b.getInt("mb") else null)
-            "set" -> set(b.getString("id"), if (b.has("copies")) b.getInt("copies") else null, if (b.has("rot")) b.getInt("rot") else null)
+            "undo" -> res.put("restored", undo())
+            "set" -> {
+                val c = if (b.has("copies")) b.getInt("copies") else null
+                val r = if (b.has("rot")) b.getInt("rot") else null
+                if (b.has("ids")) res.put("changed", setMany(b.getJSONArray("ids").strings(), c, r, if (b.has("rotBy")) b.getInt("rotBy") else null))
+                else set(b.getString("id"), c, r)
+            }
             else -> throw BadReq("unknown print space operation: $op")
         }
         val list = json()

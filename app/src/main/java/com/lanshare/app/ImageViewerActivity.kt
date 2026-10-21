@@ -203,8 +203,9 @@ class ImageViewerActivity : Activity() {
             PopupMenu(this, more).apply {
                 menu.add(0, 1, 0, if (slide) "Stop slideshow" else "Slideshow")
                 menu.add(0, 2, 1, "Details")
-                menu.add(0, 3, 2, "Delete")
-                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; else -> false } }
+                menu.add(0, 4, 2, "To Print space")
+                menu.add(0, 3, 3, "Delete")
+                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; else -> false } }
             }.show()
         }
         top.addView(back)
@@ -466,6 +467,24 @@ class ImageViewerActivity : Activity() {
         val it = items.getOrNull(pager.currentItem) ?: return
         if (slide) setSlide(false)
         phonePrint.start(org.json.JSONObject().put("items", org.json.JSONArray().put(org.json.JSONObject().put("url", it.url).put("name", it.name))).toString())
+    }
+
+    /** More > To Print space (HANDOVER 9.7 part 3b): stores a copy of the picture on screen in the Print space (this phone, other devices and shares alike). */
+    private fun addToPrintSpace() {
+        val it = items.getOrNull(pager.currentItem) ?: return
+        if (slide) setSlide(false)
+        val u = android.net.Uri.parse(it.url)
+        val dev = u.getQueryParameter("dev") ?: "local"
+        val path = u.getQueryParameter("path") ?: ""
+        Toast.makeText(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT).show()
+        Thread {
+            val msg = try {
+                val r = com.lanshare.app.core.PrintSpace.add(listOf(path), dev)
+                val sk = r.getJSONArray("skipped")
+                if (sk.length() > 0) "Not added: " + sk.getJSONObject(0).optString("why") else "Added to Print space"
+            } catch (e: Exception) { "Cannot add: " + (e.message ?: "error") }
+            runOnUiThread { if (!isFinishing) Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+        }.start()
     }
 
     /** More > Delete: asks, then moves the picture to the Recycle bin (this phone) / deletes it (other devices) and shows the next picture. */

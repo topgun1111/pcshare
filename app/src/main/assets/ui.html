@@ -3144,6 +3144,7 @@ const psPic=name=>PV_IMG.includes((String(name).split('.').pop()||'').toLowerCas
 const psOK=names=>PS_ON()&&names.some(psPic);
 let PSBUSY=false;
 async function psAdd(dev,paths,done){
+  if(!PS_ON())return;   // part 9a: kill switch ls_ps='0' stops every way in, not only the drawer entry
   paths=(paths||[]).filter(p=>psPic(p));
   if(!paths.length)return toast('Only pictures can be added to Print space',3000);
   if(PSBUSY)return;PSBUSY=true;
@@ -3159,6 +3160,7 @@ async function psAdd(dev,paths,done){
   finally{PSBUSY=false}
 }
 function openPrintSpace(){
+  if(!PS_ON())return;
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
   const live=()=>o._for===tok&&o.style.display==='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','','Print space'),sb=E('small','',' '),sc=E('div','gs'),gg=E('div','gg'),
@@ -3172,6 +3174,11 @@ function openPrintSpace(){
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
   o.append(hd,sh,sc,gb);
   let LIST=[],BYTES=0,MAX=500,busy=false,CFG={days:0,mb:0};
+  /* part 9a: undo bar (.gpst, shown at the bottom after Remove / Remove all); the phone keeps the removed copies in .undo until the next remove / clear or app start */
+  const ub=E('div','gpst'),um=E('span'),ux=E('button','tbtn','Undo');let utm=0;ub.append(um,ux);o.append(ub);
+  const ubHide=()=>{clearTimeout(utm);ub.style.display='none'};
+  const ubShow=n=>{clearTimeout(utm);um.textContent=plural(n)+' removed';ub.style.display='flex';utm=setTimeout(ubHide,10000)};
+  ux.onclick=async()=>{ubHide();const r=await post({op:'undo'});if(r&&r.restored)toast(plural(r.restored)+' back in Print space',2500)};
   const gi=()=>LIST.filter(m=>GS.has(m.id));
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(m.id);const e=els.get(m.id);if(e)e.classList.add('sel')});upd()};
@@ -3181,6 +3188,7 @@ function openPrintSpace(){
   const doIt=list=>{if(!list.length)return toast('Print space is empty',3000);doPrint(null,{items:printItems(list),dev:'local',full:1,path:'/',done:clr})};
   const apply=r=>{LIST=(r&&r.items)||[];BYTES=r&&r.bytes||0;MAX=r&&r.max||500;if(r&&r.cfg)CFG={days:r.cfg.days||0,mb:r.cfg.mb||0};
     if(r&&r.swept)toast(r.swept+' old picture'+(r.swept===1?'':'s')+' removed from Print space',4000);
+    if(!(r&&r.undo))ubHide();
     for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);draw();upd()};
   const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
   const upd=()=>{
@@ -3191,9 +3199,15 @@ function openPrintSpace(){
     if(!GS.size)return;
     const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('print','Print',()=>doIt(gi()));
+    btn('copy','Copies',async()=>{const ids=[...GS],one=gi()[0],v0=ids.length===1&&one?one.copies||1:1;
+      const v=await dlg({title:'Copies of '+(ids.length===1?'this picture':plural(ids.length)),msg:'How many times each is printed (1 to 99).',ok:'Set',input:{value:String(v0),label:'1\u201399'}});
+      if(v==null||v===true)return;const n=parseInt(v,10);
+      if(!(n>=1&&n<=99))return toast('Enter a number from 1 to 99',3000);
+      await post({op:'set',ids,copies:n})});
+    btn('rotr','Rotate',async()=>{await post({op:'set',ids:[...GS],rotBy:90})});
     btn('del','Remove',async()=>{const ids=[...GS],n=ids.length;
       if(!await dlg({title:'Remove '+plural(n)+' from Print space?',msg:'Only the copies held here are deleted. The original pictures stay where they are.',ok:'Remove',danger:true}))return;
-      clr();await post({op:'rm',ids})},'dng');
+      clr();const r=await post({op:'rm',ids});if(r&&r.removed&&r.undo)ubShow(r.removed)},'dng');
     gb.style.setProperty('--cols',gb.children.length)};
   /* part 8: clean-up settings (kept by core/PrintSpace.kt in settings.json): age limit removes copies when the list is read / added to; the storage limit only stops NEW copies */
   function psSettings(){
@@ -3218,9 +3232,9 @@ function openPrintSpace(){
   pa.onclick=()=>doIt(LIST);
   ca.onclick=async()=>{if(!LIST.length)return;
     if(!await dlg({title:'Remove all pictures from Print space?',msg:plural(LIST.length)+' will be deleted from here. The originals stay where they are.',ok:'Remove all',danger:true}))return;
-    clr();await post({op:'clear'})};
+    clr();const r=await post({op:'clear'});if(r&&r.removed&&r.undo)ubShow(r.removed)};
   function mk(m){const c=E('div','gc'+(GS.has(m.id)?' sel':''));els.set(m.id,c);c.append(ic('check','ck'));
-    const im=E('img');im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.path)+'&q=95';im.onerror=()=>{im.style.display='none';if(!c.querySelector('.gn'))c.append(E('span','gn',m.name))};c.insertBefore(im,c.firstChild);
+    const im=E('img');im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.path)+'&q=95';im.onerror=()=>{im.style.display='none';if(!c.querySelector('.gn'))c.append(E('span','gn',m.name))};if(m.rot)im.style.transform='rotate('+m.rot+'deg)';c.insertBefore(im,c.firstChild);
     if((m.copies||1)>1)c.append(E('span','gd','×'+m.copies));
     c.onclick=()=>{GS.has(m.id)?GS.delete(m.id):GS.add(m.id);c.classList.toggle('sel',GS.has(m.id));upd()};   // tap = select (no viewer here yet)
     return c}

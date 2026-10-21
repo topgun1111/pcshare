@@ -27,6 +27,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.lanshare.app.core.Core
 import com.lanshare.app.core.InProc
+import com.lanshare.app.core.PrintSpace
+import com.lanshare.app.core.errText
 import android.provider.OpenableColumns
 import java.io.File
 import java.net.URL
@@ -487,6 +489,11 @@ class MainActivity : Activity() {
             tryClipSend()
             return
         }
+        if (i.component?.className?.endsWith("PrintSpaceShareAlias") == true) {   // "LANShare Print space" share entry (HANDOVER 9.7 part 3b)
+            i.action = null   // consume once
+            if (uris.isNotEmpty()) shareToPrintSpace(uris)
+            return
+        }
         if (uris.isEmpty()) return
         i.action = null   // consume once
         copySharedIn(uris, true)
@@ -524,6 +531,28 @@ class MainActivity : Activity() {
                 "(async()=>{try{const p=await pickDevice(true,'Send clipboard to\\u2026');if(!p)return;" +
                 "await api('POST','/api/sendclip',{to:p.id,text:" + JSONObject.quote(t) + "});toast('Sent to '+p.name)}catch(e){toast('\\u26a0 '+e.message,5000)}})()", null)
         }, 1200)
+    }
+
+    /** Share sheet > "LANShare Print space": every picture is streamed into the Print space (core/PrintSpace.kt); nothing is printed or sent. */
+    private fun shareToPrintSpace(uris: List<Uri>) {
+        Toast.makeText(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT).show()
+        Thread {
+            var ok = 0
+            var why: String? = null
+            for (u in uris) {
+                var name = ""
+                try { contentResolver.query(u, null, null, null, null)?.use { c -> if (c.moveToFirst()) c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { name = c.getString(it) ?: "" } } } catch (_: Exception) {}
+                if (name.isEmpty()) name = u.lastPathSegment?.substringAfterLast('/') ?: ""
+                val r = try { PrintSpace.addStream(name, contentResolver.getType(u)) { contentResolver.openInputStream(u) } } catch (e: Exception) { errText(e).take(120) }
+                if (r == null) ok++ else if (why == null) why = r
+            }
+            val msg = when {
+                ok > 0 && why == null -> "$ok picture" + (if (ok == 1) "" else "s") + " added to Print space"
+                ok > 0 -> "$ok added, others skipped: $why"
+                else -> "Not added: " + (why ?: "nothing to add")
+            }
+            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+        }.start()
     }
 
     private fun copySharedIn(uris: List<Uri>, toPrint: Boolean) {
