@@ -3151,10 +3151,11 @@ async function psAdd(dev,paths,done){
   try{
     toast('Adding to Print space\u2026',0,0);
     const r=await api('POST','/api/ps',{op:'add',dev:dev||'local',paths});
-    const ad=r&&r.added!=null?r.added:paths.length,sk=(r&&r.skipped)||[];
-    let m=ad+' picture'+(ad===1?'':'s')+' added to Print space';
-    if(sk.length)m+=' \u00b7 '+sk.length+' skipped ('+sk[0].name+': '+sk[0].why+')';
-    toast(m,sk.length?6000:3000);
+    const ad=Array.isArray(r&&r.added)?r.added.length:(r&&typeof r.added==='number'?r.added:0),sk=(r&&r.skipped)||[],tot=r&&r.count!=null?r.count:null;
+    let m=ad?ad+' picture'+(ad===1?'':'s')+' added to Print space'+(tot!=null?' ('+tot+' held)':''):'Nothing was added';
+    if(sk.length)m+=' \u00b7 '+sk.length+' skipped: '+sk.slice(0,2).map(x=>x.name+' - '+x.why).join('; ');
+    if(!ad&&!sk.length)m+=' (the phone gave no reason - update the app)';
+    toast(m,sk.length||!ad?9000:3500);
     if(done)done(r)
   }catch(e){toast('\u26a0 '+e.message,6000)}
   finally{PSBUSY=false}
