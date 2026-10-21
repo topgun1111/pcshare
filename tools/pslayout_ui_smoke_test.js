@@ -4,11 +4,13 @@ const {JSDOM}=require('jsdom');const fs=require('fs');
 const html=fs.readFileSync(require('path').join(__dirname,'..','app/src/main/assets/ui.html'),'utf8');
 const a=html.indexOf('/* ---- Print space part 5b'),b=html.indexOf('/* ---- Recycle bin: sticky top bar');
 const code=html.slice(a,b);
+const c0=html.indexOf('/* part 8: print a Print space sheet set again'),c1=html.indexOf('async function phGo');const code2=html.slice(c0,c1);
 const dom=new JSDOM('<body><div id=gal></div></body>',{runScripts:'outside-only',pretendToBeVisual:true});
 const w=dom.window,d=w.document;
 let fails=0;const ok=(c,m)=>{if(!c){fails++;console.log('FAIL',m)}else console.log('ok  ',m)};
 process.on('unhandledRejection',e=>{fails++;console.log('UNHANDLED',e&&e.stack||e)});
 w.IC={};w.$=s=>d.querySelector(s);
+w.lsGet=(k,df)=>{try{return JSON.parse(LS[k]||'null')||df}catch(e){return df}};let recentOpened=0;w.printRecent=()=>{recentOpened++};
 w.E=(t,c,x)=>{const e=d.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 w.ic=k=>{const s=d.createElementNS('http://www.w3.org/2000/svg','svg');s.dataset.k=k;return s};
 const LS={};w.LD=(k,df)=>LS[k]||df;w.SV=(k,v)=>{LS[k]=v};w.enc=encodeURIComponent;
@@ -157,6 +159,50 @@ const $$=s=>[...d.querySelectorAll(s)];const cb=t=>$$('.lyctl button').find(x=>x
  // saved state is reused on reopen
  const saved=LS['ls_ps_lay'];ok(!!saved&&JSON.parse(saved).plan.sheets.length>0,'layout saved in localStorage');
  calls.length=0;w.psLayout();await tick();ok(calls[0].plan&&calls[0].op==='view'&&d.querySelector('.lyset').style.display==='none','reopen: saved spec + plan sent, settings collapsed');
+ // ---- part 8: history carries the layout, saved layouts, Print again
+ {ok(printed.length>0&&printed[0].ps&&printed[0].ps.plan&&printed[0].ps.plan.sheets.length>0&&printed[0].ps.spec.cols>0&&printed[0].ps.only==='','Print: cx.ps carries spec + plan for Recent prints');
+  ok(printed[0].ps.rev===false,'Print: cx.ps.rev false');
+  psr.length=0;printed.length=0;dlgLog.length=0;dlgAns=o=>/Two-sided/.test(o.title)?'alt':/Now the backs/.test(o.title)?'alt':true;
+  btn('Print').onclick();await tick(60);
+  ok(printed.length===2&&printed[0].ps.only==='front'&&printed[1].ps.only==='back'&&printed[1].ps.rev===true,'by hand: fronts / backs (reverse) each keep their own ps');
+  dlgAns=true}
+ w.psLayout();await tick();
+ {const gear=$$('.gh .ibtn')[1];if(d.querySelector('.lyset').style.display==='none')gear.onclick();
+  ok(!!btn('+ Save this layout')&&!btn('Remove\u2026'),'saved layouts: Save button, no Remove when none saved');
+  ok(!btn('Recent prints'),'no Recent prints button without history');
+  LS['printHist']=JSON.stringify([{id:'1',paths:['/x.pdf'],names:['x.pdf']}]);d.querySelector('.lyset').replaceChildren();gear.onclick();gear.onclick();
+  ok(!!btn('Recent prints'),'Recent prints button with history');btn('Recent prints').onclick();ok(recentOpened===1,'Recent prints opens the list');
+  // save under a name
+  dlgAns=o=>/Save this layout/.test(o.title)?'  Photos 2x2  ':true;btn('+ Save this layout').onclick();await tick(30);
+  let pr=JSON.parse(LS['ls_ps_presets']||'[]');
+  ok(pr.length===1&&pr[0].name==='Photos 2x2'&&Object.keys(pr[0].spec).length===10&&pr[0].spec.cols>0&&pr[0].spec.flip&&pr[0].mode&&!('plan' in pr[0]),'preset saved: trimmed name, spec only ('+JSON.stringify(pr[0]||{}).slice(0,90)+')');
+  ok(!!btn('Photos 2x2')&&!!btn('Remove\u2026'),'preset chip + Remove... shown');
+  // same name asks before replacing
+  dlgLog.length=0;btn('+ Save this layout').onclick();await tick(30);
+  ok(dlgLog.some(o=>/Replace/.test(o.title))&&JSON.parse(LS['ls_ps_presets']).length===1,'same name asks to replace, no duplicate');
+  // use: a preset with another grid refills the sheets
+  const q=JSON.parse(LS['ls_ps_presets']);q[0].spec.cols=3;q[0].spec.rows=3;q[0].mode='pairs';LS['ls_ps_presets']=JSON.stringify(q);
+  d.querySelector('.lyset').replaceChildren();gear.onclick();gear.onclick();
+  calls.length=0;dlgLog.length=0;dlgAns=true;btn('Photos 2x2').onclick();await tick(40);
+  const l=calls[calls.length-1]||{};
+  ok(dlgLog.some(o=>/Use /.test(o.title))&&l.op==='fill'&&l.mode==='pairs'&&l.spec.cols===3&&l.spec.rows===3,'preset applied: spec 3x3 + op fill mode pairs ('+(l.op||'-')+')');
+  // remove
+  btn('Remove\u2026').onclick();ok(!!btn('\u2715 Photos 2x2')&&btn('Done'),'Remove mode shows crosses');
+  dlgLog.length=0;btn('\u2715 Photos 2x2').onclick();await tick(30);
+  ok(dlgLog.some(o=>/Remove/.test(o.title)&&o.danger)&&JSON.parse(LS['ls_ps_presets']).length===0&&!btn('Remove\u2026'),'preset removed after confirm');
+  delete LS['ls_ps_presets'];delete LS['printHist']}
+ // Print again from Recent prints (phSheets): drawn again when every picture is still held, refused when one is gone
+ {w.eval(code2);const prn=[],orig=w.api;w.api=async(m,u,b)=>u==='/api/print'?(prn.push(b),{job:'p1'}):orig(m,u,b);
+  w.phAdd=h=>{prn.push({hist:h});return 'h1'};w.phMark=()=>{};
+  const plan={portrait:true,sheets:[{f:['a','b',null,null],b:[null,null,null,null]}]},h={dev:'local',paths:['/old.pdf'],to:'pc1',toName:'PC',opts:{duplex:'off'},names:['old.pdf'],ps:{spec:{cols:2,rows:2},plan,only:'',rev:false}};
+  psr.length=0;await w.phSheets(h);await tick(20);
+  const pdf=psr.find(x=>x.op==='pdf'),pb=prn.find(x=>x.paths);
+  ok(pdf&&pdf.plan.sheets.length===1&&pb&&pb.paths[0]==='/.LANShare Print/.render/Print space 1.pdf'&&pb.to==='pc1','print again: sheets drawn again, new PDF sent to the same printer');
+  ok(prn.some(x=>x.hist&&x.hist.ps&&x.hist.names[0]==='Print space 1.pdf'),'print again: new history entry keeps ps');
+  psr.length=0;prn.length=0;toasts.length=0;h.ps.plan={portrait:true,sheets:[{f:['a','gone',null,null],b:[null,null,null,null]}]};
+  await w.phSheets(h);await tick(20);
+  ok(!psr.some(x=>x.op==='pdf')&&!prn.some(x=>x.paths)&&toasts.some(t=>/no longer in Print space/.test(t)),'print again: a removed picture stops it with a message');
+  w.api=orig}
  // old editor must go quiet when openPrintSpace takes #gal back
  d.querySelector('#gal').style.display='none';
  // back button + system back

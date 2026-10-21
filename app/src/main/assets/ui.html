@@ -2990,7 +2990,18 @@ function printOptions(pc,files,onlyFiles,pre){files=files||[];return new Promise
 function phAdd(h){if(!h.paths||!h.paths.length||h.paths.length>150)return null;const a=lsGet('printHist',[]);h.id=String(Date.now());h.t=Date.now();h.ok=null;a.unshift(h);a.length=Math.min(a.length,12);
   try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}return h.id}
 function phMark(id,ok){if(!id)return;const a=lsGet('printHist',[]),h=a.find(x=>x.id===id);if(h){h.ok=ok;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}}}
-async function phGo(h){try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
+/* part 8: print a Print space sheet set again - the stored PDF is purged (the renderer keeps 4), so the sheets are drawn again from the saved layout when every picture is still held */
+async function phSheets(h){
+  try{
+    const cur=await api('GET','/api/ps'),have=new Set(((cur&&cur.items)||[]).map(m=>m.id)),want=new Set();
+    ((h.ps.plan&&h.ps.plan.sheets)||[]).forEach(sh=>(sh.f||[]).concat(sh.b||[]).forEach(i=>{if(i)want.add(i)}));
+    const miss=[...want].filter(i=>!have.has(i)).length;
+    if(miss)return toast('\u26a0 '+miss+' picture'+(miss===1?' is':'s are')+' no longer in Print space \u2013 open the layout and print again',6000);
+    const R=await psRenderPdf(h.ps.spec,h.ps.plan,h.ps.only,h.ps.rev);if(!R)return;
+    const r=await api('POST','/api/print',{dev:'local',paths:[R.path],to:h.to,opts:h.opts}),id=phAdd({dev:'local',paths:[R.path],to:h.to,toName:h.toName,opts:h.opts,names:[R.name],ps:h.ps});
+    watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}
+  catch(e){toast('\u26a0 '+e.message,5000)}}
+async function phGo(h){if(h.ps)return phSheets(h);try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
   const id=phAdd({dev:h.dev,paths:h.paths,to:h.to,toName:h.toName,opts:h.opts,names:h.names});watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
 function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
@@ -3028,18 +3039,18 @@ async function doPrint(preset,cx){
     const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
     const opts=await printOptions(to,pvf,pvf.length===N,pre);if(!opts)return;
     try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts,names:nm,ps:cx&&cx.ps});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   if(to.wifi){
     const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
     const wo=await wifiOptions(to,wf,pre);if(!wo)return;
     try{const ps=PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts:wo});done();
-      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm,ps:cx&&cx.ps});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
   const opts=await printOptions(to,pvf,pvf.length===N,pre);if(!opts)return;
   try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-    setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}}
+    setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm,ps:cx&&cx.ps});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 /* an archive / folder opened from outside the app must end up on top: close every page that could cover it (album page, viewer, dialogs, sheets, selection, search) first */
 function lsCloseOverlays(){
@@ -3151,15 +3162,16 @@ function openPrintSpace(){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
   const live=()=>o._for===tok&&o.style.display==='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','','Print space'),sb=E('small','',' '),sc=E('div','gs'),gg=E('div','gg'),
-    pa=E('button','tbtn fill','Print'),ca=E('button','ibtn'),la=E('button','ibtn');
+    pa=E('button','tbtn fill','Print'),ca=E('button','ibtn'),la=E('button','ibtn'),se=E('button','ibtn');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
+  se.append(ic('tune'));se.setAttribute('aria-label','Print space settings (clean-up, storage limit)');se.onclick=()=>psSettings();
   ca.append(ic('del'));ca.setAttribute('aria-label','Remove all pictures');
   la.append(ic('vgrid'));la.setAttribute('aria-label','Layout (several per sheet, front / back)');la.onclick=()=>psLayout();
-  tw.append(tt,sb);hd.append(bk,tw,la,pa,ca);sc.append(gg);
+  tw.append(tt,sb);hd.append(bk,tw,se,la,pa,ca);sc.append(gg);
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
   o.append(hd,sh,sc,gb);
-  let LIST=[],BYTES=0,MAX=500,busy=false;
+  let LIST=[],BYTES=0,MAX=500,busy=false,CFG={days:0,mb:0};
   const gi=()=>LIST.filter(m=>GS.has(m.id));
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(m.id);const e=els.get(m.id);if(e)e.classList.add('sel')});upd()};
@@ -3167,7 +3179,8 @@ function openPrintSpace(){
   // what goes to the printer: the selection, or everything; a picture with copies > 1 is listed that many times (default 1)
   const printItems=list=>{const r=[];list.forEach(m=>{for(let k=0;k<(m.copies||1);k++)r.push({name:m.name,p:m.path,size:m.size||0})});return r};
   const doIt=list=>{if(!list.length)return toast('Print space is empty',3000);doPrint(null,{items:printItems(list),dev:'local',full:1,path:'/',done:clr})};
-  const apply=r=>{LIST=(r&&r.items)||[];BYTES=r&&r.bytes||0;MAX=r&&r.max||500;
+  const apply=r=>{LIST=(r&&r.items)||[];BYTES=r&&r.bytes||0;MAX=r&&r.max||500;if(r&&r.cfg)CFG={days:r.cfg.days||0,mb:r.cfg.mb||0};
+    if(r&&r.swept)toast(r.swept+' old picture'+(r.swept===1?'':'s')+' removed from Print space',4000);
     for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);draw();upd()};
   const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
   const upd=()=>{
@@ -3182,6 +3195,26 @@ function openPrintSpace(){
       if(!await dlg({title:'Remove '+plural(n)+' from Print space?',msg:'Only the copies held here are deleted. The original pictures stay where they are.',ok:'Remove',danger:true}))return;
       clr();await post({op:'rm',ids})},'dng');
     gb.style.setProperty('--cols',gb.children.length)};
+  /* part 8: clean-up settings (kept by core/PrintSpace.kt in settings.json): age limit removes copies when the list is read / added to; the storage limit only stops NEW copies */
+  function psSettings(){
+    const sh=$('#sheet');sh.textContent='';sh.style.display='flex';
+    const card=E('div','card'),fin=()=>{sh.style.display='none';sh.onclick=null};sh.onclick=e=>{if(e.target===sh)fin()};
+    const wrap=(x)=>{const d=E('div');d.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px';d.append(...x);return d},
+      hint=t=>{const h=E('small','',t);h.style.cssText='display:block;font-size:12px;color:var(--mut);margin-top:2px';return h},
+      opt=(list,cur,unit)=>{const l=list.slice();if(!l.some(a=>a[0]===cur))l.push([cur,cur+unit]);return l.sort((a,b)=>(a[0]===0?-1:a[0])-(b[0]===0?-1:b[0]))};
+    const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Print space settings'));
+      card.append(hint(plural(LIST.length)+' held \u00b7 '+fmt(BYTES)+(CFG.mb?' of '+fmt(CFG.mb*1048576):'')));
+      const mk=(list,cur,go)=>wrap(list.map(([v,t])=>{const b=E('button','tbtn'+(v===cur?' fill':''),t);b.onclick=()=>go(v);return b}));
+      card.append(E('b','','Remove pictures after'),hint('Copies held longer than this are removed automatically (the originals are never touched).'),
+        mk(opt([[0,'Never'],[7,'7 days'],[30,'30 days'],[90,'90 days']],CFG.days,' days'),CFG.days,async v=>{
+          const old=v?LIST.filter(m=>m.at&&m.at<Date.now()-v*864e5).length:0;
+          if(old&&!await dlg({title:'Remove '+plural(old)+' now?',msg:(old===1?'This picture is':'These pictures are')+' older than '+v+' days and will be deleted from Print space. The originals stay where they are.',ok:'Remove',danger:true}))return;
+          await post({op:'cfg',days:v});draw()}));
+      card.append(E('b','','Storage limit'),hint('When Print space holds this much, no more pictures are added. Pictures already held stay.'),
+        mk(opt([[0,'No limit'],[200,'200 MB'],[1000,'1 GB'],[5000,'5 GB']],CFG.mb,' MB'),CFG.mb,async v=>{await post({op:'cfg',mb:v});draw()}));
+      const row=E('div','dact'),rc=E('button','tbtn','Recent prints'),cx=E('button','tbtn fill','Close');
+      rc.onclick=()=>{fin();printRecent()};cx.onclick=fin;if(lsGet('printHist',[]).length)row.append(rc);row.append(cx);card.append(row)};
+    draw();sh.append(card)}
   pa.onclick=()=>doIt(LIST);
   ca.onclick=async()=>{if(!LIST.length)return;
     if(!await dlg({title:'Remove all pictures from Print space?',msg:plural(LIST.length)+' will be deleted from here. The originals stay where they are.',ok:'Remove all',danger:true}))return;
@@ -3201,6 +3234,22 @@ function openPrintSpace(){
 Object.assign(IC,{rotr:'M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z'});
 const PSL_DEF=()=>({paper:'A4',orient:'auto',cols:2,rows:2,margin:14,gap:8,fit:'fit',flip:'long',autoRot:true,reverse:false}),
   PSL_PAP=['A3','A4','A5','Letter','Legal'],PSL_PER=[[1,1,1],[2,1,2],[4,2,2],[6,2,3],[9,3,3]];   // [label, cols, rows] (portrait form, like SheetLayout.PRESETS)
+/* Part 8: saved layouts (presets) in localStorage ls_ps_presets = [{name, spec, mode}]; only the layout settings are kept, never pictures or placements. */
+const PSP_KEYS=['paper','orient','cols','rows','margin','gap','fit','flip','autoRot','reverse'],
+  psPresets=()=>{try{const a=JSON.parse(LD('ls_ps_presets','[]'));return Array.isArray(a)?a.filter(p=>p&&p.name&&p.spec):[]}catch(e){return[]}},
+  psPresetsSave=a=>SV('ls_ps_presets',JSON.stringify(a)),
+  psPick=sp=>{const o={};PSP_KEYS.forEach(k=>{if(sp[k]!==undefined)o[k]=sp[k]});return o};
+/* The sheets as ONE PDF made on the phone (background job + progress bubble). only: '' every page | 'front' | 'back' (printing by hand), rev: last sheet first.
+   Returns {path, name, bytes, ...} or null when cancelled / failed (the bubble and the toast already said so). Used by the layout editor and by "print again" in Recent prints. */
+async function psRenderPdf(spec,plan,only,rev){
+  const body={op:'pdf',spec,plan};if(only)body.only=only;if(rev)body.reverse=true;
+  const r=await api('POST','/api/psrender',body,20000);
+  if(!r||!r.job)throw new Error('The sheets could not be started');
+  watchJob(r.job);
+  if(!await track(r.job))return null;
+  const j=await api('GET','/api/job?id='+encodeURIComponent(r.job),null,10000),R=j&&j.result;
+  if(!R||!R.path)throw new Error('The sheets were not created');
+  return R}
 function psLayout(){
   const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
   const live=()=>o._for===tok&&o.style.display==='flex';
@@ -3246,6 +3295,27 @@ function psLayout(){
     if(!m||+m[1]<1||+m[1]>8||+m[2]<1||+m[2]>8)return toast('Use columns x rows, e.g. 3x4',3500);setSpec({cols:+m[1],rows:+m[2]},'reflow')};
   const fillMode=async v=>{if(Object.keys(PLACED).length&&!await dlg({title:'Auto-fill all sheets?',msg:'This replaces the current arrangement.',ok:'Auto-fill'}))return;
     MODE=v;selSlot=null;sheet=0;side='front';call({op:'fill',mode:v})};
+  /* part 8: saved layouts - tap = use (arranges the pictures again), "Remove..." then tap = delete */
+  let pDel=false;
+  async function savePreset(){
+    const v=await dlg({title:'Save this layout',msg:'Paper, pictures per sheet, margins, flip edge and the auto-fill mode are saved under this name (not the pictures).',input:{value:'',label:'e.g. Photos 2x2'},ok:'Save'});
+    if(!v||v===true)return;const name=String(v).trim().slice(0,24);if(!name)return;
+    const a=psPresets(),i=a.findIndex(q=>q.name.toLowerCase()===name.toLowerCase());
+    if(i>=0&&!await dlg({title:'Replace \u201c'+a[i].name+'\u201d?',msg:'A saved layout with this name already exists.',ok:'Replace'}))return;
+    if(i<0&&a.length>=20)return toast('Up to 20 saved layouts \u2013 remove one first',3500);
+    const e={name,spec:psPick(SP),mode:MODE};if(i>=0)a[i]=e;else a.push(e);psPresetsSave(a);toast('Layout \u201c'+name+'\u201d saved',2500);dSet()}
+  async function usePreset(q){
+    if(Object.keys(PLACED).length&&!await dlg({title:'Use \u201c'+q.name+'\u201d?',msg:'All sheets are filled again with the pictures.',ok:'Use layout'}))return;
+    MODE=q.mode||'front';sheet=0;side='front';selSlot=null;await setSpec(Object.assign({},q.spec),'fill')}
+  async function delPreset(q){
+    if(!await dlg({title:'Remove \u201c'+q.name+'\u201d?',msg:'Only the saved settings are deleted.',ok:'Remove',danger:true}))return;
+    const a=psPresets().filter(x=>x.name!==q.name);psPresetsSave(a);if(!a.length)pDel=false;dSet()}
+  function presetRow(){
+    const r=E('div','lyr'),c=E('div','lyc'),a=psPresets();r.append(E('small','','Saved layouts'),c);
+    a.forEach(q=>{const b=E('button','',(pDel?'\u2715 ':'')+q.name);b.onclick=()=>pDel?delPreset(q):usePreset(q);c.append(b)});
+    const sv=E('button','','+ Save this layout');sv.onclick=savePreset;c.append(sv);
+    if(a.length){const ed=E('button',pDel?'on':'',pDel?'Done':'Remove\u2026');ed.onclick=()=>{pDel=!pDel;dSet()};c.append(ed)}
+    return r}
   function dSet(){bxSet.style.display=setOpen?'':'none';if(!setOpen)return;
     const cur=PSL_PER.find(a=>a[1]===+SP.cols&&a[2]===+SP.rows),f=document.createDocumentFragment();
     f.append(
@@ -3258,7 +3328,9 @@ function psLayout(){
       chips('Turn pictures to fit',[[true,'On'],[false,'Off']],SP.autoRot,v=>setSpec({autoRot:v},'view')),
       chips('Order',[[false,'Normal'],[true,'Reverse']],SP.reverse,v=>setSpec({reverse:v},'fill')),
       chips('Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
+    f.append(presetRow());
     const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
+    if(lsGet('printHist',[]).length){const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent();f.append(rc)}   // part 8: print a finished sheet set again
     bxSet.replaceChildren(f)}
   // ---- sheet strip (small canvases) + Front / Back tabs
   function dStrip(){
@@ -3375,19 +3447,9 @@ function psLayout(){
     im.onload=()=>{rvTry=0};
     im.onerror=()=>{if(rvTry++<1){prep(true);return}pg.replaceChildren(E('div','ge','\u26a0 This page could not be drawn'))};   // expired id (404) = prepare again once
     im.src=pgUrl(Math.min(pv,RV.pages-1),w);pg.append(im);bxPg.replaceChildren(pg)}
-  /* The sheets as ONE PDF made on the phone (background job + progress bubble). only: '' every page | 'front' | 'back' (printing by hand), rev: last sheet first.
-     Returns {path, name, bytes, ...} or null when cancelled / failed (the bubble and the toast already said so). */
-  async function sheetsPdf(only,rev){
-    const body={op:'pdf',spec:SP,plan:PL};if(only)body.only=only;if(rev)body.reverse=true;
-    const r=await api('POST','/api/psrender',body,20000);
-    if(!r||!r.job)throw new Error('The sheets could not be started');
-    watchJob(r.job);
-    if(!await track(r.job))return null;
-    const j=await api('GET','/api/job?id='+encodeURIComponent(r.job),null,10000),R=j&&j.result;
-    if(!R||!R.path)throw new Error('The sheets were not created');
-    return R}
+  const sheetsPdf=(only,rev)=>psRenderPdf(SP,PL,only,rev);   // part 8: the body moved to the top level (psRenderPdf)
   /* the print dialogs open on the sheets as they are: sides preset (off for one-sided sheets), no second layout on top of ours */
-  const sheetCx=(R,d)=>({items:[{name:R.name,p:R.path,size:R.bytes||0}],dev:'local',full:1,path:'/',done:()=>{},
+  const sheetCx=(R,d,only,rev)=>({items:[{name:R.name,p:R.path,size:R.bytes||0}],dev:'local',full:1,path:'/',done:()=>{},ps:{spec:JSON.parse(JSON.stringify(SP)),plan:JSON.parse(JSON.stringify(PL)),only:only||'',rev:!!rev},   // ps: lets Recent prints draw the sheets again (the PDF itself is purged)
     opts:{duplex:d,nup:1,booklet:0,border:0,reverse:0,pages:'',join:0,fit:'shrink',margin:'',scale:'',align:''}});
   async function printNow(){
     if(pBusy)return;
@@ -3403,14 +3465,14 @@ function psLayout(){
         const c=await dlg({title:'Two-sided sheets',msg:'These sheets have pictures on the back. Does the printer print on both sides by itself?',ok:'Yes, both sides',alt:'No, one side at a time'});
         if(!c)return;hand=c==='alt'}
       if(!hand){const R=await sheetsPdf('',false);if(!R)return;
-        await doPrint(null,sheetCx(R,two?edge:'off'));return}   // Sides preset to the layout's flip edge
+        await doPrint(null,sheetCx(R,two?edge:'off','',false));return}   // Sides preset to the layout's flip edge
       /* by hand: fronts first (one-sided), then - after the paper is back in the tray - the backs, upside down when the sheets are turned over the horizontal axis */
       const F=await sheetsPdf('front',false);if(!F)return;
-      const to=await doPrint(null,sheetCx(F,'off'));if(!to)return;   // the same printer is used for the backs
+      const to=await doPrint(null,sheetCx(F,'off','front',false));if(!to)return;   // the same printer is used for the backs
       const c=await dlg({title:'Now the backs',msg:'Wait until all fronts are printed. Put the sheets back in the tray so the empty side gets printed - turned over along the '+edge+' edge. If the backs come out in the wrong order, use \u201cLast sheet first\u201d.',ok:'Print the backs',alt:'Last sheet first'});
       if(!c)return;
       const B=await sheetsPdf('back',c==='alt');if(!B)return;
-      await doPrint(to,sheetCx(B,'off'))}
+      await doPrint(to,sheetCx(B,'off','back',c==='alt'))}
     catch(e){toast('\u26a0 '+e.message,6000)}
     finally{pBusy=false;if(live())dHead()}}
   // ---- taps

@@ -17,6 +17,7 @@ import java.util.UUID
  * (ui.html doPrint(preset, {items, full:true, dev:'local', ...})). Nothing here talks to printers.
  *
  * Part 1 of the Print space plan (HANDOVER.md 9.7). Only pictures of THIS phone can be added for now (remote devices come in part 3).
+ * Part 8: clean-up settings ([days] = remove copies older than N days, [mb] = storage limit for new copies), kept in "<root>/.LANShare Print/settings.json".
  * NOT compiled / NOT device-tested.
  */
 object PrintSpace {
@@ -24,6 +25,10 @@ object PrintSpace {
     private const val MANIFEST = "items.json"
     const val MAX_ITEMS = 500
     const val MAX_COPIES = 99
+    private const val SETTINGS = "settings.json"
+    const val MAX_DAYS = 3650
+    const val MAX_MB = 102400
+    private const val DAY_MS = 86_400_000L
 
     /** Pictures only; PDFs and other files may be allowed later by extending this set. */
     val EXT: Set<String> = setOf("jpg", "jpeg", "jfif", "png", "webp", "gif", "bmp", "heic", "heif", "avif")
@@ -36,6 +41,13 @@ object PrintSpace {
 
     private val items = ArrayList<Item>()
     private var loaded = false
+
+    /** Part 8: remove copies older than this many days (0 = keep until removed by hand). */
+    private var days = 0
+    /** Part 8: no new copies once the held pictures take this many MB (0 = no limit). */
+    private var mb = 0
+    /** Copies removed by the age clean-up since the list was last sent to the screen (reported once, then reset). */
+    private var swept = 0
 
     private fun root(): File = File(Core.local.root, NAME)
 
@@ -50,6 +62,7 @@ object PrintSpace {
         if (loaded) return
         loaded = true
         items.clear()
+        loadSettings()
         val mf = File(root(), MANIFEST)
         if (!mf.isFile) return
         try {
@@ -65,6 +78,53 @@ object PrintSpace {
             }
         } catch (_: Exception) {
             // a damaged manifest must not break the app: start empty (the copies stay on disk and can be re-added)
+        }
+        sweep()
+    }
+
+    @Synchronized private fun loadSettings() {
+        days = 0
+        mb = 0
+        val f = File(root(), SETTINGS)
+        if (!f.isFile) return
+        try {
+            val o = JSONObject(f.readText())
+            days = o.optInt("days", 0).coerceIn(0, MAX_DAYS)
+            mb = o.optInt("mb", 0).coerceIn(0, MAX_MB)
+        } catch (_: Exception) {
+            // damaged settings file: defaults (nothing is deleted automatically)
+        }
+    }
+
+    @Synchronized private fun saveSettings() {
+        val dir = root()
+        dir.mkdirs()
+        try { File(dir, ".nomedia").createNewFile() } catch (_: Exception) {}
+        val tmp = File(dir, "$SETTINGS.tmp")
+        tmp.writeText(JSONObject().put("v", 1).put("days", days).put("mb", mb).toString())
+        val dst = File(dir, SETTINGS)
+        if (!tmp.renameTo(dst)) {
+            dst.delete()
+            if (!tmp.renameTo(dst)) throw IOException("could not save the print space settings")
+        }
+    }
+
+    /** Age clean-up: removes copies added more than [days] days ago. Runs when the list is loaded, read or added to, never in the background. */
+    @Synchronized private fun sweep() {
+        if (days <= 0 || items.isEmpty()) return
+        val limit = System.currentTimeMillis() - days * DAY_MS
+        var n = 0
+        val it = items.iterator()
+        while (it.hasNext()) {
+            val x = it.next()
+            if (x.at <= 0L || x.at >= limit) continue   // unknown age: keep
+            try { File(root(), x.id).deleteRecursively() } catch (_: Exception) {}
+            it.remove()
+            n++
+        }
+        if (n > 0) {
+            swept += n
+            try { save() } catch (_: Exception) {}
         }
     }
 
@@ -92,10 +152,23 @@ object PrintSpace {
 
     @Synchronized fun json(): JSONObject {
         load()
+        sweep()
         var bytes = 0L
         val a = JSONArray()
         for (i in items) { bytes += i.size; a.put(i.toJson()) }
-        return JSONObject().put("items", a).put("count", items.size).put("bytes", bytes).put("max", MAX_ITEMS)
+        val res = JSONObject().put("items", a).put("count", items.size).put("bytes", bytes).put("max", MAX_ITEMS)
+            .put("cfg", JSONObject().put("days", days).put("mb", mb))
+        if (swept > 0) { res.put("swept", swept); swept = 0 }
+        return res
+    }
+
+    /** Part 8: sets the clean-up age (days, 0 = off) and / or the storage limit (MB, 0 = none); null leaves a value alone. Lowering the limit deletes nothing. */
+    @Synchronized fun setSettings(newDays: Int?, newMb: Int?) {
+        load()
+        if (newDays != null) days = newDays.coerceIn(0, MAX_DAYS)
+        if (newMb != null) mb = newMb.coerceIn(0, MAX_MB)
+        saveSettings()
+        sweep()
     }
 
     /** Copy of the list in print order (the layout editor reads sizes from the files). */
@@ -107,6 +180,7 @@ object PrintSpace {
     /** Copies pictures of this phone into the space. Returns {added:[items], skipped:[{name, why}]}. */
     @Synchronized fun add(paths: List<String>): JSONObject {
         load()
+        sweep()
         val added = JSONArray()
         val skipped = JSONArray()
         fun skip(n: String, why: String) { skipped.put(JSONObject().put("name", n).put("why", why)) }
@@ -121,6 +195,7 @@ object PrintSpace {
                 if (!src.exists()) { skip(nm, "not found"); continue }
                 if (src.isDirectory) { skip(nm, "folder (select pictures)"); continue }
                 if (!isPicture(src.name)) { skip(nm, "not a picture"); continue }
+                if (mb > 0 && items.sumOf { x -> x.size } + src.length() > mb * 1024L * 1024L) { skip(nm, "storage limit reached ($mb MB)"); continue }
                 val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
                 val box = File(root(), id)
                 if (!box.mkdirs()) { skip(nm, "could not create the folder"); continue }
@@ -189,7 +264,7 @@ object PrintSpace {
         save()
     }
 
-    /** POST /api/ps body: {op:"add", paths:[...]} | {op:"rm", ids:[...]} | {op:"clear"} | {op:"move", id, to} | {op:"set", id, copies?, rot?}. Answers the new list. */
+    /** POST /api/ps body: {op:"add", paths:[...]} | {op:"rm", ids:[...]} | {op:"clear"} | {op:"move", id, to} | {op:"set", id, copies?, rot?} | {op:"cfg", days?, mb?}. Answers the new list. */
     fun post(b: JSONObject): JSONObject {
         val res = JSONObject()
         when (val op = b.optString("op")) {
@@ -201,6 +276,7 @@ object PrintSpace {
             "rm" -> res.put("removed", remove(b.getJSONArray("ids").strings()))
             "clear" -> res.put("removed", clear())
             "move" -> move(b.getString("id"), b.getInt("to"))
+            "cfg" -> setSettings(if (b.has("days")) b.getInt("days") else null, if (b.has("mb")) b.getInt("mb") else null)
             "set" -> set(b.getString("id"), if (b.has("copies")) b.getInt("copies") else null, if (b.has("rot")) b.getInt("rot") else null)
             else -> throw BadReq("unknown print space operation: $op")
         }
