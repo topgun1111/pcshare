@@ -438,6 +438,8 @@ First check after a build: `WebPdf.kt` compiles and an `.html` and an `.svg` pri
 - **Not done on purpose**: no kill switch for the viewer / share entries (the switch `ls_ps` lives in the page's localStorage; the native side cannot read it) - if wanted, push it with `NL`-style prefs; PDFs and other files are still refused (`PrintSpace.EXT`).
 - **Test checklist (3b, on the device)**: (1) open a photo in the viewer > More > *To Print space* -> toast, then drawer > Print space shows it; (2) same on a picture of ANOTHER device / SMB share (file browser hold menu and viewer) -> copy appears, size right, a 70 MB photo is skipped with the reason; (3) Gallery / any app > Share > *LANShare Print space* with 1 and with 5 pictures -> toast count, pictures in the space; share a PDF -> "not a picture"; (4) full space (500) and storage limit message; (5) after (1)-(3) delete the original: the copy stays.
 
+**Bug fixed (2026-10-22, device report "gallery add leaves Print space empty")**: `Routes.kt` GET branch answered `/api/ps` for EVERY method, so `POST /api/ps` (add / rm / clear / set / undo / cfg) only returned the list and did nothing. Now `"ps" -> if (ex.method == "GET") ...` like `bin` / `clip` / `smb`. Rule: a route name used by both GET and POST needs the method guard in the GET `when`. `psAdd` now also shows the real result (count, skip reasons).
+
 **Compiler risk spots (part 10)**: `PrintSpace.add` (`ep` initialiser with `return` inside `try/catch`, smart cast of `src`), `PrintSpace.addStream` (`when` for the extension), `MainActivity` imports `core.PrintSpace` + `core.errText` (added), `PsLayoutApi` / `PrintSpaceRender` (type-checked against stubs only), `PhonePrint` print-space path.
 
 

@@ -183,7 +183,7 @@ object Routes {
             "bin" -> if (ex.method == "GET") return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("task", Bin.status() ?: JSONObject.NULL)
                 .also { if (q["items"] != "0") it.put("items", jarr(Bin.list().map { e -> e.toJson() })) })   // POST falls through to the task starter below
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
-            "ps" -> return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
+            "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
