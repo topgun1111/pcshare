@@ -136,6 +136,15 @@ class RemoteFs(peer: Peer) : Endpoint {
 
     fun ping() { bytes("GET", "ping") }
 
+    /** Plain GET of /p/[route] (remote Storage Analyzer: start / progress / cancel). 404 = this device has no such route (older build). */
+    fun rpc(route: String, params: Map<String, String> = emptyMap(), timeoutMs: Int = 30_000): ByteArray = bytes("GET", route, params, timeoutMs)
+
+    /** Same, for a big answer (the finished analyzer tree: up to tens of MB gzipped). */
+    fun rpcBig(route: String, params: Map<String, String> = emptyMap()): ByteArray {
+        val r = callRaw("GET", route, params, timeoutMs = 180_000)
+        try { return r.readUpTo(512 shl 20) } finally { r.close() }
+    }
+
     /** Sends clipboard text / a link to that device (it shows a box and opens links in its browser). */
     fun pushClip(text: String, from: String, quiet: Boolean = false) {
         val j = JSONObject().put("text", text).put("from", from)

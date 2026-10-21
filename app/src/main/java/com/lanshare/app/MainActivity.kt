@@ -185,6 +185,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openStorage(vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }
         }
+        /** Storage pill on another device (LANShare phone / SMB / FTP / SFTP): read-only analysis of its folder [vpath]. */
+        @JavascriptInterface fun openStorageDev(dev: String, name: String, vpath: String) {
+            runOnUiThread { try { startActivity(StorageActivity.intentDev(this@MainActivity, dev, name, vpath)) } catch (_: Throwable) { } }
+        }
         @JavascriptInterface fun txtDevs(): String {
             val o = JSONObject()
             val d = com.lanshare.app.core.Cfg.defTarget()

@@ -65,11 +65,11 @@ object StorageStore {
         }, "sscan-save", STACK).also { it.isDaemon = true }.start()
     }
 
-    private fun write(s: Scan) {
-        val f = fileFor(s.dir) ?: return
+    /** The finished tree of [s] as uncompressed bytes (see the file format above), or null when there is none. */
+    private fun serialize(s: Scan): ByteArrayOutputStream? {
         val bos = ByteArrayOutputStream(1 shl 20)
         synchronized(s) {
-            val root = s.root ?: return
+            val root = s.root ?: return null
             val o = DataOutputStream(bos)
             o.writeInt(MAGIC); o.writeInt(VERSION)
             o.writeUTF(s.dir.path); o.writeUTF(s.label)
@@ -88,6 +88,61 @@ object StorageStore {
             for ((pi, t) in tops) { o.writeInt(pi); o.writeUTF(t.name); o.writeLong(t.size); o.writeByte(t.cat) }
             o.flush()
         }
+        return bos
+    }
+
+    /** Remote analyzer: the gzip bytes of a finished scan, sent to the phone that asked for it (same format as the saved files). Runs on a big-stack thread. */
+    fun encode(s: Scan): ByteArray? {
+        var res: ByteArray? = null
+        val t = Thread(null, {
+            res = try {
+                val b = serialize(s)
+                if (b == null) null else ByteArrayOutputStream(b.size() / 4 + 1024).also { g -> GZIPOutputStream(g, 65536).use { b.writeTo(it) } }.toByteArray()
+            } catch (_: Throwable) { null }
+        }, "sscan-enc", STACK)
+        t.isDaemon = true; t.start(); t.join()
+        return res
+    }
+
+    /** Remote analyzer: a result made by [encode] on another phone as a finished [Scan] (not registered; [dir] is only a label), or null. Runs on a big-stack thread. */
+    fun decode(gz: ByteArray, dir: File): Scan? {
+        var res: Scan? = null
+        val t = Thread(null, {
+            res = try {
+                DataInputStream(BufferedInputStream(GZIPInputStream(java.io.ByteArrayInputStream(gz), 65536), 65536)).use { i ->
+                    if (i.readInt() != MAGIC || i.readInt() != VERSION) return@use null
+                    i.readUTF()
+                    val label = i.readUTF()
+                    val used = i.readLong(); val t1 = i.readLong(); val dur = i.readLong()
+                    val s = Scan(UUID.randomUUID().toString().replace("-", "").take(8), dir, label, used)
+                    s.t1 = t1; s.t0 = t1 - dur
+                    s.files.set(i.readLong()); s.dirs.set(i.readLong()); s.bytes.set(i.readLong()); s.denied.set(i.readInt())
+                    val nd = i.readInt()
+                    for (k in 0 until nd) s.deniedSample.add(i.readUTF())
+                    s.limited = i.readBoolean(); s.truncated = i.readBoolean(); s.removed = i.readLong()
+                    for (c in 0 until SCat.COUNT) s.catF.set(c, i.readLong())
+                    s.nodes.set(i.readInt())
+                    val folders = ArrayList<SNode>()
+                    val root = readNode(i, null, folders)
+                    val n = i.readInt()
+                    val top = ArrayList<SNode>(n)
+                    for (k in 0 until n) {
+                        val pi = i.readInt(); val name = i.readUTF(); val size = i.readLong(); val cat = i.readUnsignedByte()
+                        val p = folders.getOrNull(pi) ?: continue
+                        top.add(SNode(name, false, p).also { it.size = size; it.files = 1; it.cat = cat })
+                    }
+                    s.root = root; s.top = top; s.state = "done"
+                    s
+                }
+            } catch (_: Throwable) { null }
+        }, "sscan-dec", STACK)
+        t.isDaemon = true; t.start(); t.join()
+        return res
+    }
+
+    private fun write(s: Scan) {
+        val f = fileFor(s.dir) ?: return
+        val bos = serialize(s) ?: return
         val tmp = File(f.path + ".tmp")
         GZIPOutputStream(BufferedOutputStream(FileOutputStream(tmp), 65536)).use { bos.writeTo(it) }
         if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }

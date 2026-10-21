@@ -59,6 +59,15 @@ object Routes {
             "stat" -> ex.json(L.stat(ex.q("path")))
             "space" -> ex.json(spaceJson(L.space(ex.q("path"))))
             "walk" -> ex.json(jarr(L.walk(ex.q("path")).map { it.toJson() }))
+            // remote Storage Analyzer: another phone asks this one to scan itself (fast: native scan here), polls, then downloads the finished tree
+            "sscan" -> ex.json(sscanStart(vnorm(ex.q("path")), ex.query["rescan"] == "1"))
+            "sscanp" -> ex.json(sscanProgress(scanOf(ex)))
+            "sscancancel" -> { StorageScan.cancel(ex.q("id")); ok(ex) }
+            "sscandl" -> {
+                val s = scanOf(ex)
+                if (s.state != "done") throw BadReq("the scan is not finished")
+                ex.reply(200, StorageStore.encode(s) ?: throw BadReq("no result"), "application/octet-stream")
+            }
             "search" -> ex.json(L.search(ex.q("path"), ex.q("q")).toJson())
             "file" -> sendFile(ex, L.open(ex.q("path")), vbase(ex.q("path")), false)
             "put" -> {

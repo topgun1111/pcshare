@@ -101,7 +101,9 @@ class SNode(@JvmField val name: String, @JvmField val dir: Boolean, @JvmField va
 }
 
 /** One scan (running or finished). */
-class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long) {
+class Scan(val id: String, val dir: File, val label: String, usedBytes: Long) {
+    /** Used space of the volume (0 = unknown); only feeds the percentage and "System / other". A remote scan learns it while it runs. */
+    @Volatile var usedBytes: Long = usedBytes
     @Volatile var state = "run"          // run | done | cancel | error
     @Volatile var error: String? = null
     @Volatile var cancel = false
@@ -127,6 +129,9 @@ class Scan(val id: String, val dir: File, val label: String, val usedBytes: Long
     @Volatile var limited = false
     /** The scan reads the file list of a ZIP / RAR (sizes are the unpacked sizes); [dir] is the archive file itself. Nothing in it can be opened or deleted from the analyzer. */
     @Volatile var arc = false
+    /** The scan reads another device (LANShare phone / SMB / FTP / SFTP): read-only like an archive, [dir] is only a key ([StorageScan.remoteKey]), nothing is saved to disk. */
+    @Volatile var remote = false
+    @Volatile var dev = "local"
     /** The memory guard stopped keeping single files for some folders (they are only counted in the folder's "small files" node; totals stay exact). */
     @Volatile var truncated = false
     /** Result read back from the disk copy ([StorageStore]) instead of scanned in this session. */
@@ -282,6 +287,181 @@ object StorageScan {
         for (j in subs.indices) arcFolder(s, ix, subKeys[j], subs[j])
     }
 
+
+    // ------------------------------------------------------------------ other devices (read-only): LANShare phones, SMB, FTP, SFTP
+    /** Stand-in "folder" that identifies a remote scan for [latest] / [running] (never touched on disk). */
+    fun remoteKey(dev: String, vpath: String): File = File("/.remote/" + dev.replace('/', '_') + vnorm(vpath))
+
+    /**
+     * Starts an analysis of folder [vpath] of device [dev] (a peer id, "smb:..." or "ftp:...") and returns at once. Method per connection type:
+     *  - LANShare phone with this feature: the phone scans ITSELF (native speed), this phone only polls and downloads the finished tree (one gzip file);
+     *  - LANShare phone of an older build: its server-side walk (one request) is folded into the tree here;
+     *  - SMB: folders are listed in parallel (8 requests on the one session); FTP / SFTP: parallel on the 4 pooled connections.
+     * The result has the same tree as a local scan, so the screen, treemap and lists work unchanged; open / share / delete are off (Scan.remote).
+     */
+    fun startRemote(dev: String, vpath: String, label: String): Scan {
+        evict()
+        val v = vnorm(vpath)
+        val s = Scan(UUID.randomUUID().toString().replace("-", "").take(8), remoteKey(dev, v), label, 0L)
+        s.remote = true; s.dev = dev
+        all[s.id] = s
+        s.maxNodes = nodeLimit()
+        val j = Job("Analyzing " + (if (label.isEmpty()) "device" else label))
+        j.id = JOB_PREFIX + s.id; j.bytes = true; j.total = 0L
+        s.job = j
+        Jobs.all[j.id] = j
+        Thread(null, { runRemote(s, dev, v) }, "sscan-remote", 16L shl 20).also { it.isDaemon = true }.start()
+        return s
+    }
+
+    private fun runRemote(s: Scan, dev: String, v: String) {
+        val root = SNode("", true, null)
+        try {
+            if (v == "/") try {   // used space feeds the percentage / "System / other"
+                Jobs.ep(dev).space(v)?.let { (free, total) -> if (total > 0) { s.usedBytes = maxOf(0L, total - free); s.job?.total = s.usedBytes } }
+            } catch (_: Exception) {}
+            if (dev.startsWith("smb:") || dev.startsWith("ftp:")) {
+                val ep = Jobs.ep(dev)
+                val pool = Executors.newFixedThreadPool(if (dev.startsWith("smb:")) 8 else 4) { r -> Thread(null, r, "sscan-r", 2L shl 20).also { it.isDaemon = true } }
+                s.pending.incrementAndGet()
+                pool.execute { rtask(s, root, v, ep, pool, 0) }
+                return   // the last task finishes the scan
+            }
+            val peer = Core.disc.get(dev) ?: throw java.io.IOException("that device is offline")
+            val rfs = RemoteFs(peer)
+            when (peerScan(s, rfs, v)) {
+                1 -> { finishLoaded(s); return }
+                2 -> {}                           // cancelled / failed: finishAsync below reports it
+                else -> walkScan(s, rfs, v, root) // older build: server-side walk
+            }
+        } catch (t: Throwable) {
+            if (s.error == null) s.error = if (t is OutOfMemoryError) "Out of memory" else errText(t)
+            s.cancel = true
+        }
+        finishAsync(s, root)
+    }
+
+    /** 0 = the phone has no remote-scan route (older build), 1 = its finished tree was copied into [s], 2 = cancelled / failed ([s].error or [s].cancel set). */
+    private fun peerScan(s: Scan, rfs: RemoteFs, v: String): Int {
+        val st = try { org.json.JSONObject(String(rfs.rpc("sscan", mapOf("path" to v, "rescan" to "1")), Charsets.UTF_8)) } catch (_: NotFound) { return 0 }
+        val rid = st.getString("id")
+        while (true) {
+            mirror(s)
+            if (s.cancel) { try { rfs.rpc("sscancancel", mapOf("id" to rid)) } catch (_: Exception) {}; return 2 }
+            val p = org.json.JSONObject(String(rfs.rpc("sscanp", mapOf("id" to rid)), Charsets.UTF_8))
+            s.files.set(p.optLong("files")); s.dirs.set(p.optLong("dirs")); s.bytes.set(p.optLong("bytes"))
+            s.cur = p.optString("cur"); mirror(s)
+            when (p.optString("state")) {
+                "done" -> break
+                "error" -> { s.error = p.optString("error").ifEmpty { "The scan failed on the device" }; s.cancel = true; return 2 }
+                "cancel" -> { s.error = "The scan was cancelled on the device"; s.cancel = true; return 2 }
+            }
+            Thread.sleep(400)
+        }
+        s.cur = "Downloading the result"
+        val d = StorageStore.decode(rfs.rpcBig("sscandl", mapOf("id" to rid)), s.dir) ?: throw java.io.IOException("could not read the result of the device")
+        s.files.set(d.files.get()); s.dirs.set(d.dirs.get()); s.bytes.set(d.bytes.get()); s.denied.set(d.denied.get())
+        s.deniedSample.addAll(d.deniedSample)
+        for (c in 0 until SCat.COUNT) s.catF.set(c, d.catF.get(c))
+        s.nodes.set(d.nodes.get()); s.limited = d.limited; s.truncated = d.truncated
+        s.root = d.root; s.top = d.top
+        return 1
+    }
+
+    private fun finishLoaded(s: Scan) {
+        s.t1 = System.currentTimeMillis(); s.cur = ""; s.state = "done"
+        s.job?.let { j -> j.cur = ""; j.done = j.total; j.end = s.t1; j.state = "done" }
+    }
+
+    /** One folder of an SMB / FTP / SFTP share: list it, fold it into the node, queue its sub-folders (depth cap = symlink loops on FTP / SFTP). */
+    private fun rtask(s: Scan, node: SNode, v: String, ep: Endpoint, pool: java.util.concurrent.ExecutorService, depth: Int) {
+        try {
+            if (s.cancel) return
+            val now = System.currentTimeMillis()
+            if (now - s.tick > 150) { s.tick = now; s.cur = v; mirror(s) }
+            val items = try {
+                if (depth > 48) throw java.io.IOException("too deep")
+                ep.lsFast(v)
+            } catch (e: Exception) {
+                if (node.parent == null) throw e
+                node.denied = true
+                if (s.denied.incrementAndGet() <= DENIED_SAMPLE) s.deniedSample.add(node.path())
+                return
+            }
+            for (sub in foldDir(s, node, items)) {
+                if (s.cancel) return
+                s.pending.incrementAndGet()
+                val sv = vjoin(v, sub.name)
+                pool.execute { rtask(s, sub, sv, ep, pool, depth + 1) }
+            }
+        } catch (t: Throwable) {
+            if (s.error == null) s.error = if (t is OutOfMemoryError) "Out of memory" else errText(t)
+            s.cancel = true
+        } finally {
+            if (s.pending.decrementAndGet() == 0) { pool.shutdown(); finishAsync(s, rootOf(node)) }
+        }
+    }
+
+    /** Older LANShare build: its whole tree comes in one /p/walk answer; folded into nodes here without further requests. */
+    private fun walkScan(s: Scan, rfs: RemoteFs, v: String, root: SNode) {
+        val kids = HashMap<String, ArrayList<Item>>()
+        for (w in rfs.walk(v)) {
+            if (s.cancel) return
+            if (w.rel.isEmpty()) continue
+            if (w.skip) { s.denied.incrementAndGet(); continue }
+            val i = w.rel.lastIndexOf('/')
+            kids.getOrPut(if (i < 0) "" else w.rel.substring(0, i)) { ArrayList() }.add(Item(w.rel.substring(i + 1), w.dir, w.size, 0L))
+        }
+        val st = ArrayDeque<Pair<SNode, String>>()
+        st.addLast(root to "")
+        var n = 0
+        while (st.isNotEmpty()) {
+            if (s.cancel) return
+            val (node, key) = st.removeLast()
+            for (sub in foldDir(s, node, kids[key] ?: emptyList())) st.addLast(sub to (if (key.isEmpty()) sub.name else key + "/" + sub.name))
+            if (++n % 200 == 0) { s.cur = key; mirror(s) }
+        }
+    }
+
+    /** Same node layout as [task] / [arcFolder] for one listed folder; returns its sub-folder nodes (their entries are folded by the caller). */
+    private fun foldDir(s: Scan, node: SNode, items: List<Item>): ArrayList<SNode> {
+        s.dirs.incrementAndGet()
+        val keepMax = if (s.nodes.get() > s.maxNodes || lowMemory()) 0 else FILES_PER_DIR
+        val heap = PriorityQueue<SNode>(minOf(keepMax, 1024) + 1) { a, b -> java.lang.Long.compare(a.size, b.size) }
+        val subs = ArrayList<SNode>()
+        val cats = LongArray(SCat.COUNT)
+        val catN = IntArray(SCat.COUNT)
+        var ownBytes = 0L
+        var ownFiles = 0L
+        for (e in items) {
+            if (e.dir) { subs.add(SNode(e.name, true, node)); continue }
+            val size = maxOf(e.size, 0L)
+            val c = SCat.of(e.name)
+            ownFiles++; ownBytes += size; cats[c] += size; catN[c]++
+            if (keepMax > 0 && (heap.size < keepMax || size > heap.peek().size)) {
+                heap.add(SNode(e.name, false, node).also { it.size = size; it.files = 1; it.cat = c })
+                if (heap.size > keepMax) heap.poll()
+            }
+            if (size > 0) offerTop(s, e.name, node, size, c)
+        }
+        if (keepMax == 0 && ownFiles > 0) s.truncated = true
+        s.files.addAndGet(ownFiles); s.bytes.addAndGet(ownBytes)
+        for (c in 0 until SCat.COUNT) if (catN[c] > 0) s.catF.addAndGet(c, catN[c].toLong())
+        node.size = ownBytes; node.files = ownFiles
+        if (ownFiles > 0) node.cats = cats
+        val kept = heap.size.toLong()
+        var keptBytes = 0L
+        for (k in heap) keptBytes += k.size
+        val restFiles = ownFiles - kept
+        val arr = ArrayList<SNode>(kept.toInt() + 1 + subs.size)
+        arr.addAll(heap)
+        if (restFiles > 0) arr.add(SNode("", false, node).also { it.agg = true; it.size = ownBytes - keptBytes; it.files = restFiles })
+        arr.addAll(subs)
+        node.kids = arr.toTypedArray()
+        s.nodes.addAndGet(arr.size)
+        return subs
+    }
+
     /** A scan read back from disk ([StorageStore.load]) becomes the newest finished scan of its folder. */
     fun adopt(s: Scan) { evict(); all[s.id] = s }
 
@@ -433,7 +613,7 @@ object StorageScan {
                 if (st == "error") j.error = s.error
                 j.end = s.t1; j.state = st
             }
-            if (st == "done" && !s.arc) StorageStore.saveAsync(s)   // remember the result across process death
+            if (st == "done" && !s.arc && !s.remote) StorageStore.saveAsync(s)   // remember the result across process death
         }, "sscan-fin", 16L shl 20).also { it.isDaemon = true }.start()
     }
 
