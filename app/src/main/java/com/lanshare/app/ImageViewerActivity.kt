@@ -311,7 +311,12 @@ class ImageViewerActivity : Activity() {
         dims[pos]?.let { d -> rows.add("Dimensions\n$d") }
         if (it.size > 0) rows.add("Size\n" + android.text.format.Formatter.formatShortFileSize(this, it.size))
         rows.add("Position\n" + (pos + 1) + " of " + items.size)
-        android.app.AlertDialog.Builder(this).setTitle("Details").setMessage(rows.joinToString("\n\n")).setPositiveButton("Close", null).show()
+        val base = rows.joinToString("\n\n")
+        val d = android.app.AlertDialog.Builder(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
+        Thread({   // same media details as the file list's Details sheet (date taken etc.), via the app's own /api/stat
+            val extra = MediaText.format(MediaText.fetchStat(it.url))
+            runOnUiThread { if (!isFinishing && d.isShowing) d.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
+        }, "viewer-details").also { t -> t.isDaemon = true }.start()
     }
 
     // ---------------------------------------------------------------- start

@@ -851,7 +851,12 @@ class PlayerActivity : Activity() {
         if (sz > 0) sb.append("\nFile size: ").append(android.text.format.Formatter.formatFileSize(this, sz))
         val mt = if (it.mtime > 0) it.mtime else mtimes[it.url] ?: 0L
         if (mt > 0) sb.append("\nModified: ").append(dateText(mt))
-        dlg(AlertDialog.Builder(this).setTitle("Details").setMessage(sb.toString()).setPositiveButton("OK", null))
+        val base = sb.toString()
+        val d = dlg(AlertDialog.Builder(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
+        Thread({   // container / codec / track / tag details from the app's own /api/stat (same as the file list's Details sheet)
+            val extra = MediaText.format(MediaText.fetchStat(it.url))
+            runOnUiThread { if (!isFinishing && d.isShowing) d.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
+        }, "player-details").also { t -> t.isDaemon = true }.start()
     }
 
     // ---------------------------------------------------------------- share / delete

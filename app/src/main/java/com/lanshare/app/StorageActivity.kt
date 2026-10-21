@@ -892,7 +892,15 @@ class StorageActivity : Activity() {
         val up = n.parent
         // part 8a: message + one row per action (a plain AlertDialog only has three buttons)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(4)) }
-        box.addView(TextView(this).apply { text = sb.toString(); textSize = 14f; setTextIsSelectable(true) })
+        val infoTv = TextView(this).apply { text = sb.toString(); textSize = 14f; setTextIsSelectable(true) }
+        box.addView(infoTv)
+        if (!n.dir && !n.agg) {   // pictures / videos / audio: container, codec, track and tag details, read straight from the file
+            val baseText = sb.toString()
+            Thread({
+                val extra = MediaText.format(MediaText.local(java.io.File(real)))
+                if (extra.isNotEmpty()) runOnUiThread { if (!isFinishing) infoTv.text = baseText + "\n" + extra }
+            }, "storage-media").also { t -> t.isDaemon = true }.start()
+        }
         val dlg = AlertDialog.Builder(this)
             .setTitle(if (n.agg) "Small files" else n.name)
             .setView(ScrollView(this).apply { addView(box) })
