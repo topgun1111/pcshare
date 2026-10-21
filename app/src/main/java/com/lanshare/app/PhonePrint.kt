@@ -80,6 +80,7 @@ class PhonePrint(private val act: Activity) {
         val root = JSONObject(json)
         val arr = root.getJSONArray("items")
         val optsJ = root.optJSONObject("opts")
+        val duplex = root.optString("duplex").let { if (it == "long" || it == "short") it else "" }   // asked for by the caller (Print space sheets): preset of Android's own Two-sided choice
         val trimOn = optsJ?.optString("fit") == "trim"   // "Trim blank edges": crop boxes measured by the preview
         val dir = File(act.cacheDir, "print").apply { mkdirs() }
         dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
@@ -110,11 +111,11 @@ class PhonePrint(private val act: Activity) {
             toast("Can't print " + skipped.distinct().joinToString(", ") + " on the phone. Use a PC with pcprint.py for Office files.")
         if (ins.isEmpty()) return
         val imgs = ins.count { it.kind == "img" }
-        if (imgs == 0) build(ins, 0)
+        if (imgs == 0) build(ins, 0, duplex)
         else act.runOnUiThread {
             askLayout(imgs) { layout ->
                 pool.execute {
-                    try { build(ins, if (trimOn && layout == 1) 0 else layout) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+                    try { build(ins, if (trimOn && layout == 1) 0 else layout, duplex) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
                 }
             }
         }
@@ -133,7 +134,7 @@ class PhonePrint(private val act: Activity) {
             .show()
     }
 
-    private fun build(ins: List<In>, layout: Int) {
+    private fun build(ins: List<In>, layout: Int, duplex: String = "") {
         val parts = ArrayList<Part>()
         val pend = ArrayList<File>()
         fun flush() { if (pend.isNotEmpty()) { parts.add(ImgPart(ArrayList(pend))); pend.clear() } }
@@ -148,8 +149,12 @@ class PhonePrint(private val act: Activity) {
         val title = ins[0].name + if (ins.size > 1) " +" + (ins.size - 1) else ""
         val adapter = Adapter(parts, layout, ins.map { it.file }, title)
         val base = PrintAttributes.MediaSize.ISO_A4
-        val attrs = PrintAttributes.Builder()
-            .setMediaSize(if (adapter.firstIsLandscape()) base.asLandscape() else base.asPortrait()).build()
+        val ab = PrintAttributes.Builder()
+            .setMediaSize(if (adapter.firstIsLandscape()) base.asLandscape() else base.asPortrait())
+        // Print space sheets with a back side: start Android's print dialog on two-sided (the person can still change it there)
+        if (duplex != "")
+            ab.setDuplexMode(if (duplex == "short") PrintAttributes.DUPLEX_MODE_SHORT_EDGE else PrintAttributes.DUPLEX_MODE_LONG_EDGE)
+        val attrs = ab.build()
         act.runOnUiThread {
             try {
                 (act.getSystemService(Context.PRINT_SERVICE) as PrintManager).print(title, adapter, attrs)

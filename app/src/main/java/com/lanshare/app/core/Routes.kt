@@ -183,6 +183,7 @@ object Routes {
             "bin" -> if (ex.method == "GET") return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("task", Bin.status() ?: JSONObject.NULL)
                 .also { if (q["items"] != "0") it.put("items", jarr(Bin.list().map { e -> e.toJson() })) })   // POST falls through to the task starter below
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
+            "ps" -> return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
@@ -205,6 +206,8 @@ object Routes {
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))
+            "pspage" -> return ex.reply(200, PrintSpaceRender.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
+                mapOf("Cache-Control" to "private, max-age=600"))   // Print space preview page (the id is a hash of the layout, so a cached page is never stale)
             "pvfile" -> {
                 val (f, e) = PrintPreview.file(ex.q("id"))
                 val mt = when (e) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "gif" -> "image/gif"; "bmp" -> "image/bmp"; "tif", "tiff" -> "image/tiff"; else -> "text/plain; charset=utf-8" }
@@ -296,6 +299,9 @@ object Routes {
                 if (b.getString("op") == "cancel") { Bin.cancelTask(); ex.json(JSONObject().put("ok", true)) }
                 else ex.json(JSONObject().put("task", Bin.start(b.getString("op"), b.optJSONArray("ids")?.strings() ?: emptyList()).toJson()))
             }
+            "ps" -> ex.json(PrintSpace.post(b))   // Print space add / rm / clear / move / set (HANDOVER 9.7)
+            "pslayout" -> ex.json(PsLayoutApi.post(b))   // Print space layout editor: fill / assign / swap / ... (HANDOVER 9.7, part 5)
+            "psrender" -> ex.json(PrintSpaceRender.post(b))   // Print space sheets: prepare (preview id) / pdf (background job) (HANDOVER 9.7, part 6a)
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)

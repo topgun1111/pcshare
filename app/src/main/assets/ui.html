@@ -208,6 +208,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc{position:relative;aspect-ratio:1/1;background:var(--hov);overflow:hidden;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #gal .gc img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
 #gal .gc:active{filter:brightness(.88)}
+#gal .gn{position:absolute;left:4px;right:4px;bottom:4px;font-size:10px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #gal .gd{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 #gal .ge{grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--mut)}
 #gal .gh.sl{display:none;background:var(--sel);color:var(--onsel);border-radius:0 0 22px 22px;padding-bottom:10px;box-shadow:0 3px 10px #0003;position:relative;z-index:2}#gal.selm .gh{display:none}#gal.selm .gh.sl{display:flex;animation:gbdn .18s ease-out}
@@ -229,6 +230,48 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .isq button{height:44px;padding:0 18px;border-radius:22px;background:var(--ac);color:var(--onac);font-weight:600}
 #gal .isp{height:6px;border-radius:3px;background:var(--bd);overflow:hidden}#gal .isp i{display:block;height:100%;width:0;background:var(--ac);transition:width .4s}
 #gal .isr{display:flex;gap:8px;flex-wrap:wrap}
+#gal .lybd{padding-bottom:8px}
+#gal .lyset{display:flex;flex-direction:column;gap:8px;margin:4px 10px 8px;padding:10px 12px;background:var(--cont);border:1px solid var(--bd);border-radius:16px}
+#gal .lyset>.tbtn{align-self:flex-start;border:1px solid var(--bd)}
+#gal .lyr{display:flex;flex-direction:column;gap:4px}#gal .lyr>small{color:var(--mut);font-size:12px}
+#gal .lyc{display:flex;gap:6px;flex-wrap:wrap}
+#gal .lyc button{height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--bd);font-size:13.5px;font-weight:600;color:var(--mut)}
+#gal .lyc button.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
+#gal .lyst b{min-width:64px;text-align:center;align-self:center;font-variant-numeric:tabular-nums;font-size:14px}
+#gal .lystrip{display:flex;gap:6px;overflow-x:auto;padding:4px 10px 6px;-webkit-overflow-scrolling:touch}
+#gal .lym{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border-radius:10px;border:2px solid transparent}
+#gal .lym.on{border-color:var(--ac);background:var(--sel)}
+#gal .lym canvas{display:block;background:#fff;box-shadow:0 0 0 1px var(--bd)}
+#gal .lym small{font-size:11px;color:var(--mut)}
+#gal .lym.lya{justify-content:center;min-width:44px;font-size:24px;color:var(--ac)}
+#gal .lym i{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 0 2px var(--bg)}
+#gal .lytab{display:flex;align-items:center;gap:8px;padding:0 12px 6px}
+#gal .lytab>small{flex:1;text-align:right;color:var(--mut);font-size:12.5px}
+#gal .lypw{padding:0 12px}
+#gal .lypg{position:relative;margin:0 auto;background:#fff;box-shadow:0 2px 12px #0004;width:min(100%,calc(46vh*var(--ar)));-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#gal .lys{position:absolute;box-sizing:border-box;overflow:hidden;border:1px dashed #8886;background:#8881;touch-action:manipulation}
+#gal .lys.sel{outline:3px solid var(--ac);outline-offset:-3px;z-index:2}
+#gal .lys.dt{background:color-mix(in srgb,var(--ac) 30%,transparent)}
+#gal .lys img{position:absolute;left:50%;top:50%;max-width:none;pointer-events:none}
+#gal .lys img.gh{opacity:.22}
+#gal .lyn{position:absolute;left:4px;top:2px;font-size:11px;color:#777}
+#gal .lybot{flex:none;border-top:1px solid var(--bd);background:var(--bg);padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
+#gal .lyctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 12px 6px;min-height:36px;font-size:13px;color:var(--mut)}
+#gal .lyctl b{color:var(--fg);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gal .lyctl .tbtn{display:inline-flex;align-items:center;gap:4px;padding:0 10px;border:1px solid var(--bd)}
+#gal .lyctl .tbtn svg{width:18px;height:18px;fill:currentColor}
+#gal .lytr{display:flex;gap:6px;overflow-x:auto;padding:0 12px;-webkit-overflow-scrolling:touch}
+#gal .lyt{position:relative;flex:none;width:58px;height:58px;border-radius:10px;overflow:hidden;background:var(--hov);border:2px solid transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#gal .lyt img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+#gal.lypv .lyset,#gal.lypv .lybot{display:none!important}
+#gal .lypg.lyp{width:min(100%,calc(68vh*var(--ar)))}#gal .lypg.lyp img{display:block;width:100%;height:100%;-webkit-user-drag:none}
+#gal .lym img{display:block;background:#fff;box-shadow:0 0 0 1px var(--bd)}
+#gal .lytab>small.lypn{text-align:center}#gal .lytab .ibtn:disabled{opacity:.35}
+#gal .gh .tbtn.on{background:var(--sel);color:var(--onsel)}
+#gal .lyt.sel{border-color:var(--ac)}#gal .lyt.dt{border-color:var(--err)}
+#gal .lyg{position:absolute;right:2px;bottom:2px;padding:0 5px;border-radius:8px;background:var(--ac);color:var(--onac);font-size:10.5px;font-variant-numeric:tabular-nums}
+#gal .lyg.ok{background:#0009;color:#fff}
+.lygh{position:fixed;z-index:99;width:60px;height:60px;border-radius:10px;overflow:hidden;opacity:.85;pointer-events:none;box-shadow:0 4px 14px #0007}.lygh img{width:100%;height:100%;object-fit:cover;display:block}
 #gal .gp{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 @keyframes gbup{from{transform:translateY(18px);opacity:0}}@keyframes gbdn{from{transform:translateY(-14px);opacity:0}}@keyframes gbpop{from{transform:scale(.4)}}
 .galt{grid-column:1/-1;justify-self:center;padding:8px 16px;border-radius:18px;color:var(--ac);font-weight:600;font-size:13.5px}
@@ -1446,6 +1489,7 @@ function galView(a){
         if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,5000)}});
     if(!a.v&&gi().some(pvOK)&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
+    if(!a.v&&psOK(gi().map(m=>m.name)))btn('add','To Print space',()=>psAdd('local',gi().filter(m=>psPic(m.name)).map(m=>jn(a.path,m.name)),clr));
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;
@@ -1517,6 +1561,7 @@ function isView(sdir,sname,m0){
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(gi().some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint(null,{items:gi(),dev:'local',full:1,path:'/',done:clr}));
+    if(psOK(gi().map(m=>m.name)))btn('add','To Print space',()=>psAdd('local',gi().filter(m=>psPic(m.name)).map(m=>m.p),clr));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
     gb.style.setProperty('--cols',gb.children.length)};
   // --- status card (model download / scan progress) ---
@@ -2404,6 +2449,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
     if(files&&it.some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
+    if(!A&&psOK(it.filter(i=>!i.dir).map(i=>i.name)))btn('add','To Print space',()=>{const ps=it.filter(i=>!i.dir&&psPic(i.name)).map(i=>jn(S.path,i.name));S.sel.clear();render();psAdd(S.dev,ps)});
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
@@ -2496,8 +2542,8 @@ const CAN_PRINT=!!(window.LSAndroid&&LSAndroid.printHere);
 let WIFI=[];
 async function loadWifi(scan){try{WIFI=((await api('GET','/api/wifiprinters'+(scan?'?scan=1':''),null,scan?30000:9000))||[]).map(w=>({id:w.id,name:w.name,model:w.model,wifi:1,tag:w.via||'Wi-Fi',viaId:w.viaId||''}))}catch(e){WIFI=[]}return WIFI}
 /* options for a Wi-Fi printer: what the printer itself understands (copies, sides, colour, paper, scaling, page range) */
-function wifiOptions(pr,files){return new Promise(res=>{
-  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0,tray:'',quiet:''};
+function wifiOptions(pr,files,pre){return new Promise(res=>{
+  const st={copies:1,duplex:'',color:'',paper:'',fit:'',range:'',margin:'',scale:'',nup:1,border:0,tray:'',quiet:''};if(pre&&pre.duplex)st.duplex=pre.duplex;   /* pre: set by the caller (Print space sheets) */
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const card=E('div','card pfull pfx'),redraw=[];
   const pvMax=()=>[Math.max(160,card.clientWidth-56),Math.max(140,innerHeight*.32)];
@@ -2614,7 +2660,7 @@ function wifiOptions(pr,files){return new Promise(res=>{
     const ik=inkTxt(r);
     if(r.problem){info.textContent=r.problem;info.style.color='var(--err)'}else{info.textContent='ready \u00b7 Wi-Fi'+(ik?' \u00b7 '+ik.t+(ik.low?' (low!)':''):'');info.style.color=ik&&ik.low?'var(--err)':'var(--ok)'}
     if(r.problem&&ik)info.textContent+=' \u00b7 '+ik.t
-    if(r.duplex===false)sides.style.display='none';
+    if(r.duplex===false){sides.style.display='none';if(pre&&pre.duplex&&pre.duplex!=='off'){st.duplex='';toast('This printer cannot print on both sides by itself \u2013 the backs would come out on separate sheets. Use \u201cNo, one side at a time\u201d.',7000)}}
     if(r.color===false)colour.style.display='none';
     const tl=(r.trays||[]).filter(t=>t.id!=='auto');
     if(tl.length||(r.trayinfo||'')){
@@ -2735,10 +2781,11 @@ async function pvInfoOld(f){
     const txt=new TextDecoder('utf-8').decode(buf);let lines=0;for(const l of txt.replace(/\r/g,'').split('\n'))lines+=Math.max(1,Math.ceil(l.length/82));
     return{kind:'doc',pages:Math.max(1,Math.ceil(lines/61))}}
   catch(e){return{kind:'doc',pages:0}}finally{clearTimeout(tm)}}
-function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res=>{
+function printOptions(pc,files,onlyFiles,pre){files=files||[];return new Promise(res=>{   /* pre: options forced by the caller (Print space sheets: sides, no re-layout); they are not remembered */
   /* options are remembered per PC + printer ('printOptsBy'); a printer used for the first time starts from the last options used anywhere */
   const pBy=()=>lsGet('printOptsBy',{}),pk=()=>pc.id+'|'+(st.printer||''),p0=pc.pn||lsGet('printOptsLast',{})[pc.id]||'';
   const st=Object.assign({},PRN_DEF,pBy()[pc.id+'|'+p0]||lsGet('printOpts',{}));st.printer=p0;st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;
+  const base0=Object.assign({},st);if(pre)Object.assign(st,pre);
   /* only pictures selected: they are laid out together on shared sheets (preview = what is printed), each can be turned separately */
   const imgMode=!!onlyFiles&&files.length>0&&files.every(f=>PV_IMG.includes((f.name.split('.').pop()||'').toLowerCase()));
   const pdf=pc.id==='pdf:local',here=pc.id==='__here';   /* this phone: Android's own print dialog sets copies / sides / colour / printer */
@@ -2876,6 +2923,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
   body.append(tabs.b,tabs.l,tabs.p);card.append(tb,body);
   // printer: the list lives in the printer row at the top
   const sel=E('select');sel.setAttribute('aria-label','Printer');const opt0=E('option','','Default printer');opt0.value='';sel.append(opt0);sel.style.display='none';pt.insertBefore(sel,info);
+  const apply=sv=>{const pr=st.printer;Object.assign(st,PRN_DEF,sv);st.printer=pr;st.range='';st.wm=st.hdr=st.ftr='';st.wm_under=0;st.rots=files.map(()=>0);if(pre)Object.assign(st,pre);redraw.forEach(f=>f())};
   sel.onchange=()=>{st.printer=sel.value;const sv=pBy()[pk()];if(sv){apply(sv);if(imgMode){st.booklet=0;st.noauto=0}}status()};
   const hint=E('div','sub phint');hint.style.display='none';card.insertBefore(hint,pv);
   const status=()=>{if(pdf){info.textContent='Saved as a PDF file in "LANShare PDF" on this phone';info.style.color='';return}if(here){info.textContent='Copies, sides, colour and printer are chosen in the Android print dialog next';return}
@@ -2934,7 +2982,7 @@ function printOptions(pc,files,onlyFiles){files=files||[];return new Promise(res
     if(imgMode){out.sheet=1;out.rots=st.rots.slice();if(st.fit==='trim')out.crops=thumbs.map(t=>pvBBox(t));delete out.booklet;delete out.range;delete out.pages;delete out.scale;delete out.align;delete out.autorot}
     else if(st.booklet&&!st.duplex)out.duplex='short';
     if(imgMode||files.length<2)delete out.join;
-    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;try{localStorage.setItem('printOpts',JSON.stringify(keep));
+    const keep=Object.assign({},st);delete keep.join;delete keep.range;delete keep.rots;if(pre)Object.keys(pre).forEach(n=>{keep[n]=base0[n]});try{localStorage.setItem('printOpts',JSON.stringify(keep));
       const by=pBy();delete by[pk()];by[pk()]=keep;const ks=Object.keys(by);while(ks.length>40)delete by[ks.shift()];localStorage.setItem('printOptsBy',JSON.stringify(by));
       const lp=lsGet('printOptsLast',{});lp[pc.id]=st.printer||'';localStorage.setItem('printOptsLast',JSON.stringify(lp))}catch(e){}fin(out)};
   act.append(ps,k);card.append(act);o.append(card);showT('b');redraw.forEach(f=>f());status()})}
@@ -2957,7 +3005,7 @@ function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent
   cl.onclick=()=>{try{localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
-  const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[];
+  const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[],pre=cx&&cx.opts||null;   /* pre: options forced by the caller; returns the printer used (a job was sent) or nothing */
   const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* the picker opens at once and fills in while the printer search runs */
   let to=preset||await choosePrinter(here,busy);
   if(!to)return;
@@ -2973,25 +3021,25 @@ async function doPrint(preset,cx){
     let opts=null;
     if(f.every(i=>PV_IMG.includes((i.name.split('.').pop()||'').toLowerCase()))){opts=await printOptions(to,f.map(i=>({name:i.name,path:PF(i),url:urlOf(i)})),true);if(!opts)return}
     done();
-    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)})),opts}));
+    if(LSAndroid.printHereMany)LSAndroid.printHereMany(JSON.stringify({items:f.map(i=>({name:i.name,url:urlOf(i)})),opts,duplex:pre&&(pre.duplex==='long'||pre.duplex==='short')?pre.duplex:''}));
     else f.forEach(i=>LSAndroid.printHere(urlOf(i),i.name));
-    return}
+    return to}
   if(to.pdf){
     const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
-    const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
+    const opts=await printOptions(to,pvf,pvf.length===N,pre);if(!opts)return;
     try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   if(to.wifi){
     const wf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
-    const wo=await wifiOptions(to,wf);if(!wo)return;
+    const wo=await wifiOptions(to,wf,pre);if(!wo)return;
     try{const ps=PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts:wo});done();
-      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}
+      const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name,opts:wo,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}
     return}
   const pvf=IT().filter(i=>!i.dir).map(i=>({name:i.name,path:PF(i),url:location.origin+'/api/dl?dev='+enc(DV)+'&path='+enc(PF(i))}));
-  const opts=await printOptions(to,pvf,pvf.length===N);if(!opts)return;
+  const opts=await printOptions(to,pvf,pvf.length===N,pre);if(!opts)return;
   try{const ps=opts.sheet?pvf.map(p=>p.path):PS(),nm=IT().map(i=>i.name),r=await api('POST','/api/print',{dev:DV,paths:ps,to:to.id,opts});done();
-    setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
+    setLastPc(to);const hid=phAdd({dev:DV,paths:ps,to:to.id,toName:to.name+(opts.printer?' \u00b7 '+opts.printer:''),opts,names:nm});watchJob(r.job);track(r.job).then(ok=>phMark(hid,ok));return to}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* A document printed from another app through Android's print dialog (LANShare print service) lands in /LANShare Shared/: open the same PC print dialog for it */
 /* an archive / folder opened from outside the app must end up on top: close every page that could cover it (album page, viewer, dialogs, sheets, selection, search) first */
 function lsCloseOverlays(){
@@ -3078,6 +3126,332 @@ async function doDelete(){
   try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+/* ---- Print space (HANDOVER 9.7, part 2): pictures held for printing. Store = core/PrintSpace.kt (/api/ps). Screen reuses the #gal overlay (like image search) so Back, hiding the native list / chrome / search and swipe lock keep working. Kill switch: localStorage ls_ps='0' hides the drawer entry. */
+const PS_ON=()=>LD('ls_ps','1')!=='0';
+/* Part 3 intake: any screen can add pictures to Print space with psAdd(dev, paths). Only pictures go in (PV_IMG); the phone copies them (core/PrintSpace.kt). */
+const psPic=name=>PV_IMG.includes((String(name).split('.').pop()||'').toLowerCase());
+const psOK=names=>PS_ON()&&names.some(psPic);
+let PSBUSY=false;
+async function psAdd(dev,paths,done){
+  paths=(paths||[]).filter(p=>psPic(p));
+  if(!paths.length)return toast('Only pictures can be added to Print space',3000);
+  if(PSBUSY)return;PSBUSY=true;
+  try{
+    toast('Adding to Print space\u2026',0,0);
+    const r=await api('POST','/api/ps',{op:'add',dev:dev||'local',paths});
+    const ad=r&&r.added!=null?r.added:paths.length,sk=(r&&r.skipped)||[];
+    let m=ad+' picture'+(ad===1?'':'s')+' added to Print space';
+    if(sk.length)m+=' \u00b7 '+sk.length+' skipped ('+sk[0].name+': '+sk[0].why+')';
+    toast(m,sk.length?6000:3000);
+    if(done)done(r)
+  }catch(e){toast('\u26a0 '+e.message,6000)}
+  finally{PSBUSY=false}
+}
+function openPrintSpace(){
+  const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
+  const live=()=>o._for===tok&&o.style.display==='flex';
+  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','','Print space'),sb=E('small','',' '),sc=E('div','gs'),gg=E('div','gg'),
+    pa=E('button','tbtn fill','Print'),ca=E('button','ibtn'),la=E('button','ibtn');
+  bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
+  ca.append(ic('del'));ca.setAttribute('aria-label','Remove all pictures');
+  la.append(ic('vgrid'));la.setAttribute('aria-label','Layout (several per sheet, front / back)');la.onclick=()=>psLayout();
+  tw.append(tt,sb);hd.append(bk,tw,la,pa,ca);sc.append(gg);
+  const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
+  sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
+  o.append(hd,sh,sc,gb);
+  let LIST=[],BYTES=0,MAX=500,busy=false;
+  const gi=()=>LIST.filter(m=>GS.has(m.id));
+  const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
+  sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(m.id);const e=els.get(m.id);if(e)e.classList.add('sel')});upd()};
+  const plural=n=>n+' picture'+(n===1?'':'s');
+  // what goes to the printer: the selection, or everything; a picture with copies > 1 is listed that many times (default 1)
+  const printItems=list=>{const r=[];list.forEach(m=>{for(let k=0;k<(m.copies||1);k++)r.push({name:m.name,p:m.path,size:m.size||0})});return r};
+  const doIt=list=>{if(!list.length)return toast('Print space is empty',3000);doPrint(null,{items:printItems(list),dev:'local',full:1,path:'/',done:clr})};
+  const apply=r=>{LIST=(r&&r.items)||[];BYTES=r&&r.bytes||0;MAX=r&&r.max||500;
+    for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);draw();upd()};
+  const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
+  const upd=()=>{
+    o.classList.toggle('selm',GS.size>0);gb.textContent='';
+    sb.textContent=LIST.length?plural(LIST.length)+' · '+fmt(BYTES):'Empty';
+    pa.style.display=ca.style.display=la.style.display=LIST.length?'':'none';
+    const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' · '+fmt(ssz):'');
+    if(!GS.size)return;
+    const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+    btn('print','Print',()=>doIt(gi()));
+    btn('del','Remove',async()=>{const ids=[...GS],n=ids.length;
+      if(!await dlg({title:'Remove '+plural(n)+' from Print space?',msg:'Only the copies held here are deleted. The original pictures stay where they are.',ok:'Remove',danger:true}))return;
+      clr();await post({op:'rm',ids})},'dng');
+    gb.style.setProperty('--cols',gb.children.length)};
+  pa.onclick=()=>doIt(LIST);
+  ca.onclick=async()=>{if(!LIST.length)return;
+    if(!await dlg({title:'Remove all pictures from Print space?',msg:plural(LIST.length)+' will be deleted from here. The originals stay where they are.',ok:'Remove all',danger:true}))return;
+    clr();await post({op:'clear'})};
+  function mk(m){const c=E('div','gc'+(GS.has(m.id)?' sel':''));els.set(m.id,c);c.append(ic('check','ck'));
+    const im=E('img');im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.path)+'&q=95';im.onerror=()=>{im.style.display='none';if(!c.querySelector('.gn'))c.append(E('span','gn',m.name))};c.insertBefore(im,c.firstChild);
+    if((m.copies||1)>1)c.append(E('span','gd','×'+m.copies));
+    c.onclick=()=>{GS.has(m.id)?GS.delete(m.id):GS.add(m.id);c.classList.toggle('sel',GS.has(m.id));upd()};   // tap = select (no viewer here yet)
+    return c}
+  function draw(){gg.textContent='';els.clear();
+    if(!LIST.length){const e=E('div','ge');e.append(E('b','','Nothing to print yet'),document.createElement('br'),E('small','','Pictures you add to Print space are kept here as copies until you print or remove them.'));gg.append(e);return}
+    const fr=document.createDocumentFragment();LIST.forEach(m=>fr.append(mk(m)));gg.append(fr)}
+  draw();upd();
+  api('GET','/api/ps').then(r=>{if(live())apply(r)}).catch(e=>{if(live())toast('⚠ '+e.message,5000)});
+}
+/* ---- Print space part 5b (HANDOVER 9.7): layout editor. Reuses #gal like openPrintSpace. Server = POST /api/pslayout (core/PsLayoutJson.kt): the UI keeps spec + plan, sends both with every call and saves them in localStorage ls_ps_lay. Part 6b: Preview (pages drawn by the Kotlin renderer, POST /api/psrender prepare + GET /api/pspage) and Print (psrender pdf job -> doPrint). */
+Object.assign(IC,{rotr:'M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z'});
+const PSL_DEF=()=>({paper:'A4',orient:'auto',cols:2,rows:2,margin:14,gap:8,fit:'fit',flip:'long',autoRot:true,reverse:false}),
+  PSL_PAP=['A3','A4','A5','Letter','Legal'],PSL_PER=[[1,1,1],[2,1,2],[4,2,2],[6,2,3],[9,3,3]];   // [label, cols, rows] (portrait form, like SheetLayout.PRESETS)
+function psLayout(){
+  const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';o.classList.remove('selm');
+  const live=()=>o._for===tok&&o.style.display==='flex';
+  o.classList.remove('lypv');
+  o._sel=()=>{if(VIEW==='prev'){setView('edit');return true}openPrintSpace();return true};   // system Back = Preview -> editor -> picture grid
+  let SP=PSL_DEF(),PL=null,LY=null,PICS=[],PLACED={},MODE='front',sheet=0,side='front',selPic=null,selSlot=null,setOpen=true,qn=0,chain=Promise.resolve(),drag=null,lastSh=-1,VIEW='edit',RV=null,RVerr='',pv=0,pTm=0,pn=0,rvTry=0,pBusy=false;
+  try{const j=JSON.parse(LD('ls_ps_lay','null'));if(j&&j.spec){SP=Object.assign(PSL_DEF(),j.spec);PL=j.plan||null;MODE=j.mode||'front';setOpen=false}}catch(e){}
+  const FIL={},pic=id=>PICS.find(m=>m.id===id),thumb=m=>'/api/thumb?dev=local&path='+enc(m.path)+'&q=95',
+    hasBack=()=>!!PL&&PL.sheets.some(s=>(s.b||[]).some(Boolean)),
+    cellAt=(sh,sd,slot)=>{const p=FIL[sh+':'+sd];return p?p.cells.find(c=>c.slot===slot)||null:null},
+    save=()=>SV('ls_ps_lay',JSON.stringify({spec:SP,plan:PL,mode:MODE}));
+  // ---- skeleton (built once; each part re-renders only its own box, so scroll positions survive)
+  const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),sb=E('small','',' '),st=E('button','ibtn'),pvb=E('button','tbtn','Preview'),pr=E('button','tbtn fill','Print'),sc=E('div','gs lybd'),
+    bxSet=E('div','lyset'),bxStrip=E('div','lystrip'),bxTab=E('div','lytab'),bxPg=E('div','lypw'),bot=E('div','lybot'),bxCtl=E('div','lyctl'),bxTray=E('div','lytr');
+  bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=()=>{if(VIEW==='prev')setView('edit');else openPrintSpace()};
+  pvb.setAttribute('aria-label','Preview the printed sheets');pvb.onclick=()=>setView(VIEW==='prev'?'edit':'prev');pr.setAttribute('aria-label','Print the sheets');pr.onclick=()=>printNow();
+  st.append(ic('tune'));st.setAttribute('aria-label','Layout settings');st.onclick=()=>{setOpen=!setOpen;dSet()};
+  tw.append(E('b','','Layout'),sb);hd.append(bk,tw,st,pvb,pr);sc.append(bxSet,bxStrip,bxTab,bxPg);bot.append(bxCtl,bxTray);o.append(hd,sc,bot);
+  // ---- server calls: serialized; every call sends the CURRENT spec + plan
+  const run=async(x,quiet)=>{
+    try{const r=await api('POST','/api/pslayout',Object.assign({spec:SP},PL?{plan:PL}:{},x));
+      if(!live())return null;
+      if(qn<=1)SP=r.spec;   // adopt the cleaned spec only when no newer change is waiting
+      PL=r.plan;LY=r.layout;PLACED=r.placed||{};
+      if(sheet>=r.sheets)sheet=Math.max(0,r.sheets-1);
+      save();if(qn<=1)try{draw()}catch(e){console.error(e)}   // a drawing bug must not look like a refused request
+      return r}
+    catch(e){if(!quiet&&live())toast('\u26a0 '+e.message,5000);return null}};
+  const call=(x,quiet)=>{qn++;const p=chain.then(()=>run(x,quiet));chain=p.then(()=>{qn--},()=>{qn--});return p};
+  const setSpec=async(patch,how)=>{const old=SP;SP=Object.assign({},SP,patch);selSlot=null;dSet();
+    const r=await call(how==='reflow'?{op:'reflow',duplex:hasBack()}:how==='fill'?{op:'fill',mode:MODE}:{op:'view'});
+    if(!r&&live()){SP=old;dSet()}};   // refused (cell too small ...): put the old setting back
+  const assign=(sh,sd,slot,id)=>call({op:'assign',sheet:sh,side:sd,slot,id:id||null}),
+    swap=(a,b)=>call({op:'swap',a,b}),
+    setPic=async b=>{try{const r=await api('POST','/api/ps',Object.assign({op:'set'},b));if(!live())return;PICS=r.items||PICS}catch(e){toast('\u26a0 '+e.message,5000);return}await call({op:'view'})};
+  // ---- settings
+  const chips=(lbl,list,cur,fn)=>{const r=E('div','lyr'),c=E('div','lyc');list.forEach(([v,t])=>{const b=E('button',String(v)===String(cur)?'on':'',t);b.onclick=()=>fn(v);c.append(b)});r.append(E('small','',lbl),c);return r},
+    step=(lbl,key,min,max,sp)=>{const r=E('div','lyr'),c=E('div','lyc lyst'),m=E('button','','\u2212'),v=E('b','',SP[key]+' pt'),p=E('button','','+');
+      const go=d=>{const n=Math.max(min,Math.min(max,+SP[key]+d));if(n!==+SP[key])setSpec({[key]:n},'view')};
+      m.onclick=()=>go(-sp);p.onclick=()=>go(sp);c.append(m,v,p);r.append(E('small','',lbl),c);return r};
+  const custom=async()=>{const v=await dlg({title:'Pictures per sheet',msg:'Columns x rows, e.g. 3x4 (1 to 8 each)',input:{value:SP.cols+'x'+SP.rows,label:'3x4'},ok:'Apply'});
+    if(!v||v===true)return;const m=/^\s*(\d+)\s*[x\u00d7*]\s*(\d+)\s*$/i.exec(v);
+    if(!m||+m[1]<1||+m[1]>8||+m[2]<1||+m[2]>8)return toast('Use columns x rows, e.g. 3x4',3500);setSpec({cols:+m[1],rows:+m[2]},'reflow')};
+  const fillMode=async v=>{if(Object.keys(PLACED).length&&!await dlg({title:'Auto-fill all sheets?',msg:'This replaces the current arrangement.',ok:'Auto-fill'}))return;
+    MODE=v;selSlot=null;sheet=0;side='front';call({op:'fill',mode:v})};
+  function dSet(){bxSet.style.display=setOpen?'':'none';if(!setOpen)return;
+    const cur=PSL_PER.find(a=>a[1]===+SP.cols&&a[2]===+SP.rows),f=document.createDocumentFragment();
+    f.append(
+      chips('Paper',PSL_PAP.map(p=>[p,p]),SP.paper,v=>setSpec({paper:v},'reflow')),
+      chips('Pictures per sheet',PSL_PER.map(a=>[a[0],String(a[0])]).concat([['x','Custom']]),cur?cur[0]:'x',v=>{if(v==='x')return custom();const a=PSL_PER.find(q=>q[0]===v);setSpec({cols:a[1],rows:a[2]},'reflow')}),
+      chips('Orientation',[['auto','Auto'],['portrait','Portrait'],['landscape','Landscape']],SP.orient,v=>setSpec({orient:v},'reflow')),
+      chips('Picture in cell',[['fit','Fit'],['fill','Fill (crop)']],SP.fit,v=>setSpec({fit:v},'view')),
+      chips('Two-sided flip',[['long','Long edge'],['short','Short edge']],SP.flip,v=>setSpec({flip:v},'view')),
+      step('Margin','margin',0,72,2),step('Gap','gap',0,40,2),
+      chips('Turn pictures to fit',[[true,'On'],[false,'Off']],SP.autoRot,v=>setSpec({autoRot:v},'view')),
+      chips('Order',[[false,'Normal'],[true,'Reverse']],SP.reverse,v=>setSpec({reverse:v},'fill')),
+      chips('Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
+    const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
+    bxSet.replaceChildren(f)}
+  // ---- sheet strip (small canvases) + Front / Back tabs
+  function dStrip(){
+    if(!LY){bxStrip.replaceChildren();return}
+    const n=PL?PL.sheets.length:0,f=document.createDocumentFragment(),cs=getComputedStyle(document.documentElement),ac=cs.getPropertyValue('--ac').trim()||'#c25100',mu=cs.getPropertyValue('--mut').trim()||'#777',
+      W=44,H=Math.max(20,Math.round(W*LY.sh/LY.sw)),k=W/LY.sw;let cur=null;
+    for(let i=0;i<n;i++){
+      const b=E('button','lym'+(i===sheet?' on':'')),cv=document.createElement('canvas'),g=cv.getContext('2d'),fl=FIL[i+':front'],fs=new Set(fl?fl.cells.map(c=>c.slot):[]);
+      cv.width=W;cv.height=H;
+      LY.slots.forEach((s,j)=>{g.globalAlpha=fs.has(j)?.6:.5;
+        if(fs.has(j)){g.fillStyle=ac;g.fillRect(s.x*k,s.y*k,s.w*k,s.h*k)}else{g.strokeStyle=mu;g.strokeRect(s.x*k+.5,s.y*k+.5,Math.max(1,s.w*k-1),Math.max(1,s.h*k-1))}});
+      b.append(cv,E('small','',String(i+1)));
+      const bp=FIL[i+':back'];if(bp&&bp.cells.length)b.append(E('i'));
+      b.onclick=()=>{sheet=i;selSlot=null;bxStrip.querySelectorAll('.lym.on').forEach(x=>x.classList.remove('on'));b.classList.add('on');dTab();dPage();dCtl()};
+      if(i===sheet)cur=b;f.append(b)}
+    const ad=E('button','lym lya','+');ad.setAttribute('aria-label','Add a sheet');
+    ad.onclick=()=>call({op:'addsheet'}).then(r=>{if(r&&PL){sheet=PL.sheets.length-1;side='front';selSlot=null;draw()}});
+    f.append(ad);bxStrip.replaceChildren(f);
+    if(cur&&lastSh!==sheet){lastSh=sheet;if(cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}}
+  function dTab(){
+    const n=PL?PL.sheets.length:0;if(!n||!LY){bxTab.replaceChildren();return}
+    const c=E('div','lyc'),fb=E('button',side==='front'?'on':'','Front'),bb=E('button',side==='back'?'on':'',(FIL[sheet+':back']&&FIL[sheet+':back'].cells.length)?'Back \u2022':'Back');
+    fb.onclick=()=>{if(side==='front')return;side='front';selSlot=null;dTab();dPage();dCtl()};
+    bb.onclick=()=>{if(side==='back')return;side='back';selSlot=null;dTab();dPage();dCtl()};
+    c.append(fb,bb);
+    const rm=E('button','ibtn');rm.append(ic('del'));rm.setAttribute('aria-label','Remove this sheet');
+    rm.onclick=async()=>{const used=['front','back'].some(sd=>FIL[sheet+':'+sd]&&FIL[sheet+':'+sd].cells.length);
+      if(used&&!await dlg({title:'Remove sheet '+(sheet+1)+'?',msg:'Its pictures stay in Print space and become unplaced.',ok:'Remove',danger:true}))return;
+      selSlot=null;call({op:'rmsheet',sheet})};
+    const f=document.createDocumentFragment();f.append(c,E('small','','Sheet '+(sheet+1)+' / '+n),rm);bxTab.replaceChildren(f)}
+  // ---- big page preview
+  function dPage(){
+    if(!LY||!PL||!PL.sheets.length){bxPg.replaceChildren(E('div','ge',PICS.length?'No sheets yet \u2013 open the settings and tap Auto-fill, or tap +':'Nothing to lay out \u2013 add pictures to Print space first'));return}
+    const sw=LY.sw,sh=LY.sh,pg=E('div','lypg'),cells={},gh={};
+    pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
+    const P=FIL[sheet+':'+side];if(P)P.cells.forEach(c=>{cells[c.slot]=c});
+    const G=FIL[sheet+':front'];if(side==='back'&&G)G.cells.forEach(c=>{gh[c.slot]=c});
+    LY.slots.forEach((s,i)=>{
+      const d=E('div','lys'+((selSlot&&selSlot.sheet===sheet&&selSlot.side===side&&selSlot.slot===i)?' sel':'')),c=cells[i];d.dataset.slot=i;
+      d.style.left=(s.x/sw*100)+'%';d.style.top=(s.y/sh*100)+'%';d.style.width=(s.w/sw*100)+'%';d.style.height=(s.h/sh*100)+'%';
+      const put=(cc,cls)=>{const m=pic(cc.id);if(!m)return;const im=E('img',cls||'');im.alt='';im.draggable=false;im.src=thumb(m);
+        im.style.width=(cc.dw/s.w*100)+'%';im.style.height=(cc.dh/s.h*100)+'%';im.style.transform='translate(-50%,-50%) rotate('+cc.rot+'deg)';d.append(im)};
+      if(c)put(c);else{const g=side==='back'?gh[LY.behind[i]]:null;if(g)put(g,'gh');d.append(E('span','lyn',String(i+1)))}   // empty back slot: the front picture behind it, faint
+      arm(d,()=>c?{k:'slot',sheet,side,slot:i,id:c.id}:null,()=>tapSlot(i,c));pg.append(d)});
+    bxPg.replaceChildren(pg)}
+  // ---- tray + selection controls
+  function dTray(){const f=document.createDocumentFragment();
+    PICS.forEach(m=>{const t=E('div','lyt'+(selPic===m.id?' sel':'')),im=E('img'),n=PLACED[m.id]||0,cp=m.copies||1;
+      im.alt='';im.draggable=false;im.src=thumb(m);im.style.transform='rotate('+(m.rot||0)+'deg)';t.append(im,E('span','lyg'+(n>=cp?' ok':''),n+'/'+cp));t.dataset.id=m.id;
+      arm(t,()=>({k:'pic',id:m.id}),()=>{
+        if(selSlot){const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,m.id);dPage();dCtl();return}   // slot first, then picture
+        selPic=selPic===m.id?null:m.id;selSlot=null;dTray();dPage();dCtl()});
+      f.append(t)});
+    bxTray.replaceChildren(f)}
+  function dCtl(){
+    const f=document.createDocumentFragment(),mk=(lbl,fn,ico,cls)=>{const b=E('button','tbtn'+(cls?' '+cls:''));if(ico)b.append(ic(ico));b.append(document.createTextNode(lbl));b.onclick=fn;return b},
+      m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
+    if(selPic&&m){
+      f.append(E('b','',m.name),E('span','',(PLACED[m.id]||0)+' of '+(m.copies||1)+' placed \u00b7 tap a slot'),mk('\u2212',()=>cp(-1)),E('span','','\u00d7'+(m.copies||1)),mk('+',()=>cp(1)),mk('Turn',turn,'rotr'))}
+    else if(selSlot){
+      if(m)f.append(E('b','',m.name));else f.append(E('span','','Empty slot \u00b7 tap a picture below'));
+      if(m){f.append(mk('Clear',()=>{const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,null)},'del'),mk('Turn',turn,'rotr'))}
+      if(side==='front'&&LY&&LY.behind[selSlot.slot]!=null){const b2=LY.behind[selSlot.slot];
+        f.append(mk('Back side',()=>{const c2=cellAt(sheet,'back',b2);side='back';selSlot={sheet,side:'back',slot:b2,id:c2?c2.id:null};dTab();dPage();dCtl()},'sort'))}}
+    else f.append(E('span','','Tap a picture, then a slot \u00b7 hold and drag to move or swap'));
+    bxCtl.replaceChildren(f)}
+  function dHead(){const n=PL?PL.sheets.length:0,pl=Object.values(PLACED).reduce((t,v)=>t+v,0),tot=PICS.reduce((t,m)=>t+(m.copies||1),0);
+    sb.textContent=n?n+' sheet'+(n===1?'':'s')+' \u00b7 '+pl+' of '+tot+' placed':(PICS.length?'No sheets':'Empty');
+    const any=!!LY&&!!LY.pages&&LY.pages.length>0;pvb.style.display=pr.style.display=PICS.length?'':'none';pr.disabled=pBusy||!any;pvb.disabled=!any&&VIEW!=='prev'}
+  function draw(){for(const k in FIL)delete FIL[k];(LY?LY.pages:[]).forEach(p=>{FIL[p.sheet+':'+p.side]=p});
+    if(selPic&&!pic(selPic))selPic=null;dHead();dSet();
+    if(VIEW==='prev')dPv();else{dStrip();dTab();dPage();dTray();dCtl()}
+    rvTry=0;prep()}
+  // ---- part 6b: Preview = the pages the Kotlin renderer draws (the same code that makes the PDF), and Print
+  const pgUrl=(n,w)=>'/api/pspage?id='+enc(RV.id)+'&n='+n+'&w='+w,
+    pgName=i=>{const it=RV&&RV.list&&RV.list[i];return it?'Sheet '+(it.sheet+1)+' \u00b7 '+(it.side==='back'?'Back':'Front'):''};
+  function prep(now){   // debounced: the layout answer -> POST /api/psrender prepare (nothing is drawn yet; the pages come from pspage)
+    clearTimeout(pTm);const my=++pn;RV=null;RVerr='';
+    if(VIEW==='prev')dPv();
+    if(!PL||!LY||!LY.pages||!LY.pages.length)return;
+    pTm=setTimeout(async()=>{
+      try{const r=await api('POST','/api/psrender',{op:'prepare',spec:SP,plan:PL},20000);
+        if(!live()||my!==pn)return;
+        if(!r||!r.id)throw new Error('no preview');
+        RV=r;if(pv>=r.pages)pv=Math.max(0,r.pages-1)}
+      catch(e){if(!live()||my!==pn)return;RVerr=e.message||'preview failed'}
+      if(VIEW==='prev')dPv()},now?0:350)}
+  function setView(v){if(VIEW===v)return;VIEW=v;selPic=null;selSlot=null;
+    o.classList.toggle('lypv',v==='prev');pvb.textContent=v==='prev'?'Edit':'Preview';pvb.classList.toggle('on',v==='prev');
+    if(v==='prev'){if(!RV&&PL&&LY&&LY.pages&&LY.pages.length)prep(true);dPv()}
+    else{lastSh=-1;dStrip();dTab();dPage();dTray();dCtl()}
+    dHead()}
+  function dPv(){dPvStrip();dPvTab();dPvPage()}
+  function selPv(i){pv=i;bxStrip.querySelectorAll('.lym').forEach((b,k)=>b.classList.toggle('on',k===i));dPvTab();dPvPage();
+    const cur=bxStrip.querySelector('.lym.on');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
+  function dPvStrip(){
+    if(!RV||!RV.list){bxStrip.replaceChildren();return}
+    const W=44,H=Math.max(20,Math.round(W*RV.sh/RV.sw)),f=document.createDocumentFragment();
+    RV.list.forEach((it,i)=>{const b=E('button','lym'+(i===pv?' on':'')),im=E('img');im.alt='';im.loading='lazy';im.width=W;im.height=H;im.src=pgUrl(i,120);
+      b.append(im,E('small','',(it.sheet+1)+(it.side==='back'?' back':'')));b.onclick=()=>selPv(i);f.append(b)});
+    bxStrip.replaceChildren(f);
+    const cur=bxStrip.querySelector('.lym.on');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
+  function dPvTab(){
+    if(!RV){bxTab.replaceChildren();return}
+    const a=E('button','ibtn'),z=E('button','ibtn'),f=document.createDocumentFragment();
+    a.append(ic('prev'));a.setAttribute('aria-label','Previous page');a.disabled=pv<=0;a.onclick=()=>selPv(pv-1);
+    z.append(ic('fwd'));z.setAttribute('aria-label','Next page');z.disabled=pv>=RV.pages-1;z.onclick=()=>selPv(pv+1);
+    f.append(a,E('small','lypn','Page '+(pv+1)+' of '+RV.pages+' \u00b7 '+pgName(pv)+(RV.duplex?' \u00b7 two-sided':'')),z);bxTab.replaceChildren(f)}
+  function dPvPage(){
+    if(!PL||!LY||!LY.pages||!LY.pages.length){bxPg.replaceChildren(E('div','ge','Nothing to preview \u2013 put pictures on the sheets first'));return}
+    if(!RV){bxPg.replaceChildren(E('div','ge',RVerr?'\u26a0 '+RVerr:'Preparing the preview\u2026'));return}
+    const sw=RV.sw,sh=RV.sh,pg=E('div','lypg lyp'),im=E('img'),w=Math.min(1100,Math.max(300,Math.round(window.innerWidth*Math.min(2,window.devicePixelRatio||1))));
+    pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;im.alt='';im.draggable=false;
+    im.onload=()=>{rvTry=0};
+    im.onerror=()=>{if(rvTry++<1){prep(true);return}pg.replaceChildren(E('div','ge','\u26a0 This page could not be drawn'))};   // expired id (404) = prepare again once
+    im.src=pgUrl(Math.min(pv,RV.pages-1),w);pg.append(im);bxPg.replaceChildren(pg)}
+  /* The sheets as ONE PDF made on the phone (background job + progress bubble). only: '' every page | 'front' | 'back' (printing by hand), rev: last sheet first.
+     Returns {path, name, bytes, ...} or null when cancelled / failed (the bubble and the toast already said so). */
+  async function sheetsPdf(only,rev){
+    const body={op:'pdf',spec:SP,plan:PL};if(only)body.only=only;if(rev)body.reverse=true;
+    const r=await api('POST','/api/psrender',body,20000);
+    if(!r||!r.job)throw new Error('The sheets could not be started');
+    watchJob(r.job);
+    if(!await track(r.job))return null;
+    const j=await api('GET','/api/job?id='+encodeURIComponent(r.job),null,10000),R=j&&j.result;
+    if(!R||!R.path)throw new Error('The sheets were not created');
+    return R}
+  /* the print dialogs open on the sheets as they are: sides preset (off for one-sided sheets), no second layout on top of ours */
+  const sheetCx=(R,d)=>({items:[{name:R.name,p:R.path,size:R.bytes||0}],dev:'local',full:1,path:'/',done:()=>{},
+    opts:{duplex:d,nup:1,booklet:0,border:0,reverse:0,pages:'',join:0,fit:'shrink',margin:'',scale:'',align:''}});
+  async function printNow(){
+    if(pBusy)return;
+    if(!LY||!PL||!LY.pages||!LY.pages.length)return toast('Nothing to print \u2013 put pictures on the sheets first',3500);
+    pBusy=true;dHead();
+    try{
+      await chain;   // let the last layout change land: SP / PL / PLACED are current
+      const miss=PICS.reduce((t,m)=>t+Math.max(0,(m.copies||1)-(PLACED[m.id]||0)),0);
+      if(miss&&!await dlg({title:miss+(miss===1?' picture is':' pictures are')+' not on a sheet',msg:'Only what is on the sheets is printed. Print anyway?',ok:'Print'}))return;
+      const edge=SP.flip==='short'?'short':'long',two=hasBack();
+      let hand=false;
+      if(two){   // pictures on the back: a duplex printer does both sides itself; any other printer needs the sheets turned over by hand
+        const c=await dlg({title:'Two-sided sheets',msg:'These sheets have pictures on the back. Does the printer print on both sides by itself?',ok:'Yes, both sides',alt:'No, one side at a time'});
+        if(!c)return;hand=c==='alt'}
+      if(!hand){const R=await sheetsPdf('',false);if(!R)return;
+        await doPrint(null,sheetCx(R,two?edge:'off'));return}   // Sides preset to the layout's flip edge
+      /* by hand: fronts first (one-sided), then - after the paper is back in the tray - the backs, upside down when the sheets are turned over the horizontal axis */
+      const F=await sheetsPdf('front',false);if(!F)return;
+      const to=await doPrint(null,sheetCx(F,'off'));if(!to)return;   // the same printer is used for the backs
+      const c=await dlg({title:'Now the backs',msg:'Wait until all fronts are printed. Put the sheets back in the tray so the empty side gets printed - turned over along the '+edge+' edge. If the backs come out in the wrong order, use \u201cLast sheet first\u201d.',ok:'Print the backs',alt:'Last sheet first'});
+      if(!c)return;
+      const B=await sheetsPdf('back',c==='alt');if(!B)return;
+      await doPrint(to,sheetCx(B,'off'))}
+    catch(e){toast('\u26a0 '+e.message,6000)}
+    finally{pBusy=false;if(live())dHead()}}
+  // ---- taps
+  function tapSlot(i,c){
+    if(selPic){const id=selPic;selPic=null;assign(sheet,side,i,id);dTray();dCtl();return}
+    const cur=selSlot;
+    if(cur&&cur.sheet===sheet&&cur.side===side&&cur.slot===i){selSlot=null;dPage();dCtl();return}
+    if(cur&&cur.id){selSlot=null;swap({sheet:cur.sheet,side:cur.side,slot:cur.slot},{sheet,side,slot:i});return}   // a filled slot is selected: tapping another swaps
+    selSlot={sheet,side,slot:i,id:c?c.id:null};dPage();dCtl()}
+  // ---- long-press drag (pointer events): tray picture -> slot (place), slot -> slot (swap), slot -> tray (clear). A non-passive touchmove stops the page scrolling while dragging.
+  const tm=e=>{if(!live()){document.removeEventListener('touchmove',tm);return}if(drag)e.preventDefault()};
+  document.addEventListener('touchmove',tm,{passive:false});
+  const hit=(x,y)=>{const el=document.elementFromPoint(x,y);return{slot:el&&el.closest?el.closest('.lys'):null,tray:el&&el.closest?el.closest('.lytr'):null}};
+  const dragStop=()=>{if(!drag)return;if(drag.gh)drag.gh.remove();if(drag.tg)drag.tg.classList.remove('dt');drag=null};
+  function dragMove(x,y){if(!drag)return;drag.gh.style.left=(x-30)+'px';drag.gh.style.top=(y-30)+'px';
+    const h=hit(x,y),t=h.slot||h.tray;if(t!==drag.tg){if(drag.tg)drag.tg.classList.remove('dt');drag.tg=t;if(t)t.classList.add('dt')}}
+  function dragEnd(x,y){if(!drag)return;const s=drag.s,h=hit(x,y);dragStop();
+    if(h.slot){const slot=+h.slot.dataset.slot;
+      if(s.k==='pic'){selPic=null;selSlot=null;assign(sheet,side,slot,s.id);dTray();dCtl()}
+      else if(!(s.sheet===sheet&&s.side===side&&s.slot===slot)){selSlot=null;swap({sheet:s.sheet,side:s.side,slot:s.slot},{sheet,side,slot})}}
+    else if(h.tray&&s.k==='slot'){selSlot=null;assign(s.sheet,s.side,s.slot,null)}}
+  function arm(el,src,tap){
+    let t=0,sx=0,sy=0,on=false;
+    el.oncontextmenu=e=>e.preventDefault();
+    el.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;sx=e.clientX;sy=e.clientY;on=false;clearTimeout(t);
+      const s=src();if(!s)return;
+      t=setTimeout(()=>{on=true;try{el.setPointerCapture(e.pointerId)}catch(x){}
+        const g=E('div','lygh'),m=pic(s.id);if(m){const im=E('img');im.alt='';im.src=thumb(m);g.append(im)}
+        document.body.append(g);drag={s,gh:g,tg:null};try{navigator.vibrate&&navigator.vibrate(15)}catch(x){}dragMove(sx,sy)},380)};
+    el.onpointermove=e=>{if(on){e.preventDefault();dragMove(e.clientX,e.clientY);return}if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>10)clearTimeout(t)};
+    el.onpointerup=e=>{clearTimeout(t);if(on){on=false;dragEnd(e.clientX,e.clientY);return}if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<=10)tap()};
+    el.onpointercancel=()=>{clearTimeout(t);if(on){on=false;dragStop()}}}
+  // ---- start: pictures first, then the saved (or a fresh) layout
+  dHead();dSet();bxPg.append(E('div','ge','Loading\u2026'));
+  (async()=>{
+    try{const r=await api('GET','/api/ps');if(!live())return;PICS=r.items||[]}catch(e){if(live())toast('\u26a0 '+e.message,5000);return}
+    if(!PICS.length){draw();return}
+    let r=await call({op:'view'},!!PL);
+    if(!r&&live()&&PL){SP=PSL_DEF();PL=null;MODE='front';r=await call({op:'view'})}   // saved layout no longer valid: start fresh
+    if(live()&&!LY)draw()})();
+}
 /* ---- Recycle bin: sticky top bar (Empty bin / select / Restore / Delete), rows drawn in chunks while scrolling, restore / delete run as a background task on the phone with a progress bar */
 let BINTOK=null;
 async function openBin(){
@@ -3745,6 +4119,7 @@ function drawerRender(){
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
     bd.append(dItem({lead:ic('ftp','s24'),title:'FTP servers',sub:'Browse FTP / FTPS servers',onclick:()=>{drawerClose();openFtp()}}));
+    if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
