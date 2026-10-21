@@ -299,6 +299,8 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     companion object {
         private val pool = ConcurrentHashMap<String, SmbConn>()
+        private val connLocks = ConcurrentHashMap<String, Any>()
+        private fun connLock(key: String): Any = connLocks.getOrPut(key) { Any() }
         /** Statuses that mean "the cached connection/session is dead": reconnect once and try again. */
         private val STALE = setOf("STATUS_NETWORK_NAME_DELETED", "STATUS_USER_SESSION_DELETED", "STATUS_CONNECTION_DISCONNECTED",
             "STATUS_NETWORK_SESSION_EXPIRED", "STATUS_CONNECTION_RESET", "STATUS_NETWORK_UNREACHABLE")
@@ -331,7 +333,14 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
 
     private fun connect(sh: String): SmbConn {
         val key = "$id|$host|$port|$sh|$user|${pw.hashCode()}"
-        pool[key]?.let { if (it.alive) return it else { pool.remove(key); it.close() } }
+        pool[key]?.let { if (it.alive) return it }
+        synchronized(connLock(key)) {
+            pool[key]?.let { if (it.alive) return it else { pool.remove(key); it.close() } }
+            return connectNew(key, sh)
+        }
+    }
+
+    private fun connectNew(key: String, sh: String): SmbConn {
         val client = SMBClient(cfg)
         try {
             val conn = client.connect(host, port)
@@ -443,6 +452,17 @@ class SmbFs private constructor(c: JSONObject) : Endpoint {
         }
 
     override fun ls(v: String): List<Item> = if (isRoot(v)) listShares() else op(v) { s, rv -> listRaw(s, rv) }
+
+    /**
+     * For the storage analyzer: like [ls] but junctions / symlinks (reparse points) are left out, exactly as [walk] and [treeIn] do.
+     * Without this the analyzer walked INTO them (Windows keeps many in places like WUDownloadCache / WinSxS / "Application Data"),
+     * got endless loops of the same folders (only the depth cap of 48 stopped them) and the scan looked stuck on one folder.
+     */
+    override fun lsFast(v: String): List<Item> = if (isRoot(v)) listShares() else op(v) { s, rv ->
+        s.list(rel(rv)).filter { it.fileName != "." && it.fileName != ".." && !isReparse(it.fileAttributes) }.map {
+            item(it.fileName, it.fileAttributes, it.endOfFile, try { it.lastWriteTime.toEpochMillis() / 1000 } catch (_: Exception) { 0L })
+        }
+    }
 
     /** Breadth-first-ish search below [v]; returns true when cut short (300 hits / time budget). */
     private fun searchIn(s: DiskShare, v: String, ql: String, out: MutableList<Item>, end: Long, prefix: String): Boolean {

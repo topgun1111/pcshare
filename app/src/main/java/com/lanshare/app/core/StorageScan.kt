@@ -144,6 +144,10 @@ class Scan(val id: String, val dir: File, val label: String, usedBytes: Long) {
     @Volatile internal var job: Job? = null
     @Volatile internal var saveDirty = false
     internal val saving = java.util.concurrent.atomic.AtomicBoolean()
+    /** Set by the first finishing pass: the normal end and the stall watchdog of a remote scan can both try to finish it. */
+    internal val finished = java.util.concurrent.atomic.AtomicBoolean()
+    /** Time of the last completed folder listing of a remote scan (the stall watchdog reads it). */
+    @Volatile internal var lastAct = System.currentTimeMillis()
 
     /** 0..99 while running (scanned bytes / used bytes of the volume; reaches 100 only when done), -1 when the used size is unknown. */
     fun percent(): Int {
@@ -324,7 +328,9 @@ object StorageScan {
                 val ep = Jobs.ep(dev)
                 val pool = Executors.newFixedThreadPool(if (dev.startsWith("smb:")) 8 else 4) { r -> Thread(null, r, "sscan-r", 2L shl 20).also { it.isDaemon = true } }
                 s.pending.incrementAndGet()
+                s.lastAct = System.currentTimeMillis()
                 pool.execute { rtask(s, root, v, ep, pool, 0) }
+                watchdog(s, root, pool)
                 return   // the last task finishes the scan
             }
             val peer = Core.disc.get(dev) ?: throw java.io.IOException("that device is offline")
@@ -373,6 +379,27 @@ object StorageScan {
         s.job?.let { j -> j.cur = ""; j.done = j.total; j.end = s.t1; j.state = "done" }
     }
 
+    /** No folder of the share finished for [STALL_MS]: the PC / network stopped answering. Ends the scan with an error instead of showing the same folder for ever. */
+    private const val STALL_MS = 120_000L
+
+    private fun watchdog(s: Scan, root: SNode, pool: java.util.concurrent.ExecutorService) {
+        Thread(null, {
+            while (s.state == "run" && !s.finished.get()) {
+                try { Thread.sleep(3000) } catch (_: InterruptedException) { break }
+                if (s.cancel) break
+                if (System.currentTimeMillis() - s.lastAct > STALL_MS) {
+                    if (s.error == null) s.error = "The PC stopped answering while reading " + s.cur + " - check the connection and try again"
+                    s.cancel = true
+                    break
+                }
+            }
+            if (s.state == "run" && s.cancel) {
+                try { pool.shutdownNow() } catch (_: Exception) {}   // interrupts the stuck listings
+                finishAsync(s, root)
+            }
+        }, "sscan-wd").also { it.isDaemon = true }.start()
+    }
+
     /** One folder of an SMB / FTP / SFTP share: list it, fold it into the node, queue its sub-folders (depth cap = symlink loops on FTP / SFTP). */
     private fun rtask(s: Scan, node: SNode, v: String, ep: Endpoint, pool: java.util.concurrent.ExecutorService, depth: Int) {
         try {
@@ -381,7 +408,12 @@ object StorageScan {
             if (now - s.tick > 150) { s.tick = now; s.cur = v; mirror(s) }
             val items = try {
                 if (depth > 48) throw java.io.IOException("too deep")
-                ep.lsFast(v)
+                try { ep.lsFast(v) }
+                catch (e: Exception) {   // one more try for a dropped connection / timeout (not for "denied" / "not found")
+                    if (e is Denied || e is NotFound || e is BadReq || s.cancel) throw e
+                    Thread.sleep(400)
+                    ep.lsFast(v)
+                }
             } catch (e: Exception) {
                 if (node.parent == null) throw e
                 node.denied = true
@@ -398,6 +430,7 @@ object StorageScan {
             if (s.error == null) s.error = if (t is OutOfMemoryError) "Out of memory" else errText(t)
             s.cancel = true
         } finally {
+            s.lastAct = System.currentTimeMillis()
             if (s.pending.decrementAndGet() == 0) { pool.shutdown(); finishAsync(s, rootOf(node)) }
         }
     }
@@ -590,6 +623,7 @@ object StorageScan {
 
     // ------------------------------------------------------------------ finishing pass (after the last task)
     private fun finishAsync(s: Scan, root: SNode) {
+        if (!s.finished.compareAndSet(false, true)) return
         // deep folders: a thread with a big stack for the recursion (Android's path limit allows ~2000 levels)
         Thread(null, {
             try {
