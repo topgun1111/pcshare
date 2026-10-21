@@ -1,5 +1,8 @@
 package com.lanshare.app.core
 
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,10 +21,11 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-class Peer(val id: String, var ip: String, var port: Int, var name: String, var seen: Long, var ips: List<String>, var ok: Boolean) {
-    fun snapshot() = Peer(id, ip, port, name, seen, ips, ok)
+class Peer(val id: String, var ip: String, var port: Int, var name: String, var seen: Long, var ips: List<String>, var ok: Boolean,
+           var bat: Int = -1, var chg: Boolean = false) {   // bat: battery percent of a mobile device, -1 = unknown / no battery (PC)
+    fun snapshot() = Peer(id, ip, port, name, seen, ips, ok, bat, chg)
     fun toJson(): JSONObject = JSONObject().put("id", id).put("ip", ip).put("port", port).put("name", name)
-        .put("seen", seen / 1000.0).put("ips", JSONArray(ips)).put("ok", ok)
+        .put("seen", seen / 1000.0).put("ips", JSONArray(ips)).put("ok", ok).put("bat", bat).put("chg", chg)
 }
 
 /** UDP beacons + unicast sweep + TCP scan + live checks. Same protocol as the Python version (devices interoperate). */
@@ -43,8 +47,18 @@ class Discovery(val port: Int) {
     private fun daemonPool(n: Int): ExecutorService =
         Executors.newFixedThreadPool(n) { r -> Thread(r).also { it.isDaemon = true } }
 
+    /** This phone's battery as (percent, charging); null when unreadable. Sticky broadcast: no receiver needed, cheap enough for every beacon. */
+    private fun battery(): Pair<Int, Boolean>? = try {
+        val i = Core.appCtx?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val lvl = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val st = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        if (lvl < 0 || scale <= 0) null
+        else Pair((lvl * 100 / scale).coerceIn(0, 100), st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL)
+    } catch (_: Exception) { null }
+
     fun hello(): JSONObject = JSONObject().put("app", "lanshare").put("id", Cfg.id).put("name", Cfg.name)
-        .put("port", port).put("ips", JSONArray(ownIps.sorted()))
+        .put("port", port).put("ips", JSONArray(ownIps.sorted())).also { o -> battery()?.let { o.put("bat", it.first).put("chg", it.second) } }
 
     private fun msg() = hello().toString().toByteArray(Charsets.UTF_8)
 
@@ -63,7 +77,7 @@ class Discovery(val port: Int) {
     private fun refreshIfaces() { ifaces = Net.ifaces(); ownIps = ifaces.map { it.ip }.toSet() + Net.tailscaleIps() }
 
     // ---- peer table
-    fun add(pid: String, ip: String, port: Int, name: String, ips: List<String> = emptyList()): Boolean {
+    fun add(pid: String, ip: String, port: Int, name: String, ips: List<String> = emptyList(), bat: Int = -1, chg: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
         var save = false
         val isNew: Boolean
@@ -74,7 +88,7 @@ class Discovery(val port: Int) {
             else if (!p.ok) p.ip = ip   // last address failed - try the newest one
             val c = cacheSeen[pid]
             if (isNew || c == null || p.port != port || p.name != name.take(40) || p.ip != ip || now - c > 3_600_000L) save = true
-            p.port = port; p.name = name.take(40); p.seen = now
+            p.port = port; p.name = name.take(40); p.seen = now; p.bat = bat; p.chg = chg
             val all = HashSet<String>(p.ips)
             all.add(ip)
             for (i in ips) if (Net.ipToInt(i) != null) all.add(i)
@@ -167,7 +181,7 @@ class Discovery(val port: Int) {
                         val ip = pk.address.hostAddress ?: continue
                         val m = JSONObject(String(pk.data, 0, pk.length, Charsets.UTF_8))
                         if (m.optString("app") != "lanshare" || m.getString("id") == Cfg.id || ip in ownIps) continue
-                        val isNew = add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings())
+                        val isNew = add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings(), m.optInt("bat", -1), m.optBoolean("chg"))
                         val now = System.currentTimeMillis()
                         if (isNew || now - (replied[ip] ?: 0L) > 6000) { replied[ip] = now; unicast(ip) }   // instant two-way discovery
                     } catch (_: Exception) {}
@@ -264,7 +278,7 @@ class Discovery(val port: Int) {
                 try {
                     val m = Http.hello(ip, p, 2500)
                     if (m.optString("app") == "lanshare" && m.getString("id") != Cfg.id) {
-                        add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings())
+                        add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings(), m.optInt("bat", -1), m.optBoolean("chg"))
                         return true
                     }
                 } catch (_: Exception) {}
@@ -356,7 +370,7 @@ class Discovery(val port: Int) {
             try {
                 val m = Http.hello(ip, peer.port, 2500)
                 if (m.optString("id") == peer.id) {
-                    add(peer.id, ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings())
+                    add(peer.id, ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings(), m.optInt("bat", -1), m.optBoolean("chg"))
                     synchronized(lock) { peers[peer.id]?.let { it.ip = ip; it.ok = true } }
                     return
                 }
@@ -386,7 +400,7 @@ class Discovery(val port: Int) {
             try {
                 val m = Http.hello(ip, p, 2000)
                 if (m.optString("app") == "lanshare" && m.getString("id") != Cfg.id) {
-                    add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings())
+                    add(m.getString("id"), ip, m.getInt("port"), m.getString("name"), m.optJSONArray("ips").strings(), m.optInt("bat", -1), m.optBoolean("chg"))
                     val a = Net.ipToInt(ip)
                     if (a != null && ifaces.none { it.net.contains(a) }) Cfg.addPin(ip)   // not on a local subnet -> keep it
                     unicast(ip)

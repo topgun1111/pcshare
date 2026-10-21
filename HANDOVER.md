@@ -627,6 +627,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 One line per change; details are in the chapter named in brackets. Statuses of older lines are in section 2.
 
+- **2026-10-21** - Battery level of phones in the devices list (`Discovery.kt`, `Routes.kt`, `ui.html`): `hello()` / UDP beacon carry `bat` (0-100) + `chg`; `Peer.bat/chg` (-1 = unknown); `/api/peers` returns them; UI shows `battery 78%` / `lightning 78%` (charging) only for online LANShare phones - PCs, SMB, FTP and old builds send no `bat`, so nothing is shown. Refreshed by the 3 s live probe. Not compiled / not device-tested. [5, 6]
 - **2026-10-21** - Markdown reader improved (`MdRender.kt`, `TextEditorActivity.kt`): wrapped paragraphs, nested lists / quotes, setext headings, front matter, escapes, reference + badge links, simple HTML, `#anchor` jumps, heading outline (long-press preview button), scroll kept on theme / size change [7.5]. Not compiled here - build once and check.
 - **2026-10-21** - The ten `HANDOVER*.md` files (+ the performance findings) merged into this one [15.4].
 - **2026-10-20** - Performance: server early, startup marks, image engine deferred (cold start 533 -> 335 ms), debug perf tab, PR #66 merged [13].
