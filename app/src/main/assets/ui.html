@@ -476,7 +476,7 @@ body.kid #fab svg{width:20px;height:20px}
 #free{display:none!important;padding:2px 14px 3px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#free:empty{display:none}#free.lo{color:var(--err);font-weight:700}
 .chip small{font-size:11px;color:var(--mut);font-weight:500;white-space:nowrap}.chip.on small{color:inherit;opacity:.75}
 .det{display:flex;flex-direction:column;padding:4px 0 8px}.dr{display:flex;gap:12px;padding:7px 4px;border-bottom:1px solid var(--bd)}.dr:last-child{border:0}
-.dk{flex:none;width:96px;color:var(--mut);font-size:13px}.dv{flex:1;min-width:0;word-break:break-word;font-size:14px}.dnote{margin:8px 4px 0;padding:8px 10px;border-radius:8px;background:var(--bg);font-size:13px}.dnote.w{color:var(--err)}
+.dk{flex:none;width:96px;color:var(--mut);font-size:13px}.dv{flex:1;min-width:0;word-break:break-word;font-size:14px}.dnote{margin:8px 4px 0;padding:8px 10px;border-radius:8px;background:var(--bg);font-size:13px}.dnote.w{color:var(--err)}.dsec{margin:12px 4px 2px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
 .li .lt{display:flex;flex-direction:column;min-width:0;text-align:left}.li .lt small{font-size:12px;color:var(--mut)}.li .lt small.bad{color:var(--err)}.li .lt small.good{color:var(--ok)}
 .lead .dub{position:absolute;right:3px;bottom:3px;padding:0 4px;border-radius:8px;background:#0009;color:#fff;font-size:10px;font-weight:600;line-height:14px}
 .dupb{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--warn);color:#3b2a00;font-size:11px;font-weight:700;vertical-align:middle}
@@ -3167,6 +3167,31 @@ async function doDetails(it,pth0){
   if(st.w&&st.h)row('Dimensions',st.w+' \u00d7 '+st.h+(st.w*st.h>=1e6?' ('+(st.w*st.h/1e6).toFixed(1)+' MP)':''));
   if(st.dur>0)row('Duration',fmtDur(st.dur));
   if(st.taken)row('Date taken',st.taken);
+  /* media details (MediaExtractor): container, per-track codec / resolution / frame rate / channels, tags. Local files + other LANShare phones only. */
+  const fmtBr=n=>n>=1e6?(n/1e6).toFixed(2).replace(/\.?0+$/,'')+' Mb/s':Math.round(n/1e3)+' kb/s';
+  const chName=n=>n===1?'Mono':n===2?'Stereo':n===6?'5.1':n===8?'7.1':n+' channels';
+  const sec=t=>box.append(E('div','dsec',t));
+  if(st.container){const c=st.container;sec('Container');
+    row('Format',c.fmt&&c.mime&&c.fmt!==c.mime?c.fmt+' ('+c.mime+')':(c.fmt||c.mime));
+    if(c.bitrate>0)row('Overall rate',fmtBr(c.bitrate))}
+  if(st.tracks&&st.tracks.length){
+    const cnt={},seen={};st.tracks.forEach(t=>{cnt[t.kind]=(cnt[t.kind]||0)+1});
+    const nm={video:'Video',audio:'Audio',text:'Subtitles',other:'Other track'};
+    st.tracks.forEach(t=>{seen[t.kind]=(seen[t.kind]||0)+1;
+      sec((nm[t.kind]||'Track')+(cnt[t.kind]>1?' '+seen[t.kind]:''));
+      row('Codec',(t.codec||t.mime||'')+(t.profile?' \u00b7 '+t.profile:''));
+      if(t.kind==='video'){
+        if(t.w&&t.h)row('Resolution',t.w+' \u00d7 '+t.h);
+        if(t.fps>0)row('Frame rate',(+t.fps.toFixed(3))+' fps');
+        if(t.hdr)row('HDR',t.hdr)}
+      if(t.kind==='audio'){
+        if(t.ch)row('Channels',chName(t.ch));
+        if(t.rate)row('Sample rate',(+(t.rate/1000).toFixed(2))+' kHz')}
+      if(t.bitrate>0)row('Bit rate',fmtBr(t.bitrate));
+      if(t.lang)row('Language',t.lang)})}
+  if(st.tags){const g=st.tags,tk=[['title','Title'],['artist','Artist'],['albumartist','Album artist'],['album','Album'],['track','Track'],['genre','Genre'],['year','Year'],['composer','Composer'],['author','Author']];
+    if(tk.some(x=>g[x[0]])){sec('Tags');tk.forEach(x=>row(x[1],g[x[0]]))}}
+  if(st.container||st.tracks||st.tags)sec('File');
   if(st.ctime>0&&st.ctime!==st.mtime)row('Created',fmtDT(st.ctime));
   if(st.mtime>0)row('Modified',fmtDT(st.mtime));
   if(st.atime>0)row('Accessed',fmtDT(st.atime));
