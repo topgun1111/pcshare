@@ -440,6 +440,10 @@ First check after a build: `WebPdf.kt` compiles and an `.html` and an `.svg` pri
 
 **Bug fixed (2026-10-22, device report "gallery add leaves Print space empty")**: `Routes.kt` GET branch answered `/api/ps` for EVERY method, so `POST /api/ps` (add / rm / clear / set / undo / cfg) only returned the list and did nothing. Now `"ps" -> if (ex.method == "GET") ...` like `bin` / `clip` / `smb`. Rule: a route name used by both GET and POST needs the method guard in the GET `when`. `psAdd` now also shows the real result (count, skip reasons).
 
+**Selection order (2026-10-22)**: `gi()` (gallery album view, gallery all-pictures view, Print space screen) and `selItems()` (file browser) now return the selection in TAP order (the `GS` / `S.sel` Set keeps insertion order) instead of list order, so Print, *To Print space* and Print space > Print use the order the user tapped. Select-all still gives list order. Not changed: Print space with nothing selected prints in stored order (use `move` / a future drag-to-reorder to change it).
+
+**Order numbers (2026-10-22)**: selected gallery cells (album view, all-pictures view, Print space screen) show the tap number instead of the tick (`gNum(GS, els)` called first in each `upd`, CSS `#gal .gc.sel::after` reads `data-n`; cells without a number yet keep the tick). File browser rows are not numbered.
+
 **Compiler risk spots (part 10)**: `PrintSpace.add` (`ep` initialiser with `return` inside `try/catch`, smart cast of `src`), `PrintSpace.addStream` (`when` for the extension), `MainActivity` imports `core.PrintSpace` + `core.errText` (added), `PsLayoutApi` / `PrintSpaceRender` (type-checked against stubs only), `PhonePrint` print-space path.
 
 

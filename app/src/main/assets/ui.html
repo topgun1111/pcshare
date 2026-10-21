@@ -217,6 +217,9 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc.sel img{transform:scale(.82);border-radius:12px}
 #gal .gc .ck{display:none;position:absolute;top:7px;left:7px;width:24px;height:24px;padding:4px;border-radius:50%;background:var(--ac);color:var(--onac);box-shadow:0 0 0 2px #fff,0 1px 5px #0007;z-index:2;animation:gbpop .16s ease-out}
 #gal .gc.sel .ck{display:block}
+#gal .gc.sel[data-n] .ck{display:none}
+#gal .gc.sel:not([data-n])::after{display:none}
+#gal .gc.sel::after{content:attr(data-n);position:absolute;top:7px;left:7px;min-width:26px;height:26px;padding:0 7px;box-sizing:border-box;border-radius:13px;background:var(--ac);color:var(--onac);font:700 14px/26px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff,0 1px 5px #0007;z-index:3;pointer-events:none}
 #gal.selm .gc:not(.sel)::after{content:'';position:absolute;top:7px;left:7px;width:24px;height:24px;box-sizing:border-box;border-radius:50%;border:2px solid #fff;background:#0003;box-shadow:0 0 4px #0008;z-index:2;pointer-events:none}
 #gal .gb{display:none;flex:none;margin:8px 10px calc(10px + env(safe-area-inset-bottom));padding:6px 4px;background:var(--cont);border:1px solid var(--bd);border-radius:26px;box-shadow:0 6px 24px #0005}
 #gal .gpst{display:none;flex:none;align-items:center;gap:8px;margin:8px 10px calc(10px + env(safe-area-inset-bottom));padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#gal .gpst span{flex:1;min-width:0}#gal .gpst .ibtn{width:36px;height:36px}#gal.selm .gpst{display:none!important}
@@ -1468,13 +1471,13 @@ function galView(a){
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
   const pb=E('div','gptr'),pst=E('div','gpst');pb.append(E('div'));o.append(hd,sh,pb,sc,gb,pst);
-  let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>LIST.filter(m=>GS.has(m.name));
+  let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>{const mp=new Map(LIST.map(m=>[m.name,m]));return [...GS].map(n=>mp.get(n)).filter(Boolean)};   // selection order (tap order), not list order: it is the order they print / are added
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
     LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
   const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
   pullBind(sc,pb,reload,()=>!GS.size);   // pull down = rescan the album (also video albums)
-  const upd=()=>{
+  const upd=()=>{gNum(GS,els);
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
     const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
     if(!GS.size)return;
@@ -1552,11 +1555,11 @@ function isView(sdir,sname,m0){
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
   let LIST=[],mode=m0||(LD('ls_ismode','v')==='t'?'t':'v'),whole=LD('ls_iswhole','1')==='1',ST=null,timer=0,wasInst=false;
   const live=()=>o._for===tok&&o.style.display==='flex';
-  const pth=m=>m.p,gp=()=>[...GS].map(n=>LIST.find(m=>m.name+'\u0000'+m.p===n).p),gi=()=>LIST.filter(m=>GS.has(m.name+'\u0000'+m.p)),key=m=>m.name+'\u0000'+m.p;
+  const pth=m=>m.p,gp=()=>[...GS].map(n=>LIST.find(m=>m.name+'\u0000'+m.p===n).p),gi=()=>{const mp=new Map(LIST.map(m=>[m.name+'\u0000'+m.p,m]));return [...GS].map(k=>mp.get(k)).filter(Boolean)},key=m=>m.name+'\u0000'+m.p;
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}
     LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
-  const upd=()=>{o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
+  const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
@@ -2432,7 +2435,7 @@ function doSearch(){
 (function(){const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
-const selItems=()=>S.items.filter(i=>S.sel.has(i.name)).concat([...S.sel].filter(k=>XM[k]).map(k=>XM[k]));
+const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.sel].map(k=>XM[k]||mp.get(k)).filter(Boolean)};   // tap order
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
@@ -3138,6 +3141,8 @@ async function doDelete(){
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 /* ---- Print space (HANDOVER 9.7, part 2): pictures held for printing. Store = core/PrintSpace.kt (/api/ps). Screen reuses the #gal overlay (like image search) so Back, hiding the native list / chrome / search and swipe lock keep working. Kill switch: localStorage ls_ps='0' hides the drawer entry. */
+/* selection order badge: the n-th tapped picture shows n (CSS #gal .gc.sel::after reads data-n); it is also the order they print / are added */
+function gNum(GS,els){let i=0;for(const k of GS){i++;const e=els.get(k);if(e)e.dataset.n=i}}
 const PS_ON=()=>LD('ls_ps','1')!=='0';
 /* Part 3 intake: any screen can add pictures to Print space with psAdd(dev, paths). Only pictures go in (PV_IMG); the phone copies them (core/PrintSpace.kt). */
 const psPic=name=>PV_IMG.includes((String(name).split('.').pop()||'').toLowerCase());
@@ -3180,7 +3185,7 @@ function openPrintSpace(){
   const ubHide=()=>{clearTimeout(utm);ub.style.display='none'};
   const ubShow=n=>{clearTimeout(utm);um.textContent=plural(n)+' removed';ub.style.display='flex';utm=setTimeout(ubHide,10000)};
   ux.onclick=async()=>{ubHide();const r=await post({op:'undo'});if(r&&r.restored)toast(plural(r.restored)+' back in Print space',2500)};
-  const gi=()=>LIST.filter(m=>GS.has(m.id));
+  const gi=()=>{const mp=new Map(LIST.map(m=>[m.id,m]));return [...GS].map(k=>mp.get(k)).filter(Boolean)};   // tap order
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(m.id);const e=els.get(m.id);if(e)e.classList.add('sel')});upd()};
   const plural=n=>n+' picture'+(n===1?'':'s');
@@ -3192,7 +3197,7 @@ function openPrintSpace(){
     if(!(r&&r.undo))ubHide();
     for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);draw();upd()};
   const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
-  const upd=()=>{
+  const upd=()=>{gNum(GS,els);
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
     sb.textContent=LIST.length?plural(LIST.length)+' · '+fmt(BYTES):'Empty';
     pa.style.display=ca.style.display=la.style.display=LIST.length?'':'none';
