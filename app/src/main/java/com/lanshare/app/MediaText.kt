@@ -70,6 +70,13 @@ object MediaText {
                 "genre" to "Genre", "year" to "Year", "composer" to "Composer", "author" to "Author")
             if (keys.any { g.optString(it.first).isNotEmpty() }) { sec("Tags"); keys.forEach { row(it.second, g.optString(it.first)) } }
         }
+        o.optJSONArray("sections")?.let { ss ->   // everything that is not photo / video / audio: core/FileInfo.kt
+            for (i in 0 until ss.length()) {
+                val s = ss.getJSONObject(i); val rs = s.optJSONArray("rows") ?: continue
+                sec(s.optString("t"))
+                for (k in 0 until rs.length()) { val r = rs.getJSONArray(k); row(r.optString(0), r.optString(1)) }
+            }
+        }
         return sb.toString().trimEnd()
     }
 }

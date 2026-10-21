@@ -3190,7 +3190,9 @@ async function doDetails(it,pth0){
       if(t.lang)row('Language',t.lang)})}
   if(st.tags){const g=st.tags,tk=[['title','Title'],['artist','Artist'],['albumartist','Album artist'],['album','Album'],['track','Track'],['genre','Genre'],['year','Year'],['composer','Composer'],['author','Author']];
     if(tk.some(x=>g[x[0]])){sec('Tags');tk.forEach(x=>row(x[1],g[x[0]]))}}
-  if(st.container||st.tracks||st.tags)sec('File');
+  /* every other format (core/FileInfo.kt): one block per section - PDF, Word / Excel / PowerPoint, archives, APK, fonts, text statistics, camera EXIF ... */
+  if(st.sections)st.sections.forEach(s=>{sec(s.t);s.rows.forEach(r=>row(r[0],r[1]))});
+  if(st.container||st.tracks||st.tags||st.sections)sec('File');
   if(st.ctime>0&&st.ctime!==st.mtime)row('Created',fmtDT(st.ctime));
   if(st.mtime>0)row('Modified',fmtDT(st.mtime));
   if(st.atime>0)row('Accessed',fmtDT(st.atime));

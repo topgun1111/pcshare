@@ -23,6 +23,7 @@ object Media {
                 mt.startsWith("audio/") -> av(f, o, false)
             }
         } catch (_: Throwable) {}
+        try { FileInfo.add(f, name, mt, o) } catch (_: Throwable) {}   // every other format: PDF, Office, archives, APK, fonts, text ... (core/FileInfo.kt)
         return o
     }
 
