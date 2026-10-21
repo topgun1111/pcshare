@@ -3412,7 +3412,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
   const reset=()=>{box.style.transition='height .2s';setH(0);box.classList.remove('go');setTimeout(()=>box.style.transition='',220)};
   const modal=()=>$('#sheet').style.display==='flex'||$('#dlg').style.display==='flex';
   window.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1||!atTop()||modal())return;
-    if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#gal,#sheet,#dlg,#top,button'))return;
+    if(e.target.closest&&e.target.closest('#dock,#fab,#toast,#pv,#gal,#home,#sheet,#dlg,#top,button'))return;   // #home: Main menu scrolls inside .hbd, window is always "at top", so the pull-to-refresh swallowed every downward drag
     try{box.style.top=Math.max(0,Math.round($('#top').getBoundingClientRect().bottom))+'px'}catch(_){}   // bubble grows right below the header
     y0=e.touches[0].clientY;dy=0;on=true},{passive:true});
   window.addEventListener('touchmove',e=>{if(!on||window._dnd)return;dy=e.touches[0].clientY-y0;
