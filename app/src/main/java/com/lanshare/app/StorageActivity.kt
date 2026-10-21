@@ -60,7 +60,10 @@ class StorageActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private var vpath = "/"
     private var arcInner: String? = null     // opened from inside an archive: the folder (inside it) to show once the scan is done
-    private val inArc: Boolean get() = vpath.endsWith("!")   // analyzing the file list of a ZIP / RAR: read-only, nothing can be opened / shared / deleted
+    private var dev = "local"                  // another device (LANShare peer id / "smb:..." / "ftp:...") is analyzed: read-only, scanned by StorageScan.startRemote
+    private var devName = ""
+    private val ro: Boolean get() = inArc || dev != "local"   // nothing can be opened / shared / deleted / revealed
+    private val inArc: Boolean get() = dev == "local" && vpath.endsWith("!")   // analyzing the file list of a ZIP / RAR: read-only, nothing can be opened / shared / deleted
     private var scan: Scan? = null
     private var night = false
     private var shownState = ""     // what the content area currently shows: run | done | cancel | error
@@ -176,10 +179,12 @@ class StorageActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         vpath = vnorm(b?.getString(X_PATH) ?: intent.getStringExtra(X_PATH) ?: "/")
-        arcSplit(vpath)?.let { (a, inner) -> vpath = "$a!"; arcInner = inner.takeIf { it != "/" } }   // "/x/a.zip!/dir" -> scan the whole archive, then show "dir"
+        dev = b?.getString(X_DEV) ?: intent.getStringExtra(X_DEV) ?: "local"
+        devName = b?.getString(X_DEVNAME) ?: intent.getStringExtra(X_DEVNAME) ?: ""
+        if (dev == "local") arcSplit(vpath)?.let { (a, inner) -> vpath = "$a!"; arcInner = inner.takeIf { it != "/" } }   // "/x/a.zip!/dir" -> scan the whole archive, then show "dir"
         vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
         val wantVol = b?.getString(X_VOL) ?: intent.getStringExtra(X_VOL)
-        if (vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
+        if (dev == "local" && vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
         applyTheme()
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(cBg))
         window.statusBarColor = cBg
@@ -196,7 +201,7 @@ class StorageActivity : Activity() {
         attach(rescan = false)
     }
 
-    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString(X_PATH, vpath); volPath?.let { o.putString(X_VOL, it) } }
+    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString(X_PATH, vpath); o.putString(X_DEV, dev); o.putString(X_DEVNAME, devName); volPath?.let { o.putString(X_VOL, it) } }
 
     override fun onResume() {
         super.onResume()
@@ -266,8 +271,8 @@ class StorageActivity : Activity() {
 
     // ---------------------------------------------------------------- part 9b: header, volumes, access
     private fun paintHead() {
-        titleTv.text = if (vpath == "/") "Storage analyzer" else vname(vpath)
-        subTv.text = if (vpath != "/") vpath else if (volPath != null) volName + " · " + volPath else if (vols.isNotEmpty()) "Internal storage" else "Whole storage"
+        titleTv.text = if (dev != "local") (devName.ifEmpty { "Device" }) else if (vpath == "/") "Storage analyzer" else vname(vpath)
+        subTv.text = if (dev != "local") (if (vpath == "/") "Whole device" else vpath) else if (vpath != "/") vpath else if (volPath != null) volName + " · " + volPath else if (vols.isNotEmpty()) "Internal storage" else "Whole storage"
     }
 
     /** One chip per storage volume (Internal storage + every mounted SD card / USB volume); hidden when there is only the main one or a folder is analyzed. */
@@ -275,7 +280,7 @@ class StorageActivity : Activity() {
         val row = volRow ?: return
         val sc = volScroll ?: return
         row.removeAllViews()
-        if (vpath != "/" || vols.isEmpty()) { sc.visibility = View.GONE; return }
+        if (dev != "local" || vpath != "/" || vols.isEmpty()) { sc.visibility = View.GONE; return }
         sc.visibility = View.VISIBLE
         fun chip(label: String, on: Boolean, fn: () -> Unit) = TextView(this).apply {
             text = label; textSize = 14f; maxLines = 1; isClickable = true; gravity = Gravity.CENTER
@@ -301,7 +306,7 @@ class StorageActivity : Activity() {
     }
 
     /** All files access (Android 11+) is off: the scan only sees media and this app's files. */
-    private fun needAccess() = Core.storageOk == false
+    private fun needAccess() = dev == "local" && Core.storageOk == false
 
     private fun paintAccess() { accessBar?.visibility = if (needAccess()) View.VISIBLE else View.GONE }
 
@@ -317,7 +322,7 @@ class StorageActivity : Activity() {
     private fun volRoot(): File = volPath?.let { File(it) } ?: Core.local.root
 
     /** Folder that is scanned. */
-    private fun scanDir(): File = if (vpath == "/" && volPath != null) File(volPath!!) else Core.local.real(vpath.removeSuffix("!"))
+    private fun scanDir(): File = if (dev != "local") StorageScan.remoteKey(dev, vpath) else if (vpath == "/" && volPath != null) File(volPath!!) else Core.local.real(vpath.removeSuffix("!"))
 
     /** Real file of a node of the current scan (below the other volume when one is chosen). */
     private fun realOf(n: SNode): File {
@@ -350,6 +355,24 @@ class StorageActivity : Activity() {
 
     /** Used / Free / Total of the main storage volume (not of the folder: the pill's old sheet showed the same). */
     private fun fillVolume() {
+        if (dev != "local") {   // another device: its free / total space, asked off the main thread
+            val d = dev; val p = vpath
+            Thread({
+                val sp = try { com.lanshare.app.core.Jobs.ep(d).space(p) } catch (_: Throwable) { null }
+                runOnUiThread {
+                    try {
+                        if (sp == null || sp.second <= 0) { volTv.text = "No size information available."; volBar.progress = 0 }
+                        else {
+                            val total = sp.second; val used = (total - sp.first).coerceAtLeast(0L)
+                            val pc = Math.round(used * 100.0 / total).toInt()
+                            volBar.progress = (used * 1000 / total).toInt()
+                            volTv.text = "Used ${fmt(used)} ($pc%)   ·   Free ${fmt(sp.first)} (${100 - pc}%)   ·   Total ${fmt(total)}"
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }, "sscan-space").also { it.isDaemon = true }.start()
+            return
+        }
         try {
             val r = volRoot()
             val total = r.totalSpace; val free = r.usableSpace
@@ -373,6 +396,18 @@ class StorageActivity : Activity() {
         val seq = ++attachSeq
         pendingPath = if (rescan && shownState == "done") cur?.path() else null
         try {
+            if (dev != "local") {   // another device: read-only tree built by StorageScan.startRemote (kept in memory only)
+                val key = scanDir()
+                var a = StorageScan.running(key)
+                if (a == null && !rescan) a = StorageScan.latest(key)
+                if (a == null) a = StorageScan.startRemote(dev, vpath, if (vpath == "/") devName else vname(vpath))
+                scan = a
+                shownState = ""
+                fillVolume()
+                update()
+                if (scan?.state == "run") ui.post(tick)
+                return
+            }
             if (inArc) {   // an archive: the tree comes from its file list (kept in memory only, not saved); a newer archive file means a new scan
                 val av = vpath.removeSuffix("!")
                 val dir = Core.local.real(av)
@@ -563,7 +598,7 @@ class StorageActivity : Activity() {
                 setTypeface(typeface, Typeface.BOLD); visibility = View.GONE
                 setOnClickListener {
                     val n = selNode
-                    if (n == null) { if (volPath == null) cur?.let { c -> StorageActions.reveal(this@StorageActivity, StorageActions.folderOf(vpath, c)) } }   // nothing selected: the open folder in the file manager (part 8a)
+                    if (n == null) { if (volPath == null && !ro) cur?.let { c -> StorageActions.reveal(this@StorageActivity, StorageActions.folderOf(vpath, c)) } }   // nothing selected: the open folder in the file manager (part 8a)
                     else if (mode == 2) showIn(n) else if (canOpen(n)) showNode(n) else details(n)
                 }
             }
@@ -582,14 +617,14 @@ class StorageActivity : Activity() {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); if (canOpen(nd)) showNode(nd) else details(nd) }   // folder = open at once
                 onMulti = { if (lsV?.multi == true) tpV?.endMulti(); paintSelBar() }               // part 9a: long-press = select several
-                canSelect = volPath == null && !inArc                                               // part 9b: delete only on the main storage (not inside an archive)
+                canSelect = volPath == null && !ro                                               // part 9b: delete only on the main storage (not inside an archive)
             }
             // Largest files: the 100 biggest files of the whole scan as a flat list (part 7); a tap = info + details, the button / dialog shows the file in its folder
             val tp = StorageList(this).apply {
                 colBg = cBg; colFg = cFg; colDim = cDim; colAcc = cAcc; colLine = cLine
                 onTap = { nd -> setInfo(nd); details(nd) }
                 onMulti = { if (tpV?.multi == true) lsV?.endMulti(); paintSelBar() }
-                canSelect = volPath == null && !inArc
+                canSelect = volPath == null && !ro
                 setFlat(s.top, root.size)
             }
             tmV = tm; lsV = ls; tpV = tp
@@ -788,7 +823,7 @@ class StorageActivity : Activity() {
         }
     }
 
-    private fun rootLabel() = if (vpath == "/") (if (volPath != null) volName.ifEmpty { "Volume" } else "Storage") else vname(vpath)
+    private fun rootLabel() = if (dev != "local" && vpath == "/") devName.ifEmpty { "Device" } else if (vpath == "/") (if (volPath != null) volName.ifEmpty { "Volume" } else "Storage") else vname(vpath)
     private fun vname(p: String) = vbase(p).removeSuffix("!")
 
     /** Breadcrumb of the open folder: every part but the last is tappable. */
@@ -870,15 +905,15 @@ class StorageActivity : Activity() {
                 setOnClickListener { dlg.dismiss(); fn() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }
-        if (!n.dir && !n.agg && !inArc) {
+        if (!n.dir && !n.agg && !ro) {
             act("Open") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, virtPath = if (volBase() == null) StorageActions.virt(vpath, n) else null) } }   // own viewers first (video / picture / PDF / Office / text), other apps for the rest
             act("Open with…") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, pick = true) } }
             act("Share") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.share(this, it) } }
         }
-        if (volPath == null && !inArc) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
+        if (volPath == null && !ro) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
         if (mode == 2 && up != null) act("Show in folder") { showIn(n) }
         else if (up != null && up !== c) act("Open containing folder") { showNode(up) }
-        if (!n.agg && n.parent != null && volPath == null && !inArc) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
+        if (!n.agg && n.parent != null && volPath == null && !ro) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
         dlg.show()
     }
 
@@ -889,7 +924,7 @@ class StorageActivity : Activity() {
 
     /** Ask before deleting file [n]; the file only goes to the recycle bin (restorable), like a delete in the file manager. */
     private fun confirmDelete(n: SNode) {
-        if (n.agg || n.parent == null || volPath != null || inArc) return
+        if (n.agg || n.parent == null || volPath != null || ro) return
         val s = curScan ?: return
         val what = if (n.dir) n.files.toString() + " files · " + n.folders + " folders\n" else ""
         val dn = if (n.dir) StorageScan.deniedBelow(n) else 0
@@ -1009,7 +1044,7 @@ class StorageActivity : Activity() {
     /** Move every node of [nodes] (already without nested ones) into the recycle bin one after the other on one worker thread, then patch the tree and refresh once. */
     private fun deleteMany(s: Scan, nodes: List<SNode>) {
         if (deleting) { toast("Another delete is still running"); return }
-        if (volPath != null || inArc) return
+        if (volPath != null || ro) return
         val todo = ArrayList<SNode>(); val vs = ArrayList<String>()
         var skipped = 0
         for (n in nodes) {
@@ -1160,8 +1195,11 @@ class StorageActivity : Activity() {
 
     companion object {
         const val X_PATH = "path"
+        const val X_DEV = "dev"          // another device to analyze (peer id / "smb:..." / "ftp:..."), read-only
+        const val X_DEVNAME = "devname"
         const val X_VOL = "vol"          // part 9b: absolute path of an SD card / USB volume to analyze (with path "/")
         private val CAT_NAMES = arrayOf("Other", "Images", "Video", "Audio", "Documents", "Archives", "Apps")
+        fun intentDev(c: Context, dev: String, name: String, vpath: String): Intent = Intent(c, StorageActivity::class.java).putExtra(X_PATH, vpath).putExtra(X_DEV, dev).putExtra(X_DEVNAME, name)
         fun intent(c: Context, vpath: String, vol: String? = null): Intent = Intent(c, StorageActivity::class.java).putExtra(X_PATH, vpath).also { if (vol != null) it.putExtra(X_VOL, vol) }
     }
 }

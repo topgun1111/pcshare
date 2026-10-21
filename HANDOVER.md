@@ -587,6 +587,14 @@ To look at: screen height at the storage root with banner + chips + card + summa
 
 ---
 
+### 12.8 Other devices (read-only, 2026-10-21)
+The storage pill also works on **LANShare phones, SMB, FTP and SFTP** (not Root, not inside archives). `StorageScan.startRemote(dev, vpath, label)` builds the same `SNode` tree, so the whole screen works unchanged; `Scan.remote` / `Scan.dev` mark it, `StorageActivity.ro` (= archive or remote) switches off open / share / delete / reveal / multi-select. Results live in memory only (key `StorageScan.remoteKey`, never saved); Rescan starts a new one.
+- **LANShare phone, new build** (fastest): the phone scans ITSELF (`/p/sscan`, native `StorageScan`), this phone polls `/p/sscanp` every 0.4 s and downloads the finished tree once with `/p/sscandl` (`StorageStore.encode` / `decode`, gzip, same format as the saved files). `/p/sscancancel` cancels. A scan bubble also shows on that phone.
+- **LANShare phone, old build** (no route = 404): its `/p/walk` (one request, whole tree) is folded locally (`walkScan`).
+- **SMB**: folder-per-task, 8 parallel `lsFast` calls on the one session. **FTP / SFTP**: same on 4 threads (= the 4-connection pool of `FtpPool` / `SPool`); depth cap 48 (symlink loops); an unlistable folder = "unreadable" like Android/data.
+- UI: `usedPct()` / `pillSet()` in `ui.html` feed the pill (and native `NlHead` `u`) from `/api/space` for other devices; `LSAndroid.openStorageDev(dev, name, path)` -> `StorageActivity.intentDev`. The pill is absent where there is no space number (SMB server root, FTP without `space`).
+- **Limits**: nothing can be opened / deleted from the analyzer for a remote scan; SMB / FTP speed depends on folder count (one round trip per folder); no byte-based percentage on folder scans; FTP has no free space so no pill there. Not compiled / not device-tested.
+
 ## 13. Performance
 
 *Source: Settings > Debug: performance (branch `claude/debug-perf-tab`), reports taken 2026-10-20 on the user's phone. One device, one cold start per build - indicative; force-close and reopen the app before each startup report.*
@@ -627,6 +635,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 One line per change; details are in the chapter named in brackets. Statuses of older lines are in section 2.
 
+- **2026-10-21** - Storage Analyzer for other devices (LANShare phones, SMB, FTP, SFTP), read-only: peer scans itself + tree download (`/p/sscan*`), parallel listing for SMB / FTP / SFTP, old peers via `/p/walk`; pill shown for other devices (`StorageScan.kt`, `StorageStore.kt`, `StorageActivity.kt`, `Routes.kt`, `RemoteFs.kt`, `MainActivity.kt`, `ui.html`). Not compiled / not device-tested. [12.8]
 - **2026-10-21** - Battery level of phones in the devices list (`Discovery.kt`, `Routes.kt`, `ui.html`): `hello()` / UDP beacon carry `bat` (0-100) + `chg`; `Peer.bat/chg` (-1 = unknown); `/api/peers` returns them; UI shows `battery 78%` / `lightning 78%` (charging) only for online LANShare phones - PCs, SMB, FTP and old builds send no `bat`, so nothing is shown. Refreshed by the 3 s live probe. Not compiled / not device-tested. [5, 6]
 - **2026-10-21** - Markdown reader improved (`MdRender.kt`, `TextEditorActivity.kt`): wrapped paragraphs, nested lists / quotes, setext headings, front matter, escapes, reference + badge links, simple HTML, `#anchor` jumps, heading outline (long-press preview button), scroll kept on theme / size change [7.5]. Not compiled here - build once and check.
 - **2026-10-21** - The ten `HANDOVER*.md` files (+ the performance findings) merged into this one [15.4].

@@ -959,7 +959,12 @@ async function addIp(){
 
 const SP={};
 function spKey(){const smb=S.dev.indexOf('smb:')===0,seg=smb?'/'+(S.path.split('/')[1]||''):'/';return smb&&seg==='/'?null:{k:S.dev+'|'+seg,seg:seg}}
+/* storage-used % for the pill: this phone = S.used; another device = from its space numbers (needs a share / drive: SMB root has none); root = none */
+function usedPct(){if(S.dev==='local')return S.used!=null?S.used:null;if(S.dev==='root')return null;
+  const k=spKey(),c=k&&SP[k.k],v=c&&c.v;return v&&v.total&&v.free!=null?Math.max(0,Math.min(100,Math.round((v.total-v.free)*100/v.total))):null}
+function pillSet(){const pl=$('#used'),up=usedPct();if(up!=null){pl.style.display='flex';pl.style.setProperty('--p',up+'%');pl.lastChild.textContent=up+'%';pl.title='Storage used - tap to analyze';pl.onclick=pillTap}else pl.style.display='none'}
 function showFree(){const el=$('#free'),k=spKey(),c=k&&SP[k.k],v=c&&c.v;
+  if(S.dev!=='local'){pillSet();try{nlHeadPush(shown())}catch(e){}}   /* the space numbers of another device arrive late: pill + native path bar follow */
   if(!v||v.free==null||!v.total){el.textContent='';el.classList.remove('lo');return}
   el.textContent=fmt(v.free)+' free of '+fmt(v.total);el.classList.toggle('lo',v.free/v.total<0.05)}
 async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
@@ -970,6 +975,8 @@ async function loadSpace(){const dev=S.dev,k=spKey();if(!k){showFree();return}
 /* storage pill: this phone (main storage root = whole storage, a folder = that folder, inside a ZIP / RAR = the archive's contents) opens the native Storage Analyzer; anything else keeps the small sheet */
 function pillTap(){
   if(S.dev==='local'&&window.LSAndroid&&LSAndroid.openStorage){try{LSAndroid.openStorage(S.path||'/');return}catch(e){}}
+  /* another device (LANShare phone, SMB, FTP, SFTP): read-only analysis; not for root, not inside an archive */
+  if(S.dev!=='local'&&S.dev!=='root'&&String(S.path||'/').indexOf('!')<0&&window.LSAndroid&&LSAndroid.openStorageDev){try{LSAndroid.openStorageDev(S.dev,devName(S.dev),S.path||'/');return}catch(e){}}
   spaceInfo()}
 /* disk pill tapped: detailed size info (was the grey "x free of y" line above the home button) */
 async function spaceInfo(){
@@ -1103,7 +1110,7 @@ function nlHeadPush(V){
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
   const n=V.length,segs=S.path.split('/').filter(Boolean);
   NL.nlHead(JSON.stringify({c:segs.map(s=>s.replace(/!$/,'')),dn:S.dev!=='local'?devName(S.dev):'',
-    u:S.dev==='local'&&S.used!=null?S.used:-1,
+    u:(()=>{const up=usedPct();return up!=null?up:-1})(),
     s:[n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):''),fo&&fi?fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files'):''],
     n:S.newest?1:0,t:(SORTS[S.sort]||{t:''}).t,d:S.sort==='none'?0:S.asc?1:2}))}
 function nlLay(force){if(!NL||!NLL)return;
@@ -1622,7 +1629,7 @@ function render(){
   const gm=!AR&&!S.q&&!S.newest&&galRoot();   // Gallery / Videos: albums come from the whole phone, so no folder path, device chips or storage line
   document.body.classList.toggle('galm',!!gm);
   $('#ht').textContent=gm?(galVid()?'Videos':'Gallery'):S.dev==='local'?'Main storage':devName(S.dev);
-  const pl=$('#used');if(S.dev==='local'&&S.used!=null){pl.style.display='flex';pl.style.setProperty('--p',S.used+'%');pl.lastChild.textContent=S.used+'%';pl.title='Storage used - tap to analyze';pl.onclick=pillTap}else pl.style.display='none';
+  pillSet();
   cr.scrollLeft=cr.scrollWidth;
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   showFree();
