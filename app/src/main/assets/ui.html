@@ -2999,22 +2999,29 @@ function printOptions(pc,files,onlyFiles,pre){files=files||[];return new Promise
   act.append(ps,k);card.append(act);o.append(card);showT('b');redraw.forEach(f=>f());status()})}
 /* recent prints (kept on the phone): what was sent where with which options, so it can be printed again with one tap */
 function phAdd(h){if(!h.paths||!h.paths.length||h.paths.length>150)return null;const a=lsGet('printHist',[]);h.id=String(Date.now());h.t=Date.now();h.ok=null;a.unshift(h);a.length=Math.min(a.length,12);
-  try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}return h.id}
-function phMark(id,ok){if(!id)return;const a=lsGet('printHist',[]),h=a.find(x=>x.id===id);if(h){h.ok=ok;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}}}
+  try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}phSave(h);return h.id}
+/* part 13b: Print space jobs also keep a full snapshot on the phone (pictures, previews, settings, the PDF) - fire and forget, never blocks printing; the answer's sid is stored in the entry (h.sid). An entry that already has a sid (print again of a kept session) saves nothing new. */
+function phSave(h){const p=h.ps;if(!p||!p.plan||h.sid||!h.paths||h.paths.length!==1)return;
+  try{api('POST','/api/pssess',{op:'save',spec:p.spec,plan:p.plan,mode:p.mode,only:p.only||'',rev:!!p.rev,to:h.to,toName:h.toName,opts:h.opts,names:h.names,pdf:h.paths[0],pdfName:(h.names||[])[0],hid:h.id}).then(r=>{
+    if(!r||!r.sid)return;h.sid=r.sid;const a=lsGet('printHist',[]),e=a.find(x=>x.id===h.id);if(e){e.sid=r.sid;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(_){}}
+    if(h.ok!=null)phMarkSid(h.sid,h.ok)}).catch(()=>{})}catch(e){}}
+function phMarkSid(sid,ok){if(sid&&ok!=null)try{api('POST','/api/pssess',{op:'mark',sid,ok:!!ok}).catch(()=>{})}catch(e){}}
+function phMark(id,ok){if(!id)return;const a=lsGet('printHist',[]),h=a.find(x=>x.id===id);if(h){h.ok=ok;try{localStorage.setItem('printHist',JSON.stringify(a))}catch(e){}phMarkSid(h.sid,ok)}}
 /* part 8: print a Print space sheet set again - the stored PDF is purged (the renderer keeps 4), so the sheets are drawn again from the saved layout when every picture is still held */
 async function phSheets(h){
+  if(h.sid){const r=await pssAgain(h.sid,true);if(r!==false)return}   // part 13c: a kept session prints its stored PDF, no render
   try{
     const cur=await api('GET','/api/ps'),have=new Set(((cur&&cur.items)||[]).map(m=>m.id)),want=new Set();
     ((h.ps.plan&&h.ps.plan.sheets)||[]).forEach(sh=>(sh.f||[]).concat(sh.b||[]).forEach(i=>{if(i)want.add(i)}));
     const miss=[...want].filter(i=>!have.has(i)).length;
     if(miss)return toast('\u26a0 '+miss+' picture'+(miss===1?' is':'s are')+' no longer in Print space \u2013 open the layout and print again',6000);
     const R=await psRenderPdf(h.ps.spec,h.ps.plan,h.ps.only,h.ps.rev);if(!R)return;
-    const r=await api('POST','/api/print',{dev:'local',paths:[R.path],to:h.to,opts:h.opts}),id=phAdd({dev:'local',paths:[R.path],to:h.to,toName:h.toName,opts:h.opts,names:[R.name],ps:h.ps});
+    const r=await api('POST','/api/print',{dev:'local',paths:[R.path],to:h.to,opts:h.opts}),id=phAdd({dev:'local',paths:[R.path],to:h.to,toName:h.toName,opts:h.opts,names:[R.name],ps:h.ps,sid:h.sid});
     watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}
   catch(e){toast('\u26a0 '+e.message,5000)}}
 async function phGo(h){if(h.ps)return phSheets(h);try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
   const id=phAdd({dev:h.dev,paths:h.paths,to:h.to,toName:h.toName,opts:h.opts,names:h.names});watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
-function printRecent(onlyPs){const all=lsGet('printHist',[]),a=onlyPs?all.filter(h=>h.ps):all,o=$('#sheet');   /* onlyPs: the Print space editor lists only the jobs that came from Print space (they carry h.ps) */
+function printRecent(onlyPs,legacy){if(onlyPs&&!legacy)return printRecentPs();const all=lsGet('printHist',[]),a=onlyPs?all.filter(h=>h.ps):all,o=$('#sheet');   /* onlyPs: the Print space editor lists only the jobs that came from Print space (they carry h.ps) */
   o.textContent='';o.style.display='flex';
   const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
   card.append(E('div','handle'),E('h3','','Recent prints'));
@@ -3026,6 +3033,64 @@ function printRecent(onlyPs){const all=lsGet('printHist',[]),a=onlyPs?all.filter
     b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)});
   const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
   cl.onclick=()=>{try{if(onlyPs){const k=all.filter(h=>!h.ps);if(k.length)localStorage.setItem('printHist',JSON.stringify(k));else localStorage.removeItem('printHist')}else localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
+/* part 13c: Recent prints of Print space = the server's kept sessions (GET /api/pssess): previews, Edit (restore pictures + layout + printer), Print again (stored PDF), remove / clear. Older printHist entries without a sid are listed below as before. */
+async function pssEdit(sid){
+  try{
+    const r=await api('POST','/api/pssess',{op:'restore',sid}),s=r&&r.session;if(!s)throw new Error('Session not found');
+    SV('ls_ps_lay',JSON.stringify({spec:s.spec,plan:s.plan,mode:s.mode||'front'}));
+    if(s.to){SV('printTo',String(s.to));
+      if(s.opts)try{SV('printOpts',JSON.stringify(s.opts));const by=lsGet('printOptsBy',{});by[s.to+'|'+(s.opts.printer||'')]=s.opts;SV('printOptsBy',JSON.stringify(by))}catch(e){}}
+    const sh=$('#sheet');sh.style.display='none';sh.onclick=null;
+    openPrintSpace();psLayout();
+    if(r.failed>0)toast('\u26a0 '+r.failed+' picture'+(r.failed===1?'':'s')+' could not be restored',6000);
+    else if(r.restored>0)toast(r.restored+' picture'+(r.restored===1?'':'s')+' put back into Print space',4000)}
+  catch(e){toast('\u26a0 '+e.message,5000)}}
+async function pssAgain(sid,soft){
+  let s;try{const g=await api('POST','/api/pssess',{op:'get',sid});s=g&&g.session;if(!s)throw new Error('Session not found')}catch(e){if(soft)return false;toast('\u26a0 '+e.message,5000);return}
+  let P;try{P=await api('POST','/api/pssess',{op:'pdf',sid})}catch(e){
+    if(await dlg({title:'Stored PDF not found',msg:'Open the layout in the editor instead?',ok:'Edit'}))pssEdit(sid);return}
+  try{
+    const ps={spec:s.spec,plan:s.plan,mode:s.mode,only:s.only||'',rev:!!s.rev};
+    if(!s.to)return doPrint(null,{items:[{name:P.name,p:P.path,size:0}],dev:'local',full:1,path:'/',opts:s.opts,ps,done(){}});
+    const r=await api('POST','/api/print',{dev:'local',paths:[P.path],to:s.to,opts:s.opts}),id=phAdd({dev:'local',paths:[P.path],to:s.to,toName:s.toName,opts:s.opts,names:[P.name],ps,sid});
+    watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}
+  catch(e){toast('\u26a0 '+e.message,5000)}}
+async function printRecentPs(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+  card.append(E('div','handle'),E('h3','','Recent prints'));o.append(card);
+  let R;try{R=await api('GET','/api/pssess')}catch(e){return printRecent(true,true)}
+  if(!R||!Array.isArray(R.sessions))return printRecent(true,true);
+  const mut='display:block;font-size:12px;color:var(--mut);margin-top:2px';
+  const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Recent prints'));
+    const old=lsGet('printHist',[]).filter(h=>h.ps&&!h.sid);
+    if(!R.sessions.length&&!old.length)card.append(E('p','','Nothing printed from Print space yet.'));
+    R.sessions.forEach(x=>{
+      const box=E('div'),nm=(x.names||[]).length>2?x.names.slice(0,2).join(', ')+' +'+(x.names.length-2):(x.names||[]).join(', '),op=x.opts||{};
+      box.style.cssText='border-top:1px solid var(--bd,rgba(128,128,128,.25));padding:8px 0';
+      const n=Math.min(x.prev||0,3);
+      if(n){const st=E('div');st.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+        for(let i=0;i<n;i++){const im=E('img');im.loading='lazy';im.src='/api/pssprev?sid='+encodeURIComponent(x.sid)+'&n='+i;im.style.cssText='height:64px;max-width:90px;object-fit:contain;background:#fff;border-radius:4px';im.onerror=()=>im.remove();st.append(im)}
+        if((x.pages||0)>n)st.append(E('small','','+'+(x.pages-n)));box.append(st)}
+      const bits=[x.toName||'',new Date(x.t).toLocaleString(),x.pics+' picture'+(x.pics===1?'':'s'),x.pages+' page'+(x.pages===1?'':'s'),fmt(x.bytes||0)];
+      if(op.duplex&&op.duplex!=='off')bits.push('two-sided');
+      const sm=E('small','',bits.filter(Boolean).join(' \u00b7 '));sm.style.cssText=mut;
+      box.append(E('b','',(x.ok===true?'\u2713 ':x.ok===false?'\u26a0 ':'')+(nm||'Print space')),sm);
+      const row=E('div','dact'),ed=E('button','tbtn fill','Edit'),ag=E('button','tbtn','Print again'),rm=E('button','tbtn','\u2715');
+      row.style.cssText='margin-top:6px';ed.onclick=()=>{fin();pssEdit(x.sid)};ag.onclick=()=>{fin();pssAgain(x.sid)};
+      let tm=0;rm.onclick=async()=>{if(!tm){rm.textContent='Remove?';tm=setTimeout(()=>{tm=0;rm.textContent='\u2715'},3000);return}
+        clearTimeout(tm);try{R=await api('POST','/api/pssess',{op:'rm',sids:[x.sid]})}catch(e){toast('\u26a0 '+e.message,4000)}draw()};
+      row.append(ed);if(x.hasPdf)row.append(ag);row.append(rm);box.append(row);card.append(box)});
+    if(old.length){const t=E('small','','Older prints (no kept pictures)');t.style.cssText=mut+';margin-top:10px';card.append(t);
+      old.forEach(h=>{const b=E('button','tbtn'),nm=(h.names||[]).join(', ');b.style.cssText='display:block;width:100%;text-align:left;margin:6px 0';
+        const sm=E('small','',[h.toName||'',new Date(h.t).toLocaleString()].filter(Boolean).join(' \u00b7 '));sm.style.cssText=mut;
+        b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)})}
+    const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
+    cl.onclick=async()=>{if(!R.sessions.length&&!old.length)return fin();
+      if(R.sessions.length&&!await dlg({title:'Clear recent prints?',msg:'The kept pictures, previews and PDFs of '+R.sessions.length+' print'+(R.sessions.length===1?'':'s')+' will be deleted.',ok:'Clear',danger:true}))return;
+      try{if(R.sessions.length)R=await api('POST','/api/pssess',{op:'clear'});const k=lsGet('printHist',[]).filter(h=>!h.ps);if(k.length)localStorage.setItem('printHist',JSON.stringify(k));else localStorage.removeItem('printHist')}catch(e){toast('\u26a0 '+e.message,4000)}fin()};
+    cx.onclick=fin;row.append(cl,cx);card.append(row)};
+  draw()}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[],pre=cx&&cx.opts||null;   /* pre: options forced by the caller; returns the printer used (a job was sent) or nothing */
@@ -3231,6 +3296,7 @@ function openPrintSpace(){
     const wrap=(x)=>{const d=E('div');d.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px';d.append(...x);return d},
       hint=t=>{const h=E('small','',t);h.style.cssText='display:block;font-size:12px;color:var(--mut);margin-top:2px';return h},
       opt=(list,cur,unit)=>{const l=list.slice();if(!l.some(a=>a[0]===cur))l.push([cur,cur+unit]);return l.sort((a,b)=>(a[0]===0?-1:a[0])-(b[0]===0?-1:b[0]))};
+    let SS=null;api('GET','/api/pssess').then(r=>{if(r&&r.cfg){SS=r;draw()}}).catch(()=>{});
     const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Print space settings'));
       card.append(hint(plural(LIST.length)+' held \u00b7 '+fmt(BYTES)+(CFG.mb?' of '+fmt(CFG.mb*1048576):'')));
       const mk=(list,cur,go)=>wrap(list.map(([v,t])=>{const b=E('button','tbtn'+(v===cur?' fill':''),t);b.onclick=()=>go(v);return b}));
@@ -3241,8 +3307,13 @@ function openPrintSpace(){
           await post({op:'cfg',days:v});draw()}));
       card.append(E('b','','Storage limit'),hint('When Print space holds this much, no more pictures are added. Pictures already held stay.'),
         mk(opt([[0,'No limit'],[200,'200 MB'],[1000,'1 GB'],[5000,'5 GB']],CFG.mb,' MB'),CFG.mb,async v=>{await post({op:'cfg',mb:v});draw()}));
+      if(SS){const sv=async o=>{try{SS=await api('POST','/api/pssess',Object.assign({op:'cfg'},o))}catch(e){toast('\u26a0 '+e.message,4000)}draw()};
+        card.append(E('b','','Recent prints kept'),hint('Each print keeps its pictures, previews, settings and PDF so you can reopen it. Now: '+SS.count+' \u00b7 '+fmt(SS.bytes||0)+'.'),
+          mk(opt([[5,'5'],[12,'12'],[25,'25'],[50,'50']],SS.cfg.keep,''),SS.cfg.keep,v=>sv({keep:v})));
+        card.append(E('b','','Recent prints size'),hint('Oldest prints are removed first; the newest is always kept.'),
+          mk(opt([[200,'200 MB'],[500,'500 MB'],[2000,'2 GB'],[0,'No limit']],SS.cfg.mb,' MB'),SS.cfg.mb,v=>sv({mb:v})))}
       const row=E('div','dact'),rc=E('button','tbtn','Recent prints'),cx=E('button','tbtn fill','Close');
-      rc.onclick=()=>{fin();printRecent(true)};cx.onclick=fin;if(lsGet('printHist',[]).some(h=>h.ps))row.append(rc);row.append(cx);card.append(row)};
+      rc.onclick=()=>{fin();printRecent(true)};cx.onclick=fin;row.append(rc,cx);card.append(row)};
     draw();sh.append(card)}
   pa.onclick=()=>doIt(LIST);
   ca.onclick=async()=>{if(!LIST.length)return;
@@ -3372,7 +3443,7 @@ function psLayout(){
       chips(SP.free?'Auto-arrange (then move)':'Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
     f.append(presetRow());
     const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
-    if(lsGet('printHist',[]).some(h=>h.ps)){const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent(true);f.append(rc)}   // part 8 (only jobs sent from Print space): print a finished sheet set again
+    {const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent(true);f.append(rc)}   // part 8 (only jobs sent from Print space): print a finished sheet set again
     bxSet.replaceChildren(f)}
   // ---- sheet strip (small canvases) + Front / Back tabs
   function dStrip(){

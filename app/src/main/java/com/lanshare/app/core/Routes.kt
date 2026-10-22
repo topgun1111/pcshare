@@ -206,6 +206,9 @@ object Routes {
             "pvinfo" -> return ex.json(PrintPreview.info(ex.q("dev"), vnorm(ex.q("path")), ex.q("to")))
             "pvpage" -> return ex.reply(200, PrintPreview.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))
+            "pssess" -> if (ex.method == "GET") return ex.json(PrintSessions.list())   // Print space Recent prints: kept snapshots (HANDOVER 9.7, part 13)
+            "pssprev" -> return ex.reply(200, PrintSessions.previewFile(ex.q("sid"), ex.q("n").toIntOrNull() ?: 0).readBytes(), "image/jpeg",
+                mapOf("Cache-Control" to "private, max-age=3600"))   // stored preview page of a kept print
             "pspage" -> return ex.reply(200, PrintSpaceRender.page(ex.q("id"), ex.q("n").toIntOrNull() ?: 0, ex.q("w").toIntOrNull() ?: 700), "image/jpeg",
                 mapOf("Cache-Control" to "private, max-age=600"))   // Print space preview page (the id is a hash of the layout, so a cached page is never stale)
             "pvfile" -> {
@@ -302,6 +305,7 @@ object Routes {
             "ps" -> ex.json(PrintSpace.post(b))   // Print space add / rm / clear / move / set (HANDOVER 9.7)
             "pslayout" -> ex.json(PsLayoutApi.post(b))   // Print space layout editor: fill / assign / swap / ... (HANDOVER 9.7, part 5)
             "psrender" -> ex.json(PrintSpaceRender.post(b))   // Print space sheets: prepare (preview id) / pdf (background job) (HANDOVER 9.7, part 6a)
+            "pssess" -> ex.json(PrintSessions.post(b))   // Print space Recent prints: save / get / restore / pdf / mark / rm / clear / cfg (HANDOVER 9.7, part 13)
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)

@@ -390,6 +390,38 @@ object PrintSpace {
         return null
     }
 
+    /**
+     * Part 13a: brings ONE picture back from a saved print (Recent prints) under its OLD id, so a saved layout plan finds it again. [src] = the stored copy.
+     * Returns "have" (already held: only [copies] / [rot] are set to the stored values), "added", or a reason. Honours [MAX_ITEMS], not the storage limit.
+     */
+    @Synchronized fun adopt(id: String, name: String, src: File, from: String, copies: Int, rot: Int): String {
+        load()
+        if (!Regex("[0-9a-z]{4,40}").matches(id) || name.isEmpty() || name.contains('/') || name.contains('\\')) return "bad picture"
+        val have = items.firstOrNull { x -> x.id == id }
+        if (have != null && File(File(root(), id), have.name).isFile) {
+            have.copies = clampCopies(copies)
+            have.rot = clampRot(rot)
+            try { save() } catch (_: Exception) {}
+            return "have"
+        }
+        if (have != null) items.remove(have)
+        if (items.size >= MAX_ITEMS) return "print space is full ($MAX_ITEMS pictures)"
+        val box = File(root(), id)
+        if (!box.isDirectory && !box.mkdirs()) return "could not create the folder"
+        val dst = File(box, name)
+        val part = File(box, "$name.part")
+        try {
+            src.copyTo(part, overwrite = true)
+            if (!part.renameTo(dst)) { dst.delete(); if (!part.renameTo(dst)) throw IOException("could not store the copy") }
+        } catch (e: Exception) {
+            try { part.delete() } catch (_: Exception) {}
+            return errText(e).take(120)
+        }
+        items.add(Item(id, name, dst.length(), from, System.currentTimeMillis(), clampCopies(copies), clampRot(rot)))
+        try { save() } catch (_: Exception) {}
+        return "added"
+    }
+
     /** Part 9a: deletes the folders of the previous undo for good (called before a new remove / clear and when the age clean-up runs). */
     @Synchronized private fun dropUndo() {
         if (undoList.isEmpty()) return
