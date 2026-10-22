@@ -1579,7 +1579,7 @@ function galView(a){
           hit=thGet(key);
         if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name))+(vt?'&s='+vt:''),done:show}))}
       c.onclick=()=>{if(c._lp){c._lp=false;return}
-        if(GS.size){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
+        if(GS.size||pick){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
         else if(k==='vid')playVid(m);else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
@@ -1621,13 +1621,13 @@ function isView(sdir,sname,m0){
   // --- status card (model download / scan progress) ---
   const card=E('div','isc'),sq=E('div','isq'),inp=E('input'),go=E('button','','Search'),tabs=E('div','ist'),chips=E('div','isr'),hint=E('small','');
   inp.type='search';inp.enterKeyHint='search';inp.autocomplete='off';inp.setAttribute('autocapitalize','off');sq.append(inp,go);
-  const tn=E('button','','Name'),tv=E('button','','Visual'),tx=E('button','','Text in pictures');tabs.append(tn,tv,tx);
+  const tn=E('button','','Name'),tv=E('button','','Visual'),tx=E('button','','Text in pictures'),ts=E('button','','Similar');tabs.append(tn,tv,tx,ts);
   const cw=E('button','tbtn','Whole word'),cp=E('button','tbtn','Contains');chips.append(cw,cp);
-  const setMode=()=>{tn.classList.toggle('on',mode==='n');tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');chips.style.display=mode==='t'?'flex':'none';card.style.display=mode==='n'?'none':'';
+  const setMode=()=>{tn.classList.toggle('on',mode==='n');tv.classList.toggle('on',mode==='v');tx.classList.toggle('on',mode==='t');ts.classList.toggle('on',mode==='s');sq.style.display=mode==='s'?'none':'';if(mode!=='s'&&gg._pick){gg._pick=false;gg.textContent='';els.clear();GS.clear();upd()}chips.style.display=mode==='t'?'flex':'none';card.style.display=mode==='n'?'none':'';
     cw.classList.toggle('fill',whole);cp.classList.toggle('fill',!whole);
     inp.placeholder=mode==='n'?'Part of the file name':mode==='v'?'Describe the picture, e.g. a red car':'Word or part of a word in the picture';
-    hint.textContent=(mode==='n'?'Looks at the names of pictures and videos.':mode==='v'?'Works best with English words. Also matches folder / file names and text in pictures. Tip: hold a few right pictures, then tap Find similar.':'Reads the text in your pictures (Turkish and English).')+(sdir?' Only in: '+(sname||sdir)+'.':'')};
-  tn.onclick=()=>{mode='n';SV('ls_ismode','n');setMode()};tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};
+    hint.textContent=(mode==='s'?'Tap the pictures you know are right (3-5 work best), then tap Find similar. The rest of the album is ranked against them.':mode==='n'?'Looks at the names of pictures and videos.':mode==='v'?'Works best with English words. Also matches folder / file names and text in pictures. Tip: hold a few right pictures, then tap Find similar.':'Reads the text in your pictures (Turkish and English).')+(sdir?' Only in: '+(sname||sdir)+'.':'')};
+  tn.onclick=()=>{mode='n';SV('ls_ismode','n');setMode()};tv.onclick=()=>{mode='v';SV('ls_ismode','v');setMode()};tx.onclick=()=>{mode='t';SV('ls_ismode','t');setMode()};ts.onclick=()=>{mode='s';setMode();loadPick()};
   cw.onclick=()=>{whole=true;SV('ls_iswhole','1');setMode()};cp.onclick=()=>{whole=false;SV('ls_iswhole','0');setMode()};
   bd.append(card,tabs,sq,chips,hint);sc.append(bd,gg);o.append(hd,sh,sc,gb);setMode();
   const act=(op,x)=>api('POST','/api/imgs',Object.assign({op},x||{})).then(r=>{ST=r;draw();poll();return r}).catch(e=>{toast('\u26a0 '+e.message,5000)});
@@ -1667,18 +1667,25 @@ function isView(sdir,sname,m0){
     timer=setTimeout(()=>{api('GET','/api/imgs').then(r=>{if(!live())return;ST=r;draw();poll()}).catch(()=>{if(live())poll()})},1000)}
   // --- search + results ---
   const bn=p=>p.replace(/^.*\//,'');
-  function show(res,q,badge){
+  function show(res,q,badge,pick){
+    gg._pick=!!pick;
     gg.textContent='';els.clear();GS.clear();upd();
     LIST=res.map(r=>({name:bn(r.path),p:r.path,score:r.score,size:0,mtime:0}));
     GCX={dev:'local',path:'/',list:LIST,all:LIST};
-    if(!LIST.length){gg.append(E('div','ge','Nothing found for \u201c'+q+'\u201d'));return}
-    sb.textContent=LIST.length+(LIST.length===1?' result':' results');
+    if(!LIST.length){gg.append(E('div','ge',pick?'No scanned pictures here yet. Scan first.':'Nothing found for \u201c'+q+'\u201d'));return}
+    sb.textContent=pick?'Pick the right pictures':LIST.length+(LIST.length===1?' result':' results');
     LIST.forEach(m=>{const c=E('div','gc'),im=E('img');els.set(key(m),c);c.append(ic('check','ck'));
       im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p)+'&q=95';c.append(im);
       if(mode==='v'||badge)c.append(E('span','gp',Math.round((m.score||0)*100)+'%'));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(key(m));c.classList.add('sel');upd()});gg.append(c)})}
+  async function loadPick(){
+    if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}
+    if(!(ST.indexed>0)){toast('Scan your pictures first',3000);return}
+    gg.textContent='';gg.append(E('div','ge','Loading\u2026'));
+    try{const r=await api('POST','/api/imgs',{op:'list',dir:sdir||''});if(!live()||mode!=='s')return;show((r&&r.results)||[],'',false,true)}
+    catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
   async function similar(paths){
     if(!paths.length)return;
     if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}

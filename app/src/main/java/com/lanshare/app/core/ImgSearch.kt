@@ -545,6 +545,13 @@ object ImgSearch {
             .put("results", jarr(res.take(top).map { hit(it.first, it.second) }))
     }
 
+    /** Scanned pictures of [dir] (newest first, max [limit]) for the "Similar" tab: the user picks the right ones there. */
+    fun listDir(dir: String = "", limit: Int = 400): JSONObject {
+        ensureLoaded()
+        val snap = synchronized(lock) { items.values.filter { it.vec != null && !isOut(it.path) && inDir(it.path, dir) }.sortedByDescending { it.m } }
+        return JSONObject().put("total", snap.size).put("results", jarr(snap.take(limit).map { hit(it.path, 0f) }))
+    }
+
     /** Image-to-image cosine that counts as "the same kind of picture" (CLIP ViT-B/32: unrelated ~0.4-0.55, same subject 0.7+). Tune on a device. */
     const val SIM_THRESHOLD = 0.62f
 
