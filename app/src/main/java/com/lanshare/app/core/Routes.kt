@@ -184,6 +184,7 @@ object Routes {
             "bin" -> if (ex.method == "GET") return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("task", Bin.status() ?: JSONObject.NULL)
                 .also { if (q["items"] != "0") it.put("items", jarr(Bin.list().map { e -> e.toJson() })) })   // POST falls through to the task starter below
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
+            "cleanup" -> if (ex.method == "GET") return ex.json(Cleanup.status())   // Free up space scan (POST starts / cancels it)
             "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
@@ -343,6 +344,7 @@ object Routes {
                 "similar" -> ImgSearch.similar(b.optJSONArray("paths").strings(), b.optString("dir", ""))   // few-shot: more pictures like the selected ones
                 else -> throw BadReq("unknown op")
             })
+            "cleanup" -> ex.json(if (b.optString("op") == "cancel") { Cleanup.cancel(); Cleanup.status() } else { Cleanup.start(); Cleanup.status() })
             "merge" -> ex.json(JSONObject().put("job", AlbumMerge.start(b.getString("target"), b.getJSONArray("paths").strings(), b.optBoolean("skipSimilar", false))))   // gallery: merge the selected albums into "target"
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("similar"))))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),

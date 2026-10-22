@@ -3843,6 +3843,69 @@ function psLayout(){
 }
 /* ---- Recycle bin: sticky top bar (Empty bin / select / Restore / Delete), rows drawn in chunks while scrolling, restore / delete run as a background task on the phone with a progress bar */
 let BINTOK=null;
+/* ---- Free up space (HANDOVER 12.10): scan result of GET /api/cleanup (big files, old downloads, installers, recycle bin) + duplicates; deleting = normal /api/rm (-> Recycle bin) ---- */
+async function openFreeUp(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const tok=FUTOK={};const live=()=>FUTOK===tok&&o.style.display==='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),hd=E('div'),sub=E('p'),box=E('div');
+  hd.style.cssText='display:flex;align-items:center;gap:8px';
+  const ttl=E('h3','','Free up space');ttl.style.flex='1';const xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Close');xb.onclick=close;hd.append(ttl,xb);
+  sub.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 6px';
+  box.style.cssText='max-height:68vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:10px';
+  card.append(E('div','handle'),hd,sub,box);o.append(card);
+  const dAgo=t=>{const d=Math.floor((Date.now()-t)/864e5);return d>=365?Math.floor(d/365)+' y':d>=30?Math.floor(d/30)+' mo':d+' d'};
+  const dir=p=>p.replace(/\/[^\/]*$/,'')||'/',nm=p=>p.replace(/^.*\//,'');
+  let R=null;
+  function sec(title,note,d,delText){   // one result list with check boxes + a delete button
+    const w=E('div');w.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px';
+    const h=E('b','',title+' \u00b7 '+d.count+(d.count===1?' file':' files')+' \u00b7 '+fmt(d.bytes));w.append(h);
+    if(note)w.append(Object.assign(E('small','',note),{style:'color:var(--mut)'}));
+    if(!d.items.length){w.append(Object.assign(E('small','','Nothing here.'),{style:'color:var(--mut)'}));return w}
+    const sel=new Set(),lst=E('div'),del=E('button','tbtn dng',delText);
+    lst.style.cssText='max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:2px';
+    const upd=()=>{let b=0;d.items.forEach(i=>{if(sel.has(i.path))b+=i.size});del.textContent=sel.size?('Delete '+sel.size+' \u00b7 '+fmt(b)):delText;del.disabled=!sel.size;del.style.opacity=sel.size?1:.5};
+    d.items.forEach(i=>{const r=E('div'),c=E('input'),t=E('div'),n=E('div'),sm=E('small'),z=E('span');
+      r.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;cursor:pointer';c.type='checkbox';c.style.flexShrink='0';
+      t.style.cssText='flex:1;min-width:0';n.style.cssText='font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';n.textContent=nm(i.path);
+      sm.style.cssText='display:block;color:var(--mut);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';sm.textContent=dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago';
+      z.style.cssText='font-size:12px;white-space:nowrap';z.textContent=fmt(i.size);t.append(n,sm);r.append(c,t,z);
+      const tg=()=>{c.checked?sel.add(i.path):sel.delete(i.path);upd()};c.onchange=tg;r.onclick=e=>{if(e.target!==c){c.checked=!c.checked;tg()}};lst.append(r)});
+    const row=E('div');row.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
+    const all=E('button','tbtn','Select all');all.onclick=()=>{const on=sel.size<d.items.length;lst.querySelectorAll('input').forEach((c,k)=>{c.checked=on;on?sel.add(d.items[k].path):sel.delete(d.items[k].path)});upd()};
+    del.onclick=async()=>{if(!sel.size)return;
+      if(!await dlg({title:'Delete '+sel.size+' file'+(sel.size===1?'':'s')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:[...sel]});watchJob(r.job);toast('Deleting\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+      if(live())start()};
+    row.append(all,del);w.append(lst,row);upd();return w}
+  function draw(){
+    box.textContent='';if(!R)return;
+    sub.textContent=fmt(R.free)+' free of '+fmt(R.total);
+    // recycle bin
+    const bw=E('div');bw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px';
+    const bt=E('div');bt.style.flex='1';bt.append(E('b','','Recycle bin \u00b7 '+fmt(R.bin.bytes)),Object.assign(E('small','',R.bin.items+(R.bin.items===1?' item':' items')+' still use space on the phone'),{style:'display:block;color:var(--mut)'}));
+    const be=E('button','tbtn dng','Empty bin');be.disabled=!R.bin.items;be.style.opacity=R.bin.items?1:.5;
+    be.onclick=async()=>{if(!await dlg({title:'Empty the Recycle bin?',msg:'Deletes '+R.bin.items+' item(s) for good.',ok:'Empty'}))return;
+      try{await api('POST','/api/bin',{op:'empty'});toast('Emptying the bin\u2026',3000)}catch(e){toast('\u26a0 '+e.message,5000);return}
+      setTimeout(()=>{if(live())start()},2500)};
+    const bo=E('button','tbtn','Open');bo.onclick=()=>openBin();bw.append(bt,bo,be);box.append(bw);
+    box.append(sec('Large files','100 MB or more, biggest first.',R.big,'Delete selected'),
+      sec('Old downloads','In Download, not changed for 90 days.',R.old,'Delete selected'),
+      sec('Installers','APK files you may no longer need.',R.apk,'Delete selected'));
+    const dw=E('div');dw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px';
+    const dt=E('div');dt.style.flex='1';dt.append(E('b','','Duplicate pictures'),Object.assign(E('small','','Finds copies in DCIM, Pictures and Download; you choose what to keep.'),{style:'display:block;color:var(--mut)'}));
+    const db=E('button','tbtn fill','Find');db.onclick=()=>doDups(['/DCIM','/Pictures','/Download'],false);dw.append(dt,db);box.append(dw)}
+  async function start(){
+    sub.textContent='Scanning\u2026';
+    try{await api('POST','/api/cleanup',{op:'start'})}catch(e){sub.textContent='\u26a0 '+e.message;return}
+    for(;;){
+      await new Promise(r=>setTimeout(r,1000));if(!live())return;
+      let st;try{st=await api('GET','/api/cleanup',null,10000)}catch(e){sub.textContent='\u26a0 '+e.message;return}
+      if(st.running){sub.textContent='Scanning\u2026 '+st.scanned+' files';continue}
+      if(st.error){sub.textContent='\u26a0 '+st.error;return}
+      R=st.result;draw();return}}
+  start()}
+let FUTOK=null;
 async function openBin(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const tok=BINTOK={};const live=()=>BINTOK===tok;
@@ -4509,6 +4572,7 @@ function drawerRender(){
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
     if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
+    bd.append(dItem({lead:ic('refresh','s24'),title:'Free up space',sub:'Large files, old downloads, duplicates',onclick:()=>{drawerClose();openFreeUp()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',cls:'bin',onclick:()=>{drawerClose();openBin()}}));   // last row of the menu, black
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
