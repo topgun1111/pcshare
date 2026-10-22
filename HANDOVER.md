@@ -1,5 +1,9 @@
 # LANShare - Project Handover
 
+> **READ FIRST - two standing rules from the owner (2026-10-22)**
+> 1. **Token economy.** All coding is done on *free* Claude accounts, so tokens are scarce. Do not waste them: read only the files you need (grep / `sed -n` ranges, never `cat` whole big files), no long explanations or repeated summaries, patch with small scripted edits instead of rewriting files, no unrequested extras, keep replies short.
+> 2. **Always deliver the WHOLE app as a zip.** After any change, hand over the complete project zip (every app file, updated files included), not only the changed files. Exclude only `build/` and `.gradle/`; name it `pcshare-<topic>-partN.zip`, root folder `pcshare/`, and update this handover before zipping.
+
 One handover for the whole project (Android app + PC helper tools). It replaces the ten separate `HANDOVER*.md` files, which were merged on 2026-10-21; their full text stays in git history (last commit that still has them: `ce433bc`).
 
 **How to use this file**
@@ -175,6 +179,12 @@ A copy / move that loses its link no longer starts the file again; an interrupte
 - **SMB screen redesign + edit (2026-10-12)**: `openSmb` (ui.html) shows one rounded card per saved PC (status dot, name, `\\host\share`, chips, edit / remove; second tap on remove = "Remove?" for 3 s), found-on-the-network list with Rescan (`/api/smbscan`), one shared Add / Edit form (inline error). Edit: `POST /api/smb` with `edit:<id>` -> `Smb.update` keeps id and position, empty password keeps the stored one, new login tested first, cached connection / state dropped, the open PC tab reloads at `/`. New optional **Share** field limits a PC to one share.
 - **Duplicate finder on SMB**: `Endpoint.walkEach(v, visit)` (default = `walk`) streams the walk (reconnect-safe in `SmbFs`); `DupFinder` updates its label every 0.3 s and honours Cancel (before it looked frozen at "0%").
 - **FTP / FTPS** (`FtpFs.kt`, saved under `"ftp"` in `lanshare.json`) and **SFTP** (`SftpFs.kt`, trust-on-first-use host key pinned in the saved server): read-only seekable remote files (REST + RETR / re-open at the current position after a drop), borrowed connection pool. **No handover existed for these two**: treat 5.5 as incomplete and document them when you next touch them.
+- **FTP / FTPS speed-up (planned in 5 parts, 2026-10-22; Android side NOT compiled / device-tested)** - goal: opening folders and listing files as fast as WinSCP / FileZilla / Solid Explorer.
+  - **Part 1 (written)** - listing engine in `FtpFs.kt` + new `core/FtpCache.kt`: (a) in-memory LRU listing cache (300 folders / 60 000 entries, fresh for 30 s, `FtpCache.freshMs`); `ls()` answers a hit without leasing a connection. (b) Every write drops the folder, all parents and (remove / rename / move) the subtree: `FtpFs.dirty`. `names()` and the name-clash checks (rename / move) never use the cache. (c) `entry()` (used by open / stat / walk / rename / move) reads the parent's cached listing instead of listing the parent again. (d) Single-flight: identical concurrent listings take `FtpCache.lock` and share one request. (e) FEAT asked once per server at the first login (`FtpPool.feat`); no MLSD/MLST in FEAT -> straight to LIST (no failed MLSD per folder); with MLST `OPTS MLST type;size;modify;` is sent per connection (shorter lines). (f) `SYST` remembered per server (`FtpPool.syst`) and applied through `FTPClientConfig` so new connections skip it; only "UNIX"/"WINDOWS" answers are stored. (g) Symlink folder-or-file answers remembered (`FtpPool.links`, no CWD per link on the next listing). (h) `TCP_NODELAY` on the control socket. (i) `Endpoint.invalidate(v)` (default no-op) + route `GET /p/ls?path=..&fresh=1` drops the cached listing first - the UI does not send `fresh=1` yet (part 5).
+  - **Part 2 (todo)** - disk-persisted listings (instant first paint from the last known folder) + stale-while-revalidate: serve the old list at once, refresh in the background, tell the page/native list to re-render when it differs.
+  - **Part 3 (todo)** - connection warm-up when a server is opened (login + FEAT + OPTS before the first tap), keep-alive tuning, prefetch of the visible sub-folders and the parent folder, FTPS TLS session reuse for data connections.
+  - **Part 4 (todo)** - `stat` through MLST (no parent listing), folder totals / search / walk fill the cache, cap + parallelism for symlink checks, same cache for `SftpFs`.
+  - **Part 5 (todo)** - UI: pull-to-refresh sends `fresh=1`, "Clear FTP cache" + cache TTL setting, spinner only on a real cache miss, `tools/ftp_smoke_test.py` cases (cache hit / invalidation after upload / rename), timing log, final doc cleanup of 5.5.
 - `RemoteThumbs.kt`: thumbnails for other devices / SMB through the endpoint's `Source` (JPEG <= 400 px, disk cache keyed by dev + path + size + mtime) for the native list.
 
 ### 5.6 Root support (2026-10-16)
@@ -871,7 +881,6 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
-- **2026-10-22** - Fix: print button in the picture viewer (also PDF viewer and main screen) failed with "Can print only from an activity" because `UiScale.wrap()` hides the Activity from `PrintManager`; `ImageViewerActivity`, `PdfViewerActivity`, `MainActivity` now keep the raw base context (`rawBase`) and serve `PRINT_SERVICE` from it, so Android's full print dialog (All printers, incl. LANShare PC print) opens; Kotlin not compiled, not device-tested [9.7].
 - **2026-10-22** - Print space part 13c: Recent prints list from kept sessions (previews, Edit, Print again, remove / clear, keep / size settings) in ui.html + `tools/psess_13c_test.js`; JS syntax-checked, logic test OK, not run on a device [9.7].
 - **2026-10-22** - Print space part 13b: `phSave` / `phMarkSid` in ui.html save a session after every Print space print (JS syntax-checked, not run); part 13c (Recent prints list UI) open, plan in 9.7 "Part 13".
 - **2026-10-22** - Print space part 13a: Recent prints keep full snapshots (`core/PrintSessions.kt`, `PrintSpace.adopt`, routes `pssess` / `pssprev`); Kotlin not compiled; part 13b (ui.html) open, plan in 9.7 "Part 13".
@@ -932,7 +941,7 @@ java/com/lanshare/app/                      screens + native views
   ops/JobView JobOverlay                                                                      (5.3)
   pe/FtpServer PeDiscovery PePc PePrefs PeService PeTls                                       (10.2)
   core/ SheetLayout PsLayoutJson PsLayoutApi PsRenderGeom PrintSpace PrintSpaceRender Core Cfg Routes InProc MiniHttp Net Util Discovery Endpoint Jobs Partials Bin Albums Media Thumbs VideoThumbs RemoteThumbs
-        LocalFs RemoteFs SmbFs FtpFs SftpFs RootFs RootShell ArchiveFs ArcEdit ZipEdit Zip64Writer DupFinder
+        LocalFs RemoteFs SmbFs FtpFs FtpCache SftpFs RootFs RootShell ArchiveFs ArcEdit ZipEdit Zip64Writer DupFinder
         PrintPrep PrintPreview PdfPrint WifiPrint WifiPrinters Ipp  PcText Notes  ImgSearch ClipEngine
         StorageScan StorageStore Volumes  OfficeWeb  PerfMarks  DocxText (unused)
   core/office/ MiniXml OoxmlPackage NumFmt XlsxModel/Reader/Html/Editor/Writer DocxModel/Reader/Html/Editor/Writer DocReader XlsReader OleFile
@@ -956,3 +965,4 @@ pcprint.py   VERSION   build.gradle.kts / settings.gradle.kts / gradle.propertie
 - **2026-10-22** - Print space part 12a: undo / redo of free edits + saved layouts keep free placement (`ui.html` only; JS syntax-checked, not run).
 - **2026-10-22** - Print space part 12b: front ghost on Back tab (Free), numeric rotation / size dialog, Fit width, Align (`ui.html`, `tools/psfree_12b_test.js`; not run on device).
 - **2026-10-22** - Print space part 12c: multi-select + group align / distribute (`ui.html`, `tools/psfree_12c_test.js`), PDF through the share sheet (`PrintSpace.addStream`, manifest); not compiled / run on device.
+- **2026-10-22** - FTP speed-up part 1 of 5: listing cache + invalidation, single-flight, FEAT-driven MLSD/LIST choice, OPTS MLST, SYST + symlink memory, TCP_NODELAY, `fresh=1` on `ls` (`FtpFs.kt`, `FtpCache.kt`, `Endpoint.kt`, `Routes.kt`; not compiled / run on device) [5.5].

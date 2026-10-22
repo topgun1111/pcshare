@@ -34,6 +34,8 @@ interface Endpoint {
     fun ls(v: String): List<Item>
     /** Same entries without the "N items" count of every sub-folder (those counts read each folder: minutes on a big phone root). For name / size checks. */
     fun lsFast(v: String): List<Item> = ls(v)
+    /** Forget any cached listing of [v] (pull-to-refresh / "fresh=1"): the next [ls] asks the server again. Default: nothing is cached. */
+    fun invalidate(v: String) {}
     fun search(v: String, q: String): SearchResult
     fun names(v: String): MutableSet<String>
     fun walk(v: String): List<WalkItem>

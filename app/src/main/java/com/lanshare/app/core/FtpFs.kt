@@ -166,7 +166,9 @@ object Ftp {
     })
 }
 
-internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null; @Volatile var noCopy = false }   // most servers allow only a few logins per client
+internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null; @Volatile var noCopy = false
+    @Volatile var syst: String? = null   // SYST answer, asked once per server: later connections skip that round trip when listing
+    val links = ConcurrentHashMap<String, Boolean>() }   // symlink path -> is it a folder (one CWD round trip each, remembered)   // most servers allow only a few logins per client
 
 /** One borrowed control connection. [release] puts it back (keep = true, only when no transfer is pending) or closes it. */
 internal class Lease(val c: FTPClient, private val pool: FtpPool) {
@@ -270,7 +272,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         private val pools = ConcurrentHashMap<String, FtpPool>()
         fun create(cfg: JSONObject): Endpoint = if (cfg.optString("proto") == "sftp") SftpFs(cfg) else FtpFs(cfg)
         /** A server was removed / edited: close its idle connections now. */
-        fun forget(id: String) { SftpFs.forget(id); pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
+        fun forget(id: String) { SftpFs.forget(id); FtpCache.clear(id); pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
         private val IDLE_MAX_MS = 25_000L
         private const val HASH_MAX = 512L shl 20   // larger files: size check only (the server would need minutes to hash them)
     }
@@ -297,6 +299,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         try {
             c.connect(ip, port)
             c.soTimeout = timeoutMs
+            c.setTcpNoDelay(true)   // small command / reply lines must not wait for Nagle
             c.setDataTimeout(timeoutMs)
             if (!FTPReply.isPositiveCompletion(c.replyCode)) throw IOException("The server refused the connection: " + c.replyString.trim())
             val u = user.ifEmpty { "anonymous" }
@@ -307,6 +310,9 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             c.setFileType(FTP.BINARY_FILE_TYPE)
             c.setControlKeepAliveTimeout(20)   // NOOP on the control line while a long transfer runs (idle timeouts of servers)
             c.setControlKeepAliveReplyTimeout(5_000)
+            pool.syst?.let { try { c.configure(org.apache.commons.net.ftp.FTPClientConfig(it)) } catch (_: Throwable) {} }   // no SYST round trip before the first LIST
+            val f = feats(c)   // asked once per server
+            if ("MLST" in f) try { c.sendCommand("OPTS", "MLST type;size;modify;") } catch (_: IOException) {}   // shorter MLSD lines: only what the list shows
             return c
         } catch (e: Throwable) { try { c.disconnect() } catch (_: Exception) {}; throw e }
     }
@@ -401,12 +407,15 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         Item(f.name, dir, if (dir) 0L else maxOf(f.size, 0L), try { (f.timestamp?.timeInMillis ?: 0L) / 1000 } catch (_: Exception) { 0L }, null, null, f.name.startsWith("."))
 
     private fun listRaw(c: FTPClient, path: String): List<Item> {
-        var arr: Array<FTPFile>? = try { c.mlistDir(path) } catch (_: IOException) { null }
+        val fe = pool.feat
+        val tryMlsd = fe == null || "MLSD" in fe || "MLST" in fe   // FEAT says no MLSD: straight to LIST (saves a failed command on every folder)
+        var arr: Array<FTPFile>? = if (tryMlsd) (try { c.mlistDir(path) } catch (_: IOException) { null }) else null
         var mlsd = arr != null && FTPReply.isPositiveCompletion(c.replyCode)
         if (!mlsd) {
-            if (c.replyCode == 550 || c.replyCode == 553) throw replyErr(c)   // folder missing / not allowed: LIST would only say the same
+            if (tryMlsd && (c.replyCode == 550 || c.replyCode == 553)) throw replyErr(c)   // folder missing / not allowed: LIST would only say the same
             arr = c.listFiles(path)
             if (!FTPReply.isPositiveCompletion(c.replyCode)) throw replyErr(c)
+            if (pool.syst == null) try { c.systemType?.let { st -> if ("UNIX" in st.uppercase() || "WINDOWS" in st.uppercase()) pool.syst = st } } catch (_: Exception) {}
         }
         val out = ArrayList<Item>()
         var linkChecks = 0
@@ -419,7 +428,8 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             var dir = f.isDirectory
             if (f.isSymbolicLink && linkChecks < 40) {   // a link: folder or file? try to enter it (cap, one round trip each)
                 linkChecks++
-                dir = try { c.changeWorkingDirectory(vjoin(path, n)) } catch (_: IOException) { false }
+                val lk = vjoin(path, n)
+                dir = pool.links[lk] ?: (try { c.changeWorkingDirectory(lk) } catch (_: IOException) { false }).also { r -> if (pool.links.size > 2000) pool.links.clear(); pool.links[lk] = r }
             }
             if (!f.isDirectory && !f.isFile && !f.isSymbolicLink) continue   // devices, pipes, ...
             out.add(toItem(f, dir))
@@ -427,19 +437,57 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         return out
     }
 
-    /** The entry [v] itself (null = missing). */
-    private fun entry(c: FTPClient, v: String): Item? {
+    private fun parentAbs(abs: String) = abs.substringBeforeLast('/', "").ifEmpty { "/" }
+
+    /** A listing through the cache ([FtpCache]); [fresh] skips the cached copy. Identical concurrent listings share one request. */
+    private fun listCached(c: FTPClient, abs: String, fresh: Boolean = false): List<Item> {
+        if (!fresh) FtpCache.get(id, abs)?.let { return it }
+        synchronized(FtpCache.lock(id, abs)) {
+            if (!fresh) FtpCache.get(id, abs)?.let { return it }
+            val r = listRaw(c, abs)
+            FtpCache.put(id, abs, r)
+            return r
+        }
+    }
+
+    /** After a change on the server: forget the listing of [v], of every parent up to the root, and of the subtree below it when [tree]. */
+    private fun dirty(v: String, tree: Boolean = false) {
+        try {
+            var a = fp(v)
+            FtpCache.drop(id, a, tree)
+            while (a != "/") { a = parentAbs(a); FtpCache.drop(id, a, false) }
+        } catch (_: Exception) {}
+    }
+
+    override fun invalidate(v: String) { try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {} }
+
+    /** The entry [v] itself (null = missing). Reads the parent's cached listing unless [fresh] (name-clash checks). */
+    private fun entry(c: FTPClient, v: String, fresh: Boolean = false): Item? {
         val n = vnorm(v)
         if (n == "/") return Item("/", true, 0L, 0L)
         val parent = fp(vdir(n))
         val want = vbase(n)
-        return listRaw(c, parent).firstOrNull { it.name == want }
+        return listCached(c, parent, fresh).firstOrNull { it.name == want }
     }
 
-    override fun ls(v: String): List<Item> = op { c -> listRaw(c, fp(v)) }
+    /** Same, only when the parent is already cached: no connection needed. */
+    private fun cachedEntry(v: String): Item? {
+        val n = vnorm(v)
+        if (n == "/") return null
+        val want = vbase(n)
+        return FtpCache.get(id, fp(vdir(n)))?.firstOrNull { it.name == want }
+    }
 
-    override fun names(v: String): MutableSet<String> =
-        try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+    override fun ls(v: String): List<Item> {
+        val a = fp(v)
+        FtpCache.get(id, a)?.let { return it }   // cache hit: no connection, no round trip
+        return op { c -> listCached(c, a) }
+    }
+
+    override fun names(v: String): MutableSet<String> {   // name-clash checks: never from the cache
+        try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {}
+        return try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+    }
 
     private fun searchIn(c: FTPClient, v: String, ql: String, out: MutableList<Item>, end: Long): Boolean {
         val stack = ArrayDeque<String>()
@@ -519,7 +567,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     override fun open(v: String): Source {
         val p = fp(v)
-        val me = op { c -> entry(c, v) } ?: throw NotFound("No such file or directory")
+        val me = cachedEntry(v) ?: op { c -> entry(c, v) } ?: throw NotFound("No such file or directory")
         if (me.dir) throw IOException("Is a directory")
         val sz = if (me.size > 0) me.size else (op { c -> c.getSize(p)?.trim()?.toLongOrNull() } ?: 0L)   // some listings carry no size: ask with SIZE
         return FtpSource(this, p, sz)
@@ -537,7 +585,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         }
     }
 
-    override fun mkdir(v: String) { op { c -> mkdirs(c, fp(v)) } }
+    override fun mkdir(v: String) { try { op { c -> mkdirs(c, fp(v)) } } finally { dirty(v) } }
 
     // ------------------------------------------------------------------ checksums
     private class HashPlan(val cmd: String, val jdk: String?, val len: Int, val opt: String?)
@@ -595,12 +643,13 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     }
 
     // ------------------------------------------------------------------ writing
-    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) = upload(v, input, size, 0L, null, cb)
+    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) { try { upload(v, input, size, 0L, null, cb) } finally { dirty(v) } }
 
     /** Server-side copy (ProFTPD mod_copy: SITE CPFR / CPTO). False when the server has no such command or refuses; the size of the copy is checked. */
     override fun copyWithin(v: String, toV: String): Boolean {
         if (pool.noCopy || vnorm(v) == "/" || vnorm(toV) == "/") return false
         val a = fp(v); val b = fp(toV)
+        dirty(toV)
         return op(false) { c ->
             mkdirs(c, b.substringBeforeLast('/', ""))
             if (c.sendCommand("SITE", "CPFR $a") !in 300..399) { if (c.replyCode in 500..504) pool.noCopy = true; return@op false }
@@ -617,6 +666,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     override fun setMtime(v: String, sec: Long) {
         if (sec <= 0 || vnorm(v) == "/") return
         val path = fp(v)
+        dirty(v)
         op { c ->
             if ("MFMT" in feats(c)) {
                 val f = java.text.SimpleDateFormat("yyyyMMddHHmmss", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
@@ -638,7 +688,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
         if (size < 0 || offset < 0 || offset > size) throw BadReq("bad resume offset")
-        upload(v, input, size, offset, tag, cb)
+        try { upload(v, input, size, offset, tag, cb) } finally { dirty(v) }
     }
 
     private fun commit(c: FTPClient, p: String, tmp: String) {
@@ -740,7 +790,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     override fun remove(v: String, progress: ((String) -> Unit)?) {
         val n = vnorm(v)
         if (n == "/") throw Denied("cannot delete the server root")
-        op(false) { c ->
+        try { op(false) { c ->
             val me = entry(c, n) ?: return@op
             val fails = ArrayList<String>()
             if (me.dir) {
@@ -752,27 +802,27 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             if (fails.isNotEmpty())
                 throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
             Unit
-        }
+        } } finally { dirty(n, true) }
     }
 
     override fun rename(v: String, newName: String) {
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
         if (vnorm(v) == "/") throw BadReq("cannot rename the root")
         val dst = vjoin(vdir(v), newName)
-        op(false) { c ->
-            val clash = entry(c, dst)
+        try { op(false) { c ->
+            val clash = entry(c, dst, true)
             if (clash != null && !vbase(v).equals(newName, ignoreCase = true)) throw Exists("name already exists")
             if (!c.rename(fp(v), fp(dst))) throw replyErr(c)
             Unit
-        }
+        } } finally { dirty(v, true); dirty(dst, true) }
     }
 
     override fun move(v: String, toV: String) {
-        op(false) { c ->
-            if (entry(c, toV) != null) throw Exists("name already exists")
+        try { op(false) { c ->
+            if (entry(c, toV, true) != null) throw Exists("name already exists")
             mkdirs(c, fp(vdir(toV)))
             if (!c.rename(fp(v), fp(toV))) throw replyErr(c)
             Unit
-        }
+        } } finally { dirty(v, true); dirty(toV, true) }
     }
 }
