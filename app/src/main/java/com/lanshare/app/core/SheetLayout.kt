@@ -65,15 +65,31 @@ object SheetLayout {
         val fit: Fit = Fit.FIT,
         val flip: Flip = Flip.LONG,
         val autoRot: Boolean = true,
-        val reverse: Boolean = false
+        val reverse: Boolean = false,
+        /** Free placement: the grid is ignored and every side carries [Free] items placed anywhere (move / turn / scale). */
+        val free: Boolean = false
     ) {
         companion object {
             fun preset(n: Int): Grid = PRESETS[n] ?: Grid(1, 1)
         }
     }
 
-    /** One sheet. front / back have one entry per slot: index into the picture list, or null = empty. */
-    data class Sheet(val front: List<Int?>, val back: List<Int?>) {
+    /**
+     * Free placement: one picture put anywhere on a side. Fractions of the sheet so the layout survives a paper change:
+     * [cx] / [cy] = centre as a fraction of the sheet width / height, [w] = drawn width of the UNTURNED picture as a fraction of the sheet
+     * width (height follows the picture's proportions), [rot] = extra clockwise turn in degrees (any value, on top of the picture's own turn).
+     * The order of a list is the stacking order (last = on top). Pictures may overlap and hang over the edge (they are clipped by the sheet).
+     */
+    data class Free(val pic: Int, val cx: Double, val cy: Double, val w: Double, val rot: Double = 0.0)
+
+    const val FREE_MIN_W = 0.03
+    const val FREE_MAX_W = 3.0
+    const val MAX_FREE = 60
+
+    /** One sheet. front / back have one entry per slot: index into the picture list, or null = empty. [ff] / [fb] = free items of the front / back (spec.free). */
+    data class Sheet(val front: List<Int?>, val back: List<Int?>, val ff: List<Free> = emptyList(), val fb: List<Free> = emptyList()) {
+        fun free(s: Side): List<Free> = if (s == Side.FRONT) ff else fb
+        fun withFree(s: Side, l: List<Free>): Sheet = if (s == Side.FRONT) copy(ff = l) else copy(fb = l)
         fun side(s: Side): List<Int?> = if (s == Side.FRONT) front else back
         fun with(s: Side, slot: Int, pic: Int?): Sheet {
             val l = side(s).toMutableList()
@@ -99,7 +115,10 @@ object SheetLayout {
         val y: Double get() = cy - h / 2
     }
 
-    data class Page(val sheet: Int, val side: Side, val cells: List<Cell>)
+    /** A free item placed on a page, in points: draws the UNTURNED picture [dw] x [dh] centred on ([cx], [cy]) turned by [rot] degrees (picture turn included). */
+    data class FreeCell(val pic: Int, val cx: Double, val cy: Double, val dw: Double, val dh: Double, val rot: Double)
+
+    data class Page(val sheet: Int, val side: Side, val cells: List<Cell>, val free: List<FreeCell> = emptyList())
 
     /** pages are in print order: sheet 0 front, sheet 0 back, sheet 1 front ... (back pages only when any sheet has a back). */
     data class Layout(
@@ -269,7 +288,7 @@ object SheetLayout {
     /** Drops EMPTY sheets at the end only (a gap in the middle is a choice). */
     fun trim(plan: Plan): Plan {
         var n = plan.sheets.size
-        while (n > 0 && plan.sheets[n - 1].front.all { e -> e == null } && plan.sheets[n - 1].back.all { e -> e == null }) n--
+        while (n > 0 && isBlank(plan.sheets[n - 1])) n--
         return plan.copy(sheets = plan.sheets.take(n))
     }
 
@@ -277,9 +296,11 @@ object SheetLayout {
     fun removeSheet(plan: Plan, sheet: Int): Plan =
         if (sheet !in plan.sheets.indices) plan else plan.copy(sheets = plan.sheets.filterIndexed { i, _ -> i != sheet })
 
-    fun placedCount(plan: Plan): Int = plan.sheets.sumOf { sh -> sh.front.count { e -> e != null } + sh.back.count { e -> e != null } }
+    private fun isBlank(sh: Sheet): Boolean = sh.front.all { e -> e == null } && sh.back.all { e -> e == null } && sh.ff.isEmpty() && sh.fb.isEmpty()
 
-    fun hasBack(plan: Plan): Boolean = plan.sheets.any { sh -> sh.back.any { e -> e != null } }
+    fun placedCount(plan: Plan): Int = plan.sheets.sumOf { sh -> sh.front.count { e -> e != null } + sh.back.count { e -> e != null } + sh.ff.size + sh.fb.size }
+
+    fun hasBack(plan: Plan): Boolean = plan.sheets.any { sh -> sh.back.any { e -> e != null } || sh.fb.isNotEmpty() }
 
     // ---------------------------------------------------------------- geometry
 
@@ -351,17 +372,89 @@ object SheetLayout {
             for (side in Side.values()) {
                 if (side == Side.BACK && !anyBack) continue
                 val cells = ArrayList<Cell>()
-                sheet.side(side).forEachIndexed { slot, e ->
+                if (!s.free) sheet.side(side).forEachIndexed { slot, e ->
                     if (e != null && e in pics.indices && slot < g.per) {
                         val c = cellFor(slot, e, pics[e], g, s, sw, sh)
                         score += c.fk * c.fk * max(1, pics[e].w).toDouble() * max(1, pics[e].h).toDouble()
                         cells.add(c)
                     }
                 }
-                pages.add(Page(si, side, cells))
+                val fr = ArrayList<FreeCell>()
+                for (f in sheet.free(side)) {
+                    if (f.pic !in pics.indices || fr.size >= MAX_FREE) continue
+                    val fc = freeCell(f, pics[f.pic], sw, sh)
+                    score += (fc.dw * fc.dh)
+                    fr.add(fc)
+                }
+                pages.add(Page(si, side, cells, fr))
             }
         }
         return Layout(portrait, sw, sh, g, pages, score)
+    }
+
+    /** Free item -> points. The picture's own turn (multiples of 90) is added to the item's turn; a quarter turn swaps width and height of the LOOK, not of the drawing. */
+    fun freeCell(f: Free, p: Pic, sw: Double, sh: Double): FreeCell {
+        val pw = max(1, p.w).toDouble()
+        val ph = max(1, p.h).toDouble()
+        val dw = f.w.coerceIn(FREE_MIN_W, FREE_MAX_W) * sw
+        val dh = dw * ph / pw
+        return FreeCell(f.pic, f.cx.coerceIn(-1.0, 2.0) * sw, f.cy.coerceIn(-1.0, 2.0) * sh, dw, dh, (norm(p.rot) + f.rot) % 360.0)
+    }
+
+    /** Replaces the free items of one side (the editor sends the whole side after a gesture). Sheets are added when [sheet] is the next one. */
+    fun setFree(plan: Plan, spec: Spec, sheet: Int, side: Side, items: List<Free>): Plan {
+        if (sheet !in plan.sheets.indices) return plan
+        val l = plan.sheets.toMutableList()
+        l[sheet] = l[sheet].withFree(side, items.take(MAX_FREE))
+        return plan.copy(sheets = l)
+    }
+
+    /**
+     * Puts picture [pic] on a side as a free item, as big as fits in half the sheet (both ways), at ([cx], [cy]) (fractions) or - when null - near the centre,
+     * each new item a little off the last so they do not hide each other. A plan with no sheet gets one. Same item can be added many times.
+     */
+    fun addFree(plan0: Plan, spec: Spec, pics: List<Pic>, sheet: Int, side: Side, pic: Int, cx: Double?, cy: Double?): Plan {
+        if (pic !in pics.indices) return plan0
+        val plan = if (plan0.sheets.isEmpty()) addSheet(plan0, spec) else plan0
+        if (sheet !in plan.sheets.indices) return plan
+        val pp = paper(clean(spec).paper)
+        val sw = if (plan.portrait) pp.w else pp.h
+        val sh = if (plan.portrait) pp.h else pp.w
+        val p = pics[pic]
+        val pw = max(1, p.w).toDouble()
+        val ph = max(1, p.h).toDouble()
+        val turned = norm(p.rot) % 180 != 0
+        // unit item: width = whole sheet width (dw = sw), height = sw * ph / pw; the footprint swaps for a quarter turn
+        val fw = if (turned) sw * ph / pw else sw
+        val fh = if (turned) sw else sw * ph / pw
+        val k = min(0.5 * sw / fw, 0.5 * sh / fh).coerceIn(FREE_MIN_W, FREE_MAX_W)
+        val cur = plan.sheets[sheet].free(side)
+        val off = 0.04 * (cur.size % 5)
+        val it = Free(pic, cx ?: (0.5 + off - 0.08), cy ?: (0.5 + off - 0.08), k, 0.0)
+        return setFree(plan, spec, sheet, side, cur + it)
+    }
+
+    /**
+     * Grid -> free: every placed picture becomes a free item at the place it has now (FIT size / FILL box), so the person can start from
+     * a grid and then move things. Back slots keep the way they are READ. Result has the same orientation; set spec.free afterwards.
+     */
+    fun gridToFree(spec0: Spec, pics: List<Pic>, plan: Plan): Plan {
+        val s = clean(spec0).copy(free = false, fit = Fit.FIT)   // FILL crops inside the cell; a free item is not cropped, so it starts at its FIT size
+        val lay = compose(s, pics, plan)
+        val sheets = plan.sheets.mapIndexed { i, sh ->
+            fun conv(side: Side): List<Free> {
+                val pg = lay.pages.firstOrNull { it.sheet == i && it.side == side } ?: return emptyList()
+                return pg.cells.map { c ->
+                    val pw = max(1, pics[c.pic].w).toDouble()
+                    // turn the cell shows = c.rot; item turn = c.rot - picture turn
+                    val own = norm(pics[c.pic].rot)
+                    val w = pw * c.k
+                    Free(c.pic, c.cx / lay.sw, c.cy / lay.sh, w / lay.sw, ((c.rot - own) % 360 + 360) % 360.0)
+                }
+            }
+            sh.copy(ff = conv(Side.FRONT), fb = conv(Side.BACK))
+        }
+        return plan.copy(sheets = sheets)
     }
 
     private fun chooseOrient(s: Spec, pics: List<Pic>, seq: List<Int>): Boolean {
