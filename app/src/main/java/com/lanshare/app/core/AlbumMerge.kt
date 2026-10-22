@@ -84,8 +84,10 @@ object AlbumMerge {
                                         "skip_all" -> { sticky = "skip"; act = "skip" }
                                         "newer_all" -> { sticky = "newer"; act = "newer" }
                                         "both_all" -> { sticky = "both"; act = "both" }
+                                        "unsim_all" -> { sticky = "unsim"; act = "unsim" }
                                     }
                                 }
+                                if (act == "unsim") act = "skip"   // only look-alikes get here (different pictures were renamed above)
                                 if (act == "newer") act = if (f.mtime > ex.mtime + 2) "replace" else "skip"
                                 when (act) {
                                     "skip" -> { left++; job.files++; job.done++; job.addLog("S", f.name); continue }

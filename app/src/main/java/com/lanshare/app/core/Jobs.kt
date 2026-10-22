@@ -918,7 +918,9 @@ object Jobs {
                                     else if (act == "skip_all") { sticky = "skip"; act = "skip" }
                                     else if (act == "newer_all") { sticky = "newer"; act = "newer" }
                                     else if (act == "both_all") { sticky = "both"; act = "both" }
+                                    else if (act == "unsim_all") { sticky = "unsim"; act = "unsim" }
                                 }
+                                if (act == "unsim") act = if (src.id == dst.id && DupFinder.look(src, sp, w.size, target, ex.size) != null) "skip" else "both"   // "only if not similar": look-alike stays where it is, a different picture with the same name is kept next to it
                                 if (act == "resume") act = if (ex.size == w.size) "done" else "replace"   // continuing: a complete file stays, anything else is copied again (from its .lspart when there is one)
                                 if (act == "done") { job.files++; if (counting) job.done += w.size; continue }   // verified complete: neither "kept" nor "skipped"
                                 if (act == "newer") {   // replace only when the new file is newer (2 s tolerance: FAT / SMB clocks)

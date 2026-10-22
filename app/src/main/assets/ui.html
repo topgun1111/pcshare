@@ -4050,9 +4050,9 @@ function lvFeed(id,j){
         pv.append(side('Existing',a.dPath,a.dstSize,a.dstMtime,a.srcSize,a.srcMtime),side('New',a.sPath,a.srcSize,a.srcMtime,a.dstSize,a.dstMtime))}
       const g=E('div');g.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
       const allC=E('label'),allI=E('input');allI.type='checkbox';allC.style.cssText='display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px';allC.append(allI,document.createTextNode('Do this for all remaining files'));
-      [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Keep both','both','tbtn'],['Replace if newer','newer','tbtn']].forEach(x=>{
+      [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Keep both','both','tbtn'],['Replace if newer','newer','tbtn']].concat(a.sDev==='local'&&a.dDev==='local'?[['Only if not similar','unsim','tbtn']]:[]).forEach(x=>{   // "Only if not similar": look-alike -> skipped, different picture -> kept next to it (with "all": decided per file)
         const b=E('button',x[2],x[0]);b.onclick=()=>{const ans=allI.checked?x[1]+'_all':x[1];L.answered=a.q;L.askBox.style.display='none';
-          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+ans).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
+          api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+ans).catch(e=>toast('⚠ '+e.message,4000))};if(x[1]==='unsim')b.style.gridColumn='1 / -1';g.append(b)});
       L.askBox.append(E('div','',a.look?'Same picture is already in the target album - replace?':'Already exists - replace?'),nm,...(pv?[pv]:[]),info,allC,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden||!lvOn())lvShow();
     if(L.askSeen!==a.q){L.askSeen=a.q;setTimeout(()=>{try{L.askBox.scrollIntoView({block:'nearest'})}catch(e){}},60)}
