@@ -1454,8 +1454,8 @@ let GCX=null;   // while an album is open: the viewers take their list / folder 
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
 function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;o._reload=null;GCX=null}
 /* move-to-album picker: existing albums of the same kind (pictures / videos) + "New album"; resolves the target folder path or null */
-function galPick(a){return new Promise(async res=>{
-  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Move to album'));
+function galPick(a,ttl){return new Promise(async res=>{
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',ttl||'Move to album'));
   const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const row=(t,sub,k,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));if(sub)lt.append(E('small','',sub));b.append(ld,lt);b.onclick=f;card.append(b)};
   row('New album','Creates a folder in '+(a.v?'Movies':'Pictures'),'newfolder',async()=>{
@@ -1527,9 +1527,17 @@ function galView(a){
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:'local',paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
     btn('copy','Copy',()=>clip('copy'));
     btn('cut','Move',async()=>{const ps=gp(),n=ps.length,dir=await galPick(a);if(!dir)return;
-      try{const cf=await askConflicts('local',dir,ps,'local');if(!cf)return;
+      try{const cf=await askConflicts('local',dir,ps,'local',true);if(!cf)return;
         await api('POST','/api/clip',{op:'cut',dev:'local',paths:ps});clr();
         const r=await api('POST','/api/paste',{dev:'local',dir,conflict:cf});watchJob(r.job);
+        if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
+        if(o._for===tok)reload()}
+      catch(e){toast('\u26a0 '+e.message,5000)}});
+    btn('dup','Copy/Move new',async()=>{const ps=gp();   // copy / move only what is not already in the target album (same picture in another name / size / quality is skipped)
+      const m=await dlg({title:'Copy or move if new',msg:'Pictures that already look the same in the target album (same picture, even with another name, size or quality) are skipped and stay where they are. All others are copied or moved.',ok:'Move',alt:'Copy'});if(!m)return;
+      const cut=m!=='alt',dir=await galPick(a,(cut?'Move':'Copy')+' if not similar to');if(!dir)return;
+      try{await api('POST','/api/clip',{op:cut?'cut':'copy',dev:'local',paths:ps});clr();
+        const r=await api('POST','/api/paste',{dev:'local',dir,conflict:'unsim'});watchJob(r.job);
         if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
         if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,5000)}});
@@ -1547,7 +1555,7 @@ function galView(a){
     pst.style.display='flex';
     pst.append(E('span','',(S.clip.op==='cut'?'Cut ':'Copied ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
     const pbn=E('button','tbtn fill','Paste here');
-    pbn.onclick=async()=>{try{const cf=await askConflicts('local',a.path,S.clip.paths,S.clip.dev);if(!cf)return;
+    pbn.onclick=async()=>{try{const cf=await askConflicts('local',a.path,S.clip.paths,S.clip.dev,true);if(!cf)return;
       const r=await api('POST','/api/paste',{dev:'local',dir:a.path,conflict:cf});watchJob(r.job);
       if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}
       if(o._for===tok)reload()}catch(e){toast('\u26a0 '+e.message,5000)}};
@@ -2529,7 +2537,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
   try{nlChPush()}catch(e){}}
 async function refreshClip(){try{S.clip=await api('GET','/api/clip')}catch(e){}renderBar()}
 async function setClip(op){try{S.clip=await api('POST','/api/clip',{op,dev:S.dev,paths:selPaths()});toast((op==='cut'?'Cut ':'Copied ')+S.sel.size+' item(s) - open a folder and tap Paste');S.sel.clear();render()}catch(e){toast('⚠ '+e.message,4000)}}
-async function doPaste(){try{const cf=await askConflicts(S.dev,S.path,(S.clip&&S.clip.paths)||[],S.clip&&S.clip.dev);if(!cf)return;const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path,conflict:cf});
+async function doPaste(){try{const cf=await askConflicts(S.dev,S.path,(S.clip&&S.clip.paths)||[],S.clip&&S.clip.dev,true);if(!cf)return;const r=await api('POST','/api/paste',{dev:S.dev,dir:S.path,conflict:cf});
   watchJob(r.job);if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}}catch(e){toast('⚠ '+e.message,5000)}}  // paste finished: drop the clipboard bar
 function pickDevice(f,t,extra,after){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',t||'Send to…'));
@@ -3210,8 +3218,8 @@ function mergeAlbums(ps){
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card);
   async function go(target){
     const rest=ps.filter(p=>p!==target);
-    if(!await dlg({title:'Merge '+ps.length+' albums?',msg:'Everything in '+rest.map(p=>p.split('/').pop()).join(', ')+' is moved into '+target.split('/').pop()+'.\nSame name + same picture: you decide. Same name + different picture: renamed. Emptied albums are removed.',ok:'Merge'}))return;
-    try{const r=await api('POST','/api/merge',{target,paths:rest});S.sel.clear();GALT=0;render();watchJob(r.job);toast('Merging\u2026',0,0);await track(r.job);galForce()}
+    const mm=await dlg({title:'Merge '+ps.length+' albums?',msg:'Everything in '+rest.map(p=>p.split('/').pop()).join(', ')+' is moved into '+target.split('/').pop()+'.\nSame name + same picture: you decide. Same name + different picture: renamed. Emptied albums are removed.\n\n\u201cSkip look-alikes\u201d also leaves behind every picture that already looks the same in the target (any name, size or quality).',ok:'Merge',alt:'Skip look-alikes'});if(!mm)return;
+    try{const r=await api('POST','/api/merge',{target,paths:rest,skipSimilar:mm==='alt'});S.sel.clear();GALT=0;render();watchJob(r.job);toast('Merging\u2026',0,0);await track(r.job);galForce()}
     catch(e){toast('\u26a0 '+e.message,6000)}}}
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
 async function doDups(ps,similar){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders. similar: same picture in another size / quality (perceptual hash)
@@ -4585,7 +4593,7 @@ function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
   draw(cur)})}
 /* Name clash at the destination: Ask for each file / Replace all / Skip existing. Resolves 'ask' | 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
 const cdest=p=>{let b=p.split('/').filter(Boolean).pop()||'';if(b.endsWith('!')){b=b.slice(0,-1);const i=b.lastIndexOf('.');if(i>0)b=b.slice(0,i)}return b};
-async function askConflicts(dev,dir,paths,srcDev){
+async function askConflicts(dev,dir,paths,srcDev,sim){   // sim: offer "Only if not similar" (this phone to this phone: skips pictures that look the same, keeps both otherwise)
   let have;try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(dir));have=new Set((r.items||[]).map(i=>i.name))}catch(e){return 'rename'}
   const hit=[...new Set(paths.filter(p=>!(srcDev===dev&&pdir(p)===dir)).map(cdest).filter(n=>n&&have.has(n)))];
   if(!hit.length)return 'rename';
@@ -4595,7 +4603,7 @@ async function askConflicts(dev,dir,paths,srcDev){
     const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
     const gr=E('div');gr.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px';   // option boxes
-    [['Ask for each file','Decide per file','ask','fill'],['Replace all','Overwrite the existing files','replace','red'],['Replace if newer','Only when the new one is newer','newer',''],['Keep both','Rename the new ones','rename',''],['Skip existing','Keep what is there','skip','']].forEach(a=>{
+    [['Ask for each file','Decide per file','ask','fill'],['Replace all','Overwrite the existing files','replace','red'],['Replace if newer','Only when the new one is newer','newer',''],['Keep both','Rename the new ones','rename',''],['Skip existing','Keep what is there','skip','']].concat(sim&&dev==='local'&&srcDev==='local'?[['Only if not similar','Skip look-alikes, keep both otherwise','unsim','']]:[]).forEach(a=>{
       const b=E('button','tbtn'+(a[3]==='fill'?' fill':''));b.append(E('b','',a[0]),E('small','',a[1]));
       b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:72px;padding:10px 8px;border-radius:14px;text-align:center;border:1.5px solid var(--line,#C9C9C9)'+(a[3]==='red'?';background:var(--err,#C62828);border-color:var(--err,#C62828);color:#fff':'');
       b.firstChild.style.fontSize='14px';b.lastChild.style.cssText='font-size:11.5px;opacity:.85;font-weight:400';

@@ -7,12 +7,13 @@ import java.util.UUID
  * Albenleri birleştirme (Gallery > albümleri basılı tut > Merge): seçilen albümlerin dosyaları hedef albüme TAŞINIR.
  * Aynı isim hedefte varsa dosyalara bakılır ([DupFinder.look]):
  *  - görsel olarak farklı (aynı isim, başka resim)  -> sormadan yeniden adlandırılır ("IMG_1 (1).jpg")
+ *  - skipSimilar: hedefte (herhangi bir isimle) görsel olarak aynı / benzer resim zaten varsa dosya taşınmaz, kendi albümünde kalır ([DupFinder.SimIndex])
  *  - aynı / benzer resim                             -> kullanıcıya sorulur (Replace / Skip / Keep both / Replace if newer, "hepsi için" seçeneğiyle)
  * Alt klasörler (kendi albümleri) dokunulmaz. Kaynak albüm ancak tamamen boşaldıysa silinir; atlanan / hatalı dosya varsa kalır.
  * Değiştirilen (replace) dosya geri dönüşüm kutusuna gider. Sonunda MediaStore taranır, albüm listesi güncel kalır.
  */
 object AlbumMerge {
-    fun start(target: String, sources: List<String>): String {
+    fun start(target: String, sources: List<String>, skipSimilar: Boolean = false): String {
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
         Jobs.prune()
         val job = Job("Merging albums")
@@ -20,11 +21,11 @@ object AlbumMerge {
         job.total = 1
         job.live = true
         Jobs.all[jid] = job
-        Thread({ work(job, vnorm(target), sources.map { vnorm(it) }.distinct()) }, "merge-$jid").also { it.isDaemon = true }.start()
+        Thread({ work(job, vnorm(target), sources.map { vnorm(it) }.distinct(), skipSimilar) }, "merge-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
-    private fun work(job: Job, target: String, srcs0: List<String>) {
+    private fun work(job: Job, target: String, srcs0: List<String>, skipSimilar: Boolean) {
         val e = Core.local
         val touched = ArrayList<String>()
         var failCount = 0
@@ -48,6 +49,7 @@ object AlbumMerge {
             job.filesTotal = plan.sumOf { it.second.size }
             job.cur = ""
             var sticky: String? = null
+            val sim = if (skipSimilar) DupFinder.SimIndex(e) else null   // "skip look-alikes": files whose picture is already in the target (any name) stay in their album
             var renamed = 0; var moved = 0; var removedDirs = 0
             for ((s, files) in plan) {
                 var left = 0   // bu albümde yerinde kalan dosya sayısı (atlanan / hatalı)
@@ -56,6 +58,10 @@ object AlbumMerge {
                     job.begin(f.name, f.size)
                     val sp = vjoin(s, f.name)
                     try {
+                        if (sim != null) {
+                            job.cur = f.name
+                            if (sim.match(e, sp, f.size, target, job)) { left++; job.files++; job.done++; job.addLog("S", f.name); continue }
+                        }
                         val lc = f.name.lowercase()
                         val ex = have[lc]
                         var name = f.name
@@ -92,6 +98,7 @@ object AlbumMerge {
                         if (replace) Jobs.removeUser(e, vjoin(target, ex!!.name))   // eski dosya geri dönüşüm kutusuna
                         e.move(sp, dp)
                         have[name.lowercase()] = Item(name, false, f.size, f.mtime)
+                        sim?.added(target, dp, f.size)
                         touched.add(dp); touched.add(sp); moved++
                         job.addLog(if (replace) "R" else "N", name)
                     } catch (x: Cancelled) { throw x

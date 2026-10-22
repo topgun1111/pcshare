@@ -796,6 +796,9 @@ object Jobs {
 
     private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename", forced: Map<String, String>? = null) {
         var dest: String? = null
+        val unsim = conflict == "unsim"                      // gallery "copy / move if not similar": skip files whose picture is already at the destination
+        val lite = src.id == dst.id && cut && !unsim          // same-device move without a file walk (plain renames)
+        val simIdx = if (unsim) DupFinder.SimIndex(dst) else null
         val pending = LinkedHashMap<String, String>()   // top-level items started but not finished cleanly: path -> destination name used
         var planned: List<String> = emptyList()
         var visited = 0                                  // how many planned items were started
@@ -829,14 +832,14 @@ object Jobs {
                 if (p == "/") throw Denied("cannot copy the root")
                 if (same && (ddirN == p || ddirN.startsWith("$p/"))) throw BadReq("cannot put a folder inside itself")
                 if (same && cut && vdir(p) == ddirN) continue   // moving into the same folder: nothing to do
-                try { plan.add(p to (if (same && cut) null else src.walk(p))) }
+                try { plan.add(p to (if (lite) null else src.walk(p))) }
                 catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }   // one unreadable item must not stop the others
             }
             planned = plan.map { it.first }
-            if (same && cut) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
+            if (lite) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
             else job.total = maxOf(plan.sumOf { (_, w) -> w!!.sumOf { it.size } }, 1L)
-            job.filesTotal = if (same && cut) plan.size else plan.sumOf { (_, w) -> w!!.count { !it.dir && !it.skip } }
-            if (!(same && cut)) pinArchives(job, src, plan)
+            job.filesTotal = if (lite) plan.size else plan.sumOf { (_, w) -> w!!.count { !it.dir && !it.skip } }
+            if (!lite) pinArchives(job, src, plan)
             if (job.cancel) throw Cancelled()
             job.cur = "Checking the destination folder\u2026"
             val taken = try { dst.names(ddirN) } catch (e: Cancelled) { throw e } catch (e: Exception) { throw IOException("cannot read the destination folder: ${errText(e)}") }
@@ -861,8 +864,8 @@ object Jobs {
                 val nn = if (fname != null) fname else if (merge) dn else uniqueName(dn, taken, isDir)
                 taken.add(nn)
                 val d = vjoin(ddirN, nn)
-                val fastMove = same && cut && !merge
-                if (merge) job.live = true
+                val fastMove = same && cut && !merge && (!unsim || isDir)   // unsim: only whole new folders are renamed, files are checked one by one
+                if (merge || unsim) job.live = true
                 dest = if (merge) null else d   // a cancel removes only what this job created itself
                 if (fastMove) {
                     try { src.move(p, d) } catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }
@@ -871,7 +874,7 @@ object Jobs {
                 }
                 pending[p] = nn
                 val wl: List<WalkItem> = walked ?: src.walk(p)   // a move onto an existing name is done as copy + delete of the original
-                val counting = !(same && cut)
+                val counting = !lite
                 var bad = 0
                 var skipped = 0
                 var keptHere = 0
@@ -890,16 +893,26 @@ object Jobs {
                         }
                         val sp = if (w.rel.isEmpty()) p else p + "/" + w.rel
                         var existed = false
+                        if (simIdx != null) {   // already there (same picture, another name / size / quality)? then neither copy nor move it: the original stays
+                            job.cur = shown
+                            if (simIdx.match(src, sp, w.size, vdir(target), job)) {
+                                job.files++
+                                if (counting) job.done += w.size
+                                keptHere++; job.addLog("S", shown)
+                                continue
+                            }
+                        }
                         if (merge) {
                             val ex = listing(vdir(target))[vbase(target)]
                             if (ex != null) {
                                 if (ex.dir) throw IOException("a folder with this name is in the way")
                                 existed = true
-                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; else -> null }
+                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; "unsim" -> "both"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
                                         .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
                                     try { q.put("srcMtime", src.stat(sp).optLong("mtime")) } catch (_: Exception) {}
+                                    if (src.id == dst.id) DupFinder.look(src, sp, w.size, target, ex.size)?.let { q.put("look", it) }   // "same" / "similar": shown on the replace card
                                     act = job.waitAnswer(q)
                                     if (act == "replace_all") { sticky = "replace"; act = "replace" }
                                     else if (act == "skip_all") { sticky = "skip"; act = "skip" }
@@ -927,6 +940,8 @@ object Jobs {
                             }
                         }
                         copyFile(job, src, dst, sp, target, counting)   // an existing file is overwritten through a temp file: never half-written
+                        simIdx?.added(vdir(target), target, w.size)
+                        if (unsim && cut && w.rel.isNotEmpty()) try { src.remove(sp) } catch (e: Cancelled) { throw e } catch (_: Exception) {}   // move inside a folder: each copied file leaves the source now, so skipped look-alikes are the only ones left behind
                         if (merge) dstDirs.remove(vdir(target))
                         job.addLog(if (existed) "R" else "N", shown)
                     } catch (e: Cancelled) { throw e
@@ -954,7 +969,8 @@ object Jobs {
                     } else if (fails.size < 50) fails.add("${vbase(p)}: not moved - the original was kept")
                 }
             }
-            if (job.live) job.note = "Done - ${job.cR} replaced, ${job.cN} new, ${job.cS} skipped" + (if (kept > 0) " (originals of skipped files were kept)" else "")
+            if (unsim) job.note = "Done - ${job.cN} ${if (cut) "moved" else "copied"}, ${job.cS} skipped (already there / look the same)" + (if (kept > 0 && cut) " - their originals were kept" else "")
+            else if (job.live) job.note = "Done - ${job.cR} replaced, ${job.cN} new, ${job.cS} skipped" + (if (kept > 0) " (originals of skipped files were kept)" else "")
             job.done = job.total
             if (failCount == 0) {
                 job.state = "done"
@@ -969,7 +985,7 @@ object Jobs {
         } catch (e: Cancelled) {
             job.state = "cancel"
             val d = dest
-            if (d != null && !(same && cut)) try { dst.remove(d) } catch (_: Exception) {}   // drop the half-copied item; finished ones stay
+            if (d != null && !lite) try { dst.remove(d) } catch (_: Exception) {}   // drop the half-copied item; finished ones stay
             job.rid?.let { Partials.dropJob(it) }   // cancelled on purpose: no Resume offer any more
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             job.error = errText(e)

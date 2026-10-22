@@ -168,6 +168,51 @@ object DupFinder {
         return null
     }
 
+    /**
+     * "Copy / move only if not similar": a per-job index of the pictures already in the destination folder(s). [match] says whether a source file
+     * is already there - a picture that looks the same (difference hash, other name / size / quality) or, for videos, other files and undecodable
+     * pictures, a byte-identical file. Destination hashes are computed once and cached for the whole job; [added] registers files the job just wrote.
+     */
+    class SimIndex(private val dst: Endpoint) {
+        private class Ent(val path: String, val size: Long) { var sig: Sig? = null; var bad = false }
+        private val dirs = HashMap<String, ArrayList<Ent>>()
+        private fun ext(p: String) = p.substringAfterLast('.', "").lowercase()
+        private fun ents(dir: String): ArrayList<Ent> = dirs.getOrPut(dir) {
+            val l = ArrayList<Ent>()
+            try { for (it in dst.lsFast(dir)) if (!it.dir && it.size > 0 && !it.name.startsWith(".")) l.add(Ent(vjoin(dir, it.name), it.size)) }
+            catch (x: Cancelled) { throw x } catch (_: Exception) {}
+            l
+        }
+        fun added(dir: String, path: String, size: Long) { dirs[dir]?.add(Ent(path, size)) }
+        fun match(src: Endpoint, sp: String, size: Long, dir: String, job: Job): Boolean {
+            try {
+                val list = ents(dir)
+                if (list.isEmpty() || size <= 0) return false
+                val img = ext(sp) in IMG_EXT && size <= MAX_IMG
+                val ss = if (img) sig(src, F(sp, size)) else null
+                if (ss != null) {
+                    for (d in list) {
+                        if (job.cancel) throw Cancelled()
+                        if (d.bad || ext(d.path) !in IMG_EXT || d.size > MAX_IMG) continue
+                        if (d.sig == null) { d.sig = try { sig(dst, F(d.path, d.size)) } catch (x: Cancelled) { throw x } catch (_: Throwable) { null }; if (d.sig == null) d.bad = true }
+                        val ds = d.sig
+                        if (ds != null && near(ss, ds)) return true
+                    }
+                } else {   // not a decodable picture: byte-identical file of the same size
+                    var sh: String? = null
+                    for (d in list) {
+                        if (job.cancel) throw Cancelled()
+                        if (d.size != size) continue
+                        val dummy = Job("")
+                        if (sh == null) sh = hash(src, sp, size, dummy)
+                        if (hash(dst, d.path, d.size, dummy) == sh) return true
+                    }
+                }
+            } catch (x: Cancelled) { throw x } catch (_: Throwable) {}
+            return false
+        }
+    }
+
     private fun similarPass(job: Job, e: Endpoint, files: List<F>) {
         val imgs = files.filter { it.size in 1..MAX_IMG && it.path.substringAfterLast('.', "").lowercase() in IMG_EXT }
         job.bytes = false; job.total = maxOf(imgs.size, 1).toLong(); job.done = 0
