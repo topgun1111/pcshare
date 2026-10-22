@@ -3014,24 +3014,25 @@ async function phSheets(h){
   catch(e){toast('\u26a0 '+e.message,5000)}}
 async function phGo(h){if(h.ps)return phSheets(h);try{const r=await api('POST','/api/print',{dev:h.dev,paths:h.paths,to:h.to,opts:h.opts});
   const id=phAdd({dev:h.dev,paths:h.paths,to:h.to,toName:h.toName,opts:h.opts,names:h.names});watchJob(r.job);track(r.job).then(ok=>phMark(id,ok))}catch(e){toast('\u26a0 '+e.message,5000)}}
-function printRecent(){const a=lsGet('printHist',[]),o=$('#sheet');o.textContent='';o.style.display='flex';
+function printRecent(onlyPs){const all=lsGet('printHist',[]),a=onlyPs?all.filter(h=>h.ps):all,o=$('#sheet');   /* onlyPs: the Print space editor lists only the jobs that came from Print space (they carry h.ps) */
+  o.textContent='';o.style.display='flex';
   const card=E('div','card'),fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
   card.append(E('div','handle'),E('h3','','Recent prints'));
-  if(!a.length)card.append(E('p','','Nothing printed yet.'));
+  if(!a.length)card.append(E('p','',onlyPs?'Nothing printed from Print space yet.':'Nothing printed yet.'));
   a.forEach(h=>{const b=E('button','tbtn'),nm=(h.names||[]).length>2?h.names.slice(0,2).join(', ')+' +'+(h.names.length-2):(h.names||[]).join(', ');
     b.style.cssText='display:block;width:100%;text-align:left;margin:6px 0';
     const bits=[h.toName||'',new Date(h.t).toLocaleString()],op=h.opts||{};if(op.copies>1)bits.push(op.copies+' copies');if(op.nup>1)bits.push(op.nup+' per sheet');if(op.duplex&&op.duplex!=='off')bits.push('two-sided');
     const sm=E('small','',bits.filter(Boolean).join(' \u00b7 '));sm.style.cssText='display:block;font-size:12px;color:var(--mut);margin-top:2px';
     b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)});
   const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
-  cl.onclick=()=>{try{localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
+  cl.onclick=()=>{try{if(onlyPs){const k=all.filter(h=>!h.ps);if(k.length)localStorage.setItem('printHist',JSON.stringify(k));else localStorage.removeItem('printHist')}else localStorage.removeItem('printHist')}catch(e){}fin()};cx.onclick=fin;row.append(cl,cx);card.append(row);o.append(card)}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
   const here=CAN_PRINT?[{id:'__here',name:'This phone (any printer)'}]:[],pre=cx&&cx.opts||null;   /* pre: options forced by the caller; returns the printer used (a job was sent) or nothing */
   const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* the picker opens at once and fills in while the printer search runs */
   let to=preset||await choosePrinter(here,busy);
   if(!to)return;
-  if(to.recent)return printRecent();
+  if(to.recent)return printRecent(!!(cx&&cx.ps));
   if(!N)return toast('No printable files selected',3000);
   if(N<ALL.length)toast((ALL.length-N)+' file(s) that cannot be printed were skipped',3500);
   try{localStorage.setItem('printTo',to.id)}catch(e){}
@@ -3080,7 +3081,7 @@ window.lsPrintShared=async(names,priv)=>{
     const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */
     const to=await choosePrinter([],busy);
     if(!to)return;
-    if(to.recent)return printRecent();
+    if(to.recent)return printRecent(!!(cx&&cx.ps));
     try{localStorage.setItem('printTo',to.id)}catch(e){}
     const clean=r=>{watchJob(r.job);track(r.job).then(ok=>{if(ok)api('POST','/api/sharedclean',{names,priv:!!priv}).catch(()=>{})})};   /* printed fine: the copy in LANShare Shared is not needed any more */
     const pvf=names.map(n=>{const path=(priv?'/.print-in/':'/LANShare Shared/')+n;return{name:n,path,url:location.origin+'/api/dl?dev=local&path='+enc(path)}});
@@ -3241,7 +3242,7 @@ function openPrintSpace(){
       card.append(E('b','','Storage limit'),hint('When Print space holds this much, no more pictures are added. Pictures already held stay.'),
         mk(opt([[0,'No limit'],[200,'200 MB'],[1000,'1 GB'],[5000,'5 GB']],CFG.mb,' MB'),CFG.mb,async v=>{await post({op:'cfg',mb:v});draw()}));
       const row=E('div','dact'),rc=E('button','tbtn','Recent prints'),cx=E('button','tbtn fill','Close');
-      rc.onclick=()=>{fin();printRecent()};cx.onclick=fin;if(lsGet('printHist',[]).length)row.append(rc);row.append(cx);card.append(row)};
+      rc.onclick=()=>{fin();printRecent(true)};cx.onclick=fin;if(lsGet('printHist',[]).some(h=>h.ps))row.append(rc);row.append(cx);card.append(row)};
     draw();sh.append(card)}
   pa.onclick=()=>doIt(LIST);
   ca.onclick=async()=>{if(!LIST.length)return;
@@ -3371,7 +3372,7 @@ function psLayout(){
       chips(SP.free?'Auto-arrange (then move)':'Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
     f.append(presetRow());
     const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
-    if(lsGet('printHist',[]).length){const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent();f.append(rc)}   // part 8: print a finished sheet set again
+    if(lsGet('printHist',[]).some(h=>h.ps)){const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent(true);f.append(rc)}   // part 8 (only jobs sent from Print space): print a finished sheet set again
     bxSet.replaceChildren(f)}
   // ---- sheet strip (small canvases) + Front / Back tabs
   function dStrip(){
@@ -3402,8 +3403,18 @@ function psLayout(){
     rm.onclick=async()=>{const used=['front','back'].some(sd=>FIL[sheet+':'+sd]&&(FIL[sheet+':'+sd].cells.length||(FIL[sheet+':'+sd].free||[]).length));
       if(used&&!await dlg({title:'Remove sheet '+(sheet+1)+'?',msg:'Its pictures stay in Print space and become unplaced.',ok:'Remove',danger:true}))return;
       selSlot=null;call({op:'rmsheet',sheet})};
-    const f=document.createDocumentFragment();f.append(c,E('small','','Sheet '+(sheet+1)+' / '+n),rm);bxTab.replaceChildren(f)}
+    const f=document.createDocumentFragment();f.append(c,E('small','','Sheet '+(sheet+1)+' / '+n));if(!SP.free)f.append(vrBtn(dPage));f.append(rm);bxTab.replaceChildren(f)}
   // ---- big page preview
+  /* view-only turn of the big page (editor grid mode + Preview); 0/90/180/270, never changes the layout or the print */
+  let vr=0;
+  const vrBtn=redraw=>{const b=E('button','ibtn');b.append(ic('rotr'));b.title='Rotate view (view only)';b.setAttribute('aria-label','Rotate view');b.onclick=()=>{vr=(vr+90)%360;redraw()};return b};
+  function vrWrap(pg,ar,vh){
+    if(!vr)return pg;
+    if(vr===180){pg.style.transform='rotate(180deg)';return pg}
+    const W=bxPg.clientWidth||Math.max(200,window.innerWidth-24),H=vh/100*window.innerHeight,w=Math.round(Math.min(W*ar,H)),h=Math.round(w/ar),bx=E('div');
+    bx.style.cssText='position:relative;margin:0 auto;width:'+h+'px;height:'+w+'px';
+    pg.style.cssText+=';position:absolute;margin:0;width:'+w+'px;left:'+Math.round((h-w)/2)+'px;top:'+Math.round((w-h)/2)+'px;transform:rotate('+vr+'deg);transform-origin:50% 50%';
+    bx.append(pg);return bx}
   function dPage(){
     if(SP.free&&LY&&PL&&PL.sheets.length)return dFree();
     if(!LY||!PL||!PL.sheets.length){bxPg.replaceChildren(E('div','ge',PICS.length?(SP.free?'No sheet yet \u2013 tap a picture below to put it on a sheet':'No sheets yet \u2013 open the settings and tap Auto-fill, or tap +'):'Nothing to lay out \u2013 add pictures to Print space first'));return}
@@ -3418,7 +3429,7 @@ function psLayout(){
         im.style.width=(cc.dw/s.w*100)+'%';im.style.height=(cc.dh/s.h*100)+'%';im.style.transform='translate(-50%,-50%) rotate('+cc.rot+'deg)';d.append(im)};
       if(c)put(c);else{const g=side==='back'?gh[LY.behind[i]]:null;if(g)put(g,'gh');d.append(E('span','lyn',String(i+1)))}   // empty back slot: the front picture behind it, faint
       arm(d,()=>c?{k:'slot',sheet,side,slot:i,id:c.id}:null,()=>tapSlot(i,c));pg.append(d)});
-    bxPg.replaceChildren(pg)}
+    bxPg.replaceChildren(vrWrap(pg,sw/sh,46))}
   // ---- tray + selection controls
   function dTray(){const f=document.createDocumentFragment();
     PICS.forEach(m=>{const t=E('div','lyt'+(selPic===m.id?' sel':'')),im=E('img'),n=PLACED[m.id]||0,cp=m.copies||1;
@@ -3498,7 +3509,7 @@ function psLayout(){
     const a=E('button','ibtn'),z=E('button','ibtn'),f=document.createDocumentFragment();
     a.append(ic('prev'));a.setAttribute('aria-label','Previous page');a.disabled=pv<=0;a.onclick=()=>selPv(pv-1);
     z.append(ic('fwd'));z.setAttribute('aria-label','Next page');z.disabled=pv>=RV.pages-1;z.onclick=()=>selPv(pv+1);
-    f.append(a,E('small','lypn','Page '+(pv+1)+' of '+RV.pages+' \u00b7 '+pgName(pv)+(RV.duplex?' \u00b7 two-sided':'')),z);bxTab.replaceChildren(f)}
+    f.append(a,E('small','lypn','Page '+(pv+1)+' of '+RV.pages+' \u00b7 '+pgName(pv)+(RV.duplex?' \u00b7 two-sided':'')),z,vrBtn(dPvPage));bxTab.replaceChildren(f)}
   function dPvPage(){
     if(!PL||!LY||!LY.pages||!LY.pages.length){bxPg.replaceChildren(E('div','ge','Nothing to preview \u2013 put pictures on the sheets first'));return}
     if(!RV){bxPg.replaceChildren(E('div','ge',RVerr?'\u26a0 '+RVerr:'Preparing the preview\u2026'));return}
@@ -3506,7 +3517,7 @@ function psLayout(){
     pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;im.alt='';im.draggable=false;
     im.onload=()=>{rvTry=0};
     im.onerror=()=>{if(rvTry++<1){prep(true);return}pg.replaceChildren(E('div','ge','\u26a0 This page could not be drawn'))};   // expired id (404) = prepare again once
-    im.src=pgUrl(Math.min(pv,RV.pages-1),w);pg.append(im);bxPg.replaceChildren(pg)}
+    im.src=pgUrl(Math.min(pv,RV.pages-1),w);pg.append(im);bxPg.replaceChildren(vrWrap(pg,sw/sh,68))}
   const sheetsPdf=(only,rev)=>psRenderPdf(SP,PL,only,rev);   // part 8: the body moved to the top level (psRenderPdf)
   /* the print dialogs open on the sheets as they are: sides preset (off for one-sided sheets), no second layout on top of ours */
   const sheetCx=(R,d,only,rev)=>({items:[{name:R.name,p:R.path,size:R.bytes||0}],dev:'local',full:1,path:'/',done:()=>{},ps:{spec:JSON.parse(JSON.stringify(SP)),plan:JSON.parse(JSON.stringify(PL)),only:only||'',rev:!!rev},   // ps: lets Recent prints draw the sheets again (the PDF itself is purged)
