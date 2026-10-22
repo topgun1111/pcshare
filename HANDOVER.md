@@ -79,6 +79,8 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 
 **0. Print space** - FEATURE COMPLETE in code (parts 1-9 written, 2026-10-21 session "complete print space"). Left: part 10 on a device - build (`./gradlew assembleDebug`, paste the first compiler error; nothing of Print space was ever compiled on Android), then the checklists of 9.7 (parts 2, 5b, 6a, 6b, 3b below). Newest code, most likely to hold compile errors: `PrintSpace.add(paths, dev)` / `addStream`, `ImageViewerActivity.addToPrintSpace`, `MainActivity.shareToPrintSpace`, `PrintSpaceShareAlias` in the manifest.
 
+**0b. Print space part 11 (free placement + PDF pages)** - written 2026-10-22, never compiled or run on a device. Steps 7-10 of its coding plan (9.7, 'Part 11 design and coding plan'): compile, device checklist, Chromium gesture test, JVM test of `PsLayoutJson`.
+
 **A. Verification debt (do first, cheap, high value)**
 1. Run the **checklist of each chapter** on a device and update section 2. Highest risk (never confirmed): Office Android side (8), Storage Analyzer device test (12), Image search first device test (11.1), resumable transfers over SMB / remote (5.4), Root (5.6), text sharing (10.1), Phone Explorer (10.2).
 2. Known compile-risk spots are listed per chapter ("Risk spots"). If CI is green they are moot; if not, paste the first error.
@@ -566,6 +568,31 @@ kotlinc app/src/main/java/com/lanshare/app/core/SheetLayout.kt tools/sheetlayout
 - **Risk spots (compile / device)**: `PrintSpace.addPdf` (`tmp` captured and assigned inside `run {}`, `Bitmap` / `PdfRenderer.Page.close()`); `PsLayoutJson` was NOT compiled (no org.json on the sandbox; only `SheetLayout` was run on the JVM); `when` branches `"togrid" -> spec = ...` with `spec` now a `var`; pointer capture on the stage while the WebView scrolls (`touch-action:none` must win, else the sheet scrolls under the finger); `FRL[i]` aligned with `page.free[i]` by index (both lists filtered by the same picture-id rule).
 - **Test checklist (11, on the device)**: (1) add a 3-page PDF from the file browser > *To Print space* -> 3 items `name p1..p3.jpg`; (2) Layout > settings > *Placement: Free* with a filled grid -> same picture positions, now draggable; (3) drag a picture, drag the corner dot (turns + resizes), pinch with two fingers; release -> position kept after the redraw; (4) tap a tray picture -> appears on the current side; hold-drag from the tray -> lands under the finger; (5) Back tab: add pictures, *Preview* shows front + back pages, *Print* > both sides; (6) Fit page / Center / To front / Copy / Delete; (7) switch to Grid and back: free items kept; (8) change paper / orientation in free mode: pictures follow; (9) a 5 deg turned photo printed = same as Preview; (10) remove a picture from Print space -> its free item disappears.
 - **Tests**: `kotlinc app/src/main/java/com/lanshare/app/core/SheetLayout.kt tools/sheetlayout_selftest/Main.kt -include-runtime -d /tmp/slt.jar && java -jar /tmp/slt.jar` (ALL OK); `tools/psscreen_ui_smoke_chromium.py` and `tools/pslayout_ui_smoke_test.js` (jsdom) still ALL OK. TODO: add free-mode checks (drag / pinch / handle via synthetic pointer events) to the Chromium test.
+
+**Part 11 design and coding plan (written 2026-10-22, the plan the code above follows; steps 1-6 done, 7-12 open)**
+- **Request.** "New features for Print space: previews before printing by moving and rotating images / pages / several pictures on one side, interactively." The grid editor (parts 4-6) could only assign pictures to fixed slots; Preview was a read-only render.
+- **Design decisions**
+  - *Free items live in the same plan, not in a second model.* `Sheet` gets `ff` / `fb`, `Page` gets `free`. Reason: spec + plan already flow unchanged through `/api/pslayout`, `/api/psrender`, `localStorage ls_ps_lay`, Recent prints (`h.ps`) and manual duplex, so all of them work with free items without edits. `Spec.free` just switches the grid off; grid data stays in the plan so *Grid* can be switched back to.
+  - *Fractions of the sheet, not points.* Paper or orientation changes keep the arrangement; no reflow in free mode.
+  - *Item width is the UNTURNED picture's width; turn is separate.* Same convention as grid cells (`dw` x `dh` unturned, rotated about the centre), so the renderer needs ~10 lines and the picture's own manual turn (`Item.rot`, multiples of 90) just adds to the item's turn.
+  - *The server stays the source of truth for validity, the client for geometry during a gesture.* The page edits a local copy (`FRL`), redraws only the touched element (`fPlace`), and sends ONE `fset` for the side when the finger lifts. Alternative rejected: one request per pointer move (laggy, floods the serialized `call` chain).
+  - *The stage is CSS, Preview is the renderer.* The stage uses the thumbnails with CSS transforms for instant feedback; the *Preview* button still shows the Kotlin render, which is what prints. Percent-based sizing (`w`, `w*a*sw/sh`) keeps both identical.
+  - *Add by tap or drag from the tray.* Default size is decided on the server (`addFree`: fits half the sheet, cascade offset) because only the server knows the picture dimensions.
+  - *Gestures*: pointer events on the stage with `touch-action:none`; mode machine `m` (move) / `h` (corner dot) / `p` (pinch) / `bg` (background) / `x` (ignore until all fingers up). Snapping is deliberately small (centre lines 1.2 %, angle 15 degrees within 3).
+  - *PDF pages become pictures at intake.* One page = one ordinary Print space item (JPEG), so every existing feature (copies, turn, thumbnails, undo, storage limit, layout) works; no PDF code in the layout or renderer. Cost: raster only (200 dpi), 100 pages max per PDF.
+- **Coding plan / order of work**
+  1. `SheetLayout.kt`: `Spec.free`, `Free`, `Sheet.ff/fb`, `Page.free`, `FreeCell`, compose, `freeCell`, `setFree`, `gridToFree`, blank / hasBack / placedCount. **done**
+  2. `PsLayoutJson.kt`: parse / emit free items, ops `fset`, `tofree`, `togrid`; free-mode rule in `base()`. **done**
+  3. `SheetLayout.addFree` + op `fadd`. **done**
+  4. `PrintSpaceRender.kt`: draw `page.free`, include in `autoDpi`. **done**
+  5. `PrintSpace.kt`: `isPdf`, `addPdf`, intake rules; `ui.html` `psPic` accepts pdf. **done**
+  6. `ui.html`: Placement chip, `dFree()` stage + gestures, control bar, tray add / drop, strip + tab dots, CSS; JVM self-test `tools/sheetlayout_selftest` extended (11 checks). **done**
+  7. **Compile**: `./gradlew assembleDebug`; first errors most likely in `PrintSpace.addPdf` and `PsLayoutJson.handle` (see risk spots above). **todo**
+  8. **Device run** of the test checklist (11) above. **todo**
+  9. **Automated gesture test**: extend `tools/psscreen_ui_smoke_chromium.py` (mock `/api/pslayout` `fset` / `fadd` / `tofree`, synthetic pointer events: move, corner dot, two-pointer pinch, tap empty = deselect, tray tap adds, drag from the tray). **todo**
+  10. **PsLayoutJson JVM run**: add a stub or the real `org.json` jar next to `tools/sheetlayout_selftest` and test `fset` / `fadd` / `tofree` / round trip of `ff` / `fb`. **todo**
+  11. Nice to have, in this order: undo for free edits (keep the last `FRL` per side); front ghost on the Back tab (faint, mirrored per flip edge); numeric rotation / size entry; multi-select + align; store free placement in saved layouts; PDF through the share sheet (`PrintSpaceShareAlias` `application/pdf`); vector PDF pages instead of 200 dpi JPEG. **open**
+  12. When 7-10 are green: move the "NOT compiled" flags of 9.7 parts 11 / 6 / 7 to "confirmed" in section 2 and delete the Part 11 risk list. **todo**
 
 ## 10. Text sharing and Phone Explorer
 
