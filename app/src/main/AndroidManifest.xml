@@ -111,7 +111,7 @@
                 <data android:mimeType="*/*"/>
             </intent-filter>
         </activity-alias>
-        <!-- Third share-sheet entry (Print space part 3b): pictures go straight into the Print space (copies), nothing is printed or sent -->
+        <!-- Third share-sheet entry (Print space part 3b): pictures and PDFs (one picture per page) go straight into the Print space (copies), nothing is printed or sent -->
         <activity-alias android:name=".PrintSpaceShareAlias" android:targetActivity=".MainActivity" android:exported="true"
             android:label="LANShare Print space" android:icon="@mipmap/ic_launcher">
             <intent-filter>
@@ -119,6 +119,7 @@
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="image/*"/>
+                <data android:mimeType="application/pdf"/>
             </intent-filter>
         </activity-alias>
         <activity android:name=".PlayerActivity" android:exported="false" android:theme="@style/Theme.LANShare.Player"

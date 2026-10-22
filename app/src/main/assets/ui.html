@@ -261,7 +261,8 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lypg.lyfp{touch-action:none;overflow:visible;outline:1px dashed #8886;margin-top:14px;margin-bottom:14px}
 #gal .lyf{position:absolute;touch-action:none;cursor:move}
 #gal .lyf img{width:100%;height:100%;display:block;max-width:none;pointer-events:none;-webkit-user-drag:none}
-#gal .lyf.sel{outline:2px solid var(--ac)}
+#gal .lyf.sel{outline:2px solid var(--ac)}#gal .lyf.msel{outline:2px dashed var(--ac);outline-offset:1px}
+#gal .lygz{position:absolute;inset:0;pointer-events:none;overflow:hidden}#gal .lyfg{position:absolute;opacity:.22;outline:1px dashed #888;pointer-events:none}#gal .lyfg img{width:100%;height:100%;display:block;max-width:none}
 #gal .lyh{position:absolute;right:-15px;bottom:-15px;width:30px;height:30px;border-radius:50%;background:var(--ac);border:3px solid #fff;box-sizing:border-box;touch-action:none}
 #gal .lyg{position:absolute;background:var(--ac);opacity:.6;pointer-events:none}
 #gal .lygv{left:50%;top:0;bottom:0;width:1px}#gal .lygh2{top:50%;left:0;right:0;height:1px}
@@ -3325,15 +3326,27 @@ function psLayout(){
   /* part 8: saved layouts - tap = use (arranges the pictures again), "Remove..." then tap = delete */
   let pDel=false;
   async function savePreset(){
-    const v=await dlg({title:'Save this layout',msg:'Paper, pictures per sheet, margins, flip edge and the auto-fill mode are saved under this name (not the pictures).',input:{value:'',label:'e.g. Photos 2x2'},ok:'Save'});
+    const v=await dlg({title:'Save this layout',msg:'Paper, pictures per sheet, margins, flip edge and the auto-fill mode are saved under this name (not the pictures). In Free placement the positions of the current sheet are saved too.',input:{value:'',label:'e.g. Photos 2x2'},ok:'Save'});
     if(!v||v===true)return;const name=String(v).trim().slice(0,24);if(!name)return;
     const a=psPresets(),i=a.findIndex(q=>q.name.toLowerCase()===name.toLowerCase());
     if(i>=0&&!await dlg({title:'Replace \u201c'+a[i].name+'\u201d?',msg:'A saved layout with this name already exists.',ok:'Replace'}))return;
     if(i<0&&a.length>=20)return toast('Up to 20 saved layouts \u2013 remove one first',3500);
-    const e={name,spec:psPick(SP),mode:MODE};if(i>=0)a[i]=e;else a.push(e);psPresetsSave(a);toast('Layout \u201c'+name+'\u201d saved',2500);dSet()}
+    const e={name,spec:psPick(SP),mode:MODE},q0=PL&&PL.sheets[sheet];
+    if(SP.free){e.spec.free=true;if(q0){const t=l=>(l||[]).map(f=>({cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0}));e.tpl={f:t(q0.ff),b:t(q0.fb)}}}
+    if(i>=0)a[i]=e;else a.push(e);psPresetsSave(a);toast('Layout \u201c'+name+'\u201d saved',2500);dSet()}
   async function usePreset(q){
     if(Object.keys(PLACED).length&&!await dlg({title:'Use \u201c'+q.name+'\u201d?',msg:'All sheets are filled again with the pictures.',ok:'Use layout'}))return;
-    MODE=q.mode||'front';sheet=0;side='front';selSlot=null;await setSpec(Object.assign({},q.spec),'fill')}
+    MODE=q.mode||'front';sheet=0;side='front';selSlot=null;FU.length=FR.length=0;await setSpec(Object.assign({},q.spec),'fill');
+    if(q.spec.free){await call({op:'tofree'});if(q.tpl&&q.tpl.f&&q.tpl.f.length)await applyTpl(q.tpl)}}
+  /* Part 12a: a saved FREE layout keeps the positions of one sheet (no pictures). Applied: pictures are dealt onto the sheets in order, n per sheet (n = items of the template front), the back items get the template back positions by index. */
+  async function applyTpl(t){
+    if(!PL||!SP.free)return;const ids=[];PL.sheets.forEach(q=>(q.ff||[]).forEach(f=>ids.push(f.id)));
+    const n=t.f.length,need=Math.max(1,Math.ceil(ids.length/n));
+    for(let i=PL.sheets.length;i<need;i++){if(!await call({op:'addsheet'},true))break}
+    for(let k=0;k<need&&PL&&PL.sheets[k];k++){const part=ids.slice(k*n,k*n+n);
+      await call({op:'fset',sheet:k,side:'front',items:part.map((id,j)=>Object.assign({id},t.f[j]))},true);
+      const bk=((PL.sheets[k]||{}).fb||[]);if(bk.length&&t.b&&t.b.length)await call({op:'fset',sheet:k,side:'back',items:bk.map((f,j)=>t.b[j]?Object.assign({id:f.id},t.b[j]):{id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0})},true)}
+    await call({op:'trim'},true);draw()}
   async function delPreset(q){
     if(!await dlg({title:'Remove \u201c'+q.name+'\u201d?',msg:'Only the saved settings are deleted.',ok:'Remove',danger:true}))return;
     const a=psPresets().filter(x=>x.name!==q.name);psPresetsSave(a);if(!a.length)pDel=false;dSet()}
@@ -3420,13 +3433,20 @@ function psLayout(){
     const f=document.createDocumentFragment(),mk=(lbl,fn,ico,cls)=>{const b=E('button','tbtn'+(cls?' '+cls:''));if(ico)b.append(ic(ico));b.append(document.createTextNode(lbl));b.onclick=fn;return b},
       m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
     if(SP.free){
-      const q=fsel>=0&&FRL&&FRL[fsel]?FRL[fsel]:null,fm=q?pic(q.id):null;
-      if(fm){f.append(E('b','',fm.name),mk('\u21ba 90',()=>fedit(x=>{x.rot=fnorm(x.rot-90)})),mk('90',()=>fedit(x=>{x.rot=fnorm(x.rot+90)}),'rotr'),
+      const q=fsel>=0&&FRL&&FRL[fsel]?FRL[fsel]:null,fm=q?pic(q.id):null,ub=mk('Undo',()=>fundo(false)),rb=mk('Redo',()=>fundo(true));
+      ub.disabled=!FU.length;rb.disabled=!FR.length;f.append(ub,rb,mk(fmm?'Multi: on':'Multi',()=>{fmm=!fmm;fms.clear();if(fmm&&fsel>=0)fms.add(fsel);fmClass()}));
+      if(fms.size>1&&fmIdx().length>1){const n=fmIdx().length;f.append(E('b','',n+' selected'),
+        ...[['\u21e4 Left','l'],['Centre \u2194','c'],['Right \u21e5','r'],['\u21e5 Top','t'],['Middle \u2195','m'],['Bottom','b']].map(a=>mk(a[0],()=>fmedit((xs,ms)=>fAlignG(xs,ms,a[1])))),
+        mk('Spread \u2194',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'h'))}),mk('Spread \u2195',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'v'))}),
+        mk('Delete',()=>{const ix=new Set(fmIdx());FRL=FRL.filter((_,i)=>!ix.has(i));fms.clear();fsel=-1;fCommit()},'del'))}
+      else if(fm){f.append(E('b','',fm.name),mk('\u21ba 90',()=>fedit(x=>{x.rot=fnorm(x.rot-90)})),mk('90',()=>fedit(x=>{x.rot=fnorm(x.rot+90)}),'rotr'),
         mk('Bigger',()=>fedit(x=>{x.w=Math.min(3,x.w*1.15)})),mk('Smaller',()=>fedit(x=>{x.w=Math.max(.03,x.w/1.15)})),
-        mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Center',()=>fedit(x=>{x.cx=.5;x.cy=.5})),
-        mk('To front',()=>{const x=FRL.splice(fsel,1)[0];FRL.push(x);fsel=FRL.length-1;fCommit()}),
-        mk('Copy',()=>{const x=Object.assign({},FRL[fsel],{cx:Math.min(1,FRL[fsel].cx+.03),cy:Math.min(1,FRL[fsel].cy+.03)});FRL.push(x);fsel=FRL.length-1;fCommit()},'add'),
-        mk('Delete',()=>{FRL.splice(fsel,1);fsel=-1;fCommit()},'del'))}
+        mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Fit width',()=>fedit(x=>fFitW(x,fm))),mk('Center',()=>fedit(x=>{x.cx=.5;x.cy=.5})),
+        mk('Rot / size\u2026',fNum),
+        ...[['\u21e4 Left','l'],['Centre \u2194','c'],['Right \u21e5','r'],['\u21e5 Top','t'],['Middle \u2195','m'],['Bottom','b']].map(a=>mk(a[0],()=>fedit(x=>fAlign(x,fm,a[1])))),
+        mk('To front',()=>{const x=FRL.splice(fsel,1)[0];FRL.push(x);fsel=FRL.length-1;fms.clear();fCommit()}),
+        mk('Copy',()=>{const x=Object.assign({},FRL[fsel],{cx:Math.min(1,FRL[fsel].cx+.03),cy:Math.min(1,FRL[fsel].cy+.03)});FRL.push(x);fsel=FRL.length-1;fms.clear();fCommit()},'add'),
+        mk('Delete',()=>{FRL.splice(fsel,1);fsel=-1;fms.clear();fCommit()},'del'))}
       else f.append(E('span','','Tap a picture below to put it on this side \u00b7 drag to move \u00b7 pinch, or drag the corner dot, to resize and turn'))}
     else if(selPic&&m){
       f.append(E('b','',m.name),E('span','',(PLACED[m.id]||0)+' of '+(m.copies||1)+' placed \u00b7 tap a slot'),mk('\u2212',()=>cp(-1)),E('span','','\u00d7'+(m.copies||1)),mk('+',()=>cp(1)),mk('Turn',turn,'rotr'))}
@@ -3518,7 +3538,7 @@ function psLayout(){
   /* ---- free placement (spec.free): pictures anywhere on a side. Items are fractions of the sheet {id, cx, cy, w, rot} (+ a = height / width, from the layout answer).
      One finger moves, the corner dot turns + resizes about the centre, two fingers pinch / turn the selected picture. Every gesture ends with ONE {op:'fset'} for the side;
      the page is not redrawn while a finger is down (fg). The Kotlin renderer draws the same numbers, so Preview = print. */
-  let fsel=-1,fg=null,fdirty=false,FRL=null,FEL=[];
+  let fsel=-1,fg=null,fdirty=false,FRL=null,FEL=[],fms=new Set(),fmm=false,fmk='';   // 12c: fms = multi-selection (indices), fmm = 'Multi' mode on (tap adds / removes)
   const fnorm=a=>((a%360)+360)%360,
     frOf=()=>{const q=PL&&PL.sheets[sheet];return q?(side==='back'?q.fb:q.ff)||[]:[]},
     fPlace=i=>{const f=FRL&&FRL[i],el=FEL[i];if(!f||!el||!LY)return;const m=pic(f.id);
@@ -3526,11 +3546,46 @@ function psLayout(){
       el.style.transform='translate(-50%,-50%) rotate('+(((m&&m.rot)||0)+f.rot)+'deg)'},
     fFit=(x,m)=>{const t=(((m&&m.rot)||0)+x.rot)*Math.PI/180,c=Math.abs(Math.cos(t)),s2=Math.abs(Math.sin(t)),dw=x.w*LY.sw,dh=dw*x.a,bw=c*dw+s2*dh,bh=s2*dw+c*dh;
       x.w=Math.max(.03,Math.min(3,x.w*Math.min(LY.sw/bw,LY.sh/bh)*.98));x.cx=.5;x.cy=.5};
+  /* Part 12b: Fit width (unturned width = sheet width, turned box <= sheet), Align (box edge / centre to the sheet edge / centre), numeric rotation / size (dialog), front ghost on the Back tab */
+  const fBox=(x,m)=>{const t=(((m&&m.rot)||0)+x.rot)*Math.PI/180,c=Math.abs(Math.cos(t)),s2=Math.abs(Math.sin(t)),dw=x.w*LY.sw,dh=dw*x.a;return{bw:(c*dw+s2*dh)/LY.sw,bh:(s2*dw+c*dh)/LY.sh}},   // turned bounding box as fractions of the sheet
+    fFitW=(x,m)=>{const b=fBox(x,m);x.w=Math.max(.03,Math.min(3,x.w/Math.max(b.bw,1e-6)));x.cx=.5},   // turned box exactly as wide as the sheet
+    fAlign=(x,m,k)=>{const b=fBox(x,m);if(k==='l')x.cx=b.bw/2;else if(k==='r')x.cx=1-b.bw/2;else if(k==='c')x.cx=.5;else if(k==='t')x.cy=b.bh/2;else if(k==='b')x.cy=1-b.bh/2;else if(k==='m')x.cy=.5},
+    /* Part 12c: group align (to the selection's bounding box) + distribute (equal gaps, >= 3). xs = items, ms = their pictures (for the turn) */
+    fBoxes=(xs,ms)=>xs.map((x,i)=>{const b=fBox(x,ms[i]);return{l:x.cx-b.bw/2,r:x.cx+b.bw/2,t:x.cy-b.bh/2,b:x.cy+b.bh/2}}),
+    fAlignG=(xs,ms,k)=>{const B=fBoxes(xs,ms),L=Math.min(...B.map(o=>o.l)),R=Math.max(...B.map(o=>o.r)),T=Math.min(...B.map(o=>o.t)),D=Math.max(...B.map(o=>o.b));
+      xs.forEach((x,i)=>{const o=B[i];if(k==='l')x.cx+=L-o.l;else if(k==='r')x.cx+=R-o.r;else if(k==='c')x.cx=(L+R)/2;else if(k==='t')x.cy+=T-o.t;else if(k==='b')x.cy+=D-o.b;else if(k==='m')x.cy=(T+D)/2})},
+    fDist=(xs,ms,ax)=>{if(xs.length<3)return false;const h=ax==='h',B=fBoxes(xs,ms),o=B.map((_,i)=>i).sort((a,b)=>h?B[a].l-B[b].l:B[a].t-B[b].t),
+      lo=h?'l':'t',hi=h?'r':'b',span=B[o[o.length-1]][hi]-B[o[0]][lo],sum=o.reduce((s,i)=>s+B[i][hi]-B[i][lo],0),gap=(span-sum)/(o.length-1);let p=B[o[0]][lo];
+      o.forEach(i=>{const w=B[i][hi]-B[i][lo];if(h)xs[i].cx+=p-B[i].l;else xs[i].cy+=p-B[i].t;p+=w+gap});return true};
+  async function fNum(){const x=fsel>=0&&FRL&&FRL[fsel];if(!x)return;
+    const v=await dlg({title:'Rotation and size',msg:'Rotation in degrees (clockwise), then width in % of the sheet width. Example: 15, 60',input:{value:(+x.rot.toFixed(1))+', '+Math.round(x.w*1000)/10,label:'rotation, width %'},ok:'Apply'});
+    if(typeof v!=='string')return;const n=v.replace(/,/g,' ').trim().split(/\s+/).map(t=>parseFloat(t.replace('%','')));
+    if(!n.length||n.some(t=>!isFinite(t))||n.length>2){toast('Type rotation and width, e.g. 15, 60',2500);return}
+    const cur=FRL&&FRL[fsel];if(!cur)return;cur.rot=fnorm(n[0]);if(n.length>1)cur.w=Math.max(.03,Math.min(3,n[1]/100));fPlace(fsel);fCommit()}
+  const fGhost=(pg,dw)=>{   // faint see-through of the FRONT items on the Back tab, mirrored about the flip edge (SheetLayout.backSlot rule: mirrorCols = (flip long) == portrait)
+    if(side!=='back'||!PL||!PL.sheets[sheet])return;const q=PL.sheets[sheet].ff||[];if(!q.length)return;
+    const fd=(FIL[sheet+':front']||{}).free||[],mx=(SP.flip!=='short')===(LY.sw<LY.sh),g=E('div','lygz');
+    q.forEach((f,i)=>{const m=pic(f.id);if(!m)return;const a=fd[i]&&fd[i].dw?fd[i].dh/fd[i].dw:1.4,el=E('div','lyfg'),r=((m.rot||0)+(f.rot||0));
+      el.style.left=(mx?1-f.cx:f.cx)*100+'%';el.style.top=(mx?f.cy:1-f.cy)*100+'%';el.style.width=f.w*100+'%';el.style.height=(f.w*a*LY.sw/LY.sh*100)+'%';
+      el.style.transform='translate(-50%,-50%) rotate('+(-r)+'deg) scale('+(mx?'-1,1':'1,-1')+')';
+      const im=E('img');im.alt='';im.draggable=false;im.src=thumb(m);el.append(im);g.append(el)});
+    pg.append(g)};
+  /* Part 12a: undo / redo of free edits (per session of the editor, 30 steps). Snapshot = the side as the SERVER has it, taken just before the change. */
+  const FU=[],FR=[],
+    fsnap=(sh,sd)=>{const q=PL&&PL.sheets[sh];return{sheet:sh,side:sd,items:((q&&(sd==='back'?q.fb:q.ff))||[]).map(f=>({id:f.id,cx:+(+f.cx).toFixed(4),cy:+(+f.cy).toFixed(4),w:+(+f.w).toFixed(4),rot:+(+(f.rot||0)).toFixed(2)}))}},
+    fpush=n=>{const z=fsnap(sheet,side);if(n&&JSON.stringify(z.items)===JSON.stringify(n))return false;FU.push(z);if(FU.length>30)FU.shift();FR.length=0;return true};
+  async function fundo(redo){const A=redo?FR:FU,B=redo?FU:FR,z=A.pop();if(!z)return;
+    if(!PL||!PL.sheets[z.sheet]){toast('That sheet is gone',2000);return}
+    B.push(fsnap(z.sheet,z.side));fsel=-1;fg=null;sheet=z.sheet;side=z.side;await call({op:'fset',sheet:z.sheet,side:z.side,items:z.items})}
   async function fCommit(){fg=null;const items=(FRL||[]).map(f=>({id:f.id,cx:+f.cx.toFixed(4),cy:+f.cy.toFixed(4),w:+f.w.toFixed(4),rot:+f.rot.toFixed(2)}));
-    await call({op:'fset',sheet,side,items})}
-  const fedit=fn=>{if(fsel<0||!FRL||!FRL[fsel])return;fn(FRL[fsel]);fPlace(fsel);fCommit()};
+    fpush(items);await call({op:'fset',sheet,side,items})}
+  const fedit=fn=>{if(fsel<0||!FRL||!FRL[fsel])return;fn(FRL[fsel]);fPlace(fsel);fCommit()},
+    fmIdx=()=>[...fms].filter(i=>FRL&&FRL[i]).sort((a,b)=>a-b),
+    fmedit=fn=>{const ix=fmIdx();if(ix.length<2)return;fn(ix.map(i=>FRL[i]),ix.map(i=>pic(FRL[i].id)));ix.forEach(i=>fPlace(i));fCommit()},   // ONE fset for the whole selection
+    fmClass=()=>{const m=fms.size>1;FEL.forEach((e,k)=>{e.classList.toggle('msel',m&&fms.has(k));e.classList.toggle('sel',k===fsel);const h=e.querySelector('.lyh');if(h&&(k!==fsel||m))h.remove();if(!h&&k===fsel&&!m)e.append(E('i','lyh'))});dCtl()},
+    fTog=i=>{if(!fms.size&&fsel>=0)fms.add(fsel);if(fms.has(i))fms.delete(i);else fms.add(i);fsel=fms.has(i)?i:(fms.size?[...fms].pop():-1);fmClass()};
   async function freeAdd(id,cx,cy){
-    const x={op:'fadd',sheet,side,id};if(cx!=null){x.cx=Math.max(0,Math.min(1,cx));x.cy=Math.max(0,Math.min(1,cy))}
+    fpush();const x={op:'fadd',sheet,side,id};if(cx!=null){x.cx=Math.max(0,Math.min(1,cx));x.cy=Math.max(0,Math.min(1,cy))}
     const r=await call(x);if(r){fsel=frOf().length-1;draw()}}
   async function setPlace(on){
     if(!!SP.free===!!on)return;const old=SP;fsel=-1;
@@ -3542,10 +3597,12 @@ function psLayout(){
     pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
     FRL=frOf().map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}));
     if(fsel>=FRL.length)fsel=FRL.length-1;
-    FEL=FRL.map((f,i)=>{const m=pic(f.id),el=E('div','lyf'+(i===fsel?' sel':''));if(m){const im=E('img');im.alt='';im.draggable=false;im.src=thumb(m);el.append(im)}
-      if(i===fsel)el.append(E('i','lyh'));pg.append(el);return el});
+    if(fmk!==sheet+':'+side){fmk=sheet+':'+side;fms.clear()}fms.forEach(i=>{if(i>=FRL.length)fms.delete(i)});
+    fGhost(pg);
+    FEL=FRL.map((f,i)=>{const m=pic(f.id),el=E('div','lyf'+(i===fsel?' sel':'')+(fms.size>1&&fms.has(i)?' msel':''));if(m){const im=E('img');im.alt='';im.draggable=false;im.src=thumb(m);el.append(im)}
+      if(i===fsel&&fms.size<2)el.append(E('i','lyh'));pg.append(el);return el});
     const gv=E('div','lyg lygv'),gh=E('div','lyg lygh2');gv.style.display=gh.style.display='none';pg.append(gv,gh);
-    const sel=i=>{fsel=i;FEL.forEach((e,k)=>{e.classList.toggle('sel',k===i);const h=e.querySelector('.lyh');if(k!==i&&h)h.remove();if(k===i&&!h)e.append(E('i','lyh'))});dCtl()},
+    const sel=i=>{fsel=i;fms.clear();if(fmm&&i>=0)fms.add(i);fmClass()},
       P=new Map(),snap=(v,g)=>{if(Math.abs(v-.5)<.012){g.style.display='';return .5}g.style.display='none';return v};
     FRL.forEach((f,i)=>fPlace(i));
     pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
@@ -3554,7 +3611,8 @@ function psLayout(){
       const isH=!!(e.target.classList&&e.target.classList.contains('lyh')),t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();
       if(P.size===1){
         const i=isH?fsel:(t?FEL.indexOf(t):-1);fg={mode:isH?'h':(i>=0?'m':'bg'),tap:true,sx:e.clientX,sy:e.clientY,hit:i,r};
-        if(i>=0){if(i!==fsel)sel(i);fg.f0=Object.assign({},FRL[i]);
+        if(i>=0){if(fmm&&!isH)fg.multi=true;else if(i!==fsel||fms.size>1)sel(i);fg.f0=Object.assign({},FRL[i]);
+          if(!isH){const w=fg;w.lpt=setTimeout(()=>{if(fg===w&&w.tap&&P.size===1){fmm=true;w.lp=true;w.mode='x';w.tap=false;try{navigator.vibrate&&navigator.vibrate(15)}catch(x){}fTog(w.hit)}},450)}   /* long-press adds to the selection */
           if(isH){const c={x:r.left+fg.f0.cx*r.width,y:r.top+fg.f0.cy*r.height};fg.c=c;fg.v0=Math.hypot(e.clientX-c.x,e.clientY-c.y)||1;fg.a0=Math.atan2(e.clientY-c.y,e.clientX-c.x)}}}
       else if(P.size===2&&fsel>=0&&FRL[fsel]){const [a,b]=[...P.values()];
         fg={mode:'p',tap:false,hit:fsel,r,f0:Object.assign({},FRL[fsel]),d0:Math.hypot(a.x-b.x,a.y-b.y)||1,an0:Math.atan2(b.y-a.y,b.x-a.x),m0:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}}}
@@ -3572,7 +3630,9 @@ function psLayout(){
     const up=e=>{P.delete(e.pointerId);if(!fg)return;
       if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
       if(P.size>0)return;
-      gv.style.display=gh.style.display='none';const w=fg;
+      gv.style.display=gh.style.display='none';const w=fg;clearTimeout(w.lpt);
+      if(w.lp){fg=null;if(fdirty)dFree();return}
+      if(w.multi&&w.tap){fg=null;fTog(w.hit);if(fdirty)dFree();return}
       if(w.mode==='bg'&&w.tap){fg=null;sel(-1);if(fdirty)dFree();return}
       if(!w.tap||w.mode==='p'||w.mode==='x')fCommit();else{fg=null;if(fdirty)dFree()}};
     pg.onpointerup=up;pg.onpointercancel=up;

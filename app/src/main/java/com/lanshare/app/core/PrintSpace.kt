@@ -346,6 +346,24 @@ object PrintSpace {
         load()
         sweep()
         var fname = name.replace("/", "_").ifEmpty { "shared_" + System.currentTimeMillis() }
+        if (isPdf(fname) || (mime ?: "").substringBefore(';').trim().equals("application/pdf", true)) {   // Part 12c: PDF from the share sheet -> one picture per page (addPdf)
+            if (!isPdf(fname)) fname += ".pdf"
+            if (items.size >= MAX_ITEMS) return "print space is full ($MAX_ITEMS pictures)"
+            root().mkdirs()
+            val t = File(root(), ".tmp-" + UUID.randomUUID().toString().replace("-", "").take(8) + ".pdf")
+            try {
+                val ins = open() ?: throw IOException("could not read the shared PDF")
+                ins.use { i -> t.outputStream().use { o -> i.copyTo(o) } }
+                if (mb > 0 && items.sumOf { x -> x.size } + t.length() > mb * 1024L * 1024L) return "storage limit reached ($mb MB)"
+                val added = JSONArray()
+                val skipped = JSONArray()
+                addPdf("share", fname, t, null, fname, added, skipped)
+                if (added.length() > 0) save()
+                return if (added.length() > 0) null else (skipped.optJSONObject(0)?.optString("why") ?: "could not read the PDF")
+            } catch (e: Exception) {
+                return errText(e).take(120)
+            } finally { try { t.delete() } catch (_: Exception) {} }
+        }
         if (!isPicture(fname)) {
             val sub = (mime ?: "").substringAfter("image/", "").substringBefore(';').lowercase()
             val ext = when (sub) { "jpeg", "pjpeg" -> "jpg"; "heic", "heif", "png", "webp", "gif", "bmp", "avif" -> sub; else -> "" }
