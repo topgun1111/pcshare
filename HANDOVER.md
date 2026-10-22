@@ -835,6 +835,12 @@ To look at: screen height at the storage root with banner + chips + card + summa
 - **Classic screen** (`StoragePie`, donut of the open folder's direct children, files coloured by category, folders by their biggest category) also got zoom: pinch 1x-12x, drag to pan, `×N ✕` chip top right, Back resets; slices under `MIN_DEG` stay in "smaller items". `StorageTreemap.kt` is only used for `CAT_COL` now.
 - Known gaps: no "Allocated" size; File View sorted by size only; very large scans: "small files" (agg) nodes show as one row in Types; theme fixed dark. Next: fix compile errors, check treemap speed (`MAXR = 7000` tiles) and Types colours on the device.
 
+### 12.10 Free up space (cleaner) - extended 2026-10-23 (uncompiled, no device test)
+`core/Cleanup.kt` (scan, `GET/POST /api/cleanup`) + `openFreeUp()` in `ui.html` (drawer > Free up space). Result keys: `free total bin{items,bytes} reclaim{count,bytes}` and lists `big old apk junk empty shots chat` = `{count, bytes, items[{path,size,m,d}]}` (`d` = empty folder).
+- **junk**: temp/log/bak/old/chk/dmp/unfinished-download files older than 3 days, everything inside `.thumbnails/.thumbs/.cache/.tmp`, `.trashed-*`, `Thumbs.db`, `desktop.ini`, `~$*`, `*~`, `._*`. **empty**: topmost folders without any file (top-level standard folders kept) + 0-byte files. **shots**: files in Screenshots / Screen recordings folders older than 30 d. **chat**: WhatsApp / Telegram media older than 90 d, >= 256 KB, also `Android/media/com.whatsapp*|org.telegram*|org.thunderdog*` (rest of `Android/` still skipped). **reclaim** = every file of junk/empty/old/apk/shots/chat counted once, big files excluded.
+- Page: summary card (free-up total, used bar, **Quick clean** = junk + empty folders in one confirmation, **Analyze storage** -> `LSAndroid.openStorage('/')`), then the sections, then Duplicate files / Similar pictures. All deletes go through `/api/rm` (Recycle bin).
+- Open: compile + device test; hidden-dir handling of `.cache` on a real phone; whether `Bin.trash` accepts `Android/media/...` paths.
+
 ---
 
 ### 12.8 Other devices (read-only, 2026-10-21)
@@ -882,6 +888,8 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 ---
 
 ## 14. Changelog (newest first)
+
+- 2026-10-23 - Free up space: junk files, empty folders / files, old screenshots, chat media, "free up to X" summary, Quick clean, similar-picture shortcut (12.10).
 
 - **2026-10-22** - **Free up space** [12.10]: drawer item (above Recycle bin) -> `openFreeUp()` sheet: free / total, Recycle bin (size, Open, Empty bin = `POST /api/bin {op:"empty"}`), **Large files** (>= 100 MB, top 30), **Old downloads** (/Download, 90+ days, >= 1 MB, top 100), **Installers** (apk / xapk / apks / apkm, top 50) with check boxes and Delete (normal `POST /api/rm` -> Recycle bin, then rescan), **Duplicate pictures** -> `doDups(['/DCIM','/Pictures','/Download'], false)`. Backend `core/Cleanup.kt` (one background walk of the storage root, skips `Android/` and dot-folders, 300k directory cap; nothing is deleted there): `GET /api/cleanup` -> `{running, scanned, error, result{free, total, bin{items,bytes}, big|old|apk{count,bytes,items[{path,size,m}]}}}`, `POST /api/cleanup {op:start|cancel}`. Not compiled / device-tested; this phone only; the bin keeps the space until emptied. Test: scan on a phone with a 200 MB file in Download, delete it -> list refreshes, bin grows; Empty bin -> bin row shows 0.
 - **2026-10-22** - **Similar tab** [11.1]: `isView` 4th tab **Similar** (`loadPick()`): grid of the scanned pictures of the album (`POST /api/imgs {op:"list", dir}` -> `ImgSearch.listDir`, newest first, max 400); tap = select, bar **Find similar** runs `similar`. Not compiled / device-tested.

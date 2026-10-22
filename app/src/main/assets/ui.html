@@ -3857,9 +3857,9 @@ async function openFreeUp(){
   const dAgo=t=>{const d=Math.floor((Date.now()-t)/864e5);return d>=365?Math.floor(d/365)+' y':d>=30?Math.floor(d/30)+' mo':d+' d'};
   const dir=p=>p.replace(/\/[^\/]*$/,'')||'/',nm=p=>p.replace(/^.*\//,'');
   let R=null;
-  function sec(title,note,d,delText){   // one result list with check boxes + a delete button
+  function sec(title,note,d,delText,noun){noun=noun||'file';   // one result list with check boxes + a delete button
     const w=E('div');w.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px';
-    const h=E('b','',title+' \u00b7 '+d.count+(d.count===1?' file':' files')+' \u00b7 '+fmt(d.bytes));w.append(h);
+    const h=E('b','',title+' \u00b7 '+d.count+' '+noun+(d.count===1?'':'s')+(d.bytes?' \u00b7 '+fmt(d.bytes):''));w.append(h);
     if(note)w.append(Object.assign(E('small','',note),{style:'color:var(--mut)'}));
     if(!d.items.length){w.append(Object.assign(E('small','','Nothing here.'),{style:'color:var(--mut)'}));return w}
     const sel=new Set(),lst=E('div'),del=E('button','tbtn dng',delText);
@@ -3869,18 +3869,34 @@ async function openFreeUp(){
       r.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;cursor:pointer';c.type='checkbox';c.style.flexShrink='0';
       t.style.cssText='flex:1;min-width:0';n.style.cssText='font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';n.textContent=nm(i.path);
       sm.style.cssText='display:block;color:var(--mut);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';sm.textContent=dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago';
-      z.style.cssText='font-size:12px;white-space:nowrap';z.textContent=fmt(i.size);t.append(n,sm);r.append(c,t,z);
+      z.style.cssText='font-size:12px;white-space:nowrap';z.textContent=i.d?'folder':fmt(i.size);t.append(n,sm);r.append(c,t,z);
       const tg=()=>{c.checked?sel.add(i.path):sel.delete(i.path);upd()};c.onchange=tg;r.onclick=e=>{if(e.target!==c){c.checked=!c.checked;tg()}};lst.append(r)});
     const row=E('div');row.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
     const all=E('button','tbtn','Select all');all.onclick=()=>{const on=sel.size<d.items.length;lst.querySelectorAll('input').forEach((c,k)=>{c.checked=on;on?sel.add(d.items[k].path):sel.delete(d.items[k].path)});upd()};
     del.onclick=async()=>{if(!sel.size)return;
-      if(!await dlg({title:'Delete '+sel.size+' file'+(sel.size===1?'':'s')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
+      if(!await dlg({title:'Delete '+sel.size+' item'+(sel.size===1?'':'s')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
       try{const r=await api('POST','/api/rm',{dev:'local',paths:[...sel]});watchJob(r.job);toast('Deleting\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
       if(live())start()};
     row.append(all,del);w.append(lst,row);upd();return w}
   function draw(){
     box.textContent='';if(!R)return;
     sub.textContent=fmt(R.free)+' free of '+fmt(R.total);
+    // summary: what can be freed + one-tap safe clean (junk files and empty folders only)
+    const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes,used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
+    const sw=E('div');sw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px';
+    const big=E('b','','You can free up to '+fmt(rc));big.style.fontSize='17px';
+    const bar=E('div'),fill=E('i');bar.style.cssText='height:8px;border-radius:4px;background:var(--bd);overflow:hidden';
+    fill.style.cssText='display:block;height:100%;width:'+pc+'%;background:'+(R.total&&R.free/R.total<.1?'#e5484d':'var(--ac,#3b82f6)');bar.append(fill);
+    const sm=E('small','',pc+'% used \u00b7 '+fmt(R.free)+' free'+(R.reclaim?' \u00b7 '+R.reclaim.count+' removable files + '+fmt(R.bin.bytes)+' in the bin':''));sm.style.color='var(--mut)';
+    const qrow=E('div');qrow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+    const qp=[...R.junk.items,...R.empty.items].map(i=>i.path),qb=R.junk.bytes;
+    const qc=E('button','tbtn fill','Quick clean: junk + empty folders');qc.disabled=!qp.length;qc.style.opacity=qp.length?1:.5;
+    qc.onclick=async()=>{if(!await dlg({title:'Quick clean?',msg:'Moves '+R.junk.items.length+' junk file(s) ('+fmt(qb)+') and '+R.empty.items.length+' empty folder / file item(s) to the Recycle bin.',ok:'Clean'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:qp});watchJob(r.job);toast('Cleaning\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+      if(live())start()};
+    const an=E('button','tbtn','Analyze storage');an.onclick=()=>{try{LSAndroid.openStorage('/')}catch(e){toast('Storage analyzer needs the Android app',3000)}};
+    qrow.append(qc,an);sw.append(big,bar,sm,qrow);box.append(sw);
+
     // recycle bin
     const bw=E('div');bw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px';
     const bt=E('div');bt.style.flex='1';bt.append(E('b','','Recycle bin \u00b7 '+fmt(R.bin.bytes)),Object.assign(E('small','',R.bin.items+(R.bin.items===1?' item':' items')+' still use space on the phone'),{style:'display:block;color:var(--mut)'}));
@@ -3889,12 +3905,16 @@ async function openFreeUp(){
       try{await api('POST','/api/bin',{op:'empty'});toast('Emptying the bin\u2026',3000)}catch(e){toast('\u26a0 '+e.message,5000);return}
       setTimeout(()=>{if(live())start()},2500)};
     const bo=E('button','tbtn','Open');bo.onclick=()=>openBin();bw.append(bt,bo,be);box.append(bw);
-    box.append(sec('Large files','100 MB or more, biggest first.',R.big,'Delete selected'),
+    box.append(sec('Junk files','Temp, log and backup files, unfinished downloads (3+ days old), thumbnail caches, gallery trash leftovers.',R.junk,'Delete selected'),
+      sec('Empty folders and files','Folders with no file inside (standard folders kept) and 0-byte files.',R.empty,'Delete selected','item'),
+      sec('Large files','100 MB or more, biggest first.',R.big,'Delete selected'),
       sec('Old downloads','In Download, not changed for 90 days.',R.old,'Delete selected'),
-      sec('Installers','APK files you may no longer need.',R.apk,'Delete selected'));
-    const dw=E('div');dw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px';
-    const dt=E('div');dt.style.flex='1';dt.append(E('b','','Duplicate pictures'),Object.assign(E('small','','Finds copies in DCIM, Pictures and Download; you choose what to keep.'),{style:'display:block;color:var(--mut)'}));
-    const db=E('button','tbtn fill','Find');db.onclick=()=>doDups(['/DCIM','/Pictures','/Download'],false);dw.append(dt,db);box.append(dw)}
+      sec('Installers','APK files you may no longer need.',R.apk,'Delete selected'),
+      sec('Old screenshots and recordings','In Screenshots / Screen recordings folders, older than 30 days.',R.shots,'Delete selected'),
+      sec('Chat media','WhatsApp / Telegram pictures, videos, audio and files older than 90 days and 256 KB or more.',R.chat,'Delete selected'));
+    const dw=E('div');dw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px';
+    const dr=(t,n,lbl,sim)=>{const r=E('div'),x=E('div'),b=E('button','tbtn fill',lbl);r.style.cssText='display:flex;align-items:center;gap:8px';x.style.flex='1';x.append(E('b','',t),Object.assign(E('small','',n),{style:'display:block;color:var(--mut)'}));b.onclick=()=>doDups(['/DCIM','/Pictures','/Download'],sim);r.append(x,b);return r};
+    dw.append(dr('Duplicate files','Identical copies in DCIM, Pictures and Download; you choose what to keep.','Find',false),dr('Similar pictures','Same picture in another size or quality.','Find',true));box.append(dw)}
   async function start(){
     sub.textContent='Scanning\u2026';
     try{await api('POST','/api/cleanup',{op:'start'})}catch(e){sub.textContent='\u26a0 '+e.message;return}
