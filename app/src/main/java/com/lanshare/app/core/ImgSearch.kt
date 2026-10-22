@@ -492,20 +492,84 @@ object ImgSearch {
 
     private fun hit(path: String, score: Float) = JSONObject().put("path", path).put("score", score.toDouble())
 
-    /** CLIP visual search. Needs [engine] (text tower) and at least one stored vector. */
+    private fun norm(v: FloatArray): FloatArray {
+        var s = 0.0; for (x in v) s += x * x
+        val r = if (s > 0.0) (1.0 / Math.sqrt(s)).toFloat() else 1f
+        for (i in v.indices) v[i] *= r
+        return v
+    }
+
+    /** Prompt ensemble: CLIP matches "a photo of X" style sentences better than a bare brand / noun; the mean of a few phrasings is steadier. */
+    private val PROMPTS = listOf("%s", "a photo of %s", "a screenshot of %s", "an illustration of %s")
+    private fun qvec(eng: Engine, query: String): FloatArray {
+        val acc = FloatArray(DIM); var n = 0
+        for (p in PROMPTS) {
+            val v = try { eng.embedText(p.replace("%s", query)) } catch (x: Exception) { if (n == 0 && p == "%s") throw x else continue }
+            if (v.size != DIM) continue
+            for (i in 0 until DIM) acc[i] += v[i]; n++
+        }
+        return norm(acc)
+    }
+
+    private fun words(s: String) = fold(s).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+
+    /**
+     * CLIP visual search + hybrid boost: a hit also gets a bonus when the query is in its folder / file name (+0.10) or in its OCR text (+0.08),
+     * so "Toca Boca" finds pictures in a folder called Toca Boca or with the logo text even when CLIP alone is unsure.
+     * Needs [engine] (text tower) and at least one stored vector (pictures without a vector can still match by name / text).
+     */
     fun visual(query: String, top: Int = TOP_N, threshold: Float = THRESHOLD, dir: String = ""): JSONObject {
         val eng = engine ?: throw BadReq("image search engine is not installed yet")
         ensureLoaded()
-        val q = eng.embedText(query)
-        val snap = synchronized(lock) { items.values.filter { it.vec != null && !isOut(it.path) && inDir(it.path, dir) } }
+        val q = qvec(eng, query)
+        val qw = words(query)
+        val snap = synchronized(lock) { items.values.filter { !isOut(it.path) && inDir(it.path, dir) } }
         val res = ArrayList<Pair<String, Float>>()
         for (e in snap) {
-            val v = e.vec ?: continue
-            var d = 0f; for (i in 0 until DIM) d += q[i] * v[i]   // both L2-normalised
-            if (d >= threshold) res.add(e.path to d)
+            var d = -1f
+            val v = e.vec
+            if (v != null) { d = 0f; for (i in 0 until DIM) d += q[i] * v[i] }   // both L2-normalised
+            var bonus = 0f
+            if (qw.isNotEmpty()) {
+                val pw = words(e.path)
+                if (qw.all { w -> pw.any { it == w || it.startsWith(w) } }) bonus += 0.10f
+                val t = e.text
+                if (!t.isNullOrEmpty() && qw.all { w -> fold(t).contains(w) }) bonus += 0.08f
+            }
+            if (d < 0f && bonus == 0f) continue
+            val sc = (if (d < 0f) threshold else d) + bonus
+            if (sc >= threshold) res.add(e.path to sc.coerceAtMost(1f))
         }
         res.sortByDescending { it.second }
         return JSONObject().put("q", query).put("total", snap.size)
+            .put("results", jarr(res.take(top).map { hit(it.first, it.second) }))
+    }
+
+    /** Image-to-image cosine that counts as "the same kind of picture" (CLIP ViT-B/32: unrelated ~0.4-0.55, same subject 0.7+). Tune on a device. */
+    const val SIM_THRESHOLD = 0.62f
+
+    /**
+     * Few-shot "find more like these": mean vector of the example pictures [paths] (all must be indexed) vs. every other indexed picture in [dir].
+     * Pick 3-5 pictures you know are right (e.g. Toca Boca screenshots) and the rest of the album is ranked against their average.
+     */
+    fun similar(paths: List<String>, dir: String = "", top: Int = TOP_N, threshold: Float = SIM_THRESHOLD): JSONObject {
+        if (paths.isEmpty()) throw BadReq("select at least one picture")
+        ensureLoaded()
+        val seeds = HashSet<String>(paths)
+        val snap = synchronized(lock) { items.values.filter { it.vec != null && !isOut(it.path) && inDir(it.path, dir) } }
+        val acc = FloatArray(DIM); var n = 0
+        synchronized(lock) { for (p in paths) { val v = items[p]?.vec ?: continue; for (i in 0 until DIM) acc[i] += v[i]; n++ } }
+        if (n == 0) throw BadReq("the selected pictures are not scanned yet")
+        val q = norm(acc)
+        val res = ArrayList<Pair<String, Float>>()
+        for (e in snap) {
+            if (e.path in seeds) continue
+            val v = e.vec ?: continue
+            var d = 0f; for (i in 0 until DIM) d += q[i] * v[i]
+            if (d >= threshold) res.add(e.path to d)
+        }
+        res.sortByDescending { it.second }
+        return JSONObject().put("q", "similar").put("total", snap.size).put("seeds", n)
             .put("results", jarr(res.take(top).map { hit(it.first, it.second) }))
     }
 

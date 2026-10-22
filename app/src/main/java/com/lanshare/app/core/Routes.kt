@@ -339,6 +339,7 @@ object Routes {
                 "clear" -> { ImgSearch.clear(); ImgSearch.status() }
                 "visual" -> ImgSearch.visual(b.getString("q").trim().ifEmpty { throw BadReq("empty query") }, dir = b.optString("dir", ""))
                 "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part", b.optString("dir", ""))
+                "similar" -> ImgSearch.similar(b.optJSONArray("paths").strings(), b.optString("dir", ""))   // few-shot: more pictures like the selected ones
                 else -> throw BadReq("unknown op")
             })
             "merge" -> ex.json(JSONObject().put("job", AlbumMerge.start(b.getString("target"), b.getJSONArray("paths").strings(), b.optBoolean("skipSimilar", false))))   // gallery: merge the selected albums into "target"
