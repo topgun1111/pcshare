@@ -599,6 +599,7 @@ body.dopen{overflow:hidden}
 .smb .dact{margin-top:8px}
 .di.mm{min-height:76px;gap:14px}.di.mm .dl{width:44px;height:44px}.di.mm .dl svg{width:44px;height:44px}.di.mm .dt b{font-size:23px;font-weight:600}.di.mm .dt small{font-size:15px}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
+.di.bin{background:#000;color:#fff}.di.bin .dt small{color:#fff;opacity:.7}.di.bin:active{background:#1a1a1a}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
@@ -4437,10 +4438,9 @@ function drawerRender(){
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
-    bd.append(dItem({lead:ic('ftp','s24'),title:'FTP servers',sub:'Browse FTP / FTPS servers',onclick:()=>{drawerClose();openFtp()}}));
     if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
-    bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',onclick:()=>{drawerClose();openBin()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
+    bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',cls:'bin',onclick:()=>{drawerClose();openBin()}}));   // last row of the menu, black
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
