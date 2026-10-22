@@ -388,9 +388,9 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         c.connectTimeout = 8_000
         c.defaultTimeout = minOf(timeoutMs, 30_000)
         c.setBufferSize(256 * 1024)
-        c.setKeepAlive(true)   // part 3: SO_KEEPALIVE on the control socket (NAT / mobile networks forget silent connections)
         try {
             c.connect(ip, port)
+            c.setKeepAlive(true)   // part 3: SO_KEEPALIVE on the control socket (NAT / mobile networks forget silent connections). commons-net 3.9 touches the socket directly, so only AFTER connect() - before it the socket is null (NPE)
             c.soTimeout = timeoutMs
             c.setTcpNoDelay(true)   // small command / reply lines must not wait for Nagle
             c.setDataTimeout(timeoutMs)
