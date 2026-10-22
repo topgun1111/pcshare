@@ -121,7 +121,7 @@ class ImageViewerActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+    override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -462,11 +462,23 @@ class ImageViewerActivity : Activity() {
     // ---------------------------------------------------------------- share
     private val phonePrint by lazy { PhonePrint(this) }
 
-    /** Print button: the picture on screen goes to the Android print system (same dialog / layout choices as printing from the file list). */
+    /** Print button: opens the file manager's printer picker for the picture on screen (this phone's print system, every Wi-Fi printer found, PCs, save as PDF). */
     private fun printCurrent() {
         val it = items.getOrNull(pager.currentItem) ?: return
         if (slide) setSlide(false)
-        phonePrint.start(org.json.JSONObject().put("items", org.json.JSONArray().put(org.json.JSONObject().put("url", it.url).put("name", it.name))).toString())
+        val u = android.net.Uri.parse(it.url)
+        val path = u.getQueryParameter("path") ?: ""
+        if (path.isEmpty()) {   // no known location: only the Android print system can take it
+            phonePrint.start(org.json.JSONObject().put("items", org.json.JSONArray().put(org.json.JSONObject().put("url", it.url).put("name", it.name))).toString())
+            return
+        }
+        try {
+            startActivity(Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_PRINT_FILES)
+                .putExtra(MainActivity.X_DEV, u.getQueryParameter("dev") ?: "local")
+                .putExtra(MainActivity.X_PATHS, arrayOf(path))
+                .putExtra(MainActivity.X_NAMES, arrayOf(it.name))
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        } catch (e: Exception) { Toast.makeText(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
     }
 
     /** More > To Print space (HANDOVER 9.7 part 3b): stores a copy of the picture on screen in the Print space (this phone, other devices and shares alike). */

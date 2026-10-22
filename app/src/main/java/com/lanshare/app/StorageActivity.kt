@@ -174,7 +174,7 @@ class StorageActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun dpf(v: Float) = v * resources.displayMetrics.density
 
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+    override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)

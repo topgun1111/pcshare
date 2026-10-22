@@ -39,6 +39,10 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     companion object {
         const val ACTION_PRINT_SHARED = "com.lanshare.app.PRINT_SHARED"
+        const val ACTION_PRINT_FILES = "com.lanshare.app.PRINT_FILES"   // from the picture viewer's Print button: open the printer picker for these files
+        const val X_DEV = "dev"
+        const val X_PATHS = "paths"
+        const val X_NAMES = "names"
         const val ACTION_SHOW_PATH = "com.lanshare.app.SHOW_PATH"   // from the Storage Analyzer: show this folder in the file manager
         const val X_SHOW_PATH = "path"
     }
@@ -292,11 +296,12 @@ class MainActivity : Activity() {
     }
     private var pendingShare: List<String>? = null
     private var pendingPrint: List<String>? = null
+    private var pendingPrintFiles: String? = null   // {dev, items:[{name, path}]} from the picture viewer
     private var pendingPrintPriv = false   // names are in the private print-in folder (from PcPrintService), not in LANShare Shared
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b, false))
+    override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b, false) }
 
     /** Fold / unfold: the activity is not recreated (configChanges), so tell the page to re-fit its layout width to the new screen. */
     override fun onConfigurationChanged(c: android.content.res.Configuration) {
@@ -462,6 +467,15 @@ class MainActivity : Activity() {
 
     /** Android share sheet -> copy into <storage>/LANShare Shared so it can be selected and Sent from the UI. */
     private fun handleShare(i: Intent?) {
+        if (i != null && i.action == ACTION_PRINT_FILES) {   // picture viewer -> same printer picker as the file list (this phone, Wi-Fi printers, PCs, PDF)
+            val paths = i.getStringArrayExtra(X_PATHS)?.toList().orEmpty()
+            val names = i.getStringArrayExtra(X_NAMES)?.toList().orEmpty()
+            val arr = org.json.JSONArray()
+            paths.forEachIndexed { k, p -> arr.put(JSONObject().put("name", names.getOrNull(k) ?: p.substringAfterLast('/')).put("path", p)) }
+            i.action = null
+            if (arr.length() > 0) { pendingPrintFiles = JSONObject().put("dev", i.getStringExtra(X_DEV) ?: "local").put("items", arr).toString(); runPrint() }
+            return
+        }
         if (i != null && i.action == ACTION_PRINT_SHARED) {   // from PcPrintService: a document printed from another app
             val n = i.getStringArrayExtra("names")?.toList().orEmpty()
             getSystemService(NotificationManager::class.java).cancel(i.getIntExtra("nid", 0))
@@ -644,13 +658,17 @@ class MainActivity : Activity() {
 
     /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */
     private fun runPrint() {
-        if (pendingPrint == null || !pageReady) return
+        if ((pendingPrint == null && pendingPrintFiles == null) || !pageReady) return
         if (uiBooted) firePrint()
         else web.postDelayed({ firePrint() }, 600)   // first screen not drawn yet: wait at most 0.6 s (nlBoot / nlLayout call runPrint again as soon as it is)
     }
 
     /** Opens the print dialog in the page; idempotent (the pending names are consumed), so several scheduled calls are harmless. */
     private fun firePrint() {
+        pendingPrintFiles?.let { js ->
+            pendingPrintFiles = null
+            web.evaluateJavascript("(function f(n){if(window.lsPrintFiles)lsPrintFiles($js);else if(n<30)setTimeout(function(){f(n+1)},100)})(0)", null)
+        }
         val names = pendingPrint ?: return
         pendingPrint = null
         val arr = org.json.JSONArray(names).toString()

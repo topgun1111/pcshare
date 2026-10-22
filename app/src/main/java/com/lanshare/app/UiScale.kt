@@ -27,6 +27,21 @@ object UiScale {
     /** Density multiplier for natively painted views of MainActivity (its WebView ignores the density override, so it is scaled by a viewport instead). */
     fun dens(act: android.app.Activity): Float = act.resources.displayMetrics.density * iface(act) / 100f
 
+    /**
+     * Applies the display scale to an activity WITHOUT replacing its base context. The old wrap() returned base.createConfigurationContext(),
+     * and Android's PrintManager then saw a plain ContextImpl instead of the Activity ("Print failed: Can print only from an activity").
+     * Call right after super.attachBaseContext(b).
+     */
+    fun attach(act: android.app.Activity, base: Context, density: Boolean = true) {
+        val i = if (density) iface(base) else 100; val t = text(base)
+        tf = t / 100f
+        if (i == 100 && t == 100) return
+        val cfg = Configuration(base.resources.configuration)
+        if (i != 100) cfg.densityDpi = Math.max(60, Math.round(cfg.densityDpi * i / 100f))
+        if (t != 100) cfg.fontScale = t / 100f
+        try { act.applyOverrideConfiguration(cfg) } catch (_: IllegalStateException) {}
+    }
+
     fun wrap(base: Context, density: Boolean = true): Context {
         val i = if (density) iface(base) else 100; val t = text(base)
         tf = t / 100f

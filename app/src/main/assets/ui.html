@@ -3150,6 +3150,9 @@ function lsCloseOverlays(){
 }
 window.lsOpenArc=p=>{lsCloseOverlays();openLoc('local',p+'!')};   // "Open with LANShare" on a zip / rar: browse inside the archive
 window.lsGoLocal=p=>{lsCloseOverlays();openLoc('local',p)};   // Storage Analyzer "Show in file manager": this device, that folder
+window.lsPrintFiles=async o=>{   /* picture viewer's Print button: the normal printer picker (this phone, Wi-Fi printers, PCs, PDF) for these files */
+  try{lsCloseOverlays();await doPrint(null,{items:o.items.map(x=>({name:x.name,p:x.path,size:0})),dev:o.dev||'local',full:1,path:'/',done(){}})}
+  catch(e){toast('\u26a0 '+e.message,5000)}};
 window.lsPrintShared=async(names,priv)=>{
   try{
     const busy=WIFI_BUSY&&WIFI_P?WIFI_P:loadWifi();   /* picker opens immediately ("Searching printers…"), no waiting for the printer search */
