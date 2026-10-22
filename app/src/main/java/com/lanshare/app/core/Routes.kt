@@ -150,6 +150,7 @@ object Routes {
             "ls" -> {
                 val dev = ex.q("dev")
                 val path = vnorm(q["path"] ?: "/")
+                if (q["fresh"] == "1" && dev != "local") try { Jobs.ep(dev).invalidate(path) } catch (_: Exception) {}   // pull-to-refresh on FTP / SFTP: drop the cached listing first
                 val items = (if (dev == "local" && arcSplit(path) == null) Core.local.ls(path, false) else Jobs.ep(dev).ls(path))   // paths inside a .zip/.rar must go through ArcEp
                     .map { it to it.name.lowercase() }   // lower-case each name once, not on every comparison (big folders)
                     .sortedWith(compareBy<Pair<Item, String>>({ !it.first.dir }, { it.second })).map { it.first }
@@ -241,6 +242,12 @@ object Routes {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true
                 return ok(ex)
             }
+            "ftpcache" -> {   // part 5: GET stats; ?clear=1 forgets every saved listing; ?ttl=<seconds 0-3600> sets how long a listing counts as fresh
+                if (q["clear"] == "1") FtpCache.clearAll()
+                q["ttl"]?.toIntOrNull()?.let { FtpCache.setTtlSec(it) }
+                return ex.json(FtpCache.statsJson())
+            }
+            "warm" -> { Jobs.ep(ex.q("dev")).warmUp(); return ok(ex) }   // a place was opened (FTP part 3: connection warm-up); never fails the page
             "resumable" -> return ex.json(Jobs.resumable())   // interrupted copies / moves that can be continued (survive an app restart)
             "jobresume" -> return ex.json(JSONObject().put("job", Jobs.resume(ex.q("id"))))   // continue one of them: a new job id comes back
             "resumedrop" -> { Partials.dropJob(ex.q("id")); return ok(ex) }   // give up on one: forget the record (partial files are purged after 7 days)

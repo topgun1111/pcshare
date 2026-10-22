@@ -26,7 +26,9 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 
 internal class SConn(val s: Session, val ch: ChannelSftp)
-internal class SPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<SConn, Long>>() }
+internal class SPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<SConn, Long>>()
+    @Volatile var dirtyAt = 0L                                    // part 4: last time a write on this server finished (see FtpCache.fill)
+    val links = ConcurrentHashMap<String, Boolean>() }            // part 4: symlink path -> is it a folder (remembered, one stat each)
 
 /** One borrowed SSH session + SFTP channel. [release] puts it back (keep = true) or closes it. */
 internal class SLease(private val cn: SConn, private val pool: SPool) {
@@ -135,8 +137,10 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
 
     companion object {
         private val pools = ConcurrentHashMap<String, SPool>()
-        fun forget(id: String) { pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.ch.disconnect(); it.first.s.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
+        fun forget(id: String) { FtpCache.clear(id); pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.ch.disconnect(); it.first.s.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
         private const val IDLE_MAX_MS = 25_000L
+        private const val LINK_MAX = 200             // part 4: symlinks resolved (stat) per listing
+        private const val LINK_BUDGET_MS = 4_000L    // part 4: time one listing may spend on them; the rest is resolved by the next listing
     }
 
     private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$timeoutMs|$encoding"
@@ -276,6 +280,7 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
 
     private fun listRaw(ch: ChannelSftp, path: String): List<Item> {
         val out = ArrayList<Item>()
+        val end = System.currentTimeMillis() + LINK_BUDGET_MS
         var links = 0
         for (o in ch.ls(q(path)) as Vector<*>) {
             val e = o as? ChannelSftp.LsEntry ?: continue
@@ -284,8 +289,21 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
             val a = e.attrs
             if (a.isChr || a.isBlk || a.isFifo || a.isSock) continue   // devices, pipes, ...
             var dir = a.isDir
-            if (a.isLink && links < 40) { links++; dir = try { ch.stat(vjoin(path, n)).isDir } catch (_: SftpException) { false } }
-            out.add(Item(n, dir, if (dir) 0L else maxOf(a.size, 0L), a.mTime.toLong(), null, null, n.startsWith(".")))
+            var size = a.size
+            var mt = a.mTime.toLong()
+            if (a.isLink) {   // part 4: folder or file? one stat each (remembered), at most LINK_MAX per listing and LINK_BUDGET_MS in total
+                val lk = vjoin(path, n)
+                val known = pool.links[lk]
+                if (links < LINK_MAX && System.currentTimeMillis() < end) {
+                    links++
+                    val st = try { ch.stat(lk) } catch (ex: SftpException) { if (ex.id == 2) null else if (transient(ex)) throw ex else null }   // broken link / no access: stays a file
+                    dir = st?.isDir ?: false
+                    if (st != null && !dir) { size = st.size; mt = st.mTime.toLong() }   // a link to a file shows the file's size, not the link's
+                    if (pool.links.size > 2000) pool.links.clear()
+                    pool.links[lk] = dir
+                } else dir = known ?: false
+            }
+            out.add(Item(n, dir, if (dir) 0L else maxOf(size, 0L), mt, null, null, n.startsWith(".")))
         }
         return out
     }
@@ -299,17 +317,78 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
 
     private fun sizeOf(ch: ChannelSftp, path: String): Long = try { ch.stat(path).size } catch (e: SftpException) { if (e.id == 2) -1L else throw e }
 
-    override fun ls(v: String): List<Item> = op { ch -> listRaw(ch, fp(v)) }
+    // ------------------------------------------------------------------ listing cache (FTP speed-up part 4: the same FtpCache as FtpFs)
+    private fun parentAbs(abs: String) = abs.substringBeforeLast('/', "").ifEmpty { "/" }
 
-    override fun names(v: String): MutableSet<String> =
-        try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+    /** A listing through [FtpCache]; [fresh] skips the cached copy. Identical concurrent listings share one request. */
+    private fun listCached(ch: ChannelSftp, abs: String, fresh: Boolean = false): List<Item> {
+        if (!fresh) FtpCache.get(id, abs)?.let { return it }
+        val t0 = System.currentTimeMillis()
+        synchronized(FtpCache.lock(id, abs)) {
+            if (!fresh) FtpCache.get(id, abs)?.let { return it }
+            else FtpCache.getSince(id, abs, t0)?.let { return it }
+            val r = listRaw(ch, abs)
+            FtpCache.put(id, abs, r)
+            return r
+        }
+    }
+
+    /** After a change on the server: forget the listing of [v], of every parent up to the root, and of the subtree below it when [tree]. */
+    private fun dirty(v: String, tree: Boolean = false) {
+        pool.dirtyAt = System.currentTimeMillis()
+        try {
+            var a = fp(v)
+            FtpCache.drop(id, a, tree)
+            while (a != "/") { a = parentAbs(a); FtpCache.drop(id, a, false) }
+        } catch (_: Exception) {}
+    }
+
+    /** A listing for search / walk / folder totals: from the server (or a fresh cached copy when [useCache]); the answer is stored in the cache. */
+    private fun listFill(ch: ChannelSftp, abs: String, f: FtpCache.Fill, useCache: Boolean): List<Item> {
+        if (useCache) FtpCache.get(id, abs)?.let { return it }
+        val t = System.currentTimeMillis()
+        val r = listRaw(ch, abs)
+        FtpCache.fill(id, abs, r, t, pool.dirtyAt, f)
+        return r
+    }
+
+    override fun invalidate(v: String) { try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {} }
+
+    private val refreshing = ConcurrentHashMap.newKeySet<String>()
+
+    /** One background refresh per folder; when the server's answer differs the page is told to reload ([Core.onFtpChanged]). Offline = keep the old list. */
+    private fun refreshLater(v: String, a: String, old: List<Item>) {
+        if (!refreshing.add(a)) return
+        Thread({
+            try {
+                val fresh = op { ch -> listCached(ch, a, true) }
+                if (fresh != old) Core.onFtpChanged?.invoke(id, v)
+            } catch (_: Throwable) {
+            } finally { refreshing.remove(a) }
+        }, "sftp-refresh").also { it.isDaemon = true }.start()
+    }
+
+    private fun lsPlain(v: String): List<Item> {
+        val a = fp(v)
+        FtpCache.get(id, a)?.let { return it }                                          // fresh hit: no connection
+        FtpCache.getStale(id, a)?.let { old -> refreshLater(v, a, old); return old }    // stale-while-revalidate (memory, then disk)
+        return op { ch -> listCached(ch, a) }
+    }
+
+    override fun ls(v: String): List<Item> = lsPlain(v)
+
+    override fun names(v: String): MutableSet<String> {   // name-clash checks: never from the cache
+        try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {}
+        return try { lsPlain(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+    }
 
     private fun searchIn(ch: ChannelSftp, v: String, ql: String, out: MutableList<Item>, end: Long): Boolean {
+        val fill = FtpCache.Fill()
         val stack = ArrayDeque<String>()
         stack.addLast(vnorm(v))
         while (stack.isNotEmpty()) {
             val d = stack.removeLast()
-            val entries = try { listRaw(ch, fp(d)) } catch (e: IOException) { continue } catch (e: SftpException) { if (transient(e)) throw e; continue }
+            val entries = try { listFill(ch, fp(d), fill, true) } catch (e: IOException) { continue } catch (e: SftpException) { if (transient(e)) throw e; continue }
             for (i in entries) {
                 if (i.dir) stack.addLast(vjoin(d, i.name))
                 if (i.name.lowercase().contains(ql)) {
@@ -339,11 +418,12 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
             val me = entry(ch, v) ?: throw NotFound("No such file or directory")
             if (!me.dir) { out(WalkItem("", false, me.size)); return@op }
             out(WalkItem("", true, 0))
+            val fill = FtpCache.Fill()
             val stack = ArrayDeque<String>()
             stack.addLast("")
             while (stack.isNotEmpty()) {
                 val r0 = stack.removeLast()
-                val kids = try { listRaw(ch, fp(if (r0.isEmpty()) v else vjoin(v, r0))) }
+                val kids = try { listFill(ch, fp(if (r0.isEmpty()) v else vjoin(v, r0)), fill, false) }   // a copy / move reads the server, but leaves the listings behind
                            catch (e: Exception) { if (transient(e)) throw e; out(WalkItem(if (r0.isEmpty()) "(folder)" else r0, false, 0, true)); continue }
                 for (k in kids) {
                     val r = if (r0.isEmpty()) k.name else r0 + "/" + k.name
@@ -362,10 +442,11 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
             if (me.dir) {   // totals, bounded like the SMB ones (20 s / 300 000 entries)
                 val tot = LongArray(3); var partial = false; var seen = 0
                 val end = System.currentTimeMillis() + 20_000L
+                val fill = FtpCache.Fill()
                 val stack = ArrayDeque<String>(); stack.addLast(n)
                 loop@ while (stack.isNotEmpty()) {
                     val d = stack.removeLast()
-                    val kids = try { listRaw(ch, fp(d)) } catch (e: Exception) { if (transient(e)) throw e; continue }
+                    val kids = try { listFill(ch, fp(d), fill, true) } catch (e: Exception) { if (transient(e)) throw e; continue }
                     for (k in kids) {
                         if (k.dir) { tot[1]++; stack.addLast(vjoin(d, k.name)) } else { tot[0]++; tot[2] += k.size }
                         if (++seen >= 300_000) { partial = true; break@loop }
@@ -399,16 +480,16 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
         }
     }
 
-    override fun mkdir(v: String) { op { ch -> mkdirs(ch, fp(v)) } }
+    override fun mkdir(v: String) { try { op { ch -> mkdirs(ch, fp(v)) } } finally { dirty(v) } }
 
-    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) = upload(v, input, size, 0L, null, cb)
+    override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) { try { upload(v, input, size, 0L, null, cb) } finally { dirty(v) } }
 
     override val setsMtime: Boolean get() = true
 
     override fun setMtime(v: String, sec: Long) {
         if (sec <= 0 || sec > Int.MAX_VALUE || vnorm(v) == "/") return
         val path = fp(v)
-        op { ch -> ch.setMtime(path, sec.toInt()); Unit }
+        try { op { ch -> ch.setMtime(path, sec.toInt()); Unit } } finally { dirty(v) }
     }
 
     override val resumable: Boolean get() = true
@@ -423,7 +504,7 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
 
     override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
         if (size < 0 || offset < 0 || offset > size) throw BadReq("bad resume offset")
-        upload(v, input, size, offset, tag, cb)
+        try { upload(v, input, size, offset, tag, cb) } finally { dirty(v) }
     }
 
     /**
@@ -504,7 +585,7 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
     override fun remove(v: String, progress: ((String) -> Unit)?) {
         val n = vnorm(v)
         if (n == "/") throw Denied("cannot delete the server root")
-        op(false) { ch ->
+        try { op(false) { ch ->
             val me = entry(ch, n) ?: return@op
             val fails = ArrayList<String>()
             if (me.dir) {
@@ -516,27 +597,27 @@ class SftpFs(private val cfg: JSONObject) : Endpoint {
             if (fails.isNotEmpty())
                 throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
             Unit
-        }
+        } } finally { dirty(n, true) }
     }
 
     override fun rename(v: String, newName: String) {
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
         if (vnorm(v) == "/") throw BadReq("cannot rename the root")
         val dst = vjoin(vdir(v), newName)
-        op(false) { ch ->
+        try { op(false) { ch ->
             val clash = entry(ch, dst)
             if (clash != null && !vbase(v).equals(newName, ignoreCase = true)) throw Exists("name already exists")
             ch.rename(fp(v), fp(dst))
             Unit
-        }
+        } } finally { dirty(v, true); dirty(dst, true) }
     }
 
     override fun move(v: String, toV: String) {
-        op(false) { ch ->
+        try { op(false) { ch ->
             if (entry(ch, toV) != null) throw Exists("name already exists")
             mkdirs(ch, fp(vdir(toV)))
             ch.rename(fp(v), fp(toV))
             Unit
-        }
+        } } finally { dirty(v, true); dirty(toV, true) }
     }
 }

@@ -1007,7 +1007,9 @@ window.addEventListener('pageshow',resume);window.addEventListener('online',resu
 async function pollOnce(){try{const pr=await api('GET','/api/peers');if(Array.isArray(pr))S.peers=pr}catch(e){}}
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;homeHide();
-  S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();return load()}
+  S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();
+  if(id.indexOf('ftp:')===0){try{api('GET','/api/warm?dev='+encodeURIComponent(id)).catch(()=>{})}catch(e){}}   /* FTP part 3: log in in the background while the folder is painted */
+  return load()}
 async function addIp(){
   const ip=await dlg({title:'Add another LANShare device',msg:'IP address of the other device running LANShare',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
   try{await api('POST','/api/addip',{ip});toast('Found it!')}catch(e){toast('⚠ '+e.message,4000)}}
@@ -1076,7 +1078,7 @@ async function loadMain(){
   if(galRoot()){useLSC=false;S.items=[];S.err='';S.sel.clear();if(!S.lost)banner('');render();return}   // gallery = albums from MediaStore only, no file-manager listing
   const dev=S.dev,path=S.path,ck=dev+'|'+path,hit=useLSC&&path.indexOf('!')<0?LSC.get(ck):null;useLSC=false;
   if(hit){S.items=hit.items;S.used=hit.used;S.err='';S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
-  try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path));
+  try{const r=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(S.path)+(S.fresh?(S.fresh=0,'&fresh=1'):''));   /* pull-to-refresh = ask the FTP server again, not the cache */
     if(dev!==S.dev||path!==S.path)return;
     if(path.indexOf('!')<0)lscPut(ck,{items:r.items,used:r.used});
     if(hit&&hit.items.length===r.items.length&&hit.items.every((o,k)=>o.name===r.items[k].name&&o.mtime===r.items[k].mtime&&o.size===r.items[k].size)){S.used=r.used;S.err='';if(!S.lost)banner('');loadSpace();fillCounts(dev,path);idlePre();return}   // nothing changed: keep what is on screen
@@ -1217,7 +1219,7 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='used'){pillTap();return}
   const i=NLL[x];
   if(ev==='refresh'){(async()=>{const fin=()=>{try{NL.nlDone()}catch(e){}},cap=setTimeout(fin,8000);   // an offline device can keep /api/ls waiting for minutes: stop the spinner anyway
-    try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
+    try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
@@ -1784,6 +1786,7 @@ function doNewOffice(kind){
   try{LSAndroid.newOffice(JSON.stringify({dev:S.dev,dir:S.path,kind}))}catch(e){toast('\u26a0 '+e.message,4000)}}
 /* the editor saved something: reload the open folder */
 window.lsRefresh=()=>{try{load()}catch(e){}try{const g=$('#gal');if(g&&g._reload&&g.style.display!=='none')g._reload()}catch(e){}};
+window.lsFtpChanged=(d,p)=>{try{if(S.dev===d&&S.path===p)load()}catch(e){}};   /* FTP: the folder painted from the saved listing differs on the server -> reload it once */
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});
 function mediaList(){return cxl().filter(i=>!i.dir&&(kind(i)==='vid'||(kind(i)==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))))}
@@ -2244,6 +2247,12 @@ async function openFtp(){
   const info=E('p','smn','A saved server appears next to your devices: browse it, copy files to and from it, or send files to it. Plain FTP is not encrypted, so use FTPS when the server offers it. Tap a server to edit it.');
   const lh=E('div','dsec','Saved servers'),list=E('div','sml'),act=E('div','dact');
   main.append(info,lh,list,act);
+  {const cc=E('div','dsec','Listing cache'),cs=E('small','smn','…'),cb=E('div','dact'),tb=E('button','set','Fresh for: …'),xb=E('button','set','Clear FTP cache');   /* part 5 */
+    const TT=[0,10,30,120,600],show=o=>{cs.textContent=o.folders+' folders in memory, '+o.items+' entries, '+Math.round(o.disk/1024)+' KB on disk. Served: '+o.hits+' from cache, '+o.stale+' instantly then refreshed, '+o.miss+' from the server.'+(o.log&&o.log.length?' Last: '+o.log.slice(0,3).join(' | '):'');tb.textContent='Fresh for: '+(o.ttl?o.ttl+' s':'always ask')+' (tap to change)';tb._t=o.ttl};
+    const call=async q=>{try{show(await api('GET','/api/ftpcache'+(q?'?'+q:'')))}catch(e){cs.textContent='⚠ '+e.message}};
+    tb.onclick=()=>{const i=TT.indexOf(tb._t);call('ttl='+TT[(i+1)%TT.length])};
+    xb.onclick=()=>{call('clear=1');toast('FTP cache cleared',2000)};
+    cb.append(tb,xb);main.append(cc,cs,cb);call('')}
   const pill=(t,cls)=>E('span','smp'+(cls?' '+cls:''),t);
   const draw=l=>{list.textContent='';
     lh.textContent='Saved servers'+(l.length?' ('+l.length+')':'');
@@ -4131,7 +4140,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
   const end=async()=>{if(!on)return;on=false;
     if(dy>=16&&dy*0.5>=TH&&!busy){busy=true;box.classList.add('go');lab.textContent='Refreshing…';setH(46);
-      try{galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await Promise.race([load(),new Promise(r=>setTimeout(r,8000))]);refreshClip()}catch(e){}
+      try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await Promise.race([load(),new Promise(r=>setTimeout(r,8000))]);refreshClip()}catch(e){}
       await new Promise(r=>setTimeout(r,400));busy=false}
     reset()};
   window.addEventListener('touchend',end);window.addEventListener('touchcancel',end)})();

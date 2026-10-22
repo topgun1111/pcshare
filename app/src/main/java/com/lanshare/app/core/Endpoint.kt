@@ -36,6 +36,8 @@ interface Endpoint {
     fun lsFast(v: String): List<Item> = ls(v)
     /** Forget any cached listing of [v] (pull-to-refresh / "fresh=1"): the next [ls] asks the server again. Default: nothing is cached. */
     fun invalidate(v: String) {}
+    /** The place was just opened: get ready for the first tap (FTP: log in and read FEAT / the start folder now). Default: nothing to do. */
+    fun warmUp() {}
     fun search(v: String, q: String): SearchResult
     fun names(v: String): MutableSet<String>
     fun walk(v: String): List<WalkItem>

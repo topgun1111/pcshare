@@ -11,6 +11,8 @@ import java.io.IOException
 
 /** Replacement for android_main.py + lanshare.main(): owns config, local filesystem, HTTP server and discovery. */
 object Core {
+    /** Set by MainActivity: an FTP folder shown from the saved listing turned out different on the server (dev id, virtual path). */
+    @Volatile var onFtpChanged: ((String, String) -> Unit)? = null
     private const val TAG = "LANShare"
     @Volatile var url: String? = null
     @Volatile var error: String? = null
@@ -48,6 +50,7 @@ object Core {
             holdAwake(app)
             PerfMarks.mark("core.locks")   // PERF-DEBUG
             try { Partials.init(app.filesDir); Thread({ Partials.purge() }, "partials-purge").also { it.isDaemon = true }.start() } catch (_: Throwable) {}   // interrupted copies: reload the registry, drop what is older than a week
+            try { FtpCache.init(app.filesDir) } catch (_: Throwable) {}   // FTP speed-up part 2: listings saved on disk
             cacheDir = File(app.cacheDir, "arc").also { it.mkdirs() }
             ArcStore.cleanOnStart()
             try { File(app.cacheDir, "pv").deleteRecursively() } catch (_: Exception) {}

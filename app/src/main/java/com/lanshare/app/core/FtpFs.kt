@@ -23,7 +23,16 @@ import java.util.zip.CRC32
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import java.security.SecureRandom
 import javax.net.SocketFactory
+import javax.net.ssl.KeyManager
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLContextSpi
+import javax.net.ssl.SSLEngine
+import javax.net.ssl.SSLServerSocketFactory
+import javax.net.ssl.SSLSessionContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
 
 /** FTP / FTPS server config helpers (saved in lanshare.json under "ftp"), same role as [Smb]. */
 object Ftp {
@@ -167,6 +176,13 @@ object Ftp {
 }
 
 internal class FtpPool { val sem = Semaphore(4); val idle = ArrayDeque<Pair<FTPClient, Long>>(); @Volatile var feat: Set<String>? = null; @Volatile var noCopy = false
+    @Volatile var lastUse = 0L                 // part 3: last time anything used / warmed this server (the keeper drops idle connections 3 min after it)
+    @Volatile var dirtyAt = 0L                 // part 4: last time a write on this server finished (listings that started before it are not stored by fill())
+    @Volatile var noMlst = false               // part 4: the server listed MLST in FEAT but refused the command
+    @Volatile var warming = false              // part 3: a warm-up login is running
+    @Volatile var tls: SSLContext? = null      // part 3: ONE TLS context per server, so its session cache lives across connections (FTPS session reuse)
+    val pfAt = ConcurrentHashMap<String, Long>()   // part 3: folder -> last prefetch try (no hammering)
+    val pfBusy = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile var syst: String? = null   // SYST answer, asked once per server: later connections skip that round trip when listing
     val links = ConcurrentHashMap<String, Boolean>() }   // symlink path -> is it a folder (one CWD round trip each, remembered)   // most servers allow only a few logins per client
 
@@ -176,10 +192,41 @@ internal class Lease(val c: FTPClient, private val pool: FtpPool) {
     fun release(keep: Boolean) {
         if (done) return
         done = true
+        pool.lastUse = System.currentTimeMillis()
         if (keep && c.isConnected) synchronized(pool.idle) { pool.idle.addLast(c to System.currentTimeMillis()) }
         else try { c.disconnect() } catch (_: Exception) {}
         pool.sem.release()
     }
+}
+
+/**
+ * FTPS session reuse (FTP speed-up part 3). Many servers (vsftpd require_ssl_reuse, FileZilla Server, ProFTPD ...) only accept a data connection whose
+ * TLS session is the control connection's, and a resumed session also saves a full handshake. JSSE / Conscrypt look a session up by the (host, port)
+ * given to createSocket: the data socket gets a new port every time, so nothing was ever found. [ReuseFactory] hands every layered socket of one client
+ * the CONTROL port (the first one it sees); together with the shared per-server context ([FtpPool.tls]) the control session is found again.
+ * The port is only used as the cache key - the socket is already connected.
+ */
+private class ReuseFactory(private val d: SSLSocketFactory) : SSLSocketFactory() {
+    @Volatile private var ctrl = -1
+    private fun key(p: Int): Int { if (ctrl < 0) ctrl = p; return ctrl }
+    override fun getDefaultCipherSuites(): Array<String> = d.defaultCipherSuites
+    override fun getSupportedCipherSuites(): Array<String> = d.supportedCipherSuites
+    override fun createSocket(s: Socket, host: String?, port: Int, autoClose: Boolean): Socket = d.createSocket(s, host, key(port), autoClose)
+    override fun createSocket(host: String?, port: Int): Socket = d.createSocket(host, port)
+    override fun createSocket(host: String?, port: Int, la: InetAddress?, lp: Int): Socket = d.createSocket(host, port, la, lp)
+    override fun createSocket(a: InetAddress?, port: Int): Socket = d.createSocket(a, port)
+    override fun createSocket(a: InetAddress?, port: Int, la: InetAddress?, lp: Int): Socket = d.createSocket(a, port, la, lp)
+}
+
+private class ReuseSpi(private val d: SSLContext) : SSLContextSpi() {
+    private val f = ReuseFactory(d.socketFactory)
+    override fun engineInit(km: Array<KeyManager>?, tm: Array<TrustManager>?, sr: SecureRandom?) {}   // [d] is initialised already
+    override fun engineGetSocketFactory(): SSLSocketFactory = f
+    override fun engineGetServerSocketFactory(): SSLServerSocketFactory = d.serverSocketFactory
+    override fun engineCreateSSLEngine(): SSLEngine = d.createSSLEngine()
+    override fun engineCreateSSLEngine(host: String?, port: Int): SSLEngine = d.createSSLEngine(host, port)
+    override fun engineGetServerSessionContext(): SSLSessionContext? = d.serverSessionContext
+    override fun engineGetClientSessionContext(): SSLSessionContext? = d.clientSessionContext
 }
 
 /** Read-only, seekable view of a remote FTP file: REST + RETR on seek, and again (at the current position) after a dropped connection. */
@@ -274,15 +321,60 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         /** A server was removed / edited: close its idle connections now. */
         fun forget(id: String) { SftpFs.forget(id); FtpCache.clear(id); pools.keys.filter { it.startsWith("$id|") }.forEach { k -> pools.remove(k)?.let { p -> synchronized(p.idle) { p.idle.forEach { try { it.first.disconnect() } catch (_: Exception) {} }; p.idle.clear() } } } }
         private val IDLE_MAX_MS = 25_000L
+        private const val KEEP_EVERY_MS = 12_000L    // part 3: an idle connection older than this gets a NOOP from the keeper (servers drop idle logins after 30-60 s)
+        private const val KEEP_MS = 180_000L         // part 3: idle connections are closed this long after the server was last used (no login held forever)
+        private const val PF_KIDS = 6                // part 3: sub-folders prefetched after a listing
+        private const val PF_GAP_MS = 20_000L        // part 3: the same folder is not prefetched twice within this time
+        private const val LINK_MAX = 200             // part 4: symlinks resolved (CWD) per listing
+        private const val LINK_BUDGET_MS = 4_000L    // part 4: time one listing may spend on symlink checks; the rest is resolved by the next listing
+        private const val LINK_PAR_MIN = 8           // part 4: from this many unresolved links on, spare connections help
+        private const val LINK_HELPERS = 2
+        @Volatile private var keeperOn = false
+
+        private fun startKeeper() {
+            if (keeperOn) return
+            keeperOn = true
+            Thread({
+                while (true) {
+                    try { Thread.sleep(6_000) } catch (_: InterruptedException) {}
+                    try { keep() } catch (_: Throwable) {}
+                }
+            }, "ftp-keeper").also { it.isDaemon = true }.start()
+        }
+
+        /** NOOP on every idle connection that is due, close dead ones and (3 min after the last use) all idle ones. */
+        private fun keep() {
+            val now = System.currentTimeMillis()
+            for (p in pools.values) {
+                val alive = now - p.lastUse < KEEP_MS
+                val due = synchronized(p.idle) { p.idle.filter { !alive || now - it.second >= KEEP_EVERY_MS } }
+                for (e in due) {
+                    if (!synchronized(p.idle) { p.idle.remove(e) }) continue   // a lease took it meanwhile
+                    val c = e.first
+                    val ok = alive && try { c.isConnected && c.sendNoOp() } catch (_: Exception) { false }
+                    if (ok) synchronized(p.idle) { p.idle.addLast(c to System.currentTimeMillis()) }
+                    else try { c.disconnect() } catch (_: Exception) {}
+                }
+            }
+        }
         private const val HASH_MAX = 512L shl 20   // larger files: size check only (the server would need minutes to hash them)
     }
 
     private val poolKey get() = "$id|$host|$port|$user|${pw.hashCode()}|$ftps|$active|$natfix|$timeoutMs|$encoding|$hidden"
-    private val pool: FtpPool get() = pools.getOrPut(poolKey) { FtpPool() }
+    private val pool: FtpPool get() = pools.getOrPut(poolKey) { FtpPool() }.also { startKeeper() }
 
     // ------------------------------------------------------------------ connections
+    /** FTPS client on the server's shared TLS context, with session reuse for data connections (see [ReuseFactory]). Self-signed certificates are accepted (LAN servers). */
+    private fun newFtps(): FTPSClient {
+        val p = pool
+        val ctx = p.tls ?: synchronized(p) {
+            p.tls ?: SSLContext.getInstance("TLS").also { it.init(null, arrayOf<TrustManager>(TrustManagerUtils.getAcceptAllTrustManager()), null); p.tls = it }
+        }
+        return FTPSClient(false, object : SSLContext(ReuseSpi(ctx), ctx.provider, ctx.protocol) {})
+    }
+
     private fun newClient(): FTPClient {
-        val c = if (ftps) FTPSClient("TLS", false).also { it.trustManager = TrustManagerUtils.getAcceptAllTrustManager() } else FTPClient()   // LAN servers mostly use self-signed certificates
+        val c = if (ftps) newFtps() else FTPClient()
         val ip = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: UnknownHostException) { throw IOException("Unknown server address: $host") }
         c.setSocketFactory(object : SocketFactory() {   // every socket (control + data) goes out through the right network (Wi-Fi / Tailscale), like the other clients
             override fun createSocket(): Socket = Net.newSocket(ip)
@@ -296,6 +388,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         c.connectTimeout = 8_000
         c.defaultTimeout = minOf(timeoutMs, 30_000)
         c.setBufferSize(256 * 1024)
+        c.setKeepAlive(true)   // part 3: SO_KEEPALIVE on the control socket (NAT / mobile networks forget silent connections)
         try {
             c.connect(ip, port)
             c.soTimeout = timeoutMs
@@ -320,6 +413,26 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     internal fun lease(): Lease {
         val p = pool
         if (!p.sem.tryAcquire(30, TimeUnit.SECONDS)) throw IOException("The server has too many open transfers - try again")
+        return acquired(p)
+    }
+
+    /** Part 3: a connection for background work (prefetch) - only when at least 3 of the 4 slots are free, so it never makes a tap wait. null = busy. */
+    private fun leaseSpare(): Lease? {
+        val p = pool
+        if (p.sem.availablePermits() < 3 || !p.sem.tryAcquire()) return null
+        return acquired(p)
+    }
+
+    /** Part 4: a helper connection while a listing already holds one: only when at least 2 slots are free (one stays free for a tap). null = none. */
+    private fun leaseHelper(): Lease? {
+        val p = pool
+        if (p.sem.availablePermits() < 2 || !p.sem.tryAcquire()) return null
+        return try { acquired(p) } catch (_: Throwable) { null }   // acquired() gives the slot back when it fails
+    }
+
+    /** One slot of [FtpPool.sem] is already held: hand out an idle connection (checked) or open a new one; the slot is given back when that fails. */
+    private fun acquired(p: FtpPool): Lease {
+        p.lastUse = System.currentTimeMillis()
         try {
             while (true) {
                 val e = synchronized(p.idle) { if (p.idle.isEmpty()) null else p.idle.removeLast() } ?: break
@@ -417,24 +530,57 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             if (!FTPReply.isPositiveCompletion(c.replyCode)) throw replyErr(c)
             if (pool.syst == null) try { c.systemType?.let { st -> if ("UNIX" in st.uppercase() || "WINDOWS" in st.uppercase()) pool.syst = st } } catch (_: Exception) {}
         }
-        val out = ArrayList<Item>()
-        var linkChecks = 0
-        for (f in arr ?: return out) {
+        val kept = ArrayList<FTPFile>()
+        val links = ArrayList<String>()
+        for (f in arr ?: return emptyList()) {
             if (f == null) continue
             val n = f.name ?: continue
             if (n == "." || n == ".." || n.isEmpty()) continue
             val raw = f.rawListing.orEmpty().lowercase()
             if (mlsd && ("type=cdir" in raw || "type=pdir" in raw)) continue
-            var dir = f.isDirectory
-            if (f.isSymbolicLink && linkChecks < 40) {   // a link: folder or file? try to enter it (cap, one round trip each)
-                linkChecks++
-                val lk = vjoin(path, n)
-                dir = pool.links[lk] ?: (try { c.changeWorkingDirectory(lk) } catch (_: IOException) { false }).also { r -> if (pool.links.size > 2000) pool.links.clear(); pool.links[lk] = r }
-            }
             if (!f.isDirectory && !f.isFile && !f.isSymbolicLink) continue   // devices, pipes, ...
+            if (f.isSymbolicLink) links.add(vjoin(path, n))
+            kept.add(f)
+        }
+        if (links.isNotEmpty()) resolveLinks(c, links)   // part 4: folder-or-file of every link, in parallel when there are many
+        val out = ArrayList<Item>(kept.size)
+        for (f in kept) {
+            var dir = f.isDirectory
+            if (f.isSymbolicLink) dir = pool.links[vjoin(path, f.name)] ?: (f.link?.endsWith("/") == true)   // not resolved (cap / time): guess from the target, the next listing tries again
             out.add(toItem(f, dir))
         }
         return out
+    }
+
+    /**
+     * Part 4: folder or file for every symlink in [paths] (remembered in [FtpPool.links]). One CWD each, at most [LINK_MAX] per listing and [LINK_BUDGET_MS] in total;
+     * with [LINK_PAR_MIN]+ links up to [LINK_HELPERS] spare connections work on the same queue (never the last free slot). A connection problem leaves the link unresolved
+     * (nothing is remembered); what is left is resolved by the next listing.
+     */
+    private fun resolveLinks(c: FTPClient, paths: List<String>) {
+        val p = pool
+        val todo = ArrayList<String>()
+        for (x in paths) { if (todo.size >= LINK_MAX) break; if (p.links[x] == null) todo.add(x) }
+        if (todo.isEmpty()) return
+        val q = java.util.concurrent.ConcurrentLinkedQueue(todo)
+        val end = System.currentTimeMillis() + LINK_BUDGET_MS
+        fun work(cl: FTPClient): Boolean {
+            while (System.currentTimeMillis() < end) {
+                val x = q.poll() ?: return true
+                val r = try { cl.changeWorkingDirectory(x) } catch (_: IOException) { return false }
+                if (p.links.size > 2000) p.links.clear()
+                p.links[x] = r
+            }
+            return true
+        }
+        val threads = ArrayList<Thread>()
+        if (todo.size >= LINK_PAR_MIN) repeat(LINK_HELPERS) {
+            val l = leaseHelper() ?: return@repeat
+            val t = Thread({ val ok = try { work(l.c) } catch (_: Throwable) { false }; l.release(ok) }, "ftp-links")
+            t.isDaemon = true; t.start(); threads.add(t)
+        }
+        work(c)
+        for (t in threads) try { t.join(LINK_BUDGET_MS + 2_000) } catch (_: InterruptedException) {}
     }
 
     private fun parentAbs(abs: String) = abs.substringBeforeLast('/', "").ifEmpty { "/" }
@@ -442,8 +588,10 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
     /** A listing through the cache ([FtpCache]); [fresh] skips the cached copy. Identical concurrent listings share one request. */
     private fun listCached(c: FTPClient, abs: String, fresh: Boolean = false): List<Item> {
         if (!fresh) FtpCache.get(id, abs)?.let { return it }
+        val t0 = System.currentTimeMillis()
         synchronized(FtpCache.lock(id, abs)) {
             if (!fresh) FtpCache.get(id, abs)?.let { return it }
+            else FtpCache.getSince(id, abs, t0)?.let { return it }   // a listing that finished while this one waited for the lock (warm-up / prefetch / refresh) is as good as a new one
             val r = listRaw(c, abs)
             FtpCache.put(id, abs, r)
             return r
@@ -452,6 +600,7 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     /** After a change on the server: forget the listing of [v], of every parent up to the root, and of the subtree below it when [tree]. */
     private fun dirty(v: String, tree: Boolean = false) {
+        pool.dirtyAt = System.currentTimeMillis()   // part 4: listings that started before this are not stored by fill()
         try {
             var a = fp(v)
             FtpCache.drop(id, a, tree)
@@ -461,13 +610,49 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
 
     override fun invalidate(v: String) { try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {} }
 
-    /** The entry [v] itself (null = missing). Reads the parent's cached listing unless [fresh] (name-clash checks). */
+    /**
+     * Part 4: a listing for search / walk / folder totals. Always from the server unless [useCache] and a fresh copy exists; what the server answers is stored
+     * in the cache ([FtpCache.fill], capped per operation), so the folders a search / copy / "properties" just read open instantly afterwards.
+     */
+    private fun listFill(c: FTPClient, abs: String, f: FtpCache.Fill, useCache: Boolean): List<Item> {
+        if (useCache) FtpCache.get(id, abs)?.let { return it }
+        val t = System.currentTimeMillis()
+        val r = listRaw(c, abs)
+        FtpCache.fill(id, abs, r, t, pool.dirtyAt, f)
+        return r
+    }
+
+    /** The entry [v] itself (null = missing). Reads the parent's cached listing unless [fresh] (name-clash checks); with MLST on the server a miss asks for just that entry. */
     private fun entry(c: FTPClient, v: String, fresh: Boolean = false): Item? {
         val n = vnorm(v)
         if (n == "/") return Item("/", true, 0L, 0L)
         val parent = fp(vdir(n))
         val want = vbase(n)
+        if (!fresh) {
+            FtpCache.get(id, parent)?.let { l -> return l.firstOrNull { it.name == want } }   // parent known: no round trip at all
+            mlstEntry(c, fp(n), want)?.let { return it }
+        }
         return listCached(c, parent, fresh).firstOrNull { it.name == want }
+    }
+
+    /** Part 4: MLST of one path (one control-channel round trip, no data connection, no parent listing). null = not possible / not understood: the caller lists the parent instead. */
+    private fun mlstEntry(c: FTPClient, abs: String, want: String): Item? {
+        val p = pool
+        val fe = p.feat
+        if (p.noMlst || fe == null || "MLST" !in fe) return null
+        val f = try { c.mlistFile(abs) } catch (e: org.apache.commons.net.MalformedServerReplyException) { p.noMlst = true; return null }   // IOException (dropped connection) goes up
+        if (f == null) {
+            if (c.replyCode in 500..504) p.noMlst = true   // not implemented after all
+            return null   // 550 (missing / not allowed) too: the parent listing gives the definite answer
+        }
+        val dir = when {
+            f.isDirectory -> true
+            f.isFile -> false
+            f.isSymbolicLink -> { resolveLinks(c, listOf(abs)); p.links[abs] ?: return null }
+            else -> return null
+        }
+        val mt = try { (f.timestamp?.timeInMillis ?: 0L) / 1000 } catch (_: Exception) { 0L }
+        return Item(want, dir, if (dir) 0L else maxOf(f.size, 0L), mt, null, null, want.startsWith("."))
     }
 
     /** Same, only when the parent is already cached: no connection needed. */
@@ -478,23 +663,105 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
         return FtpCache.get(id, fp(vdir(n)))?.firstOrNull { it.name == want }
     }
 
+    private val refreshing = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     override fun ls(v: String): List<Item> {
+        val r = lsPlain(v)
+        prefetchAround(v, r)   // part 3: the parent and the first sub-folders are read in the background while the user looks at this list
+        return r
+    }
+
+    private fun lsPlain(v: String): List<Item> {
         val a = fp(v)
-        FtpCache.get(id, a)?.let { return it }   // cache hit: no connection, no round trip
-        return op { c -> listCached(c, a) }
+        val t0 = System.currentTimeMillis()
+        FtpCache.get(id, a)?.let { warmUp(); FtpCache.hits.incrementAndGet(); FtpCache.logTime("hit", a, System.currentTimeMillis() - t0); return it }   // fresh hit: no connection, no round trip (the connection is warmed up for the next tap)
+        FtpCache.getStale(id, a)?.let { old -> FtpCache.stale.incrementAndGet(); FtpCache.logTime("stale", a, System.currentTimeMillis() - t0); refreshLater(v, a, old); return old }   // stale-while-revalidate: show the old list now, refresh in the background
+        FtpCache.miss.incrementAndGet()
+        return op { c -> listCached(c, a) }.also { FtpCache.logTime("miss", a, System.currentTimeMillis() - t0) }
+    }
+
+    /**
+     * Part 3, warm-up: when a server is opened, log in (+ FEAT, OPTS, TLS) and read the start folder in the background, so the first tap finds a ready
+     * connection and a fresh listing. No-op when a connection is idle already, or a warm-up runs, or the server's port does not answer.
+     */
+    override fun warmUp() {
+        val p = pool
+        p.lastUse = System.currentTimeMillis()
+        if (p.warming || Ftp.reach[id] == false || synchronized(p.idle) { p.idle.isNotEmpty() }) return
+        p.warming = true
+        Thread({ try { warmRun() } finally { p.warming = false } }, "ftp-warm").also { it.isDaemon = true }.start()
+    }
+
+    private fun warmRun() {
+        try {
+            val l = leaseSpare() ?: return
+            var keep = false
+            try {
+                val root = fp("/")
+                if (FtpCache.get(id, root) == null) try { listCached(l.c, root) } catch (e: IOException) { if (transient(e)) throw e }   // start folder: the page asks for it next
+                keep = true
+            } finally { l.release(keep) }
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Part 3, prefetch: after a listing of [v], list its parent and its first [PF_KIDS] sub-folders (UI order: A-Z) into the cache - one background worker per
+     * server on a spare connection, depth 1, never twice within [PF_GAP_MS], stops as soon as a tap needs the connections. Errors are ignored.
+     */
+    private fun prefetchAround(v: String, items: List<Item>) {
+        val p = pool
+        if (Ftp.reach[id] == false) return
+        val n = vnorm(v)
+        val now = System.currentTimeMillis()
+        val want = ArrayList<String>()
+        if (n != "/") want.add(vdir(n))
+        items.filter { it.dir }.sortedBy { it.name.lowercase() }.take(PF_KIDS).forEach { want.add(vjoin(n, it.name)) }
+        val todo = want.filter { w -> val a = try { fp(w) } catch (_: Exception) { null }; a != null && FtpCache.get(id, a) == null && now - (p.pfAt[a] ?: 0L) > PF_GAP_MS }
+        if (todo.isEmpty() || !p.pfBusy.compareAndSet(false, true)) return
+        Thread({ try { prefetchRun(p, todo) } finally { p.pfBusy.set(false) } }, "ftp-prefetch").also { it.isDaemon = true }.start()
+    }
+
+    private fun prefetchRun(p: FtpPool, todo: List<String>) {
+        try {
+            val l = leaseSpare() ?: return
+            var keep = true
+            try {
+                for (w in todo) {
+                    if (p.sem.availablePermits() < 2 || p.sem.hasQueuedThreads()) break   // somebody needs the connections: stop
+                    val a = fp(w)
+                    if (FtpCache.get(id, a) != null) continue
+                    if (p.pfAt.size > 500) p.pfAt.clear()
+                    p.pfAt[a] = System.currentTimeMillis()
+                    try { listCached(l.c, a) } catch (e: IOException) { if (transient(e)) { keep = false; break } }   // "no access" / missing: skip the folder
+                }
+            } catch (_: Throwable) { keep = false } finally { l.release(keep) }
+        } catch (_: Throwable) {}
+    }
+
+    /** One background refresh per folder; when the server's answer differs the page is told to reload ([Core.onFtpChanged]). Offline = keep the old list. */
+    private fun refreshLater(v: String, a: String, old: List<Item>) {
+        if (!refreshing.add(a)) return
+        Thread({
+            try {
+                val fresh = op { c -> listCached(c, a, true) }
+                if (fresh != old) Core.onFtpChanged?.invoke(id, v)
+            } catch (_: Throwable) {
+            } finally { refreshing.remove(a) }
+        }, "ftp-refresh").also { it.isDaemon = true }.start()
     }
 
     override fun names(v: String): MutableSet<String> {   // name-clash checks: never from the cache
         try { FtpCache.drop(id, fp(v), false) } catch (_: Exception) {}
-        return try { ls(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
+        return try { lsPlain(v).map { it.name }.toMutableSet() } catch (_: IOException) { mutableSetOf() }
     }
 
     private fun searchIn(c: FTPClient, v: String, ql: String, out: MutableList<Item>, end: Long): Boolean {
+        val fill = FtpCache.Fill()
         val stack = ArrayDeque<String>()
         stack.addLast(vnorm(v))
         while (stack.isNotEmpty()) {
             val d = stack.removeLast()
-            val entries = try { listRaw(c, fp(d)) } catch (e: IOException) { if (e is FTPConnectionClosedException) throw e; continue }
+            val entries = try { listFill(c, fp(d), fill, true) } catch (e: IOException) { if (e is FTPConnectionClosedException) throw e; continue }
             for (i in entries) {
                 if (i.dir) stack.addLast(vjoin(d, i.name))
                 if (i.name.lowercase().contains(ql)) {
@@ -524,11 +791,12 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             val me = entry(c, v) ?: throw NotFound("No such file or directory")
             if (!me.dir) { out(WalkItem("", false, me.size)); return@op }
             out(WalkItem("", true, 0))
+            val fill = FtpCache.Fill()
             val stack = ArrayDeque<String>()
             stack.addLast("")
             while (stack.isNotEmpty()) {   // a folder's entry is handed over before its children: mkdir always precedes its files
                 val r0 = stack.removeLast()
-                val kids = try { listRaw(c, fp(if (r0.isEmpty()) v else vjoin(v, r0))) }
+                val kids = try { listFill(c, fp(if (r0.isEmpty()) v else vjoin(v, r0)), fill, false) }   // a copy / move reads the server (never the cache), but leaves the listings behind
                            catch (e: IOException) { if (e is FTPConnectionClosedException) throw e; out(WalkItem(if (r0.isEmpty()) "(folder)" else r0, false, 0, true)); continue }
                 for (k in kids) {
                     val r = if (r0.isEmpty()) k.name else r0 + "/" + k.name
@@ -547,10 +815,11 @@ class FtpFs private constructor(c: JSONObject) : Endpoint {
             if (me.dir) {   // totals, bounded like the SMB ones (20 s / 300 000 entries)
                 val tot = LongArray(3); var partial = false; var seen = 0
                 val end = System.currentTimeMillis() + 20_000L
+                val fill = FtpCache.Fill()
                 val stack = ArrayDeque<String>(); stack.addLast(n)
                 loop@ while (stack.isNotEmpty()) {
                     val d = stack.removeLast()
-                    val kids = try { listRaw(c, fp(d)) } catch (e: IOException) { if (e is FTPConnectionClosedException) throw e; continue }
+                    val kids = try { listFill(c, fp(d), fill, true) } catch (e: IOException) { if (e is FTPConnectionClosedException) throw e; continue }
                     for (k in kids) {
                         if (k.dir) { tot[1]++; stack.addLast(vjoin(d, k.name)) } else { tot[0]++; tot[2] += k.size }
                         if (++seen >= 300_000) { partial = true; break@loop }

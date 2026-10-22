@@ -310,6 +310,7 @@ class MainActivity : Activity() {
         // Start the local server right away on a background thread (it used to wait for the foreground service to come up). Core.start is idempotent: the service's later call returns at once.
         Thread { mark("core.threadStart"); Core.start(applicationContext, android.os.Environment.getExternalStorageDirectory().absolutePath) }.apply { isDaemon = true; start() }
         showHome = b == null && (intent == null || intent.action == null || intent.action == Intent.ACTION_MAIN)
+        Core.onFtpChanged = { dev, path -> runOnUiThread { try { if (::web.isInitialized) web.evaluateJavascript("window.lsFtpChanged&&lsFtpChanged(" + JSONObject.quote(dev) + "," + JSONObject.quote(path) + ")", null) } catch (_: Throwable) {} } }   // FTP folder shown from the saved listing changed on the server
         Fnt.init(applicationContext)
         mark("fontInit")   // PERF-DEBUG
         web = WebView(this).apply {
