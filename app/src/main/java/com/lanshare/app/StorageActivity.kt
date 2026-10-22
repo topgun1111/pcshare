@@ -901,7 +901,7 @@ class StorageActivity : Activity() {
                 if (extra.isNotEmpty()) runOnUiThread { if (!isFinishing) infoTv.text = baseText + "\n" + extra }
             }, "storage-media").also { t -> t.isDaemon = true }.start()
         }
-        val dlg = AlertDialog.Builder(this)
+        val dlg = AppPal.dlg(this)
             .setTitle(if (n.agg) "Small files" else n.name)
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("Close", null)
@@ -928,7 +928,7 @@ class StorageActivity : Activity() {
     // ---------------------------------------------------------------- delete (part 8b)
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
     /** A failed delete: the full message in a dialog (a toast cuts it off). */
-    private fun errBox(title: String, m: String) { try { AlertDialog.Builder(this).setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
+    private fun errBox(title: String, m: String) { try { AppPal.dlg(this).setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
 
     /** Ask before deleting file [n]; the file only goes to the recycle bin (restorable), like a delete in the file manager. */
     private fun confirmDelete(n: SNode) {
@@ -937,7 +937,7 @@ class StorageActivity : Activity() {
         val what = if (n.dir) n.files.toString() + " files · " + n.folders + " folders\n" else ""
         val dn = if (n.dir) StorageScan.deniedBelow(n) else 0
         val warn = if (dn > 0) "\nAndroid did not let the scan read " + (if (dn == 1) "one folder" else "$dn folders") + " inside it, so the size shown is only what was scanned; the real size may be larger.\n" else ""
-        AlertDialog.Builder(this)
+        AppPal.dlg(this)
             .setTitle(if (n.dir) "Delete this folder?" else "Delete this file?")
             .setMessage(n.name + "\n" + fmt(n.size) + "\n" + what + warn + "\nIt is moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days. You can restore it from the recycle bin of the file manager.")
             .setPositiveButton("Delete") { _, _ -> deleteNode(s, n) }
@@ -1041,7 +1041,7 @@ class StorageActivity : Activity() {
         sb.append('\n')
         if (dn > 0) sb.append("\nAndroid did not let the scan read ").append(if (dn == 1) "one folder" else "$dn folders").append(" inside them, so the size shown is only what was scanned; the real size may be larger.\n")
         sb.append("\nThey are moved to the recycle bin and kept there for ").append(Bin.KEEP_DAYS).append(" days. You can restore them from the recycle bin of the file manager.")
-        AlertDialog.Builder(this)
+        AppPal.dlg(this)
             .setTitle("Delete " + nodes.size + " items?")
             .setMessage(sb.toString())
             .setPositiveButton("Delete") { _, _ -> deleteMany(s, nodes) }
@@ -1105,7 +1105,7 @@ class StorageActivity : Activity() {
     }
 
     private fun chooseSort() {
-        AlertDialog.Builder(this).setTitle("Sort by")
+        AppPal.dlg(this).setTitle("Sort by")
             .setSingleChoiceItems(StorageList.SORT_LABELS, sortMode) { dlg, i ->
                 sortMode = i; lsV?.setSort(i); tpV?.setSort(i); paintTools(); dlg.dismiss()
             }.show()
@@ -1196,7 +1196,7 @@ class StorageActivity : Activity() {
             val smp = s.deniedSample.toList()
             if (smp.isNotEmpty()) { sb.append(", for example:\n"); for (p in smp.take(8)) sb.append(p).append('\n') } else sb.append(".\n")
         }
-        val b = AlertDialog.Builder(this).setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
+        val b = AppPal.dlg(this).setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
         if (needAccess()) b.setNeutralButton("Allow access") { _, _ -> openAccessSettings() }
         b.show()
     }

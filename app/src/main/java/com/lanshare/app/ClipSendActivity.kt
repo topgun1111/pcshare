@@ -71,7 +71,7 @@ class ClipSendActivity : Activity() {
     }
 
     private fun choose(t: String, on: List<Peer>) {
-        AlertDialog.Builder(this)
+        AppPal.dlg(this)
             .setTitle("Send to…")
             .setItems(on.map { it.name }.toTypedArray()) { _, w -> send(t, on[w]) }
             .setOnCancelListener { finish() }

@@ -54,29 +54,34 @@ class OfficeViewerActivity : Activity() {
 
     // The theme has no ActionBar, so the options menu was never shown: own top bar (title, find, overflow) above the WebView.
     private var bar: android.widget.LinearLayout? = null
+    private var palSig: String? = null
     private var findRow: android.widget.LinearLayout? = null
 
     private fun buildBar() {
         val d = resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
-        val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()) }
+        val pal = AppPal.pal(this); palSig = AppPal.json(this)
+        val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
+        window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         fun btn(txt: String, desc: String, click: (android.view.View) -> Unit) = android.widget.TextView(this).apply {
-            text = txt; textSize = 22f; gravity = android.view.Gravity.CENTER; setTextColor(0xFF202124.toInt()); contentDescription = desc
+            text = txt; textSize = 22f; gravity = android.view.Gravity.CENTER; setTextColor(pal.fg); contentDescription = desc
             layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48)); setOnClickListener(click)
             val tv = android.util.TypedValue(); if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)) setBackgroundResource(tv.resourceId)
         }
-        val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(0xFFFFFFFF.toInt()) }
+        val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(pal.bg) }
         top.addView(btn("\u2190", "Back") { finish() })
         top.addView(android.widget.TextView(this).apply {
-            id = android.R.id.title; text = title; textSize = 16f; setTextColor(0xFF202124.toInt()); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            id = android.R.id.title; text = title; textSize = 16f; setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         top.addView(btn("\uD83D\uDD0D", "Find") { toggleFind() })
         top.addView(btn("\u22EE", "More") { v -> showMore(v) })
         bar = top
-        val fr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0); visibility = android.view.View.GONE; setBackgroundColor(0xFFF1F3F4.toInt()) }
+        val fr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0); visibility = android.view.View.GONE; setBackgroundColor(pal.cont) }
         val et = android.widget.EditText(this).apply {
-            hint = "Find in document"; setSingleLine(); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            hint = "Find in document"; setTextColor(pal.fg); setHintTextColor(pal.mut); setSingleLine(); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
             layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(44), 1f)
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(e: android.text.Editable?) { val q = e?.toString().orEmpty(); if (q.isEmpty()) web.clearMatches() else web.findAllAsync(q) }
@@ -94,6 +99,11 @@ class OfficeViewerActivity : Activity() {
         root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AppPal.json(this) != palSig) recreate()
     }
 
     private fun toggleFind() {
@@ -197,7 +207,7 @@ class OfficeViewerActivity : Activity() {
     private fun dlg(title: String, hints: List<String>, init: List<String> = emptyList(), ok: (List<String>) -> Unit) {
         val box = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setPadding(48, 16, 48, 0) }
         val ets = hints.mapIndexed { n, h -> android.widget.EditText(this).apply { hint = h; setText(init.getOrElse(n) { "" }); box.addView(this) } }
-        android.app.AlertDialog.Builder(this).setTitle(title).setView(box).setNegativeButton("Cancel", null)
+        AppPal.dlg(this).setTitle(title).setView(box).setNegativeButton("Cancel", null)
             .setPositiveButton("OK") { _, _ -> ok(ets.map { it.text.toString() }) }.show()
     }
 

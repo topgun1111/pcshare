@@ -126,7 +126,7 @@ class PhonePrint(private val act: Activity) {
         val labels = if (n == 1) arrayOf("Fit on the page", "Fill the page (crop)")
         else arrayOf("1 per page - fit", "1 per page - fill (crop)", "2 per page", "4 per page")
         var sel = prefs.getInt("layout", 0).coerceIn(0, labels.size - 1)
-        AlertDialog.Builder(act)
+        AppPal.dlg(act)
             .setTitle(if (n == 1) "Picture size" else "Pictures per page")
             .setSingleChoiceItems(labels, sel) { _, w -> sel = w }
             .setPositiveButton("Print") { _, _ -> prefs.edit().putInt("layout", sel).apply(); done(sel) }

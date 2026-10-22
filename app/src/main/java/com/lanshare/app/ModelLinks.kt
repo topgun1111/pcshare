@@ -83,7 +83,7 @@ object ModelLinks {
         val text = dead.joinToString("\n\n") { o ->
             "${o.optString("label")}\nHTTP ${o.optInt("code")} · ${fmt.format(Date(o.optLong("at")))}\n${o.optString("url")}"
         }
-        AlertDialog.Builder(a)
+        AppPal.dlg(a)
             .setTitle("Model download link is dead")
             .setMessage("A model the app downloads (it is not in the APK) can no longer be fetched. Phones that already have the model keep working; new installs and reinstalls will not get it. Update the link in the code:\n\n$text")
             .setPositiveButton("Copy details") { _, _ ->

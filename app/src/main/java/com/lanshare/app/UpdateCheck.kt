@@ -66,7 +66,7 @@ object UpdateCheck {
                 val dl = url; val dlSize = size; val dlApk = isApk
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                    AlertDialog.Builder(a)
+                    AppPal.dlg(a)
                         .setTitle("Yeni sürüm: $tag")
                         .setMessage("Mevcut sürüm: $cur\nGitHub'da yeni bir güncelleme var.")
                         .setPositiveButton("İndir") { _, _ ->
@@ -96,7 +96,7 @@ object UpdateCheck {
         val tv = TextView(a).apply { text = "İndiriliyor…" }
         val pb = ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = expected <= 0 }
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0); addView(tv); addView(pb) }
-        val dlg = AlertDialog.Builder(a).setTitle("Güncelleme $tag").setView(box).setCancelable(false)
+        val dlg = AppPal.dlg(a).setTitle("Güncelleme $tag").setView(box).setCancelable(false)
             .setNegativeButton("İptal") { _, _ -> cancel.set(true) }.create()
         dlg.show()
         Thread {
@@ -144,7 +144,7 @@ object UpdateCheck {
                 when {
                     e == null -> offerInstall(a, out, tag)
                     e == "cancel" -> { }
-                    else -> AlertDialog.Builder(a).setTitle("İndirme başarısız").setMessage(e)
+                    else -> AppPal.dlg(a).setTitle("İndirme başarısız").setMessage(e)
                         .setPositiveButton("Tarayıcıda aç") { _, _ -> openInBrowser(a, url) }
                         .setNegativeButton("Kapat", null).show()
                 }
@@ -153,7 +153,7 @@ object UpdateCheck {
     }
 
     private fun offerInstall(a: Activity, f: File, tag: String) {
-        AlertDialog.Builder(a).setTitle("İndirme tamamlandı")
+        AppPal.dlg(a).setTitle("İndirme tamamlandı")
             .setMessage("$tag indirildi (${mb(f.length())}). Kurulumu başlatmak için Kur'a bas.")
             .setPositiveButton("Kur") { _, _ -> install(a, f, tag) }
             .setNegativeButton("Kapat", null).show()

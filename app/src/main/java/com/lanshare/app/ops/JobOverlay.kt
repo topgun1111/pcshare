@@ -298,9 +298,10 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
     private class Palette(val card: Int, val text: Int, val subtext: Int, val accent: Int, val ok: Int, val err: Int, val track: Int) {
         companion object {
             fun of(c: Context): Palette {
-                val night = (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-                return if (night) Palette(0xFF2B2B2B.toInt(), 0xFFF2F2F2.toInt(), 0xFFB0B0B0.toInt(), 0xFFFF8A3D.toInt(), 0xFF66BB6A.toInt(), 0xFFEF5350.toInt(), 0xFF444444.toInt())
-                else Palette(0xFFFFFFFF.toInt(), 0xFF161616.toInt(), 0xFF5F5F5F.toInt(), 0xFFC25100.toInt(), 0xFF2E7D32.toInt(), 0xFFC62828.toInt(), 0xFFDDDDDD.toInt())
+                val night = com.lanshare.app.AppPal.night(c)
+                val p = com.lanshare.app.AppPal.pal(c)
+                return if (night) Palette(p.cont, p.fg, p.mut, p.ac, 0xFF66BB6A.toInt(), 0xFFEF5350.toInt(), p.bd)
+                else Palette(p.bg, p.fg, p.mut, p.ac, 0xFF2E7D32.toInt(), 0xFFC62828.toInt(), p.bd)
             }
         }
     }

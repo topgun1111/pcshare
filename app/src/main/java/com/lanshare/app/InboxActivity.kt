@@ -43,17 +43,24 @@ class InboxActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    private lateinit var pal: AppPal.P
+    private var palSig: String? = null
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         TextSend.ensureRunning(this)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
+        pal = AppPal.pal(this); palSig = AppPal.json(this)
+        val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
+        window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
 
         // header: title + menu
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(6)) }
-        head.addView(TextView(this).apply { text = "Text inbox"; textSize = 20f; setTextColor(Color.BLACK); setTypeface(typeface, android.graphics.Typeface.BOLD) },
+        head.addView(TextView(this).apply { text = "Text inbox"; textSize = 20f; setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(TextView(this).apply {
-            text = "⋮"; textSize = 24f; setTextColor(Color.BLACK); gravity = Gravity.CENTER
+            text = "⋮"; textSize = 24f; setTextColor(pal.fg); gravity = Gravity.CENTER
             setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { menu() }
             contentDescription = "Menu"
         })
@@ -61,7 +68,7 @@ class InboxActivity : Activity() {
 
         // target line
         toLine = TextView(this).apply {
-            textSize = 14f; setTextColor(0xFF5F6368.toInt()); setBackgroundColor(0xFFF3F3F3.toInt())
+            textSize = 14f; setTextColor(pal.mut); setBackgroundColor(pal.cont)
             setPadding(dp(16), dp(10), dp(16), dp(10)); setOnClickListener { chooseTarget(null) }
         }
         root.addView(toLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -69,7 +76,7 @@ class InboxActivity : Activity() {
         // list (+ empty hint)
         list = ListView(this).apply { divider = null; dividerHeight = 0; isStackFromBottom = true; transcriptMode = android.widget.AbsListView.TRANSCRIPT_MODE_NORMAL; adapter = this@InboxActivity.adapter }
         val empty = TextView(this).apply {
-            text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; textSize = 15f; setTextColor(0xFF80868B.toInt()); setPadding(dp(32), dp(32), dp(32), dp(32))
+            text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; textSize = 15f; setTextColor(pal.mut); setPadding(dp(32), dp(32), dp(32), dp(32))
         }
         val frame = FrameLayout(this)
         frame.addView(list, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -80,6 +87,7 @@ class InboxActivity : Activity() {
         // input row
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(8), dp(6), dp(8), dp(8)) }
         input = EditText(this).apply {
+            setTextColor(pal.fg); setHintTextColor(pal.mut)
             hint = "Type or paste text"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             minLines = 1; maxLines = 5
         }
@@ -95,6 +103,7 @@ class InboxActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (AppPal.json(this) != palSig) { recreate(); return }
         Notes.visible = true
         Notes.listeners.add(onChange)
         refresh()
@@ -158,7 +167,7 @@ class InboxActivity : Activity() {
         if (then == null) { labels.add("Ask every time"); ids.add("") }
         on.forEach { labels.add(it.name + if (then == null && it.id == Cfg.defTarget()) "  ✓" else ""); ids.add(it.id) }
         if (ids.isEmpty()) { toast("No device found yet"); return }
-        AlertDialog.Builder(this)
+        AppPal.dlg(this)
             .setTitle(if (then == null) "Send text to… (default)" else "Send to…")
             .setItems(labels.toTypedArray()) { _, w ->
                 if (then != null) then(ids[w])
@@ -177,7 +186,7 @@ class InboxActivity : Activity() {
             "Clipboard sync (while LANShare is open): " + (if (Cfg.clipSync()) "ON" else "off"),
             "Clear inbox"
         )
-        AlertDialog.Builder(this).setItems(items) { _, w ->
+        AppPal.dlg(this).setItems(items) { _, w ->
             when (w) {
                 0 -> { Cfg.setAutoCopy(!Cfg.autoCopy()); toast(if (Cfg.autoCopy()) "Received text goes to the clipboard at once" else "Auto-copy off") }
                 1 -> {
@@ -187,7 +196,7 @@ class InboxActivity : Activity() {
                     ClipSync.refresh(this)
                     toast(if (on) "Text you copy is sent to the default device while this app is open" else "Clipboard sync off")
                 }
-                2 -> AlertDialog.Builder(this).setTitle("Clear the inbox?").setMessage("Removes the list on this phone only.")
+                2 -> AppPal.dlg(this).setTitle("Clear the inbox?").setMessage("Removes the list on this phone only.")
                     .setPositiveButton("Clear") { _, _ -> Notes.clear() }.setNegativeButton("Cancel", null).show()
             }
         }.show()
@@ -210,7 +219,7 @@ class InboxActivity : Activity() {
         val labels = ArrayList<String>(); labels.add("Copy")
         if (link != null) labels.add("Open link")
         labels.add("Share…"); labels.add("Delete")
-        AlertDialog.Builder(this).setItems(labels.toTypedArray()) { _, w ->
+        AppPal.dlg(this).setItems(labels.toTypedArray()) { _, w ->
             when (labels[w]) {
                 "Copy" -> copy(n.text)
                 "Open link" -> if (link != null && !ClipPush.open(this, link)) toast("No app can open this link")
@@ -236,16 +245,16 @@ class InboxActivity : Activity() {
             val bubble = LinearLayout(this@InboxActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = GradientDrawable().apply { setColor(if (n.out) 0xFFFFE0B2.toInt() else 0xFFEEEEEE.toInt()); cornerRadius = dp(14).toFloat() }
+                background = GradientDrawable().apply { setColor(if (n.out) androidx.core.graphics.ColorUtils.blendARGB(pal.bg, pal.ac, 0.22f) else pal.cont); cornerRadius = dp(14).toFloat() }
                 setOnClickListener { copy(n.text) }
                 setOnLongClickListener { actions(n); true }
             }
             bubble.addView(TextView(this@InboxActivity).apply {
                 text = (if (n.out) "To " else "From ") + n.peer + " · " + whenText(n.ts)
-                textSize = 12f; setTextColor(0xFF5F6368.toInt())
+                textSize = 12f; setTextColor(pal.mut)
             })
             bubble.addView(TextView(this@InboxActivity).apply {
-                text = n.text.trim().take(1500); textSize = 15f; setTextColor(Color.BLACK)
+                text = n.text.trim().take(1500); textSize = 15f; setTextColor(pal.fg)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
                 setPadding(0, dp(2), 0, 0)
             })

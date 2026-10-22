@@ -146,6 +146,7 @@ class TextEditorActivity : Activity() {
     private var sizeSp = 16f
     private var mono = false
     private var night = false
+    private var palSig: String? = null
     private var textColor = Color.BLACK
     private var bgColor = Color.WHITE
     private var wrap = true
@@ -211,7 +212,7 @@ class TextEditorActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         Fnt.init(this)
-        night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        night = AppPal.night(this); palSig = AppPal.json(this)
         color = prefs.getInt("color", 0).coerceIn(0, PALS.size - 1)
         sizeSp = prefs.getFloat("size", 16f).coerceIn(SIZE_MIN, SIZE_MAX)
         mono = prefs.getBoolean("mono", false)
@@ -629,7 +630,7 @@ class TextEditorActivity : Activity() {
     private fun showOutline() {
         if (pvHeads.isEmpty()) { toast("No headings"); return }
         val items = pvHeads.map { "\u2003".repeat((it.level - 1).coerceAtMost(4)) + it.title }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Outline").setItems(items) { _, k -> scrollToHead(pvHeads[k]) }.show()
+        AppPal.dlg(this).setTitle("Outline").setItems(items) { _, k -> scrollToHead(pvHeads[k]) }.show()
     }
 
     /** Formatted (Markdown) view of the note instead of the raw text. The raw text stays in [body]; nothing is changed or saved by this. */
@@ -647,6 +648,11 @@ class TextEditorActivity : Activity() {
             modeBtn.text = "\uD83D\uDC41"
         }
         updateButtons()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AppPal.json(this) != palSig) { night = AppPal.night(this); palSig = AppPal.json(this); applyTheme() }
     }
 
     private fun applyTheme() {
@@ -798,7 +804,7 @@ class TextEditorActivity : Activity() {
     }
 
     private fun failLoad(msg: String) {
-        AlertDialog.Builder(this).setMessage(msg).setCancelable(false)
+        AppPal.dlg(this).setMessage(msg).setCancelable(false)
             .setPositiveButton("Close") { _, _ -> finish() }
             .setNegativeButton("Retry") { _, _ -> load() }
             .show()
@@ -895,7 +901,7 @@ class TextEditorActivity : Activity() {
                             ui.post {
                                 saving = false; busy(false)
                                 if (isDestroyed || auto) return@post
-                                AlertDialog.Builder(this).setTitle("File changed").setMessage("\"$origName\" was changed somewhere else after you opened it. Overwrite it with your version?")
+                                AppPal.dlg(this).setTitle("File changed").setMessage("\"$origName\" was changed somewhere else after you opened it. Overwrite it with your version?")
                                     .setPositiveButton("Overwrite") { _, _ -> save(false, true, then) }
                                     .setNegativeButton("Cancel", null)
                                     .setNeutralButton("Discard mine") { _, _ -> dirty = false; finish() }
@@ -938,12 +944,12 @@ class TextEditorActivity : Activity() {
                     saving = false; busy(false)
                     if (isDestroyed || auto) return@post
                     val m = "Could not save: ${errText(x)}"
-                    if (then != null) AlertDialog.Builder(this).setMessage(m)
+                    if (then != null) AppPal.dlg(this).setMessage(m)
                         .setPositiveButton("Retry") { _, _ -> save(false, force, then) }
                         .setNegativeButton("Stay", null)
                         .setNeutralButton("Discard") { _, _ -> dirty = false; finish() }
                         .show()
-                    else AlertDialog.Builder(this).setMessage(m).setPositiveButton("OK", null).show()
+                    else AppPal.dlg(this).setMessage(m).setPositiveButton("OK", null).show()
                 }
             }
         }
@@ -967,7 +973,7 @@ class TextEditorActivity : Activity() {
             when (it.itemId) {
                 1 -> showFind()
                 8 -> gotoLine()
-                2 -> if (dirty && !readOnly) AlertDialog.Builder(this).setMessage("Discard your changes and reload the file?")
+                2 -> if (dirty && !readOnly) AppPal.dlg(this).setMessage("Discard your changes and reload the file?")
                         .setPositiveButton("Reload") { _, _ -> readOnly = path?.let { arcSplit(it) != null } ?: false; banner.visibility = View.GONE; load() }.setNegativeButton("Cancel", null).show()
                      else { banner.visibility = View.GONE; load() }
                 7 -> { wrap = !wrap; prefs.edit().putBoolean("wrap", wrap).apply(); applyTypography() }
@@ -1007,7 +1013,7 @@ class TextEditorActivity : Activity() {
             if (n != null) scrollToLine(n.coerceIn(1, total))
         }
         et.setOnEditorActionListener { _, _, _ -> go(et.text.toString()); true }
-        AlertDialog.Builder(this).setTitle("Go to line").setView(et)
+        AppPal.dlg(this).setTitle("Go to line").setView(et)
             .setPositiveButton("Go") { _, _ -> go(et.text.toString()) }
             .setNegativeButton("Cancel", null).show()
     }
@@ -1060,7 +1066,7 @@ class TextEditorActivity : Activity() {
         val mt = if (diskMtime > 0) DateFormat.getDateTimeInstance().format(Date(diskMtime * 1000)) else "-"
         val enc = cs.name() + (if (bom.isNotEmpty()) " (BOM)" else "")
         val msg = "Device: ${devName.ifEmpty { dev }}\nPath: ${path ?: "(new note in $dir)"}\nSize: $sz\nModified: $mt\nEncoding: $enc\nLine endings: ${if (crlf) "CRLF (Windows)" else "LF"}"
-        AlertDialog.Builder(this).setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
     }
 
     private fun humanSize(n: Long): String {

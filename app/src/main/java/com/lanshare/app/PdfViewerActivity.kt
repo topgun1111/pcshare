@@ -583,7 +583,7 @@ class PdfViewerActivity : Activity() {
             inputType = InputType.TYPE_CLASS_NUMBER
             setText((curPage + 1).toString()); setSelectAllOnFocus(true); setSingleLine(); hint = "1 - $pageCount"
         }
-        val d = AlertDialog.Builder(this).setTitle("Go to page").setView(et)
+        val d = AppPal.dlg(this).setTitle("Go to page").setView(et)
             .setPositiveButton("Go") { _, _ -> et.text.toString().toIntOrNull()?.let { goTo(it - 1) } }
             .setNegativeButton("Cancel", null).create()
         d.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
@@ -935,7 +935,7 @@ class PdfViewerActivity : Activity() {
     private fun showText(pos: Int, txt: String) {
         val shown = txt.ifEmpty { "No text found on this page." }
         val tvx = TextView(this).apply { text = shown; setTextIsSelectable(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setPadding(dp(20), dp(12), dp(20), dp(4)) }
-        val b = AlertDialog.Builder(this).setTitle("Page ${pos + 1} \u00b7 text (OCR)").setView(ScrollView(this).apply { addView(tvx) })
+        val b = AppPal.dlg(this).setTitle("Page ${pos + 1} \u00b7 text (OCR)").setView(ScrollView(this).apply { addView(tvx) })
             .setNegativeButton("Close", null)
         if (txt.isNotEmpty()) {
             b.setPositiveButton("Copy") { _, _ ->
