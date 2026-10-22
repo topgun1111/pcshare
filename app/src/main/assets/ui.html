@@ -258,6 +258,13 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lys img{position:absolute;left:50%;top:50%;max-width:none;pointer-events:none}
 #gal .lys img.gh{opacity:.22}
 #gal .lyn{position:absolute;left:4px;top:2px;font-size:11px;color:#777}
+#gal .lypg.lyfp{touch-action:none;overflow:visible;outline:1px dashed #8886;margin-top:14px;margin-bottom:14px}
+#gal .lyf{position:absolute;touch-action:none;cursor:move}
+#gal .lyf img{width:100%;height:100%;display:block;max-width:none;pointer-events:none;-webkit-user-drag:none}
+#gal .lyf.sel{outline:2px solid var(--ac)}
+#gal .lyh{position:absolute;right:-15px;bottom:-15px;width:30px;height:30px;border-radius:50%;background:var(--ac);border:3px solid #fff;box-sizing:border-box;touch-action:none}
+#gal .lyg{position:absolute;background:var(--ac);opacity:.6;pointer-events:none}
+#gal .lygv{left:50%;top:0;bottom:0;width:1px}#gal .lygh2{top:50%;left:0;right:0;height:1px}
 #gal .lybot{flex:none;border-top:1px solid var(--bd);background:var(--bg);padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
 #gal .lyctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 12px 6px;min-height:36px;font-size:13px;color:var(--mut)}
 #gal .lyctl b{color:var(--fg);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -3145,13 +3152,13 @@ const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'
 function gNum(GS,els){let i=0;for(const k of GS){i++;const e=els.get(k);if(e)e.dataset.n=i}}
 const PS_ON=()=>LD('ls_ps','1')!=='0';
 /* Part 3 intake: any screen can add pictures to Print space with psAdd(dev, paths). Only pictures go in (PV_IMG); the phone copies them (core/PrintSpace.kt). */
-const psPic=name=>PV_IMG.includes((String(name).split('.').pop()||'').toLowerCase());
+const psPic=name=>{const x=(String(name).split('.').pop()||'').toLowerCase();return x==='pdf'||PV_IMG.includes(x)};   // PDFs go in as one picture per page (core/PrintSpace.kt addPdf)
 const psOK=names=>PS_ON()&&names.some(psPic);
 let PSBUSY=false;
 async function psAdd(dev,paths,done){
   if(!PS_ON())return;   // part 9a: kill switch ls_ps='0' stops every way in, not only the drawer entry
   paths=(paths||[]).filter(p=>psPic(p));
-  if(!paths.length)return toast('Only pictures can be added to Print space',3000);
+  if(!paths.length)return toast('Only pictures and PDFs can be added to Print space',3000);
   if(PSBUSY)return;PSBUSY=true;
   try{
     toast('Adding to Print space\u2026',0,0);
@@ -3252,7 +3259,7 @@ function openPrintSpace(){
 }
 /* ---- Print space part 5b (HANDOVER 9.7): layout editor. Reuses #gal like openPrintSpace. Server = POST /api/pslayout (core/PsLayoutJson.kt): the UI keeps spec + plan, sends both with every call and saves them in localStorage ls_ps_lay. Part 6b: Preview (pages drawn by the Kotlin renderer, POST /api/psrender prepare + GET /api/pspage) and Print (psrender pdf job -> doPrint). */
 Object.assign(IC,{rotr:'M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z'});
-const PSL_DEF=()=>({paper:'A4',orient:'auto',cols:2,rows:2,margin:14,gap:8,fit:'fit',flip:'long',autoRot:true,reverse:false}),
+const PSL_DEF=()=>({paper:'A4',orient:'auto',cols:2,rows:2,margin:14,gap:8,fit:'fit',flip:'long',autoRot:true,reverse:false,free:false}),
   PSL_PAP=['A3','A4','A5','Letter','Legal'],PSL_PER=[[1,1,1],[2,1,2],[4,2,2],[6,2,3],[9,3,3]];   // [label, cols, rows] (portrait form, like SheetLayout.PRESETS)
 /* Part 8: saved layouts (presets) in localStorage ls_ps_presets = [{name, spec, mode}]; only the layout settings are kept, never pictures or placements. */
 const PSP_KEYS=['paper','orient','cols','rows','margin','gap','fit','flip','autoRot','reverse'],
@@ -3278,7 +3285,7 @@ function psLayout(){
   let SP=PSL_DEF(),PL=null,LY=null,PICS=[],PLACED={},MODE='front',sheet=0,side='front',selPic=null,selSlot=null,setOpen=true,qn=0,chain=Promise.resolve(),drag=null,lastSh=-1,VIEW='edit',RV=null,RVerr='',pv=0,pTm=0,pn=0,rvTry=0,pBusy=false;
   try{const j=JSON.parse(LD('ls_ps_lay','null'));if(j&&j.spec){SP=Object.assign(PSL_DEF(),j.spec);PL=j.plan||null;MODE=j.mode||'front';setOpen=false}}catch(e){}
   const FIL={},pic=id=>PICS.find(m=>m.id===id),thumb=m=>'/api/thumb?dev=local&path='+enc(m.path)+'&q=95',
-    hasBack=()=>!!PL&&PL.sheets.some(s=>(s.b||[]).some(Boolean)),
+    hasBack=()=>!!PL&&PL.sheets.some(s=>(s.b||[]).some(Boolean)||(s.fb||[]).length>0),
     cellAt=(sh,sd,slot)=>{const p=FIL[sh+':'+sd];return p?p.cells.find(c=>c.slot===slot)||null:null},
     save=()=>SV('ls_ps_lay',JSON.stringify({spec:SP,plan:PL,mode:MODE}));
   // ---- skeleton (built once; each part re-renders only its own box, so scroll positions survive)
@@ -3300,7 +3307,7 @@ function psLayout(){
     catch(e){if(!quiet&&live())toast('\u26a0 '+e.message,5000);return null}};
   const call=(x,quiet)=>{qn++;const p=chain.then(()=>run(x,quiet));chain=p.then(()=>{qn--},()=>{qn--});return p};
   const setSpec=async(patch,how)=>{const old=SP;SP=Object.assign({},SP,patch);selSlot=null;dSet();
-    const r=await call(how==='reflow'?{op:'reflow',duplex:hasBack()}:how==='fill'?{op:'fill',mode:MODE}:{op:'view'});
+    const r=await call(how==='reflow'&&!SP.free?{op:'reflow',duplex:hasBack()}:how==='fill'?{op:'fill',mode:MODE}:{op:'view'});
     if(!r&&live()){SP=old;dSet()}};   // refused (cell too small ...): put the old setting back
   const assign=(sh,sd,slot,id)=>call({op:'assign',sheet:sh,side:sd,slot,id:id||null}),
     swap=(a,b)=>call({op:'swap',a,b}),
@@ -3314,7 +3321,7 @@ function psLayout(){
     if(!v||v===true)return;const m=/^\s*(\d+)\s*[x\u00d7*]\s*(\d+)\s*$/i.exec(v);
     if(!m||+m[1]<1||+m[1]>8||+m[2]<1||+m[2]>8)return toast('Use columns x rows, e.g. 3x4',3500);setSpec({cols:+m[1],rows:+m[2]},'reflow')};
   const fillMode=async v=>{if(Object.keys(PLACED).length&&!await dlg({title:'Auto-fill all sheets?',msg:'This replaces the current arrangement.',ok:'Auto-fill'}))return;
-    MODE=v;selSlot=null;sheet=0;side='front';call({op:'fill',mode:v})};
+    MODE=v;selSlot=null;sheet=0;side='front';fsel=-1;await call({op:'fill',mode:v});if(SP.free)await call({op:'tofree'})};   // free: arrange in the grid first, then let go of the grid
   /* part 8: saved layouts - tap = use (arranges the pictures again), "Remove..." then tap = delete */
   let pDel=false;
   async function savePreset(){
@@ -3340,14 +3347,15 @@ function psLayout(){
     const cur=PSL_PER.find(a=>a[1]===+SP.cols&&a[2]===+SP.rows),f=document.createDocumentFragment();
     f.append(
       chips('Paper',PSL_PAP.map(p=>[p,p]),SP.paper,v=>setSpec({paper:v},'reflow')),
-      chips('Pictures per sheet',PSL_PER.map(a=>[a[0],String(a[0])]).concat([['x','Custom']]),cur?cur[0]:'x',v=>{if(v==='x')return custom();const a=PSL_PER.find(q=>q[0]===v);setSpec({cols:a[1],rows:a[2]},'reflow')}),
+      chips('Placement',[[false,'Grid'],[true,'Free (move, turn, resize)']],!!SP.free,setPlace),
+      ...(SP.free?[]:[chips('Pictures per sheet',PSL_PER.map(a=>[a[0],String(a[0])]).concat([['x','Custom']]),cur?cur[0]:'x',v=>{if(v==='x')return custom();const a=PSL_PER.find(q=>q[0]===v);setSpec({cols:a[1],rows:a[2]},'reflow')})]),
       chips('Orientation',[['auto','Auto'],['portrait','Portrait'],['landscape','Landscape']],SP.orient,v=>setSpec({orient:v},'reflow')),
-      chips('Picture in cell',[['fit','Fit'],['fill','Fill (crop)']],SP.fit,v=>setSpec({fit:v},'view')),
+      ...(SP.free?[]:[chips('Picture in cell',[['fit','Fit'],['fill','Fill (crop)']],SP.fit,v=>setSpec({fit:v},'view'))]),
       chips('Two-sided flip',[['long','Long edge'],['short','Short edge']],SP.flip,v=>setSpec({flip:v},'view')),
-      step('Margin','margin',0,72,2),step('Gap','gap',0,40,2),
+      ...(SP.free?[]:[step('Margin','margin',0,72,2),step('Gap','gap',0,40,2),
       chips('Turn pictures to fit',[[true,'On'],[false,'Off']],SP.autoRot,v=>setSpec({autoRot:v},'view')),
-      chips('Order',[[false,'Normal'],[true,'Reverse']],SP.reverse,v=>setSpec({reverse:v},'fill')),
-      chips('Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
+      chips('Order',[[false,'Normal'],[true,'Reverse']],SP.reverse,v=>setSpec({reverse:v},'fill'))]),
+      chips(SP.free?'Auto-arrange (then move)':'Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
     f.append(presetRow());
     const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
     if(lsGet('printHist',[]).length){const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent();f.append(rc)}   // part 8: print a finished sheet set again
@@ -3360,11 +3368,12 @@ function psLayout(){
     for(let i=0;i<n;i++){
       const b=E('button','lym'+(i===sheet?' on':'')),cv=document.createElement('canvas'),g=cv.getContext('2d'),fl=FIL[i+':front'],fs=new Set(fl?fl.cells.map(c=>c.slot):[]);
       cv.width=W;cv.height=H;
-      LY.slots.forEach((s,j)=>{g.globalAlpha=fs.has(j)?.6:.5;
+      if(SP.free){const P=fl;g.fillStyle=ac;g.globalAlpha=.55;(P&&P.free?P.free:[]).forEach(q=>{g.save();g.translate(q.cx*k,q.cy*k);g.rotate(q.rot*Math.PI/180);g.fillRect(-q.dw*k/2,-q.dh*k/2,q.dw*k,q.dh*k);g.restore()});g.globalAlpha=1;g.strokeStyle=mu;g.strokeRect(.5,.5,W-1,H-1)}
+      else LY.slots.forEach((s,j)=>{g.globalAlpha=fs.has(j)?.6:.5;
         if(fs.has(j)){g.fillStyle=ac;g.fillRect(s.x*k,s.y*k,s.w*k,s.h*k)}else{g.strokeStyle=mu;g.strokeRect(s.x*k+.5,s.y*k+.5,Math.max(1,s.w*k-1),Math.max(1,s.h*k-1))}});
       b.append(cv,E('small','',String(i+1)));
-      const bp=FIL[i+':back'];if(bp&&bp.cells.length)b.append(E('i'));
-      b.onclick=()=>{sheet=i;selSlot=null;bxStrip.querySelectorAll('.lym.on').forEach(x=>x.classList.remove('on'));b.classList.add('on');dTab();dPage();dCtl()};
+      const bp=FIL[i+':back'];if(bp&&(bp.cells.length||(bp.free||[]).length))b.append(E('i'));
+      b.onclick=()=>{sheet=i;selSlot=null;fsel=-1;bxStrip.querySelectorAll('.lym.on').forEach(x=>x.classList.remove('on'));b.classList.add('on');dTab();dPage();dCtl()};
       if(i===sheet)cur=b;f.append(b)}
     const ad=E('button','lym lya','+');ad.setAttribute('aria-label','Add a sheet');
     ad.onclick=()=>call({op:'addsheet'}).then(r=>{if(r&&PL){sheet=PL.sheets.length-1;side='front';selSlot=null;draw()}});
@@ -3372,18 +3381,19 @@ function psLayout(){
     if(cur&&lastSh!==sheet){lastSh=sheet;if(cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}}
   function dTab(){
     const n=PL?PL.sheets.length:0;if(!n||!LY){bxTab.replaceChildren();return}
-    const c=E('div','lyc'),fb=E('button',side==='front'?'on':'','Front'),bb=E('button',side==='back'?'on':'',(FIL[sheet+':back']&&FIL[sheet+':back'].cells.length)?'Back \u2022':'Back');
-    fb.onclick=()=>{if(side==='front')return;side='front';selSlot=null;dTab();dPage();dCtl()};
-    bb.onclick=()=>{if(side==='back')return;side='back';selSlot=null;dTab();dPage();dCtl()};
+    const c=E('div','lyc'),fb=E('button',side==='front'?'on':'','Front'),bb=E('button',side==='back'?'on':'',(FIL[sheet+':back']&&(FIL[sheet+':back'].cells.length||(FIL[sheet+':back'].free||[]).length))?'Back \u2022':'Back');
+    fb.onclick=()=>{if(side==='front')return;side='front';selSlot=null;fsel=-1;dTab();dPage();dCtl()};
+    bb.onclick=()=>{if(side==='back')return;side='back';selSlot=null;fsel=-1;dTab();dPage();dCtl()};
     c.append(fb,bb);
     const rm=E('button','ibtn');rm.append(ic('del'));rm.setAttribute('aria-label','Remove this sheet');
-    rm.onclick=async()=>{const used=['front','back'].some(sd=>FIL[sheet+':'+sd]&&FIL[sheet+':'+sd].cells.length);
+    rm.onclick=async()=>{const used=['front','back'].some(sd=>FIL[sheet+':'+sd]&&(FIL[sheet+':'+sd].cells.length||(FIL[sheet+':'+sd].free||[]).length));
       if(used&&!await dlg({title:'Remove sheet '+(sheet+1)+'?',msg:'Its pictures stay in Print space and become unplaced.',ok:'Remove',danger:true}))return;
       selSlot=null;call({op:'rmsheet',sheet})};
     const f=document.createDocumentFragment();f.append(c,E('small','','Sheet '+(sheet+1)+' / '+n),rm);bxTab.replaceChildren(f)}
   // ---- big page preview
   function dPage(){
-    if(!LY||!PL||!PL.sheets.length){bxPg.replaceChildren(E('div','ge',PICS.length?'No sheets yet \u2013 open the settings and tap Auto-fill, or tap +':'Nothing to lay out \u2013 add pictures to Print space first'));return}
+    if(SP.free&&LY&&PL&&PL.sheets.length)return dFree();
+    if(!LY||!PL||!PL.sheets.length){bxPg.replaceChildren(E('div','ge',PICS.length?(SP.free?'No sheet yet \u2013 tap a picture below to put it on a sheet':'No sheets yet \u2013 open the settings and tap Auto-fill, or tap +'):'Nothing to lay out \u2013 add pictures to Print space first'));return}
     const sw=LY.sw,sh=LY.sh,pg=E('div','lypg'),cells={},gh={};
     pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
     const P=FIL[sheet+':'+side];if(P)P.cells.forEach(c=>{cells[c.slot]=c});
@@ -3401,6 +3411,7 @@ function psLayout(){
     PICS.forEach(m=>{const t=E('div','lyt'+(selPic===m.id?' sel':'')),im=E('img'),n=PLACED[m.id]||0,cp=m.copies||1;
       im.alt='';im.draggable=false;im.src=thumb(m);im.style.transform='rotate('+(m.rot||0)+'deg)';t.append(im,E('span','lyg'+(n>=cp?' ok':''),n+'/'+cp));t.dataset.id=m.id;
       arm(t,()=>({k:'pic',id:m.id}),()=>{
+        if(SP.free){freeAdd(m.id);return}   // free placement: one tap puts the picture on this side
         if(selSlot){const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,m.id);dPage();dCtl();return}   // slot first, then picture
         selPic=selPic===m.id?null:m.id;selSlot=null;dTray();dPage();dCtl()});
       f.append(t)});
@@ -3408,7 +3419,16 @@ function psLayout(){
   function dCtl(){
     const f=document.createDocumentFragment(),mk=(lbl,fn,ico,cls)=>{const b=E('button','tbtn'+(cls?' '+cls:''));if(ico)b.append(ic(ico));b.append(document.createTextNode(lbl));b.onclick=fn;return b},
       m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
-    if(selPic&&m){
+    if(SP.free){
+      const q=fsel>=0&&FRL&&FRL[fsel]?FRL[fsel]:null,fm=q?pic(q.id):null;
+      if(fm){f.append(E('b','',fm.name),mk('\u21ba 90',()=>fedit(x=>{x.rot=fnorm(x.rot-90)})),mk('90',()=>fedit(x=>{x.rot=fnorm(x.rot+90)}),'rotr'),
+        mk('Bigger',()=>fedit(x=>{x.w=Math.min(3,x.w*1.15)})),mk('Smaller',()=>fedit(x=>{x.w=Math.max(.03,x.w/1.15)})),
+        mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Center',()=>fedit(x=>{x.cx=.5;x.cy=.5})),
+        mk('To front',()=>{const x=FRL.splice(fsel,1)[0];FRL.push(x);fsel=FRL.length-1;fCommit()}),
+        mk('Copy',()=>{const x=Object.assign({},FRL[fsel],{cx:Math.min(1,FRL[fsel].cx+.03),cy:Math.min(1,FRL[fsel].cy+.03)});FRL.push(x);fsel=FRL.length-1;fCommit()},'add'),
+        mk('Delete',()=>{FRL.splice(fsel,1);fsel=-1;fCommit()},'del'))}
+      else f.append(E('span','','Tap a picture below to put it on this side \u00b7 drag to move \u00b7 pinch, or drag the corner dot, to resize and turn'))}
+    else if(selPic&&m){
       f.append(E('b','',m.name),E('span','',(PLACED[m.id]||0)+' of '+(m.copies||1)+' placed \u00b7 tap a slot'),mk('\u2212',()=>cp(-1)),E('span','','\u00d7'+(m.copies||1)),mk('+',()=>cp(1)),mk('Turn',turn,'rotr'))}
     else if(selSlot){
       if(m)f.append(E('b','',m.name));else f.append(E('span','','Empty slot \u00b7 tap a picture below'));
@@ -3495,6 +3515,68 @@ function psLayout(){
       await doPrint(to,sheetCx(B,'off','back',c==='alt'))}
     catch(e){toast('\u26a0 '+e.message,6000)}
     finally{pBusy=false;if(live())dHead()}}
+  /* ---- free placement (spec.free): pictures anywhere on a side. Items are fractions of the sheet {id, cx, cy, w, rot} (+ a = height / width, from the layout answer).
+     One finger moves, the corner dot turns + resizes about the centre, two fingers pinch / turn the selected picture. Every gesture ends with ONE {op:'fset'} for the side;
+     the page is not redrawn while a finger is down (fg). The Kotlin renderer draws the same numbers, so Preview = print. */
+  let fsel=-1,fg=null,fdirty=false,FRL=null,FEL=[];
+  const fnorm=a=>((a%360)+360)%360,
+    frOf=()=>{const q=PL&&PL.sheets[sheet];return q?(side==='back'?q.fb:q.ff)||[]:[]},
+    fPlace=i=>{const f=FRL&&FRL[i],el=FEL[i];if(!f||!el||!LY)return;const m=pic(f.id);
+      el.style.left=f.cx*100+'%';el.style.top=f.cy*100+'%';el.style.width=f.w*100+'%';el.style.height=(f.w*f.a*LY.sw/LY.sh*100)+'%';
+      el.style.transform='translate(-50%,-50%) rotate('+(((m&&m.rot)||0)+f.rot)+'deg)'},
+    fFit=(x,m)=>{const t=(((m&&m.rot)||0)+x.rot)*Math.PI/180,c=Math.abs(Math.cos(t)),s2=Math.abs(Math.sin(t)),dw=x.w*LY.sw,dh=dw*x.a,bw=c*dw+s2*dh,bh=s2*dw+c*dh;
+      x.w=Math.max(.03,Math.min(3,x.w*Math.min(LY.sw/bw,LY.sh/bh)*.98));x.cx=.5;x.cy=.5};
+  async function fCommit(){fg=null;const items=(FRL||[]).map(f=>({id:f.id,cx:+f.cx.toFixed(4),cy:+f.cy.toFixed(4),w:+f.w.toFixed(4),rot:+f.rot.toFixed(2)}));
+    await call({op:'fset',sheet,side,items})}
+  const fedit=fn=>{if(fsel<0||!FRL||!FRL[fsel])return;fn(FRL[fsel]);fPlace(fsel);fCommit()};
+  async function freeAdd(id,cx,cy){
+    const x={op:'fadd',sheet,side,id};if(cx!=null){x.cx=Math.max(0,Math.min(1,cx));x.cy=Math.max(0,Math.min(1,cy))}
+    const r=await call(x);if(r){fsel=frOf().length-1;draw()}}
+  async function setPlace(on){
+    if(!!SP.free===!!on)return;const old=SP;fsel=-1;
+    if(on){SP=Object.assign({},SP,{free:true});const r=await call({op:'tofree'});if(!r){SP=old;dSet()}}
+    else{SP=Object.assign({},SP,{free:false});const r=await call({op:'togrid'});if(!r){SP=old;dSet()}}}
+  function dFree(){
+    if(fg){fdirty=true;return}
+    fdirty=false;const sw=LY.sw,sh=LY.sh,pg=E('div','lypg lyfp'),dw=(FIL[sheet+':'+side]||{}).free||[];
+    pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
+    FRL=frOf().map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}));
+    if(fsel>=FRL.length)fsel=FRL.length-1;
+    FEL=FRL.map((f,i)=>{const m=pic(f.id),el=E('div','lyf'+(i===fsel?' sel':''));if(m){const im=E('img');im.alt='';im.draggable=false;im.src=thumb(m);el.append(im)}
+      if(i===fsel)el.append(E('i','lyh'));pg.append(el);return el});
+    const gv=E('div','lyg lygv'),gh=E('div','lyg lygh2');gv.style.display=gh.style.display='none';pg.append(gv,gh);
+    const sel=i=>{fsel=i;FEL.forEach((e,k)=>{e.classList.toggle('sel',k===i);const h=e.querySelector('.lyh');if(k!==i&&h)h.remove();if(k===i&&!h)e.append(E('i','lyh'))});dCtl()},
+      P=new Map(),snap=(v,g)=>{if(Math.abs(v-.5)<.012){g.style.display='';return .5}g.style.display='none';return v};
+    FRL.forEach((f,i)=>fPlace(i));
+    pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
+      try{pg.setPointerCapture(e.pointerId)}catch(x){}
+      P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
+      const isH=!!(e.target.classList&&e.target.classList.contains('lyh')),t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();
+      if(P.size===1){
+        const i=isH?fsel:(t?FEL.indexOf(t):-1);fg={mode:isH?'h':(i>=0?'m':'bg'),tap:true,sx:e.clientX,sy:e.clientY,hit:i,r};
+        if(i>=0){if(i!==fsel)sel(i);fg.f0=Object.assign({},FRL[i]);
+          if(isH){const c={x:r.left+fg.f0.cx*r.width,y:r.top+fg.f0.cy*r.height};fg.c=c;fg.v0=Math.hypot(e.clientX-c.x,e.clientY-c.y)||1;fg.a0=Math.atan2(e.clientY-c.y,e.clientX-c.x)}}}
+      else if(P.size===2&&fsel>=0&&FRL[fsel]){const [a,b]=[...P.values()];
+        fg={mode:'p',tap:false,hit:fsel,r,f0:Object.assign({},FRL[fsel]),d0:Math.hypot(a.x-b.x,a.y-b.y)||1,an0:Math.atan2(b.y-a.y,b.x-a.x),m0:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}}}
+      else if(fg)fg.mode='x'};
+    pg.onpointermove=e=>{const p=P.get(e.pointerId);if(!p||!fg)return;p.x=e.clientX;p.y=e.clientY;
+      const i=fg.hit,f=FRL[i],r=fg.r;if(fg.mode==='bg'||fg.mode==='x'||!f)return;e.preventDefault();
+      if(fg.mode==='m'){const dx=e.clientX-fg.sx,dy=e.clientY-fg.sy;if(fg.tap&&Math.abs(dx)+Math.abs(dy)<6)return;fg.tap=false;
+        f.cx=snap(fg.f0.cx+dx/r.width,gv);f.cy=snap(fg.f0.cy+dy/r.height,gh)}
+      else if(fg.mode==='h'){const vx=e.clientX-fg.c.x,vy=e.clientY-fg.c.y;fg.tap=false;
+        f.w=Math.max(.03,Math.min(3,fg.f0.w*Math.hypot(vx,vy)/fg.v0));
+        let a=fnorm(fg.f0.rot+(Math.atan2(vy,vx)-fg.a0)*180/Math.PI);const q=Math.round(a/15)*15;if(Math.abs(a-q)<3)a=fnorm(q);f.rot=a}
+      else if(fg.mode==='p'){if(P.size<2)return;const [a,b]=[...P.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,an=Math.atan2(b.y-a.y,b.x-a.x),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+        f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(fg.f0.rot+(an-fg.an0)*180/Math.PI);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height}
+      fPlace(i)};
+    const up=e=>{P.delete(e.pointerId);if(!fg)return;
+      if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
+      if(P.size>0)return;
+      gv.style.display=gh.style.display='none';const w=fg;
+      if(w.mode==='bg'&&w.tap){fg=null;sel(-1);if(fdirty)dFree();return}
+      if(!w.tap||w.mode==='p'||w.mode==='x')fCommit();else{fg=null;if(fdirty)dFree()}};
+    pg.onpointerup=up;pg.onpointercancel=up;
+    bxPg.replaceChildren(pg)}
   // ---- taps
   function tapSlot(i,c){
     if(selPic){const id=selPic;selPic=null;assign(sheet,side,i,id);dTray();dCtl();return}
@@ -3505,11 +3587,12 @@ function psLayout(){
   // ---- long-press drag (pointer events): tray picture -> slot (place), slot -> slot (swap), slot -> tray (clear). A non-passive touchmove stops the page scrolling while dragging.
   const tm=e=>{if(!live()){document.removeEventListener('touchmove',tm);return}if(drag)e.preventDefault()};
   document.addEventListener('touchmove',tm,{passive:false});
-  const hit=(x,y)=>{const el=document.elementFromPoint(x,y);return{slot:el&&el.closest?el.closest('.lys'):null,tray:el&&el.closest?el.closest('.lytr'):null}};
+  const hit=(x,y)=>{const el=document.elementFromPoint(x,y);return{slot:el&&el.closest?el.closest('.lys'):null,tray:el&&el.closest?el.closest('.lytr'):null,stage:el&&el.closest?el.closest('.lyfp'):null}};
   const dragStop=()=>{if(!drag)return;if(drag.gh)drag.gh.remove();if(drag.tg)drag.tg.classList.remove('dt');drag=null};
   function dragMove(x,y){if(!drag)return;drag.gh.style.left=(x-30)+'px';drag.gh.style.top=(y-30)+'px';
     const h=hit(x,y),t=h.slot||h.tray;if(t!==drag.tg){if(drag.tg)drag.tg.classList.remove('dt');drag.tg=t;if(t)t.classList.add('dt')}}
   function dragEnd(x,y){if(!drag)return;const s=drag.s,h=hit(x,y);dragStop();
+    if(SP.free){if(s.k==='pic'&&h.stage){const r=h.stage.getBoundingClientRect();freeAdd(s.id,(x-r.left)/r.width,(y-r.top)/r.height)}return}
     if(h.slot){const slot=+h.slot.dataset.slot;
       if(s.k==='pic'){selPic=null;selSlot=null;assign(sheet,side,slot,s.id);dTray();dCtl()}
       else if(!(s.sheet===sheet&&s.side===side&&s.slot===slot)){selSlot=null;swap({sheet:s.sheet,side:s.side,slot:s.slot},{sheet,side,slot})}}

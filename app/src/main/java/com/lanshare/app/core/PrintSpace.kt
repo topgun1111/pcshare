@@ -1,5 +1,9 @@
 package com.lanshare.app.core
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -61,6 +65,13 @@ object PrintSpace {
     fun inSpace(v: String): Boolean = vnorm(v).trimStart('/').let { it == NAME || it.startsWith("$NAME/") }
 
     fun isPicture(name: String): Boolean = EXT.contains(name.substringAfterLast('.', "").lowercase())
+
+    /** PDFs are taken too: every page becomes a picture of its own ("<name> p3.jpg"), so pages can be moved, turned and mixed with photos on a sheet. */
+    fun isPdf(name: String): Boolean = name.substringAfterLast('.', "").equals("pdf", ignoreCase = true)
+
+    const val MAX_PDF_PAGES = 100
+    private const val PDF_DPI = 200
+    private const val PDF_MAXPX = 3000
 
     // ------------------------------------------------------------------ manifest
 
@@ -213,7 +224,8 @@ object PrintSpace {
                 if (items.size >= MAX_ITEMS) { skip(nm, "print space is full ($MAX_ITEMS pictures)"); continue }
                 if (!remote && (inSpace(v) || Bin.inBin(v))) { skip(nm, "already in the print space or in the recycle bin"); continue }
                 if (!remote && arcSplit(v) != null) { skip(nm, "inside an archive"); continue }
-                if (!isPicture(nm)) { skip(nm, "not a picture"); continue }
+                val pdf = isPdf(nm)
+                if (!pdf && !isPicture(nm)) { skip(nm, "not a picture or PDF"); continue }
                 var srcLen = 0L
                 var src: File? = null
                 if (!remote) {
@@ -231,6 +243,7 @@ object PrintSpace {
                     if (srcLen > MAX_REMOTE) { skip(nm, "too big to take from another device (max ${MAX_REMOTE / 1048576} MB)"); continue }
                 }
                 if (mb > 0 && items.sumOf { x -> x.size } + srcLen > mb * 1024L * 1024L) { skip(nm, "storage limit reached ($mb MB)"); continue }
+                if (pdf) { addPdf(if (remote) "$dev:$v" else v, nm, src, if (remote) ep else null, v, added, skipped); continue }
                 val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
                 val box = File(root(), id)
                 if (!box.mkdirs()) { skip(nm, "could not create the folder"); continue }
@@ -255,6 +268,74 @@ object PrintSpace {
         }
         if (added.length() > 0) save()
         return JSONObject().put("added", added).put("skipped", skipped)
+    }
+
+    /**
+     * PDF -> one JPEG per page (white background, ~[PDF_DPI] dpi, long side <= [PDF_MAXPX] px) as separate items. [src] = the local file, or null to stream [v] from [ep]
+     * into a temp file first (size limit [MAX_REMOTE] was checked by the caller). Stops with a reason when the space or the storage limit is full; pages already
+     * added stay. Called inside [add] (already synchronized).
+     */
+    private fun addPdf(from: String, nm: String, src: File?, ep: Endpoint?, v: String, added: JSONArray, skipped: JSONArray) {
+        fun skip(why: String) { skipped.put(JSONObject().put("name", nm).put("why", why)) }
+        var tmp: File? = null
+        try {
+            val f: File = src ?: run {
+                root().mkdirs()
+                val t = File(root(), ".tmp-" + UUID.randomUUID().toString().replace("-", "").take(8) + ".pdf")
+                tmp = t
+                ep!!.open(v).use { ins -> t.outputStream().use { out -> ins.copyTo(out) } }
+                t
+            }
+            val pfd = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY)
+            val r = PdfRenderer(pfd)
+            try {
+                val total = r.pageCount
+                val base = nm.substringBeforeLast('.')
+                var done = 0
+                for (i in 0 until minOf(total, MAX_PDF_PAGES)) {
+                    if (items.size >= MAX_ITEMS) { skip("print space is full ($MAX_ITEMS pictures) after $done of $total pages"); return }
+                    if (mb > 0 && items.sumOf { x -> x.size } >= mb * 1024L * 1024L) { skip("storage limit reached ($mb MB) after $done of $total pages"); return }
+                    val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
+                    val box = File(root(), id)
+                    if (!box.mkdirs()) { skip("could not create the folder"); return }
+                    val fname = "$base p${i + 1}.jpg".replace("/", "_")
+                    val dst = File(box, fname)
+                    val part = File(box, "$fname.part")
+                    var bmp: Bitmap? = null
+                    try {
+                        val pg = r.openPage(i)
+                        try {
+                            val k = minOf(PDF_DPI / 72.0, PDF_MAXPX / maxOf(1, maxOf(pg.width, pg.height)).toDouble())
+                            val bw = maxOf(1, Math.round(pg.width * k).toInt())
+                            val bh = maxOf(1, Math.round(pg.height * k).toInt())
+                            val nb = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+                            bmp = nb
+                            nb.eraseColor(Color.WHITE)
+                            pg.render(nb, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                        } finally { pg.close() }
+                        val pb = bmp ?: throw IOException("could not draw page ${i + 1}")
+                        part.outputStream().use { out -> if (!pb.compress(Bitmap.CompressFormat.JPEG, 92, out)) throw IOException("could not encode page ${i + 1}") }
+                        if (!part.renameTo(dst)) throw IOException("could not store the copy")
+                    } catch (e: Exception) {
+                        try { box.deleteRecursively() } catch (_: Exception) {}
+                        skip("page ${i + 1}: " + errText(e).take(100))
+                        continue
+                    } finally { bmp?.recycle() }
+                    val it = Item(id, fname, dst.length(), from, System.currentTimeMillis(), 1, 0)
+                    items.add(it)
+                    added.put(it.toJson())
+                    done++
+                }
+                if (total > MAX_PDF_PAGES) skip("only the first $MAX_PDF_PAGES of $total pages were taken")
+            } finally {
+                try { r.close() } catch (_: Exception) {}
+                try { pfd.close() } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            skip(errText(e).take(120))
+        } finally {
+            try { tmp?.delete() } catch (_: Exception) {}
+        }
     }
 
     /**

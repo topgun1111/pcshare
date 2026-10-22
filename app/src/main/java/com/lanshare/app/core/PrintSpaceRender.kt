@@ -166,6 +166,19 @@ object PrintSpaceRender {
             cv.drawBitmap(bmp, null, RectF(-d.dw / 2, -d.dh / 2, d.dw / 2, d.dh / 2), paint)
             cv.restore()
         }
+        // free placement (spec.free): no clip to a slot, any turn; the sheet / PDF page clips what hangs over the edge
+        for (f in page.free) {
+            val pic = p.res.pics.getOrNull(f.pic) ?: continue
+            val vp = p.paths[pic.id] ?: throw NotFound("A picture was removed from the print space - open Layout again")
+            val dw = maxOf(1.0, f.dw)
+            val dh = maxOf(1.0, f.dh)
+            val bmp = pool.get(pic.id, Core.local.real(vp), PsRenderGeom.needPx(dw, dh, pxPerPt))
+            cv.save()
+            cv.translate(f.cx.toFloat(), f.cy.toFloat())
+            if (f.rot % 360.0 != 0.0) cv.rotate(f.rot.toFloat())
+            cv.drawBitmap(bmp, null, RectF((-dw / 2).toFloat(), (-dh / 2).toFloat(), (dw / 2).toFloat(), (dh / 2).toFloat()), paint)
+            cv.restore()
+        }
     }
 
     // ------------------------------------------------------------------ preview page
@@ -251,6 +264,7 @@ object PrintSpaceRender {
             val pic = p.res.pics.getOrNull(c.pic) ?: continue
             sizes.add(Pair(maxOf(1, pic.w) * c.k, maxOf(1, pic.h) * c.k))
         }
+        for (pg in pages) for (f in pg.free) sizes.add(Pair(maxOf(1.0, f.dw), maxOf(1.0, f.dh)))
         val dpi = PsRenderGeom.autoDpi(wantDpi, sizes, PDF_BUDGET)
         val dir = renderDir()
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("could not create the sheets folder")

@@ -73,6 +73,31 @@ fun main() {
     check("validate: 8x8 on A5 with 72 pt margin and 40 pt gap is refused", SheetLayout.validate(Spec(paper = "A5", grid = Grid(8, 8), margin = 72.0, gap = 40.0)) != null)
     check("validate: defaults ok", SheetLayout.validate(Spec()) == null)
 
+    // free placement
+    val fs = s22.copy(free = true)
+    val fp0 = SheetLayout.autoFill(s22, p4, Mode.FRONT_ONLY)
+    val fpl = SheetLayout.setFree(fp0, fs, 0, Side.BACK, listOf(SheetLayout.Free(1, 0.5, 0.5, 0.5, 30.0)))
+    check("free back item makes a back page", SheetLayout.hasBack(fpl))
+    val fl = SheetLayout.compose(fs, p4, fpl)
+    check("free layout: no grid cells, free item on the back page", fl.pages.size == 2 && fl.pages.all { it.cells.isEmpty() } && fl.pages[1].free.size == 1 && fl.pages[0].free.isEmpty())
+    val fc = fl.pages[1].free[0]
+    check("free item: centre, width, proportions, turn", Math.abs(fc.cx - fl.sw / 2) < 1e-6 && Math.abs(fc.dw - fl.sw * 0.5) < 1e-6 && Math.abs(fc.dh - fc.dw * 1.5) < 1e-6 && fc.rot == 30.0)
+    val rp = SheetLayout.compose(fs, listOf(Pic(1000, 1500, rot = 90)), SheetLayout.Plan(true, listOf(SheetLayout.Sheet(listOf(null), listOf(null), listOf(SheetLayout.Free(0, 0.5, 0.5, 0.4, 15.0)), emptyList()))))
+    check("free item adds the picture's own turn", rp.pages[0].free[0].rot == 105.0)
+    check("trim keeps a sheet that only has free items", SheetLayout.trim(SheetLayout.Plan(true, listOf(SheetLayout.Sheet(listOf(null), listOf(null), listOf(SheetLayout.Free(0, 0.5, 0.5, 0.4)), emptyList())))).sheets.size == 1)
+    val g2f = SheetLayout.gridToFree(s22, p4, SheetLayout.autoFill(s22, p4, Mode.FRONT_ONLY))
+    val gl = SheetLayout.compose(s22, p4, g2f)
+    val gf = SheetLayout.compose(fs, p4, g2f)
+    check("grid -> free keeps place and size (4 items)", g2f.sheets[0].ff.size == 4 && gf.pages[0].free.size == 4 &&
+        (0 until 4).all { i -> val a = gl.pages[0].cells[i]; val b = gf.pages[0].free[i]
+            Math.abs(a.cx - b.cx) < 1e-6 && Math.abs(a.cy - b.cy) < 1e-6 && Math.abs(a.w - b.dw) < 1e-6 && a.rot.toDouble() == b.rot })
+    check("free width is clamped", SheetLayout.compose(fs, p4, SheetLayout.Plan(true, listOf(SheetLayout.Sheet(listOf(null), listOf(null), listOf(SheetLayout.Free(0, 0.5, 0.5, 99.0)), emptyList())))).pages[0].free[0].dw <= 3.0 * 595.0 + 1e-6)
+    val af = SheetLayout.addFree(SheetLayout.Plan(true, emptyList()), fs, p4, 0, Side.FRONT, 2, null, null)
+    val ac = SheetLayout.compose(fs, p4, af).pages[0].free[0]
+    check("addFree on an empty plan makes a sheet, item fits half the sheet", af.sheets.size == 1 && ac.dw <= 595.0 * 0.5 + 1e-6 && ac.dh <= 842.0 * 0.5 + 1e-6 && Math.abs(ac.dh / ac.dw - 1.5) < 1e-9)
+    val af2 = SheetLayout.addFree(af, fs, p4, 0, Side.FRONT, 2, 0.25, 0.75)
+    check("addFree at a point, on top", af2.sheets[0].ff.size == 2 && af2.sheets[0].ff[1].cx == 0.25 && af2.sheets[0].ff[1].cy == 0.75)
+
     println(if (bad == 0) "ALL OK" else "$bad FAILED")
     exitProcess(if (bad == 0) 0 else 1)
 }
