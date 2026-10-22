@@ -142,7 +142,7 @@ class Job(@Volatile var label: String) {
 object Jobs {
     val all = ConcurrentHashMap<String, Job>()
 
-    private fun prune() {
+    fun prune() {
         val now = System.currentTimeMillis()
         all.entries.removeAll { it.value.state != "run" && it.value.end > 0 && now - it.value.end > 600_000 }
     }

@@ -744,6 +744,7 @@ function openPerfDebug(){
 /* /PERF-DEBUG */
 const IC={
 hide:'M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z',
+merge:'M17 20.41L18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z',
 dup:'M10 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h5v2h2V1h-2v2zm0 15H5l5-6v6zm9-15h-5v2h5v13l-5-6v9h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z',
 folder:'M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
 file:'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z',
@@ -2474,8 +2475,9 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
+    if(!A&&galRoot()&&it.length>1&&it.every(i=>i.dir))btn('merge','Merge',()=>mergeAlbums(selPaths()));   // Gallery / Videos: merge the selected albums into one
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
-    if(!A&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon
+    if(!A&&!galRoot()&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon (not for Gallery / Videos albums: their cards show the cover picture, so a folder colour / icon would do nothing)
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
       btn('hide','Hide',()=>{const ps=it.map(i=>jn(S.path,i.name));S.sel.clear();galHideMany(ps,true)})}
@@ -3168,6 +3170,19 @@ window.lsPrintShared=async(names,priv)=>{
     const r=await api('POST','/api/print',{dev:'local',paths:pvf.map(p=>p.path),to:to.id,opts});clean(r)
   }catch(e){toast('\u26a0 '+e.message,5000)}};
 
+/* ---- merge albums (Gallery / Videos): files of the other selected albums are MOVED into one target album. Same name + same / similar picture -> asked (Replace / Skip / Keep both / Replace if newer); same name but a different picture -> renamed "name (1)" without asking. Backend: core/AlbumMerge.kt (/api/merge) ---- */
+function mergeAlbums(ps){
+  ps=[...new Set(ps)];if(ps.length<2)return;
+  const cnt=p=>{const x=GALA&&GALA.a.find(y=>y.path===p);return x?x.n+(x.n===1?' item':' items'):''};
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Merge into which album?'));
+  const fin=v=>{o.style.display='none';o.onclick=null;if(v)go(v)};o.onclick=e=>{if(e.target===o)fin(null)};
+  ps.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic('folder'));lt.append(E('span','',p.split('/').pop()));const c=cnt(p);if(c)lt.append(E('small','',c));b.append(ld,lt);b.onclick=()=>fin(p);card.append(b)});
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card);
+  async function go(target){
+    const rest=ps.filter(p=>p!==target);
+    if(!await dlg({title:'Merge '+ps.length+' albums?',msg:'Everything in '+rest.map(p=>p.split('/').pop()).join(', ')+' is moved into '+target.split('/').pop()+'.\nSame name + same picture: you decide. Same name + different picture: renamed. Emptied albums are removed.',ok:'Merge'}))return;
+    try{const r=await api('POST','/api/merge',{target,paths:rest});S.sel.clear();GALT=0;render();watchJob(r.job);toast('Merging\u2026',0,0);await track(r.job);galForce()}
+    catch(e){toast('\u26a0 '+e.message,6000)}}}
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
 async function doDups(ps,similar){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders. similar: same picture in another size / quality (perceptual hash)
   if(!Array.isArray(ps))ps=null;
@@ -3982,7 +3997,7 @@ function lvFeed(id,j){
       const nm=E('div','',a.name);nm.style.cssText='font-weight:600;word-break:break-all;margin-bottom:6px';
       const dt=m=>m?new Date(m*1000).toLocaleString():'?';
       const same=a.srcSize===a.dstSize&&a.srcMtime&&a.dstMtime&&Math.abs(a.srcMtime-a.dstMtime)<=2;
-      const info=E('div','','Existing: '+fmt(a.dstSize)+' · '+dt(a.dstMtime)+'\nNew: '+fmt(a.srcSize)+' · '+dt(a.srcMtime)+(same?'\nIdentical size and date':''));
+      const info=E('div','','Existing: '+fmt(a.dstSize)+' · '+dt(a.dstMtime)+'\nNew: '+fmt(a.srcSize)+' · '+dt(a.srcMtime)+(a.look==='same'?'\nSame picture (identical file)':a.look==='similar'?'\nLooks like the same picture (other size / quality)':same?'\nIdentical size and date':''));
       info.style.cssText='white-space:pre-line;font-size:13px;color:var(--mut);margin-bottom:8px';
       // side-by-side previews (local images / videos only: /api/thumb and /api/vthumb); the newer / larger side gets a tag
       const pe=((a.name||'').split('.').pop()||'').toLowerCase(),pimg=PV_IMG.includes(pe),pvid=['mp4','mkv','mov','avi','webm','3gp','m4v'].includes(pe);
@@ -4000,7 +4015,7 @@ function lvFeed(id,j){
       [['Replace','replace','tbtn fill'],['Skip','skip','tbtn'],['Keep both','both','tbtn'],['Replace if newer','newer','tbtn']].forEach(x=>{
         const b=E('button',x[2],x[0]);b.onclick=()=>{const ans=allI.checked?x[1]+'_all':x[1];L.answered=a.q;L.askBox.style.display='none';
           api('POST','/api/jobanswer?id='+id+'&q='+a.q+'&ans='+ans).catch(e=>toast('⚠ '+e.message,4000))};g.append(b)});
-      L.askBox.append(E('div','','Already exists - replace?'),nm,...(pv?[pv]:[]),info,allC,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
+      L.askBox.append(E('div','',a.look?'Same picture is already in the target album - replace?':'Already exists - replace?'),nm,...(pv?[pv]:[]),info,allC,g);L.askBox.firstChild.style.cssText='font-size:12px;color:var(--mut);margin-bottom:2px'}
     L.askBox.style.display='block';if(L.hidden||!lvOn())lvShow();
     if(L.askSeen!==a.q){L.askSeen=a.q;setTimeout(()=>{try{L.askBox.scrollIntoView({block:'nearest'})}catch(e){}},60)}
   }else L.askBox.style.display='none';

@@ -149,6 +149,25 @@ object DupFinder {
         return d <= SIM_BITS
     }
 
+    /**
+     * Album merge: do two files of this phone show the same thing? "same" = byte-identical, "similar" = the same picture in another size / quality
+     * (difference hash, like "Similar images"), null = different pictures (or videos / files that only share a name). Never throws.
+     */
+    fun look(e: Endpoint, a: String, sa: Long, b: String, sb: Long): String? {
+        try {
+            if (sa == sb && sa > 0) {
+                val dummy = Job("")
+                if (hash(e, a, sa, dummy) == hash(e, b, sb, dummy)) return "same"
+            }
+            val ext = { p: String -> p.substringAfterLast('.', "").lowercase() }
+            if (ext(a) in IMG_EXT && ext(b) in IMG_EXT && sa in 1..MAX_IMG && sb in 1..MAX_IMG) {
+                val x = sig(e, F(a, sa)); val y = sig(e, F(b, sb))
+                if (x != null && y != null && near(x, y)) return "similar"
+            }
+        } catch (_: Throwable) {}
+        return null
+    }
+
     private fun similarPass(job: Job, e: Endpoint, files: List<F>) {
         val imgs = files.filter { it.size in 1..MAX_IMG && it.path.substringAfterLast('.', "").lowercase() in IMG_EXT }
         job.bytes = false; job.total = maxOf(imgs.size, 1).toLong(); job.done = 0

@@ -341,6 +341,7 @@ object Routes {
                 "text" -> ImgSearch.text(b.getString("q"), b.optString("mode", "word") != "part", b.optString("dir", ""))
                 else -> throw BadReq("unknown op")
             })
+            "merge" -> ex.json(JSONObject().put("job", AlbumMerge.start(b.getString("target"), b.getJSONArray("paths").strings())))   // gallery: merge the selected albums into "target"
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("similar"))))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),
                 b.getString("dir"), b.getString("name"), b.optBoolean("replace", false), b.optJSONArray("exclude")?.strings() ?: emptyList())))
