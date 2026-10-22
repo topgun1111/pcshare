@@ -296,7 +296,13 @@ class MainActivity : Activity() {
     private val phonePrint by lazy { PhonePrint(this) }
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b, false))
+    override fun attachBaseContext(b: Context) { rawBase = b; super.attachBaseContext(UiScale.wrap(b, false)) }
+    // UiScale.wrap() hands the activity a createConfigurationContext() wrapper; PrintManager built from it no longer sees an Activity ("Can print only from an activity").
+    // Print service requests go to the original base context, whose outer context is this activity.
+    private var rawBase: Context? = null
+    override fun getSystemService(name: String): Any? =
+        if (name == Context.PRINT_SERVICE && rawBase != null) rawBase!!.getSystemService(name) else super.getSystemService(name)
+
 
     /** Fold / unfold: the activity is not recreated (configChanges), so tell the page to re-fit its layout width to the new screen. */
     override fun onConfigurationChanged(c: android.content.res.Configuration) {

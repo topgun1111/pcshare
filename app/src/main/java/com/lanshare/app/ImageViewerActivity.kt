@@ -121,7 +121,13 @@ class ImageViewerActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    override fun attachBaseContext(b: Context) = super.attachBaseContext(UiScale.wrap(b))
+    override fun attachBaseContext(b: Context) { rawBase = b; super.attachBaseContext(UiScale.wrap(b)) }
+    // UiScale.wrap() hands the activity a createConfigurationContext() wrapper; PrintManager built from it no longer sees an Activity ("Can print only from an activity").
+    // Print service requests go to the original base context, whose outer context is this activity.
+    private var rawBase: Context? = null
+    override fun getSystemService(name: String): Any? =
+        if (name == Context.PRINT_SERVICE && rawBase != null) rawBase!!.getSystemService(name) else super.getSystemService(name)
+
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)

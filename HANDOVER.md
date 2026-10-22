@@ -871,6 +871,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- **2026-10-22** - Fix: print button in the picture viewer (also PDF viewer and main screen) failed with "Can print only from an activity" because `UiScale.wrap()` hides the Activity from `PrintManager`; `ImageViewerActivity`, `PdfViewerActivity`, `MainActivity` now keep the raw base context (`rawBase`) and serve `PRINT_SERVICE` from it, so Android's full print dialog (All printers, incl. LANShare PC print) opens; Kotlin not compiled, not device-tested [9.7].
 - **2026-10-22** - Print space part 13c: Recent prints list from kept sessions (previews, Edit, Print again, remove / clear, keep / size settings) in ui.html + `tools/psess_13c_test.js`; JS syntax-checked, logic test OK, not run on a device [9.7].
 - **2026-10-22** - Print space part 13b: `phSave` / `phMarkSid` in ui.html save a session after every Print space print (JS syntax-checked, not run); part 13c (Recent prints list UI) open, plan in 9.7 "Part 13".
 - **2026-10-22** - Print space part 13a: Recent prints keep full snapshots (`core/PrintSessions.kt`, `PrintSpace.adopt`, routes `pssess` / `pssprev`); Kotlin not compiled; part 13b (ui.html) open, plan in 9.7 "Part 13".
