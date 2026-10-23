@@ -297,8 +297,8 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lyh{position:absolute;right:-14px;bottom:-14px;width:28px;height:28px;border-radius:50%;background:var(--ac);border:3px solid #fff;box-sizing:border-box;touch-action:none;z-index:3}
 #gal .lyh::before{content:"";position:absolute;inset:-8px}
 #gal .lyh.tl{left:-14px;top:-14px;right:auto;bottom:auto}#gal .lyh.tr{right:-14px;top:-14px;left:auto;bottom:auto}#gal .lyh.bl{left:-14px;bottom:-14px;right:auto;top:auto}
-#gal .lyr{position:absolute;left:50%;top:-32px;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:var(--bg);color:var(--ac);border:2px solid var(--ac);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font:700 17px/1 sans-serif;font-style:normal;touch-action:none;z-index:3}
-#gal .lyr::before{content:"";position:absolute;inset:-8px}
+#gal .lyk{position:absolute;left:50%;top:-32px;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:var(--bg);color:var(--ac);border:2px solid var(--ac);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font:700 17px/1 sans-serif;font-style:normal;touch-action:none;z-index:3}
+#gal .lyk::before{content:"";position:absolute;inset:-8px}
 #gal .lysb{position:absolute;pointer-events:none;background:repeating-linear-gradient(135deg,#d3242a38,#d3242a38 3px,transparent 3px 7px)}
 #gal .lysf{position:absolute;pointer-events:none;border:1px dashed #d3242a;box-sizing:border-box}
 #gal .lynote{padding:0 12px 6px;color:var(--mut);font-size:12.5px}
@@ -3914,9 +3914,9 @@ function psLayout(){
         C=[['t',0,-(dh/2+D)],['b',0,dh/2+D],['l',-(dw/2+D),0],['r',dw/2+D,0]];
       for(const [k,x,y] of C){const X=f.cx*W+x*c-y*s,Y=f.cy*H+x*s+y*c;if(X>=14&&X<=W-14&&Y>=-30&&Y<=H+30)return k}
       return 't'},
-    fKnob=(i,W,H)=>{const el=FEL[i],k=el&&el.querySelector('.lyr'),f=FRL&&FRL[i];if(!k||!f)return;const sd=fKnobSide(f,pic(f.id),W,H);
+    fKnob=(i,W,H)=>{const el=FEL[i],k=el&&el.querySelector('.lyk'),f=FRL&&FRL[i];if(!k||!f)return;const sd=fKnobSide(f,pic(f.id),W,H);
       k.style.left=sd==='l'?'-32px':sd==='r'?'calc(100% + 32px)':'50%';k.style.top=sd==='t'?'-32px':sd==='b'?'calc(100% + 32px)':'50%'},
-    fHandles=el=>{['tl','tr','br','bl'].forEach(k=>{const h=E('i','lyh '+k);h.dataset.c=k;el.append(h)});el.append(E('i','lyr','\u21bb'))},
+    fHandles=el=>{['tl','tr','br','bl'].forEach(k=>{const h=E('i','lyh '+k);h.dataset.c=k;el.append(h)});el.append(E('i','lyk','\u21bb'))},
     fFrame=R=>{const t=Math.round(R.t*10000)/100,l=Math.round(R.l*10000)/100,mk=st=>{const d=E('div','lysb');d.style.cssText=st;return d},f=E('div','lysf');
       f.style.cssText='left:'+l+'%;right:'+l+'%;top:'+t+'%;bottom:'+t+'%';
       return[mk('left:0;right:0;top:0;height:'+t+'%'),mk('left:0;right:0;bottom:0;height:'+t+'%'),mk('left:0;top:'+t+'%;bottom:'+t+'%;width:'+l+'%'),mk('right:0;top:'+t+'%;bottom:'+t+'%;width:'+l+'%'),f]};
@@ -4037,7 +4037,7 @@ function psLayout(){
     fmedit=fn=>{const ix=fmIdx();if(ix.length<2)return;const b=FRL.map(x=>Object.assign({},x));fn(ix.map(i=>FRL[i]),ix.map(i=>pic(FRL[i].id)));ix.forEach(i=>{fClamp(FRL[i],pic(FRL[i].id),fSafeNow());fPlace(i)});if(fkRevert(b))return;fCommit()},   // ONE fset for the whole selection
     fmClass=()=>{const m=fms.size>1,pgE=FEL[0]&&FEL[0].parentNode,rr=pgE?pgE.getBoundingClientRect():null;
       FEL.forEach((e,k)=>{e.classList.toggle('msel',m&&fms.has(k));e.classList.toggle('sel',k===fsel);const has=!!e.querySelector('.lyh'),want=k===fsel&&!m;
-        if(has&&!want)e.querySelectorAll('.lyh,.lyr').forEach(x=>x.remove());else if(!has&&want){fHandles(e);if(rr&&rr.width)fKnob(k,rr.width,rr.height)}});dCtl()},
+        if(has&&!want)e.querySelectorAll('.lyh,.lyk').forEach(x=>x.remove());else if(!has&&want){fHandles(e);if(rr&&rr.width)fKnob(k,rr.width,rr.height)}});dCtl()},
     fTog=i=>{if(!fms.size&&fsel>=0)fms.add(fsel);if(fms.has(i))fms.delete(i);else fms.add(i);fsel=fms.has(i)?i:(fms.size?[...fms].pop():-1);fmClass()};
   async function freeAdd(id,cx,cy){
     fpush();const x={op:'fadd',sheet,side,id};if(cx!=null){x.cx=Math.max(0,Math.min(1,cx));x.cy=Math.max(0,Math.min(1,cy))}
@@ -4073,7 +4073,7 @@ function psLayout(){
     pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
       try{pg.setPointerCapture(e.pointerId)}catch(x){}
       P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
-      const cl=e.target.classList,isC=!!(cl&&cl.contains('lyh')),isR=!!(cl&&cl.contains('lyr')),isH=isC||isR,t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();fixN=0;
+      const cl=e.target.classList,isC=!!(cl&&cl.contains('lyh')),isR=!!(cl&&cl.contains('lyk')),isH=isC||isR,t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();fixN=0;
       if(P.size===1){
         const i=isH?fsel:(t?FEL.indexOf(t):-1);fg={mode:isC?'c':isR?'r':(i>=0?'m':'bg'),tap:true,sx:e.clientX,sy:e.clientY,hit:i,r};
         if(i>=0){if(fmm&&!isH)fg.multi=true;else if(i!==fsel||fms.size>1)sel(i);if(isH&&FRL[i]){fClamp(FRL[i],pic(FRL[i].id),R);fPlace(i)}fg.f0=Object.assign({},FRL[i]);kInit(fg,i,r);
