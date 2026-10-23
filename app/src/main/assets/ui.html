@@ -3898,7 +3898,18 @@ async function openFreeUp(){
     const bar=E('div','fa'),del=E('button','fdel','Delete');bar.append(del);card.append(bar);
     if(!items.length){body.append(Object.assign(E('div','fempty'),{textContent:busy&&busy!=='Scanning\u2026'?busy:'Nothing here. Nice and clean.'}));bar.style.display='none';return}
     if(d.count>items.length)sub.textContent+='  (biggest '+items.length+' shown)';
+    sub.append(E('br'),Object.assign(E('span'),{textContent:'Tap a file to open it \u00b7 press and hold to select',style:'opacity:.8'}));
     const rows=[];
+    const url=p=>location.origin+'/api/dl?dev=local&path='+enc(p),NOIMG=/\.(svg|gif|heic|heif)$/i;
+    const openIt=i=>{   // pictures open in the native viewer (swipe through this list), PDFs in the PDF reader, everything else with an installed app
+      if(!window.LSAndroid){window.open(url(i.path),'_blank');return}
+      try{
+        if(i.d)return;
+        if(kind(i.path)==='img'&&LSAndroid.viewImages&&!NOIMG.test(i.path)){
+          const V=items.filter(x=>!x.d&&kind(x.path)==='img'&&!NOIMG.test(x.path));
+          LSAndroid.viewImages(JSON.stringify({start:Math.max(0,V.indexOf(i)),items:V.map(m=>({name:nm(m.path),url:url(m.path),size:m.size||0,mtime:0}))}));return}
+        if(kind(i.path)==='pdf'&&LSAndroid.viewPdf){LSAndroid.viewPdf(JSON.stringify({name:nm(i.path),url:url(i.path),size:i.size||0,key:'local|'+i.path+'|'+(i.size||0)}));return}
+        LSAndroid.open(url(i.path))}catch(e){toast('\u26a0 '+e.message,4000)}};
     const upd=()=>{let b=0;items.forEach(i=>{if(sel.has(i.path))b+=i.size});
       del.textContent=sel.size?('Delete '+sel.size+' \u00b7 '+fmt(b)):'Select files to delete';del.disabled=!sel.size||!!busy;
       all.textContent=sel.size<items.length?'Select all':'Clear';rows.forEach((r,k)=>r.classList.toggle('sel',sel.has(items[k].path)))};
@@ -3907,7 +3918,17 @@ async function openFreeUp(){
       const n=E('b','',nm(i.path)),sm=E('small','',dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago');
       t.append(n,sm);z.textContent=i.d?'folder':fmt(i.size);
       r.append(iconTile(i.d?'folder':kind(i.path),true),t,z,bk);
-      r.onclick=()=>{sel.has(i.path)?sel.delete(i.path):sel.add(i.path);upd()};rows.push(r);body.append(r)});
+      // tap = open the file (or toggle once something is selected); press and hold = select; the round tick always toggles
+      let lp=0,tm=0,sx=0,sy=0;
+      const tg=()=>{sel.has(i.path)?sel.delete(i.path):sel.add(i.path);upd()};
+      r.addEventListener('touchstart',e=>{lp=0;const c=e.touches[0];sx=c.clientX;sy=c.clientY;clearTimeout(tm);
+        tm=setTimeout(()=>{lp=1;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}tg()},450)},{passive:true});
+      r.addEventListener('touchmove',e=>{const c=e.touches[0];if(Math.abs(c.clientX-sx)>8||Math.abs(c.clientY-sy)>8)clearTimeout(tm)},{passive:true});
+      const un=()=>clearTimeout(tm);r.addEventListener('touchend',un);r.addEventListener('touchcancel',un);
+      r.addEventListener('contextmenu',e=>e.preventDefault());
+      bk.onclick=e=>{e.stopPropagation();tg()};
+      r.onclick=()=>{if(lp){lp=0;return}sel.size?tg():openIt(i)};
+      rows.push(r);body.append(r)});
     all.onclick=()=>{sel.size<items.length?items.forEach(i=>sel.add(i.path)):sel.clear();upd()};
     del.onclick=async()=>{if(!sel.size)return;
       if(!await dlg({title:'Delete '+plural(sel.size,'item')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
