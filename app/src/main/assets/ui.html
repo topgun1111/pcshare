@@ -3880,7 +3880,8 @@ async function openFreeUp(){
     {k:'chat',t:'Chat media',n:'WhatsApp / Telegram pictures, videos, audio and files older than 90 days and 256 KB or more.',i:'msg'}];
   const EXT={jpg:'img',jpeg:'img',png:'img',webp:'img',gif:'img',heic:'img',mp4:'vid',mkv:'vid',mov:'vid','3gp':'vid',webm:'vid',apk:'apk',xapk:'apk',apks:'apk',apkm:'apk',zip:'zip',rar:'zip','7z':'zip',pdf:'pdf',doc:'doc',docx:'doc',xls:'doc',xlsx:'doc',ppt:'doc',pptx:'doc',txt:'doc'};
   const kind=p=>{const m=/\.([^.\/]+)$/.exec(p);return EXT[(m?m[1]:'').toLowerCase()]||'file'};
-  let R=null,view=null,busy='Scanning\u2026',sel=new Set();   // view: null = category list, else the key of the open category (or 'bin')
+  let R=null,view=null,busy='Scanning\u2026',sel=new Set();   // view: null = category list, else the key of the open category (or 'bin' / 'cache')
+  card._back=()=>{if(view===null)return false;view=null;sel=new Set();draw();return true};   // phone Back / back swipe: category page -> category list; on the list it closes
 
   const iconTile=(k,sm)=>{const t=E('span','fci'+(sm?' sm':''));t.append(ic(k));return t};
   const topbar=(title,onBack,right)=>{const h=E('div','fh'),b=E('button','ibtn'),t=E('h3','',title);
@@ -4396,7 +4397,8 @@ function lsBack(){
   if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
   if($('#gal').style.display==='flex'){const g=$('#gal');if(g._sel&&g._sel())return true;galClose();return true}
-  for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
+  for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){const cd=o.querySelector('.card');if(cd&&cd._back&&cd._back())return true;   // a sheet with its own pages (Free up space) steps back one page first
+    if(o.onclick)o.onclick({target:o});else o.style.display='none';return true}}
   if(DU){const w=(DU.act===2?DU.b:DU.a).contentWindow;try{if(w.lsBack())return true}catch(e){}}
   if(homeOn())return false;   // start menu is the bottom of the stack: Back leaves the app
   if(document.body.classList.contains('srch')){clearQ();render();return true}
