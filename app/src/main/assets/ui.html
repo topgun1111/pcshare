@@ -3777,14 +3777,7 @@ function psLayout(){
         mk('Spread \u2194',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'h'))}),mk('Spread \u2195',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'v'))}),
         mk('Delete',()=>{const ix=new Set(fmIdx());FRL=FRL.filter((_,i)=>!ix.has(i));fms.clear();fsel=-1;fCommit()},'del'))}
       else if(fm){f.append(E('b','',fm.name),mk('\u21ba 90',()=>fedit(x=>{x.rot=fnorm(x.rot-90)})),mk('90',()=>fedit(x=>{x.rot=fnorm(x.rot+90)}),'rotr'),
-        mk('Bigger',()=>fedit(x=>{x.w=Math.min(3,x.w*1.15)})),mk('Smaller',()=>fedit(x=>{x.w=Math.max(.03,x.w/1.15)})),
-        mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Fit width',()=>fedit(x=>fFitW(x,fm))),mk('Center',()=>fedit(x=>{x.cx=.5;x.cy=.5})),
-        mk('Rot / size\u2026',fNum),
-        ...[['\u21e4 Left','l'],['Centre \u2194','c'],['Right \u21e5','r'],['\u21e5 Top','t'],['Middle \u2195','m'],['Bottom','b']].map(a=>mk(a[0],()=>fedit(x=>fAlign(x,fm,a[1])))),
-        mk('To front',()=>{const x=FRL.splice(fsel,1)[0];FRL.push(x);fsel=FRL.length-1;fms.clear();fCommit()}),
-        mk('Copy',()=>{const s0=FRL[fsel],x=Object.assign({},s0,{cx:Math.min(1,s0.cx+.03),cy:Math.min(1,s0.cy+.03)});
-          if(fKeepOn()){const sp=fSpot(FRL,x,pic(s0.id),fSafeNow(),LY.sw,LY.sh,fGapPt(),s0.cx+.05,s0.cy+.05);if(!sp){toast('No room for another picture (Keep apart is on)',2800);return}Object.assign(x,sp)}
-          FRL.push(x);fsel=FRL.length-1;fms.clear();fCommit()},'add'),
+        mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Fit width',()=>fedit(x=>fFitW(x,fm))),
         mk('Delete',()=>{FRL.splice(fsel,1);fsel=-1;fms.clear();fCommit()},'del'))}
       else f.append(E('span','','Tap a picture below to put it on this side \u00b7 drag to move \u00b7 drag a corner dot to resize \u00b7 drag the \u21bb knob (or pinch) to turn \u00b7 pictures stay inside the dashed frame'))}
     else if(selPic&&m){
