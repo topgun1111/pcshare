@@ -9,6 +9,34 @@ exactly like the local one (album cards, covers, counts, grid). Remote view is r
 2. DONE  (delivered as full-project zip pcshare-gallery-part2-full.zip) Gallery main page: "Other phones" button, phone list, remote album cards (ui.html only; the album home is HTML, the native list is skipped for it)
 3. DONE  (delivered as full-project zip pcshare-gallery-part3-full.zip) Inside a remote album: photos / videos grid, image + video viewer, copy to this phone, editing actions hidden
 
+## Phase 2: AI search + Print in a remote phone's gallery (started 2026-10-23)
+Goal: inside "Other phones" gallery (remote album home and remote album) the user can (a) AI search that phone's pictures, (b) print selected pictures.
+4. DONE  (pcshare-gallery-ai-print-part1.zip) Backend only, Routes.kt: peer `imgsearch`, local `/api/rimgs`
+5. DONE  (pcshare-gallery-ai-print-part2.zip) ui.html: search button/box in the remote album home + remote album (Visual / Text-in-pictures tabs, Whole word / Contains), result grid like the local Image search view (`isView()`), thumbs via `/api/rthumb`, viewer via `GCX.dev`, same selection bar as part 3; per-album search passes `dir=<album path>`; show the 404 text "Update LANShare on <name>" as a note
+6. DONE  (pcshare-gallery-ai-print-part3.zip) ui.html: Print button in the remote selection bar (remote album AND `risView` results; add next to Share): `POST /api/print {dev:<phone id>, paths:[...], to, opts}` already supports remote sources through `Jobs.startPrint`; reuse the local print dialog (printer picker + layout opts + preview); check `PrintPreview` / `PrintPrep` work for a remote dev (they read through `Jobs.ep(dev)`), otherwise copy to a temp then print
+
+### Part 4 (what was added, core/Routes.kt only)
+- Peer route (in `peer()`): `GET /p/imgsearch?mode=status|visual|text&q=&whole=0|1&dir=` -> `ImgSearch.status()` / `visual(q, dir=)` / `text(q, whole, dir)`, same JSON as local `POST /api/imgs` (`{q,total,results:[{path,score,...}]}`); paths are virtual (`/DCIM/Camera/x.jpg`) = valid for `/api/rthumb`, `/api/dl?dev=`
+- Local UI route (in `api()`): `GET /api/rimgs?dev=<phone id>&mode=status|visual|text&q=&whole=&dir=` -> forwards to that phone (90 s timeout, model load can be slow); older build = 404 text "Update LANShare on <name>: its version cannot search its pictures yet"
+- `mode=status` tells the UI whether that phone has the model installed / pictures indexed (`model.installed`, `count`) so the search box can say "Install image search on <name> first" (visual on a phone without the engine answers 400 "image search engine is not installed yet"; text search needs only the index)
+- Search runs ON the remote phone (its index, its model); nothing is indexed on this phone
+- NOT compiled here (no Gradle in the sandbox): build with the GitHub workflow and check Routes.kt compiles
+
+### Part 5 (what was added, ui.html only)
+- `risView(D,dn,sdir,sname)` (before the gallery section) = AI search screen for ANOTHER phone, in the `#gal` overlay: Visual / Text in pictures tabs, Whole word / Contains chips (prefs shared with local `ls_ismode`, `ls_iswhole`), result grid (thumbs `/api/rthumb?dev=&path=`, score badge in visual mode), tap = existing viewer (`GCX={dev:D,...}`), hold = select
+- Calls `/api/rimgs?dev=&mode=status|visual|text&q=&whole=&dir=` (helper `R()`); status card says when that phone has no model / no scan yet; old build -> its 404 text is shown
+- Selection bar = same as remote album (part 3): To this phone, Copy, Share, Details. No Find similar / Print yet (Print = part 6)
+- Entry points: chip "Search" in `galPhoneBar()` (remote Photos home only) = whole phone; search icon in the header of a remote photo album (`galView`, `rem&&!a.v`) = that album (`dir=a.path`)
+- Videos are not searched. Scanning / model download is done on the other phone (not triggered from here)
+- Not run on a device; JS checked with node --check only
+
+### Part 6 (what was added, ui.html only)
+- Print button in the remote album selection bar (`galView`, `rem`, photos only) and in `risView` results: `doPrint(null,{items,dev:D,...})`; `doPrint` already reads `cx.dev` for `/api/dl?dev=` urls, previews and `POST /api/print {dev:D,paths,...}`
+- Backend needed no change: `Jobs.startPrint` / `PdfPrint` / `WifiPrint` / `printWork` read the files through `Jobs.ep(srcId)` (a `RemoteFs` for a peer phone), so the pictures are pulled from the peer while printing
+- Print history (`phAdd`) stores `dev:D`, so re-print works from the history
+- Not run on a device; JS checked with node --check only. Check on device: this-phone printing (`printHereMany` urls), Wi-Fi printer, PC, Save as PDF, sheet layouts / preview with pictures of another phone
+- Whole task (AI search + print for remote galleries) = all 3 parts done, untested on device
+
 ## Part 1 (what was added, core/Routes.kt)
 Peer routes (what other phones call, /p/<route>), in `peer()`:
 - `albums?kind=vid|img`  -> `Albums.json(...)` of this phone  ({albums:[{path,name,n,cover,size,mtime}],video})

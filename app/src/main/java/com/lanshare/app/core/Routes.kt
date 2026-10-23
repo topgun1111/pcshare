@@ -93,6 +93,12 @@ object Routes {
                 val (data, dur) = VideoThumbs.make(Core.local.open(vnorm(ex.q("path"))))
                 ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
             }
+            // AI search on THIS phone for another phone (HANDOVER_GALLERY.md part 4): ?mode=status|visual|text&q=&whole=1&dir=  -> same JSON as POST /api/imgs
+            "imgsearch" -> ex.json(when (ex.query["mode"]) {
+                "visual" -> ImgSearch.visual((ex.query["q"] ?: "").trim().ifEmpty { throw BadReq("empty query") }, dir = ex.query["dir"] ?: "")
+                "text" -> ImgSearch.text(ex.query["q"] ?: "", ex.query["whole"] != "0", ex.query["dir"] ?: "")
+                else -> ImgSearch.status()
+            })
             "wifiprinters" -> ex.json(WifiPrinters.listJson())   // this device's Wi-Fi printers, for printing on them from another device
             "ipp" -> {   // forwards one IPP request from another device to a printer this device discovered (not to arbitrary hosts)
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
@@ -200,6 +206,15 @@ object Routes {
                 val e = remotePhone(ex.q("dev"))
                 val body = try { e.rpc("albums", mapOf("kind" to (if (q["kind"] == "vid") "vid" else "img"))) }
                     catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot share its gallery yet") }
+                return ex.reply(200, body, "application/json")
+            }
+            // AI search on another phone (HANDOVER_GALLERY.md part 4): ?dev=&mode=status|visual|text&q=&whole=0|1&dir=<album path>
+            "rimgs" -> {
+                val e = remotePhone(ex.q("dev"))
+                val ps = mutableMapOf("mode" to (q["mode"] ?: "status"))
+                for (k in listOf("q", "whole", "dir")) q[k]?.let { ps[k] = it }
+                val body = try { e.rpc("imgsearch", ps, timeoutMs = 90_000) }
+                    catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot search its pictures yet") }
                 return ex.reply(200, body, "application/json")
             }
             // thumbnail of a picture / video on another phone: ?dev=&path=[&big=1][&video=1]. Made on THAT phone (small download);
