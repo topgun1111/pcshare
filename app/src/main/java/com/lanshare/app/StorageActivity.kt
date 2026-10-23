@@ -87,6 +87,7 @@ class StorageActivity : Activity() {
         override fun volume(): LongArray? = try { val r = volRoot(); val t = r.totalSpace; val f = r.usableSpace; if (t > 0 && vpath == "/") longArrayOf((t - f).coerceAtLeast(0L), f, t) else null } catch (_: Throwable) { null }
         override fun realFile(n: SNode): File? = try { realOf(n) } catch (_: Throwable) { null }
         override fun nearest(n: SNode): SNode { val r = curScan?.root ?: return n; return nearestAttached(n, r) }
+        override fun appsOk(): Boolean = AppsUtil.supported && dev == "local" && vpath == "/"
     }
     private var deleting = false        // part 8b: a delete runs on its worker thread (a second one waits)
     private var selBar: LinearLayout? = null   // part 9a: bar shown instead of the info line while rows are ticked
@@ -206,6 +207,7 @@ class StorageActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (AppPal.json(this) != palSig) { recreate(); return }      // the app theme was changed meanwhile
+        wiz?.onResume()
         // part 9b: a volume may have been removed / inserted, the All files access setting may have changed (the user comes back from the settings screen)
         vols = try { Volumes.extra(this) } catch (_: Throwable) { emptyList() }
         if (volPath != null && vols.none { it.path == volPath }) { volPath = null; volName = ""; paintHead(); paintVols(); toast("The SD card / volume is no longer there"); attach(rescan = false); return }

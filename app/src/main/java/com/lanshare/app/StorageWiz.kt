@@ -33,6 +33,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
@@ -57,6 +58,7 @@ interface WizHost {
     fun rescan()
     fun volume(): LongArray?            // [used, free, total] of the analyzed volume, null when unknown
     fun realFile(n: SNode): java.io.File?   // the real file of a node (for image / video thumbnails in the treemap), null when unknown
+    fun appsOk(): Boolean = false       // show the Apps tab (per-app sizes, local main storage only)
     fun nearest(n: SNode): SNode        // [n] when still in the tree, else its nearest ancestor that is (after a delete)
 }
 
@@ -636,8 +638,8 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private val tmTitle = TextView(act)
     private val status = TextView(act)
     private val statusR = TextView(act)
-    private val tabV = arrayOfNulls<TextView>(4)
-    private val tabI = arrayOfNulls<View>(4)
+    private val tabV = arrayOfNulls<TextView>(5)
+    private val tabI = arrayOfNulls<View>(5)
     private lateinit var treeList: ListView
     private lateinit var fileBox: LinearLayout
     private lateinit var typeBox: LinearLayout
@@ -720,10 +722,10 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun buildTabs(): View {
         val wrap = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
         val r = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
-        val names = arrayOf("Folders", "Files", "Types", "Treemap")
-        for (i in 0..3) {
+        val names = arrayOf("Folders", "Files", "Types", "Treemap", "Apps")
+        for (i in 0..(if (host.appsOk()) 4 else 3)) {
             val cell = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; isClickable = true; setOnClickListener { showTab(i) } }
-            val t = TextView(act).apply { text = names[i]; textSize = 15f; gravity = Gravity.CENTER; minimumHeight = dp(48); maxLines = 1 }
+            val t = TextView(act).apply { text = names[i]; textSize = 14f; gravity = Gravity.CENTER; minimumHeight = dp(48); maxLines = 1 }
             val ind = View(act)
             tabV[i] = t; tabI[i] = ind
             cell.addView(t, LinearLayout.LayoutParams(-1, -2))
@@ -789,9 +791,12 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         host2.addView(yb, android.widget.FrameLayout.LayoutParams(-1, -1))
         mapBox = buildMapBox()
         host2.addView(mapBox, android.widget.FrameLayout.LayoutParams(-1, -1))    // Treemap: its own full-screen tab
+        appsBox = buildApps()
+        host2.addView(appsBox, android.widget.FrameLayout.LayoutParams(-1, -1))   // Apps: per-app sizes (StorageApps.kt)
     }
 
     private lateinit var treeBox: LinearLayout
+    private lateinit var appsBox: LinearLayout
     private lateinit var mapBox: View
 
     private fun buildMapBox(): View {
@@ -822,13 +827,15 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         fileBox.visibility = if (i == 1) View.VISIBLE else View.GONE
         typeBox.visibility = if (i == 2) View.VISIBLE else View.GONE
         mapBox.visibility = if (i == 3) View.VISIBLE else View.GONE
-        for (k in 0..3) {
+        appsBox.visibility = if (i == 4) View.VISIBLE else View.GONE
+        for (k in 0..4) {
             tabV[k]?.apply {
                 setTextColor(if (k == i) cFg else cDim)
                 setTypeface(null, if (k == i) Typeface.BOLD else Typeface.NORMAL)
             }
             tabI[k]?.background = round(if (k == i) cAcc else Color.TRANSPARENT, 2)
         }
+        if (i == 4) showApps()
         if (i == 1) { if (allFiles == null) buildAllFiles() else runFilter() }
     }
 
@@ -1131,6 +1138,133 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         }
     }
 
+
+    // ------------------------------------------------------------------ apps (StorageApps.kt)
+    private var apps: List<AppRec>? = null
+    private var appsLoading = false
+    private var appSort = 0                      // 0 size, 1 cache, 2 name
+    private var appSys = false                   // include system apps
+    private var appShown: List<AppRec> = emptyList()
+    private var appMax = 1L
+    private lateinit var appsPerm: LinearLayout
+    private lateinit var appsMain: LinearLayout
+    private lateinit var appsList: ListView
+    private lateinit var appsInfo: TextView
+    private lateinit var appSortBtn: TextView
+    private lateinit var appSysBtn: TextView
+
+    /** Back from the system settings (Usage access): check again. */
+    fun onResume() { if (tab == 4) showApps() }
+
+    private fun buildApps(): LinearLayout {
+        val b = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
+        val pm = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(32), dp(32), dp(32), dp(32)) }
+        pm.addView(TextView(act).apply { text = "Allow usage access"; textSize = 20f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
+        pm.addView(TextView(act).apply {
+            text = "Android only tells an app how big the other apps are when Usage access is switched on for it. Only the sizes are read, never the files inside other apps."
+            textSize = 15f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(24))
+        })
+        pm.addView(TextView(act).apply {
+            text = "Open settings"; textSize = 15f; setTextColor(cOnAcc); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+            minimumHeight = dp(48); setPadding(dp(28), dp(10), dp(28), dp(10)); background = round(cAcc, 24); isClickable = true
+            setOnClickListener { AppsUtil.openUsageSettings(act) }
+        })
+        appsPerm = pm
+        val m = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
+        val chips = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(4)) }
+        appSortBtn = btn("Sort: Size") { appSort = (appSort + 1) % 3; applyApps() }
+        appSysBtn = btn("User apps") { appSys = !appSys; applyApps() }
+        chips.addView(appSortBtn)
+        chips.addView(appSysBtn, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
+        m.addView(chips)
+        appsInfo = txt("", 13f, cDim).apply { setPadding(dp(16), dp(4), dp(16), dp(8)) }
+        m.addView(appsInfo)
+        m.addView(hline(), LinearLayout.LayoutParams(-1, 1))
+        appsList = ListView(act).apply { adapter = appsAdapter }
+        styleList(appsList)
+        appsList.setOnItemClickListener { _, _, pos, _ -> if (pos in appShown.indices) appDialog(appShown[pos]) }
+        m.addView(appsList, LinearLayout.LayoutParams(-1, 0, 1f))
+        appsMain = m
+        b.addView(pm, LinearLayout.LayoutParams(-1, 0, 1f))
+        b.addView(m, LinearLayout.LayoutParams(-1, 0, 1f))
+        return b
+    }
+
+    private fun showApps() {
+        val ok = AppsUtil.hasUsage(act)
+        appsPerm.visibility = if (ok) View.GONE else View.VISIBLE
+        appsMain.visibility = if (ok) View.VISIBLE else View.GONE
+        if (!ok) { apps = null; return }
+        if (apps == null) loadApps()
+    }
+
+    private fun loadApps() {
+        if (appsLoading) return
+        appsLoading = true
+        appsInfo.text = "Reading app sizes…"
+        val px = dp(48)
+        Thread({
+            val l = AppsUtil.load(act, px)
+            ui.post { apps = l; appsLoading = false; applyApps() }
+        }, "wiz-apps").also { it.isDaemon = true }.start()
+    }
+
+    private fun applyApps() {
+        appSortBtn.text = "Sort: " + (if (appSort == 0) "Size" else if (appSort == 1) "Cache" else "Name")
+        appSysBtn.text = if (appSys) "All apps" else "User apps"
+        val all = apps ?: return
+        val l = all.filter { appSys || !it.system }
+        val sorted = when (appSort) { 0 -> l.sortedByDescending { it.total }; 1 -> l.sortedByDescending { it.cache }; else -> l.sortedBy { it.label.lowercase() } }
+        appShown = sorted
+        appMax = maxOf(1L, sorted.maxOfOrNull { if (appSort == 1) it.cache else it.total } ?: 1L)
+        appsInfo.text = sorted.size.toString() + " apps  ·  " + NlModel.fmt(sorted.sumOf { it.total }) + "  ·  cache " + NlModel.fmt(sorted.sumOf { it.cache })
+        appsAdapter.notifyDataSetChanged()
+        appsList.setSelection(0)
+    }
+
+    private fun appDialog(a: AppRec) {
+        val msg = "Total   " + NlModel.fmt(a.total) + "\nApp   " + NlModel.fmt(a.code) + "\nData   " + NlModel.fmt(a.userData) + "\nCache   " + NlModel.fmt(a.cache) +
+            "\n\n" + a.pkg + "\n\nClear cache / data is in App settings, under Storage."
+        AppPal.dlg(act).setTitle(a.label).setMessage(msg)
+            .setPositiveButton("App settings") { _, _ -> AppsUtil.openAppInfo(act, a.pkg) }.setNegativeButton("Close", null).show()
+    }
+
+    private inner class AppRow(c: Context) : LinearLayout(c) {
+        val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+        val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
+        val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
+        val bar = WizBar(c).apply { fillCol = cAcc; trackCol = mix(cBg, cFg, 0.14f) }
+        init {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(68)
+            addView(icon, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(14) })
+            val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+            mid.addView(name); mid.addView(meta)
+            addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
+            val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
+            right.addView(size, LinearLayout.LayoutParams(-1, -2))
+            right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(7) })
+            addView(right, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+        }
+    }
+
+    private val appsAdapter = object : BaseAdapter() {
+        override fun getCount() = appShown.size
+        override fun getItem(p: Int): Any = appShown[p]
+        override fun getItemId(p: Int) = p.toLong()
+        override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
+            val v = (cv as? AppRow) ?: AppRow(act)
+            val a = appShown[p]
+            v.icon.setImageBitmap(a.icon)
+            v.name.text = a.label
+            v.meta.text = (if (a.ver.isNotEmpty()) "v" + a.ver + "  ·  " else "") + "cache " + NlModel.fmt(a.cache)
+            v.size.text = NlModel.fmt(a.total)
+            v.bar.frac = (if (appSort == 1) a.cache else a.total).toFloat() / appMax
+            v.bar.invalidate()
+            return v
+        }
+    }
+
     // ------------------------------------------------------------------ export (CSV)
     private fun q(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
 
@@ -1143,6 +1277,10 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                     1 -> {
                         sb.append("File Name,Size,Folder\n")
                         for (n in shown) sb.append(q(n.name)).append(',').append(n.size).append(',').append(q(n.parent?.path() ?: "/")).append('\n')
+                    }
+                    4 -> {
+                        sb.append("Package,Name,Version,Total,App,Data,Cache\n")
+                        for (a in appShown) sb.append(q(a.pkg)).append(',').append(q(a.label)).append(',').append(q(a.ver)).append(',').append(a.total).append(',').append(a.code).append(',').append(a.userData).append(',').append(a.cache).append('\n')
                     }
                     2 -> {
                         sb.append("Extension,File Type,Files,Size\n")
@@ -1162,7 +1300,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                     }
                 }
                 val dir = File(act.cacheDir, "open"); dir.mkdirs()
-                val f = File(dir, "wiztree-" + (if (tab == 1) "files" else if (tab == 2) "types" else "folders") + ".csv")
+                val f = File(dir, "wiztree-" + (if (tab == 1) "files" else if (tab == 2) "types" else if (tab == 4) "apps" else "folders") + ".csv")
                 f.writeText(sb.toString())
                 ui.post {
                     try {
