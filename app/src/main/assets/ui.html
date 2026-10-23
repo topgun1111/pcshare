@@ -469,7 +469,9 @@ body.kid #list .row.sel{touch-action:none}
 .fu .fhero{margin:4px 16px 12px;padding:18px 20px;border-radius:24px;background:var(--cont);display:flex;flex-direction:column;gap:8px}.fu .fhero>b{font-size:30px;font-weight:600;line-height:1.1}
 .fu .fbar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden}.fu .fbar i{display:block;height:100%;background:var(--ac)}
 .fu .fcat{display:flex;align-items:center;gap:16px;min-height:68px;padding:10px 16px 10px 20px;cursor:pointer;-webkit-tap-highlight-color:transparent}.fu .fcat:active{background:var(--hov)}
-.fu .fci{flex:none;width:44px;height:44px;border-radius:14px;background:var(--sel);color:var(--onsel);display:grid;place-items:center}.fu .fci svg{width:24px;height:24px;fill:currentColor}.fu .fci.sm{width:40px;height:40px;border-radius:12px}.fu .fci.sm svg{width:22px;height:22px}
+.fu .fci{flex:none;width:44px;height:44px;border-radius:14px;background:var(--sel);color:var(--onsel);display:grid;place-items:center}.fu .fci svg{width:24px;height:24px;fill:currentColor}.fu .fci.sm{width:48px;height:48px;border-radius:12px}.fu .fci.sm svg{width:22px;height:22px}
+.fu .fci.th{position:relative;overflow:hidden}.fu .fci.th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0}.fu .fci.th.ok img{opacity:1}.fu .fci.th.ok>svg:not(.pl){display:none}
+.fu .fci.th svg.pl{display:none;position:absolute;right:3px;bottom:3px;width:16px;height:16px;fill:#fff;filter:drop-shadow(0 0 2px #000c)}.fu .fci.th.ok svg.pl{display:block}
 .fu .fct{flex:1;min-width:0}.fu .fct b{display:block;font-size:16px;font-weight:500}.fu .fct small{display:block;color:var(--mut);font-size:13px;margin-top:2px}
 .fu .fcs{flex:none;font-size:14px;font-weight:600;color:var(--ac)}.fu .fch{flex:none;width:22px;height:22px;fill:var(--mut)}
 .fu .fdiv{height:1px;background:var(--bd);margin:8px 20px}
@@ -3900,6 +3902,14 @@ async function openFreeUp(){
     if(d.count>items.length)sub.textContent+='  (biggest '+items.length+' shown)';
     sub.append(E('br'),Object.assign(E('span'),{textContent:'Tap a file to open it \u00b7 press and hold to select',style:'opacity:.8'}));
     const rows=[];
+    // small preview for pictures and videos (the server's cached thumbnails); the type icon stays until the picture is there, or for good when none can be made
+    const thumbTile=i=>{const k=i.d?'folder':kind(i.path),t=iconTile(k,true);
+      if(k!=='img'&&k!=='vid')return t;
+      t.classList.add('th');
+      const im=E('img');im.alt='';im.loading='lazy';im.decoding='async';
+      im.onload=()=>t.classList.add('ok');im.onerror=()=>im.remove();
+      im.src='/api/'+(k==='vid'?'vthumb':'thumb')+'?dev=local&path='+enc(i.path);
+      t.append(im);if(k==='vid')t.append(ic('play','pl'));return t};
     const url=p=>location.origin+'/api/dl?dev=local&path='+enc(p),NOIMG=/\.(svg|gif|heic|heif)$/i;
     const openIt=i=>{   // pictures open in the native viewer (swipe through this list), PDFs in the PDF reader, everything else with an installed app
       if(!window.LSAndroid){window.open(url(i.path),'_blank');return}
@@ -3917,7 +3927,7 @@ async function openFreeUp(){
       const r=E('div','fr'),bk=E('span','bk'),t=E('div','t'),z=E('span','z');bk.append(ic('check'));
       const n=E('b','',nm(i.path)),sm=E('small','',dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago');
       t.append(n,sm);z.textContent=i.d?'folder':fmt(i.size);
-      r.append(iconTile(i.d?'folder':kind(i.path),true),t,z,bk);
+      r.append(thumbTile(i),t,z,bk);
       // tap = open the file (or toggle once something is selected); press and hold = select; the round tick always toggles
       let lp=0,tm=0,sx=0,sy=0;
       const tg=()=>{sel.has(i.path)?sel.delete(i.path):sel.add(i.path);upd()};
