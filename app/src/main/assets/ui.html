@@ -874,14 +874,17 @@ const uiF=()=>{try{const f=LSAndroid.uiGet().split(',')[0]/100;return f>0?f:1}ca
 const wideScr=()=>window.innerWidth*uiF()>=600;   // real dp (page width is screen/f): unfolded phone / tablet; a folded phone is narrower
 let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}try{const g=$('#gal'),w=window.innerWidth;if(g&&g._redraw&&g.style.display!=='none'&&window._gw&&Math.abs(w-window._gw)>40)g._redraw();window._gw=w}catch(e){}   // folded <-> unfolded while an album is open: redraw so the thumbnails are fetched in the new size
 try{nlLay(true);nlChPush()}catch(e){}},300)});
-function applyPrefs(){const o=Object.assign({},G,PF[pfKey()]||{});
+function applyPrefs(){const o0=Object.assign({},G,PF[pfKey()]||{}),o=wideScr()?Object.assign({},o0,PF[pfKey()]?PF[pfKey()].W||{}:G.W||{}):o0;   // unfolded / tablet screen keeps its own view, sort and thumbnail size (stored under W); until chosen there it follows the folded one
+ 
   S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
   S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
 function setPref(p){p=Object.assign({},p);if('cols'in p){const wd=wideScr(),n=+p.cols||0;p.lastW=wd?1:0;p.cell=n?Math.round(window.innerWidth*uiF()/n):0;if(n===0){p.cols=0;p.colsW=0}else if(wd){p.colsW=n;delete p.cols}}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
-  const cur=Object.assign({},G,PF[pfKey()]||{},{view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},p);
+  const base=Object.assign({},G,PF[pfKey()]||{}),mine={view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},rest={};
+  for(const q in p){if(q in mine)mine[q]=p[q];else rest[q]=p[q]}
+  const cur=wideScr()?Object.assign({},base,rest,{W:Object.assign({},PF[pfKey()]?PF[pfKey()].W||{}:G.W||{},mine)}):Object.assign({},base,mine,rest);   // wide screen: view / sort / thumb go to W, so the folded layout of this folder is not touched (and vice versa)
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{const g=JSON.stringify(G),pf=JSON.stringify(PF);localStorage.setItem('ls_g',g);localStorage.setItem('ls_pf',pf);NPS('ls_g',g);NPS('ls_pf',pf)}catch(e){}
   render()}
