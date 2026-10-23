@@ -417,6 +417,8 @@ body.kid #list .row.sel{touch-action:none}
 .ib .ii{width:56px;height:36px;border-radius:18px;display:grid;place-items:center;transition:background .15s}.ib .ii svg{width:30px;height:30px}
 .ib:active .ii{background:var(--hov)}
 .ib.pri .ii{background:var(--ac);color:var(--onac)}.ib.dng{color:var(--err)}
+#bar .ib:not(.pri):not(.dng) .ii{color:var(--ic,inherit)}   /* colourful icons (colour per action, set in renderBar) */
+#bar .ib{border-right:1px solid var(--bd);border-radius:0}#bar .ib.eol{border-right:0}#bar .ib.r1{border-bottom:1px solid var(--bd)}   /* divider lines between the items */
 #clip{display:none;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#clip span{flex:1;min-width:0}
 .tbtn{height:36px;padding:0 16px;border-radius:18px;font-weight:600;font-size:14px;color:var(--ac)}.tbtn:active{background:var(--hov)}
 .tbtn.fill{background:var(--ac);color:var(--onac)}.tbtn.dng{color:var(--err)}
@@ -2532,7 +2534,8 @@ const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.se
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
-  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
+  const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
+  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
   const has=S.clip&&S.clip.paths.length;
   document.body.classList.toggle('selm',S.sel.size>0);
   const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
@@ -2566,7 +2569,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(!S.sel.size&&(!inArc()||zipEd())){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
   else c.style.display='none';
-  {const n=b.children.length;b.style.setProperty('--cols',n<=5?Math.max(n,1):Math.ceil(n/2))}   // more than 5 actions: two rows
+  {const n=b.children.length,cl=n<=5?Math.max(n,1):Math.ceil(n/2);b.style.setProperty('--cols',cl);   // more than 5 actions: two rows
+    [...b.children].forEach((x,i)=>{x.classList.toggle('eol',i%cl===cl-1||i===n-1);x.classList.toggle('r1',i<cl&&i+cl<n)})}
   const dk=$('#dock');dk.style.display=(b.children.length||has)?'':'none';
   document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight)+'px');
   try{const g=$('#gal');if(g&&g._pst)g._pst()}catch(e){}   // an album is open: refresh its paste bar too

@@ -244,10 +244,32 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     private var bw = 0f
     private var bh = 0f
     private val cells = ArrayList<RectF>()
+    private var cols = 5
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
     private val lbP = tp(11f, semi)
+
+    /** Icon colour per action key (mid-tones that read on both the light and the dark theme). Unknown keys fall back to the theme text colour. */
+    private fun iconColor(k: String, fallback: Int): Int = when (k) {
+        "copy" -> 0xFF1E88E5.toInt()            // blue
+        "cut" -> 0xFFFB8C00.toInt()             // orange
+        "zip" -> 0xFFF4B400.toInt()             // amber
+        "edit" -> 0xFF43A047.toInt()            // green (Rename)
+        "info" -> 0xFF00ACC1.toInt()            // cyan (Details)
+        "dup" -> 0xFF8E24AA.toInt()             // purple (Duplicates)
+        "palette" -> 0xFFE91E63.toInt()         // pink (Style)
+        "search" -> 0xFF5C6BC0.toInt()          // indigo (AI search)
+        "hide" -> 0xFF78909C.toInt()            // blue grey (Hide / Unhide)
+        "extract" -> 0xFF00897B.toInt()         // teal
+        "paste" -> 0xFF7CB342.toInt()           // light green
+        "print" -> 0xFF6D4C41.toInt()           // brown
+        "add" -> 0xFF26A69A.toInt()             // To Print space
+        "openw" -> 0xFF29B6F6.toInt()           // Open with
+        "merge" -> 0xFFAB47BC.toInt()
+        "fwd", "back", "send" -> 0xFF1E88E5.toInt()
+        else -> fallback
+    }
     private val clipP = tp(14f, med)
     private val pasteP = tp(14f, semi)
 
@@ -272,7 +294,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         }
         val n = acts.size
         if (n > 0) {
-            val cols = if (n <= 5) Math.max(n, 1) else (n + 1) / 2
+            cols = if (n <= 5) Math.max(n, 1) else (n + 1) / 2
             val cw = (bw - 8f * d) / cols
             val rh = 63.4f * d
             for (i in 0 until n) {
@@ -312,16 +334,26 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             if (pressed == "clipx") { fillP.color = p.hov; cv.drawCircle(closeR.centerX(), closeR.centerY(), 18f * d, fillP) }
             glyph(cv, "close", closeR.centerX(), closeR.centerY(), 24f, p.onsel)
         }
+        // divider lines between the menu items: vertical between neighbours in a row, horizontal between the two rows
+        fillP.color = p.bd
+        val lw = Math.max(1f, d)
+        for (i in cells.indices) {
+            val r = cells[i]
+            val col = i % cols; val row = i / cols
+            if (col < cols - 1 && i + 1 < cells.size) cv.drawRect(r.right - lw / 2f, r.top + 6f * d, r.right + lw / 2f, r.bottom - 6f * d, fillP)
+            if (row == 0 && i + cols < cells.size) cv.drawRect(r.left, r.bottom + d - lw / 2f, r.right, r.bottom + d + lw / 2f, fillP)
+        }
         // action buttons
         for ((i, a) in acts.withIndex()) {
             if (i >= cells.size) break
             val r = cells[i]
             val pri = a.c.contains("pri"); val dng = a.c.contains("dng")
             val col = if (dng) p.err else p.fg
+            val icol = if (dng) p.err else iconColor(a.k, p.fg)   // colourful icon; label keeps the theme colour
             val pill = RectF(r.centerX() - 28f * d, r.top + 4f * d, r.centerX() + 28f * d, r.top + 4f * d + 36f * d)
             if (pri) { fillP.color = p.ac; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
             if (pressed == "a$i") { fillP.color = p.hov; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
-            glyph(cv, a.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else col)
+            glyph(cv, a.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a.lb, lbP, r.width() - 2f * d)
             cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7.7f * d, lbP), lbP)
