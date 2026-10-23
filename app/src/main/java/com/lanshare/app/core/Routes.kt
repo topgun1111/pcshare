@@ -82,6 +82,17 @@ object Routes {
                 ok(ex)
             }
             "partial" -> ex.json(JSONObject().put("have", L.partial(ex.q("path"), ex.q("tag"))))   // how much of an interrupted upload of this file (same source version) is still here
+            // "Other phones" gallery (HANDOVER_GALLERY.md part 1): another phone asks for this phone's albums and for small thumbnails made HERE
+            "albums" -> ex.json(Albums.json(ex.query["kind"] == "vid"))
+            "thumb" -> {
+                val rf = Core.local.real(vnorm(ex.q("path")))
+                val data = if (ex.query["big"] == "1") Thumbs.makeCover(rf) else Thumbs.make(rf)
+                ex.reply(200, data, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
+            }
+            "vthumb" -> {
+                val (data, dur) = VideoThumbs.make(Core.local.open(vnorm(ex.q("path"))))
+                ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
+            }
             "wifiprinters" -> ex.json(WifiPrinters.listJson())   // this device's Wi-Fi printers, for printing on them from another device
             "ipp" -> {   // forwards one IPP request from another device to a printer this device discovered (not to arbitrary hosts)
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
@@ -184,6 +195,33 @@ object Routes {
             "bin" -> if (ex.method == "GET") return ex.json(JSONObject().put("days", Bin.KEEP_DAYS).put("task", Bin.status() ?: JSONObject.NULL)
                 .also { if (q["items"] != "0") it.put("items", jarr(Bin.list().map { e -> e.toJson() })) })   // POST falls through to the task starter below
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
+            // "Other phones" gallery (HANDOVER_GALLERY.md part 1): ?dev=<phone id>[&kind=vid]  -> that phone's {albums:[...]}
+            "ralbums" -> {
+                val e = remotePhone(ex.q("dev"))
+                val body = try { e.rpc("albums", mapOf("kind" to (if (q["kind"] == "vid") "vid" else "img"))) }
+                    catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot share its gallery yet") }
+                return ex.reply(200, body, "application/json")
+            }
+            // thumbnail of a picture / video on another phone: ?dev=&path=[&big=1][&video=1]. Made on THAT phone (small download);
+            // an older build without the route falls back to the old way (whole picture pulled, then shrunk, cached)
+            "rthumb" -> {
+                val dev = ex.q("dev"); val path = vnorm(ex.q("path")); val vid = q["video"] == "1"
+                val e = try { remotePhone(dev) } catch (_: BadReq) { null }
+                if (e != null) {
+                    try {
+                        val r = e.callRaw("GET", if (vid) "vthumb" else "thumb", mapOf("path" to path, "big" to (if (q["big"] == "1") "1" else "0")), timeoutMs = 60_000)
+                        try {
+                            val data = r.readUpTo(8 shl 20)
+                            val h = mutableMapOf("Cache-Control" to "private, max-age=86400")
+                            r.headers["x-duration"]?.let { h["X-Duration"] = it }
+                            return ex.reply(200, data, "image/jpeg", h)
+                        } finally { r.close() }
+                    } catch (_: NotFound) { /* older build: no such route */ }
+                }
+                val st = Jobs.ep(dev).stat(path)
+                val (data, dur) = RemoteThumbs.make(dev, path, st.optLong("size"), st.optLong("mtime"), vid)
+                return ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
+            }
             "cleanup" -> if (ex.method == "GET") return ex.json(Cleanup.status())   // Free up space scan (POST starts / cancels it)
             "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
@@ -395,6 +433,10 @@ object Routes {
             else -> ex.fail(404, "unknown api")
         }
     }
+
+    /** The LANShare phone behind ?dev= (not this phone, not SMB / FTP / root). */
+    private fun remotePhone(dev: String): RemoteFs =
+        (Jobs.ep(dev).let { (it as? ArcEp)?.base ?: it } as? RemoteFs) ?: throw BadReq("not another LANShare phone")
 
     private fun rootStatus(): JSONObject = JSONObject().put("enabled", Cfg.rootEnabled()).put("state", RootShell.stateName()).put("why", RootShell.why)
 
