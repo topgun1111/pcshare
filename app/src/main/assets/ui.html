@@ -1601,7 +1601,7 @@ function galView(a){
           hit=thGet(key);
         if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev=local&path='+enc(jn(a.path,m.name))+(vt?'&s='+vt:''),done:show}))}
       c.onclick=()=>{if(c._lp){c._lp=false;return}
-        if(GS.size||pick){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
+        if(GS.size){GS.has(m.name)?GS.delete(m.name):GS.add(m.name);c.classList.toggle('sel',GS.has(m.name));upd()}
         else if(k==='vid')playVid(m);else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
