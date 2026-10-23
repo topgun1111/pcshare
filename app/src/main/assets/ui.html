@@ -461,6 +461,24 @@ body.kid #list .row.sel{touch-action:none}
 #toast{cursor:pointer}
 /* progress card fits any window (foldable split screen, pop-up, short landscape): handle + title + bar stay on top, Minimize/Cancel stay at the bottom, only the middle scrolls.
    --lvh = real window height in px (set from JS; plain vh can be stale while a split-screen window is being resized) */
+#sheet .card.fu{height:100vh;height:100dvh;max-height:none;max-width:none;border-radius:0;padding:env(safe-area-inset-top) 0 0;gap:0;overflow:hidden;background:var(--card)}
+.fu .fh{display:flex;align-items:center;gap:4px;min-height:56px;padding:0 8px 0 4px}.fu .fh h3{flex:1;min-width:0;margin:0;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fu .fsub{padding:0 20px 10px;color:var(--mut);font-size:13px;line-height:1.35}
+.fu .fb{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+.fu .fempty{padding:48px 24px;text-align:center;color:var(--mut)}
+.fu .fhero{margin:4px 16px 12px;padding:18px 20px;border-radius:24px;background:var(--cont);display:flex;flex-direction:column;gap:8px}.fu .fhero>b{font-size:30px;font-weight:600;line-height:1.1}
+.fu .fbar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden}.fu .fbar i{display:block;height:100%;background:var(--ac)}
+.fu .fcat{display:flex;align-items:center;gap:16px;min-height:68px;padding:10px 16px 10px 20px;cursor:pointer;-webkit-tap-highlight-color:transparent}.fu .fcat:active{background:var(--hov)}
+.fu .fci{flex:none;width:44px;height:44px;border-radius:14px;background:var(--sel);color:var(--onsel);display:grid;place-items:center}.fu .fci svg{width:24px;height:24px;fill:currentColor}.fu .fci.sm{width:40px;height:40px;border-radius:12px}.fu .fci.sm svg{width:22px;height:22px}
+.fu .fct{flex:1;min-width:0}.fu .fct b{display:block;font-size:16px;font-weight:500}.fu .fct small{display:block;color:var(--mut);font-size:13px;margin-top:2px}
+.fu .fcs{flex:none;font-size:14px;font-weight:600;color:var(--ac)}.fu .fch{flex:none;width:22px;height:22px;fill:var(--mut)}
+.fu .fdiv{height:1px;background:var(--bd);margin:8px 20px}
+.fu .fr{display:flex;align-items:center;gap:14px;min-height:64px;padding:8px 16px 8px 20px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-tap-highlight-color:transparent}.fu .fr.sel{background:color-mix(in srgb,var(--ac) 12%,transparent)}
+.fu .fr .t{flex:1;min-width:0}.fu .fr .t b{display:block;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fu .fr .t small{display:block;color:var(--mut);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fu .fr .z{flex:none;font-size:13px;font-weight:600}
+.fu .bk{flex:none;width:24px;height:24px;border-radius:50%;border:2px solid var(--mut);box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:transparent}.fu .bk svg{width:16px;height:16px;fill:currentColor}.fu .fr.sel .bk{background:var(--ac);border-color:var(--ac);color:var(--onac)}
+.fu .fa{flex:none;padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--bd);background:var(--card)}
+.fu .fdel{width:100%;height:52px;border-radius:26px;font-size:16px;font-weight:600;background:var(--errc);color:var(--onerr)}.fu .fdel:disabled{opacity:.45}
 #sheet .card.pj{box-sizing:border-box;max-width:640px;margin:0 auto;min-width:0;overflow:hidden;max-height:calc(var(--lvh,100vh) - env(safe-area-inset-top) - 8px);padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 #sheet .card.pj>.pjbody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .pj .pjbody>*{flex-shrink:0}
@@ -3848,82 +3866,110 @@ async function openFreeUp(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const tok=FUTOK={};const live=()=>FUTOK===tok&&o.style.display==='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card'),hd=E('div'),sub=E('p'),box=E('div');
-  hd.style.cssText='display:flex;align-items:center;gap:8px';
-  const ttl=E('h3','','Free up space');ttl.style.flex='1';const xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Close');xb.onclick=close;hd.append(ttl,xb);
-  sub.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 6px';
-  box.style.cssText='max-height:68vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:10px';
-  card.append(E('div','handle'),hd,sub,box);o.append(card);
+  const card=E('div','card fu');o.append(card);
   const dAgo=t=>{const d=Math.floor((Date.now()-t)/864e5);return d>=365?Math.floor(d/365)+' y':d>=30?Math.floor(d/30)+' mo':d+' d'};
   const dir=p=>p.replace(/\/[^\/]*$/,'')||'/',nm=p=>p.replace(/^.*\//,'');
-  let R=null;
-  function sec(title,note,d,delText,noun){noun=noun||'file';   // one result list with check boxes + a delete button
-    const w=E('div');w.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px';
-    const h=E('b','',title+' \u00b7 '+d.count+' '+noun+(d.count===1?'':'s')+(d.bytes?' \u00b7 '+fmt(d.bytes):''));w.append(h);
-    if(note)w.append(Object.assign(E('small','',note),{style:'color:var(--mut)'}));
-    if(!d.items.length){w.append(Object.assign(E('small','','Nothing here.'),{style:'color:var(--mut)'}));return w}
-    const sel=new Set(),lst=E('div'),del=E('button','tbtn dng',delText);
-    lst.style.cssText='max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:2px';
-    const upd=()=>{let b=0;d.items.forEach(i=>{if(sel.has(i.path))b+=i.size});del.textContent=sel.size?('Delete '+sel.size+' \u00b7 '+fmt(b)):delText;del.disabled=!sel.size;del.style.opacity=sel.size?1:.5};
-    d.items.forEach(i=>{const r=E('div'),c=E('input'),t=E('div'),n=E('div'),sm=E('small'),z=E('span');
-      r.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 2px;cursor:pointer';c.type='checkbox';c.style.flexShrink='0';
-      t.style.cssText='flex:1;min-width:0';n.style.cssText='font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';n.textContent=nm(i.path);
-      sm.style.cssText='display:block;color:var(--mut);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';sm.textContent=dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago';
-      z.style.cssText='font-size:12px;white-space:nowrap';z.textContent=i.d?'folder':fmt(i.size);t.append(n,sm);r.append(c,t,z);
-      const tg=()=>{c.checked?sel.add(i.path):sel.delete(i.path);upd()};c.onchange=tg;r.onclick=e=>{if(e.target!==c){c.checked=!c.checked;tg()}};lst.append(r)});
-    const row=E('div');row.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
-    const all=E('button','tbtn','Select all');all.onclick=()=>{const on=sel.size<d.items.length;lst.querySelectorAll('input').forEach((c,k)=>{c.checked=on;on?sel.add(d.items[k].path):sel.delete(d.items[k].path)});upd()};
-    del.onclick=async()=>{if(!sel.size)return;
-      if(!await dlg({title:'Delete '+sel.size+' item'+(sel.size===1?'':'s')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
-      try{const r=await api('POST','/api/rm',{dev:'local',paths:[...sel]});watchJob(r.job);toast('Deleting\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
-      if(live())start()};
-    row.append(all,del);w.append(lst,row);upd();return w}
-  function draw(){
-    box.textContent='';if(!R)return;
-    sub.textContent=fmt(R.free)+' free of '+fmt(R.total);
-    // summary: what can be freed + one-tap safe clean (junk files only)
-    const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes,used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
-    const sw=E('div');sw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px';
-    const big=E('b','','You can free up to '+fmt(rc));big.style.fontSize='17px';
-    const bar=E('div'),fill=E('i');bar.style.cssText='height:8px;border-radius:4px;background:var(--bd);overflow:hidden';
-    fill.style.cssText='display:block;height:100%;width:'+pc+'%;background:'+(R.total&&R.free/R.total<.1?'#e5484d':'var(--ac,#3b82f6)');bar.append(fill);
-    const sm=E('small','',pc+'% used \u00b7 '+fmt(R.free)+' free'+(R.reclaim?' \u00b7 '+R.reclaim.count+' removable files + '+fmt(R.bin.bytes)+' in the bin':''));sm.style.color='var(--mut)';
-    const qrow=E('div');qrow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
-    const qp=R.junk.items.map(i=>i.path),qb=R.junk.bytes;
-    const qc=E('button','tbtn fill','Quick clean: junk files');qc.disabled=!qp.length;qc.style.opacity=qp.length?1:.5;
-    qc.onclick=async()=>{if(!await dlg({title:'Quick clean?',msg:'Moves '+R.junk.items.length+' junk file(s) ('+fmt(qb)+') to the Recycle bin.',ok:'Clean'}))return;
-      try{const r=await api('POST','/api/rm',{dev:'local',paths:qp});watchJob(r.job);toast('Cleaning\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
-      if(live())start()};
-    const an=E('button','tbtn','Analyze storage');an.onclick=()=>{try{LSAndroid.openStorage('/')}catch(e){toast('Storage analyzer needs the Android app',3000)}};
-    qrow.append(qc,an);sw.append(big,bar,sm,qrow);box.append(sw);
+  const plural=(n,w)=>n+' '+w+(n===1?'':'s');
+  // the categories: key in the scan result, title, explanation, icon
+  const CATS=[
+    {k:'junk',t:'Junk files',n:'Temp, log and backup files, unfinished downloads (3+ days old), gallery trash leftovers.',i:'del'},
+    {k:'big',t:'Large files',n:'100 MB or more, biggest first.',i:'file'},
+    {k:'old',t:'Old downloads',n:'In Download, not changed for 90 days.',i:'download'},
+    {k:'apk',t:'Installers',n:'APK files you may no longer need.',i:'apk'},
+    {k:'shots',t:'Screenshots and recordings',n:'In Screenshots / Screen recordings folders, older than 30 days.',i:'img'},
+    {k:'chat',t:'Chat media',n:'WhatsApp / Telegram pictures, videos, audio and files older than 90 days and 256 KB or more.',i:'msg'}];
+  const EXT={jpg:'img',jpeg:'img',png:'img',webp:'img',gif:'img',heic:'img',mp4:'vid',mkv:'vid',mov:'vid','3gp':'vid',webm:'vid',apk:'apk',xapk:'apk',apks:'apk',apkm:'apk',zip:'zip',rar:'zip','7z':'zip',pdf:'pdf',doc:'doc',docx:'doc',xls:'doc',xlsx:'doc',ppt:'doc',pptx:'doc',txt:'doc'};
+  const kind=p=>{const m=/\.([^.\/]+)$/.exec(p);return EXT[(m?m[1]:'').toLowerCase()]||'file'};
+  let R=null,view=null,busy='Scanning\u2026',sel=new Set();   // view: null = category list, else the key of the open category (or 'bin')
 
-    // recycle bin
-    const bw=E('div');bw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px';
-    const bt=E('div');bt.style.flex='1';bt.append(E('b','','Recycle bin \u00b7 '+fmt(R.bin.bytes)),Object.assign(E('small','',R.bin.items+(R.bin.items===1?' item':' items')+' still use space on the phone'),{style:'display:block;color:var(--mut)'}));
-    const be=E('button','tbtn dng','Empty bin');be.disabled=!R.bin.items;be.style.opacity=R.bin.items?1:.5;
-    be.onclick=async()=>{if(!await dlg({title:'Empty the Recycle bin?',msg:'Deletes '+R.bin.items+' item(s) for good.',ok:'Empty'}))return;
+  const iconTile=(k,sm)=>{const t=E('span','fci'+(sm?' sm':''));t.append(ic(k));return t};
+  const topbar=(title,onBack,right)=>{const h=E('div','fh'),b=E('button','ibtn'),t=E('h3','',title);
+    b.append(ic(onBack?'back':'close'));b.setAttribute('aria-label',onBack?'Back':'Close');b.onclick=onBack||close;h.append(b,t);if(right)h.append(right);return h};
+
+  // ---------- one category: whole screen, check boxes, delete bar
+  function drawCat(c){
+    card.textContent='';
+    const d=R[c.k],items=d.items;
+    const all=E('button','tbtn','Select all');all.disabled=!items.length;
+    card.append(topbar(c.t,()=>{view=null;sel=new Set();draw()},all));
+    const sub=E('div','fsub',c.n+(d.count?'  \u00b7  '+plural(d.count,'file')+(d.bytes?' \u00b7 '+fmt(d.bytes):''):''));card.append(sub);
+    const body=E('div','fb');card.append(body);
+    const bar=E('div','fa'),del=E('button','fdel','Delete');bar.append(del);card.append(bar);
+    if(!items.length){body.append(Object.assign(E('div','fempty'),{textContent:busy&&busy!=='Scanning\u2026'?busy:'Nothing here. Nice and clean.'}));bar.style.display='none';return}
+    if(d.count>items.length)sub.textContent+='  (biggest '+items.length+' shown)';
+    const rows=[];
+    const upd=()=>{let b=0;items.forEach(i=>{if(sel.has(i.path))b+=i.size});
+      del.textContent=sel.size?('Delete '+sel.size+' \u00b7 '+fmt(b)):'Select files to delete';del.disabled=!sel.size||!!busy;
+      all.textContent=sel.size<items.length?'Select all':'Clear';rows.forEach((r,k)=>r.classList.toggle('sel',sel.has(items[k].path)))};
+    items.forEach(i=>{
+      const r=E('div','fr'),bk=E('span','bk'),t=E('div','t'),z=E('span','z');bk.append(ic('check'));
+      const n=E('b','',nm(i.path)),sm=E('small','',dir(i.path)+' \u00b7 '+dAgo(i.m)+' ago');
+      t.append(n,sm);z.textContent=i.d?'folder':fmt(i.size);
+      r.append(iconTile(i.d?'folder':kind(i.path),true),t,z,bk);
+      r.onclick=()=>{sel.has(i.path)?sel.delete(i.path):sel.add(i.path);upd()};rows.push(r);body.append(r)});
+    all.onclick=()=>{sel.size<items.length?items.forEach(i=>sel.add(i.path)):sel.clear();upd()};
+    del.onclick=async()=>{if(!sel.size)return;
+      if(!await dlg({title:'Delete '+plural(sel.size,'item')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:[...sel]});watchJob(r.job);toast('Deleting\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+      sel=new Set();if(live())start()};
+    upd()}
+
+  // ---------- Recycle bin page
+  function drawBin(){
+    card.textContent='';
+    card.append(topbar('Recycle bin',()=>{view=null;draw()}));
+    const body=E('div','fb'),hero=E('div','fhero');
+    hero.append(E('b','',fmt(R.bin.bytes)),Object.assign(E('span'),{textContent:plural(R.bin.items,'item')+' still use space on the phone. Deleted files stay here for '+(window.BINDAYS||30)+' days.',style:'color:var(--mut);font-size:14px'}));
+    const row=E('div');row.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+    const op=E('button','tbtn','Open bin');op.onclick=()=>openBin();
+    const em=E('button','tbtn dng','Empty bin');em.disabled=!R.bin.items;em.style.opacity=R.bin.items?1:.5;
+    em.onclick=async()=>{if(!await dlg({title:'Empty the Recycle bin?',msg:'Deletes '+plural(R.bin.items,'item')+' for good.',ok:'Empty'}))return;
       try{await api('POST','/api/bin',{op:'empty'});toast('Emptying the bin\u2026',3000)}catch(e){toast('\u26a0 '+e.message,5000);return}
       setTimeout(()=>{if(live())start()},2500)};
-    const bo=E('button','tbtn','Open');bo.onclick=()=>openBin();bw.append(bt,bo,be);box.append(bw);
-    box.append(sec('Junk files','Temp, log and backup files, unfinished downloads (3+ days old), gallery trash leftovers.',R.junk,'Delete selected'),
-      sec('Large files','100 MB or more, biggest first.',R.big,'Delete selected'),
-      sec('Old downloads','In Download, not changed for 90 days.',R.old,'Delete selected'),
-      sec('Installers','APK files you may no longer need.',R.apk,'Delete selected'),
-      sec('Old screenshots and recordings','In Screenshots / Screen recordings folders, older than 30 days.',R.shots,'Delete selected'),
-      sec('Chat media','WhatsApp / Telegram pictures, videos, audio and files older than 90 days and 256 KB or more.',R.chat,'Delete selected'));
-    const dw=E('div');dw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px';
-    const dr=(t,n,lbl,sim)=>{const r=E('div'),x=E('div'),b=E('button','tbtn fill',lbl);r.style.cssText='display:flex;align-items:center;gap:8px';x.style.flex='1';x.append(E('b','',t),Object.assign(E('small','',n),{style:'display:block;color:var(--mut)'}));b.onclick=()=>doDups(['/DCIM','/Pictures','/Download'],sim);r.append(x,b);return r};
-    dw.append(dr('Duplicate files','Identical copies in DCIM, Pictures and Download; you choose what to keep.','Find',false),dr('Similar pictures','Same picture in another size or quality.','Find',true));box.append(dw)}
+    row.append(op,em);hero.append(row);body.append(hero);card.append(body)}
+
+  // ---------- category list (home)
+  function draw(){
+    if(!R){drawHome();return}
+    if(view==='bin')return drawBin();
+    const c=CATS.find(x=>x.k===view);if(c)return drawCat(c);
+    drawHome()}
+  function drawHome(){
+    card.textContent='';
+    card.append(topbar('Free up space'));
+    const body=E('div','fb');card.append(body);
+    if(!R){body.append(Object.assign(E('div','fempty'),{textContent:busy}));return}
+    const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes,used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
+    const hero=E('div','fhero'),bar=E('div','fbar'),fill=E('i');
+    fill.style.width=pc+'%';if(R.total&&R.free/R.total<.1)fill.style.background='var(--err)';bar.append(fill);
+    hero.append(Object.assign(E('small'),{textContent:'You can free up to',style:'color:var(--mut)'}),E('b','',fmt(rc)),bar,
+      Object.assign(E('small'),{textContent:pc+'% used \u00b7 '+fmt(R.free)+' free of '+fmt(R.total),style:'color:var(--mut)'}));
+    const qp=R.junk.items.map(i=>i.path);
+    if(qp.length){const qc=E('button','tbtn fill','Clean junk \u00b7 '+fmt(R.junk.bytes));qc.style.alignSelf='flex-start';
+      qc.onclick=async()=>{if(!await dlg({title:'Clean junk files?',msg:'Moves '+plural(R.junk.items.length,'junk file')+' ('+fmt(R.junk.bytes)+') to the Recycle bin.',ok:'Clean'}))return;
+        try{const r=await api('POST','/api/rm',{dev:'local',paths:qp});watchJob(r.job);toast('Cleaning\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
+        if(live())start()};hero.append(qc)}
+    body.append(hero);
+    const cat=(ik,title,subt,size,go,dim)=>{const r=E('div','fcat'),t=E('div','fct'),cv=ic('chev','fch');
+      t.append(E('b','',title),E('small','',subt));r.append(iconTile(ik),t);
+      if(size)r.append(Object.assign(E('span','fcs'),{textContent:size}));r.append(cv);if(dim)r.style.opacity=.55;r.onclick=go;body.append(r)};
+    CATS.forEach(c=>{const d=R[c.k];cat(c.i,c.t,d.count?plural(d.count,'file'):'Nothing found',d.bytes?fmt(d.bytes):'',()=>{view=c.k;sel=new Set();draw()},!d.count)});
+    cat('hist','Recycle bin',plural(R.bin.items,'item'),R.bin.bytes?fmt(R.bin.bytes):'',()=>{view='bin';draw()},!R.bin.items);
+    body.append(E('div','fdiv'));
+    cat('dup','Duplicate files','Identical copies in DCIM, Pictures and Download','',()=>doDups(['/DCIM','/Pictures','/Download'],false));
+    cat('img','Similar pictures','Same picture in another size or quality','',()=>doDups(['/DCIM','/Pictures','/Download'],true));
+    cat('sto','Analyze storage','See what takes the most space','',()=>{try{LSAndroid.openStorage('/')}catch(e){toast('Storage analyzer needs the Android app',3000)}})}
+
   async function start(){
-    sub.textContent='Scanning\u2026';
-    try{await api('POST','/api/cleanup',{op:'start'})}catch(e){sub.textContent='\u26a0 '+e.message;return}
+    busy='Scanning\u2026';draw();
+    try{await api('POST','/api/cleanup',{op:'start'})}catch(e){busy='\u26a0 '+e.message;draw();return}
     for(;;){
       await new Promise(r=>setTimeout(r,1000));if(!live())return;
-      let st;try{st=await api('GET','/api/cleanup',null,10000)}catch(e){sub.textContent='\u26a0 '+e.message;return}
-      if(st.running){sub.textContent='Scanning\u2026 '+st.scanned+' files';continue}
-      if(st.error){sub.textContent='\u26a0 '+st.error;return}
-      R=st.result;draw();return}}
-  start()}
+      let st;try{st=await api('GET','/api/cleanup',null,10000)}catch(e){busy='\u26a0 '+e.message;draw();return}
+      if(st.running){busy='Scanning\u2026 '+st.scanned+' files';if(!R)drawHome();continue}
+      if(st.error){busy='\u26a0 '+st.error;draw();return}
+      busy='';R=st.result;draw();return}}
+  draw();start()}
 let FUTOK=null;
 async function openBin(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
