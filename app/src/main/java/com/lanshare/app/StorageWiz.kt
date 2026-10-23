@@ -58,6 +58,8 @@ interface WizHost {
     fun rescan()
     fun volume(): LongArray?            // [used, free, total] of the analyzed volume, null when unknown
     fun realFile(n: SNode): java.io.File?   // the real file of a node (for image / video thumbnails in the treemap), null when unknown
+    fun bars(bg: Int, darkIcons: Boolean) {}   // paint the system bars in the screen's colours
+    fun rebuild() {}                    // build the screen again (after a theme change)
     fun appsOk(): Boolean = false       // show the Apps tab (per-app sizes, local main storage only)
     fun nearest(n: SNode): SNode        // [n] when still in the tree, else its nearest ancestor that is (after a delete)
 }
@@ -70,10 +72,13 @@ internal object WizUtil {
     val GRAY = c(0xFF707070)
     val DIM = c(0xFF3A3A3A)
     val RED = c(0xFFF01818)
-    val FOLDER = c(0xFFE8B93C)
-    val PAL = longArrayOf(0xFFF08A1C, 0xFFD4CB1E, 0xFF2DB84D, 0xFFA848E0, 0xFFE0408C, 0xFF1E9BFF, 0xFFF01A1A, 0xFFF030D0,
+    val FOLDER_DEFAULT = c(0xFFE8B93C)
+    var FOLDER = FOLDER_DEFAULT
+    val PAL_DEFAULT = longArrayOf(0xFFF08A1C, 0xFFD4CB1E, 0xFF2DB84D, 0xFFA848E0, 0xFFE0408C, 0xFF1E9BFF, 0xFFF01A1A, 0xFFF030D0,
         0xFF86C21E, 0xFF7F72F5, 0xFF1ED8B8, 0xFFB0703A, 0xFF4CD0F0, 0xFFF0C040, 0xFF9C6BFF, 0xFF40A080).map { c(it) }.toIntArray()
-    val CATC = intArrayOf(c(0xFF707070), c(0xFF2DB84D), c(0xFFA848E0), c(0xFFE0408C), c(0xFF1E9BFF), c(0xFFF08A1C), c(0xFFD4CB1E))   // SCat order
+    var PAL = PAL_DEFAULT
+    val CATC_DEFAULT = intArrayOf(c(0xFF707070), c(0xFF2DB84D), c(0xFFA848E0), c(0xFFE0408C), c(0xFF1E9BFF), c(0xFFF08A1C), c(0xFFD4CB1E))   // SCat order
+    var CATC = CATC_DEFAULT
 
     fun extOf(name: String): String {
         val i = name.lastIndexOf('.')
@@ -141,6 +146,7 @@ internal class WizBar(ctx: Context) : View(ctx) {
     var frac = 0f
     var label = ""
     var fillCol = Color.rgb(0x5A, 0x6E, 0x88)
+    var fillCol2 = 0
     var trackCol = Color.rgb(0x2A, 0x2A, 0x2A)
     var textCol = Color.WHITE
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -159,7 +165,11 @@ internal class WizBar(ctx: Context) : View(ctx) {
         val rad = h / 2f
         p.color = trackCol; r.set(0f, 0f, w, h); c.drawRoundRect(r, rad, rad, p)
         val f = frac.coerceIn(0f, 1f)
-        if (f > 0f) { p.color = fillCol; r.set(0f, 0f, maxOf(h, w * f), h); c.drawRoundRect(r, rad, rad, p) }
+        if (f > 0f) {
+            val fw = maxOf(h, w * f)
+            if (fillCol2 != 0) p.shader = android.graphics.LinearGradient(0f, 0f, fw, 0f, fillCol, fillCol2, Shader.TileMode.CLAMP) else p.color = fillCol
+            r.set(0f, 0f, fw, h); c.drawRoundRect(r, rad, rad, p); p.shader = null
+        }
         if (label.isNotEmpty()) {
             p.color = textCol; p.textSize = 12f * d * UiScale.tf; p.textAlign = Paint.Align.CENTER
             c.drawText(label, w / 2f, h / 2f + p.textSize * 0.35f, p)
@@ -614,19 +624,20 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun dp(v: Int) = (v * d).toInt()
 
     // colours: the app theme (AppPal, the palette the page pushes), so the screen follows light / dark and the chosen theme
-    private val pal = AppPal.pal(act)
-    private val night = ColorUtils.calculateLuminance(pal.bg) < 0.5
+    private val theme = WizThemes.resolve(act)
+    private val themeApplied = run { WizUtil.PAL = theme.pal; WizUtil.CATC = theme.cat; WizUtil.FOLDER = theme.folder }
+    private val night = ColorUtils.calculateLuminance(theme.bg) < 0.5
     private fun mix(a: Int, b: Int, t: Float) = ColorUtils.blendARGB(a, b, t)
-    private val cBg = pal.bg
-    private val cFg = pal.fg
-    private val cDim = pal.mut
-    private val cHdr = pal.cont                        // chips, fields, status bar
-    private val cPanel = pal.cont
-    private val cLine = pal.bd
-    private val cAcc = pal.ac
-    private val cOnAcc = pal.onac
-    private val cSel = mix(pal.bg, pal.ac, 0.20f)      // selected row
-    private val cHl = mix(pal.bg, WizUtil.RED, 0.28f)  // highlighted extension row
+    private val cBg = theme.bg
+    private val cFg = theme.fg
+    private val cDim = theme.mut
+    private val cHdr = theme.cont                      // chips, fields, status bar
+    private val cPanel = theme.cont
+    private val cLine = theme.bd
+    private val cAcc = theme.ac
+    private val cOnAcc = theme.onac
+    private val cSel = mix(theme.bg, theme.ac, 0.22f)  // selected card
+    private val cHl = mix(theme.bg, WizUtil.RED, 0.28f)  // highlighted extension card
     private val cErr = if (night) 0xFFEF5350.toInt() else 0xFFC62828.toInt()
 
     private val root: SNode = scan.root!!
@@ -693,54 +704,98 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun hline() = View(act).apply { setBackgroundColor(cLine) }
 
     private fun styleList(l: ListView) {
-        l.divider = ColorDrawable(mix(cBg, cLine, 0.6f)); l.dividerHeight = 1; l.setBackgroundColor(cBg)
+        l.divider = ColorDrawable(Color.TRANSPARENT); l.dividerHeight = dp(6); l.setBackgroundColor(cBg)
+        l.setPadding(dp(12), dp(6), dp(12), dp(10)); l.clipToPadding = false
         l.selector = ColorDrawable(Color.TRANSPARENT); l.isVerticalScrollBarEnabled = true
     }
 
+    /** Rounded card of a row; [sel] = selected (tinted + accent outline), [hl] = highlighted type. */
+    private fun card(sel: Boolean, hl: Boolean = false): android.graphics.drawable.Drawable = GradientDrawable().apply {
+        cornerRadius = dp(18).toFloat()
+        setColor(if (hl) cHl else if (sel) cSel else cHdr)
+        if (hl) setStroke(dp(2), WizUtil.RED) else if (sel) setStroke(dp(2), cAcc) else setStroke(1, mix(cBg, cLine, 0.55f))
+    }
+
     private fun menu() {
-        val items = arrayOf("Rescan", "Export CSV", "Classic view")
-        AppPal.dlg(act).setItems(items) { _, i -> when (i) { 0 -> host.rescan(); 1 -> export(); else -> host.classic() } }.show()
+        val items = arrayOf("Rescan", "Export CSV", "Theme…", "Classic view")
+        AppPal.dlg(act).setItems(items) { _, i -> when (i) { 0 -> host.rescan(); 1 -> export(); 2 -> pickTheme(); else -> host.classic() } }.show()
+    }
+
+    private fun pickTheme() {
+        val p = AppPal.pal(act)
+        val cur = WizThemes.pref(act)
+        val list = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(4), dp(12), dp(8)) }
+        var dlg: android.app.AlertDialog? = null
+        for (t in listOf(WizThemes.app(act)) + WizThemes.ALL) {
+            val row = LinearLayout(act).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(64); setPadding(dp(8), dp(6), dp(12), dp(6))
+                isClickable = true
+                setOnClickListener { WizThemes.save(act, t.id); dlg?.dismiss(); host.rebuild() }
+            }
+            row.addView(WizSwatch(act, t), LinearLayout.LayoutParams(dp(88), dp(52)).apply { rightMargin = dp(14) })
+            val nm = TextView(act).apply { text = if (t.id == "app") "App theme (follows the app)" else t.name; textSize = 16f; setTextColor(p.fg); maxLines = 2 }
+            row.addView(nm, LinearLayout.LayoutParams(0, -2, 1f))
+            if (t.id == cur) row.addView(TextView(act).apply { text = "✓"; textSize = 20f; setTextColor(p.ac) })
+            list.addView(row)
+        }
+        val sc = android.widget.ScrollView(act).apply { addView(list) }
+        dlg = AppPal.dlg(act).setTitle("Storage theme").setView(sc).setNegativeButton("Close", null).show()
     }
 
     private fun buildHeader(): View {
-        val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg); setPadding(dp(16), dp(8), dp(8), dp(12)) }
+        val hd = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(10))
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(mix(cBg, cAcc, 0.18f), cBg))
+        }
+        val v = host.volume()
+        val known = v != null && v[2] > 0
+        val totalVol = if (known) v!![2] else maxOf(1L, root.size)
+        val used = if (known) v!![0] else root.size
         val r1 = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val tc = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
-        tc.addView(txt(host.label, 20f, cFg, true))
+        tc.addView(txt(host.label, 22f, cFg, true))
         tc.addView(txt("Scanned in " + String.format(Locale.US, "%.1f", scan.millis() / 1000.0) + " s  ·  " + String.format(Locale.US, "%,d", root.files) + " files", 13f, cDim))
         r1.addView(tc, LinearLayout.LayoutParams(0, -2, 1f))
-        r1.addView(tbtn("⋮", 24f) { menu() }.apply { setTextColor(cFg); minimumHeight = dp(48); minimumWidth = dp(48) })
-        col.addView(r1)
-        val v = host.volume()
-        val bar = WizBar(act).apply { fillCol = cAcc; trackCol = mix(cBg, cFg, 0.14f) }
-        val sp: String
-        if (v != null && v[2] > 0) {
-            bar.frac = v[0].toFloat() / v[2]
-            sp = NlModel.fmt(v[0]) + " used of " + NlModel.fmt(v[2]) + "  ·  " + NlModel.fmt(v[1]) + " free"
-        } else {
-            bar.frac = 1f
-            sp = "Scanned: " + NlModel.fmt(root.size) + "  ·  " + root.folders + " folders"
+        if (known) {
+            val ring = WizRing(act).apply { frac = used.toFloat() / totalVol; col = cAcc; track = mix(cBg, cFg, 0.16f); textCol = cFg }
+            r1.addView(ring, LinearLayout.LayoutParams(dp(60), dp(60)))
         }
-        col.addView(bar, LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(12); rightMargin = dp(8) })
-        col.addView(txt(sp, 13f, cDim), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-        return col
+        r1.addView(tbtn("⋮", 24f) { menu() }.apply { setTextColor(cFg); minimumHeight = dp(48); minimumWidth = dp(48) })
+        hd.addView(r1)
+        // category bar: what the scanned files are (images / videos / ...), share of the volume
+        val cats = root.cats
+        val seg = WizSeg(act).apply { track = mix(cBg, cFg, 0.16f) }
+        val legend = android.text.SpannableStringBuilder()
+        if (cats != null) {
+            val order = cats.indices.filter { cats[it] > 0 }.sortedByDescending { cats[it] }
+            seg.set(FloatArray(order.size) { cats[order[it]].toFloat() / totalVol }, IntArray(order.size) { WizUtil.CATC[order[it].coerceIn(0, WizUtil.CATC.size - 1)] })
+            val names = arrayOf("Other", "Images", "Videos", "Audio", "Docs", "Archives", "Apps")
+            for (i in order.take(4)) {
+                val a = legend.length
+                legend.append("● "); legend.setSpan(android.text.style.ForegroundColorSpan(WizUtil.CATC[i.coerceIn(0, WizUtil.CATC.size - 1)]), a, legend.length, 0)
+                legend.append(names[i.coerceIn(0, names.size - 1)] + " " + NlModel.fmt(cats[i]) + "     ")
+            }
+        }
+        hd.addView(seg, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(12); rightMargin = dp(8) })
+        if (legend.isNotEmpty()) hd.addView(TextView(act).apply { text = legend; textSize = 13f; setTextColor(cDim); maxLines = 2 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val sp = if (known) NlModel.fmt(v!![0]) + " used of " + NlModel.fmt(v[2]) + "  ·  " + NlModel.fmt(v[1]) + " free" else "Scanned: " + NlModel.fmt(root.size) + "  ·  " + root.folders + " folders"
+        hd.addView(txt(sp, 13f, cDim), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        return hd
     }
 
     private fun buildTabs(): View {
-        val wrap = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
-        val r = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+        val wrap = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg); setPadding(dp(12), dp(2), dp(12), dp(8)) }
+        val r = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; background = round(cHdr, 26); setPadding(dp(4), dp(4), dp(4), dp(4)) }
         val names = arrayOf("Folders", "Files", "Types", "Treemap", "Apps")
         for (i in 0..(if (host.appsOk()) 4 else 3)) {
-            val cell = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; isClickable = true; setOnClickListener { showTab(i) } }
-            val t = TextView(act).apply { text = names[i]; textSize = 14f; gravity = Gravity.CENTER; minimumHeight = dp(48); maxLines = 1 }
-            val ind = View(act)
-            tabV[i] = t; tabI[i] = ind
-            cell.addView(t, LinearLayout.LayoutParams(-1, -2))
-            cell.addView(ind, LinearLayout.LayoutParams(-1, dp(3)).apply { leftMargin = dp(14); rightMargin = dp(14) })
-            r.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
+            val t = TextView(act).apply {
+                text = names[i]; textSize = 14f; gravity = Gravity.CENTER; minimumHeight = dp(44); maxLines = 1; isClickable = true
+                setOnClickListener { showTab(i) }
+            }
+            tabV[i] = t
+            r.addView(t, LinearLayout.LayoutParams(0, -2, 1f))
         }
         wrap.addView(r)
-        wrap.addView(hline(), LinearLayout.LayoutParams(-1, 1))
         return wrap
     }
 
@@ -819,12 +874,16 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         tr.addView(tbtn("1:1", 14f) { map.resetZoom() })
         tr.addView(tbtn("▲ Up", 14f) { focus.parent?.let { pick(it) } })
         b.addView(tr)
-        b.addView(map, LinearLayout.LayoutParams(-1, 0, 1f))
+        map.clipToOutline = true
+        map.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, 18f * d) }
+        }
+        b.addView(map, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(dp(12), dp(4), dp(12), dp(4)) })
         return b
     }
 
     private fun styleStatus(t: TextView) {
-        t.textSize = 13f; t.setTextColor(cFg); t.background = ColorDrawable(cHdr); t.setPadding(dp(16), dp(10), dp(16), dp(12)); t.maxLines = 2; t.ellipsize = TextUtils.TruncateAt.MIDDLE
+        t.textSize = 13f; t.setTextColor(cFg); t.background = round(cHdr, 18); t.setPadding(dp(16), dp(10), dp(16), dp(12)); t.maxLines = 2; t.ellipsize = TextUtils.TruncateAt.MIDDLE
     }
 
     // ------------------------------------------------------------------ tabs
@@ -835,12 +894,10 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         typeBox.visibility = if (i == 2) View.VISIBLE else View.GONE
         mapBox.visibility = if (i == 3) View.VISIBLE else View.GONE
         appsBox.visibility = if (i == 4) View.VISIBLE else View.GONE
-        for (k in 0..4) {
-            tabV[k]?.apply {
-                setTextColor(if (k == i) cFg else cDim)
-                setTypeface(null, if (k == i) Typeface.BOLD else Typeface.NORMAL)
-            }
-            tabI[k]?.background = round(if (k == i) cAcc else Color.TRANSPARENT, 2)
+        for (k in 0..4) tabV[k]?.apply {
+            setTextColor(if (k == i) cOnAcc else cDim)
+            setTypeface(null, if (k == i) Typeface.BOLD else Typeface.NORMAL)
+            background = if (k == i) round(cAcc, 22) else null
         }
         if (i == 4) showApps()
         if (i == 1) { if (allFiles == null) buildAllFiles() else runFilter() }
@@ -979,17 +1036,17 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private inner class TreeRow(c: Context) : LinearLayout(c) {
         val indent = View(c)
         val tog = TextView(c).apply { textSize = 22f; setTextColor(cAcc); gravity = Gravity.CENTER; isClickable = true }
-        val sw = View(c)
+        val sw = WizGlyph(c)
         val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
-        val bar = WizBar(c).apply { fillCol = cAcc; trackCol = mix(cBg, cFg, 0.14f) }
+        val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         var pos = -1
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(16), dp(6)); minimumHeight = dp(64)
             addView(indent, LinearLayout.LayoutParams(0, 1))
             addView(tog, LinearLayout.LayoutParams(dp(40), dp(48)))
-            addView(sw, LinearLayout.LayoutParams(dp(6), dp(34)).apply { rightMargin = dp(12) })
+            addView(sw, LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(12) })
             val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             mid.addView(name); mid.addView(meta)
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
@@ -1011,7 +1068,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             v.pos = p
             v.indent.layoutParams = LinearLayout.LayoutParams(dp(16) * rowD[p], 1)
             v.tog.text = if (n.dir && n.kids.isNotEmpty() && !n.agg) (if (expanded.contains(n)) "−" else "+") else ""
-            v.sw.background = round(if (n.agg) WizUtil.GRAY else if (n.dir) WizUtil.FOLDER else (colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY), 3)
+            if (n.agg) v.sw.set(1, WizUtil.GRAY, "…") else if (n.dir) v.sw.set(0, WizUtil.FOLDER) else v.sw.set(1, colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY, WizUtil.extOf(n.name).uppercase().ifEmpty { "·" })
             v.name.text = if (n.agg) "<" + n.files + " small files>" else if (n.parent == null) host.label else n.name
             v.name.setTextColor(if (n.denied) cErr else cFg)
             v.name.setTypeface(null, if (n.dir && !n.agg) Typeface.BOLD else Typeface.NORMAL)
@@ -1020,7 +1077,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val fc = if (n.agg) n.files else if (n.dir) n.files else 0L
             v.meta.text = WizUtil.pct(n.size, par) + (if (fc > 0) "  ·  " + String.format(Locale.US, "%,d", fc) + (if (fc == 1L) " file" else " files") else "")
             v.size.text = NlModel.fmt(n.size)
-            v.setBackgroundColor(if (n === sel) cSel else Color.TRANSPARENT)
+            v.background = card(n === sel)
             v.bar.invalidate()
             return v
         }
@@ -1028,14 +1085,14 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     // ------------------------------------------------------------------ types
     private inner class TypeRow(c: Context) : LinearLayout(c) {
-        val sw = View(c)
+        val sw = WizGlyph(c)
         val ext = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
         val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
-        val bar = WizBar(c).apply { fillCol = cAcc; trackCol = mix(cBg, cFg, 0.14f) }
+        val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(64)
-            addView(sw, LinearLayout.LayoutParams(dp(18), dp(18)).apply { rightMargin = dp(14) })
+            addView(sw, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(14) })
             val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             mid.addView(ext); mid.addView(meta)
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
@@ -1053,14 +1110,14 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val v = (cv as? TypeRow) ?: TypeRow(act)
             val e = stats[p]
-            v.sw.background = round(e.color, 5)
-            v.ext.text = if (e.key == WizUtil.AGG) "Small files" else if (e.key.isEmpty()) "No extension" else "." + e.key
+            v.sw.set(1, e.color, if (e.key == WizUtil.AGG) "…" else e.key.uppercase().ifEmpty { "·" })
+            v.ext.text = if (e.key == WizUtil.AGG) "Small files" else if (e.key.isEmpty()) "No extension" else WizUtil.type(e.key)
             val tot = focus.size
             val files = String.format(Locale.US, "%,d", e.count) + (if (e.count == 1L) " file" else " files")
-            v.meta.text = (if (e.key == WizUtil.AGG) "" else WizUtil.type(e.key) + "  ·  ") + files + "  ·  " + WizUtil.pct(e.size, tot)
+            v.meta.text = files + "  ·  " + WizUtil.pct(e.size, tot)
             v.bar.frac = if (tot > 0) e.size.toFloat() / tot else 0f
             v.size.text = NlModel.fmt(e.size)
-            v.setBackgroundColor(if (e.key == hlKey) cHl else Color.TRANSPARENT)
+            v.background = card(false, e.key == hlKey)
             v.bar.invalidate()
             return v
         }
@@ -1115,13 +1172,13 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     }
 
     private inner class FileRow(c: Context) : LinearLayout(c) {
-        val sw = View(c)
+        val sw = WizGlyph(c)
         val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         val dir = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.START }
         val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(64)
-            addView(sw, LinearLayout.LayoutParams(dp(6), dp(34)).apply { rightMargin = dp(12) })
+            addView(sw, LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(12) })
             val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             col.addView(name); col.addView(dir)
             addView(col, LinearLayout.LayoutParams(0, -2, 1f))
@@ -1136,11 +1193,11 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val v = (cv as? FileRow) ?: FileRow(act)
             val n = shown[p]
-            v.sw.background = round(colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY, 3)
+            v.sw.set(1, colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY, WizUtil.extOf(n.name).uppercase().ifEmpty { "·" })
             v.name.text = n.name
             v.dir.text = n.parent?.path() ?: "/"
             v.size.text = NlModel.fmt(n.size)
-            v.setBackgroundColor(if (n === sel) cSel else Color.TRANSPARENT)
+            v.background = card(n === sel)
             return v
         }
     }
@@ -1241,7 +1298,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
         val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
-        val bar = WizBar(c).apply { fillCol = cAcc; trackCol = mix(cBg, cFg, 0.14f) }
+        val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(68)
             addView(icon, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(14) })
@@ -1262,6 +1319,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val v = (cv as? AppRow) ?: AppRow(act)
             val a = appShown[p]
+            v.background = card(false)
             v.icon.setImageBitmap(a.icon)
             v.name.text = a.label
             v.meta.text = (if (a.ver.isNotEmpty()) "v" + a.ver + "  ·  " else "") + "cache " + NlModel.fmt(a.cache)
@@ -1331,8 +1389,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val body = android.widget.FrameLayout(act)
         buildLists(body)
         view.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
-        view.addView(status.also { styleStatus(it) }, LinearLayout.LayoutParams(-1, -2))
-        map.bgCol = cBg
+        view.addView(status.also { styleStatus(it) }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(12), dp(4), dp(12), dp(12)) })
+        map.bgCol = cHdr
+        host.bars(cBg, !night)
         map.dimCol = mix(cBg, cFg, 0.16f)
         map.fileOf = { n -> host.realFile(n) }
         map.onPick = { n -> pickFromMap(n) }

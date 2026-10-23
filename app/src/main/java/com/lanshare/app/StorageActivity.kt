@@ -79,10 +79,24 @@ class StorageActivity : Activity() {
     private var wiz: WizScreen? = null         // WizTree view (StorageWiz.kt) while it is shown; null = classic screens
     private val wizOn: Boolean get() = getSharedPreferences("storage_ui", MODE_PRIVATE).getBoolean("wiz", true)
     private fun setWizOn(v: Boolean) { getSharedPreferences("storage_ui", MODE_PRIVATE).edit().putBoolean("wiz", v).apply(); val s = curScan ?: return; wiz = null; buildDone(s) }
+    /** System bars + window in the colour of the shown screen (the WizTree view has its own themes); [darkIcons] = light background. */
+    private fun paintBars(bg: Int, darkIcons: Boolean) {
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
+        window.statusBarColor = bg; window.navigationBarColor = bg
+        if (::rootView.isInitialized) rootView.setBackgroundColor(bg)
+        if (Build.VERSION.SDK_INT >= 23) {
+            var f = window.decorView.systemUiVisibility
+            f = if (darkIcons) f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+            if (Build.VERSION.SDK_INT >= 26) f = if (darkIcons) f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+            window.decorView.systemUiVisibility = f
+        }
+    }
     private val wizHost = object : WizHost {
         override val label: String get() = rootLabel()
         override fun details(n: SNode) { if (cur == null) cur = curScan?.root; this@StorageActivity.details(n) }
-        override fun classic() = setWizOn(false)
+        override fun classic() { paintBars(cBg, !night); setWizOn(false) }
+        override fun bars(bg: Int, darkIcons: Boolean) = paintBars(bg, darkIcons)
+        override fun rebuild() { val sc = curScan ?: return; wiz = null; buildDone(sc) }
         override fun rescan() = attach(rescan = true)
         override fun volume(): LongArray? = try { val r = volRoot(); val t = r.totalSpace; val f = r.usableSpace; if (t > 0 && vpath == "/") longArrayOf((t - f).coerceAtLeast(0L), f, t) else null } catch (_: Throwable) { null }
         override fun realFile(n: SNode): File? = try { realOf(n) } catch (_: Throwable) { null }
