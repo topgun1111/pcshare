@@ -147,6 +147,13 @@ internal class WizBar(ctx: Context) : View(ctx) {
     private val r = RectF()
     private val d = resources.displayMetrics.density
 
+    override fun onMeasure(wSpec: Int, hSpec: Int) {
+        // a View's default measure takes ALL the room offered (AT_MOST): inside a wrap_content column that made the bar as wide as the row and left the names no space
+        val ws = MeasureSpec.getSize(wSpec)
+        val w = if (MeasureSpec.getMode(wSpec) == MeasureSpec.EXACTLY) ws else minOf(ws, (84f * d).toInt())
+        setMeasuredDimension(w, resolveSize((5f * d).toInt(), hSpec))
+    }
+
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         val rad = h / 2f
@@ -989,7 +996,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
             right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(7) })
-            addView(right, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+            addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
             tog.setOnClickListener { if (pos in rowN.indices) { toggleExpand(rowN[pos]); treeAdapter.notifyDataSetChanged() } }
         }
     }
@@ -1035,7 +1042,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
             right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(7) })
-            addView(right, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+            addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
         }
     }
 
@@ -1244,7 +1251,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
             right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(7) })
-            addView(right, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+            addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
         }
     }
 
