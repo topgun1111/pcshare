@@ -9,11 +9,10 @@ import java.util.Locale
  * "Free up space" scan (HANDOVER 12.10): one background walk of the storage root that lists what is usually safe to remove.
  * Nothing is deleted here: the page deletes the chosen paths through the normal `POST /api/rm` (-> Recycle bin).
  *  - big: files >= 100 MB (top 30)   - old: files in /Download not changed for 90 days (top 100)   - apk: installer files (top 50)
- *  - junk: temp / log / backup / unfinished-download files older than 3 days, thumbnail caches (.thumbnails ...), `.trashed-*`, Thumbs.db ... (top 100)
- *  - empty: folders without any file (topmost only, standard folders kept) and 0-byte files (top 200)
+ *  - junk: temp / log / backup / unfinished-download files older than 3 days, `.trashed-*`, Thumbs.db ... (top 100)
  *  - shots: screenshots + screen recordings older than 30 days (top 100)
  *  - chat: WhatsApp / Telegram media older than 90 days and >= 256 KB, also under Android/media (top 100)
- *  - reclaim: bytes of junk + empty + old + apk + shots + chat, every file counted once (big files are NOT in it)
+ *  - reclaim: bytes of junk + old + apk + shots + chat, every file counted once (big files are NOT in it)
  *  - bin: Recycle bin items + bytes   - free / total of the storage volume
  * `GET /api/cleanup` -> {running, scanned, error, result}; `POST /api/cleanup {op: start | cancel}`.
  */
@@ -26,9 +25,8 @@ object Cleanup {
     private val APK = setOf("apk", "xapk", "apks", "apkm")
     private val JUNK_EXT = setOf("tmp", "temp", "log", "bak", "old", "chk", "dmp", "crdownload", "download", "opdownload")
     private val JUNK_NAMES = setOf("thumbs.db", "desktop.ini", ".ds_store", ".nomedia.bak")
-    private val JUNK_DIRS = setOf(".thumbnails", ".thumbs", ".thumbcache", ".cache", ".tmp", ".temp")
+    private val JUNK_DIRS = setOf(".cache", ".tmp", ".temp")   // gallery thumbnail folders (.thumbnails ...) are deliberately NOT here: they may hold the only copy of a photo
     private val SHOT_DIRS = setOf("screenshots", "screenshot", "ekran görüntüleri", "ekran goruntuleri", "screen recordings", "screenrecorder", "screen_recorder", "ekran kayıtları")
-    private val KEEP_DIRS = setOf("android", "dcim", "download", "downloads", "pictures", "movies", "music", "documents", "alarms", "notifications", "ringtones", "podcasts", "audiobooks", "recordings")
     private val CHAT_EXT = setOf("jpg", "jpeg", "png", "webp", "gif", "mp4", "3gp", "mkv", "opus", "m4a", "mp3", "aac", "ogg", "amr", "pdf", "docx", "xlsx", "pptx", "zip")
     private val CHAT_APPS = listOf("com.whatsapp", "org.telegram", "org.thunderdog")
 
@@ -70,7 +68,7 @@ object Cleanup {
         val root = Core.local.root
         val rp = root.path.trimEnd('/')
         val now = System.currentTimeMillis()
-        val big = Cat(30); val old = Cat(100); val apk = Cat(50); val junk = Cat(100); val empty = Cat(200); val shots = Cat(100); val chat = Cat(100)
+        val big = Cat(30); val old = Cat(100); val apk = Cat(50); val junk = Cat(100); val shots = Cat(100); val chat = Cat(100)
         var reclaimN = 0; var reclaimB = 0L
         val budget = intArrayOf(300000)   // directories
 
@@ -83,30 +81,26 @@ object Cleanup {
             if (hidden) { if (hit) { reclaimN++; reclaimB += sz }; return }     // hidden files only count as junk
             if (sz >= BIG) big.add(fl)
             if (ext in APK) { apk.add(fl); hit = true }
-            if (sz == 0L && !hit) { empty.add(fl); hit = true }
             if (inDl && sz >= OLD_MIN && now - m > OLD_MS) { old.add(fl); hit = true }
             if (inShot && now - m > 30 * DAY && (ext in CHAT_EXT || ext == "mov")) { shots.add(fl); hit = true }
             if (inChat && sz >= CHAT_MIN && now - m > OLD_MS && ext in CHAT_EXT && !hit) { chat.add(fl); hit = true }
             if (hit) { reclaimN++; reclaimB += sz }
         }
 
-        /** returns true when the folder holds no file at all (counts as "empty tree" for its parent) */
+        /** walks one folder; the result is unused now that empty folders are no longer reported */
         fun walk(d: File, rel: String, inShotP: Boolean, inChatP: Boolean, inJunkP: Boolean): Boolean {
             if (budget[0]-- <= 0 || cancel) return false
             val fs = d.listFiles() ?: return false
             val inDl = rel.lowercase(Locale.ROOT).let { it == "/download" || it.startsWith("/download/") || it == "/downloads" || it.startsWith("/downloads/") }
-            var nonEmpty = false
-            val emptyKids = ArrayList<F>()
             for (f in fs) {
                 if (cancel) return false
                 val hidden = f.name.startsWith(".")
                 val r = "$rel/${f.name}"
                 val low = f.name.lowercase(Locale.ROOT)
                 if (f.isDirectory) {
-                    if (hidden && !inJunkP && low !in JUNK_DIRS) { nonEmpty = true; continue }
+                    if (hidden && !inJunkP && low !in JUNK_DIRS) { continue }
                     if (rel.isEmpty() && f.name == "Android") {
                         // only the chat apps' media folders; the rest of Android/ is app-private
-                        nonEmpty = true
                         File(f, "media").listFiles()?.filter { it.isDirectory && CHAT_APPS.any { a -> it.name.startsWith(a) } }
                             ?.forEach { walk(it, "/Android/media/${it.name}", false, true, false) }
                         continue
@@ -114,17 +108,12 @@ object Cleanup {
                     val sh = inShotP || low in SHOT_DIRS
                     val ch = inChatP || low.contains("whatsapp") || low.contains("telegram")
                     val jk = inJunkP || low in JUNK_DIRS
-                    if (walk(f, r, sh, ch, jk)) emptyKids.add(F(r, 0, f.lastModified(), true)) else nonEmpty = true
+                    walk(f, r, sh, ch, jk)
                 } else {
-                    nonEmpty = true
                     scanned++
                     file(r, f, f.length(), f.lastModified(), inDl, inShotP, inChatP, inJunkP, hidden)
                 }
             }
-            if (cancel) return false
-            if (!nonEmpty) return true   // the parent reports the topmost empty folder
-            // folder has content: its empty children are reported (standard top-level folders are kept)
-            for (k in emptyKids) if (!(rel.isEmpty() && k.path.trimStart('/').lowercase(Locale.ROOT) in KEEP_DIRS)) empty.add(k)
             return false
         }
         walk(File(rp), "", false, false, false)
@@ -136,6 +125,6 @@ object Cleanup {
             .put("bin", JSONObject().put("items", binN).put("bytes", binB))
             .put("reclaim", JSONObject().put("count", reclaimN).put("bytes", reclaimB))
             .put("big", big.json()).put("old", old.json()).put("apk", apk.json())
-            .put("junk", junk.json()).put("empty", empty.json()).put("shots", shots.json()).put("chat", chat.json())
+            .put("junk", junk.json()).put("shots", shots.json()).put("chat", chat.json())
     }
 }

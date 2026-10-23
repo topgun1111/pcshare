@@ -3881,7 +3881,7 @@ async function openFreeUp(){
   function draw(){
     box.textContent='';if(!R)return;
     sub.textContent=fmt(R.free)+' free of '+fmt(R.total);
-    // summary: what can be freed + one-tap safe clean (junk files and empty folders only)
+    // summary: what can be freed + one-tap safe clean (junk files only)
     const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes,used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
     const sw=E('div');sw.style.cssText='border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px';
     const big=E('b','','You can free up to '+fmt(rc));big.style.fontSize='17px';
@@ -3889,9 +3889,9 @@ async function openFreeUp(){
     fill.style.cssText='display:block;height:100%;width:'+pc+'%;background:'+(R.total&&R.free/R.total<.1?'#e5484d':'var(--ac,#3b82f6)');bar.append(fill);
     const sm=E('small','',pc+'% used \u00b7 '+fmt(R.free)+' free'+(R.reclaim?' \u00b7 '+R.reclaim.count+' removable files + '+fmt(R.bin.bytes)+' in the bin':''));sm.style.color='var(--mut)';
     const qrow=E('div');qrow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
-    const qp=[...R.junk.items,...R.empty.items].map(i=>i.path),qb=R.junk.bytes;
-    const qc=E('button','tbtn fill','Quick clean: junk + empty folders');qc.disabled=!qp.length;qc.style.opacity=qp.length?1:.5;
-    qc.onclick=async()=>{if(!await dlg({title:'Quick clean?',msg:'Moves '+R.junk.items.length+' junk file(s) ('+fmt(qb)+') and '+R.empty.items.length+' empty folder / file item(s) to the Recycle bin.',ok:'Clean'}))return;
+    const qp=R.junk.items.map(i=>i.path),qb=R.junk.bytes;
+    const qc=E('button','tbtn fill','Quick clean: junk files');qc.disabled=!qp.length;qc.style.opacity=qp.length?1:.5;
+    qc.onclick=async()=>{if(!await dlg({title:'Quick clean?',msg:'Moves '+R.junk.items.length+' junk file(s) ('+fmt(qb)+') to the Recycle bin.',ok:'Clean'}))return;
       try{const r=await api('POST','/api/rm',{dev:'local',paths:qp});watchJob(r.job);toast('Cleaning\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
       if(live())start()};
     const an=E('button','tbtn','Analyze storage');an.onclick=()=>{try{LSAndroid.openStorage('/')}catch(e){toast('Storage analyzer needs the Android app',3000)}};
@@ -3905,8 +3905,7 @@ async function openFreeUp(){
       try{await api('POST','/api/bin',{op:'empty'});toast('Emptying the bin\u2026',3000)}catch(e){toast('\u26a0 '+e.message,5000);return}
       setTimeout(()=>{if(live())start()},2500)};
     const bo=E('button','tbtn','Open');bo.onclick=()=>openBin();bw.append(bt,bo,be);box.append(bw);
-    box.append(sec('Junk files','Temp, log and backup files, unfinished downloads (3+ days old), thumbnail caches, gallery trash leftovers.',R.junk,'Delete selected'),
-      sec('Empty folders and files','Folders with no file inside (standard folders kept) and 0-byte files.',R.empty,'Delete selected','item'),
+    box.append(sec('Junk files','Temp, log and backup files, unfinished downloads (3+ days old), gallery trash leftovers.',R.junk,'Delete selected'),
       sec('Large files','100 MB or more, biggest first.',R.big,'Delete selected'),
       sec('Old downloads','In Download, not changed for 90 days.',R.old,'Delete selected'),
       sec('Installers','APK files you may no longer need.',R.apk,'Delete selected'),
