@@ -86,9 +86,13 @@ object SheetLayout {
      * width (height follows the picture's proportions), [rot] = extra clockwise turn in degrees (any value, on top of the picture's own turn).
      * The order of a list is the stacking order (last = on top). Part 14c: the server keeps them inside the safe rectangle ([clampFree]) and, with Keep apart on, apart ([freeHit]).
      */
-    data class Free(val pic: Int, val cx: Double, val cy: Double, val w: Double, val rot: Double = 0.0)
+    data class Free(val pic: Int, val cx: Double, val cy: Double, val w: Double, val rot: Double = 0.0, val st: Double = 1.0)
 
     const val FREE_MIN_W = 0.03
+
+    const val FREE_MIN_ST = 0.2
+
+    const val FREE_MAX_ST = 5.0
     const val FREE_MAX_W = 3.0
     const val MAX_FREE = 60
 
@@ -405,7 +409,7 @@ object SheetLayout {
         val pw = max(1, p.w).toDouble()
         val ph = max(1, p.h).toDouble()
         val dw = f.w.coerceIn(FREE_MIN_W, FREE_MAX_W) * sw
-        val dh = dw * ph / pw
+        val dh = dw * ph / pw / stOf(f)
         return FreeCell(f.pic, f.cx.coerceIn(-1.0, 2.0) * sw, f.cy.coerceIn(-1.0, 2.0) * sh, dw, dh, (norm(p.rot) + f.rot) % 360.0)
     }
 
@@ -422,20 +426,23 @@ object SheetLayout {
     /** Aspect of the drawing (height / width), same as FreeCell.dh / dw. */
     private fun aspect(p: Pic): Double = max(1, p.h).toDouble() / max(1, p.w).toDouble()
 
+    /** Side-handle stretch of a free item (width x st at the same height; 1 = picture's own proportions). */
+    fun stOf(f: Free): Double = if (f.st.isFinite()) f.st.coerceIn(FREE_MIN_ST, FREE_MAX_ST) else 1.0
+
     /** Turned bounding box of a free item as fractions of the sheet [bw, bh] (fBox). */
     fun freeBox(f: Free, p: Pic, sw: Double, sh: Double): DoubleArray {
         val t = Math.toRadians(norm(p.rot) + f.rot)
         val c = Math.abs(Math.cos(t))
         val s2 = Math.abs(Math.sin(t))
         val dw = f.w * sw
-        val dh = dw * aspect(p)
+        val dh = dw * aspect(p) / stOf(f)
         return doubleArrayOf((c * dw + s2 * dh) / sw, (s2 * dw + c * dh) / sh)
     }
 
     /** Puts the TURNED box of [f] into the safe rectangle: shrinks first (shape kept, width >= FREE_MIN_W), then moves. Idempotent (same maths as fClamp). */
     fun clampFree(f0: Free, p: Pic, sw: Double, sh: Double, safe: Double): Free {
         val r = safeRect(safe, sw, sh)
-        var f = f0.copy(w = f0.w.coerceIn(FREE_MIN_W, FREE_MAX_W), cx = if (f0.cx.isFinite()) f0.cx else 0.5, cy = if (f0.cy.isFinite()) f0.cy else 0.5)
+        var f = f0.copy(st = stOf(f0), w = f0.w.coerceIn(FREE_MIN_W, FREE_MAX_W), cx = if (f0.cx.isFinite()) f0.cx else 0.5, cy = if (f0.cy.isFinite()) f0.cy else 0.5)
         var b = freeBox(f, p, sw, sh)
         val k = min(1.0, min((r[1] - r[0]) / max(b[0], 1e-9), (r[3] - r[2]) / max(b[1], 1e-9)))
         if (k < 1) {
@@ -453,7 +460,7 @@ object SheetLayout {
         val c = Math.cos(th)
         val s = Math.sin(th)
         val dw = f.w * sw
-        val dh = dw * aspect(p)
+        val dh = dw * aspect(p) / stOf(f)
         val out = Array(4) { DoubleArray(2) }
         for (i in 0 until 4) {
             val x = (if (i == 1 || i == 2) 1 else -1) * dw / 2
@@ -500,8 +507,8 @@ object SheetLayout {
      * forgiving: the page computes in screen pixels, so the wire check (setFree) uses a little slack and never refuses a state the page called legal.
      */
     fun freeHit(f: Free, pf: Pic, g: Free, pg: Pic, sw: Double, sh: Double, gap: Double, slack: Double = 0.0): Boolean {
-        val d1 = Math.hypot(f.w * sw, f.w * aspect(pf) * sw) / 2
-        val d2 = Math.hypot(g.w * sw, g.w * aspect(pg) * sw) / 2
+        val d1 = Math.hypot(f.w * sw, f.w * aspect(pf) / stOf(f) * sw) / 2
+        val d2 = Math.hypot(g.w * sw, g.w * aspect(pg) / stOf(g) * sw) / 2
         if (Math.hypot((f.cx - g.cx) * sw, (f.cy - g.cy) * sh) > d1 + d2 + gap + 1e-6) return false   // far apart (no slack needed: the bound is generous)
         val a = freePoly(f, pf, sw, sh)
         val b = freePoly(g, pg, sw, sh)

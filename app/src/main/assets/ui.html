@@ -297,6 +297,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lyh{position:absolute;right:-14px;bottom:-14px;width:28px;height:28px;border-radius:50%;background:var(--ac);border:3px solid #fff;box-sizing:border-box;touch-action:none;z-index:3}
 #gal .lyh::before{content:"";position:absolute;inset:-8px}
 #gal .lyh.tl{left:-14px;top:-14px;right:auto;bottom:auto}#gal .lyh.tr{right:-14px;top:-14px;left:auto;bottom:auto}#gal .lyh.bl{left:-14px;bottom:-14px;right:auto;top:auto}
+#gal .lyh.ml,#gal .lyh.mr{width:20px;height:40px;border-radius:10px;top:calc(50% - 20px);bottom:auto}#gal .lyh.ml{left:-10px;right:auto}#gal .lyh.mr{right:-10px;left:auto}
 #gal .lyk{position:absolute;left:50%;top:-32px;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:var(--bg);color:var(--ac);border:2px solid var(--ac);box-sizing:border-box;display:flex;align-items:center;justify-content:center;font:700 17px/1 sans-serif;font-style:normal;touch-action:none;z-index:3}
 #gal .lyk::before{content:"";position:absolute;inset:-8px}
 #gal .lysb{position:absolute;pointer-events:none;background:repeating-linear-gradient(135deg,#d3242a38,#d3242a38 3px,transparent 3px 7px)}
@@ -3654,7 +3655,7 @@ function psLayout(){
     if(i>=0&&!await dlg({title:'Replace \u201c'+a[i].name+'\u201d?',msg:'A saved layout with this name already exists.',ok:'Replace'}))return;
     if(i<0&&a.length>=20)return toast('Up to 20 saved layouts \u2013 remove one first',3500);
     const e={name,spec:psPick(SP),mode:MODE},q0=PL&&PL.sheets[sheet];
-    if(SP.free){e.spec.free=true;if(q0){const t=l=>(l||[]).map(f=>({cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0}));e.tpl={f:t(q0.ff),b:t(q0.fb)}}}
+    if(SP.free){e.spec.free=true;if(q0){const t=l=>(l||[]).map(f=>({cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,st:f.st||1}));e.tpl={f:t(q0.ff),b:t(q0.fb)}}}
     if(i>=0)a[i]=e;else a.push(e);psPresetsSave(a);toast('Layout \u201c'+name+'\u201d saved',2500);dSet()}
   async function usePreset(q){
     if(Object.keys(PLACED).length&&!await dlg({title:'Use \u201c'+q.name+'\u201d?',msg:'All sheets are filled again with the pictures.',ok:'Use layout'}))return;
@@ -3667,7 +3668,7 @@ function psLayout(){
     for(let i=PL.sheets.length;i<need;i++){if(!await call({op:'addsheet'},true))break}
     for(let k=0;k<need&&PL&&PL.sheets[k];k++){const part=ids.slice(k*n,k*n+n);
       await call({op:'fset',sheet:k,side:'front',items:part.map((id,j)=>Object.assign({id},t.f[j]))},true);
-      const bk=((PL.sheets[k]||{}).fb||[]);if(bk.length&&t.b&&t.b.length)await call({op:'fset',sheet:k,side:'back',items:bk.map((f,j)=>t.b[j]?Object.assign({id:f.id},t.b[j]):{id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0})},true)}
+      const bk=((PL.sheets[k]||{}).fb||[]);if(bk.length&&t.b&&t.b.length)await call({op:'fset',sheet:k,side:'back',items:bk.map((f,j)=>t.b[j]?Object.assign({id:f.id},t.b[j]):{id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,st:f.st||1})},true)}
     await call({op:'trim'},true);draw()}
   async function delPreset(q){
     if(!await dlg({title:'Remove \u201c'+q.name+'\u201d?',msg:'Only the saved settings are deleted.',ok:'Remove',danger:true}))return;
@@ -3889,7 +3890,7 @@ function psLayout(){
       x.cx=b.bw>=R.r-R.l?(R.l+R.r)/2:Math.min(R.r-b.bw/2,Math.max(R.l+b.bw/2,x.cx));
       x.cy=b.bh>=R.b-R.t?(R.t+R.b)/2:Math.min(R.b-b.bh/2,Math.max(R.t+b.bh/2,x.cy));return x},
     /* world position (stage px) of corner k ('tl' 'tr' 'br' 'bl') of item f; W,H = stage size in px */
-    fCornerPt=(f,m,k,W,H)=>{const th=fRotR(f,m),c=Math.cos(th),s=Math.sin(th),dw=f.w*W,dh=dw*f.a,x=(k.charAt(1)==='r'?1:-1)*dw/2,y=(k.charAt(0)==='b'?1:-1)*dh/2;
+    fCornerPt=(f,m,k,W,H)=>{const th=fRotR(f,m),c=Math.cos(th),s=Math.sin(th),dw=f.w*W,dh=dw*f.a,x=(k.charAt(1)==='r'?1:-1)*dw/2,y=(k.charAt(0)==='b'?1:k.charAt(0)==='m'?0:-1)*dh/2;
       return{x:f.cx*W+x*c-y*s,y:f.cy*H+x*s+y*c}},
     /* corner k dragged to (px,py) (fractions of the stage): the opposite corner stays, the shape is kept (the pointer is projected on the diagonal), the turned box stays inside R.
        Returns {w,cx,cy}. */
@@ -3902,14 +3903,21 @@ function psLayout(){
         if(uy>1e-9)mx=Math.min(mx,(R.b*H-Ay)/uy);else if(uy<-1e-9)mx=Math.min(mx,(R.t*H-Ay)/uy)});
       sc=Math.max(.03/f0.w,Math.min(sc,mx));
       return{w:f0.w*sc,cx:(Ax+sc*(d0x*c-d0y*s)/2)/W,cy:(Ay+sc*(d0x*s+d0y*c)/2)/H}},
+    /* side handle k ('ml' 'mr') dragged to (px,py) (fractions of the stage): the opposite side stays, the height is kept, only the width changes (st = stretch, a = height / width), turned box stays inside R. Returns {w,a,cx,cy}. */
+    fSide=(f0,m,k,px,py,R,W,H)=>{const th=fRotR(f0,m),c=Math.cos(th),s=Math.sin(th),dw=f0.w*W,dh=dw*f0.a,sx=k==='mr'?1:-1,st0=f0.st||1,
+        Ax=f0.cx*W-sx*dw/2*c,Ay=f0.cy*H-sx*dw/2*s,lo=Math.max(.03*W,.2*dw/st0);let hi=Math.min(3*W,5*dw/st0),nd=sx*((px*W-Ax)*c+(py*H-Ay)*s);
+      [-1,1].forEach(ys=>{const Bx=Ax-ys*dh/2*s,By=Ay+ys*dh/2*c,ux=sx*c,uy=sx*s;
+        if(ux>1e-9)hi=Math.min(hi,(R.r*W-Bx)/ux);else if(ux<-1e-9)hi=Math.min(hi,(R.l*W-Bx)/ux);
+        if(uy>1e-9)hi=Math.min(hi,(R.b*H-By)/uy);else if(uy<-1e-9)hi=Math.min(hi,(R.t*H-By)/uy)});
+      nd=Math.max(lo,Math.min(nd,hi));return{w:nd/W,a:dh/nd,cx:(Ax+sx*nd/2*c)/W,cy:(Ay+sx*nd/2*s)/H}},
     /* which side of the turned picture has room for the rotate knob: 't' b' 'l' 'r' (top first) */
     fKnobSide=(f,m,W,H)=>{const th=fRotR(f,m),c=Math.cos(th),s=Math.sin(th),dw=f.w*W,dh=dw*f.a,D=32,
-        C=[['t',0,-(dh/2+D)],['b',0,dh/2+D],['l',-(dw/2+D),0],['r',dw/2+D,0]];
+        C=[['t',0,-(dh/2+D)],['b',0,dh/2+D],['l',-(dw/2+46),0],['r',dw/2+46,0]];
       for(const [k,x,y] of C){const X=f.cx*W+x*c-y*s,Y=f.cy*H+x*s+y*c;if(X>=14&&X<=W-14&&Y>=-30&&Y<=H+30)return k}
       return 't'},
     fKnob=(i,W,H)=>{const el=FEL[i],k=el&&el.querySelector('.lyk'),f=FRL&&FRL[i];if(!k||!f)return;const sd=fKnobSide(f,pic(f.id),W,H);
-      k.style.left=sd==='l'?'-32px':sd==='r'?'calc(100% + 32px)':'50%';k.style.top=sd==='t'?'-32px':sd==='b'?'calc(100% + 32px)':'50%'},
-    fHandles=el=>{['tl','tr','br','bl'].forEach(k=>{const h=E('i','lyh '+k);h.dataset.c=k;el.append(h)});el.append(E('i','lyk','\u21bb'))},
+      k.style.left=sd==='l'?'-46px':sd==='r'?'calc(100% + 46px)':'50%';k.style.top=sd==='t'?'-32px':sd==='b'?'calc(100% + 32px)':'50%'},
+    fHandles=el=>{['tl','tr','br','bl','ml','mr'].forEach(k=>{const h=E('i','lyh '+k);h.dataset.c=k;el.append(h)});el.append(E('i','lyk','\u21bb'))},
     fFrame=R=>{const t=Math.round(R.t*10000)/100,l=Math.round(R.l*10000)/100,mk=st=>{const d=E('div','lysb');d.style.cssText=st;return d},f=E('div','lysf');
       f.style.cssText='left:'+l+'%;right:'+l+'%;top:'+t+'%;bottom:'+t+'%';
       return[mk('left:0;right:0;top:0;height:'+t+'%'),mk('left:0;right:0;bottom:0;height:'+t+'%'),mk('left:0;top:'+t+'%;bottom:'+t+'%;width:'+l+'%'),mk('right:0;top:'+t+'%;bottom:'+t+'%;width:'+l+'%'),f]};
@@ -3947,7 +3955,7 @@ function psLayout(){
     fHitSet=(L,i,W,H,gap)=>{const s=new Set(),m=pic(L[i].id);L.forEach((g,j)=>{if(j!==i&&fHit(L[i],m,g,pic(g.id),W,H,gap))s.add(j)});return s},
     fPairs=(L,W,H,gap)=>{const o=[];for(let i=0;i<L.length;i++){const m=pic(L[i].id);for(let j=i+1;j<L.length;j++)if(fHit(L[i],m,L[j],pic(L[j].id),W,H,gap))o.push([i,j])}return o},
     fViol=(before,L,W,H,gap)=>{const was=new Set(fPairs(before,W,H,gap).map(p=>p.join()));return fPairs(L,W,H,gap).some(p=>!was.has(p.join()))},   // a pair overlaps now that did not before
-    fLerp=(a,b,t)=>({cx:a.cx+(b.cx-a.cx)*t,cy:a.cy+(b.cy-a.cy)*t,w:a.w+(b.w-a.w)*t,rot:a.rot+(((b.rot-a.rot+540)%360)-180)*t,a:a.a}),
+    fLerp=(a,b,t)=>({cx:a.cx+(b.cx-a.cx)*t,cy:a.cy+(b.cy-a.cy)*t,w:a.w+(b.w-a.w)*t,rot:a.rot+(((b.rot-a.rot+540)%360)-180)*t,a:a.a+((b.a==null?a.a:b.a)-a.a)*t}),
     /* from a LEGAL state toward the wanted one: the furthest legal state on the way (path sampled every ~2 px, so a fast finger cannot jump over a neighbour). ign = neighbours that already overlapped at the start. */
     fStop=(L,i,from,to,W,H,gap,ign)=>{const m=pic(L[i].id),ok=s=>fHitAny(L,s,m,W,H,gap,i,ign)<0;
       const dist=Math.hypot((to.cx-from.cx)*W,(to.cy-from.cy)*H)+Math.abs(to.w-from.w)*W+Math.abs(((to.rot-from.rot+540)%360)-180)*3,n=Math.max(8,Math.min(400,Math.ceil(dist/2)));
@@ -3980,7 +3988,7 @@ function psLayout(){
         if(ok)return pos}
       return null},
     fSides=()=>{const out=[];(PL?PL.sheets:[]).forEach((q,sh)=>['front','back'].forEach(sd=>{const it=(sd==='back'?q.fb:q.ff)||[];if(it.length<2)return;const dw=(FIL[sh+':'+sd]||{}).free||[];
-        out.push({sheet:sh,side:sd,L:it.map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}))})}));return out},
+        out.push({sheet:sh,side:sd,L:it.map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,st:f.st||1,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}))})}));return out},
     fkRevert=b=>{if(!fKeepOn()||!fViol(b,FRL,LY.sw,LY.sh,fGapPt()))return false;b.forEach((x,i)=>Object.assign(FRL[i],x));FRL.forEach((_,i)=>fPlace(i));toast('Pictures cannot overlap (Keep apart is on)',2600);return true};
   /* Part 14c: safe margin from the printer. The layout is made before a printer is chosen, so the person picks one here: the PC print service (hard, pt)
      or a Wi-Fi printer (IPP media-*-margin-supported, same key) answers GET /api/printer; safe = that value (largest of the four edges). */
@@ -4007,7 +4015,7 @@ function psLayout(){
     for(const s of bad){const pk=fPack(s.L,s.L.map(f=>pic(f.id)),fSafeNow(),LY.sw,LY.sh,g);
       if(!pk){toast('Sheet '+(s.sheet+1)+' ('+s.side+'): too many pictures to fit \u2013 remove some or use a smaller gap',4500);continue}
       if(s.sheet===sheet&&s.side===side)fpush();
-      await call({op:'fset',sheet:s.sheet,side:s.side,items:s.L.map((f,i)=>({id:f.id,cx:+pk[i].cx.toFixed(4),cy:+pk[i].cy.toFixed(4),w:+pk[i].w.toFixed(4),rot:+(+f.rot).toFixed(2)}))})}}
+      await call({op:'fset',sheet:s.sheet,side:s.side,items:s.L.map((f,i)=>({id:f.id,cx:+pk[i].cx.toFixed(4),cy:+pk[i].cy.toFixed(4),w:+pk[i].w.toFixed(4),rot:+(+f.rot).toFixed(2),st:+(f.st||1).toFixed(4)}))})}}
   const fGhost=(pg,dw)=>{   // faint see-through of the FRONT items on the Back tab, mirrored about the flip edge (SheetLayout.backSlot rule: mirrorCols = (flip long) == portrait)
     if(side!=='back'||!PL||!PL.sheets[sheet])return;const q=PL.sheets[sheet].ff||[];if(!q.length)return;
     const fd=(FIL[sheet+':front']||{}).free||[],mx=(SP.flip!=='short')===(LY.sw<LY.sh),g=E('div','lygz');
@@ -4018,12 +4026,12 @@ function psLayout(){
     pg.append(g)};
   /* Part 12a: undo / redo of free edits (per session of the editor, 30 steps). Snapshot = the side as the SERVER has it, taken just before the change. */
   const FU=[],FR=[],
-    fsnap=(sh,sd)=>{const q=PL&&PL.sheets[sh];return{sheet:sh,side:sd,items:((q&&(sd==='back'?q.fb:q.ff))||[]).map(f=>({id:f.id,cx:+(+f.cx).toFixed(4),cy:+(+f.cy).toFixed(4),w:+(+f.w).toFixed(4),rot:+(+(f.rot||0)).toFixed(2)}))}},
+    fsnap=(sh,sd)=>{const q=PL&&PL.sheets[sh];return{sheet:sh,side:sd,items:((q&&(sd==='back'?q.fb:q.ff))||[]).map(f=>({id:f.id,cx:+(+f.cx).toFixed(4),cy:+(+f.cy).toFixed(4),w:+(+f.w).toFixed(4),rot:+(+(f.rot||0)).toFixed(2),st:+(+(f.st||1)).toFixed(4)}))}},
     fpush=n=>{const z=fsnap(sheet,side);if(n&&JSON.stringify(z.items)===JSON.stringify(n))return false;FU.push(z);if(FU.length>30)FU.shift();FR.length=0;return true};
   async function fundo(redo){const A=redo?FR:FU,B=redo?FU:FR,z=A.pop();if(!z)return;
     if(!PL||!PL.sheets[z.sheet]){toast('That sheet is gone',2000);return}
     B.push(fsnap(z.sheet,z.side));fsel=-1;fg=null;sheet=z.sheet;side=z.side;await call({op:'fset',sheet:z.sheet,side:z.side,items:z.items})}
-  async function fCommit(quiet){fg=null;const R=fSafeNow();(FRL||[]).forEach(f=>fClamp(f,pic(f.id),R));const items=(FRL||[]).map(f=>({id:f.id,cx:+f.cx.toFixed(4),cy:+f.cy.toFixed(4),w:+f.w.toFixed(4),rot:+f.rot.toFixed(2)}));
+  async function fCommit(quiet){fg=null;const R=fSafeNow();(FRL||[]).forEach(f=>fClamp(f,pic(f.id),R));const items=(FRL||[]).map(f=>({id:f.id,cx:+f.cx.toFixed(4),cy:+f.cy.toFixed(4),w:+f.w.toFixed(4),rot:+f.rot.toFixed(2),st:+(f.st||1).toFixed(4)}));
     if(!quiet)fpush(items);await call({op:'fset',sheet,side,items})}
   const fedit=fn=>{if(fsel<0||!FRL||!FRL[fsel])return;const b=FRL.map(x=>Object.assign({},x));fn(FRL[fsel]);fClamp(FRL[fsel],pic(FRL[fsel].id),fSafeNow());if(fkRevert(b))return;fPlace(fsel);fCommit()},
     fmIdx=()=>[...fms].filter(i=>FRL&&FRL[i]).sort((a,b)=>a-b),
@@ -4046,7 +4054,7 @@ function psLayout(){
     if(fg){fdirty=true;return}
     fdirty=false;const sw=LY.sw,sh=LY.sh,pg=E('div','lypg lyfp'),dw=(FIL[sheet+':'+side]||{}).free||[];
     pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
-    FRL=frOf().map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}));
+    FRL=frOf().map((f,i)=>({id:f.id,cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,st:f.st||1,a:dw[i]&&dw[i].dw?dw[i].dh/dw[i].dw:1.4}));
     if(fsel>=FRL.length)fsel=FRL.length-1;
     {const R0=fSafeNow();let ch=0;FRL.forEach(f=>{const x0={cx:f.cx,cy:f.cy,w:f.w};fClamp(f,pic(f.id),R0);ch+=Math.abs(f.cx-x0.cx)+Math.abs(f.cy-x0.cy)+Math.abs(f.w-x0.w)});   // old / added pictures outside the safe frame are pulled in (once, not an undo step)
       if(ch>3e-4&&fixN<2){fixN++;setTimeout(()=>{if(live()&&!fg&&SP.free)fCommit(true)},0)}}
@@ -4062,7 +4070,7 @@ function psLayout(){
     const kInit=(w,i,r)=>{if(!fKeepOn()||!FRL[i])return;w.kW=r.width;w.kH=r.height;w.kg=fGapPt()*r.width/sw;w.kI=fHitSet(FRL,i,r.width,r.height,w.kg);w.last=Object.assign({},FRL[i])},
       kLim=(w,i,f)=>{if(!w.kW)return;const want={cx:f.cx,cy:f.cy,w:f.w,rot:f.rot,a:f.a},s=w.mode==='m'?fMoveTo(FRL,i,w.last,want,w.kW,w.kH,w.kg,w.kI):fStop(FRL,i,w.last,want,w.kW,w.kH,w.kg,w.kI).s;
         if(s!==want){const j=fHitAny(FRL,want,pic(f.id),w.kW,w.kH,w.kg,i,w.kI);if(j>=0&&FEL[j]){FEL[j].classList.add('stop');setTimeout(()=>{if(FEL[j])FEL[j].classList.remove('stop')},220)}}
-        f.cx=s.cx;f.cy=s.cy;f.w=s.w;f.rot=s.rot;w.last={cx:s.cx,cy:s.cy,w:s.w,rot:s.rot,a:f.a}};
+        f.cx=s.cx;f.cy=s.cy;f.w=s.w;f.rot=s.rot;if(w.mode==='s'&&s.a>0)f.a=s.a;w.last={cx:s.cx,cy:s.cy,w:s.w,rot:s.rot,a:f.a}};
     pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
       try{pg.setPointerCapture(e.pointerId)}catch(x){}
       P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
@@ -4071,7 +4079,7 @@ function psLayout(){
         const i=isH?fsel:(t?FEL.indexOf(t):-1);fg={mode:isC?'c':isR?'r':(i>=0?'m':'bg'),tap:true,sx:e.clientX,sy:e.clientY,hit:i,r};
         if(i>=0){if(fmm&&!isH)fg.multi=true;else if(i!==fsel||fms.size>1)sel(i);if(isH&&FRL[i]){fClamp(FRL[i],pic(FRL[i].id),R);fPlace(i)}fg.f0=Object.assign({},FRL[i]);kInit(fg,i,r);
           if(!isH){const w=fg;w.lpt=setTimeout(()=>{if(fg===w&&w.tap&&P.size===1){fmm=true;w.lp=true;w.mode='x';w.tap=false;try{navigator.vibrate&&navigator.vibrate(15)}catch(x){}fTog(w.hit)}},450)}   /* long-press adds to the selection */
-          if(isC){fg.k=e.target.dataset.c;const cp=fCornerPt(fg.f0,pic(fg.f0.id),fg.k,r.width,r.height);fg.ox=e.clientX-r.left-cp.x;fg.oy=e.clientY-r.top-cp.y}   // keeps the grab offset: the corner does not jump under the finger
+          if(isC){fg.k=e.target.dataset.c;if(fg.k==='ml'||fg.k==='mr')fg.mode='s';const cp=fCornerPt(fg.f0,pic(fg.f0.id),fg.k,r.width,r.height);fg.ox=e.clientX-r.left-cp.x;fg.oy=e.clientY-r.top-cp.y}   // keeps the grab offset: the corner does not jump under the finger
           if(isR){const c={x:r.left+fg.f0.cx*r.width,y:r.top+fg.f0.cy*r.height};fg.c=c;fg.a0=Math.atan2(e.clientY-c.y,e.clientX-c.x)}}}
       else if(P.size===2&&fsel>=0&&FRL[fsel]){const [a,b]=[...P.values()];
         fg={mode:'p',tap:false,hit:fsel,r,f0:Object.assign({},FRL[fsel]),d0:Math.hypot(a.x-b.x,a.y-b.y)||1,an0:Math.atan2(b.y-a.y,b.x-a.x),m0:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};kInit(fg,fsel,r)}
@@ -4081,12 +4089,13 @@ function psLayout(){
       if(fg.mode==='m'){const dx=e.clientX-fg.sx,dy=e.clientY-fg.sy;if(fg.tap&&Math.abs(dx)+Math.abs(dy)<6)return;fg.tap=false;
         f.cx=snap(fg.f0.cx+dx/r.width,gv);f.cy=snap(fg.f0.cy+dy/r.height,gh);fClamp(f,pic(f.id),R)}
       else if(fg.mode==='c'){fg.tap=false;const k=fCorner(fg.f0,pic(fg.f0.id),fg.k,(e.clientX-r.left-fg.ox)/r.width,(e.clientY-r.top-fg.oy)/r.height,R,r.width,r.height);f.w=k.w;f.cx=k.cx;f.cy=k.cy}
+      else if(fg.mode==='s'){fg.tap=false;const k=fSide(fg.f0,pic(fg.f0.id),fg.k,(e.clientX-r.left-fg.ox)/r.width,(e.clientY-r.top-fg.oy)/r.height,R,r.width,r.height);f.w=k.w;f.a=k.a;f.cx=k.cx;f.cy=k.cy}
       else if(fg.mode==='r'){const vx=e.clientX-fg.c.x,vy=e.clientY-fg.c.y;fg.tap=false;
         let a=fnorm(fg.f0.rot+(Math.atan2(vy,vx)-fg.a0)*180/Math.PI);const q=Math.round(a/15)*15;if(Math.abs(a-q)<3)a=fnorm(q);
         f.w=fg.f0.w;f.cx=fg.f0.cx;f.cy=fg.f0.cy;f.rot=a;fClamp(f,pic(f.id),R)}   // always from the start state, so turning back restores the size
       else if(fg.mode==='p'){if(P.size<2)return;const [a,b]=[...P.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,an=Math.atan2(b.y-a.y,b.x-a.x),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
         f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(fg.f0.rot+(an-fg.an0)*180/Math.PI);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height;fClamp(f,pic(f.id),R)}
-      kLim(fg,i,f);fPlace(i);fKnob(i,r.width,r.height)};
+      kLim(fg,i,f);if(fg.mode==='s')f.st=Math.max(.2,Math.min(5,(fg.f0.st||1)*fg.f0.a/f.a));fPlace(i);fKnob(i,r.width,r.height)};
     const up=e=>{P.delete(e.pointerId);if(!fg)return;
       if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
       if(P.size>0)return;

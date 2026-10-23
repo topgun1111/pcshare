@@ -22,7 +22,7 @@ import kotlin.math.max
  *   op "behind" {sheet, slot, id|null}   puts the picture on the back, behind the given FRONT slot
  *   op "addsheet" | "rmsheet" {sheet} | "trim"
  *   op "reflow" {duplex}           after grid / paper / orientation changed
- *   op "fset"  {sheet, side, items:[{id, cx, cy, w, rot}]}   free placement (spec.free): replaces the free items of one side (part 14c: put inside the safe margin; with spec.keep a side that gets a NEW overlap is refused with "Pictures overlap"); cx / cy = centre and w = width of the
+ *   op "fset"  {sheet, side, items:[{id, cx, cy, w, rot, st?}]}   free placement (spec.free): replaces the free items of one side (part 14c: put inside the safe margin; with spec.keep a side that gets a NEW overlap is refused with "Pictures overlap"); cx / cy = centre and w = width of the
  *                                  unturned picture, all as fractions of the sheet (width / height / width); rot = clockwise degrees; list order = stacking order
  *   op "fadd"  {sheet, side, id, cx?, cy?}   puts a picture on a side as a free item (half the sheet big, at cx / cy or near the centre; added to the end = on top)
  *   op "tofree"                    turns the grid placement into free items and sets spec.free; "togrid" clears spec.free (free items stay in the plan, unused)
@@ -83,14 +83,14 @@ object PsLayoutJson {
         for (n in 0 until minOf(a.length(), SheetLayout.MAX_FREE)) {
             val o = a.optJSONObject(n) ?: continue
             val i = idx[o.optString("id", "")] ?: continue   // a picture that is gone from the space drops its free item
-            out.add(SheetLayout.Free(i, num(o, "cx", 0.5), num(o, "cy", 0.5), num(o, "w", 0.4), num(o, "rot", 0.0)))
+            out.add(SheetLayout.Free(i, num(o, "cx", 0.5), num(o, "cy", 0.5), num(o, "w", 0.4), num(o, "rot", 0.0), num(o, "st", 1.0)))
         }
         return out
     }
 
     private fun freeJson(l: List<SheetLayout.Free>, pics: List<Pict>): JSONArray {
         val a = JSONArray()
-        for (f in l) if (f.pic in pics.indices) a.put(JSONObject().put("id", pics[f.pic].id).put("cx", r4(f.cx)).put("cy", r4(f.cy)).put("w", r4(f.w)).put("rot", r2(f.rot)))
+        for (f in l) if (f.pic in pics.indices) a.put(JSONObject().put("id", pics[f.pic].id).put("cx", r4(f.cx)).put("cy", r4(f.cy)).put("w", r4(f.w)).put("rot", r2(f.rot)).also { if (Math.abs(f.st - 1.0) > 1e-4) it.put("st", r4(f.st)) })
         return a
     }
 
