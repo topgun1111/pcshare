@@ -14,7 +14,7 @@ import kotlin.math.max
  * answer carries the cleaned spec, the new plan and the composed layout. Plans use picture IDS (not list indices),
  * so removing a picture from the space later only empties its slots.
  *
- * Request  {op, spec{paper, orient, cols, rows, margin, gap, fit, flip, autoRot, reverse}, plan{portrait, sheets:[{f:[id|null], b:[id|null]}]}, ...}
+ * Request  {op, spec{paper, orient, cols, rows, margin, gap, fit, flip, autoRot, reverse, free, safe, keep, keepGap}, plan{portrait, sheets:[{f:[id|null], b:[id|null]}]}, ...}
  *   op "view"                      compose only (no plan = fill the front sides)
  *   op "fill"   {mode}             FRONT_ONLY | BOTH_SIDES | PAIRS (auto-fill from the picture list, copies expanded)
  *   op "assign" {sheet, side, slot, id|null}
@@ -22,7 +22,7 @@ import kotlin.math.max
  *   op "behind" {sheet, slot, id|null}   puts the picture on the back, behind the given FRONT slot
  *   op "addsheet" | "rmsheet" {sheet} | "trim"
  *   op "reflow" {duplex}           after grid / paper / orientation changed
- *   op "fset"  {sheet, side, items:[{id, cx, cy, w, rot}]}   free placement (spec.free): replaces the free items of one side; cx / cy = centre and w = width of the
+ *   op "fset"  {sheet, side, items:[{id, cx, cy, w, rot}]}   free placement (spec.free): replaces the free items of one side (part 14c: put inside the safe margin; with spec.keep a side that gets a NEW overlap is refused with "Pictures overlap"); cx / cy = centre and w = width of the
  *                                  unturned picture, all as fractions of the sheet (width / height / width); rot = clockwise degrees; list order = stacking order
  *   op "fadd"  {sheet, side, id, cx?, cy?}   puts a picture on a side as a free item (half the sheet big, at cx / cy or near the centre; added to the end = on top)
  *   op "tofree"                    turns the grid placement into free items and sets spec.free; "togrid" clears spec.free (free items stay in the plan, unused)
@@ -62,7 +62,10 @@ object PsLayoutJson {
             flip = if (o.optString("flip").lowercase() == "short") SheetLayout.Flip.SHORT else SheetLayout.Flip.LONG,
             autoRot = o.optBoolean("autoRot", d.autoRot),
             reverse = o.optBoolean("reverse", d.reverse),
-            free = o.optBoolean("free", d.free)
+            free = o.optBoolean("free", d.free),
+            safe = num(o, "safe", d.safe),
+            keep = o.optBoolean("keep", d.keep),
+            keepGap = num(o, "keepGap", d.keepGap)
         )
     }
 
@@ -72,7 +75,7 @@ object PsLayoutJson {
         .put("cols", s.grid.cols).put("rows", s.grid.rows)
         .put("margin", s.margin).put("gap", s.gap)
         .put("fit", s.fit.name.lowercase()).put("flip", s.flip.name.lowercase())
-        .put("autoRot", s.autoRot).put("reverse", s.reverse).put("free", s.free)
+        .put("autoRot", s.autoRot).put("reverse", s.reverse).put("free", s.free).put("safe", s.safe).put("keep", s.keep).put("keepGap", s.keepGap)
 
     private fun freeList(a: JSONArray?, idx: Map<String, Int>): List<SheetLayout.Free> {
         val out = ArrayList<SheetLayout.Free>()
@@ -227,7 +230,7 @@ object PsLayoutJson {
             }
             "rmsheet" -> plan = SheetLayout.removeSheet(plan, b.getInt("sheet"))
             "trim" -> plan = SheetLayout.trim(plan)
-            "fset" -> plan = SheetLayout.setFree(plan, spec, b.getInt("sheet"), sideOf(b.optString("side")), freeList(b.optJSONArray("items"), idx))
+            "fset" -> plan = SheetLayout.setFree(plan, spec, b.getInt("sheet"), sideOf(b.optString("side")), freeList(b.optJSONArray("items"), idx), sp)
             "fadd" -> plan = SheetLayout.addFree(plan, spec, sp, b.optInt("sheet", 0), sideOf(b.optString("side")), need(b.optString("id")),
                 if (b.has("cx")) num(b, "cx", 0.5) else null, if (b.has("cy")) num(b, "cy", 0.5) else null)
             "tofree" -> {

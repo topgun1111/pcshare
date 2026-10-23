@@ -19,6 +19,8 @@ object Ipp {
         val ok: Boolean get() = status < 0x100
         fun strs(n: String): List<String> = attrs[n]?.map { String(it.v, Charsets.UTF_8) } ?: emptyList()
         fun int(n: String): Int? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int }
+        /** every 4-byte integer value of the attribute (e.g. media-left-margin-supported: 1/100 mm values) */
+        fun ints(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 4 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
         fun bool(n: String): Boolean? = attrs[n]?.firstOrNull()?.v?.takeIf { it.size == 1 }?.let { it[0].toInt() != 0 }
         /** resolution values (9 bytes: x, y, unit) -> the x dpi of each */
         /** collection values (media-col-ready ...) flattened: one map per value, nested members as "media-size.x-dimension" */
@@ -74,7 +76,8 @@ object Ipp {
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
             "media-ready", "media-default", "media-supported", "media-source-supported", "media-col-ready", "printer-input-tray", "media-type-supported",
-            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back"))
+            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back",
+            "media-left-margin-supported", "media-right-margin-supported", "media-top-margin-supported", "media-bottom-margin-supported"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
 

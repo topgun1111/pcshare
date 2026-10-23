@@ -31,6 +31,7 @@ object WifiPrinters {
         @Volatile var trays: List<Tray> = emptyList()              // paper trays the printer reports (media-source-supported / media-col-ready / printer-input-tray)
         @Volatile var rasterDpi: List<Int> = emptyList()          // resolutions of image/pwg-raster the printer takes
         @Volatile var sheetBack: String = "normal"                // pwg-raster-document-sheet-back: normal / flipped / rotated / manual-tumble
+        @Volatile var margins: DoubleArray? = null                // part 14c: unprintable strip [left, top, right, bottom] in pt from media-*-margin-supported; null = the printer does not say
     }
 
     /** One paper source of the printer. [id] = the media-source keyword sent with the job; [dim] = size of the paper in it in 1/100 mm; [loaded] null = the printer does not say. */
@@ -333,6 +334,21 @@ object WifiPrinters {
         return a
     }
 
+    /**
+     * Part 14c: the strip along each paper edge the printer cannot print, in pt, from media-left / right / top / bottom-margin-supported (1/100 mm lists).
+     * 0 in the list only means "borderless possible" for special jobs, so per edge the smallest NON-ZERO value is taken (the printer's normal border);
+     * a list with only zeros = 0; a missing list on all four edges = null (not reported). [l, t, r, b].
+     */
+    fun marginsOf(r: Ipp.Resp): DoubleArray? {
+        val names = listOf("media-left-margin-supported", "media-top-margin-supported", "media-right-margin-supported", "media-bottom-margin-supported")
+        if (names.all { r.ints(it).isEmpty() }) return null
+        return DoubleArray(4) { i ->
+            val l = r.ints(names[i]).filter { it >= 0 }
+            val v = l.filter { it > 0 }.minOrNull() ?: 0
+            v / 100.0 * 72.0 / 25.4
+        }
+    }
+
     /** Same shape as the PC print service's /ping answer (ok, printer, problem), so the existing UI can show it. */
     fun status(id: String): JSONObject {
         val p = get(id) ?: return JSONObject().put("ok", false).put("why", "printer not found")
@@ -347,13 +363,17 @@ object WifiPrinters {
             p.trays = trays(r, p.mediaSupported)
             p.rasterDpi = r.dpis("pwg-raster-document-resolution-supported")
             p.sheetBack = r.strs("pwg-raster-document-sheet-back").firstOrNull() ?: "normal"
+            p.margins = marginsOf(r)
             val reasons = r.strs("printer-state-reasons").filter { it != "none" }
             val problems = ArrayList<String>()
             if (r.int("printer-state") == 5) problems.add("stopped")
             if (r.bool("printer-is-accepting-jobs") == false) problems.add("not accepting jobs")
             reasons.filter { it.endsWith("-error") }.forEach { problems.add(it.removeSuffix("-error").replace('-', ' ')) }
+            val mg = p.margins
             JSONObject().put("ok", true).put("wifi", true)
                 .put("printer", p.name)
+                .put("hard", if (mg == null) 0.0 else Math.min(36.0, Math.ceil(mg.max() * 2) / 2.0))   // same key / unit (pt) as the PC's /ping answer
+                .put("margins", if (mg == null) JSONObject.NULL else JSONObject().put("l", mg[0]).put("t", mg[1]).put("r", mg[2]).put("b", mg[3]))
                 .put("problem", if (problems.isEmpty()) JSONObject.NULL else problems.distinct().joinToString(", "))
                 .put("printers", JSONArray())
                 .put("trays", JSONArray().also { ta -> p.trays.forEach { t -> ta.put(JSONObject().put("id", t.id).put("name", t.name).put("size", t.size).put("type", t.type)

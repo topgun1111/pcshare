@@ -67,7 +67,13 @@ object SheetLayout {
         val autoRot: Boolean = true,
         val reverse: Boolean = false,
         /** Free placement: the grid is ignored and every side carries [Free] items placed anywhere (move / turn / scale). */
-        val free: Boolean = false
+        val free: Boolean = false,
+        /** Part 14a: printer safe margin in pt (the strip along every paper edge a printer cannot print). Free placement keeps pictures inside it (the editor clamps; 14c repeats the clamp here). 0 = off. */
+        val safe: Double = 14.0,
+        /** Part 14b: free placement keeps the pictures of one side apart (no overlap). The page enforces it while editing; 14c repeats it here. */
+        val keep: Boolean = true,
+        /** Part 14b: clear space between two pictures in pt (0-40) when [keep] is on. */
+        val keepGap: Double = 6.0
     ) {
         companion object {
             fun preset(n: Int): Grid = PRESETS[n] ?: Grid(1, 1)
@@ -78,7 +84,7 @@ object SheetLayout {
      * Free placement: one picture put anywhere on a side. Fractions of the sheet so the layout survives a paper change:
      * [cx] / [cy] = centre as a fraction of the sheet width / height, [w] = drawn width of the UNTURNED picture as a fraction of the sheet
      * width (height follows the picture's proportions), [rot] = extra clockwise turn in degrees (any value, on top of the picture's own turn).
-     * The order of a list is the stacking order (last = on top). Pictures may overlap and hang over the edge (they are clipped by the sheet).
+     * The order of a list is the stacking order (last = on top). Part 14c: the server keeps them inside the safe rectangle ([clampFree]) and, with Keep apart on, apart ([freeHit]).
      */
     data class Free(val pic: Int, val cx: Double, val cy: Double, val w: Double, val rot: Double = 0.0)
 
@@ -128,11 +134,13 @@ object SheetLayout {
 
     // ---------------------------------------------------------------- spec
 
-    /** Clamps everything to safe values (margin 0-72 pt, gap 0-40 pt, grid 1-8 per axis). */
+    /** Clamps everything to safe values (margin 0-72 pt, gap 0-40 pt, safe 0-72 pt, grid 1-8 per axis). */
     fun clean(s: Spec): Spec = s.copy(
         grid = Grid(s.grid.cols.coerceIn(1, MAX_AXIS), s.grid.rows.coerceIn(1, MAX_AXIS)),
         margin = s.margin.coerceIn(0.0, 72.0),
-        gap = s.gap.coerceIn(0.0, 40.0)
+        gap = s.gap.coerceIn(0.0, 40.0),
+        safe = s.safe.coerceIn(0.0, 72.0),
+        keepGap = s.keepGap.coerceIn(0.0, 40.0)
     )
 
     fun gridFor(s: Spec, portrait: Boolean): Grid = if (portrait) s.grid else s.grid.turned()
@@ -401,11 +409,224 @@ object SheetLayout {
         return FreeCell(f.pic, f.cx.coerceIn(-1.0, 2.0) * sw, f.cy.coerceIn(-1.0, 2.0) * sh, dw, dh, (norm(p.rot) + f.rot) % 360.0)
     }
 
-    /** Replaces the free items of one side (the editor sends the whole side after a gesture). Sheets are added when [sheet] is the next one. */
-    fun setFree(plan: Plan, spec: Spec, sheet: Int, side: Side, items: List<Free>): Plan {
+    // ------------------------------------------------------------------ part 14c: safe margin + keep apart (mirrors fClamp / fHit / fSpot / fPack in ui.html)
+
+    /** Safe rectangle as fractions of the sheet [l, r, t, b]: the paper edge minus [safe] pt, never narrower than 10 % of the sheet (same as fSafeR). */
+    fun safeRect(safe: Double, sw: Double, sh: Double): DoubleArray {
+        val s = max(0.0, safe)
+        val px = min(0.45, s / sw)
+        val py = min(0.45, s / sh)
+        return doubleArrayOf(px, 1 - px, py, 1 - py)
+    }
+
+    /** Aspect of the drawing (height / width), same as FreeCell.dh / dw. */
+    private fun aspect(p: Pic): Double = max(1, p.h).toDouble() / max(1, p.w).toDouble()
+
+    /** Turned bounding box of a free item as fractions of the sheet [bw, bh] (fBox). */
+    fun freeBox(f: Free, p: Pic, sw: Double, sh: Double): DoubleArray {
+        val t = Math.toRadians(norm(p.rot) + f.rot)
+        val c = Math.abs(Math.cos(t))
+        val s2 = Math.abs(Math.sin(t))
+        val dw = f.w * sw
+        val dh = dw * aspect(p)
+        return doubleArrayOf((c * dw + s2 * dh) / sw, (s2 * dw + c * dh) / sh)
+    }
+
+    /** Puts the TURNED box of [f] into the safe rectangle: shrinks first (shape kept, width >= FREE_MIN_W), then moves. Idempotent (same maths as fClamp). */
+    fun clampFree(f0: Free, p: Pic, sw: Double, sh: Double, safe: Double): Free {
+        val r = safeRect(safe, sw, sh)
+        var f = f0.copy(w = f0.w.coerceIn(FREE_MIN_W, FREE_MAX_W), cx = if (f0.cx.isFinite()) f0.cx else 0.5, cy = if (f0.cy.isFinite()) f0.cy else 0.5)
+        var b = freeBox(f, p, sw, sh)
+        val k = min(1.0, min((r[1] - r[0]) / max(b[0], 1e-9), (r[3] - r[2]) / max(b[1], 1e-9)))
+        if (k < 1) {
+            f = f.copy(w = max(FREE_MIN_W, f.w * k))
+            b = freeBox(f, p, sw, sh)
+        }
+        val cx = if (b[0] >= r[1] - r[0]) (r[0] + r[1]) / 2 else min(r[1] - b[0] / 2, max(r[0] + b[0] / 2, f.cx))
+        val cy = if (b[1] >= r[3] - r[2]) (r[2] + r[3]) / 2 else min(r[3] - b[1] / 2, max(r[2] + b[1] / 2, f.cy))
+        return f.copy(cx = cx, cy = cy)
+    }
+
+    /** The 4 corners (tl, tr, br, bl) of the turned picture in pt. */
+    fun freePoly(f: Free, p: Pic, sw: Double, sh: Double): Array<DoubleArray> {
+        val th = Math.toRadians(norm(p.rot) + f.rot)
+        val c = Math.cos(th)
+        val s = Math.sin(th)
+        val dw = f.w * sw
+        val dh = dw * aspect(p)
+        val out = Array(4) { DoubleArray(2) }
+        for (i in 0 until 4) {
+            val x = (if (i == 1 || i == 2) 1 else -1) * dw / 2
+            val y = (if (i >= 2) 1 else -1) * dh / 2
+            out[i][0] = f.cx * sw + x * c - y * s
+            out[i][1] = f.cy * sh + x * s + y * c
+        }
+        return out
+    }
+
+    private fun separate(a: Array<DoubleArray>, b: Array<DoubleArray>, slack: Double): Boolean {
+        for (poly in arrayOf(a, b)) for (i in 0 until 2) {
+            val p = poly[i]
+            val q = poly[i + 1]
+            val ex = q[0] - p[0]
+            val ey = q[1] - p[1]
+            val l = Math.hypot(ex, ey).let { if (it == 0.0) 1.0 else it }
+            val nx = -ey / l
+            val ny = ex / l
+            var a0 = 1e18; var a1 = -1e18; var b0 = 1e18; var b1 = -1e18
+            for (c in a) { val v = c[0] * nx + c[1] * ny; if (v < a0) a0 = v; if (v > a1) a1 = v }
+            for (c in b) { val v = c[0] * nx + c[1] * ny; if (v < b0) b0 = v; if (v > b1) b1 = v }
+            if (b0 - a1 >= -1e-6 - slack || a0 - b1 >= -1e-6 - slack) return true   // touching counts as separate
+        }
+        return false
+    }
+
+    private fun distSeg(p: DoubleArray, a: DoubleArray, b: DoubleArray): Double {
+        val dx = b[0] - a[0]
+        val dy = b[1] - a[1]
+        val l2 = dx * dx + dy * dy
+        val t = if (l2 != 0.0) max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) else 0.0
+        return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
+    }
+
+    private fun polyDist(a: Array<DoubleArray>, b: Array<DoubleArray>): Double {
+        var d = 1e18
+        for (i in 0 until 4) for (j in 0 until 4) d = min(d, min(distSeg(a[i], b[j], b[(j + 1) % 4]), distSeg(b[j], a[i], a[(i + 1) % 4])))
+        return d
+    }
+
+    /**
+     * True when the two turned pictures overlap or are closer than [gap] pt (touching with gap 0 is allowed). Same as fHit; [slack] (pt) makes it
+     * forgiving: the page computes in screen pixels, so the wire check (setFree) uses a little slack and never refuses a state the page called legal.
+     */
+    fun freeHit(f: Free, pf: Pic, g: Free, pg: Pic, sw: Double, sh: Double, gap: Double, slack: Double = 0.0): Boolean {
+        val d1 = Math.hypot(f.w * sw, f.w * aspect(pf) * sw) / 2
+        val d2 = Math.hypot(g.w * sw, g.w * aspect(pg) * sw) / 2
+        if (Math.hypot((f.cx - g.cx) * sw, (f.cy - g.cy) * sh) > d1 + d2 + gap + 1e-6) return false   // far apart (no slack needed: the bound is generous)
+        val a = freePoly(f, pf, sw, sh)
+        val b = freePoly(g, pg, sw, sh)
+        return !separate(a, b, slack) || polyDist(a, b) < gap - 1e-6 - slack
+    }
+
+    /** Index pairs (i < j) of items of one side that overlap or are closer than [gap]; items whose picture is unknown are ignored. */
+    fun freePairs(l: List<Free>, pics: List<Pic>, sw: Double, sh: Double, gap: Double, slack: Double = 0.0): Set<Long> {
+        val out = HashSet<Long>()
+        for (i in l.indices) {
+            val pi = pics.getOrNull(l[i].pic) ?: continue
+            for (j in i + 1 until l.size) {
+                val pj = pics.getOrNull(l[j].pic) ?: continue
+                if (freeHit(l[i], pi, l[j], pj, sw, sh, gap, slack)) out.add(i.toLong() * 100000L + j)
+            }
+        }
+        return out
+    }
+
+    private fun anyHit(others: List<Free>, f: Free, p: Pic, pics: List<Pic>, sw: Double, sh: Double, gap: Double): Boolean {
+        for (g in others) {
+            val pg = pics.getOrNull(g.pic) ?: continue
+            if (freeHit(f, p, g, pg, sw, sh, gap)) return true
+        }
+        return false
+    }
+
+    /**
+     * First free place for [f] among [others] inside the safe rectangle: the biggest size (down to 6 % of f.w) that has a legal position,
+     * nearest to ([tx], [ty]) (fractions). null = no room. Same search as fSpot.
+     */
+    fun freeSpot(others: List<Free>, f: Free, p: Pic, pics: List<Pic>, sw: Double, sh: Double, safe: Double, gap: Double, tx: Double, ty: Double): Free? {
+        val r = safeRect(safe, sw, sh)
+        var k = 1.0
+        while (k >= 0.06) {
+            val g0 = f.copy(w = (f.w * k).coerceIn(FREE_MIN_W, FREE_MAX_W))
+            val b = freeBox(g0, p, sw, sh)
+            val hx = b[0] / 2
+            val hy = b[1] / 2
+            if (!(hx * 2 > r[1] - r[0] + 1e-9 || hy * 2 > r[3] - r[2] + 1e-9)) {
+                val x0 = r[0] + hx; val x1 = r[1] - hx; val y0 = r[2] + hy; val y1 = r[3] - hy
+                val nx = max(1, Math.ceil((x1 - x0) / 0.02).toInt())
+                val ny = max(1, Math.ceil((y1 - y0) / 0.02).toInt())
+                val cand = ArrayList<DoubleArray>()
+                for (i in 0..nx) for (j in 0..ny) {
+                    val cx = x0 + (x1 - x0) * i / nx
+                    val cy = y0 + (y1 - y0) * j / ny
+                    cand.add(doubleArrayOf(cx, cy, (cx - tx) * (cx - tx) + (cy - ty) * (cy - ty)))
+                }
+                cand.sortBy { it[2] }
+                for (c in cand) {
+                    val g = g0.copy(cx = c[0], cy = c[1])
+                    if (!anyHit(others, g, p, pics, sw, sh, gap)) return g
+                }
+            }
+            k *= 0.85
+        }
+        return null
+    }
+
+    /**
+     * Spreads the items of one side apart: shelf packing of the turned boxes inside the safe rectangle, all pictures shrunk by ONE common factor
+     * until it fits (turn and shape kept), like fPack. null = does not fit.
+     */
+    fun packFree(l: List<Free>, pics: List<Pic>, sw: Double, sh: Double, safe: Double, gap: Double): List<Free>? {
+        if (l.isEmpty()) return l
+        if (l.any { pics.getOrNull(it.pic) == null }) return null
+        val r = safeRect(safe, sw, sh)
+        var s = 1.0
+        while (s > 0.03) {
+            val ws = l.map { max(FREE_MIN_W, it.w * s) }
+            val bw = DoubleArray(l.size)
+            val bh = DoubleArray(l.size)
+            l.forEachIndexed { i, f -> val b = freeBox(f.copy(w = ws[i]), pics[f.pic], sw, sh); bw[i] = b[0] * sw; bh[i] = b[1] * sh }
+            val order = l.indices.sortedByDescending { bh[it] }
+            val pos = arrayOfNulls<Free>(l.size)
+            val xl = r[0] * sw; val xr = r[1] * sw; val yt = r[2] * sh; val yb = r[3] * sh
+            var x = xl; var y = yt; var rh = 0.0
+            var ok = true
+            for (i in order) {
+                if (bw[i] > xr - xl + 1e-6) { ok = false; break }
+                if (x + bw[i] > xr + 1e-6) { x = xl; y += rh + gap; rh = 0.0 }
+                if (y + bh[i] > yb + 1e-6) { ok = false; break }
+                pos[i] = l[i].copy(w = ws[i], cx = (x + bw[i] / 2) / sw, cy = (y + bh[i] / 2) / sh)
+                x += bw[i] + gap
+                rh = max(rh, bh[i])
+            }
+            if (ok) return pos.map { it!! }
+            s *= 0.93
+        }
+        return null
+    }
+
+    private fun sheetWH(plan: Plan, spec: Spec): DoubleArray {
+        val pp = paper(clean(spec).paper)
+        return if (plan.portrait) doubleArrayOf(pp.w, pp.h) else doubleArrayOf(pp.h, pp.w)
+    }
+
+    /** pt of tolerance for the keep-apart check of a request from the page (0.05 pt = 0.02 mm). */
+    const val WIRE_SLACK = 0.05
+
+    /** keep apart is on: free placement AND spec.keep. */
+    fun keepOn(spec: Spec): Boolean = spec.free && spec.keep
+
+    /**
+     * Replaces the free items of one side (the editor sends the whole side after a gesture). Sheets are added when [sheet] is the next one.
+     * Part 14c: with [pics] every item is put into the safe rectangle (a hand-made request or an old plan cannot reach the strip the printer cannot print),
+     * and with Keep apart on a side that has a pair overlapping NOW that did not overlap in the stored side is refused ("Pictures overlap").
+     * Pairs that already overlapped (old layouts) are tolerated so they can be moved apart. Items of unknown pictures are kept as sent.
+     */
+    fun setFree(plan: Plan, spec: Spec, sheet: Int, side: Side, items: List<Free>, pics: List<Pic> = emptyList()): Plan {
         if (sheet !in plan.sheets.indices) return plan
+        val s = clean(spec)
+        val wh = sheetWH(plan, s)
+        val list = items.take(MAX_FREE).map { f ->
+            val p = pics.getOrNull(f.pic)
+            if (p == null) f else clampFree(f, p, wh[0], wh[1], s.safe)
+        }
+        if (keepOn(s) && pics.isNotEmpty()) {
+            val before = freePairs(plan.sheets[sheet].free(side), pics, wh[0], wh[1], s.keepGap, WIRE_SLACK)
+            val now = freePairs(list, pics, wh[0], wh[1], s.keepGap, WIRE_SLACK)
+            if (now.any { it !in before }) throw IllegalArgumentException("Pictures overlap (Keep apart is on)")
+        }
         val l = plan.sheets.toMutableList()
-        l[sheet] = l[sheet].withFree(side, items.take(MAX_FREE))
+        l[sheet] = l[sheet].withFree(side, list)
         return plan.copy(sheets = l)
     }
 
@@ -430,8 +651,15 @@ object SheetLayout {
         val k = min(0.5 * sw / fw, 0.5 * sh / fh).coerceIn(FREE_MIN_W, FREE_MAX_W)
         val cur = plan.sheets[sheet].free(side)
         val off = 0.04 * (cur.size % 5)
-        val it = Free(pic, cx ?: (0.5 + off - 0.08), cy ?: (0.5 + off - 0.08), k, 0.0)
-        return setFree(plan, spec, sheet, side, cur + it)
+        val tx = cx ?: (0.5 + off - 0.08)
+        val ty = cy ?: (0.5 + off - 0.08)
+        var it = clampFree(Free(pic, tx, ty, k, 0.0), p, sw, sh, clean(spec).safe)
+        // part 14c: Keep apart - the first free place (as big as fits, nearest to the wanted spot); no room = refused
+        if (keepOn(clean(spec)) && anyHit(cur, it, p, pics, sw, sh, clean(spec).keepGap)) {
+            it = freeSpot(cur, it, p, pics, sw, sh, clean(spec).safe, clean(spec).keepGap, it.cx, it.cy)
+                ?: throw IllegalArgumentException("No room on this side for another picture")
+        }
+        return setFree(plan, spec, sheet, side, cur + it, pics)
     }
 
     /**
@@ -454,7 +682,15 @@ object SheetLayout {
             }
             sh.copy(ff = conv(Side.FRONT), fb = conv(Side.BACK))
         }
-        return plan.copy(sheets = sheets)
+        // part 14c: a grid margin smaller than the safe margin is pulled in; with Keep apart on, a side that touches / overlaps afterwards is packed
+        val sp = clean(spec0)
+        val wh = sheetWH(plan, sp)
+        fun fix(l: List<Free>): List<Free> {
+            val c = l.map { f -> pics.getOrNull(f.pic)?.let { clampFree(f, it, wh[0], wh[1], sp.safe) } ?: f }
+            if (!sp.keep || c.size < 2 || freePairs(c, pics, wh[0], wh[1], sp.keepGap).isEmpty()) return c
+            return packFree(c, pics, wh[0], wh[1], sp.safe, sp.keepGap) ?: c
+        }
+        return plan.copy(sheets = sheets.map { it.copy(ff = fix(it.ff), fb = fix(it.fb)) })
     }
 
     private fun chooseOrient(s: Spec, pics: List<Pic>, seq: List<Int>): Boolean {

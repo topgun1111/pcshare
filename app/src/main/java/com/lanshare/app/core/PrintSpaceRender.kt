@@ -166,7 +166,11 @@ object PrintSpaceRender {
             cv.drawBitmap(bmp, null, RectF(-d.dw / 2, -d.dh / 2, d.dw / 2, d.dh / 2), paint)
             cv.restore()
         }
-        // free placement (spec.free): no clip to a slot, any turn; the sheet / PDF page clips what hangs over the edge
+        // free placement (spec.free): no clip to a slot, any turn. Part 14c: last resort - nothing is drawn into the strip the printer cannot
+        // print (spec.safe), even when a plan that never went through setFree (old saved layout) still has a picture there; the page clamps, this clips.
+        val lay = p.res.layout
+        val spec = SheetLayout.clean(p.res.spec)
+        val safeClip: DoubleArray? = if (spec.free && spec.safe > 0.0 && page.free.isNotEmpty()) SheetLayout.safeRect(spec.safe, lay.sw, lay.sh) else null
         for (f in page.free) {
             val pic = p.res.pics.getOrNull(f.pic) ?: continue
             val vp = p.paths[pic.id] ?: throw NotFound("A picture was removed from the print space - open Layout again")
@@ -174,6 +178,7 @@ object PrintSpaceRender {
             val dh = maxOf(1.0, f.dh)
             val bmp = pool.get(pic.id, Core.local.real(vp), PsRenderGeom.needPx(dw, dh, pxPerPt))
             cv.save()
+            if (safeClip != null) cv.clipRect((safeClip[0] * lay.sw).toFloat(), (safeClip[2] * lay.sh).toFloat(), (safeClip[1] * lay.sw).toFloat(), (safeClip[3] * lay.sh).toFloat())
             cv.translate(f.cx.toFloat(), f.cy.toFloat())
             if (f.rot % 360.0 != 0.0) cv.rotate(f.rot.toFloat())
             cv.drawBitmap(bmp, null, RectF((-dw / 2).toFloat(), (-dh / 2).toFloat(), (dw / 2).toFloat(), (dh / 2).toFloat()), paint)
