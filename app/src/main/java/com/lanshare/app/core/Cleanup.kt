@@ -13,6 +13,7 @@ import java.util.Locale
  *  - shots: screenshots + screen recordings older than 30 days (top 100)
  *  - chat: WhatsApp / Telegram media older than 90 days and >= 256 KB, also under Android/media (top 100)
  *  - reclaim: bytes of junk + old + apk + shots + chat, every file counted once (big files are NOT in it)
+ *  - appcache: LANShare's own regenerable caches (thumbnails, FTP listings, temp copies) as {count, bytes, groups[]}; cleared by `POST /api/cleanup {op: clearcache}`
  *  - bin: Recycle bin items + bytes   - free / total of the storage volume
  * `GET /api/cleanup` -> {running, scanned, error, result}; `POST /api/cleanup {op: start | cancel}`.
  */
@@ -22,6 +23,7 @@ object Cleanup {
     private const val OLD_MIN = 1L * 1024 * 1024
     private const val DAY = 24L * 3600 * 1000
     private const val CHAT_MIN = 256L * 1024
+    private const val HOUR = 3600L * 1000
     private val APK = setOf("apk", "xapk", "apks", "apkm")
     private val JUNK_EXT = setOf("tmp", "temp", "log", "bak", "old", "chk", "dmp", "crdownload", "download", "opdownload")
     private val JUNK_NAMES = setOf("thumbs.db", "desktop.ini", ".ds_store", ".nomedia.bak")
@@ -53,6 +55,56 @@ object Cleanup {
         .put("error", err ?: JSONObject.NULL).put("result", result ?: JSONObject.NULL)
 
     fun cancel() { cancel = true }
+
+    // ---- LANShare's own caches: everything here is rebuilt on demand, nothing is user data ----
+    private class CGroup(val key: String, val label: String, val roots: List<File>, val minAgeMs: Long)
+
+    private fun cacheGroups(): List<CGroup> {
+        val g = ArrayList<CGroup>()
+        val fd = Cfg.dir
+        if (fd != null) {
+            g.add(CGroup("thumbs", "Picture and video thumbnails", listOf("thumbcache", "vthumbcache", "rthumbcache").map { File(fd, it) }, 0L))
+            g.add(CGroup("ftp", "Remote folder listings (FTP / SFTP)", listOf(File(fd, "ftpcache")), 0L))
+        }
+        val cd = try { Core.appCtx?.cacheDir } catch (_: Throwable) { null }
+        if (cd != null) {
+            // only our own temp folders (never the WebView cache); files younger than an hour may still be in use
+            val names = setOf("office", "office-undo", "open", "subs", "print", "pdf", "pdfc", "img", "ocr", "sscan", "arc")
+            val roots = (cd.listFiles() ?: emptyArray()).filter { it.name in names || it.name.startsWith("new-") }
+            g.add(CGroup("temp", "Temporary copies and scan caches", roots, HOUR))
+        }
+        return g
+    }
+
+    private fun appCacheJson(): JSONObject {
+        val now = System.currentTimeMillis()
+        var n = 0; var b = 0L
+        val arr = JSONArray()
+        for (c in cacheGroups()) {
+            var gn = 0; var gb = 0L
+            for (r in c.roots) try { r.walkTopDown().forEach { f -> if (f.isFile && now - f.lastModified() >= c.minAgeMs) { gn++; gb += f.length() } } } catch (_: Exception) {}
+            n += gn; b += gb
+            arr.put(JSONObject().put("key", c.key).put("label", c.label).put("count", gn).put("bytes", gb))
+        }
+        return JSONObject().put("count", n).put("bytes", b).put("groups", arr)
+    }
+
+    /** Deletes the caches above; returns {freed, appcache} (appcache = the sizes that are left). */
+    fun clearAppCache(): JSONObject {
+        val before = appCacheJson().optLong("bytes")
+        val now = System.currentTimeMillis()
+        for (c in cacheGroups()) {
+            if (c.key == "ftp") try { FtpCache.clearAll() } catch (_: Throwable) {}   // memory + disk
+            for (r in c.roots) try {
+                r.walkBottomUp().forEach { f ->
+                    if (f.isFile) { if (now - f.lastModified() >= c.minAgeMs) f.delete() }
+                    else if (f != r) f.delete()   // a folder only goes when it is empty
+                }
+            } catch (_: Exception) {}
+        }
+        val after = appCacheJson()
+        return JSONObject().put("freed", maxOf(0L, before - after.optLong("bytes"))).put("appcache", after)
+    }
 
     fun start() {
         synchronized(this) {
@@ -123,6 +175,7 @@ object Cleanup {
         return JSONObject()
             .put("free", root.freeSpace).put("total", root.totalSpace)
             .put("bin", JSONObject().put("items", binN).put("bytes", binB))
+            .put("appcache", appCacheJson())
             .put("reclaim", JSONObject().put("count", reclaimN).put("bytes", reclaimB))
             .put("big", big.json()).put("old", old.json()).put("apk", apk.json())
             .put("junk", junk.json()).put("shots", shots.json()).put("chat", chat.json())

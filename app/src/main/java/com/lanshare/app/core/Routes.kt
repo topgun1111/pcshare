@@ -344,7 +344,11 @@ object Routes {
                 "similar" -> ImgSearch.similar(b.optJSONArray("paths").strings(), b.optString("dir", ""))   // few-shot: more pictures like the selected ones
                 else -> throw BadReq("unknown op")
             })
-            "cleanup" -> ex.json(if (b.optString("op") == "cancel") { Cleanup.cancel(); Cleanup.status() } else { Cleanup.start(); Cleanup.status() })
+            "cleanup" -> ex.json(when (b.optString("op")) {
+                "cancel" -> { Cleanup.cancel(); Cleanup.status() }
+                "clearcache" -> Cleanup.clearAppCache()   // LANShare's own caches (thumbnails, FTP listings, temp copies)
+                else -> { Cleanup.start(); Cleanup.status() }
+            })
             "merge" -> ex.json(JSONObject().put("job", AlbumMerge.start(b.getString("target"), b.getJSONArray("paths").strings(), b.optBoolean("skipSimilar", false))))   // gallery: merge the selected albums into "target"
             "dups" -> ex.json(JSONObject().put("job", DupFinder.start(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("similar"))))
             "zip" -> ex.json(JSONObject().put("job", Jobs.startZip(b.getString("dev"), b.getJSONArray("paths").strings(),

@@ -3928,10 +3928,26 @@ async function openFreeUp(){
       setTimeout(()=>{if(live())start()},2500)};
     row.append(op,em);hero.append(row);body.append(hero);card.append(body)}
 
+  // ---------- LANShare's own cache page
+  function drawCache(){
+    card.textContent='';
+    card.append(topbar('LANShare cache',()=>{view=null;draw()}));
+    const ac=R.appcache||{bytes:0,count:0,groups:[]},body=E('div','fb'),hero=E('div','fhero');
+    hero.append(E('b','',fmt(ac.bytes)),Object.assign(E('span'),{textContent:'Thumbnails, saved folder listings and temporary copies the app made for itself. Your own files are never touched. The app rebuilds what it needs, so the first visit to a big folder may be a little slower.',style:'color:var(--mut);font-size:14px'}));
+    const cl=E('button','tbtn fill','Clear cache \u00b7 '+fmt(ac.bytes));cl.style.alignSelf='flex-start';cl.disabled=!ac.bytes;cl.style.opacity=ac.bytes?1:.5;
+    cl.onclick=async()=>{cl.disabled=true;cl.textContent='Clearing\u2026';
+      try{const r=await api('POST','/api/cleanup',{op:'clearcache'},120000);R.appcache=r.appcache;toast('Freed '+fmt(r.freed),2500)}catch(e){toast('\u26a0 '+e.message,5000)}
+      if(live())draw()};
+    hero.append(cl);body.append(hero);
+    (ac.groups||[]).forEach(g=>{const r=E('div','fcat'),t=E('div','fct');t.append(E('b','',g.label),E('small','',plural(g.count,'file')));
+      r.append(t,Object.assign(E('span','fcs'),{textContent:fmt(g.bytes)}));r.style.minHeight='56px';body.append(r)});
+    card.append(body)}
+
   // ---------- category list (home)
   function draw(){
     if(!R){drawHome();return}
     if(view==='bin')return drawBin();
+    if(view==='cache')return drawCache();
     const c=CATS.find(x=>x.k===view);if(c)return drawCat(c);
     drawHome()}
   function drawHome(){
@@ -3939,7 +3955,7 @@ async function openFreeUp(){
     card.append(topbar('Free up space'));
     const body=E('div','fb');card.append(body);
     if(!R){body.append(Object.assign(E('div','fempty'),{textContent:busy}));return}
-    const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes,used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
+    const rc=(R.reclaim?R.reclaim.bytes:0)+R.bin.bytes+(R.appcache?R.appcache.bytes:0),used=Math.max(0,R.total-R.free),pc=R.total?Math.round(used*100/R.total):0;
     const hero=E('div','fhero'),bar=E('div','fbar'),fill=E('i');
     fill.style.width=pc+'%';if(R.total&&R.free/R.total<.1)fill.style.background='var(--err)';bar.append(fill);
     hero.append(Object.assign(E('small'),{textContent:'You can free up to',style:'color:var(--mut)'}),E('b','',fmt(rc)),bar,
@@ -3954,6 +3970,7 @@ async function openFreeUp(){
       t.append(E('b','',title),E('small','',subt));r.append(iconTile(ik),t);
       if(size)r.append(Object.assign(E('span','fcs'),{textContent:size}));r.append(cv);if(dim)r.style.opacity=.55;r.onclick=go;body.append(r)};
     CATS.forEach(c=>{const d=R[c.k];cat(c.i,c.t,d.count?plural(d.count,'file'):'Nothing found',d.bytes?fmt(d.bytes):'',()=>{view=c.k;sel=new Set();draw()},!d.count)});
+    if(R.appcache)cat('refresh','LANShare cache','Thumbnails and temporary copies the app can rebuild',R.appcache.bytes?fmt(R.appcache.bytes):'',()=>{view='cache';draw()},!R.appcache.bytes);
     cat('hist','Recycle bin',plural(R.bin.items,'item'),R.bin.bytes?fmt(R.bin.bytes):'',()=>{view='bin';draw()},!R.bin.items);
     body.append(E('div','fdiv'));
     cat('dup','Duplicate files','Identical copies in DCIM, Pictures and Download','',()=>doDups(['/DCIM','/Pictures','/Download'],false));
