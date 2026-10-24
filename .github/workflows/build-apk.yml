@@ -98,3 +98,45 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           files: ${{ steps.ver.outputs.apk }}
+
+  # Office core self-tests on the JVM (Parts 3-12). Separate job: it never blocks the APK build / release above,
+  # but a red mark here means a self-test printed FAIL or crashed. Log is attached as an artifact.
+  office-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Kotlin compiler 2.0.21
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kotlin.zip" https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q "$RUNNER_TEMP/kotlin.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
+      - name: Compile core/office + self-test
+        run: |
+          kotlinc app/src/main/java/com/lanshare/app/core/office/*.kt tools/office_selftest/Main.kt -include-runtime -d "$RUNNER_TEMP/ost.jar" 2>&1 | tee "$RUNNER_TEMP/compile.log"
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Run self-tests
+        run: |
+          D=tools/office_selftest
+          : > "$RUNNER_TEMP/selftest.log"
+          bad=0
+          for t in "" --docx --edit "--fonts $D app/src/main/assets/fonts/office" "--sections $D" "--printtest $D" "--float $D" "--styles $D" "--review $D" "--cf $D" "--chart $D" "--chart2 $D" "--nav $D"; do
+            echo "=== selftest [$t] ===" | tee -a "$RUNNER_TEMP/selftest.log"
+            java -jar "$RUNNER_TEMP/ost.jar" $t > "$RUNNER_TEMP/one.log" 2>&1; rc=$?
+            cat "$RUNNER_TEMP/one.log" >> "$RUNNER_TEMP/selftest.log"
+            if [ "$rc" -ne 0 ] || grep -q "^FAIL" "$RUNNER_TEMP/one.log"; then
+              bad=1
+              echo "::error title=Self-test failed [$t]::$(grep -m3 -E '^FAIL|Exception' "$RUNNER_TEMP/one.log" | tr '\n' ' ' | cut -c1-400)"
+            fi
+          done
+          tail -n 5 "$RUNNER_TEMP/selftest.log"
+          exit $bad
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: office-selftest-log
+          path: |
+            ${{ runner.temp }}/selftest.log
+            ${{ runner.temp }}/compile.log
+          if-no-files-found: ignore
