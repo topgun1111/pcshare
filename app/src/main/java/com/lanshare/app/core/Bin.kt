@@ -56,6 +56,7 @@ object Bin {
                 throw IOException(e.message + " (root move failed too: " + (r.err.trim().lines().lastOrNull { it.isNotBlank() } ?: "exit " + r.code).take(120) + ")")
             }
         }
+        IndexManager.changed(src)   // name index: the item left its folder (the bin folder itself is never indexed)
         progress?.invoke(src.name)
     }
 
@@ -93,6 +94,7 @@ object Bin {
         while (target.exists() || Core.local.isLink(target)) { target = File(parent, name.substring(0, dot) + " ($n)" + name.substring(dot)); n++ }
         if (!item.renameTo(target)) throw IOException("could not restore $name")
         box.deleteRecursively()
+        IndexManager.changed(target)   // name index: the item is back in its folder
         vjoin(parentV, target.name)
     }
 

@@ -44,6 +44,15 @@ class ScanState {
     fun cancel() { cancelled = true }
 }
 
+/**
+ * Modification time of a FOLDER as stored in the index (seconds). "Racy timestamp" rule (as in git): a folder changed during the current or previous second
+ * could still change again inside that same second without its time moving, so it is stored one second early and the next delta walk looks at it once more.
+ */
+fun dirStamp(f: File): Long {
+    val t = f.lastModified() / 1000
+    return if (t >= System.currentTimeMillis() / 1000 - 1) t - 1 else t
+}
+
 /** True when f is a symbolic link. nio where it exists (API 26+), canonical-path comparison otherwise (same idea as LocalFs.isLink). */
 fun defaultIsLink(f: File): Boolean {
     try { return java.nio.file.Files.isSymbolicLink(f.toPath()) } catch (_: Throwable) { }
@@ -71,7 +80,7 @@ class Walker(
     fun scanVolume(root: File): Int {
         var rid = idx.findRoot(root.path)
         if (rid == NameIndex.NONE) rid = idx.addRoot(root.path) else idx.removeChildren(rid)
-        idx.update(rid, 0L, root.lastModified() / 1000)
+        idx.update(rid, 0L, dirStamp(root))
         walk(root, rid, "")
         return rid
     }
@@ -79,7 +88,7 @@ class Walker(
     /** Re-reads one folder (and everything below): its old children are dropped first. [rel] = path of the folder below its volume root ("" for the root). */
     fun rescanDir(dirId: Int, dir: File, rel: String) {
         idx.removeChildren(dirId)
-        idx.update(dirId, 0L, dir.lastModified() / 1000)
+        idx.update(dirId, 0L, dirStamp(dir))
         walk(dir, dirId, rel)
     }
 
@@ -98,7 +107,7 @@ class Walker(
                 val act = rules.skip(k.path, rel, name, isDir)
                 if (act == Skip.OMIT) continue
                 if (isDir) {
-                    val id = idx.add(f.id, name, true, 0L, k.lastModified() / 1000)
+                    val id = idx.add(f.id, name, true, 0L, dirStamp(k))
                     state.dirs++
                     if (act == Skip.NONE && f.depth < MAX_DEPTH && !isLink(k)) stack.add(Frame(k, id, rel, f.depth + 1))
                 } else {

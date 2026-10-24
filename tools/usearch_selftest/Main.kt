@@ -491,10 +491,131 @@ fun perfTests() {
     println("info query [match path, path sort]: ${ps.total} hits in ${(System.nanoTime() - t3) / 1000000L} ms")
 }
 
+// ---------- Part 3: freshness (Delta, UserRules, HiddenFilter) ----------
+fun touchOld(f: File, secsAgo: Long = 100) { f.setLastModified(System.currentTimeMillis() - secsAgo * 1000) }
+
+fun deltaTests() {
+    val tmp = java.nio.file.Files.createTempDirectory("ustd").toFile()
+    try {
+        val root = File(tmp, "vol"); root.mkdirs()
+        File(mk(root, "A/sub"), "one.txt").writeText("1")
+        File(mk(root, "A/sub"), "two.txt").writeText("22")
+        File(mk(root, "B"), "keep.txt").writeText("k")
+        File(mk(root, "Docs"), "n.txt").writeText("n")
+        File(mk(root, ".LANShare Bin/x1"), "gone.txt").writeText("g")
+        File(mk(root, "Excl/deep"), "e.txt").writeText("e")
+        // make every folder old, so the racy-timestamp rule does not hide the effect of the changes below
+        root.walkTopDown().filter { it.isDirectory }.forEach { touchOld(it) }
+        val rules = UserRules(exclude = listOf(File(root, "Excl").path), omitNames = setOf(".thumbnails", ".cache", ".LANShare Bin"))
+        val ix = NameIndex(64)
+        Walker(ix, rules).scanVolume(root)
+        val p = { s: String -> root.path + "/" + s }
+        check("delta: bin folder and excluded folder are left out", ix.find(p(".LANShare Bin")) == NameIndex.NONE && ix.find(p("Excl")) == NameIndex.NONE)
+        check("delta: normal files are in", ix.find(p("A/sub/one.txt")) != NameIndex.NONE && ix.find(p("B/keep.txt")) != NameIndex.NONE)
+
+        // nothing changed: the delta walk touches no folder
+        var st = Delta.syncVolume(ix, root, rules)
+        eq("delta: unchanged tree -> 0 changed folders", st.dirsChanged, 0)
+        check("delta: unchanged tree -> folders were checked", st.dirsChecked >= 4)
+
+        // 1) new file in A/sub, deleted file, changed size: syncDir of the parent
+        File(File(root, "A/sub"), "three.txt").writeText("333")
+        File(File(root, "A/sub"), "one.txt").delete()
+        File(File(root, "A/sub"), "two.txt").writeText("22222222")
+        val before = ix.count()
+        check("syncDir reports a change", Delta.syncDir(ix, File(root, "A/sub"), rules))
+        check("syncDir: new file found", ix.find(p("A/sub/three.txt")) != NameIndex.NONE)
+        check("syncDir: deleted file gone", ix.find(p("A/sub/one.txt")) == NameIndex.NONE)
+        eq("syncDir: size updated", ix.sizeOf(ix.find(p("A/sub/two.txt"))), 8L)
+        eq("syncDir: count after +1 -1", ix.count(), before)
+        check("syncDir on an unchanged folder reports no change", !Delta.syncDir(ix, File(root, "A/sub"), rules))
+
+        // 2) rename a file and a folder, new nested folder with files
+        File(root, "B/keep.txt").renameTo(File(root, "B/kept.txt"))
+        File(root, "Docs").renameTo(File(root, "Papers"))
+        File(mk(root, "New/x/y"), "deep.txt").writeText("d")
+        File(mk(root, "New/x/y"), "deep2.txt").writeText("d")
+        for (d in listOf("B", "", "New")) touchOld(File(root, d), 50)   // folder times move on a real phone; make it explicit
+        touchOld(File(root, "Papers"), 50)
+        st = Delta.syncVolume(ix, root, rules)
+        check("delta walk: renamed file", ix.find(p("B/kept.txt")) != NameIndex.NONE && ix.find(p("B/keep.txt")) == NameIndex.NONE)
+        check("delta walk: renamed folder keeps its child", ix.find(p("Papers/n.txt")) != NameIndex.NONE && ix.find(p("Docs")) == NameIndex.NONE)
+        check("delta walk: new nested folders walked completely", ix.find(p("New/x/y/deep2.txt")) != NameIndex.NONE)
+        check("delta walk: some folders changed", st.dirsChanged >= 3)
+
+        // 3) delete a whole folder tree
+        File(root, "New").deleteRecursively()
+        touchOld(root, 20)
+        Delta.syncVolume(ix, root, rules)
+        check("delta walk: deleted tree removed", ix.find(p("New")) == NameIndex.NONE && ix.find(p("New/x/y/deep.txt")) == NameIndex.NONE)
+
+        // 4) file becomes a folder
+        File(root, "B/kept.txt").delete(); File(root, "B/kept.txt").mkdirs(); File(File(root, "B/kept.txt"), "in.txt").writeText("i")
+        Delta.syncDir(ix, File(root, "B"), rules)
+        check("syncDir: file turned into folder", ix.isDir(ix.find(p("B/kept.txt"))))
+        Delta.syncDir(ix, File(root, "B/kept.txt"), rules)
+        check("syncDir: folder content found", ix.find(p("B/kept.txt/in.txt")) != NameIndex.NONE)
+
+        // 5) syncDir on a path that is not indexed yet climbs to the nearest indexed folder
+        File(mk(root, "Late/a/b"), "z.txt").writeText("z")
+        Delta.syncDir(ix, File(root, "Late/a/b"), rules)
+        check("syncDir: unindexed folder found through its ancestor", ix.find(p("Late/a/b/z.txt")) != NameIndex.NONE)
+
+        // 6) excluded / bin content created later never enters
+        File(File(root, "Excl/deep"), "more.txt").writeText("m")
+        File(File(root, ".LANShare Bin/x1"), "more.txt").writeText("m")
+        Delta.syncDir(ix, root, rules)
+        check("syncDir: excluded and bin stay out", ix.find(p("Excl")) == NameIndex.NONE && ix.find(p(".LANShare Bin")) == NameIndex.NONE)
+
+        // 7) volume root survives when its folder is missing; a missing sub-folder is removed
+        File(root, "Late").deleteRecursively()
+        Delta.syncDir(ix, File(root, "Late/a"), rules)
+        check("syncDir: vanished folder removed (found via its parent)", ix.find(p("Late/a")) == NameIndex.NONE)
+        check("syncDir: unknown path outside every volume is ignored", !Delta.syncDir(ix, File(tmp, "elsewhere/x"), rules))
+
+        Delta.syncDir(ix, root, rules)   // the now-empty "Late" folder itself goes with its parent's listing
+        // 8) consistency: the delta-maintained index equals a fresh full scan
+        val fresh = NameIndex(64); Walker(fresh, rules).scanVolume(root)
+        eq("delta index == fresh scan (paths)", allPaths(ix), allPaths(fresh))
+
+        // 9) racy timestamp: a folder just changed is stored one second early
+        val hot = mk(root, "Hot"); File(hot, "h.txt").writeText("h")
+        val ix2 = NameIndex(16); Walker(ix2, rules).scanVolume(root)
+        check("racy folder stamp is older than its real time", ix2.mtimeOf(ix2.find(p("Hot"))) < hot.lastModified() / 1000)
+    } finally { tmp.deleteRecursively() }
+}
+
+fun rulesTests() {
+    val inc = UserRules(include = listOf("/s/DCIM", "/s/Docs/work"), exclude = listOf("/s/DCIM/private"))
+    eq("include: inside folder kept", inc.skip("/s/DCIM/Camera", "DCIM/Camera", "Camera", true), Skip.NONE)
+    eq("include: file inside kept", inc.skip("/s/DCIM/a.jpg", "DCIM/a.jpg", "a.jpg", false), Skip.NONE)
+    eq("include: ancestor folder is listed", inc.skip("/s/Docs", "Docs", "Docs", true), Skip.NONE)
+    eq("include: file in ancestor folder left out", inc.skip("/s/Docs/x.txt", "Docs/x.txt", "x.txt", false), Skip.OMIT)
+    eq("include: unrelated folder left out", inc.skip("/s/Music", "Music", "Music", true), Skip.OMIT)
+    eq("include: unrelated file at the root left out", inc.skip("/s/readme.txt", "readme.txt", "readme.txt", false), Skip.OMIT)
+    eq("exclude wins over include", inc.skip("/s/DCIM/private", "DCIM/private", "private", true), Skip.OMIT)
+    eq("exclude covers children", inc.skip("/s/DCIM/private/x", "DCIM/private/x", "x", true), Skip.OMIT)
+    eq("include: sibling with the same prefix is not inside", inc.skip("/s/DCIM2", "DCIM2", "DCIM2", true), Skip.OMIT)
+    val none = UserRules()
+    eq("no include: everything", none.skip("/s/Music", "Music", "Music", true), Skip.NONE)
+    eq("default omit name", none.skip("/s/a/.thumbnails", "a/.thumbnails", ".thumbnails", true), Skip.OMIT)
+    eq("android/data listed, not entered", none.skip("/s/Android/data", "Android/data", "data", true), Skip.NO_DESCEND)
+    val h = HiddenFilter("/storage/emulated/0", setOf("/Secret", "/DCIM/private/a.jpg"))
+    check("hidden: folder itself", h.isHidden("/storage/emulated/0/Secret"))
+    check("hidden: below a hidden folder", h.isHidden("/storage/emulated/0/Secret/x/y.txt"))
+    check("hidden: single file", h.isHidden("/storage/emulated/0/DCIM/private/a.jpg"))
+    check("hidden: sibling file is visible", !h.isHidden("/storage/emulated/0/DCIM/private/b.jpg"))
+    check("hidden: similar name is visible", !h.isHidden("/storage/emulated/0/Secret2/x"))
+    check("hidden: other volume is never hidden", !h.isHidden("/storage/ABCD-1234/Secret/x"))
+    check("hidden: empty list", !HiddenFilter("/r", emptySet()).isHidden("/r/a"))
+}
+
 fun main(args: Array<String>) {
     foldTests()
     memoryTests()
     walkerTests()
+    rulesTests()
+    deltaTests()
     fixtureTests(args)
     matcherTests()
     randomQueryTests()

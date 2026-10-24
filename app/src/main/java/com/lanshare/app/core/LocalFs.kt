@@ -281,6 +281,7 @@ class LocalFs(rootPath: String) : Endpoint {
                 if (!tmp.renameTo(p)) { if (hadOld) bak.renameTo(p); throw IOException("could not move the file into place") }
                 if (hadOld) bak.delete()
             }
+            IndexManager.changed(p)   // name index (Universal Search)
         } finally {
             if (tmp.exists()) tmp.delete()
             Partials.forget(tmp.path)
@@ -288,7 +289,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override val setsMtime: Boolean get() = true
-    override fun setMtime(v: String, sec: Long) { if (sec > 0) try { real(v).setLastModified(sec * 1000) } catch (_: Exception) {} }
+    override fun setMtime(v: String, sec: Long) { if (sec > 0) try { val f = real(v); f.setLastModified(sec * 1000); IndexManager.changed(f) } catch (_: Exception) {} }
 
     override val resumable: Boolean get() = true
 
@@ -334,6 +335,7 @@ class LocalFs(rootPath: String) : Endpoint {
                 if (hadOld) bak.delete()
             }
             keep = false
+            IndexManager.changed(p)
         } catch (e: Cancelled) { keep = false; throw e
         } finally {
             if (!keep) { if (tmp.exists()) tmp.delete(); Partials.forget(tmp.path) }
@@ -343,6 +345,7 @@ class LocalFs(rootPath: String) : Endpoint {
     override fun mkdir(v: String) {
         val d = real(v)
         if (!d.mkdirs() && !d.isDirectory) throw IOException("could not create the folder")
+        IndexManager.changed(d)
     }
 
     override fun remove(v: String, progress: ((String) -> Unit)?) {
@@ -350,7 +353,7 @@ class LocalFs(rootPath: String) : Endpoint {
         if (p == root) throw Denied("cannot delete the shared root")
         if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
         val fails = ArrayList<String>()
-        delRec(p, fails, progress)
+        try { delRec(p, fails, progress) } finally { IndexManager.changed(p) }   // also after a cancel / partial failure: whatever went is dropped from the name index
         if (fails.isNotEmpty())
             throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
     }
@@ -380,6 +383,7 @@ class LocalFs(rootPath: String) : Endpoint {
             if (!same) throw Exists("name already exists")
         }
         if (!p.renameTo(dst)) throw IOException("could not rename")
+        IndexManager.changed(p); IndexManager.changed(dst)
     }
 
     override fun move(v: String, toV: String) {
@@ -390,6 +394,7 @@ class LocalFs(rootPath: String) : Endpoint {
         if (d.path == s.path) return                    // onto itself: nothing to do
         if (!isLink(s) && s.isDirectory && d.path.startsWith(s.path.trimEnd('/') + "/")) throw BadReq("cannot put a folder inside itself")
         if (d.exists() || isLink(d)) throw Exists("name already exists")   // same answer on every volume (rename would silently replace a file)
+        try {
         if (!s.renameTo(d)) {                           // e.g. across volumes: copy + delete
             if (isLink(s) || !s.isDirectory) {
                 if (isLink(s)) throw IOException("could not move the link")
@@ -399,5 +404,6 @@ class LocalFs(rootPath: String) : Endpoint {
             delRec(s, fails)   // only reached when the copy above worked completely
             if (fails.isNotEmpty()) throw IOException("copied, but the original could not be removed: " + fails.take(3).joinToString("; "))
         }
+        } finally { IndexManager.changed(s); IndexManager.changed(d) }   // also after a half-done cross-volume move
     }
 }

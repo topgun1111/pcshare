@@ -99,6 +99,7 @@ object Core {
                 try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // engine ready when the model files are already downloaded
                 PerfMarks.mark("core.clipLoaded")   // PERF-DEBUG
                 try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
+                try { IndexManager.start(app) } catch (_: Throwable) {}   // Universal Search name index: load / build / keep fresh (chapter 16)
             }, "late-init").also { it.isDaemon = true; it.start() }
             try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
             Log.i(TAG, "running on $port, sharing ${local.root}, device ${Cfg.name}")

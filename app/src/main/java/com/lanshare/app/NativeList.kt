@@ -790,6 +790,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         search.onText = { t -> onSearchText(t) }
         search.onClear = { curQ = ""; web.evaluateJavascript("window.nlSr&&nlSr('clear',0)", null); filterNow("") }
         search.onBack = { search.hideKeyboard(); web.evaluateJavascript("window.nlSr&&nlSr('back',0)", null) }
+        search.onAll = { t -> search.hideKeyboard(); web.evaluateJavascript("window.nlSr&&nlSr('us'," + org.json.JSONObject.quote(t) + ")", null) }
         head.onAct = { ev, i -> if (ev == "crumb") crumbTo(i) else raw(ev, i) }      // crumb: instant (rows from `built`), page confirms; newb / sort -> ui.html nlOn
         overlay.visibility = View.GONE
     }

@@ -50,6 +50,19 @@ object Cfg {
     @Synchronized fun imgAutoCharging(): Boolean = obj.optBoolean("img_auto_chg", false)
     @Synchronized fun setImgAutoCharging(v: Boolean) { obj.put("img_auto_chg", v); save() }
 
+    /** Universal search (chapter 16 of HANDOVER.md): name index on / off (default on). */
+    @Synchronized fun usOn(): Boolean = obj.optBoolean("us_on", true)
+    @Synchronized fun setUsOn(v: Boolean) { obj.put("us_on", v); save() }
+    /** Only index while charging (default off; below 20 % battery the work waits anyway). */
+    @Synchronized fun usCharge(): Boolean = obj.optBoolean("us_charge", false)
+    @Synchronized fun setUsCharge(v: Boolean) { obj.put("us_charge", v); save() }
+    /** Folders (virtual paths below the storage root) the name index is limited to; empty = whole phone (minus excluded). */
+    @Synchronized fun usIncluded(): List<String> { val a = obj.optJSONArray("us_incl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+    @Synchronized fun setUsIncluded(l: List<String>) { obj.put("us_incl", JSONArray(l)); save() }
+    /** Folders (virtual paths) the name index leaves out with everything below. */
+    @Synchronized fun usExcluded(): List<String> { val a = obj.optJSONArray("us_excl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+    @Synchronized fun setUsExcluded(l: List<String>) { obj.put("us_excl", JSONArray(l)); save() }
+
     /** Root support (su, see RootShell / RootFs): off until the user switches it on in Settings > Root access. */
     @Synchronized fun rootEnabled(): Boolean = obj.optBoolean("root_on", false)
     @Synchronized fun setRootEnabled(v: Boolean) { obj.put("root_on", v); save() }

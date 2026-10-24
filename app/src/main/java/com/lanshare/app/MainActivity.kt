@@ -191,6 +191,12 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openStorage(vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }
         }
+        /** Drawer / main menu / path-bar search: the Universal Search screen (instant name search of this phone). [q] = text to start with. */
+        @JavascriptInterface fun openUsearch(q: String) {
+            runOnUiThread { try { startActivity(UsActivity.intent(this@MainActivity, q)) } catch (_: Throwable) { } }
+        }
+        /** True when Universal Search is switched on (kill switch UniversalSearch.ENABLED / Settings > Search index). */
+        @JavascriptInterface fun usearchOk(): Boolean = try { com.lanshare.app.core.IndexManager.enabled() } catch (_: Throwable) { false }
         /** Storage pill on another device (LANShare phone / SMB / FTP / SFTP): read-only analysis of its folder [vpath]. */
         @JavascriptInterface fun openStorageDev(dev: String, name: String, vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intentDev(this@MainActivity, dev, name, vpath)) } catch (_: Throwable) { } }
@@ -456,6 +462,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         ClipPush.front = this
+        try { com.lanshare.app.core.IndexManager.onResume() } catch (_: Throwable) {}   // name index: look for changes other apps made
         ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
         if (::drawer.isInitialized) drawer.resync()
         if (::chrome.isInitialized) chrome.resync()

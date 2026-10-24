@@ -25,10 +25,13 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
     var onText: ((String) -> Unit)? = null
     var onBack: (() -> Unit)? = null
     var onClear: (() -> Unit)? = null
+    /** Universal Search: the text typed so far, to be searched on the whole phone. */
+    var onAll: ((String) -> Unit)? = null
 
     private val et = EditText(c)
     private val back = FrameLayout(c)
     private val clr = FrameLayout(c)
+    private val all = android.widget.TextView(c)
     private val line = Paint()
     private var silent = false
     private var pal: NlPal? = null
@@ -57,8 +60,11 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
         }
         addView(back, LayoutParams(dp(40f), dp(40f)))
         addView(et, LayoutParams(0, dp(40f), 1f))
+        all.apply { text = "Phone"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setPadding(dp(8f), 0, dp(8f), 0); contentDescription = "Search the whole phone" }
+        addView(all, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f)))
         addView(clr, LayoutParams(dp(40f), dp(40f)))
         back.setOnClickListener { onBack?.invoke() }
+        all.setOnClickListener { onAll?.invoke(et.text.toString()) }
         clr.setOnClickListener { silent = true; et.setText(""); silent = false; onClear?.invoke(); focusInput() }
         back.contentDescription = "Back"; clr.contentDescription = "Clear"
     }
@@ -66,7 +72,7 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
     fun setPal(p: NlPal) {
         pal = p
         background = android.graphics.drawable.GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(24f).toFloat() }
-        et.setTextColor(p.fg); et.setHintTextColor(p.mut)
+        et.setTextColor(p.fg); et.setHintTextColor(p.mut); all.setTextColor(p.ac)
         line.color = p.bd
         back.removeAllViews(); clr.removeAllViews()
         back.addView(NlGlyph(context, NlIcons.path("back"), p.fg, dp(24f)), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))

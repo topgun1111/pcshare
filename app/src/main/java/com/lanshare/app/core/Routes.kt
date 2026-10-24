@@ -321,6 +321,16 @@ object Routes {
             }
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
             "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
+            "uindex" -> if (ex.method == "GET") return ex.json(IndexManager.status())   // Universal Search name index: state / progress / settings (POST = rescan / pause / settings)
+            // Universal Search names: ?q=&kind=&sort=name|path|size|date|best&rev=1&ff=1&limit=&offset=&case=1&word=1&pathm=1&diac=1&re=1
+            "usearch" -> if (ex.method == "GET") {
+                val o = UsSearch.run(q["q"] ?: "", q["kind"] ?: "",
+                    UsSearch.optsOf(q["case"] == "1", q["word"] == "1", q["pathm"] == "1", q["diac"] == "1", q["re"] == "1"),
+                    UsSearch.sortOf(q["sort"], q["rev"] == "1", q["ff"] == "1"),
+                    q["offset"]?.toIntOrNull() ?: 0, q["limit"]?.toIntOrNull() ?: 100, com.lanshare.app.core.usearch.CancelToken())
+                    ?: throw BadReq("Universal search is off")
+                return ex.json(UsSearch.toJson(o))
+            }
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "ftp" -> if (ex.method == "GET") return ex.json(Ftp.status())
             "root" -> if (ex.method == "GET") return ex.json(rootStatus())   // POST = switch on / off (below)
@@ -381,6 +391,18 @@ object Routes {
                 }
                 ex.json(rootStatus())
             }
+            "uindex" -> ex.json(run {
+                when (b.getString("op")) {
+                    "rescan" -> IndexManager.rescan()
+                    "pause" -> IndexManager.pause(b.optBoolean("on", true))
+                    "on" -> IndexManager.setEnabled(b.optBoolean("on", true))
+                    "charging" -> IndexManager.setCharging(b.optBoolean("on", false))
+                    "included" -> IndexManager.setIncluded(b.optJSONArray("paths")?.strings() ?: emptyList())
+                    "excluded" -> IndexManager.setExcluded(b.optJSONArray("paths")?.strings() ?: emptyList())
+                    else -> throw BadReq("unknown op")
+                }
+                IndexManager.status()
+            })
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }

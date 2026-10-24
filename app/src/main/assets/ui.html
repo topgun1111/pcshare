@@ -735,7 +735,7 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
-  <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=scont aria-label="Search inside Word / Excel / PowerPoint files" title="Search inside Word / Excel / PowerPoint files" style="font:600 12px sans-serif;width:auto;padding:0 8px">In files</button><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
+  <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=scont aria-label="Search inside Word / Excel / PowerPoint files" title="Search inside Word / Excel / PowerPoint files" style="font:600 12px sans-serif;width:auto;padding:0 8px">In files</button><button class=ibtn id=suall aria-label="Search the whole phone" title="Search the whole phone" style="font:600 12px sans-serif;width:auto;padding:0 8px">Phone</button><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div><div id=free></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
   <div id=toolrow><div id=sum></div><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
@@ -2336,6 +2336,9 @@ function openSettings(){
         pollPeers()}catch(e){sr.textContent=txt(rr._r);toast('⚠ '+e.message,5000)}};card.append(rr)}
   const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden item'+(HGAL.length===1?'':'s'):'Hidden items, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
   rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
+  {const ru=E('button','set'),tu=E('div','t'),su=E('small','','Checking\u2026');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Search index'),su);ru.append(tu);
+    api('GET','/api/uindex').then(r=>{su.textContent=usText(r)}).catch(()=>{su.textContent='Names of all files for Universal search'});
+    ru.onclick=()=>{close();openUsSettings()};card.append(ru)}
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
@@ -2411,6 +2414,56 @@ function openOcrSettings(){
       r.onclick=()=>{if(st.m===id)return;LSAndroid.ocrEngSet(id);if(id!==2&&!st.inst)toast('Downloading the PaddleOCR model on Wi-Fi\u2026',3000);draw()};list.append(r)})};
   draw();
   const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+function usText(r){if(!r||r.enabled===false)return 'Off';const n=r.entries!=null?' \u00b7 '+r.entries.toLocaleString()+' items':'';
+  if(r.state==='scanning'){if(r.phase==='full')return 'Indexing'+(r.pct>=0?' '+r.pct+' %':'')+(r.scanFiles!=null?' \u00b7 '+(r.scanFiles+r.scanDirs).toLocaleString()+' items found':'');
+    return r.phase==='load'?'Loading\u2026':r.phase==='delta'?'Checking for changes\u2026'+n:'Updating\u2026'+n}
+  if(r.state==='paused')return 'Paused'+(r.wait?': '+r.wait:'')+n;
+  return (r.complete?'Up to date':'Not finished')+n}
+function openUsSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Search index'));
+  const info=E('p','','Universal search keeps a list of every file and folder name on this phone so results can appear while you type. It updates by itself when you copy, move, rename or delete, and when other apps change files.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const btn=(title,sub)=>{const b=E('button','set'),t=E('div','t'),sm=E('small','',sub||'');b.style.width='100%';b.style.textAlign='left';t.append(E('b','',title),sm);b.append(t);card.append(b);return [b,sm]};
+  const [bS,sS]=btn('Status','Checking\u2026'),[bO,sO]=btn('Search index'),[bC,sC]=btn('Only while charging'),[bP,sP]=btn('Pause indexing'),[bR,sR]=btn('Rescan now','Build the list again from scratch'),[bF,sF]=btn('Folders','Limit or skip folders');
+  let R=null;
+  const draw=r=>{R=r;sS.textContent=usText(r)+(r.error?' \u00b7 \u26a0 '+r.error:'');
+    sO.textContent=r.enabled?'On - the list is kept up to date':'Off - nothing is indexed';
+    sC.textContent=r.charge?'On - scans wait for the charger (below 20% they wait anyway)':'Off - scans also run on battery (paused below 20%)';
+    sP.textContent=r.paused?'Paused - tap to continue':'Running - tap to pause';
+    const a=(r.included||[]).length,b=(r.excluded||[]).length;sF.textContent=(a||b)?[a?a+' included':'',b?b+' skipped':''].filter(Boolean).join(' \u00b7 '):'Whole phone'};
+  const post=async(body)=>{try{draw(await api('POST','/api/uindex',body))}catch(e){toast('\u26a0 '+e.message,4000)}};
+  bO.onclick=()=>R&&post({op:'on',on:!R.enabled});
+  bC.onclick=()=>R&&post({op:'charging',on:!R.charge});
+  bP.onclick=()=>R&&post({op:'pause',on:!R.paused});
+  bR.onclick=async()=>{if(!await dlg({title:'Rescan the whole phone?',msg:'The list is built again. Search keeps working with the old list until the new one is ready.',ok:'Rescan'}))return;post({op:'rescan'})};
+  bF.onclick=()=>{close();openUsFolders()};
+  const tick=()=>{if(o.style.display==='none')return;api('GET','/api/uindex').then(draw).catch(()=>{});setTimeout(tick,2000)};tick();
+  const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+function openUsFolders(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Search index folders'));
+  const info=E('p','','Only these folders: the index lists just them (none = the whole phone). Skip these folders: never listed, even inside the ones above. The list is rebuilt after a change.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const ST={included:[],excluded:[]};
+  const sec=(key,head,none,pt,pb)=>{card.append(E('div','dsec',head));const list=E('div');card.append(list);
+    const draw=()=>{list.textContent='';const cur=ST[key];
+      if(!cur.length){const e=E('div','set'),t=E('div','t');t.append(E('small','',none));e.append(t);list.append(e)}
+      cur.forEach(p=>{const r=E('div','set'),t=E('div','t'),rm=E('button','tbtn dng','Remove');
+        t.append(E('b','',p.slice(p.lastIndexOf('/')+1)||p),E('small','',p));
+        rm.onclick=()=>save(key,cur.filter(x=>x!==p));r.append(t,rm);list.append(r)})};
+    const ad=E('button','tbtn','Add folder');ad.style.alignSelf='flex-end';
+    ad.onclick=async()=>{const p=await pickExtractDir('/',pt,pb,'local');
+      if(p&&p!=='/'&&!ST[key].includes(p))await save(key,ST[key].concat(p));else if(p==='/')toast('Pick a folder, not the whole storage',3000);openUsFolders()};
+    card.append(ad);return draw};
+  const dI=sec('included','Only these folders','None: the whole phone is listed.','List only\u2026','List this folder');
+  const dE=sec('excluded','Skip these folders','None.','Skip folder\u2026','Skip this folder');
+  const draw=()=>{dI();dE()};
+  const save=async(key,l)=>{try{const r=await api('POST','/api/uindex',{op:key,paths:l});ST.included=r.included||[];ST.excluded=r.excluded||[];draw()}catch(e){toast('\u26a0 '+e.message,4000)}};
+  api('GET','/api/uindex').then(r=>{ST.included=(r&&r.included)||[];ST.excluded=(r&&r.excluded)||[];draw()}).catch(draw);
+  const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openUsSettings()};card.append(d);o.append(card)}
 function openExcluded(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -2689,7 +2742,7 @@ function doSearch(){
     .then(r=>{if(S.sr&&S.sr.q===q){S.sr.items=r.items;S.sr.partial=r.partial;render()}})
     .catch(e=>{if(S.sr&&S.sr.q===q){S.sr.items=[];S.sr.err=e.message;render()}})}
 /* search switch: file names (default) <-> text inside Word / Excel / ODF / PowerPoint files (this device only, slower) */
-(function(){const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
+(function(){const u=$('#suall');if(u)u.onclick=()=>usOpen($('#sq').value);const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
 const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.sel].map(k=>XM[k]||mp.get(k)).filter(Boolean)};   // tap order
@@ -4752,9 +4805,12 @@ const HM_P={
  smb:'M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
  fav:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2.06 11L15 15.28 12.06 17l.78-3.33-2.59-2.24 3.41-.29L15 8l1.34 3.14 3.41.29-2.59 2.24.78 3.33z',
  dev:'M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z',
- sto:'M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z'};
+ sto:'M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z',
+ usr:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'};
 const hmSvg=k=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+HM_P[k]+'"/></svg>';
 const homeOn=()=>$('#home').style.display==='flex';
+/* Universal Search (native screen UsActivity): drawer item, main menu tile, search row of a folder (q = text typed so far) */
+function usOpen(q){try{if(!LSAndroid.usearchOk()){toast('Search index is off \u2013 Settings \u203a Search index',4000);return}LSAndroid.openUsearch(q||'')}catch(e){toast('Search needs the Android app',3000)}}
 function hmDevSub(){const e=$('#hmdev');if(e){const n=S.peers.length;e.textContent=n?n+(n===1?' other device':' other devices'):'Searching\u2026'}}
 function homeHide(){const o=$('#home');o.style.display='none';o.textContent=''}
 function hmFavClose(){const a=$('#hmfavs'),m=$('#hmfav');if(a)a.remove();if(m)m.remove()}
@@ -4800,7 +4856,7 @@ function homeShow(){
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',smb:'var(--hc6)',ftp:'var(--hc6)',fav:'var(--hc7)',dev:'var(--hc5)'};
+  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',usr:'var(--hc2)',smb:'var(--hc6)',ftp:'var(--hc6)',fav:'var(--hc7)',dev:'var(--hc5)'};
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
     const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
@@ -4811,7 +4867,8 @@ function homeShow(){
   const g1=E('div','hg'),g2=E('div','hg');
   g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/@gallery')},'/Pictures','img'),
     tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/@videos')},'/Movies','vid'),
-    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
+    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'),
+    tile('usr','Search','Find any file by name',()=>{usOpen('')}));
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
     tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)),
@@ -4957,6 +5014,7 @@ function drawerRender(){
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
     bd.append(dItem({lead:ic('menu'),cls:'mm',title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
+    bd.append(dItem({lead:ic('search'),title:'Search everything',sub:'Names on this phone, instantly',onclick:()=>{drawerClose();usOpen('')}}));
     bd.append(E('div','dsep'));
     {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
@@ -5019,6 +5077,7 @@ $('#sback').onclick=()=>sOpen(false);
 $('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
 // events from the native search box (Kotlin NlSearch.kt): same work as the HTML input's oninput / clear / back
 window.nlSr=(ev,s)=>{
+  if(ev==='us'){usOpen(s||'');return}
   if(ev==='q'){const v=s||'';S.q=v.trim().toLowerCase();NLSRQ=S.q;$('#sq').value=v;if(!RQT)RQT=requestAnimationFrame(()=>{RQT=0;render()});clearTimeout(sT);sT=setTimeout(doSearch,500);return}
   if(ev==='clear'){S.q='';NLSRQ='';$('#sq').value='';render();return}
   if(ev==='back'){sOpen(false)}};

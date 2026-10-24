@@ -704,6 +704,7 @@ object Jobs {
             if (local != null) {
                 val real = local.real(target)
                 if (!out.renameTo(real)) { real.delete(); if (!out.renameTo(real)) throw IOException("could not move the ZIP into place") }
+                IndexManager.changed(real)   // name index: the new ZIP
             } else {
                 val sz = out.length()
                 job.label = "Saving $finalName to ${dst.name}"
