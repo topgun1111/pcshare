@@ -382,7 +382,7 @@ class UsActivity : Activity() {
             nameTv.text = hl(r.name)
             val parent = r.path.substringBeforeLast('/', "")
             val v = UsSearch.virt(r.path)
-            pathTv.text = if (v != null) vdir(v) else parent.ifEmpty { "/" }
+            pathTv.text = (if (v != null) vdir(v) else parent.ifEmpty { "/" }) + (if (r.snippet.isNotEmpty()) "  \u2022  " + (if (r.line > 0) "L" + r.line + ": " else "") + r.snippet else "")
             sizeTv.text = if (r.dir) "" else NlModel.fmt(r.size)
             dateTv.text = if (r.mtime > 0) dateF.format(Date(r.mtime * 1000L)) else ""
             ico.name = r.name; ico.dir = r.dir; ico.ticked = picked; ico.invalidate()
@@ -444,7 +444,7 @@ class UsActivity : Activity() {
         }
         val f = File(r.path)
         if (!f.exists()) { toast("It no longer exists"); runQuery(true, maxOf(PAGE, rows.size)); return }
-        StorageActions.open(this, f, false, v)
+        StorageActions.open(this, f, false, v, if (r.line > 0 && !f.extension.lowercase().let { it in MARKUP_EXT }) r.line else 0)
     }
 
     private fun longTap(i: Int) { val r = rows.getOrNull(i) ?: return; hideKb(); toggle(r) }
@@ -572,6 +572,8 @@ class UsActivity : Activity() {
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
 
     companion object {
+        /** Part 5 strips markup before storing, so line numbers of these files do not match the editor text. */
+        val MARKUP_EXT = setOf("html", "htm", "xhtml", "xml", "svg", "gpx")
         const val PAGE = 300
         const val X_Q = "q"
         const val X_KIND = "kind"

@@ -52,7 +52,7 @@ object StorageActions {
      * exactly like a tap in the file manager. [v] = the file's virtual path (null for another volume, which the file manager cannot address).
      * Returns false when the file is not a supported kind (the caller then hands it to another app).
      */
-    private fun openNative(a: Activity, f: File, v: String?): Boolean {
+    private fun openNative(a: Activity, f: File, v: String?, line: Int = 0): Boolean {
         if (v == null) return false
         val ext = f.extension.lowercase()
         val origin = Core.url
@@ -62,7 +62,7 @@ object StorageActions {
             when {
                 ext in TEXT_EXT || ext in ED -> {
                     if (ext == "svg" || f.length() > 8L shl 20) return false
-                    a.startActivity(TextEditorActivity.intent(a, JSONObject().put("dev", "local").put("path", v).toString())); return true
+                    a.startActivity(TextEditorActivity.intent(a, JSONObject().put("dev", "local").put("path", v).put("line", line).toString())); return true
                 }
                 ext in OFFICE -> {
                     if (f.length() > 60L shl 20) return false
@@ -106,9 +106,9 @@ object StorageActions {
     }
 
     /** Open a file with an installed app (source / text files go to a text editor, like in the file manager); [pick] = always ask which app. */
-    fun open(a: Activity, f: File, pick: Boolean = false, virtPath: String? = null) {
+    fun open(a: Activity, f: File, pick: Boolean = false, virtPath: String? = null, line: Int = 0) {
         if (!f.isFile) { toast(a, "Only files can be opened"); return }
-        if (!pick && openNative(a, f, virtPath)) return
+        if (!pick && openNative(a, f, virtPath, line)) return
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"

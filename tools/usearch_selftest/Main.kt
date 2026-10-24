@@ -611,12 +611,103 @@ fun rulesTests() {
     check("hidden: empty list", !HiddenFilter("/r", emptySet()).isHidden("/r/a"))
 }
 
+// ---------- Part 5: text-file content (TextExtractor, ContentMatch) ----------
+fun contentTests() {
+    val tmp = java.nio.file.Files.createTempDirectory("usct").toFile()
+    try {
+        val tr = "\u0130stanbul \u00e7al\u0131\u015f\u0131r, \u011fe\u00e7 \u00f6\u011fle \u00fc\u015f\u00fcd\u00fc"
+        fun w(name: String, b: ByteArray): File { val f = File(tmp, name); f.writeBytes(b); return f }
+        val u8 = TextExtractor.extract(w("a.txt", tr.toByteArray(Charsets.UTF_8)), "txt", 1L shl 20)
+        eq("extract: utf-8 text", u8?.text, tr); eq("extract: utf-8 charset", u8?.charset, "UTF-8")
+        val bom = TextExtractor.extract(w("b.txt", byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + tr.toByteArray(Charsets.UTF_8)), "txt", 1L shl 20)
+        eq("extract: utf-8 BOM stripped", bom?.text, tr)
+        val u16 = TextExtractor.extract(w("c.txt", byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + tr.toByteArray(Charsets.UTF_16LE)), "txt", 1L shl 20)
+        eq("extract: utf-16 LE with BOM", u16?.text, tr)
+        val u16n = TextExtractor.extract(w("d.txt", "hello world, plain ascii in utf-16".toByteArray(Charsets.UTF_16LE)), "txt", 1L shl 20)
+        eq("extract: utf-16 LE without BOM", u16n?.text, "hello world, plain ascii in utf-16")
+        val cp = try { java.nio.charset.Charset.forName("windows-1254") } catch (e: Exception) { null }
+        if (cp != null) {
+            val c1254 = TextExtractor.extract(w("e.txt", tr.toByteArray(cp)), "txt", 1L shl 20)
+            eq("extract: windows-1254 Turkish letters", c1254?.text, tr); eq("extract: windows-1254 charset name", c1254?.charset, cp.name())
+        } else println("info windows-1254 not available on this JVM, cp1254 checks skipped")
+        check("extract: binary (NUL bytes) -> null", TextExtractor.extract(w("f.txt", byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0, 0, 0, 1, 2, 3, 0, 0, 5, 6, 7, 8)), "txt", 1L shl 20) == null)
+        check("extract: over the size cap -> null", TextExtractor.extract(w("g.txt", ByteArray(5000) { 'a'.code.toByte() }), "txt", 1000L) == null)
+        check("extract: empty file -> null", TextExtractor.extract(w("h.txt", ByteArray(0)), "txt", 1000L) == null)
+        eq("extract: CRLF -> LF", TextExtractor.decode("a\r\nb\rc".toByteArray(), "txt")?.text, "a\nb\nc")
+        val html = TextExtractor.decode("<html><head><style>p{color:red}</style><script>var x='secret';</script></head><body><!-- c --><p>Merhaba &amp; <b>d\u00fcnya</b></p></body></html>".toByteArray(Charsets.UTF_8), "html")?.text ?: ""
+        check("extract: html text kept", html.contains("Merhaba & ") && html.contains("d\u00fcnya"))
+        check("extract: html script / style / tags / comments gone", !html.contains("secret") && !html.contains("color") && !html.contains("<") && !html.contains(" c "))
+        eq("extract: same bytes give the same text (deterministic)", TextExtractor.decode(tr.toByteArray(), "txt")?.text, TextExtractor.decode(tr.toByteArray(), "txt")?.text)
+
+        // matching
+        val doc = Fold.fold("Merhaba d\u00fcnya\nKedi sever s\u00fct\nTOPLANTI notlar\u0131 yar\u0131n\nkediler de")
+        fun terms(vararg n: QNode, opt: MatchOptions = MatchOptions()): List<CTerm> = ContentMatch.compile(n.toList(), opt, ArrayList())
+        val h1 = ContentMatch.find(doc, terms(QText("KED\u0130")))
+        check("content: Turkish fold finds 'Kedi'", h1 != null); eq("content: line of first match", h1?.line, 2)
+        eq("content: word on line 3 (diacritics ignored)", ContentMatch.find(doc, terms(QText("notlar\u0131")))?.line, 3)
+        check("content: contains matches inside a word", ContentMatch.find(doc, terms(QText("ed"))) != null)
+        check("content: whole word rejects 'ed'", ContentMatch.find(doc, terms(QText("ed"), opt = MatchOptions(wholeWord = true))) == null)
+        eq("content: whole word skips 'kediler', finds 'kedi'", ContentMatch.find(doc, terms(QText("kedi"), opt = MatchOptions(wholeWord = true)))?.line, 2)
+        check("content: all words must be present", ContentMatch.find(doc, terms(QText("kedi"), QText("toplanti"))) != null && ContentMatch.find(doc, terms(QText("kedi"), QText("araba"))) == null)
+        check("content: NOT word rejects", ContentMatch.find(doc, terms(QText("kedi"), QNot(QText("sut")))) == null)
+        check("content: NOT word absent is fine", ContentMatch.find(doc, terms(QText("kedi"), QNot(QText("araba")))) != null)
+        check("content: phrase", ContentMatch.find(doc, terms(QText("kedi sever", phrase = true))) != null)
+        check("content: wildcard", ContentMatch.find(doc, terms(QText("kedi*sut"))) != null && ContentMatch.find(doc, terms(QText("merh?ba"))) != null)
+        check("content: regex", ContentMatch.find(doc, terms(QText("to[a-z]+ti", regex = true))) != null)
+        val notes = ArrayList<String>()
+        check("content: invalid regex is dropped with a note", ContentMatch.compile(listOf(QText("(", regex = true)), MatchOptions(), notes).isEmpty() && notes.isNotEmpty())
+        eq("content: SQL prefilter needles are plain positive words", ContentMatch.needles(terms(QText("Kedi"), QNot(QText("x")), QText("a*b"))), listOf("kedi"))
+        val sn = ContentMatch.snippet("x".repeat(200) + "TARGET" + "y".repeat(200), 200, 6)
+        check("content: snippet holds the match and is short", sn.contains("TARGET") && sn.length < 140)
+    } finally { tmp.deleteRecursively() }
+}
+
+/** Part 6: Office document text out of the office_selftest fixtures (run from the repo root). */
+fun docTests() {
+    val D = File("tools/office_selftest")
+    check("doc: fixtures found", File(D, "sample.docx").isFile, D.absolutePath)
+    val DE = com.lanshare.app.core.office.DocExtractor
+    fun ex(n: String) = DE.extract(File(D, n))
+    val want = listOf("sample.docx" to "merged", "sample.xlsx" to "total", "sample.pptx" to "alpha", "sample.odt" to "note text", "sample.ods" to "inline", "sample.odp" to "opening")
+    for ((n, w) in want) {
+        val t = ex(n)
+        check("doc: $n readable", t != null)
+        check("doc: $n has '$w'", t != null && Fold.fold(t).contains(w), "text=" + (t ?: "null").take(80).replace('\n', '|'))
+    }
+    for (n in listOf("sample.doc", "sample.xls")) check("doc: $n readable (legacy)", ex(n) != null)
+    val px = ex("sample.pptx") ?: ""; val xx = ex("sample.xlsx") ?: ""
+    check("doc: pptx match is inside a slide", DE.sectionAt(px, px.indexOf("Alpha")).startsWith("Slide "), DE.sectionAt(px, px.indexOf("Alpha")))
+    check("doc: xlsx match is inside a sheet", DE.sectionAt(xx, xx.indexOf("Total")).startsWith("Sheet "), DE.sectionAt(xx, xx.indexOf("Total")))
+    val syn = "## Sheet1\nA\tB\n## Data\nx\ty"
+    eq("doc: sectionAt sheet", DE.sectionAt(syn, syn.indexOf("x")), "Sheet Data")
+    eq("doc: sectionAt first sheet", DE.sectionAt(syn, syn.indexOf("A")), "Sheet Sheet1")
+    val sl = "Slide 1\nfoo\nSlide 2 (hidden)\nbar"
+    eq("doc: sectionAt slide", DE.sectionAt(sl, sl.indexOf("bar")), "Slide 2")
+    eq("doc: sectionAt slide 1", DE.sectionAt(sl, sl.indexOf("foo")), "Slide 1")
+    eq("doc: sectionAt none (Word)", DE.sectionAt("a\nb\nc", 4), "")
+    eq("doc: sectionAt empty / past end", DE.sectionAt("", 5), "")
+    val tmp = java.nio.file.Files.createTempDirectory("usdt").toFile()
+    try {
+        val src = File(D, "sample.docx").readBytes()
+        fun w(n: String, b: ByteArray) = File(tmp, n).also { it.writeBytes(b) }
+        check("doc: random bytes -> null, no throw", DE.extract(w("r.docx", ByteArray(500) { (it * 31 + 7).toByte() })) == null)
+        check("doc: truncated zip -> null, no throw", DE.extract(w("t.docx", src.copyOf(src.size / 3))) == null)
+        check("doc: empty file -> null", DE.extract(w("e.xlsx", ByteArray(0))) == null)
+        check("doc: not an office extension -> null", DE.extract(w("a.txt", src)) == null)
+        check("doc: size cap -> null", DE.extract(File(D, "sample.docx"), 10L) == null)
+        check("doc: missing file -> null", DE.extract(File(tmp, "nope.docx")) == null)
+        check("doc: next file still works after bad ones", ex("sample.docx") != null)
+    } finally { tmp.deleteRecursively() }
+}
+
 fun main(args: Array<String>) {
     foldTests()
     memoryTests()
     walkerTests()
     rulesTests()
     deltaTests()
+    contentTests()
+    docTests()
     fixtureTests(args)
     matcherTests()
     randomQueryTests()

@@ -2427,18 +2427,26 @@ function openUsSettings(){
   info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
   const btn=(title,sub)=>{const b=E('button','set'),t=E('div','t'),sm=E('small','',sub||'');b.style.width='100%';b.style.textAlign='left';t.append(E('b','',title),sm);b.append(t);card.append(b);return [b,sm]};
   const [bS,sS]=btn('Status','Checking\u2026'),[bO,sO]=btn('Search index'),[bC,sC]=btn('Only while charging'),[bP,sP]=btn('Pause indexing'),[bR,sR]=btn('Rescan now','Build the list again from scratch'),[bF,sF]=btn('Folders','Limit or skip folders');
+  const [bT,sT]=btn('Text in files','Checking\u2026'),[bTm,sTm]=btn('Largest text file'),[bTb,sTb]=btn('Text storage limit'),[bTr,sTr]=btn('Read text again','Clear the saved text and read the files again');
   let R=null;
   const draw=r=>{R=r;sS.textContent=usText(r)+(r.error?' \u00b7 \u26a0 '+r.error:'');
     sO.textContent=r.enabled?'On - the list is kept up to date':'Off - nothing is indexed';
     sC.textContent=r.charge?'On - scans wait for the charger (below 20% they wait anyway)':'Off - scans also run on battery (paused below 20%)';
     sP.textContent=r.paused?'Paused - tap to continue':'Running - tap to pause';
-    const a=(r.included||[]).length,b=(r.excluded||[]).length;sF.textContent=(a||b)?[a?a+' included':'',b?b+' skipped':''].filter(Boolean).join(' \u00b7 '):'Whole phone'};
+    const a=(r.included||[]).length,b=(r.excluded||[]).length;sF.textContent=(a||b)?[a?a+' included':'',b?b+' skipped':''].filter(Boolean).join(' \u00b7 '):'Whole phone';
+    const c=r.content||{};sT.textContent=c.on?('On - search words inside text files with content:word'+(c.docs?' \u00b7 '+c.docs.toLocaleString()+' files read':'')+(r.phase==='content'&&c.todo?' \u00b7 reading '+c.done+' / '+c.todo:'')+(c.budgetHit?' \u00b7 storage limit reached':'')):'Off - file contents are not read';
+    sTm.textContent=(c.maxMb||5)+' MB - bigger text files are skipped (tap to change)';sTb.textContent=(c.budgetMb||300)+' MB of saved text (tap to change)'};
   const post=async(body)=>{try{draw(await api('POST','/api/uindex',body))}catch(e){toast('\u26a0 '+e.message,4000)}};
   bO.onclick=()=>R&&post({op:'on',on:!R.enabled});
   bC.onclick=()=>R&&post({op:'charging',on:!R.charge});
   bP.onclick=()=>R&&post({op:'pause',on:!R.paused});
   bR.onclick=async()=>{if(!await dlg({title:'Rescan the whole phone?',msg:'The list is built again. Search keeps working with the old list until the new one is ready.',ok:'Rescan'}))return;post({op:'rescan'})};
   bF.onclick=()=>{close();openUsFolders()};
+  const nxt=(l,v)=>l[(l.indexOf(v)+1)%l.length]||l[0];
+  bT.onclick=()=>R&&post({op:'content',on:!(R.content&&R.content.on)});
+  bTm.onclick=()=>{if(!R)return;const c=R.content||{};post({op:'contentlimits',maxMb:nxt([1,5,20],c.maxMb||5),budgetMb:c.budgetMb||300})};
+  bTb.onclick=()=>{if(!R)return;const c=R.content||{};post({op:'contentlimits',maxMb:c.maxMb||5,budgetMb:nxt([100,300,1000],c.budgetMb||300)})};
+  bTr.onclick=async()=>{if(!await dlg({title:'Read text again?',msg:'The saved text is cleared and the files are read again in the background.',ok:'Read again'}))return;post({op:'contentrebuild'})};
   const tick=()=>{if(o.style.display==='none')return;api('GET','/api/uindex').then(draw).catch(()=>{});setTimeout(tick,2000)};tick();
   const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openUsFolders(){

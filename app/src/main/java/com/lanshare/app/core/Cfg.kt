@@ -56,6 +56,18 @@ object Cfg {
     /** Only index while charging (default off; below 20 % battery the work waits anyway). */
     @Synchronized fun usCharge(): Boolean = obj.optBoolean("us_charge", false)
     @Synchronized fun setUsCharge(v: Boolean) { obj.put("us_charge", v); save() }
+    /** Text-file content index (Part 5): on / off, max size of one file (MB), total budget of stored text (MB), extension list (comma separated; empty = defaults). */
+    @Synchronized fun usContent(): Boolean = obj.optBoolean("us_c_on", true)
+    @Synchronized fun setUsContent(v: Boolean) { obj.put("us_c_on", v); save() }
+    @Synchronized fun usContentMaxMb(): Int = obj.optInt("us_c_max", 5).coerceIn(1, 50)
+    @Synchronized fun usContentBudgetMb(): Int = obj.optInt("us_c_budget", 300).coerceIn(20, 5000)
+    @Synchronized fun setUsContentLimits(maxMb: Int, budgetMb: Int) { obj.put("us_c_max", maxMb.coerceIn(1, 50)); obj.put("us_c_budget", budgetMb.coerceIn(20, 5000)); save() }
+    @Synchronized fun usContentExtsText(): String = obj.optString("us_c_ext", "")
+    @Synchronized fun setUsContentExts(v: String) { obj.put("us_c_ext", v.trim()); save() }
+    fun usContentExts(): Set<String> {
+        val l = usContentExtsText().split(',', ';', ' ').map { it.trim().trimStart('.').lowercase() }.filter { it.isNotEmpty() }.toSet()
+        return if (l.isEmpty()) com.lanshare.app.core.usearch.TextExtractor.DEFAULT_EXTS + com.lanshare.app.core.office.DocExtractor.EXTS else l
+    }
     /** Folders (virtual paths below the storage root) the name index is limited to; empty = whole phone (minus excluded). */
     @Synchronized fun usIncluded(): List<String> { val a = obj.optJSONArray("us_incl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
     @Synchronized fun setUsIncluded(l: List<String>) { obj.put("us_incl", JSONArray(l)); save() }

@@ -86,6 +86,7 @@ class TextEditorActivity : Activity() {
         private const val X_PATH = "path"
         private const val X_DIR = "dir"
         private const val X_NEW = "new"
+        private const val X_LINE = "line"
         private const val MAX_BYTES = 3 shl 20
         private const val UNDO_CHARS = 6_000_000L
         private const val SNAP_MS = 700L
@@ -105,6 +106,7 @@ class TextEditorActivity : Activity() {
                 .putExtra(X_PATH, o.optString("path", ""))
                 .putExtra(X_DIR, o.optString("dir", "/"))
                 .putExtra(X_NEW, o.optBoolean("isNew", false))
+                .putExtra(X_LINE, o.optInt("line", 0))
         }
 
         private class Pal(val light: Int, val dark: Int)
@@ -792,6 +794,7 @@ class TextEditorActivity : Activity() {
                     loaded = true
                     setBody(dec.text, keepUndo = false)
                     dirty = false
+                    gotoLine(intent.getIntExtra(X_LINE, 0)); intent.removeExtra(X_LINE)   // Universal Search: open at the match
                     if (readOnly) makeReadOnly()
                     applyTypography(); applyNums()
                     updateStatus(); updateButtons()
@@ -801,6 +804,16 @@ class TextEditorActivity : Activity() {
                 ui.post { if (!isDestroyed) { busy(false); failLoad("Cannot open: ${errText(x)}") } }
             }
         }
+    }
+
+    /** Puts the caret at the start of 1-based [line] and scrolls it to the top (no-op for 0 / past the end). */
+    private fun gotoLine(line: Int) {
+        if (line <= 1) return
+        val t = cur
+        var off = 0
+        for (k in 1 until line) { val n = t.indexOf('\n', off); if (n < 0) return; off = n + 1 }
+        try { body.setSelection(off) } catch (_: Throwable) { return }
+        body.post { try { val l = body.layout ?: return@post; scroll.scrollTo(0, maxOf(0, body.top + l.getLineTop(l.getLineForOffset(off)) - 40)) } catch (_: Throwable) {} }
     }
 
     private fun failLoad(msg: String) {

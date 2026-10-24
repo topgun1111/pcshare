@@ -1,5 +1,6 @@
 package com.lanshare.app.core
 
+import com.lanshare.app.core.office.DocExtractor
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,8 @@ import android.provider.MediaStore
 import android.util.Log
 import com.lanshare.app.NlModel
 import com.lanshare.app.core.usearch.Delta
+import com.lanshare.app.core.usearch.Fold
+import com.lanshare.app.core.usearch.TextExtractor
 import com.lanshare.app.core.usearch.DeltaStats
 import com.lanshare.app.core.usearch.HiddenFilter
 import com.lanshare.app.core.usearch.IndexStore
@@ -83,6 +86,12 @@ object IndexManager {
     private var notBefore = 0L
     private var started = false
     private var ctx: Context? = null
+    @Volatile private var contentWant = false
+    @Volatile private var cStore: ContentStore? = null
+    @Volatile private var cDone = 0
+    @Volatile private var cDocs = 0
+    @Volatile private var cTodo = 0
+    @Volatile private var cBudgetHit = false
 
     // ---------------------------------------------------------------- public API
 
@@ -162,6 +171,8 @@ object IndexManager {
             .put("lastFull", lastFull).put("lastDelta", lastDelta).put("lastSave", lastSave)
             .put("included", JSONArray(Cfg.usIncluded())).put("excluded", JSONArray(Cfg.usExcluded()))
         synchronized(lock) { o.put("pending", dirty.size) }
+        o.put("content", JSONObject().put("on", Cfg.usContent()).put("maxMb", Cfg.usContentMaxMb()).put("budgetMb", Cfg.usContentBudgetMb()).put("exts", Cfg.usContentExtsText())
+            .put("docs", cDocs).put("done", cDone).put("todo", cTodo).put("budgetHit", cBudgetHit).put("want", contentWant))
         if (x != null) o.put("entries", x.count()).put("dirs", x.dirCount()).put("dead", x.deadCount()).put("epoch", x.epoch()).put("bytes", x.approxBytes())
         if (sc != null) {
             val n = sc.files + sc.dirs
@@ -244,6 +255,8 @@ object IndexManager {
                     val w = powerWait()
                     if (w.isNotEmpty()) { state = State.PAUSED; waitReason = w; phase = ""; waitMs = LOWBAT_WAIT }
                     else job = if (full || wantFull) 1 else 2
+                } else if (contentWant && complete && Cfg.usContent() && powerWait().isEmpty()) {
+                    job = 5   // text-file content pass (Part 5): after the names, resumable, skips unchanged files
                 } else {
                     state = State.IDLE; waitReason = ""; phase = ""
                     if (dirty.isNotEmpty()) waitMs = minOf(waitMs, maxOf(200L, OWN_DEBOUNCE - (now - dirtyAt)))
@@ -259,7 +272,9 @@ object IndexManager {
             3 -> doPaths()
             2 -> doDelta()
             1 -> doFull()
+            5 -> doContent()
         }
+        if (job in 1..4) contentWant = true   // names changed: let the content pass look for new / changed files
         maybeSave(false)
     }
 
@@ -351,6 +366,75 @@ object IndexManager {
             for (p in batch) { if (Delta.syncDir(cur, File(p), rules, linkFn)) any = true }
             if (any) synchronized(lock) { unsaved = true }
         } finally { phase = "" }
+    }
+
+    // ---------------------------------------------------------------- text-file content (Part 5)
+
+    /** The content store, opened on first use; null while content search is off. */
+    fun content(): ContentStore? {
+        if (!enabled() || !Cfg.usContent() || ctx == null) return null
+        cStore?.let { return it }
+        synchronized(lock) { if (cStore == null) cStore = try { ContentStore(File(dataDir(), "content.db")) } catch (_: Throwable) { null } }
+        return cStore
+    }
+
+    fun setContent(on: Boolean) { Cfg.setUsContent(on); if (on) { contentWant = true; poke() } else if (phase == "content") scan?.cancel() }
+    fun setContentLimits(maxMb: Int, budgetMb: Int) { Cfg.setUsContentLimits(maxMb, budgetMb); contentWant = true; poke() }
+    fun setContentExts(v: String) { Cfg.setUsContentExts(v); contentWant = true; poke() }
+    fun contentRebuild() { content()?.clear(); cDocs = 0; contentWant = true; poke() }
+
+    /** Office documents are zipped (small text, big file): own cap of 30 MB; text files use the Settings cap. */
+    private fun capFor(name: String, maxB: Long): Long = if (DocExtractor.isDoc(name.substringAfterLast('.', "").lowercase())) DocExtractor.MAX_BYTES else maxB
+
+    private fun doContent() {
+        val cur = ix ?: return
+        val store = content() ?: run { contentWant = false; return }
+        val st = ScanState(); scan = st
+        state = State.SCANNING; phase = "content"
+        contentWant = false; cBudgetHit = false
+        try {
+            val exts = Cfg.usContentExts()
+            val maxB = Cfg.usContentMaxMb() * 1024L * 1024L
+            val budget = Cfg.usContentBudgetMb() * 1024L * 1024L
+            store.begin()   // 1) rows of files that left the index, grew past the cap or lost their extension
+            for (p in store.allPaths()) {
+                if (st.cancelled) break
+                val id = cur.find(p)
+                if (id == NameIndex.NONE || !cur.isLive(id) || cur.sizeOf(id) > capFor(p, maxB) || !exts.contains(p.substringAfterLast('.', "").lowercase())) store.delete(p)
+            }
+            store.commit()
+            val ids = ArrayList<Int>()   // 2) candidates by extension
+            cur.forEachLive { id ->
+                if (!cur.isDir(id)) { val n = cur.nameOf(id); val dot = n.lastIndexOf('.'); if (dot > 0 && exts.contains(n.substring(dot + 1).lowercase())) ids.add(id) }
+            }
+            cTodo = ids.size; cDone = 0
+            var chars = store.chars()
+            var n = 0
+            store.begin()
+            for (id in ids) {
+                if (st.cancelled) break
+                cDone++
+                if (!cur.isLive(id)) continue
+                val size = cur.sizeOf(id); val mt = cur.mtimeOf(id)
+                if (size <= 0L || size > capFor(cur.nameOf(id), maxB)) continue
+                val path = cur.pathOf(id)
+                val old = store.stamp(path)
+                if (old != null && old[0] == mt && old[1] == size) continue   // unchanged: resumable
+                if (chars >= budget) { cBudgetHit = true; break }
+                st.current = path; st.files++
+                val ext = path.substringAfterLast('.', "").lowercase()
+                val isDoc = DocExtractor.isDoc(ext)
+                val raw = try { if (isDoc) DocExtractor.extract(File(path)) else TextExtractor.extract(File(path), ext, maxB)?.text } catch (_: Throwable) { null }
+                val txt = if (raw == null) "" else Fold.fold(raw)   // binary / unreadable / encrypted / too slow: empty row, so it is not read again until it changes
+                store.upsert(path, mt, size, txt, if (isDoc) "d" else "t")
+                chars += minOf(txt.length, ContentStore.MAX_CHARS)
+                if (++n % 100 == 0) { store.commit(); store.begin(); if (!power().second) try { Thread.sleep(20) } catch (_: InterruptedException) {} }
+            }
+            store.commit()
+        } catch (t: Throwable) {
+            lastError = "content: " + (t.message ?: t.javaClass.simpleName)
+            try { store.commit() } catch (_: Throwable) {}
+        } finally { scan = null; phase = ""; try { cDocs = store.count() } catch (_: Throwable) {} }
     }
 
     // ---------------------------------------------------------------- persistence

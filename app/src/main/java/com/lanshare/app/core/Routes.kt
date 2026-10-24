@@ -399,6 +399,10 @@ object Routes {
                     "charging" -> IndexManager.setCharging(b.optBoolean("on", false))
                     "included" -> IndexManager.setIncluded(b.optJSONArray("paths")?.strings() ?: emptyList())
                     "excluded" -> IndexManager.setExcluded(b.optJSONArray("paths")?.strings() ?: emptyList())
+                    "content" -> IndexManager.setContent(b.optBoolean("on", true))
+                    "contentlimits" -> IndexManager.setContentLimits(b.optInt("maxMb", 5), b.optInt("budgetMb", 300))
+                    "contentexts" -> IndexManager.setContentExts(b.optString("exts", ""))
+                    "contentrebuild" -> IndexManager.contentRebuild()
                     else -> throw BadReq("unknown op")
                 }
                 IndexManager.status()
