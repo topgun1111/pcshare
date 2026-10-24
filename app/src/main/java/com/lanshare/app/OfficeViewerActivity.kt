@@ -23,6 +23,11 @@ class OfficeViewerActivity : Activity() {
     private var dev: String? = null      // source device + path (set when opened from the file list): edits are uploaded back there
     private var rpath: String? = null
     private var pendingCsv: String? = null
+    private var curDoc: DDoc? = null          // parsed Word-type document, kept so reading-mode changes re-render without re-parsing
+    private val rprefs by lazy { getSharedPreferences("office_read", MODE_PRIVATE) }   // reading mode: on / px (text size) / theme
+    private var readRow: android.widget.LinearLayout? = null
+    private var readLbl: android.widget.TextView? = null
+    private var pendingFrac = -1f             // scroll position (0..1) to restore after a reading-mode re-render
     private val undoStack = ArrayList<File>()   // Part 10a: copies of the cache file taken before each edit (any format); newest last, max 10
 
     override fun onCreate(b: Bundle?) {
@@ -37,6 +42,11 @@ class OfficeViewerActivity : Activity() {
                 if (u.scheme == "lsoffice") { u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }
                 return u.scheme != "about" && u.scheme != "data"   // block everything else (in-page #anchors are not navigations)
             }
+            override fun onPageFinished(v: WebView, url: String?) {
+                val fr = pendingFrac; if (fr < 0f) return
+                pendingFrac = -1f
+                v.postDelayed({ val h = v.contentHeight * resources.displayMetrics.density - v.height; if (h > 0) v.scrollTo(0, (fr * h).toInt()) }, 150)
+            }
         }
         val f = intent.getStringExtra("path")?.let { File(it) } ?: run {
             val u = intent.data ?: (intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)) ?: return finish()
@@ -49,7 +59,40 @@ class OfficeViewerActivity : Activity() {
         dev = intent.getStringExtra("dev")?.takeIf { it.isNotEmpty() }; rpath = intent.getStringExtra("rpath")?.takeIf { it.isNotEmpty() }
         val rd = dev; val rp = rpath
         if (rd != null && rp != null) OfficeShortcutActivity.Recent.add(applicationContext, rd, rp, rp.substringAfterLast('/'))   // launcher "recent office files"
-        load(f)
+        val mode = if (intent.getBooleanExtra("simple", false)) "simple" else com.lanshare.app.core.OfficeExact.mode(this)
+        if (mode != "simple" && com.lanshare.app.core.OfficeExact.eligible(f.name)) exactOrSimple(f, true) else load(f)
+    }
+
+    /**
+     * Exact pages: the PC converts the file to PDF (cached by content) and the PDF viewer shows it; this screen then closes.
+     * Any failure (no PC, old pcprint.py, no Office / LibreOffice there, timeout) falls back to the simple HTML view with ONE toast that says why.
+     * [auto] = opened by the setting (a missing PC is the normal case then, so the toast is short); false = the user chose the menu item.
+     */
+    private fun exactOrSimple(f: File, auto: Boolean) {
+        val oe = com.lanshare.app.core.OfficeExact
+        fun status(t: String) = runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL("about:blank", "<body style=\"font:16px sans-serif;padding:24px;color:#555\">" + DocxHtml.esc(t) + "<br><small>Back = cancel</small></body>", "text/html", "UTF-8", null) }
+        status("Preparing exact pages\u2026")
+        Thread {
+            var pdf: File? = null; var why: String? = null; var md5 = ""
+            try {
+                pdf = oe.cached(applicationContext, f) ?: oe.convert(applicationContext, f, auto) { status(it) }
+                md5 = oe.md5(f)
+            } catch (e: Throwable) { why = e.message ?: e.javaClass.simpleName }
+            runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                val p = pdf
+                if (p != null) {
+                    PdfViewerActivity.pending = org.json.JSONObject().put("name", f.nameWithoutExtension + ".pdf").put("file", p.absolutePath).put("size", p.length())
+                        .put("key", "office|" + md5)
+                        .put("office", org.json.JSONObject().put("path", f.absolutePath).put("dev", dev ?: "").put("rpath", rpath ?: "")).toString()
+                    startActivity(android.content.Intent(this, PdfViewerActivity::class.java))
+                    finish()
+                } else {
+                    Toast.makeText(this, (if (auto) "Simple view - " else "Exact pages not available - ") + (why ?: "unknown error"), Toast.LENGTH_LONG).show()
+                    load(f)
+                }
+            }
+        }.also { it.isDaemon = true }.start()
     }
 
     // The theme has no ActionBar, so the options menu was never shown: own top bar (title, find, overflow) above the WebView.
@@ -94,8 +137,16 @@ class OfficeViewerActivity : Activity() {
         fr.addView(btn("\u2191", "Previous") { web.findNext(false) })
         fr.addView(btn("\u2193", "Next") { web.findNext(true) })
         findRow = fr
+        val rr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER; visibility = android.view.View.GONE; setBackgroundColor(pal.cont) }
+        rr.addView(btn("A\u2212", "Smaller text") { readStep(-DocxReading.STEP) })
+        val lbl = android.widget.TextView(this).apply { textSize = 14f; setTextColor(pal.fg); gravity = android.view.Gravity.CENTER; layoutParams = android.widget.LinearLayout.LayoutParams(dp(56), dp(48)) }
+        rr.addView(lbl); readLbl = lbl
+        rr.addView(btn("A+", "Larger text") { readStep(DocxReading.STEP) })
+        rr.addView(btn("\u25D0", "Reading colours: paper, sepia, dark") { readTheme() })
+        readRow = rr
         root.addView(top, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
         root.addView(fr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        root.addView(rr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
@@ -115,9 +166,11 @@ class OfficeViewerActivity : Activity() {
     private fun showMore(anchor: android.view.View) {
         val pm = android.widget.PopupMenu(this, anchor)
         val m = pm.menu
+        if (file?.let { com.lanshare.app.core.OfficeExact.eligible(it.name) } == true) m.add(0, 10, 0, "Show exact pages (PC)")
         m.add(0, 8, 0, "Print on PC")
         m.add(0, 3, 0, "Print / save as PDF (Android)")
         if (od?.isSheet == true) m.add(0, 4, 1, "Export sheet as CSV")
+        else if (od != null) m.add(0, 9, 1, if (readingOn) "Reading mode: turn off" else "Reading mode")
         if (od?.editable == true && dev != null && rpath != null) {
             if (od?.isSheet == true) { m.add(0, 5, 2, "Edit cell..."); m.add(0, 6, 3, "Insert row...") }
             else { m.add(0, 5, 2, "Find and replace..."); m.add(0, 6, 3, "Add paragraph...") }
@@ -133,22 +186,62 @@ class OfficeViewerActivity : Activity() {
                 val enc = e.message.orEmpty().contains("password", true) || e.message.orEmpty().contains("zip", true) || e.message.orEmpty().contains("end header", true)
                 "<body style=\"font:15px sans-serif;padding:16px\">" + (if (enc) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: " + e.message) + "</body>"
             }
-            runOnUiThread { if (!isDestroyed) { web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) } }
+            runOnUiThread { if (!isDestroyed) { updateReadRow(); web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) } }
         }.start()
     }
+
+    // ---- Reading mode (Word-type documents): text reflows to the screen width, own text size and colours; settings are kept for every document ----
+    private val readingOn get() = rprefs.getBoolean("on", false)
+    private fun autoTheme() = if (androidx.core.graphics.ColorUtils.calculateLuminance(AppPal.pal(this).bg) > 0.5) DocxReading.PAPER else DocxReading.DARK
+    private fun readingCfg(): DocxReading? =
+        if (!readingOn || od?.isSheet == true) null
+        else DocxReading(DocxReading.clampPx(rprefs.getInt("px", 18)), rprefs.getInt("theme", autoTheme()).coerceIn(0, 2))
+
+    private fun updateReadRow() {
+        val c = readingCfg()
+        readRow?.visibility = if (c != null) android.view.View.VISIBLE else android.view.View.GONE
+        readLbl?.text = c?.fontPx?.toString() ?: ""
+        web.setBackgroundColor(if (c != null) android.graphics.Color.parseColor(c.bg) else android.graphics.Color.WHITE)
+    }
+
+    private fun readStep(d: Int) {
+        val cur = DocxReading.clampPx(rprefs.getInt("px", 18))
+        rprefs.edit().putInt("px", DocxReading.clampPx(cur + d)).apply(); rerender()
+    }
+
+    private fun readTheme() {
+        val cur = rprefs.getInt("theme", autoTheme()).coerceIn(0, 2)
+        rprefs.edit().putInt("theme", (cur + 1) % 3).apply(); rerender()
+    }
+
+    /** Re-renders the already parsed document with the current reading settings and keeps the reading position. */
+    private fun rerender() {
+        val o = od; val doc = curDoc
+        if (o == null || doc == null || o.isSheet) return
+        val h = web.contentHeight * resources.displayMetrics.density - web.height
+        pendingFrac = if (h > 0) (web.scrollY / h).coerceIn(0f, 1f) else 0f
+        updateReadRow()
+        Thread {
+            val html = try { renderDoc(o, doc) } catch (e: Throwable) { "<body style=\"font:15px sans-serif;padding:16px\">" + e.message + "</body>" }
+            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) }
+        }.start()
+    }
+
+    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), image = { im ->
+        val bytes = try { o.image(im.part) } catch (_: Throwable) { null }
+        if (bytes == null || bytes.size > 3_000_000) null else {
+            val mime = when (im.part.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"; "webp" -> "image/webp"; "svg" -> "image/svg+xml"; else -> null }
+            if (mime == null) null else "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+        }
+    })
 
     private fun build(f: File): String {
         val o = OfficeOpen(f); od = o        // format detected by content (docx/xlsx/doc/xls/odt/ods)
         if (!o.isSheet) {
-            val doc = o.readDoc()
-            return DocxHtml.render(doc, title = f.name, image = { im ->
-                val bytes = o.image(im.part)
-                if (bytes == null || bytes.size > 3_000_000) null else {
-                    val mime = when (im.part.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"; "webp" -> "image/webp"; "svg" -> "image/svg+xml"; else -> null }
-                    if (mime == null) null else "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
-                }
-            })
+            val doc = o.readDoc(); curDoc = doc
+            return renderDoc(o, doc)
         }
+        curDoc = null
         tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
         val first = (tabs.firstOrNull { it.first == curSheet } ?: tabs.firstOrNull())?.first ?: return "<body style=\"font:15px sans-serif;padding:16px\">No visible sheets.</body>"
         curSheet = first
@@ -167,10 +260,12 @@ class OfficeViewerActivity : Activity() {
     override fun onOptionsItemSelected(i: MenuItem): Boolean = when (i.itemId) {
         3 -> { printPage(); true }
         8 -> { printOnPc(); true }
+        10 -> { file?.let { exactOrSimple(it, false) }; true }
         4 -> { exportCsv(); true }
         5 -> { if (od?.isSheet == true) askCell() else askReplace(); true }
         6 -> { if (od?.isSheet == true) askRow() else askParagraph(); true }
         7 -> { undoEdit(); true }
+        9 -> { rprefs.edit().putBoolean("on", !readingOn).apply(); rerender(); true }
         else -> super.onOptionsItemSelected(i)
     }
 

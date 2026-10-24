@@ -25,39 +25,41 @@ object DocxHtml {
         return sb.toString()
     }
 
-    fun render(doc: DDoc, image: (DImage) -> String? = { null }, title: String = ""): String {
+    /** [rd] != null -> phone reading layout (reflowed text, own font size and theme, no page chrome); null -> page-like layout as before. */
+    fun render(doc: DDoc, image: (DImage) -> String? = { null }, title: String = "", rd: DocxReading? = null): String {
         val notes = LinkedHashMap<String, Int>()
         fun noteNo(id: String) = notes.getOrPut(id) { notes.size + 1 }
         val sb = StringBuilder(16 * 1024)
         sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes\"><title>")
             .append(esc(title)).append("</title><style>").append(CSS)
         if (doc.defaultSize > 0) sb.append(".page{font-size:").append(doc.defaultSize / 2.0).append("pt}")
+        if (rd != null) sb.append(readingCss(rd))
         sb.append("</style></head><body><div class=page>")
         if (doc.truncated) sb.append("<div class=tr>Document truncated (too long).</div>")
-        if (doc.header.isNotEmpty()) { sb.append("<div class=hf>"); blocks(doc, doc.header, sb, image, ::noteNo); sb.append("</div>") }
-        blocks(doc, doc.body, sb, image, ::noteNo)
+        if (rd == null && doc.header.isNotEmpty()) { sb.append("<div class=hf>"); blocks(doc, doc.header, sb, image, rd, ::noteNo); sb.append("</div>") }
+        blocks(doc, doc.body, sb, image, rd, ::noteNo)
         if (notes.isNotEmpty()) {
             sb.append("<div class=fn>")
             for ((id, n) in notes) {
                 val fb = doc.footnotes[id] ?: doc.endnotes[id] ?: continue
                 sb.append("<div id=\"fn").append(esc(id)).append("\"><a href=\"#rf").append(esc(id)).append("\">").append(n).append(".</a> ")
-                val t = StringBuilder(); blocks(doc, fb, t, image, ::noteNo)
+                val t = StringBuilder(); blocks(doc, fb, t, image, rd, ::noteNo)
                 sb.append(t.toString().replace("<p>", "<span>").replace("</p>", "</span> ")).append("</div>")
             }
             sb.append("</div>")
         }
-        if (doc.footer.isNotEmpty()) { sb.append("<div class=\"hf f\">"); blocks(doc, doc.footer, sb, image, ::noteNo); sb.append("</div>") }
+        if (rd == null && doc.footer.isNotEmpty()) { sb.append("<div class=\"hf f\">"); blocks(doc, doc.footer, sb, image, rd, ::noteNo); sb.append("</div>") }
         return sb.append("</div></body></html>").toString()
     }
 
-    private fun blocks(doc: DDoc, bs: List<DBlock>, sb: StringBuilder, img: (DImage) -> String?, note: (String) -> Int) {
+    private fun blocks(doc: DDoc, bs: List<DBlock>, sb: StringBuilder, img: (DImage) -> String?, rd: DocxReading?, note: (String) -> Int) {
         for (b in bs) when (b) {
-            is DPara -> para(doc, b, sb, img, note)
-            is DTable -> table(doc, b, sb, img, note)
+            is DPara -> para(doc, b, sb, img, rd, note)
+            is DTable -> table(doc, b, sb, img, rd, note)
         }
     }
 
-    private fun para(doc: DDoc, p: DPara, sb: StringBuilder, img: (DImage) -> String?, note: (String) -> Int) {
+    private fun para(doc: DDoc, p: DPara, sb: StringBuilder, img: (DImage) -> String?, rd: DocxReading?, note: (String) -> Int) {
         val st = StringBuilder()
         if (p.align != null) st.append("text-align:").append(if (p.align == "both") "justify" else p.align).append(';')
         val tag = if (p.heading > 0) "h" + minOf(p.heading, 6) else "p"
@@ -65,12 +67,13 @@ object DocxHtml {
         var hang = 0
         if (p.label != null) {
             cls = "li"
-            val left = if (p.indentLeft > 0) p.indentLeft / 15 else (p.level + 1) * 24
+            var left = if (p.indentLeft > 0) p.indentLeft / 15 else (p.level + 1) * 24
             hang = if (p.firstLine < 0) -p.firstLine / 15 else 24
+            if (rd != null) { hang = minOf(hang, 28); left = maxOf(hang, minOf(left / 2, 24 + p.level * 20)) }   // reading: narrow screen, keep the nesting but not the page margins
             st.append("margin-left:").append(left).append("px;text-indent:-").append(hang).append("px;")
         } else {
-            if (p.indentLeft > 0) st.append("margin-left:").append(p.indentLeft / 15).append("px;")
-            if (p.firstLine != 0) st.append("text-indent:").append(p.firstLine / 15).append("px;")
+            if (p.indentLeft > 0) st.append("margin-left:").append(if (rd != null) minOf(p.indentLeft / 30, 40) else p.indentLeft / 15).append("px;")
+            if (p.firstLine != 0 && rd == null) st.append("text-indent:").append(p.firstLine / 15).append("px;")
         }
         if (p.pageBreakBefore) sb.append("<hr class=pb>")
         sb.append('<').append(tag)
@@ -86,7 +89,7 @@ object DocxHtml {
                 DRun.TEXT -> {
                     val txt = StringBuilder(esc(r.text)); var j = i + 1
                     while (j < p.runs.size && p.runs[j].kind == DRun.TEXT && p.runs[j].sameStyle(r)) { txt.append(esc(p.runs[j].text)); j++ }
-                    styled(doc, r, txt.toString(), sb); i = j; continue
+                    styled(doc, r, txt.toString(), rd, sb); i = j; continue
                 }
                 DRun.TAB -> sb.append("<span style=\"display:inline-block;width:2em\"></span>")
                 DRun.BREAK -> sb.append("<br>")
@@ -107,14 +110,15 @@ object DocxHtml {
         sb.append("</").append(tag).append('>')
     }
 
-    private fun styled(doc: DDoc, r: DRun, html: String, sb: StringBuilder) {
+    private fun styled(doc: DDoc, r: DRun, html: String, rd: DocxReading?, sb: StringBuilder) {
+        val dark = rd != null && rd.theme == DocxReading.DARK   // dark reading theme: author colours / highlights would be unreadable
         val st = StringBuilder()
         if (r.bold) st.append("font-weight:bold;")
         if (r.italic) st.append("font-style:italic;")
         if (r.underline || r.strike) st.append("text-decoration:").append(if (r.underline) "underline" else "").append(if (r.underline && r.strike) " " else "").append(if (r.strike) "line-through" else "").append(';')
         if (r.caps) st.append("text-transform:uppercase;")
-        r.color?.let { if (Regex("[0-9A-Fa-f]{6}").matches(it)) st.append("color:#").append(it).append(';') }
-        r.highlight?.let { h -> HL[h]?.let { st.append("background:").append(it).append(';') } }
+        if (!dark) r.color?.let { if (Regex("[0-9A-Fa-f]{6}").matches(it)) st.append("color:#").append(it).append(';') }
+        if (!dark) r.highlight?.let { h -> HL[h]?.let { st.append("background:").append(it).append(';') } }
         if (r.size > 0 && r.size != doc.defaultSize) st.append("font-size:").append(r.size / 2.0).append("pt;")
         val href = r.link?.takeIf { it.startsWith("#") || it.startsWith("http://", true) || it.startsWith("https://", true) || it.startsWith("mailto:", true) || it.startsWith("tel:", true) }
         if (href != null) sb.append("<a href=\"").append(esc(href)).append("\">")
@@ -125,11 +129,12 @@ object DocxHtml {
         if (href != null) sb.append("</a>")
     }
 
-    private fun table(doc: DDoc, t: DTable, sb: StringBuilder, img: (DImage) -> String?, note: (String) -> Int) {
+    private fun table(doc: DDoc, t: DTable, sb: StringBuilder, img: (DImage) -> String?, rd: DocxReading?, note: (String) -> Int) {
         val total = t.grid.sum() / 15
+        if (rd != null) sb.append("<div class=tw>")   // reading: wide tables scroll sideways inside their own box
         sb.append("<table").append(if (t.borders) " class=b" else "")
         // fixed px widths overflowed the white page on phones (text ran onto the grey body): use % so the table always fits its container
-        if (total > 0) sb.append(" style=\"width:100%;max-width:").append(total).append("px\"")
+        if (total > 0 && rd == null) sb.append(" style=\"width:100%;max-width:").append(total).append("px\"")
         sb.append('>')
         if (t.grid.isNotEmpty()) { val gs = t.grid.sum().toDouble().coerceAtLeast(1.0); sb.append("<colgroup>"); for (w in t.grid) sb.append("<col style=\"width:").append(String.format(java.util.Locale.US, "%.2f", w * 100.0 / gs)).append("%\">"); sb.append("</colgroup>") }
         // grid start column of every cell, for vMerge row spans
@@ -149,13 +154,41 @@ object DocxHtml {
                 sb.append(if (row.header) "<th" else "<td")
                 if (cell.span > 1) sb.append(" colspan=").append(cell.span)
                 if (rs > 1) sb.append(" rowspan=").append(rs)
-                cell.fill?.let { if (Regex("[0-9A-Fa-f]{6}").matches(it)) sb.append(" style=\"background:#").append(it).append('"') }
+                if (rd?.theme != DocxReading.DARK) cell.fill?.let { if (Regex("[0-9A-Fa-f]{6}").matches(it)) sb.append(" style=\"background:#").append(it).append('"') }
                 sb.append('>')
-                blocks(doc, cell.blocks, sb, img, note)
+                blocks(doc, cell.blocks, sb, img, rd, note)
                 sb.append(if (row.header) "</th>" else "</td>")
             }
             sb.append("</tr>")
         }
         sb.append("</table>")
+        if (rd != null) sb.append("</div>")
+    }
+
+    /** CSS appended after the page CSS for reading mode; !important beats the inline sizes / alignment / widths written per run, paragraph and table. */
+    private fun readingCss(r: DocxReading): String {
+        val bg = r.bg; val fg = r.fg; val link = r.link
+        return "body{background:$bg;color:$fg}" +
+            ".page{background:$bg;max-width:40em;margin:0 auto;padding:14px 16px 56px;font-size:${r.fontPx}px !important;line-height:1.6;font-family:'Noto Serif',Georgia,serif}" +
+            ".page span{font-size:inherit !important}p{line-height:1.6;margin:0 0 .8em}" +
+            "[style*='text-align:justify']{text-align:left !important}" +
+            "a{color:$link}.pb{display:none}img{max-width:100% !important;height:auto !important}" +
+            ".tw{overflow-x:auto;margin:0 0 .9em}table{width:auto !important;max-width:none !important;min-width:100%;table-layout:auto !important;margin:0}" +
+            "col{width:auto !important}td,th{min-width:4.5em;padding:4px 6px}table.b td,table.b th{border:1px solid rgba(128,128,128,.55)}" +
+            ".fn{border-color:rgba(128,128,128,.6)}.noimg{color:${r.muted}}.tr{background:${r.note};color:$fg}"
+    }
+}
+
+/** Reading mode settings for [DocxHtml.render]: text size in CSS px and a colour theme (PAPER, SEPIA, DARK). */
+class DocxReading(val fontPx: Int = 18, val theme: Int = PAPER) {
+    val bg: String get() = when (theme) { SEPIA -> "#f4ecd8"; DARK -> "#121212"; else -> "#fbfaf7" }
+    val fg: String get() = when (theme) { SEPIA -> "#3b2f1e"; DARK -> "#d9d9d9"; else -> "#1c1c1c" }
+    val link: String get() = when (theme) { SEPIA -> "#8a4b08"; DARK -> "#8ab4f8"; else -> "#1a5fb4" }
+    val muted: String get() = when (theme) { DARK -> "#999"; else -> "#777" }
+    val note: String get() = when (theme) { DARK -> "#3a3320"; SEPIA -> "#e8dcb8"; else -> "#fff3cd" }
+    companion object {
+        const val PAPER = 0; const val SEPIA = 1; const val DARK = 2
+        const val MIN = 12; const val MAX = 32; const val STEP = 2
+        fun clampPx(v: Int) = v.coerceIn(MIN, MAX)
     }
 }
