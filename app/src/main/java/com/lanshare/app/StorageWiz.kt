@@ -1064,17 +1064,17 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         var pos = -1
         init {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(6), dp(16), dp(6)); minimumHeight = dp(64)
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(2), dp(6), dp(12), dp(6)); minimumHeight = dp(64)
             addView(indent, LinearLayout.LayoutParams(0, 1))
-            addView(tog, LinearLayout.LayoutParams(dp(40), dp(48)))
-            addView(sw, LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(12) })
+            addView(tog, LinearLayout.LayoutParams(dp(30), dp(48)))
+            addView(sw, LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(10) })
             val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             mid.addView(name); mid.addView(meta)
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
-            val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
+            val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(72) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
             right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(7) })
-            addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
+            addView(right, LinearLayout.LayoutParams(dp(72), -2).apply { leftMargin = dp(8) })
             tog.setOnClickListener { if (pos in rowN.indices) { toggleExpand(rowN[pos]); treeAdapter.notifyDataSetChanged() } }
         }
     }
@@ -1087,7 +1087,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val v = (cv as? TreeRow) ?: TreeRow(act)
             val n = rowN[p]
             v.pos = p
-            v.indent.layoutParams = LinearLayout.LayoutParams(dp(16) * rowD[p], 1)
+            v.indent.layoutParams = LinearLayout.LayoutParams(dp(7) * minOf(rowD[p], 8), 1)   // narrow steps, capped: deep levels keep room for the names
             v.tog.text = if (n.dir && n.kids.isNotEmpty() && !n.agg) (if (expanded.contains(n)) "−" else "+") else ""
             if (n.agg) v.sw.set(1, WizUtil.GRAY, "…") else if (n.dir) v.sw.set(0, WizUtil.FOLDER) else setFileGlyph(v.sw, n)
             v.name.text = if (n.agg) "<" + n.files + " small files>" else if (n.parent == null) host.label else n.name
