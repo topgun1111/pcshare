@@ -163,3 +163,46 @@ jobs:
             ${{ runner.temp }}/selftest.log
             ${{ runner.temp }}/compile.log
           if-no-files-found: ignore
+
+  # Universal Search core (core/usearch, chapter 16 of HANDOVER.md) on the JVM. Same strict rules as office-selftest:
+  # red on any FAIL line, a crash, or fewer ok lines than the minimum. Needs no Android SDK.
+  usearch-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Kotlin compiler 2.0.21
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kotlin.zip" https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+          unzip -q "$RUNNER_TEMP/kotlin.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
+      - name: Compile core/usearch + self-test
+        run: |
+          kotlinc app/src/main/java/com/lanshare/app/core/usearch/*.kt tools/usearch_selftest/Main.kt -include-runtime -d "$RUNNER_TEMP/ust.jar" 2>&1 | tee "$RUNNER_TEMP/compile.log"
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Run self-test
+        run: |
+          LOG="$RUNNER_TEMP/usearch-selftest.log"
+          MIN=150
+          java -jar "$RUNNER_TEMP/ust.jar" < /dev/null > "$LOG" 2>&1 && rc=0 || rc=$?
+          ok=$(grep -c -E '^(ok|OK) ' "$LOG" || true); fl=$(grep -c '^FAIL' "$LOG" || true)
+          res=PASS
+          if [ "$rc" -ne 0 ]; then res="CRASH/FAIL (exit $rc)"; fi
+          if [ "$fl" -gt 0 ]; then res=FAIL; fi
+          if [ "$ok" -lt "$MIN" ] && [ "$res" = PASS ]; then res="TOO FEW ok"; fi
+          grep '^info' "$LOG" || true
+          printf '| self-test | ok | FAIL | minimum ok | result |\n|---|---|---|---|---|\n| usearch | %s | %s | %s | %s |\n' "$ok" "$fl" "$MIN" "$res" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "ok=$ok FAIL=$fl min=$MIN -> $res"
+          if [ "$res" != PASS ]; then
+            echo "::error title=usearch self-test $res::ok=$ok FAIL=$fl min=$MIN. $({ grep -m3 -E '^FAIL|Exception' "$LOG" || true; } | tr '\n' ' ' | cut -c1-350)"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: usearch-selftest-log
+          path: |
+            ${{ runner.temp }}/usearch-selftest.log
+            ${{ runner.temp }}/compile.log
+          if-no-files-found: ignore

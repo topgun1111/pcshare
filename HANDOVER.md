@@ -4,6 +4,11 @@
 > 1. **Token economy.** All coding is done on *free* Claude accounts, so tokens are scarce. Do not waste them: read only the files you need (grep / `sed -n` ranges, never `cat` whole big files), no long explanations or repeated summaries, patch with small scripted edits instead of rewriting files, no unrequested extras, keep replies short.
 > 2. **Always deliver the WHOLE app as a zip.** After any change, hand over the complete project zip (every app file, updated files included), not only the changed files. Exclude only `build/` and `.gradle/`; name it `pcshare-<topic>-partN.zip`, root folder `pcshare/`, and update this handover before zipping.
 
+> **NEW - Universal Search (chapter 16) - read this before touching search** (entry added 2026-10-25)
+> - Goal: one instant search box for this phone (names, text contents, documents, pictures by text and meaning). Multipart plan in **chapter 16**; one part per session; the owner pastes the session prompt from 16.10.
+> - **State:** Part 1 (name index core: `core/usearch/Fold.kt`, `NameIndex.kt`, `IndexStore.kt`, `Walker.kt`) and Part 2 (query engine: `Kinds.kt`, `QueryParser.kt`, `Matcher.kt`, `Ranker.kt`) + `tools/usearch_selftest` are CODED but **never compiled or run**. Part 0 (gate: green CI + image-search device check) is still open. **Next: check the first run of the CI job `usearch-selftest` (Parts 1 + 2 together; paste the first `e:` or `FAIL` line), then Part 3 (index manager and freshness).**
+> - **Delivery rule (owner, 2026-10-25, same as rule 2 above): always zip ALL app files, never only the changed files.** Name `pcshare-usearch-partN.zip`, root folder `pcshare/`, leave out only `build/`, `.gradle/` and `.git`.
+
 One handover for the whole project (Android app + PC helper tools). It replaces the ten separate `HANDOVER*.md` files, which were merged on 2026-10-21; their full text stays in git history (last commit that still has them: `ce433bc`).
 
 **How to use this file**
@@ -27,6 +32,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 13. Performance
 14. Changelog (newest first)
 15. Appendix: source map, unused code, documentation gaps
+16. Universal Search (multipart plan, in progress)
 
 ---
 
@@ -76,10 +82,13 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 | OCR (ML Kit + PaddleOCR) | 11.2 | session 9: build green and device test OK for the basic version; later work not compiled | |
 | Storage Analyzer | 12 | all 81 sources compiled against android-34 (0 errors in the storage files); mirror test 4000 / 4000; device test open | WizTree view uncompiled |
 | Performance (cold start 533 -> 335 ms) | 13 | measured on a phone 2026-10-20, merged | debug tab still in |
+| Universal Search (Everything for the phone) | 16 | Parts 1 + 2 coded 2026-10-25, not compiled, not run; CI job `usearch-selftest` (minimum 150 ok) first run pending; Parts 0, 3-10 open | `core/usearch/` |
 
 ---
 
 ## 3. Open work (prioritised)
+
+**U. Universal Search** - plan in chapter 16. Parts 1 and 2 are coded but never compiled / run: read the result of CI job `usearch-selftest`, fix, record the measured numbers (the `info` lines) in the Part 1 and Part 2 notes, then do Part 3. Part 0 (green CI + image-search device check 11.1) is still open.
 
 **0. Print space** - feature complete in code (grid + free placement, safe margins, Keep apart, side / corner handles, Recent prints sessions, PDF pages). Left: build (`./gradlew assembleDebug`, paste the first compiler error), then the device checklist at the end of 9.7. Newest code, most likely to hold compile errors: `PrintSessions.kt`, `PrintSpace.adopt` / `add` / `addStream` / `addPdf`, `SheetLayout` free + `clampFree` / `freeHit` / `packFree`, `ImageViewerActivity.addToPrintSpace`, `MainActivity.shareToPrintSpace`, `PrintSpaceShareAlias` in the manifest. Also open: Chromium gesture test of the free stage, JVM test of `PsLayoutJson`, Chromium test of the Recent prints list.
 
@@ -393,16 +402,16 @@ Device check: office rows show thumbnails only for files that carry one (Word / 
 
 **Setting (Part 13).** Settings > **Office view** (`ui.html` `openOfficeViewSettings`, JS bridge `LSAndroid.officeViewGet()` / `officeViewSet(mode)` in `MainActivity`, value stored by `OfficeExact.setMode`: SharedPreferences `office_view` / `mode` = `auto` | `exact` | `simple`). `auto` and `exact` behave the same today (the PC is tried first, the reason is toasted on failure); `simple` never contacts the PC. NOT compiled, NOT device-tested.
 
-**Status of verification (honest).** Core (`core/office/*.kt` + `tools/office_selftest/Main.kt`) was compiled with kotlinc 2.0.21 and all self-tests passed with 0 FAIL up to and including Part 10 (`--chart`). **Parts 11 and 12 (`--chart2`, `--nav`) were never run on the JVM** (sandboxes without kotlinc / network). **Android build: GitHub Actions run #513 (commit `66f731d`, 2026-10-24) built the APK successfully with Parts 11, 12 and 13 in it** (checked on github.com by Claude in the Part 13b session; job logs not readable). Nothing is device-tested. Part 13b added a second CI job `office-selftest` (`.github/workflows/build-apk.yml`): it compiles `core/office/*.kt` + `Main.kt` with kotlinc 2.0.21 and runs every self-test; a line starting `FAIL` or a crash turns the job red and the log is the artifact `office-selftest-log`. It does not block the APK build. **First result (run #514, 2026-10-24): green** - core compiled with kotlinc 2.0.21, all 13 modes ran with no `FAIL` line (checked from the log tail only: each mode finished in 0.1-0.2 s, so Part 13c made the job stricter: per mode it counts `ok` / `FAIL` lines against a minimum number of `ok` lines, goes red on a crash, a `FAIL` or too few `ok`, and writes a table to the run summary). **Run #515 (strict version) failed in 0 s with no test run at all: a bug in the CI script, not in the code** (`grep -c` exits 1 on a count of 0 and the step runs under `bash -e`). Fixed in Part 13d (`|| true`, `java < /dev/null`, the loop was simulated locally with a fake java: PASS / FAIL / crash / too-few-ok all reported and every mode still runs). The first REAL result of the strict job is NOT known yet; APK build #515 itself was green.
+**Status of verification (honest).** Core (`core/office/*.kt` + `tools/office_selftest/Main.kt`) compiles with kotlinc 2.0.21 and ALL self-tests (Parts 3-12) pass with 0 FAIL in CI. **Parts 11 and 12 (`--chart2`, `--nav`) first ran on the JVM in CI on 2026-10-24 and passed** (earlier sandboxes had no kotlinc / network). **Android build: GitHub Actions run #513 (commit `66f731d`, 2026-10-24) built the APK successfully with Parts 11, 12 and 13 in it** (checked on github.com by Claude in the Part 13b session; job logs not readable). Nothing is device-tested. Part 13b added a second CI job `office-selftest` (`.github/workflows/build-apk.yml`): it compiles `core/office/*.kt` + `Main.kt` with kotlinc 2.0.21 and runs every self-test; a line starting `FAIL` or a crash turns the job red and the log is the artifact `office-selftest-log`. It does not block the APK build. **First result (run #514, 2026-10-24): green** - core compiled with kotlinc 2.0.21, all 13 modes ran with no `FAIL` line (checked from the log tail only: each mode finished in 0.1-0.2 s, so Part 13c made the job stricter: per mode it counts `ok` / `FAIL` lines against a minimum number of `ok` lines, goes red on a crash, a `FAIL` or too few `ok`, and writes a table to the run summary). **Run #515 (strict version) failed in 0 s with no test run at all: a bug in the CI script, not in the code** (`grep -c` exits 1 on a count of 0 and the step runs under `bash -e`). Fixed in Part 13d (`|| true`, `java < /dev/null`, the loop was simulated locally with a fake java: PASS / FAIL / crash / too-few-ok all reported and every mode still runs). **First REAL result of the strict job (run after Part 13d, 2026-10-24): all 13 modes PASS, 0 FAIL** - ok counts: default 24, `--docx` 16, `--edit` 14, `--fonts` 62, `--sections` 43, `--printtest` 11, `--float` 19, `--styles` 44, `--review` 24, `--cf` 53, `--chart` 44, `--chart2` 33 (first ever run), `--nav` 8 (first ever run). The same run's APK build was green (`BUILD SUCCESSFUL in 2m 28s`). Minimums in `build-apk.yml` can be raised to about 80% of these counts. What is still NOT verified: nothing of Parts 1-13 is device-tested, and the Android-only code (`OfficeViewerActivity`, `OfficeExact`, the Settings row, `ui.html` JS, the PC `/convert` route) has only been compiled, not run.
 
-**First job of the next session (in this order; item 1 is now automatic in CI, read the `office-selftest` job result first):**
+**Next jobs (item 1 is automatic in CI and currently green; the real open work is the device tests, items 2-3):**
 1. `kotlinc app/src/main/java/com/lanshare/app/core/office/*.kt tools/office_selftest/Main.kt -include-runtime -d /tmp/ost.jar`, then `java -jar /tmp/ost.jar --nav tools/office_selftest`, `--chart2`, `--chart`, `--cf`, `--review`, `--float`, `--styles`, `--sections`, `--printtest`, `--fonts`, `--docx`, `--edit` and the default run. Fix what the compiler finds (Kotlin 1.9.24 on the Android build).
 2. Push and let `.github/workflows/build-apk.yml` build the APK; paste the first compiler error.
 3. Walk the device tests below (Parts 1-12) and the Part 13 check: Settings > Office view shows the current value, tapping Simple then opening a .docx must open the HTML view without a PC search; Auto must try the PC.
 
 **Part 13b (2026-10-24):** CI job `office-selftest` added (13c: strict per-mode counts + run summary table); section 8.9 verification text updated; stale `HANDOVER_OFFICE_FIDELITY.md` must be deleted from the repo root by hand (copying a zip over the repo never deletes files).
 
-**Part status log (condensed).** 1 PDF white pages: code. 2 exact pages via PC: code. 3 fonts: core compiled + self-test OK. 4 page model: compiled OK. 5 print layout: compiled OK, spike matches LibreOffice (8 pages). 6 floats: compiled later (Part 7 session) OK. 7 tables / tabs / theme: compiled OK. 8 comments / tracked changes: compiled later (Part 9 session) OK. 9 Excel A: compiled OK. 10 charts 1: compiled OK. 11 charts 2 + pictures / shapes: NOT compiled. 12 navigation: NOT compiled. 13 integration: Settings row, handover merge; NOT compiled.
+**Part status log (condensed).** 1 PDF white pages: code. 2 exact pages via PC: code. 3 fonts: core compiled + self-test OK. 4 page model: compiled OK. 5 print layout: compiled OK, spike matches LibreOffice (8 pages). 6 floats: compiled later (Part 7 session) OK. 7 tables / tabs / theme: compiled OK. 8 comments / tracked changes: compiled later (Part 9 session) OK. 9 Excel A: compiled OK. 10 charts 1: compiled OK. 11 charts 2 + pictures / shapes: compiled + `--chart2` OK in CI. 12 navigation: compiled + `--nav` OK in CI. 13 integration: Settings row, handover merge; built in the APK, not device-tested.
 
 #### Part 1 notes (2026-10-24) - what changed in `PdfViewerActivity.kt`
 - **Failed pages are no longer permanent.** `failedPages` is now `page -> time of failure` plus `failCount`. A failed page is retried after 3 s (when it is on screen), up to 3 times; after that the blank page shows "Page N can't be shown (reason) / Tap to retry" and a tap on the viewer retries every visible failed page (`retryFailedVisible`). `showPages` (rotation / width change) and `begin` clear the failure state (before, rotation kept it).
@@ -844,6 +853,9 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-25 - Universal Search Part 2 (query engine; NOT compiled, NOT run - no Kotlin compiler in that sandbox): new in `core/usearch/`: `Kinds.kt` (kind: table), `QueryParser.kt` (`QueryParser.parse` -> `Query` AST: `QText` / `QFilter` / `QNot` / `QAnd` / `QOr`, filters ext / kind / size / dm / path / in / depth, scopes content: ocr: ai:, per-term modifiers case: ww: diac: re:, never throws, `Query.dump()`), `Matcher.kt` (`MatchOptions`, compiled predicates, prefilter bytes for `NameIndex.scanRange`), `Ranker.kt` (`Ranker.tier`, `Search.run` = chunked scan, bounded top-K heap, sort NAME / PATH / SIZE / DATE / BEST, paging, `CancelToken`); self-test extended (`query_fixture.txt` with 100 queries, matcher cases, 3000 random queries, 100k-entry timing + brute-force check), CI minimum 70 -> 150 [16].
+- 2026-10-25 - Universal Search Part 1 (name index core; NOT compiled, NOT run - no Kotlin compiler in that sandbox): new `core/usearch/` (`Fold.kt` Turkish folding, `NameIndex.kt` packed in-memory index with rename / move / remove / compact / `scanRange`, `IndexStore.kt` crash-safe `names.bin`, `Walker.kt` iterative walker with rules) + `tools/usearch_selftest/Main.kt` + CI job `usearch-selftest` in `build-apk.yml`; chapter 16 pasted into this file; Part 0 (gate) skipped [16].
+- 2026-10-24 - Part 13e (docs only): first real `office-selftest` result recorded in 8.9: all 13 modes pass (counts in 8.9), APK build green; Parts 11 and 12 verified on the JVM for the first time. Device tests still open.
 - 2026-10-24 - Part 13d: fixed `office-selftest` step (it died on the first `grep -c` returning 0 under `bash -e`, so no test ran in run #515); APK build was green. Strict self-test result still unknown.
 - 2026-10-24 - Part 13c: `office-selftest` job counts `ok` / `FAIL` per mode against minimums, fails on crash / FAIL / too few `ok`, writes a summary table; run #514 (first version) was green. Strict version not run yet.
 - 2026-10-24 - Part 13b: `.github/workflows/build-apk.yml` gets a second job `office-selftest` (kotlinc 2.0.21 download, compile `core/office` + `tools/office_selftest/Main.kt`, run all 13 self-test modes, artifact `office-selftest-log`); verification text in 8.9 updated (CI run #513 built Parts 11-13). Not run yet.
@@ -944,3 +956,236 @@ pcprint.py   VERSION   build.gradle.kts / settings.gradle.kts / gradle.propertie
 ### 15.4 Where the old files went
 `HANDOVER.md` (batches, dated notes) -> sections 5, 6, 9 and the changelog; `HANDOVER_HOME_MENU.md` -> 6.3; `HANDOVER_IMAGE_SEARCH.md` -> 11.1; `HANDOVER_OCR.md` -> 11.2; `HANDOVER_OFFICE.md` -> 8; `HANDOVER_PHONE_EXPLORER.md` -> 10.2; `HANDOVER_SCREEN_MIRROR.md` -> 9.6; `HANDOVER_STORAGE_ANALYZER.md` -> 12; `HANDOVER_TEXT_SHARING.md` -> 10.1; `HANDOVER_ZIP_EDIT_AND_WIZTREE.md` -> 5.7 and 12.9; `PERFORMANCE_FINDINGS.md` (an attachment, not in the repo) -> 13.
 - **2026-10-22** - FTP speed-up part 1 of 5: listing cache + invalidation, single-flight, FEAT-driven MLSD/LIST choice, OPTS MLST, SYST + symlink memory, TCP_NODELAY, `fresh=1` on `ls` (`FtpFs.kt`, `FtpCache.kt`, `Endpoint.kt`, `Routes.kt`; not compiled / run on device) [5.5].
+
+---
+
+## 16. Universal Search ("Everything for the phone") - multipart plan
+
+> Plan created 2026-10-25. Add one line per finished part to the changelog (section 14) and keep the status row in section 2 current.
+> Status of this chapter: **Parts 1 and 2 coded 2026-10-25 (not compiled, not run: no Kotlin compiler in that sandbox). Parts 0 and 3-10 open.**
+
+### 16.0 How every session works (read first)
+
+1. Obey the two standing rules at the top of HANDOVER.md (token economy; deliver the WHOLE app zip `pcshare-usearch-partN.zip`, root `pcshare/`, no `build/` `.gradle/`).
+2. Do **one part per session**. Read only 16.0, 16.3 (decisions), the part's own block in 16.7, and the files that block lists under "Read". Use `grep` / `sed -n` ranges, never `cat` big files (`ui.html` is ~470 KB).
+3. Pure logic goes in `core/usearch/` with **no `android.*` imports** (same rule as `core/office/`), so CI can run it on a plain JVM. Android glue lives in `Us*.kt` next to `NlSearch.kt` (plain Activity, no Compose, no AppCompat).
+4. Code must compile on **Kotlin 1.9.24** (Android build) and **2.0.21** (self-test job). Gotchas: no `removeFirst()/removeLast()` on `java.util.List`, `org.json` drops `put(k, null)`, no `/*` inside KDoc.
+5. At the end of the session: update the part's row in 16.6, write the part's "Handover note" (16.9 template) into 16.7, add the changelog line, bump nothing else. Be honest about what was compiled / run.
+6. Every new feature gets a kill switch (16.3 D10). Never bump `ENGINE_ID` in `ClipEngine` (it discards the user's image index).
+
+### 16.1 Goal and scope
+
+**Goal.** One search box that answers instantly across this phone, like Everything on a PC: type, results appear as you type, no "search" button, no waiting for a folder walk.
+
+**In scope (this phone's own storage, internal + SD / USB volumes from `Volumes.kt`):**
+| # | Kind | How |
+|---|---|---|
+| 1 | File and folder **names** | always-on index, instant |
+| 2 | **Text file contents** (txt, md, csv, json, xml, html, log, source code, subtitles...) | background content index |
+| 3 | **Document contents** (docx xlsx pptx odt ods odp doc xls; PDF only if D6 says yes) | background, reuses `core/office` readers |
+| 4 | **Images by meaning** ("dog on a beach") | existing CLIP index (`ImgSearch`) |
+| 5 | **Text inside images** (OCR) | existing OCR text in `ImgSearch` |
+
+**Out of scope for the first release (listed as Part 9 options):** other phones / PC / SMB / FTP search, archive contents, video / audio content, root storage.
+
+### 16.2 What exists today (verified in the code of the 2026-10-25 zip)
+
+- **Name search is a live walk, no index.** `LocalFs.search(v, q, limit=300, secs=15)`: recursive, lower-case substring, folders first. From the storage root it is "search everything": 20,000 results / 80 s. Every FS implements `Endpoint.search(v, q): SearchResult`. Route `GET /api/search?dev=&path=&q=` (`Routes.kt`).
+- **Office content search is a live scan.** `LocalFs.searchOfficeContent` (`/api/search?content=1`): office files only, this phone only, 100 results / 20 s, skips files > 30 MB, needs >= 2 letters.
+- **Image search** (`core/ImgSearch.kt`, `core/ClipEngine.kt`): own walk of image files, index in `<filesDir>/imgsearch/index.json` + `vec.bin` (path + mtime + size keyed, 512 float32 per picture), OCR text stored in the same index. `visual(q)` = CLIP text vector, cosine >= 0.20, top 60. `text(q, whole)` = Turkish-folded word / substring. Auto-scan: `ContentObserver` on `MediaStore.Images` (20 s debounce) + 10 min poll, battery < 20 % deferral. Folders: `img_incl` / `img_excl`. API `/api/imgs`. UI `isView()` in `ui.html` (`#gal` overlay). **Its first device test is still OPEN (11.1).**
+- **OCR** (`OcrEngine`, `OcrTiled`, `PaddleOcr` + ML Kit, 11.2) already feeds the image index.
+- UI today: path-bar search row (`NlSearch.kt`, twin of `#srow`), AI search overlay, per-FS search through the normal browser.
+- Peers already expose `/p/imgsearch` (search runs ON the remote phone) - a pattern to copy later.
+- Not present: any persistent name index, any text-content index, any unified result screen, any PDF text extraction (no PDF library by design; `PdfRenderer` only renders).
+
+### 16.3 Decisions (defaults - the owner may overrule in any session; record changes here)
+
+| ID | Decision | Default and why |
+|---|---|---|
+| D1 | Name index structure | Packed arrays in memory (folded name bytes, parent id, flags, size, mtime), persisted as one binary file `<filesDir>/usearch/names.bin` (`.tmp` then rename, manifest last, like `ImgSearch`). Target: 300k files ~ 20-30 MB heap (**estimate, measure in Part 1**) |
+| D2 | Name matching | Linear scan of folded names per keystroke (cancel the previous scan). Target < 50 ms for 300k names (**estimate**). No SQL for names |
+| D3 | Content store | One SQLite file `<filesDir>/usearch/content.db` (OS `android.database.sqlite`, no new dependency). Text is **pre-folded** (Turkish folding, see D5) before insert and before query, so the plain tokenizer is enough. Use FTS4; use FTS5 only if a runtime `CREATE VIRTUAL TABLE` try/catch proves it exists on the device (availability by Android version is not verified; minSdk is 24). OCR text goes into the same store (D7) |
+| D4 | Result presentation | **Sectioned, not one mixed ranking**: Names, Contents, Pictures (text in image), Pictures (AI meaning). Scores of different engines are not comparable. A "Top" mixed list can come in Part 8 |
+| D5 | Turkish handling | One shared `fold()` in `core/usearch/Fold.kt`: lower-case with `tr` rules, `ı -> i`, `İ -> i`, strip diacritics (ç ş ğ ö ü -> c s g o u) **only when the "Diacritics" toggle is off** (default off = Everything-like forgiving). Text-file reading detects UTF-8 / UTF-16 BOM / **Windows-1254** (old Turkish files) |
+| D6 | PDF text | Not in v1 (no library, hand-written Flate + text-operator extractor is its own risky project). Part 6 ends with a go / no-go note; OCR of PDF pages is **not** planned (too slow) |
+| D7 | Where OCR text lives | Keep `ImgSearch` as the owner of image vectors and OCR (do not rewrite it). `UsImageProvider` adapts it. Only if Part 7 measures a problem, mirror OCR text into `content.db` |
+| D8 | Freshness | Own operations (copy / move / rename / delete / Bin / restore / extract / download / editors' Save) update the index **directly**. External changes: `ContentObserver` on `MediaStore.Files`, changed-directory walk (directory mtime) on start / resume, full deep refresh weekly while charging, manual "Rescan" button. Known limit: editing a file's content in place does not change its folder's mtime, so a plain external edit is caught by the MediaStore observer or the deep refresh, not by the folder walk |
+| D9 | Privacy | Index is app-private (`filesDir`). Search **must respect**: Hide (paths in the hidden list, kept page-side as `HGAL` / `ls_galhid` per 6.4 - Part 3 must find how Kotlin reads it), Recycle bin (`Bin.kt`), `Android/data`, `Android/obb`, `.thumbnails`, cache dirs, user include / exclude folders (`us_incl` / `us_excl`, same idea as `img_incl` / `img_excl`) |
+| D10 | Kill switches | `UniversalSearch.ENABLED` / `ls_us='0'` (whole feature), `us_content` (content indexing), `us_img` (image sections). Heavy indexing parts obey `us_charge` (only while charging) and the existing battery < 20 % deferral |
+
+### 16.4 Architecture in words
+
+```
+ UsActivity (native screen, RecyclerView)  <--- also: /api/usearch for ui.html / PC browser
+        |  query string
+ core/usearch/QueryParser  -> Query(AST: terms, NOT, OR, phrases, filters, flags)
+        |
+ SearchService (core/usearch/) fans out, cancellable, streams sections
+   |-- NameIndex   (names.bin, in memory)        -> Names section
+   |-- ContentIndex(content.db, FTS)             -> Contents section
+   |-- UsImageProvider -> ImgSearch.text / visual -> Pictures sections
+        ^
+ IndexManager (one scheduler, one progress card, pause / resume)
+   Walker -> NameIndex (fast, first)
+   then ContentExtractor queue (text -> office) throttled
+   then ImgSearch auto-scan (OCR, CLIP) as today
+   fed by: app-operation hooks, MediaStore.Files observer, dir-mtime delta, weekly deep refresh
+```
+Order of work in the background: names (minutes) -> text contents -> office contents -> OCR / CLIP (slowest, already existing).
+
+### 16.5 Query language (Everything-style, built in Part 2)
+
+- Space = AND. `|` = OR. `!word` = NOT. `"exact phrase"`. `*` and `?` wildcards. `re:` = regex.
+- Filters: `ext:jpg;png`, `kind:image|video|audio|doc|text|archive|folder`, `size:>10mb`, `size:1mb..5mb`, `dm:today|yesterday|thisweek|2026-10`, `path:download`, `in:/DCIM` (limit to folder), `depth:<3`.
+- Scope prefixes: `content:word` (text + documents), `ocr:word` (text inside pictures), `ai:dog on beach` (picture meaning). Plain words search **names** and, when nothing else is typed, also the other sections (a toggle "Search everywhere" controls this).
+- Toggles in the UI: Match case, Whole word, Match path, Diacritics (D5), Regex.
+- Sorting: name, path, size, date modified, best match. Columns: name, path, size, date.
+
+### 16.6 Parts and status board
+
+| Part | Title | Depends on | State |
+|---|---|---|---|
+| 0 | Gate: green build + image-search device check | - | open |
+| 1 | Name index core (Walker, NameIndex, persistence, JVM test) | 0 | **coded 2026-10-25, not compiled / not run** - CI job `usearch-selftest` is the first test; see its handover note |
+| 2 | Query engine (parser, matcher, ranking, Fold) | 1 | **coded 2026-10-25, not compiled / not run** - tested by the same CI job `usearch-selftest`; see its handover note |
+| 3 | Index manager and freshness (hooks, observers, rules, settings) | 1 | open |
+| 4 | API + native screen v1 = **"Everything for names"** (first device milestone) | 2, 3 | open |
+| 5 | Text-file content index | 3 | open |
+| 6 | Document contents (office) + PDF go / no-go + open-at-match | 5 | open |
+| 7 | Images: OCR text + AI meaning inside the unified search | 4 (needs 0) | open |
+| 8 | Unified UI polish (sections, snippets, thumbnails, history, scope) | 4-7 | open |
+| 9 | Optional: peers / PC / archives / shortcut tile | 8 | open |
+| 10 | Hardening: benchmarks, device checklist, cleanup | all | open |
+
+Parts 5, 6, 7 can be done in any order after Part 4. Parts 1-4 are the critical path (name search alone already replaces today's slow walk).
+
+### 16.7 Part blocks
+
+Each block: **Goal / Read / Do / Do not / Tests / Done when / Handover note** (the last line is filled by the session that finishes the part).
+
+#### Part 0 - Gate (small, do first)
+- **Goal:** do not build on a red base. Confirm latest CI run is green (APK + `office-selftest`), and run the image-search device checklist 11.1 steps 1-5 (compile, download, selftest, cosine, 5k-picture scan).
+- **Read:** 11.1 only. **Do:** owner runs the checklist; the session records results in 11.1 and in this part. If model download or OCR fails, Part 7 is blocked, Parts 1-6 are not.
+- **Done when:** results written down. **Handover note:** _pending_
+
+#### Part 1 - Name index core
+- **Goal:** a persistent, packed, in-memory index of every file and folder name on the phone.
+- **Read:** `LocalFs.kt` (`search`, `isLink`, `real`, `vnorm`, `vjoin`), `Volumes.kt`, `Endpoint.kt` (`Item`), how `ImgSearch` persists (`.tmp` + manifest-last).
+- **Do:** `core/usearch/NameIndex.kt` (add / remove / rename subtree / path of id / iterate), `Walker.kt` (iterative, skips per D9, never follows symlinks, reports progress, cancellable), `IndexStore.kt` (save / load `names.bin`, version number, tolerates truncated file), `Fold.kt` (D5). JVM self-test `tools/usearch_selftest/Main.kt` on a generated temp tree (100k names): build, save, load, rename a folder with children, delete, path rebuild, Turkish names. New CI job `usearch-selftest` copied from `office-selftest` (strict: counts `ok` lines, goes red on `FAIL` / crash).
+- **Do not:** touch UI, `ImgSearch`, or `LocalFs.search` yet.
+- **Tests:** JVM self-test in CI. Measure and write down: files / second of the walk and bytes per entry (on device in Part 4; in the sandbox use the generated tree only for correctness).
+- **Done when:** self-test green in CI; handover lists the real `names.bin` format. **Handover note:**
+```
+Part 1 - Name index core - 2026-10-25
+State: compiled by CI? NO (never built; the authoring sandbox had no Kotlin compiler and no network). Run on JVM? NO (`tools/usearch_selftest` written but never executed; first run = the new CI job `usearch-selftest`). Device-tested? NO. Part 0 (gate: green CI + image-search device check 11.1) was NOT done by this session; the owner asked for Part 1 directly.
+Files added: `app/src/main/java/com/lanshare/app/core/usearch/Fold.kt`, `NameIndex.kt`, `IndexStore.kt`, `Walker.kt`; `tools/usearch_selftest/Main.kt`. Changed: `.github/workflows/build-apk.yml` (job `usearch-selftest`, minimum 70 `ok` lines), `HANDOVER.md`. No app code outside `core/usearch/` was touched (no UI, `ImgSearch`, `LocalFs.search` untouched).
+Formats / schemas fixed in this part: `names.bin` (big-endian `DataOutputStream`): int `0x55534E49` | int version `1` | int epoch | int slots | int live | per slot: int parent (-1 = root or dead) , byte flags (1 = folder, 2 = dead), long size, long mtime (seconds), unsigned short nameLen, name bytes UTF-8 (dead slots: empty record) | int `0x55534E44` | int CRC32 of every byte before the end magic. Written as `names.bin.tmp`, synced, renamed. Folded names and child lists are NOT stored (rebuilt on load). API surface: `NameIndex` (`addRoot`, `add`, `remove`, `removeChildren`, `rename`, `move`, `update`, `compact`, `find`, `findRoot`, `pathOf`, `nameOf`, `foldedOf`, `forEachLive / Child / Subtree`, `scanRange(from, to, foldedNeedleBytes, hit)`), `IndexStore.save / load` (load returns null on missing / truncated / corrupt / other version, never throws), `Walker(idx, rules, isLink, state).scanVolume(File)` / `rescanDir(id, dir, rel)`, `WalkRules` / `DefaultRules(exclude)`, `ScanState` (live counters + `cancel()`), `Fold.fold(s, keepDiacritics)`.
+Settings keys / kill switches added: none (Part 3 and 4 add `us_on`, `us_incl`, `us_excl`, `us_charge`, `ls_us`).
+Numbers measured: none. Design estimate only: 45 bytes of arrays per entry + the original and the folded name bytes (about 95-105 bytes per entry for 25-byte names, so about 30 MB for 300k entries). The self-test prints `info` lines (walk entries / s, bytes per entry, ms per scan, names.bin size / save / load ms) on the first CI run - copy them here.
+Deviations from the plan (and why): (1) `Walker` takes `WalkRules` + an `isLink` lambda instead of reading `Volumes` / `LocalFs` (keeps `core/usearch` free of `android.*`); on the phone pass `LocalFs.isLink` (the default uses nio where it exists, else the canonical-path trick). (2) Ids are stable: dead slots are saved as empty records and `compact()` is a separate call that renumbers, returns `map[old] = new` and bumps `epoch()`; Part 5's content store must key on id AND epoch, or remap with the returned map. (3) Two byte pools (original + folded); the folded one uses the diacritics-STRIPPED fold, so it is a superset filter: with the Diacritics toggle on, Part 2 filters on the folded pool and then verifies on the original name (`Fold.fold(name, true)`). (4) `Android/data` and `Android/obb` are listed but not entered; `.thumbnails` / `.cache` folders and user-excluded folders are omitted completely. Hidden-list and Bin filtering are Part 3 (pass them through `DefaultRules(exclude)` or a wrapping `WalkRules`).
+Open problems for the next part: first CI run may show compile errors (paste the first `e:` line) or self-test FAILs; the minimum of 70 `ok` lines in the CI job is a guess (the test has about 90 checks, a few depend on symlink / Turkish file name support) - tighten it after the first run. Walk speed on a device is unknown (3 `File` stat calls per entry: `isDirectory`, `length`, `lastModified`; if slow in Part 4, try `java.nio.file.Files.readAttributes` on API 26+). `scanRange` takes the read lock per call: Part 2 must call it in chunks of a few thousand slots and check its cancel flag between chunks. Limits: 20M slots per file, names above 65535 bytes would be cut on save (cannot occur on Linux, 255-byte names).
+Next session start: Part 2, read 16.0, 16.3, block 2, plus `core/usearch/NameIndex.kt` (`scanRange`, `foldedOf`, `nameOf`) and `core/usearch/Fold.kt`. If CI for Part 1 is red, fix that first.
+```
+
+#### Part 2 - Query engine
+- **Goal:** turn a typed string into matches over `NameIndex`, instantly.
+- **Read:** 16.5, Part 1 note, `ImgSearch.text()` folding regex for whole-word.
+- **Do:** `QueryParser.kt` (AST per 16.5, graceful on half-typed input such as an open quote), `Matcher.kt` (substring / wildcard / regex / whole-word / case / diacritics flags, filters ext / kind / size / date / path / in / depth), `Ranker.kt` (exact name > name prefix > word start > substring; shallower path and newer date as tie-breakers), sort + paging, cancellation token checked every few thousand names. Extend the JVM self-test (parser table of 60+ query strings, matcher cases, timing on the 100k tree).
+- **Do not:** content / AI scopes yet - the parser must already **accept** `content:`, `ocr:`, `ai:` and return them as separate sub-queries for later parts.
+- **Done when:** self-test green; a table "query -> expected AST" saved as a fixture file. **Handover note:**
+```
+Part 2 - Query engine - 2026-10-25
+State: compiled by CI? NO (never built; the authoring sandbox had a JDK but no Kotlin compiler and no network). Run on JVM? NO (the self-test now also covers Part 2; first run = CI job `usearch-selftest`, which also decides whether Part 1 compiles). Device-tested? NO. Part 0 still not done.
+Files added: `core/usearch/Kinds.kt`, `QueryParser.kt`, `Matcher.kt`, `Ranker.kt` (also holds `CancelToken`, `SortKey`, `SortSpec`, `SearchResult`, `Search`); `tools/usearch_selftest/query_fixture.txt`. Changed: `tools/usearch_selftest/Main.kt` (new `fixtureTests`, `matcherTests`, `randomQueryTests`, `perfTests`; `main` now takes `args`, args[0] = optional fixture path, default `tools/usearch_selftest/query_fixture.txt` from the repo root), `.github/workflows/build-apk.yml` (`MIN=70` -> `MIN=150`), `HANDOVER.md`. Part 1 files untouched. No `android.*`, no `java.time` (minSdk 24): dates use `java.util.Calendar`.
+API (all in package `com.lanshare.app.core.usearch`): `QueryParser.parse(text, ParseContext(nowSec, tz)) -> Query(name: QNode?, content/ocr/ai: ScopeQuery?, filters: List<Filter>, notes: List<String>)` with `isEmpty`, `plainWords()`, `dump()`. `MatchOptions(matchCase, wholeWord, matchPath, diacritics, regex)`. `Search.run(ix, query, options, SortSpec(key, reverse, foldersFirst), offset, limit, CancelToken) -> SearchResult(ids, total, complete, ms, notes)`; ids are `NameIndex` ids (use `pathOf` / `nameOf` / `sizeOf` / `mtimeOf` for display). offset + limit is capped at 20000 (`Search.MAX_K`). `Search.run` takes the read lock only inside `scanRange` (8192 slots per chunk) and checks the cancel token between chunks, so a new keystroke can cancel the old search and start a new one on another thread.
+Language decisions fixed in this part (change here if the owner objects): space = AND, `|` = OR (AND binds tighter, no parentheses), `!` = NOT, quotes group words (wildcards still work inside quotes), a half-typed query never throws: open quote is closed at the end (note), bad filter values are dropped with a note, empty values (`ext:`) are dropped silently. In `ext:` `kind:` `dm:` `re:` values a `|` belongs to the value (`kind:image|video`); `;` and `,` also separate values. Per-term prefixes `case:` `nocase:` `ww:` `wholeword:` `diac:` `nodiac:` `re:` (chainable: `case:ww:Foo`). Scope prefixes `content:` `ocr:` `ai:` take their own value AND all following plain words (also `ai: dog on beach` with a space) until an OR or another scope; filters apply to everything. If only scope words (+ filters) are typed, `Query.name` is null (no name listing) and the filters stay in `Query.filters` for the content / picture parts. Wildcard terms (`*`, `?`) must match the WHOLE name; a term with `/` or `\` matches the full path; the Match path toggle makes every plain term look at the path. Match case = exact characters (diacritics included); Diacritics toggle on = Turkish letters stay distinct (verified on `Fold.fold(name, true)` after the superset prefilter); regex terms run on the original text, case-insensitive unless `case:`. `ext:` = extension after the last dot, lower-case, without dot (`.nomedia` -> `nomedia`), files only. `kind:` image video audio doc text archive folder file from the table in `Kinds.kt` (extension only, `.ts` counts as video). `size:` binary units (1kb = 1024), `>` `>=` `<` `<=` `=`, `a..b`, `empty`, decimal comma accepted, folders never match. `dm:` today yesterday thisweek (Monday first) lastweek thismonth lastmonth thisyear lastyear last<N>days, `2026`, `2026-10`, `2026-10-25`, `25.10.2026`, ranges `a..b`, `>` = after that period ends, `<` = before it starts, several values with `|`. `in:` the entry is that folder or lies below it; the value is tried as an absolute path and as a path inside the volume root (`in:/DCIM`). `depth:` 0 = volume root, 1 = its children; same operators as size. `path:` full path contains the text.
+Ranking (`Ranker.tier`, summed over the plain terms): 0 exact name or name without extension, 1 prefix, 2 word start, 3 substring; ties: shallower, newer, index order. Sorts: BEST, NAME and PATH (compare the folded text, so Turkish letters sort as plain letters), SIZE and DATE (big / new first), `reverse`, `foldersFirst`.
+Settings keys / kill switches added: none.
+Numbers measured: none. The self-test prints `info query [...]` lines (hits and ms on the generated 100k-entry tree) on the first CI run - copy them here.
+Deviations from the plan (and why): (1) `Matcher` and `Search.run` live in `Matcher.kt` / `Ranker.kt`; there is no `Sorter` file. (2) The fixture holds 100 queries (plan: 60+) and the expected `dump()` strings were derived BY HAND (no compiler, no run), so a FAIL in a `parse [...]` line may be a wrong expectation: compare `got=` and `want=` before changing code. (3) Result sections, QueryParser regex validation and the `Search everywhere` toggle are left to Parts 4 / 8: `Query.plainWords()` is the hook.
+Open problems for the next part: first CI run may show compile errors (paste the first `e:` line) or FAILs (`MIN=150` is a floor: the real count should be about 280). Path sort and `matchPath` build a path per hit: with more than about 100k hits expect seconds (perf test prints it). `Search.run` has no hook for hidden paths / Recycle bin yet: Part 3 should filter them when indexing (Walker rules) or add a post-filter. `diac:` / Diacritics-on verification builds a second folded string per candidate (fine below 100k candidates). NAME sort is not natural-number aware.
+Next session start: Part 3, read 16.0, 16.3, block 3, plus: `core/usearch/NameIndex.kt` (`add`, `remove`, `rename`, `move`, `update`, `compact`), `Walker.kt`, `IndexStore.kt`. If CI for Parts 1 / 2 is red, fix that first.
+```
+
+#### Part 3 - Index manager and freshness
+- **Goal:** the index stays correct without the user ever pressing refresh.
+- **Read:** `Jobs.kt` (where copy / move / delete / rename finish), `Bin.kt`, `LanShareService.kt`, `Core.start`, `ImgSearch.startAutoWatch`, `Cfg.kt`, how hidden paths are stored (6.4, `HGAL`).
+- **Do:** `IndexManager.kt` (single daemon thread, states idle / scanning / paused, wake lock via `Core.holdAwake`, `us_charge`, battery < 20 % deferral, progress object); first scan after the first screen like `startAutoWatch`; hooks: after every successful file operation call `IndexManager.changed(paths)`; `ContentObserver` on `MediaStore.Files` (debounced); changed-directory delta walk on start and resume; weekly deep refresh when charging; settings keys `us_on`, `us_incl`, `us_excl`, `us_charge`; hidden-path and Bin filtering (find the cleanest way for Kotlin to read the hidden list, or have the page push it through the Bridge like palette pushes).
+- **Do not:** build UI beyond a Settings > Search page skeleton (rows, no results screen).
+- **Tests:** JVM test for delta logic (simulated directory mtimes). Device: add / rename / delete a file in the app and in another app, watch the index follow.
+- **Done when:** compiles in CI; the hook list in the handover is complete (every operation in `Jobs` accounted for). **Handover note:** _pending_
+
+#### Part 4 - API and native screen v1 ("Everything for names")  **[first device milestone]**
+- **Goal:** usable instant name search on the phone.
+- **Read:** `NlSearch.kt` (style and theme use), `StorageList.kt` / `NativeList.kt` (RecyclerView pattern), `NlDrawer.kt` + main menu code (entry points), `AppPal.kt`, `Thumbs.make`, `MainActivity.Bridge`.
+- **Do:** `GET /api/usearch?q=&limit=&offset=&sort=` and `GET/POST /api/uindex` (status, rescan, pause) in `Routes.kt`; add `/api/usearch` to `InProc.ROUTES` only if profiling shows a need; `UsActivity` (search field with instant results, kind chips All / Files / Folders / Images / Docs / Video / Audio, sort menu, columns name + path + size + date, bold match highlight, result count + "indexing 63 %" banner, thumbnails for images / videos, tap = open with existing viewers, long-press multi-select = Copy / Share / Details / Open containing folder / Delete via existing actions); entry points: drawer item "Search everything", main-menu tile, and the path-bar search row gets a "search whole phone" action. Old per-folder search stays untouched as fallback.
+- **Tests:** device checklist (16.11). Record real numbers: first scan time, files per second, heap, ms per query for the phone's file count.
+- **Done when:** owner confirms on device: type -> results in well under half a second, results stay right after rename / delete. **Handover note:** _pending_
+
+#### Part 5 - Text-file content index
+- **Goal:** `content:word` and plain words find text inside text files.
+- **Read:** `TextEditorActivity.kt` (how it reads / detects encoding), `CodeHl.kt` (extension list), `ImgSearch` for the throttle / checkpoint pattern.
+- **Do:** `ContentStore.kt` (SQLite per D3, schema: doc id = NameIndex id, mtime, size, folded text; FTS table; upsert / delete by id), `TextExtractor.kt` (extension allow-list + binary sniff, size cap default 5 MB per file and a total budget setting, UTF-8 / UTF-16 BOM / Windows-1254 detection, strips markup for html / xml), queue in `IndexManager` (after names; skip unchanged mtime + size; checkpoints; resumable), query path `ContentIndex.search(q, flags)` returning doc id + snippet window + line number, "Contains" vs "Whole word" per D3 (state the real behaviour of the tokenizer used), Settings rows (content on / off, max file size, extensions list). JVM test for extractor encodings with fixture files (UTF-8, UTF-16, cp1254 Turkish sample, binary).
+- **Do not:** office files.
+- **Done when:** self-test green, device: search for a word that exists only inside a .txt in a deep folder. **Handover note:** _pending_
+
+#### Part 6 - Document contents + open at match
+- **Goal:** `content:` also covers Word / Excel / PowerPoint / ODF documents; results open at the match when possible.
+- **Read:** `core/office/OfficeOpen.kt`, `OfficeExport.kt` (`containsOrFalse`, `isOffice`), `DocxText.kt`, `OoxmlPackage.kt`, 8.3 table.
+- **Do:** `DocExtractor.kt` (plain text out of each format using the existing readers, per-file time cap, skip > 30 MB as today, never throw - one bad file must not stop the queue), store in `content.db` with a `kind` column, snippets with sheet name / slide number / page where the reader knows it, open-at-match: `TextEditorActivity` jump to line, office viewer opens the file (cell / slide jump only if the viewer already supports it - otherwise record as limit). **PDF go / no-go note:** after Part 5 and this part, write a short decision (D6): size of a minimal text extractor vs value; default stays "no".
+- **Done when:** self-test uses the existing `tools/office_selftest` fixtures (`sample.docx` etc.); device: find a word inside a docx and an xlsx. **Handover note:** _pending_
+
+#### Part 7 - Images in the unified search
+- **Goal:** `ocr:` and `ai:` (and plain words when "Search everywhere" is on) return pictures; no rewrite of `ImgSearch`.
+- **Read:** 11.1 / 11.2, `ImgSearch.kt` (`visual`, `text`, `isOut`, discovery), `ClipEngine.kt` (`ENGINE_ID` - do not bump).
+- **Do:** `UsImageProvider.kt` (adapter: `ocrText(q, whole, dir)` and `meaning(q, dir)` mapped to result rows with score and "AI" / "OCR" badge; works when the model is missing = section shows "install model" card linking to the existing download); unify discovery: images come from `NameIndex` (extension filter) instead of `ImgSearch`'s own walk **only if** it can be done without discarding the existing index (path + mtime + size key stays); schedule OCR / CLIP after text indexing in the single `IndexManager` progress card; share include / exclude folders (`us_*` are the master, `img_*` kept in sync or merged - decide and record); AI threshold slider (default 0.20 as today); **idea to evaluate:** CLIP is English-trained, so Turkish queries ("kedi") match poorly - test on device; if poor, add a small bundled Turkish -> English word map (a few thousand common nouns) used only for the `ai:` query, with a toggle.
+- **Do not:** change the CLIP preprocessing, the vector format or `ENGINE_ID`.
+- **Done when:** device: `ocr:` finds a photographed receipt by a word on it; `ai:` finds a known photo; both results open in the existing image viewer with the result list. **Handover note:** _pending_
+
+#### Part 8 - Unified UI polish
+- **Goal:** one coherent results screen.
+- **Do:** sections per D4 with section headers and counts, a "Search everywhere" toggle, content snippets with highlighted match and line number, image sections as a thumbnail grid, filter toggles from 16.5, scope chip "in this folder" (long-press a folder -> Search here), recent queries + saved searches, empty state that explains what is still being indexed, light / dark theme through `AppPal`. Optional: a mixed "Top" list if real use shows the need.
+- **Done when:** owner review on device. **Handover note:** _pending_
+
+#### Part 9 - Optional extras (each independent, pick by value)
+Peers: `/p/usearch` mirroring `/p/imgsearch` (the search runs on the remote phone; results merged by device). PC web UI entry through `ui.html` using `/api/usearch`. Names inside archives (`ArchiveFs`). Home-screen shortcut / quick tile (`Shortcuts.kt`). Export results list. **Handover note:** _pending_
+
+#### Part 10 - Hardening
+Benchmarks on the owner's phone (files, scan time, heap, ms / query, battery for one night of indexing); stress cases (SD card removed while indexing, 1M files, huge folder, unreadable folders, very long names, emoji names); tune caps; remove unused code introduced here; update section 2 + 15 (source map) + 3; close this chapter's open items. **Handover note:** _pending_
+
+### 16.8 Risks and unknowns (carry forward, remove when resolved)
+
+1. Walk speed of `File.listFiles` on the owner's phone is unknown; if the first scan is too slow, evaluate `MediaStore.Files` as an accelerator (not as the source of truth, because it may not list every file type on every Android version).
+2. FTS5 availability on older Android versions is not verified (D3); FTS4 is the safe default.
+3. Index size / heap numbers in D1 and D2 are estimates.
+4. Hidden-path list lives page-side (`ls_galhid`); the Kotlin side may not be able to read it without a new Bridge call (Part 3).
+5. Image search has never had a device test (Part 0); `ClipTokenizer` was written from memory.
+6. Foreground-service / battery policies of the owner's phone (aggressive task killers) may stop long indexing; resumable checkpoints are mandatory in every indexer.
+7. Content search of very large text sets can make `content.db` big; the total-budget setting in Part 5 exists for this reason.
+8. External in-place file edits are only caught by the MediaStore observer or the weekly deep refresh (D8).
+
+### 16.9 Handover note template (copy into the part block when a part ends)
+
+```
+Part N - <title> - <date>
+State: compiled by CI? run on JVM? device-tested?   (be honest, one line each)
+Files added / changed: <paths>
+Formats / schemas fixed in this part: <names.bin layout, tables, route shapes>
+Settings keys / kill switches added: <...>
+Numbers measured: <...>
+Deviations from the plan (and why): <...>
+Open problems for the next part: <...>
+Next session start: Part N+1, read 16.0, 16.3, block N+1, plus: <extra files>
+```
+
+### 16.10 Session start prompt (the owner pastes this, with the zip attached)
+
+> Project pcshare, universal search. Do Part N of HANDOVER.md chapter 16 only. Follow 16.0 (token economy, whole-app zip `pcshare-usearch-partN.zip`). Read only the files that part lists. Update the part's handover note, the 16.6 status row and the changelog before zipping. Ask nothing unless a decision in 16.3 blocks you.
+
+### 16.11 Device checklist (grows with each part; stop at the first failure)
+
+- Part 4: first scan finishes and shows progress; typing shows results while typing; rename / delete / move inside the app updates results at once; the same change made in another app shows up within a minute; hidden items and Recycle-bin items never appear; SD card volume searched if present; Turkish names (`ÇŞĞİıÖÜ`) with Diacritics on and off; `ext:`, `size:`, `dm:`, `!`, `|`, quotes, wildcard; select + Copy / Share / Open containing folder; rotation and dark theme.
+- Part 5: word inside a deep `.txt`; a Windows-1254 file with Turkish letters; a 20 MB log is skipped per the cap; indexing survives killing the app (resumes).
+- Part 6: word inside docx, xlsx, pptx, odt; a corrupt office file does not stop indexing.
+- Part 7: `ocr:` on a photographed page; `ai:` on a known photo; model-missing card; results open in the viewer with swipe.
+- Part 10: one night of indexing on battery and on charger, read the battery stats.

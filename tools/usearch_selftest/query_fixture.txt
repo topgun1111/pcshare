@@ -1,0 +1,103 @@
+# Query fixture for core/usearch (Part 2). One line = query TAB expected Query.dump(). Fixed clock: 2026-10-25 12:00 UTC (a Sunday), zone UTC.
+# Dump format: N=name expression ("-" = none), C=/O=/A= content / ocr / ai terms, F= filters kept when only scopes were typed, notes=N parse notes.
+# t:text[p phrase, w wildcard, r regex, c / nc case, ww / nww whole word, d / nd diacritics]  ext(..) kind(..) size[min..max] dm[from..to) path(..) in(..) depth[min..max]
+foo	N=t:foo
+Foo Bar	N=AND(t:Foo,t:Bar)
+foo|bar	N=OR(t:foo,t:bar)
+foo | bar baz	N=OR(t:foo,AND(t:bar,t:baz))
+a b | c | d e f	N=OR(AND(t:a,t:b),t:c,AND(t:d,t:e,t:f))
+!foo	N=!t:foo
+foo !bar	N=AND(t:foo,!t:bar)
+!!foo	N=t:foo
+"exact phrase"	N=t:exact phrase[p]
+"open quote	N=t:open quote[p] notes=1
+foo "bar baz" qux	N=AND(t:foo,t:bar baz[p],t:qux)
+"a|b"	N=t:a|b[p]
+*.txt	N=t:*.txt[w]
+rep?rt*	N=t:rep?rt*[w]
+re:^a.*b$	N=t:^a.*b$[r]
+re:a|b	N=t:a|b[r]
+re:(ab	N=t:(ab[r] notes=1
+case:Foo	N=t:Foo[c]
+nocase:foo	N=t:foo[nc]
+ww:foo	N=t:foo[ww]
+wholeword:foo	N=t:foo[ww]
+diac:cay	N=t:cay[d]
+nodiac:cay	N=t:cay[nd]
+case:ww:Foo	N=t:Foo[c,ww]
+case:re:A.c	N=t:A.c[r,c]
+a/b	N=t:a/b
+"ext:jpg"	N=t:ext:jpg[p]
+ext:jpg	N=ext(jpg)
+ext:jpg;png	N=ext(jpg,png)
+ext:.PNG;JPG;jpg	N=ext(jpg,png)
+ext:jpg|png	N=ext(jpg,png)
+ext:	N=-
+kind:image	N=kind(image)
+kind:video|image	N=kind(image,video)
+kind:folder foo	N=AND(kind(folder),t:foo)
+kind:bogus	N=- notes=1
+kind:image|bogus	N=kind(image) notes=1
+ext:jpg !kind:folder	N=AND(ext(jpg),!kind(folder))
+foo ext:jpg	N=AND(t:foo,ext(jpg))
+size:>10mb	N=size[10485761..]
+size:>=10mb	N=size[10485760..]
+size:<1kb	N=size[..1023]
+size:<=1kb	N=size[..1024]
+size:1mb..5mb	N=size[1048576..5242880]
+size:5	N=size[5..5]
+size:1.5mb	N=size[1572864..1572864]
+size:1,5kb	N=size[1536..1536]
+size:empty	N=size[0..0]
+size:..1gb	N=size[..1073741824]
+size:2gb..	N=size[2147483648..]
+size:>	N=- notes=1
+size:abc	N=- notes=1
+dm:2026-10	N=dm[1790812800..1793491200)
+dm:2026-10-25	N=dm[1792886400..1792972800)
+dm:2026	N=dm[1767225600..1798761600)
+dm:25.10.2026	N=dm[1792886400..1792972800)
+dm:2026-10-01..2026-10-15	N=dm[1790812800..1792108800)
+dm:>2026-10-01	N=dm[1790899200..)
+dm:>=2026-10-01	N=dm[1790812800..)
+dm:<2026-10-01	N=dm[..1790812800)
+dm:<=2026-10-01	N=dm[..1790899200)
+dm:today	N=dm[1792886400..1792972800)
+dm:yesterday	N=dm[1792800000..1792886400)
+dm:thisweek	N=dm[1792368000..1792972800)
+dm:lastweek	N=dm[1791763200..1792368000)
+dm:thismonth	N=dm[1790812800..1793491200)
+dm:lastmonth	N=dm[1788220800..1790812800)
+dm:thisyear	N=dm[1767225600..1798761600)
+dm:lastyear	N=dm[1735689600..1767225600)
+dm:last7days	N=dm[1792368000..1792972800)
+dm:today|yesterday	N=dm[1792886400..1792972800)+[1792800000..1792886400)
+dm:2026-13	N=- notes=1
+dm:2026-02-30	N=- notes=1
+dm:2026-00	N=- notes=1
+dm:soon	N=- notes=1
+path:download	N=path(download)
+in:/DCIM	N=in(/DCIM)
+depth:<3	N=depth[0..2]
+depth:>=2	N=depth[2..]
+depth:1..3	N=depth[1..3]
+depth:2	N=depth[2..2]
+content:invoice	N=- C=[t:invoice]
+content:invoice paid	N=- C=[t:invoice,t:paid]
+content:"final report"	N=- C=[t:final report[p]]
+ocr:receipt total	N=- O=[t:receipt,t:total]
+ai:dog on beach	N=- A=[t:dog,t:on,t:beach]
+ai: dog on beach	N=- A=[t:dog,t:on,t:beach]
+foo content:bar	N=t:foo C=[t:bar]
+foo | content:bar	N=t:foo C=[t:bar]
+content:a | b	N=t:b C=[t:a]
+content:bar ext:docx	N=- C=[t:bar] F=[ext(docx)]
+!content:foo	N=- C=[!t:foo]
+content:	N=-
+	N=-
+|	N=-
+| foo |	N=t:foo
+!	N=-
+"" foo	N=t:foo
+re:	N=-
+case:	N=-
