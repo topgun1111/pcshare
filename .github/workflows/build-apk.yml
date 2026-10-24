@@ -119,18 +119,41 @@ jobs:
       - name: Run self-tests
         run: |
           D=tools/office_selftest
-          : > "$RUNNER_TEMP/selftest.log"
+          LOG="$RUNNER_TEMP/selftest.log"; : > "$LOG"
+          SUM="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          printf '| self-test | ok | FAIL | minimum ok | result |\n|---|---|---|---|---|\n' >> "$SUM"
           bad=0
-          for t in "" --docx --edit "--fonts $D app/src/main/assets/fonts/office" "--sections $D" "--printtest $D" "--float $D" "--styles $D" "--review $D" "--cf $D" "--chart $D" "--chart2 $D" "--nav $D"; do
-            echo "=== selftest [$t] ===" | tee -a "$RUNNER_TEMP/selftest.log"
+          # "arguments|minimum number of ok lines" (about 80% of the counts measured in earlier sessions; a quiet early exit gives 0 and fails)
+          while IFS='|' read -r t min; do
+            echo "=== selftest [$t] ===" >> "$LOG"
             java -jar "$RUNNER_TEMP/ost.jar" $t > "$RUNNER_TEMP/one.log" 2>&1; rc=$?
-            cat "$RUNNER_TEMP/one.log" >> "$RUNNER_TEMP/selftest.log"
-            if [ "$rc" -ne 0 ] || grep -q "^FAIL" "$RUNNER_TEMP/one.log"; then
+            cat "$RUNNER_TEMP/one.log" >> "$LOG"
+            ok=$(grep -c -E '^(ok|OK) ' "$RUNNER_TEMP/one.log"); fl=$(grep -c '^FAIL' "$RUNNER_TEMP/one.log")
+            res=PASS
+            if [ "$rc" -ne 0 ]; then res="CRASH (exit $rc)"; fi
+            if [ "$fl" -gt 0 ]; then res="FAIL"; fi
+            if [ "$ok" -lt "$min" ] && [ "$res" = PASS ]; then res="TOO FEW ok"; fi
+            echo "[${t:-default}] ok=$ok FAIL=$fl min=$min -> $res"
+            echo "| ${t:-default} | $ok | $fl | $min | $res |" >> "$SUM"
+            if [ "$res" != PASS ]; then
               bad=1
-              echo "::error title=Self-test failed [$t]::$(grep -m3 -E '^FAIL|Exception' "$RUNNER_TEMP/one.log" | tr '\n' ' ' | cut -c1-400)"
+              echo "::error title=Self-test [${t:-default}] $res::ok=$ok FAIL=$fl min=$min. $(grep -m3 -E '^FAIL|Exception' "$RUNNER_TEMP/one.log" | tr '\n' ' ' | cut -c1-350)"
             fi
-          done
-          tail -n 5 "$RUNNER_TEMP/selftest.log"
+          done <<EOF
+          |20
+          --docx|8
+          --edit|6
+          --fonts $D app/src/main/assets/fonts/office|15
+          --sections $D|34
+          --printtest $D|8
+          --float $D|15
+          --styles $D|35
+          --review $D|19
+          --cf $D|42
+          --chart $D|35
+          --chart2 $D|20
+          --nav $D|4
+          EOF
           exit $bad
       - uses: actions/upload-artifact@v4
         if: always()
