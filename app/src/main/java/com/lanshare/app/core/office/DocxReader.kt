@@ -26,7 +26,11 @@ class DocxReader(file: File) : AutoCloseable {
         var style: String? = null; var jc: String? = null; var numId: String? = null; var pbb: Boolean? = null
         var ilvl = -1; var outline = -1
         var left = Int.MIN_VALUE; var first = Int.MIN_VALUE
+        var before = Int.MIN_VALUE; var after = Int.MIN_VALUE; var line = Int.MIN_VALUE; var rule: String? = null   // Part 5: w:spacing (twips / 240ths)
         fun overlay(o: PPr) {
+            if (o.before != Int.MIN_VALUE) before = o.before
+            if (o.after != Int.MIN_VALUE) after = o.after
+            if (o.line != Int.MIN_VALUE) { line = o.line; rule = o.rule }
             o.jc?.let { jc = it }; o.numId?.let { numId = it }; o.pbb?.let { pbb = it }
             if (o.ilvl >= 0) ilvl = o.ilvl
             if (o.outline >= 0) outline = o.outline
@@ -50,6 +54,7 @@ class DocxReader(file: File) : AutoCloseable {
     private val styles = HashMap<String, DStyle>()
     private val resolved = HashMap<String, DStyle>()
     private var defRpr = RPr()
+    private var defPpr = PPr()      // Part 5: docDefaults / pPrDefault (spacing)
     private var defPara: String? = null
     private val absLevels = HashMap<String, HashMap<Int, NumLvl>>()
     private val numToAbs = HashMap<String, String>()
@@ -58,8 +63,15 @@ class DocxReader(file: File) : AutoCloseable {
     private var count = 0
     private var max = 20000
     private var truncated = false
-    private var hdrRid: String? = null
-    private var ftrRid: String? = null
+    // Part 4: sections. Header / footer references are collected per section, resolved (with inheritance) after the body.
+    private class SectRefs { val hdr = HashMap<String, String>(); val ftr = HashMap<String, String>() }
+    private class Fld { val instr = StringBuilder(); var resultFrom = -1 }
+    private val sects = ArrayList<DSection>()
+    private val sectRefs = ArrayList<SectRefs>()
+    private var secStart = 0
+    private var bodyList: ArrayList<DBlock>? = null
+    private var pendingSect: Pair<DSection, SectRefs>? = null
+    private val fstack = ArrayList<Fld>()
 
     init {
         mainPart = pkg.rels("").values.firstOrNull { it.kind == "officeDocument" && !it.external }?.target
@@ -72,8 +84,11 @@ class DocxReader(file: File) : AutoCloseable {
 
     /** Parse the whole document. [maxParagraphs] protects the phone; [DDoc.truncated] tells the UI. */
     fun read(maxParagraphs: Int = 20000): DDoc {
-        max = maxParagraphs; count = 0; truncated = false; hdrRid = null; ftrRid = null; counters.clear(); cur = mainRels
+        max = maxParagraphs; count = 0; truncated = false; counters.clear(); cur = mainRels
+        sects.clear(); sectRefs.clear(); secStart = 0; pendingSect = null; fstack.clear()
         val d = DDoc()
+        bodyList = d.body
+        d.evenOdd = readEvenOdd()
         pkg.xml(mainPart)?.let { x ->
             if (root(x)) eachChild(x) { n ->
                 if (n == "body") eachChild(x) { c -> blockChild(x, c, d.body) } else x.skip()
@@ -82,9 +97,9 @@ class DocxReader(file: File) : AutoCloseable {
         d.truncated = truncated
         d.defaultSize = defRpr.sz
         d.defaultFont = defRpr.font
-        count = 0
-        hdrRid?.let { d.header = readPart(it) }
-        ftrRid?.let { d.footer = readPart(it) }
+        if (sects.isEmpty()) addSect(DSection() to SectRefs(), 0)
+        resolveSections(d)
+        bodyList = null
         readNotes("footnotes", "footnote", d.footnotes)
         readNotes("endnotes", "endnote", d.endnotes)
         cur = mainRels
@@ -103,6 +118,39 @@ class DocxReader(file: File) : AutoCloseable {
         pkg.xml(rel.target)?.let { x -> if (root(x)) eachChild(x) { blockChild(x, it, out) } }
         cur = mainRels
         return out
+    }
+
+    private fun readEvenOdd(): Boolean {
+        val rel = mainRels.values.firstOrNull { it.kind == "settings" && !it.external } ?: return false
+        val x = pkg.xml(rel.target) ?: return false
+        if (!root(x)) return false
+        var v = false
+        eachChild(x) { n -> if (n == "evenAndOddHeaders") v = on(x); x.skip() }
+        return v
+    }
+
+    private fun addSect(s: Pair<DSection, SectRefs>, start: Int) {
+        s.first.startsAtBlockIndex = start
+        sects.add(s.first); sectRefs.add(s.second)
+    }
+
+    /** Header / footer parts per section; a missing reference inherits the previous section's (Word rule). */
+    private fun resolveSections(d: DDoc) {
+        val types = arrayOf("default", "first", "even")
+        val curH = arrayOfNulls<String>(3); val curF = arrayOfNulls<String>(3)
+        val cache = HashMap<String, List<DBlock>>()
+        fun part(rid: String?): List<DBlock> = if (rid == null) emptyList() else cache.getOrPut(rid) { count = 0; readPart(rid) }
+        for ((i, s) in sects.withIndex()) {
+            val r = sectRefs[i]
+            for (k in 0..2) { r.hdr[types[k]]?.let { curH[k] = it }; r.ftr[types[k]]?.let { curF[k] = it } }
+            s.headerDefault = part(curH[0]); s.headerFirst = part(curH[1]); s.headerEven = part(curH[2])
+            s.footerDefault = part(curF[0]); s.footerFirst = part(curF[1]); s.footerEven = part(curF[2])
+            s.evenOdd = d.evenOdd
+            d.sections.add(s)
+        }
+        // API kept for the HTML view: default header / footer of the first section that has one
+        d.header = d.sections.firstOrNull { it.headerDefault.isNotEmpty() }?.headerDefault ?: emptyList()
+        d.footer = d.sections.firstOrNull { it.footerDefault.isNotEmpty() }?.footerDefault ?: emptyList()
     }
 
     private fun readNotes(kind: String, tag: String, into: MutableMap<String, List<DBlock>>) {
@@ -128,7 +176,8 @@ class DocxReader(file: File) : AutoCloseable {
         eachChild(x) { n ->
             when (n) {
                 "docDefaults" -> eachChild(x) { c ->
-                    if (c == "rPrDefault") eachChild(x) { k -> if (k == "rPr") defRpr = parseRPr(x) else x.skip() } else x.skip()
+                    if (c == "rPrDefault") eachChild(x) { k -> if (k == "rPr") defRpr = parseRPr(x) else x.skip() }
+                    else if (c == "pPrDefault") eachChild(x) { k -> if (k == "pPr") defPpr = parsePPr(x) else x.skip() } else x.skip()
                 }
                 "style" -> {
                     val st = DStyle(x.attr("styleId") ?: "")
@@ -215,19 +264,57 @@ class DocxReader(file: File) : AutoCloseable {
             "sdt" -> eachChild(x) { c ->
                 if (c == "sdtContent") eachChild(x) { d -> blockChild(x, d, out) } else x.skip()
             }
-            "sectPr" -> parseSectPr(x)
+            "sectPr" -> {
+                val s = parseSectPr(x)
+                if (out === bodyList) { addSect(s, secStart); secStart = out.size }   // body-level sectPr = last section
+            }
             else -> x.skip()
         }
     }
 
-    private fun parseSectPr(x: MiniXml) {
+    private fun tw(v: String?): Double? = v?.trim()?.toDoubleOrNull()?.let { it / 20.0 }
+
+    /** Part 4: one w:sectPr -> geometry + header / footer references (parts are read later, see [resolveSections]). */
+    private fun parseSectPr(x: MiniXml): Pair<DSection, SectRefs> {
+        val s = DSection(); val r = SectRefs()
+        var orient: String? = null
         eachChild(x) { n ->
-            if ((n == "headerReference" || n == "footerReference") && x.attr("type") == "default") {
-                val id = x.rawAttr("r:id") ?: x.attr("id")
-                if (n == "headerReference") { if (hdrRid == null) hdrRid = id } else if (ftrRid == null) ftrRid = id
+            when (n) {
+                "headerReference", "footerReference" -> {
+                    val t = x.attr("type") ?: "default"
+                    val id = x.rawAttr("r:id") ?: x.attr("id")
+                    if (id != null) (if (n == "headerReference") r.hdr else r.ftr)[t] = id
+                    x.skip()
+                }
+                "pgSz" -> {
+                    tw(x.attr("w"))?.let { s.pgW = it }; tw(x.attr("h"))?.let { s.pgH = it }
+                    orient = x.attr("orient"); x.skip()
+                }
+                "pgMar" -> {
+                    tw(x.attr("top"))?.let { s.marT = it }; tw(x.attr("bottom"))?.let { s.marB = it }
+                    (tw(x.attr("left")) ?: tw(x.attr("start")))?.let { s.marL = it }
+                    (tw(x.attr("right")) ?: tw(x.attr("end")))?.let { s.marR = it }
+                    tw(x.attr("header"))?.let { s.hdrDist = it }; tw(x.attr("footer"))?.let { s.ftrDist = it }
+                    tw(x.attr("gutter"))?.let { s.gutter = it }
+                    x.skip()
+                }
+                "cols" -> {
+                    x.attr("num")?.toIntOrNull()?.let { s.cols = it.coerceIn(1, 45) }
+                    tw(x.attr("space"))?.let { s.colGap = it }
+                    s.colSep = x.attr("sep").let { it == "1" || it == "true" || it == "on" }
+                    val equal = x.attr("equalWidth").let { !(it == "0" || it == "false" || it == "off") }
+                    val ws = ArrayList<Double>()
+                    eachChild(x) { c -> if (c == "col") tw(x.attr("w"))?.let { ws.add(it) }; x.skip() }
+                    if (!equal && ws.isNotEmpty()) { s.colWidths = ws; s.cols = ws.size }
+                }
+                "titlePg" -> { s.titlePg = on(x); x.skip() }
+                "type" -> { s.breakType = x.attr("val") ?: "nextPage"; x.skip() }
+                "pgNumType" -> { s.pgNumStart = x.attr("start")?.toIntOrNull() ?: -1; s.pgNumFmt = x.attr("fmt"); x.skip() }
+                else -> x.skip()
             }
-            x.skip()
         }
+        s.orient = orient ?: if (s.pgW > s.pgH) "landscape" else "portrait"
+        return s to r
     }
 
     private fun parseTable(x: MiniXml): DTable {
@@ -289,16 +376,19 @@ class DocxReader(file: File) : AutoCloseable {
     private fun parsePara(x: MiniXml, out: ArrayList<DBlock>) {
         val p = DPara()
         val extra = ArrayList<DBlock>()
+        var mySect: Pair<DSection, SectRefs>? = null
+        val savedFields = ArrayList(fstack); fstack.clear()   // a text box inside a field must not see the outer field state
         var st0 = resolve(defPara)
         var base = RPr().also { it.overlay(defRpr); st0?.let { s -> it.overlay(s.rpr) } }
-        var eff = PPr().also { e -> st0?.let { s -> e.overlay(s.ppr) } }
+        var eff = PPr().also { e -> e.overlay(defPpr); st0?.let { s -> e.overlay(s.ppr) } }
         var sname = st0?.name ?: ""
         eachChild(x) { n ->
             if (n == "pPr") {
                 val q = parsePPr(x)
+                mySect = pendingSect; pendingSect = null
                 val st = resolve(q.style ?: defPara)
                 base = RPr().also { it.overlay(defRpr); st?.let { s -> it.overlay(s.rpr) } }
-                eff = PPr().also { e -> st?.let { s -> e.overlay(s.ppr) }; e.overlay(q) }
+                eff = PPr().also { e -> e.overlay(defPpr); st?.let { s -> e.overlay(s.ppr) }; e.overlay(q) }
                 sname = st?.name ?: ""
             } else inl(x, n, p, null, base, extra)
         }
@@ -307,6 +397,11 @@ class DocxReader(file: File) : AutoCloseable {
         p.indentLeft = if (eff.left == Int.MIN_VALUE) 0 else eff.left
         p.firstLine = if (eff.first == Int.MIN_VALUE) 0 else eff.first
         p.pageBreakBefore = eff.pbb == true
+        if (eff.before != Int.MIN_VALUE) p.spBefore = eff.before / 20.0
+        if (eff.after != Int.MIN_VALUE) p.spAfter = eff.after / 20.0
+        if (eff.line != Int.MIN_VALUE && eff.line > 0) {
+            if (eff.rule == "exact" || eff.rule == "atLeast") { p.lineExact = eff.line / 20.0; p.lineAtLeast = eff.rule == "atLeast" } else p.lineMul = eff.line / 240.0
+        }
         val hm = Regex("heading\\s*(\\d)", RegexOption.IGNORE_CASE).find(sname)
         p.heading = hm?.groupValues?.get(1)?.toIntOrNull() ?: if (eff.outline in 0..8) eff.outline + 1 else 0
         val nid = eff.numId
@@ -320,6 +415,8 @@ class DocxReader(file: File) : AutoCloseable {
         count++
         out.add(p)
         out.addAll(extra)
+        fstack.clear(); fstack.addAll(savedFields)
+        mySect?.let { if (out === bodyList) { addSect(it, secStart); secStart = out.size } }   // paragraph-level sectPr ends a section
     }
 
     /** Paragraph-level children (also used inside wrappers such as hyperlink / sdt / ins). */
@@ -332,7 +429,13 @@ class DocxReader(file: File) : AutoCloseable {
                 val l = (if (rid != null) cur[rid]?.takeIf { it.external }?.target else null) ?: anc?.let { "#$it" } ?: link
                 eachChild(x) { c -> inl(x, c, p, l, base, extra) }
             }
-            "ins", "moveTo", "smartTag", "fldSimple", "customXml", "sdt", "sdtContent", "AlternateContent", "Choice" ->
+            "fldSimple" -> {
+                val type = fieldType(x.attr("instr"))
+                val from = p.runs.size
+                eachChild(x) { c -> inl(x, c, p, link, base, extra) }
+                if (type != null) collapseField(p, from, type, base, link)
+            }
+            "ins", "moveTo", "smartTag", "customXml", "sdt", "sdtContent", "AlternateContent", "Choice" ->
                 eachChild(x) { c -> inl(x, c, p, link, base, extra) }
             else -> x.skip()
         }
@@ -357,6 +460,18 @@ class DocxReader(file: File) : AutoCloseable {
                 "tab" -> { mk(DRun.TAB, "\t"); x.skip() }
                 "br" -> { mk(if (x.attr("type") == "page") DRun.PAGE else DRun.BREAK, ""); x.skip() }
                 "cr" -> { mk(DRun.BREAK, ""); x.skip() }
+                "fldChar" -> {
+                    when (x.attr("fldCharType")) {
+                        "begin" -> fstack.add(Fld())
+                        "separate" -> fstack.lastOrNull()?.let { if (it.resultFrom < 0) it.resultFrom = p.runs.size }
+                        "end" -> fstack.removeLastOrNull()?.let { fl ->
+                            val type = fieldType(fl.instr.toString())
+                            if (type != null) collapseField(p, if (fl.resultFrom >= 0) fl.resultFrom else p.runs.size, type, f, link)
+                        }
+                    }
+                    x.skip()
+                }
+                "instrText" -> { val t = x.readText(); fstack.lastOrNull()?.takeIf { it.resultFrom < 0 }?.instr?.append(t) }
                 "noBreakHyphen" -> { mk(DRun.TEXT, "-"); x.skip() }
                 "sym" -> {
                     val c = x.attr("char")?.toIntOrNull(16)
@@ -373,6 +488,31 @@ class DocxReader(file: File) : AutoCloseable {
             }
         }
         eachChild(x) { child(it) }
+    }
+
+    /** Part 4: field type for the instruction text, null = not one of the fields the page model needs (cached result stays plain text). */
+    private fun fieldType(instr: String?): String? {
+        val w = instr?.trim()?.split(Regex("\\s+"), 2)?.firstOrNull()?.uppercase() ?: return null
+        return if (w == "PAGE" || w == "NUMPAGES" || w == "DATE" || w == "TITLE") w else null
+    }
+
+    /** Replaces the cached-result runs from index [from] on by ONE FIELD run (text = cached result, style of the first result run). */
+    private fun collapseField(p: DPara, from: Int, type: String, f: RPr, link: String?) {
+        val at = from.coerceIn(0, p.runs.size)
+        val old = p.runs.subList(at, p.runs.size)
+        val first = old.firstOrNull { it.kind == DRun.TEXT || it.kind == DRun.FIELD }
+        val txt = old.filter { it.kind == DRun.TEXT || it.kind == DRun.FIELD }.joinToString("") { it.text }
+        val r = DRun(DRun.FIELD, txt)
+        if (first != null) {
+            r.bold = first.bold; r.italic = first.italic; r.underline = first.underline; r.strike = first.strike; r.caps = first.caps
+            r.color = first.color; r.highlight = first.highlight; r.size = first.size; r.script = first.script; r.link = first.link; r.font = first.font
+        } else {
+            r.bold = f.b == true; r.italic = f.i == true; r.underline = f.u == true; r.strike = f.strike == true; r.caps = f.caps == true
+            r.color = f.color; r.highlight = f.hl; r.size = f.sz; r.script = f.script; r.link = link; r.font = f.font
+        }
+        r.field = type
+        old.clear()
+        p.runs.add(r)
     }
 
     /** Flat scan of a drawing / pict subtree: images (blip, VML imagedata) and text-box content. */
@@ -423,12 +563,17 @@ class DocxReader(file: File) : AutoCloseable {
                     }
                     x.skip()
                 }
-                "sectPr" -> parseSectPr(x)
+                "sectPr" -> pendingSect = parseSectPr(x)
                 else -> {
                     when (n) {
                         "pStyle" -> q.style = x.attr("val")
                         "jc" -> q.jc = x.attr("val")
                         "pageBreakBefore" -> q.pbb = on(x)
+                        "spacing" -> {
+                            x.attr("before")?.toIntOrNull()?.let { q.before = it }
+                            x.attr("after")?.toIntOrNull()?.let { q.after = it }
+                            x.attr("line")?.toIntOrNull()?.let { q.line = it; q.rule = x.attr("lineRule") ?: "auto" }
+                        }
                         "outlineLvl" -> q.outline = x.attr("val")?.toIntOrNull() ?: -1
                         "ind" -> {
                             (x.attr("left") ?: x.attr("start"))?.toIntOrNull()?.let { q.left = it }

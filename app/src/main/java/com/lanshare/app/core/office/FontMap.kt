@@ -68,6 +68,11 @@ object FontMap {
         return q(n) + "," + generic(n)
     }
 
+    /** Part 5: natural single-line height of a font as a multiple of its size (what Word calls "single" spacing); CSS `line-height:normal` equals it, a numeric multiple of Word needs it. */
+    fun lineFactor(requested: String?): Double = when (bundled(requested ?: "Calibri")) {
+        "Carlito" -> 1.2207; "Caladea" -> 1.1719; "Liberation Sans", "Liberation Serif" -> 1.1499; "Liberation Mono" -> 1.1328; else -> 1.15
+    }
+
     private fun q(n: String) = if (n.contains(' ')) "'$n'" else n
 
     /** `@font-face` rules for every bundled face (the WebView downloads a face only when text really uses it). [urlBase] ends with '/'. */

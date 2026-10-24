@@ -46,6 +46,8 @@ class OfficeViewerActivity : Activity() {
             /** Part 3: the bundled office fonts come from assets over https://appassets.androidplatform.net/office-fonts/ (same origin as the page -> no CORS). */
             override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? {
                 val u = r.url
+                if ((u.scheme == "https" || u.scheme == "http") && u.host != FontMap.HOST)   // Part 5: print layout runs JS, so nothing may leave the device
+                    return android.webkit.WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
                 if (u.scheme != "https" || u.host != FontMap.HOST || u.path?.startsWith(FontMap.PATH) != true) return null
                 val asset = FontMap.assetPath(u.lastPathSegment)
                     ?: return android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
@@ -183,7 +185,10 @@ class OfficeViewerActivity : Activity() {
         m.add(0, 8, 0, "Print on PC")
         m.add(0, 3, 0, "Print / save as PDF (Android)")
         if (od?.isSheet == true) m.add(0, 4, 1, "Export sheet as CSV")
-        else if (od != null) m.add(0, 9, 1, if (readingOn) "Reading mode: turn off" else "Reading mode")
+        else if (od != null) {
+            m.add(0, 11, 1, if (printOn) "Print layout: turn off" else "Print layout (pages)")
+            m.add(0, 9, 1, if (readingOn) "Reading mode: turn off" else "Reading mode")
+        }
         if (od?.editable == true && dev != null && rpath != null) {
             if (od?.isSheet == true) { m.add(0, 5, 2, "Edit cell..."); m.add(0, 6, 3, "Insert row...") }
             else { m.add(0, 5, 2, "Find and replace..."); m.add(0, 6, 3, "Add paragraph...") }
@@ -193,18 +198,26 @@ class OfficeViewerActivity : Activity() {
         pm.show()
     }
 
+    /** Every page load goes through here: JavaScript is on ONLY for the print-layout page of a Word-type document (it paginates; see DocxPrintJs). */
+    private fun show(html: String) {
+        web.settings.javaScriptEnabled = printOn && od?.isSheet == false && curDoc != null
+        web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null)
+    }
+
     private fun load(f: File) {
         Thread {
             val html = try { build(f) } catch (e: Throwable) {
                 val enc = e.message.orEmpty().contains("password", true) || e.message.orEmpty().contains("zip", true) || e.message.orEmpty().contains("end header", true)
                 "<body style=\"font:15px sans-serif;padding:16px\">" + (if (enc) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: " + e.message) + "</body>"
             }
-            runOnUiThread { if (!isDestroyed) { updateReadRow(); web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) } }
+            runOnUiThread { if (!isDestroyed) { updateReadRow(); show(html) } }
         }.start()
     }
 
     // ---- Reading mode (Word-type documents): text reflows to the screen width, own text size and colours; settings are kept for every document ----
-    private val readingOn get() = rprefs.getBoolean("on", false)
+    private val readingOn get() = rprefs.getBoolean("on", false) && !printOn
+    /** Part 5: print layout = real page sheets (offline). Off by default until it is device-tested; a menu item switches it, reading mode is the "mobile view". */
+    private val printOn get() = rprefs.getBoolean("print", false)
     private fun autoTheme() = if (androidx.core.graphics.ColorUtils.calculateLuminance(AppPal.pal(this).bg) > 0.5) DocxReading.PAPER else DocxReading.DARK
     private fun readingCfg(): DocxReading? =
         if (!readingOn || od?.isSheet == true) null
@@ -214,7 +227,7 @@ class OfficeViewerActivity : Activity() {
         val c = readingCfg()
         readRow?.visibility = if (c != null) android.view.View.VISIBLE else android.view.View.GONE
         readLbl?.text = c?.fontPx?.toString() ?: ""
-        web.setBackgroundColor(if (c != null) android.graphics.Color.parseColor(c.bg) else android.graphics.Color.WHITE)
+        web.setBackgroundColor(if (c != null) android.graphics.Color.parseColor(c.bg) else if (printOn && od?.isSheet == false) android.graphics.Color.parseColor("#c9ccd1") else android.graphics.Color.WHITE)
     }
 
     private fun readStep(d: Int) {
@@ -236,17 +249,20 @@ class OfficeViewerActivity : Activity() {
         updateReadRow()
         Thread {
             val html = try { renderDoc(o, doc) } catch (e: Throwable) { "<body style=\"font:15px sans-serif;padding:16px\">" + e.message + "</body>" }
-            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) }
+            runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }
 
-    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = { im ->
+    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = if (printOn) DocxHtml.renderPrint(doc, title = file?.name ?: "", fontBase = FontMap.FONT_URL, image = imgSrc(o))
+        else DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = imgSrc(o))
+
+    private fun imgSrc(o: OfficeOpen): (DImage) -> String? = { im ->
         val bytes = try { o.image(im.part) } catch (_: Throwable) { null }
         if (bytes == null || bytes.size > 3_000_000) null else {
             val mime = when (im.part.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"; "webp" -> "image/webp"; "svg" -> "image/svg+xml"; else -> null }
             if (mime == null) null else "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
         }
-    })
+    }
 
     private fun build(f: File): String {
         val o = OfficeOpen(f); od = o        // format detected by content (docx/xlsx/doc/xls/odt/ods)
@@ -266,7 +282,7 @@ class OfficeViewerActivity : Activity() {
         curSheet = i
         Thread {
             val html = try { XlsxHtml.render(r.readSheet(i), tabs, i, r.styles, FontMap.FONT_URL) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
-            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) }
+            runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }
 
@@ -278,7 +294,8 @@ class OfficeViewerActivity : Activity() {
         5 -> { if (od?.isSheet == true) askCell() else askReplace(); true }
         6 -> { if (od?.isSheet == true) askRow() else askParagraph(); true }
         7 -> { undoEdit(); true }
-        9 -> { rprefs.edit().putBoolean("on", !readingOn).apply(); rerender(); true }
+        9 -> { rprefs.edit().putBoolean("on", !readingOn).putBoolean("print", false).apply(); rerender(); true }
+        11 -> { rprefs.edit().putBoolean("print", !printOn).apply(); rerender(); true }   // Part 5
         else -> super.onOptionsItemSelected(i)
     }
 

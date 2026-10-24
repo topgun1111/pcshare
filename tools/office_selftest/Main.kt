@@ -10,6 +10,9 @@ fun main(a: Array<String>) {
     if (a.isNotEmpty() && a[0] == "--edit") { editTest(); return }
     if (a.isNotEmpty() && a[0] == "--docx") { docxTest(); return }
     if (a.isNotEmpty() && a[0] == "--fonts") { fontsTest(java.io.File(a.getOrElse(1) { "tools/office_selftest" }), java.io.File(a.getOrElse(2) { "app/src/main/assets/fonts/office" })); return }
+    if (a.size > 2 && a[0] == "--print") { printOut(File(a[1]), File(a[2])); return }   // Part 5: print-layout HTML of one document (open it in Chromium)
+    if (a.isNotEmpty() && a[0] == "--printtest") { printTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 5
+    if (a.isNotEmpty() && a[0] == "--sections") { sectionsTest(java.io.File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 4
     if (a.size > 1 && a[0] == "--export") {   // Part 8: text + CSV of any office file
         val f = java.io.File(a[1]); println("TEXT:"); println(OfficeExport.text(f))
         OfficeOpen(f).use { o -> if (o.isSheet) { println("CSV:"); print(OfficeExport.sheetToCsv(o.readSheet(o.sheets.first { !it.hidden }.index))) } }
@@ -255,4 +258,84 @@ fun fontsTest(fix: File, fonts: File) {
         val h = XlsxHtml.render(o.readSheet(tabs.first().first), tabs, tabs.first().first, st, FontMap.FONT_URL)
         ok("$nm html has @font-face + body stack", h.contains("@font-face") && h.contains("body{font-family:"))
     } }
+}
+
+
+/** Part 4: Word page model (sections, page geometry, per-section headers / footers, fields). */
+fun sectionsTest(dir: File) {
+    val d = DocxReader(File(dir, "sample_sections.docx")).use { it.read() }
+    fun t(b: List<DBlock>) = d.plainText(b).trim()
+    fun f1(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+    check("sections count", d.sections.size.toString(), "3")
+    check("evenOdd setting", d.evenOdd.toString(), "true")
+    val a = d.sections[0]; val b = d.sections[1]; val c = d.sections[2]
+    check("s0 start", a.startsAtBlockIndex.toString(), "0"); check("s1 start", b.startsAtBlockIndex.toString(), "3"); check("s2 start", c.startsAtBlockIndex.toString(), "5")
+    check("s0 A4 size", f1(a.pgW) + "x" + f1(a.pgH), "595.3x841.9"); check("s0 orient", a.orient, "portrait")
+    check("s0 margins T/R/B/L", listOf(a.marT, a.marR, a.marB, a.marL).joinToString("/") { f1(it) }, "72.0/56.7/72.0/56.7")
+    check("s0 hdr/ftr dist", f1(a.hdrDist) + "/" + f1(a.ftrDist), "35.4/35.4"); check("s0 cols", a.cols.toString(), "1"); check("s0 titlePg", a.titlePg.toString(), "false")
+    check("s0 pgNumStart", a.pgNumStart.toString(), "1")
+    check("s1 Letter landscape", f1(b.pgW) + "x" + f1(b.pgH) + " " + b.orient, "792.0x612.0 landscape")
+    check("s1 margins", listOf(b.marT, b.marR, b.marB, b.marL).joinToString("/") { f1(it) }, "54.0/54.0/54.0/54.0")
+    check("s1 cols/gap/sep", b.cols.toString() + "/" + f1(b.colGap) + "/" + b.colSep, "2/36.0/true"); check("s1 titlePg", b.titlePg.toString(), "true")
+    check("s1 content width", f1(b.contentW), "684.0")
+    check("s2 Letter portrait", f1(c.pgW) + "x" + f1(c.pgH) + " " + c.orient, "612.0x792.0 portrait"); check("s2 cols", c.cols.toString(), "1")
+    check("s0 header default", t(a.headerDefault), "Header A4 Sections sample"); check("s0 header even", t(a.headerEven), "Even header")
+    check("s0 header first (none)", t(a.headerFirst), "")
+    check("s1 header first", t(b.headerFirst), "First page header"); check("s1 header default inherited", t(b.headerDefault), "Header A4 Sections sample")
+    check("s1 header even inherited", t(b.headerEven), "Even header")
+    check("s0 footer", t(a.footerDefault), "Page 1 of 3"); check("s1 footer", t(b.footerDefault), "Landscape footer 2 / 24.10.2026")
+    check("s2 footer inherited", t(c.footerDefault), "Landscape footer 2 / 24.10.2026"); check("s2 header first inherited", t(c.headerFirst), "First page header")
+    // fields -> FIELD runs with the cached result
+    fun fields(bs: List<DBlock>) = bs.filterIsInstance<DPara>().flatMap { it.runs }.filter { it.kind == DRun.FIELD }.joinToString(",") { it.field + "=" + it.text }
+    check("s0 footer fields", fields(a.footerDefault), "PAGE=1,NUMPAGES=3"); check("s1 footer fields", fields(b.footerDefault), "PAGE=2,DATE=24.10.2026")
+    check("s0 header fields", fields(a.headerDefault), "TITLE=Sections sample")
+    val nf = (a.footerDefault[0] as DPara).runs.first { it.field == "NUMPAGES" }
+    check("complex field keeps run style", nf.bold.toString(), "true")
+    val seq = (d.body[1] as DPara)
+    check("unknown field stays plain text", seq.runs.joinToString("|") { it.kind.toString() + ":" + it.text }, "0:Figure |0:7")
+    // page selection rules
+    check("headerFor first page of s1", t(b.headerFor(true, 1)), "First page header"); check("headerFor even page", t(b.headerFor(false, 2)), "Even header")
+    check("headerFor odd page", t(b.headerFor(false, 3)), "Header A4 Sections sample"); check("s0 first page uses default (no titlePg)", t(a.headerFor(true, 1)), "Header A4 Sections sample")
+    check("sectionAt", d.sectionAt(0).pgW.toInt().toString() + "," + d.sectionAt(3).pgW.toInt() + "," + d.sectionAt(99).pgW.toInt(), "595,792,612")
+    check("legacy header API", t(d.header), "Header A4 Sections sample"); check("legacy footer API", t(d.footer), "Page 1 of 3")
+    check("body text", d.plainText().trim().lines().size.toString(), "6")
+    // existing fixtures: a docx without any sectPr info still yields one section
+    val s0 = DocxReader(File(dir, "sample.docx")).use { it.read() }
+    check("sample.docx has >= 1 section", (s0.sections.size >= 1).toString(), "true")
+    println("sample.docx section: " + f1(s0.sections[0].pgW) + "x" + f1(s0.sections[0].pgH) + " cols=" + s0.sections[0].cols + " sections=" + s0.sections.size)
+}
+
+/** Part 5: writes the print-layout page of [f] to [out]; images inline, fonts from the viewer's URL (the browser test maps it to assets/fonts/office). */
+fun printOut(f: File, out: File) {
+    OfficeOpen(f).use { o ->
+        val doc = o.readDoc()
+        val html = DocxHtml.renderPrint(doc, title = f.name, fontBase = FontMap.FONT_URL, image = { im ->
+            val b = try { o.image(im.part) } catch (_: Throwable) { null }
+            val mime = when (im.part.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"; else -> null }
+            if (b == null || mime == null) null else "data:$mime;base64," + java.util.Base64.getEncoder().encodeToString(b)
+        })
+        out.writeText(html)
+        println("wrote " + out + " (" + html.length + " chars, " + doc.body.size + " blocks, " + doc.sections.size + " sections)")
+    }
+}
+
+fun printTest(dir: File) {
+    fun cnt(h: String, s: String) = Regex(Regex.escape(s)).findAll(h).count()
+    val d = DocxReader(File(dir, "sample_sections.docx")).use { it.read() }
+    val h = DocxHtml.renderPrint(d, title = "t", fontBase = FontMap.FONT_URL)
+    check("print: flows (3 sections, no continuous)", cnt(h, "class=fl ").toString(), "3")
+    check("print: meta json present", (h.contains("<script id=meta type=\"application/json\">{\"f\":[")).toString(), "true")
+    check("print: viewport width = widest page (Letter landscape 1056px + 16)", Regex("width=(\\d+),initial-scale").find(h)!!.groupValues[1], "1072")
+    check("print: no script injection from text", (!h.contains("<script>alert")).toString(), "true")
+    check("print: PAGE field marked", (h.contains("class=fld data-f=\"PAGE\"")).toString(), "true")
+    check("print: header templates emitted", (cnt(h, "class=hft") > 0).toString(), "true")
+    check("print: render() unchanged (no script)", (!DocxHtml.render(d).contains("<script")).toString(), "true")
+    check("print: render() has no print flag leak", (!DocxHtml.render(d).contains("class=fl")).toString(), "true")
+    // spacing model
+    val p = DocxReader(File(dir, "sample_pages.docx")).use { it.read() }
+    val paras = p.body.filterIsInstance<DPara>()
+    check("spacing: some paragraph has after = 8pt (Normal of the fixture)", paras.any { it.spAfter == 8.0 }.toString(), "true")
+    check("spacing: line multiple 1.08 parsed", paras.any { Math.abs(it.lineMul - 1.08) < 0.01 }.toString(), "true")
+    val hp = DocxHtml.renderPrint(p, title = "t")
+    check("print: page-break paragraph becomes column break", (hp.contains("break-before:column") || hp.contains("class=cb")).toString(), "true")
 }
