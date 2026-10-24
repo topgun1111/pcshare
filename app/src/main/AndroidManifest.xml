@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
-    <application android:name=".App" android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
+    <application android:name=".App" android:largeHeap="true" android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.LANShare">
         <!-- Ask Play Services to fetch the OCR model at install time (otherwise it downloads on first OCR use) -->

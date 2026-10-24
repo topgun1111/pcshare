@@ -198,6 +198,18 @@ object StorageScan {
         return all.values.filter { it.state == "done" && it.dir.path == p }.maxByOrNull { it.t1 }
     }
 
+    /** True when some folder of a finished tree still has a "small files" (agg) node although the scan was not cut short by the memory guard: a result saved by an older build that kept only the largest files per folder. */
+    fun hasFolded(s: Scan): Boolean {
+        if (s.truncated) return false
+        val r = s.root ?: return false
+        val st = ArrayDeque<SNode>(); st.add(r)
+        while (st.isNotEmpty()) {
+            val n = st.removeLast()
+            for (k in n.kids) { if (k.agg) return true; if (k.dir) st.add(k) }
+        }
+        return false
+    }
+
     /** A scan of this folder that is running now, or null (so a second tap does not start a second walk). */
     fun running(dir: File): Scan? {
         val p = dir.path

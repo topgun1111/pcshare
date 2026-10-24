@@ -472,7 +472,7 @@ class StorageActivity : Activity() {
             val l = try { StorageStore.load(dir) } catch (_: Throwable) { null }
             ui.post {
                 if (seq != attachSeq || isDestroyed || isFinishing) return@post
-                val sc: Scan = if (l != null && !(l.limited && !needAccess())) { StorageScan.adopt(l); l }
+                val sc: Scan = if (l != null && !(l.limited && !needAccess()) && !StorageScan.hasFolded(l)) { StorageScan.adopt(l); l }   // an old result with folded "small files" is scanned again: every file is listed now
                     else try { startScan(dir) }
                     catch (e: Throwable) { showMessage("Cannot analyze this folder", com.lanshare.app.core.errText(e), canRetry = false); return@post }
                 scan = sc; shownState = ""
