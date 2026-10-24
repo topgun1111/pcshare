@@ -43,6 +43,7 @@ object Shortcuts {
             val more = ArrayList<ShortcutInfoCompat>()
             more.add(office("office:new:docx", "New Word doc", "New Word document", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "docx"), 50))
             more.add(office("office:new:xlsx", "New Excel", "New Excel workbook", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "xlsx"), 51))
+            more.add(office("us:search", "Search", "Search everything", UsActivity.intent(ctx).setAction(Intent.ACTION_VIEW), 52))
             for ((n, r) in recent.withIndex()) more.add(office("office:recent:" + n, r.name, "Open " + r.name,
                 Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_OPEN).putExtra("dev", r.dev).putExtra("rpath", r.path).putExtra("name", r.name), 60 + n))
             ShortcutManagerCompat.setDynamicShortcuts(ctx, (list + more).take(cap.coerceAtLeast(1)))

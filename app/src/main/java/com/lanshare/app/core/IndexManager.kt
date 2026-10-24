@@ -213,6 +213,7 @@ object IndexManager {
 
     /** Reason to wait ("" = go): below 20 % and not charging, or setting us_charge and not charging. */
     private fun powerWait(): String {
+        if (try { Jobs.all.values.any { it.state == "run" } } catch (_: Throwable) { false }) return "a file job is running"   // yield CPU / memory / disk to copy, extract, zip jobs
         val (lvl, chg) = power()
         if (chg) return ""
         if (Cfg.usCharge()) return "waiting for the charger"

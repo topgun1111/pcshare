@@ -99,6 +99,10 @@ object Routes {
                 "text" -> ImgSearch.text(ex.query["q"] ?: "", ex.query["whole"] != "0", ex.query["dir"] ?: "")
                 else -> ImgSearch.status()
             })
+            // Universal Search on THIS phone for another phone / the PC page (Part 9): same JSON as GET /api/usearch
+            "usearch" -> ex.json(UsSearch.toJson(UsSearch.run(ex.query["q"] ?: "", ex.query["kind"] ?: "", UsSearch.optsOf(false, false, false, false, false),
+                UsSearch.sortOf(ex.query["sort"], false), ex.query["offset"]?.toIntOrNull() ?: 0, ex.query["limit"]?.toIntOrNull() ?: 100,
+                com.lanshare.app.core.usearch.CancelToken()) ?: throw BadReq("Universal search is off on that phone")))
             "wifiprinters" -> ex.json(WifiPrinters.listJson())   // this device's Wi-Fi printers, for printing on them from another device
             "ipp" -> {   // forwards one IPP request from another device to a printer this device discovered (not to arbitrary hosts)
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
@@ -206,6 +210,15 @@ object Routes {
                 val e = remotePhone(ex.q("dev"))
                 val body = try { e.rpc("albums", mapOf("kind" to (if (q["kind"] == "vid") "vid" else "img"))) }
                     catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot share its gallery yet") }
+                return ex.reply(200, body, "application/json")
+            }
+            // Universal Search on ANOTHER phone (Part 9): ?dev=&q=&kind=&sort=&limit=&offset=
+            "rusearch" -> {
+                val e = remotePhone(ex.q("dev"))
+                val ps = mutableMapOf<String, String>()
+                for (k in listOf("q", "kind", "sort", "limit", "offset")) q[k]?.let { ps[k] = it }
+                val body = try { e.rpc("usearch", ps, timeoutMs = 60_000) }
+                    catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot search yet") }
                 return ex.reply(200, body, "application/json")
             }
             // AI search on another phone (HANDOVER_GALLERY.md part 4): ?dev=&mode=status|visual|text&q=&whole=0|1&dir=<album path>

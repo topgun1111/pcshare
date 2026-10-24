@@ -47,6 +47,7 @@ object UsSearch {
     /** [kind] = "" (all) or a `kind:` value (file, folder, image, video, audio, doc ...); it is added to the query text. */
     fun run(text: String, kind: String, opt: MatchOptions, sort: SortSpec, offset: Int, limit: Int, cancel: CancelToken, scope: String = ""): Out? {
         val ix = IndexManager.index() ?: return null
+        com.lanshare.app.core.usearch.ArcNames.strip(text)?.let { return runArchives(ix, it, offset.coerceAtLeast(0), limit.coerceIn(1, 2000), cancel, scope) }
         val full = if (kind.isEmpty()) text else (text.trim() + " kind:" + kind)
         val q: Query = UsSections.scope(QueryParser.parse(full), scope)   // scope = real folder path of "Search here" (blank = whole phone)
         val hf = IndexManager.hiddenFilter()
@@ -191,6 +192,32 @@ object UsSearch {
         val root = try { Core.local.root.path.trimEnd('/') } catch (_: Throwable) { return null }
         if (abs == root) return "/"
         return if (abs.startsWith("$root/")) abs.substring(root.length) else null
+    }
+
+    /** arc:word (Part 9): archives found by the name index (kind:archive, newest first, at most 300, 10 s budget), entry names matched by [com.lanshare.app.core.usearch.ArcNames]. Rows: name = inner path, path = the archive (tap opens its folder). */
+    private fun runArchives(ix: NameIndex, qs: String, off: Int, lim: Int, cancel: CancelToken, scope: String): Out {
+        val t0 = System.currentTimeMillis()
+        val ws = com.lanshare.app.core.usearch.ArcNames.words(qs)
+        if (ws.isEmpty()) return Out(emptyList(), 0, true, 0L, listOf("Type a word after arc: to search names inside archives"), false)
+        val hf = IndexManager.hiddenFilter()
+        val hid = try { com.lanshare.app.NlModel.hidden.isNotEmpty() } catch (_: Throwable) { false }
+        val cand = Search.run(ix, QueryParser.parse("kind:archive"), MatchOptions(), SortSpec(SortKey.DATE, false, false), 0, 300, cancel)
+        val rows = ArrayList<Row>()
+        var total = 0; var cut = false
+        for (id in cand.ids) {
+            if (cancel.cancelled || System.currentTimeMillis() - t0 > 10_000) { cut = true; break }
+            val p = ix.pathOf(id)
+            if (scope.isNotEmpty() && p != scope && !p.startsWith(scope.trimEnd('/') + "/")) continue
+            if (hid && hf.isHidden(p)) continue
+            val ai = try { ArcIndex.read(File(p), arcFmt(ix.nameOf(id))) } catch (_: Throwable) { continue }
+            for (e in ai.all.values) {
+                if (!com.lanshare.app.core.usearch.ArcNames.matches(e.path, ws)) continue
+                total++
+                if (total > off && rows.size < lim) rows.add(Row(-(rows.size + 10), e.path, p, e.dir, e.size, e.mtime, "in " + ix.nameOf(id), 0, "arc"))
+            }
+        }
+        val notes = ArrayList<String>(); if (cut) notes.add("Stopped early (time limit or new search); results may be incomplete")
+        return Out(rows, total, !cut, System.currentTimeMillis() - t0, notes, false)
     }
 
     fun toJson(o: Out): JSONObject {

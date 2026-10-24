@@ -749,6 +749,16 @@ fun exportTests() {
     eq("export: empty date", UsExport.date(0), "")
 }
 
+fun arcTests() {
+    eq("arc: strip", ArcNames.strip("  ARC: Rapor 2026 "), "Rapor 2026")
+    check("arc: plain text is not an archive query", ArcNames.strip("report") == null && ArcNames.strip("arc") == null)
+    eq("arc: words folded", ArcNames.words("\u0130\u015Eler  \u00C7ay"), listOf("isler", "cay"))
+    check("arc: all words, folded path", ArcNames.matches("Belgeler/\u015Eubat/RAPOR.docx", ArcNames.words("subat rapor")))
+    check("arc: missing word fails", !ArcNames.matches("a/b.txt", ArcNames.words("b zzz")))
+    check("arc: empty query matches nothing", !ArcNames.matches("a/b.txt", emptyList()))
+    eq("arc: leaf", ArcNames.leaf("x/y/z.txt"), "z.txt")
+}
+
 fun stressTests() {
     val ix = NameIndex(16)
     val root = ix.addRoot("/r")
@@ -828,6 +838,7 @@ fun main(args: Array<String>) {
     viewTests()
     exportTests()
     stressTests()
+    arcTests()
     fixtureTests(args)
     matcherTests()
     randomQueryTests()

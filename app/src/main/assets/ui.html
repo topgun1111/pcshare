@@ -4818,7 +4818,21 @@ const HM_P={
 const hmSvg=k=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+HM_P[k]+'"/></svg>';
 const homeOn=()=>$('#home').style.display==='flex';
 /* Universal Search (native screen UsActivity): drawer item, main menu tile, search row of a folder (q = text typed so far) */
-function usOpen(q){try{if(!LSAndroid.usearchOk()){toast('Search index is off \u2013 Settings \u203a Search index',4000);return}LSAndroid.openUsearch(q||'')}catch(e){toast('Search needs the Android app',3000)}}
+function usOpen(q){if(typeof LSAndroid==='undefined'||!LSAndroid.openUsearch){usWeb(q);return}try{if(!LSAndroid.usearchOk()){toast('Search index is off \u2013 Settings \u203a Search index',4000);return}LSAndroid.openUsearch(q||'')}catch(e){usWeb(q)}}
+/* Universal Search in the browser (PC page) and on another phone: /api/usearch (this phone) or /api/rusearch (device chosen in the top bar). Plain list; tap = open the folder. arc:word = names inside archives. */
+function usWeb(q){let w=$('#usweb');if(w){w.remove()}
+  w=document.createElement('div');w.id='usweb';w.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--bg,#fff);color:var(--fg,#111);display:flex;flex-direction:column;font:14px sans-serif';
+  w.innerHTML='<div style="display:flex;gap:8px;padding:8px;border-bottom:1px solid #8884"><input id=usq type=search placeholder="Search everything (arc:word = inside archives)" style="flex:1;padding:8px;font-size:16px"><button id=usx style="padding:0 14px">Close</button></div><div id=usn style="padding:4px 10px;opacity:.7"></div><div id=usl style="flex:1;overflow:auto"></div>';
+  document.body.appendChild(w);const inp=$('#usq'),lst=$('#usl'),nn=$('#usn');inp.value=q||'';let t=0,seq=0;
+  const fz=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(0)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
+  const run=async()=>{const v=inp.value.trim(),my=++seq;if(v.length<2){lst.textContent='';nn.textContent='';return}
+    try{const rem=S.dev&&S.dev!=='local'&&!/^smb/i.test(S.dev);const r=await api('GET',(rem?'/api/rusearch?dev='+enc(S.dev)+'&':'/api/usearch?')+'q='+enc(v)+'&limit=200',null,70000);if(my!==seq)return;
+      nn.textContent=r.total+' found'+(r.complete?'':' (incomplete)')+(r.notes&&r.notes[0]?' \u2013 '+r.notes[0]:'');lst.textContent='';
+      for(const i of r.items){const d=document.createElement('div');d.style.cssText='padding:8px 10px;border-bottom:1px solid #8882;cursor:pointer';
+        const a=document.createElement('div');a.textContent=(i.dir?'\uD83D\uDCC1 ':'')+i.name;a.style.fontWeight='600';const b=document.createElement('div');b.style.cssText='opacity:.65;font-size:12px';b.textContent=i.path+(i.dir?'':'  \u00B7  '+fz(i.size))+(i.snippet?'  \u00B7  '+i.snippet:'');d.append(a,b);
+        d.onclick=()=>{w.remove();const p=i.dir&&i.badge!=='arc'?i.path:(i.path.replace(/\/[^\/]*$/,'')||'/');go(p)};lst.append(d)}
+    }catch(e){if(my===seq){nn.textContent='Search failed: '+(e.message||e)}}};
+  inp.oninput=()=>{clearTimeout(t);t=setTimeout(run,250)};$('#usx').onclick=()=>w.remove();inp.focus();if(inp.value)run()}
 function hmDevSub(){const e=$('#hmdev');if(e){const n=S.peers.length;e.textContent=n?n+(n===1?' other device':' other devices'):'Searching\u2026'}}
 function homeHide(){const o=$('#home');o.style.display='none';o.textContent=''}
 function hmFavClose(){const a=$('#hmfavs'),m=$('#hmfav');if(a)a.remove();if(m)m.remove()}
