@@ -126,9 +126,9 @@ jobs:
           # "arguments|minimum number of ok lines" (about 80% of the counts measured in earlier sessions; a quiet early exit gives 0 and fails)
           while IFS='|' read -r t min; do
             echo "=== selftest [$t] ===" >> "$LOG"
-            java -jar "$RUNNER_TEMP/ost.jar" $t > "$RUNNER_TEMP/one.log" 2>&1; rc=$?
+            java -jar "$RUNNER_TEMP/ost.jar" $t < /dev/null > "$RUNNER_TEMP/one.log" 2>&1 && rc=0 || rc=$?
             cat "$RUNNER_TEMP/one.log" >> "$LOG"
-            ok=$(grep -c -E '^(ok|OK) ' "$RUNNER_TEMP/one.log"); fl=$(grep -c '^FAIL' "$RUNNER_TEMP/one.log")
+            ok=$(grep -c -E '^(ok|OK) ' "$RUNNER_TEMP/one.log" || true); fl=$(grep -c '^FAIL' "$RUNNER_TEMP/one.log" || true)   # grep -c exits 1 on a count of 0, which kills a bash -e step
             res=PASS
             if [ "$rc" -ne 0 ]; then res="CRASH (exit $rc)"; fi
             if [ "$fl" -gt 0 ]; then res="FAIL"; fi
@@ -137,7 +137,7 @@ jobs:
             echo "| ${t:-default} | $ok | $fl | $min | $res |" >> "$SUM"
             if [ "$res" != PASS ]; then
               bad=1
-              echo "::error title=Self-test [${t:-default}] $res::ok=$ok FAIL=$fl min=$min. $(grep -m3 -E '^FAIL|Exception' "$RUNNER_TEMP/one.log" | tr '\n' ' ' | cut -c1-350)"
+              echo "::error title=Self-test [${t:-default}] $res::ok=$ok FAIL=$fl min=$min. $({ grep -m3 -E '^FAIL|Exception' "$RUNNER_TEMP/one.log" || true; } | tr '\n' ' ' | cut -c1-350)"
             fi
           done <<EOF
           |20
