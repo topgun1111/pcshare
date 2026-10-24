@@ -193,6 +193,7 @@ class StorageActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        wizState = b?.getString("wizstate")?.takeIf { it.isNotEmpty() }
         vpath = vnorm(b?.getString(X_PATH) ?: intent.getStringExtra(X_PATH) ?: "/")
         dev = b?.getString(X_DEV) ?: intent.getStringExtra(X_DEV) ?: "local"
         devName = b?.getString(X_DEVNAME) ?: intent.getStringExtra(X_DEVNAME) ?: ""
@@ -216,7 +217,9 @@ class StorageActivity : Activity() {
         attach(rescan = false)
     }
 
-    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString(X_PATH, vpath); o.putString(X_DEV, dev); o.putString(X_DEVNAME, devName); volPath?.let { o.putString(X_VOL, it) } }
+    private var wizState: String? = null      // where the user was in the WizTree view (restored once the screen is built again)
+
+    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); wiz?.let { o.putString("wizstate", it.saveState()) }; o.putString(X_PATH, vpath); o.putString(X_DEV, dev); o.putString(X_DEVNAME, devName); volPath?.let { o.putString(X_VOL, it) } }
 
     override fun onResume() {
         super.onResume()
@@ -228,7 +231,7 @@ class StorageActivity : Activity() {
         paintVols(); paintAccess()
         scan?.let { sc -> if (sc.limited && !needAccess() && sc.state != "run") { toast("All files access is on now - scanning again"); attach(rescan = true); return } }
         // came back to the screen: show the live state of the scan again (it may have finished while we were away)
-        if (scan != null) { shownState = ""; update(); if (scan?.state == "run") { ui.removeCallbacks(tick); ui.post(tick) } }
+        if (scan != null) { if (!(wiz != null && scan?.state == "done")) shownState = ""; update(); if (scan?.state == "run") { ui.removeCallbacks(tick); ui.post(tick) } }
     }
 
     override fun onPause() { ui.removeCallbacks(tick); super.onPause() }
@@ -572,6 +575,7 @@ class StorageActivity : Activity() {
             val w = WizScreen(this, s, wizHost)
             wiz = w
             content.addView(w.view, FrameLayout.LayoutParams(-1, -1))
+            wizState?.let { w.restoreState(it); wizState = null }
             return
         }
         wiz = null

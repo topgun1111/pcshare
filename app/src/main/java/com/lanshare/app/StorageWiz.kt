@@ -1013,6 +1013,31 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     fun select(n: SNode) { pick(n) }
 
+    /** Where the user is (tab, opened folders, selection, scroll): kept when the screen is created again (e.g. after a video player was closed and Android had dropped the activity). */
+    fun saveState(): String = try {
+        val o = org.json.JSONObject()
+        o.put("tab", tab); o.put("sel", sel?.path() ?: ""); o.put("focus", focus.path()); o.put("scroll", treeList.firstVisiblePosition)
+        val ex = org.json.JSONArray(); for (n in expanded) if (n !== root) ex.put(n.path()); o.put("exp", ex)
+        o.toString()
+    } catch (_: Throwable) { "" }
+
+    fun restoreState(js: String) {
+        try {
+            val o = org.json.JSONObject(js)
+            val ex = o.optJSONArray("exp")
+            if (ex != null) for (i in 0 until ex.length()) scan.find(ex.getString(i))?.let { expanded.add(it) }
+            rebuildRows()
+            o.optString("sel").takeIf { it.isNotEmpty() }?.let { pth -> scan.find(pth)?.let { sel = it } }
+            o.optString("focus").takeIf { it.isNotEmpty() }?.let { pth -> scan.find(pth)?.let { setFocus(it) } }
+            val t = o.optInt("tab", 0)
+            showTab(if (t == 4 && !host.appsOk()) 0 else t.coerceIn(0, 4))
+            treeAdapter.notifyDataSetChanged()
+            val sc = o.optInt("scroll", 0)
+            treeList.post { treeList.setSelection(sc) }
+            paintStatus()
+        } catch (_: Throwable) {}
+    }
+
     private fun paintStatus() {
         val s = sel
         val hk = hlKey
