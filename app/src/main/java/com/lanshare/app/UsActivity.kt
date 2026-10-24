@@ -1,6 +1,10 @@
 package com.lanshare.app
 
 import android.app.Activity
+import com.lanshare.app.core.usearch.QText
+import com.lanshare.app.core.usearch.UsHistory
+import com.lanshare.app.core.usearch.UsSections
+import com.lanshare.app.core.usearch.UsExport
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -83,6 +87,13 @@ class UsActivity : Activity() {
     private var stamp = ""
     private var terms: List<String> = emptyList()
     private val sel = LinkedHashSet<Int>()
+    private var everywhere = false                       // Part 8: sections Names / Contents / Pictures
+    private var scope = ""                               // Part 8: real folder path of "Search here" (blank = whole phone)
+    private var recent: List<String> = emptyList()
+    private var saved: List<UsHistory.Saved> = emptyList()
+    private var secs: List<UsSearch.Sect> = emptyList()
+    private var lastNote = ""
+    private lateinit var scopeTv: TextView
 
     // options (kept in SharedPreferences "us_ui")
     private var sortKey = "best"
@@ -116,6 +127,9 @@ class UsActivity : Activity() {
         sortKey = sp.getString("sort", "best") ?: "best"; rev = sp.getBoolean("rev", false); ff = sp.getBoolean("ff", false)
         oCase = sp.getBoolean("case", false); oWord = sp.getBoolean("word", false); oPath = sp.getBoolean("path", false)
         oDiac = sp.getBoolean("diac", false); oRe = sp.getBoolean("re", false)
+        everywhere = sp.getBoolean("every", false)
+        recent = UsHistory.decode(sp.getString("recent", "")); saved = UsHistory.decodeSaved(sp.getString("saved", ""))
+        scope = b?.getString("scope") ?: intent.getStringExtra(X_SCOPE) ?: ""
         kind = b?.getString("kind") ?: intent.getStringExtra(X_KIND) ?: ""
         val q0 = b?.getString("q") ?: intent.getStringExtra(X_Q) ?: ""
         paintBars()
@@ -123,15 +137,15 @@ class UsActivity : Activity() {
         et.setText(q0); et.setSelection(q0.length)
         et.requestFocus()
         et.postDelayed({ (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(et, InputMethodManager.SHOW_IMPLICIT) }, 150)
-        markChips()
+        markChips(); paintScope()
         refreshBanner(true)
         runQuery(true, 0)
     }
 
-    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("q", et.text.toString()); o.putString("kind", kind) }
+    override fun onSaveInstanceState(o: Bundle) { super.onSaveInstanceState(o); o.putString("q", et.text.toString()); o.putString("kind", kind); o.putString("scope", scope) }
 
     override fun onResume() { super.onResume(); ui.post(tick) }
-    override fun onPause() { super.onPause(); ui.removeCallbacks(tick) }
+    override fun onPause() { super.onPause(); ui.removeCallbacks(tick); commit() }
     override fun onDestroy() { super.onDestroy(); token.cancel(); seq++; ui.removeCallbacksAndMessages(null); exec.shutdownNow(); thPool.shutdownNow() }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -202,6 +216,12 @@ class UsActivity : Activity() {
             cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32f)).apply { rightMargin = dp(6f) })
         }
         hs.addView(cr); root.addView(hs)
+        scopeTv = tv(13f, p.onac, true).apply {
+            setPadding(dp(12f), dp(4f), dp(12f), dp(4f)); visibility = View.GONE
+            background = GradientDrawable().apply { setColor(p.ac); cornerRadius = dp(12f).toFloat() }
+            setOnClickListener { scope = ""; paintScope(); endSel(false); runQuery(true, 0) }
+        }
+        root.addView(scopeTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10f); bottomMargin = dp(4f) })
         // banner (indexing) + info line
         banner = tv(12f, p.onac).apply {
             setPadding(dp(12f), dp(4f), dp(12f), dp(4f)); visibility = View.GONE
@@ -229,7 +249,7 @@ class UsActivity : Activity() {
         }
         selTv = tv(14f, p.fg, true)
         selBar.addView(selTv, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(4f) })
-        for ((t, f) in listOf<Pair<String, () -> Unit>>("Copy" to this::actCopy, "Share" to this::actShare, "Details" to this::actDetails, "Folder" to this::actFolder, "Delete" to this::actDelete)) {
+        for ((t, f) in listOf<Pair<String, () -> Unit>>("Copy" to this::actCopy, "Share" to this::actShare, "Details" to this::actDetails, "Folder" to this::actFolder, "Here" to this::actHere, "Delete" to this::actDelete)) {
             selBar.addView(tv(13f, p.ac, true).apply { text = t; gravity = Gravity.CENTER; setPadding(dp(8f), 0, dp(8f), 0); setOnClickListener { f() } },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48f)))
         }
@@ -257,37 +277,102 @@ class UsActivity : Activity() {
         val text = et.text.toString()
         lastText = text
         val effective = if (text.isBlank() && kind.isNotEmpty()) "*" else text
-        if (effective.isBlank()) {
-            token.cancel(); seq++
-            rows.clear(); total = 0; more = false; loading = false; terms = emptyList(); ad.notifyDataSetChanged(); setInfo(); return
-        }
+        if (effective.isBlank()) { token.cancel(); seq++; showHome(); return }
         token.cancel()
         val tk = CancelToken(); token = tk
         val s = ++seq
+        val every = everywhere && text.isNotBlank() && !UsSections.hasEngine(text)
         val off = if (reset) 0 else rows.size
         val lim = if (reset) maxOf(PAGE, keep) else PAGE
-        val k = kind; val o = opts(); val so = UsSearch.sortOf(sortKey, rev, ff)
+        val k = kind; val o = opts(); val so = UsSearch.sortOf(sortKey, rev, ff); val sc = scope
         loading = true
         exec.execute {
-            val out = try { UsSearch.run(effective, k, o, so, off, lim, tk) } catch (_: Throwable) { null }
+            val groups = if (every) (try { UsSearch.everywhere(effective, k, o, so, sc, SEC_ROWS, tk) } catch (_: Throwable) { null }) else null
+            val out = if (every) null else try { UsSearch.run(effective, k, o, so, off, lim, tk, sc) } catch (_: Throwable) { null }
             ui.post {
                 if (s != seq) return@post
                 loading = false
-                if (out == null) { rows.clear(); total = 0; more = false; ad.notifyDataSetChanged(); setInfo(); refreshBanner(true); return@post }
-                if (reset) { rows.clear(); list.setSelection(0) }
-                rows.addAll(out.rows)
-                total = out.total; approx = out.approx; ms = out.ms
-                more = out.complete && rows.size < total && out.rows.isNotEmpty() && rows.size < 20000
-                terms = try { QueryParser.parse(effective).plainWords().map { Fold.fold(it, oDiac) }.filter { it.isNotEmpty() } } catch (_: Throwable) { emptyList() }
+                if (every) {
+                    rows.clear(); list.setSelection(0)
+                    val g = groups?.filter { it.out.rows.isNotEmpty() } ?: emptyList()
+                    secs = g
+                    var n = 0; var t = 0L
+                    for (x in g) { rows.add(pseudoRow(-1000 - n, UsSections.title(UsSections.Sec(x.id, x.title, x.query), x.out.total, x.out.approx), "#h:" + x.id)); rows.addAll(x.out.rows); n++; t += x.out.ms }
+                    total = g.sumOf { it.out.rows.size }; approx = false; ms = t; more = false
+                    lastNote = groups?.flatMap { it.out.notes }?.firstOrNull() ?: ""
+                } else {
+                    secs = emptyList()
+                    if (out == null) { rows.clear(); total = 0; more = false; ad.notifyDataSetChanged(); setInfo(); refreshBanner(true); return@post }
+                    if (reset) { rows.clear(); list.setSelection(0) }
+                    rows.addAll(out.rows)
+                    total = out.total; approx = out.approx; ms = out.ms
+                    more = out.complete && rows.size < total && out.rows.isNotEmpty() && rows.size < 20000
+                    lastNote = out.notes.firstOrNull() ?: ""
+                }
+                terms = try {
+                    val qq = QueryParser.parse(effective)
+                    (qq.plainWords() + (qq.content?.terms ?: emptyList()).filterIsInstance<QText>().filter { !it.regex && !it.wild }.map { it.text })
+                        .map { Fold.fold(it, oDiac) }.filter { it.isNotEmpty() }
+                } catch (_: Throwable) { emptyList() }
                 ad.notifyDataSetChanged()
                 setInfo()
             }
         }
     }
 
+    // ---------------------------------------------------------------- Part 8: home (recent + saved), scope, history
+
+    private fun pseudo(r: UsSearch.Row) = r.badge.startsWith("#")
+    private fun pseudoRow(id: Int, name: String, tag: String, snip: String = "") = UsSearch.Row(id, name, "", false, 0L, 0L, snip, 0, tag)
+
+    /** Empty query: saved searches, then recent ones (tap = run, long-press = remove). */
+    private fun showHome() {
+        rows.clear(); total = 0; more = false; loading = false; terms = emptyList(); secs = emptyList(); lastNote = ""
+        if (saved.isNotEmpty()) { rows.add(pseudoRow(-900, "Saved searches", "#t")); saved.forEachIndexed { i, x -> rows.add(pseudoRow(-2000 - i, x.name, "#s", x.query)) } }
+        if (recent.isNotEmpty()) { rows.add(pseudoRow(-901, "Recent searches", "#t")); recent.forEachIndexed { i, x -> rows.add(pseudoRow(-3000 - i, x, "#r")) } }
+        ad.notifyDataSetChanged(); setInfo()
+    }
+
+    private fun paintScope() {
+        if (scope.isEmpty()) { scopeTv.visibility = View.GONE; return }
+        scopeTv.text = "In " + (UsSearch.virt(scope) ?: scope) + "   \u2715"; scopeTv.visibility = View.VISIBLE
+    }
+
+    private fun saveHist() {
+        getSharedPreferences("us_ui", MODE_PRIVATE).edit().putString("recent", UsHistory.encode(recent)).putString("saved", UsHistory.encodeSaved(saved)).apply()
+    }
+
+    /** Remember the typed query once it found something (called when a result is opened and when the screen is left). */
+    private fun commit() {
+        val t = lastText.trim()
+        if (total <= 0 || t.isEmpty() || recent.firstOrNull() == t) return
+        recent = UsHistory.push(recent, t); saveHist()
+    }
+
+    private fun actHere() {
+        val r = picked().singleOrNull()
+        if (r == null || !r.dir) { toast("Select one folder"); return }
+        scope = r.path; paintScope(); endSel(false); runQuery(true, 0)
+    }
+
+    private fun saveDlg() {
+        val t = lastText.trim()
+        if (t.isEmpty()) { toast("Type a search first"); return }
+        val inp = EditText(this).apply { setText(t); setSelection(t.length); setSingleLine(true) }
+        AppPal.dlg(this).setTitle("Save this search").setView(inp)
+            .setPositiveButton("Save") { _, _ -> saved = UsHistory.save(saved, inp.text.toString(), t); saveHist(); toast("Saved") }
+            .setNegativeButton("Cancel", null).show()
+    }
+
     private fun setInfo() {
         if (IndexManager.index() == null) { info.text = "Search index is off (Settings \u203A Search index)"; return }
-        if (lastText.isBlank() && kind.isEmpty()) { info.text = "Type a name.  ext:pdf  size:>10mb  dm:today  !not  \"exact\"  a|b"; return }
+        if (lastText.isBlank() && kind.isEmpty()) {
+            val st = IndexManager.status()
+            info.text = if (!st.optBoolean("complete")) "Still indexing (" + String.format(Locale.getDefault(), "%,d", st.optInt("entries")) + " items so far). Names come first; contents and pictures follow."
+                        else "Type a name.  ext:pdf  size:>10mb  dm:today  !not  \"exact\"  a|b"
+            return
+        }
+        if (total == 0 && !loading) { info.text = "No results" + (if (!IndexManager.isComplete()) " yet \u2013 the index is still being built" else "") + (if (lastNote.isNotEmpty()) ".  " + lastNote else ""); return }
         val n = String.format(Locale.getDefault(), "%,d", total) + (if (approx) "+" else "")
         info.text = (if (total == 1) "1 result" else "$n results") + "  \u00B7  " + ms + " ms"
     }
@@ -324,7 +409,20 @@ class UsActivity : Activity() {
         override fun getCount() = rows.size
         override fun getItem(i: Int) = rows[i]
         override fun getItemId(i: Int) = rows[i].id.toLong()
+        override fun getViewTypeCount() = 2
+        override fun getItemViewType(i: Int) = if (pseudo(rows[i])) 1 else 0
+        override fun isEnabled(i: Int) = true
         override fun getView(i: Int, cv: View?, par: ViewGroup?): View {
+            val r = rows[i]
+            if (pseudo(r)) {
+                val t = (cv as? TextView) ?: tv(15f, p.fg)
+                val head = r.badge == "#t" || r.badge.startsWith("#h:")
+                t.setPadding(dp(14f), if (head) dp(12f) else dp(10f), dp(14f), dp(if (head) 4f else 10f))
+                t.setTextColor(if (head) p.ac else p.fg); t.setTypeface(null, if (head) Typeface.BOLD else Typeface.NORMAL)
+                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (head) 13f else 15f)
+                t.text = (if (r.badge == "#s") "\u2605  " + r.name + (if (r.snippet != r.name) "   " + r.snippet else "") else if (r.badge == "#r") "\u21BA  " + r.name else r.name) + (if (r.badge.startsWith("#h:")) "   \u203A" else "")
+                return t
+            }
             val h = (cv?.tag as? Holder) ?: Holder(this@UsActivity).also { it.root.tag = it }
             h.bind(rows[i], i)
             return h.root
@@ -382,7 +480,7 @@ class UsActivity : Activity() {
             nameTv.text = hl(r.name)
             val parent = r.path.substringBeforeLast('/', "")
             val v = UsSearch.virt(r.path)
-            pathTv.text = (if (v != null) vdir(v) else parent.ifEmpty { "/" }) + (if (r.snippet.isNotEmpty()) "  \u2022  " + (if (r.line > 0) "L" + r.line + ": " else "") + r.snippet else "")
+            pathTv.text = hl((if (v != null) vdir(v) else parent.ifEmpty { "/" }) + (if (r.snippet.isNotEmpty()) "  \u2022  " + (if (r.line > 0) "L" + r.line + ": " else "") + r.snippet else ""))
             sizeTv.text = if (r.dir) "" else NlModel.fmt(r.size)
             dateTv.text = if (r.mtime > 0) dateF.format(Date(r.mtime * 1000L)) else ""
             ico.name = r.name; ico.dir = r.dir; ico.ticked = picked; ico.invalidate()
@@ -435,8 +533,10 @@ class UsActivity : Activity() {
 
     private fun tap(i: Int) {
         val r = rows.getOrNull(i) ?: return
+        if (pseudo(r)) { pseudoTap(r); return }
         if (sel.isNotEmpty()) { toggle(r); return }
         hideKb()
+        commit()
         val v = UsSearch.virt(r.path)
         if (r.dir) {
             if (v == null) { toast("Folders outside the main storage cannot be opened here"); return }
@@ -444,10 +544,29 @@ class UsActivity : Activity() {
         }
         val f = File(r.path)
         if (!f.exists()) { toast("It no longer exists"); runQuery(true, maxOf(PAGE, rows.size)); return }
-        StorageActions.open(this, f, false, v, if (r.line > 0 && !f.extension.lowercase().let { it in MARKUP_EXT }) r.line else 0)
+        val pics = if (r.badge.isNotEmpty()) rows.filter { it.badge.isNotEmpty() && !pseudo(it) && UsSearch.virt(it.path) != null }.map { File(it.path) } else null   // picture results: the viewer swipes through the result list
+        StorageActions.open(this, f, false, v, if (r.line > 0 && !f.extension.lowercase().let { it in MARKUP_EXT }) r.line else 0, if (pics != null && pics.size > 1) pics else null)
     }
 
-    private fun longTap(i: Int) { val r = rows.getOrNull(i) ?: return; hideKb(); toggle(r) }
+    private fun pseudoTap(r: UsSearch.Row) {
+        val q = when {
+            r.badge == "#r" -> r.name
+            r.badge == "#s" -> r.snippet
+            r.badge.startsWith("#h:") -> secs.firstOrNull { it.id == r.badge.substring(3) }?.let { everywhere = false; saveOpts(); it.query }   // header: open only this section, with paging
+            else -> null
+        } ?: return
+        et.setText(q); et.setSelection(q.length)
+    }
+
+    private fun longTap(i: Int) {
+        val r = rows.getOrNull(i) ?: return
+        if (pseudo(r)) {
+            if (r.badge == "#r") { recent = UsHistory.remove(recent, r.name); saveHist(); showHome() }
+            else if (r.badge == "#s") { saved = saved.filter { it.name != r.name }; saveHist(); showHome() }
+            return
+        }
+        hideKb(); toggle(r)
+    }
 
     private fun toggle(r: UsSearch.Row) {
         if (!sel.remove(r.id)) sel.add(r.id)
@@ -468,13 +587,30 @@ class UsActivity : Activity() {
 
     private fun menu() {
         hideKb()
-        val items = arrayOf("Sort: " + sortLabel(), "Match options\u2026", "Rescan index now")
+        val items = arrayOf("Sort: " + sortLabel(), "Match options\u2026", "Search everywhere: " + (if (everywhere) "on" else "off"), "Save this search\u2026", "Clear recent searches", "Share results list\u2026", "Rescan index now")
         AppPal.dlg(this).setItems(items) { _, w ->
             when (w) {
                 0 -> sortDlg()
                 1 -> optDlg()
+                2 -> { everywhere = !everywhere; saveOpts(); endSel(false); runQuery(true, 0); toast(if (everywhere) "Sections: Names, Contents, Pictures" else "Names only (use content: ocr: ai: for the rest)") }
+                3 -> saveDlg()
+                4 -> { recent = emptyList(); saveHist(); if (lastText.isBlank()) showHome() }
+                5 -> exportList()
                 else -> { IndexManager.rescan(); toast("Rescanning the phone"); ui.postDelayed({ refreshBanner(false) }, 600) }
             }
+        }.show()
+    }
+
+    private fun exportList() {
+        val real = rows.filter { !pseudo(it) && it.path.isNotEmpty() }
+        if (real.isEmpty()) { toast("Nothing to export"); return }
+        val ex = real.map { UsExport.ExRow(it.name, it.path, it.dir, it.size, it.mtime, it.snippet, it.line) }
+        AppPal.dlg(this).setTitle(real.size.toString() + " results").setItems(arrayOf("CSV (spreadsheet)", "Paths only")) { _, w ->
+            val body = if (w == 0) UsExport.csv(ex) else UsExport.text(ex)
+            try {
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body)
+                    .putExtra(Intent.EXTRA_SUBJECT, "Search results: " + lastText), "Share list"))
+            } catch (e: Exception) { toast("Cannot share: " + (e.message ?: e.javaClass.simpleName)) }
         }.show()
     }
 
@@ -499,7 +635,7 @@ class UsActivity : Activity() {
 
     private fun saveOpts() {
         getSharedPreferences("us_ui", MODE_PRIVATE).edit().putString("sort", sortKey).putBoolean("rev", rev).putBoolean("ff", ff)
-            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).apply()
+            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).putBoolean("every", everywhere).apply()
     }
 
     // ---------------------------------------------------------------- selection actions
@@ -577,7 +713,9 @@ class UsActivity : Activity() {
         const val PAGE = 300
         const val X_Q = "q"
         const val X_KIND = "kind"
-        fun intent(c: Context, q: String = "", kind: String = ""): Intent = Intent(c, UsActivity::class.java).putExtra(X_Q, q).putExtra(X_KIND, kind)
+        const val X_SCOPE = "scope"
+        const val SEC_ROWS = 50
+        fun intent(c: Context, q: String = "", kind: String = "", scope: String = ""): Intent = Intent(c, UsActivity::class.java).putExtra(X_Q, q).putExtra(X_KIND, kind).putExtra(X_SCOPE, scope)
 
         private val IMG = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif")
         private val VID = setOf("mp4", "mkv", "mov", "avi", "webm", "3gp", "m4v", "mpg", "mpeg", "flv", "ogv", "m2ts", "mts")

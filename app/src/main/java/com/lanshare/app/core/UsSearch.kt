@@ -3,6 +3,8 @@ package com.lanshare.app.core
 import com.lanshare.app.core.usearch.CancelToken
 import com.lanshare.app.core.usearch.ContentMatch
 import com.lanshare.app.core.usearch.Ctx
+import com.lanshare.app.core.usearch.ImgHit
+import com.lanshare.app.core.usearch.ImgQuery
 import com.lanshare.app.core.usearch.HiddenFilter
 import com.lanshare.app.core.usearch.Matcher
 import com.lanshare.app.core.usearch.NameIndex
@@ -10,6 +12,7 @@ import com.lanshare.app.core.usearch.QAnd
 import com.lanshare.app.core.usearch.QFilter
 import com.lanshare.app.core.usearch.QNode
 import com.lanshare.app.core.usearch.TextExtractor
+import com.lanshare.app.core.usearch.UsSections
 import com.lanshare.app.core.usearch.MatchOptions
 import com.lanshare.app.core.usearch.Query
 import com.lanshare.app.core.usearch.QueryParser
@@ -26,7 +29,7 @@ import java.io.File
  * Results carry real paths; [virt] turns one into the file manager's virtual path (null = another volume, e.g. an SD card).
  */
 object UsSearch {
-    class Row(val id: Int, val name: String, val path: String, val dir: Boolean, val size: Long, val mtime: Long, val snippet: String = "", val line: Int = 0)
+    class Row(val id: Int, val name: String, val path: String, val dir: Boolean, val size: Long, val mtime: Long, val snippet: String = "", val line: Int = 0, val badge: String = "", val score: Float = 0f)
 
     class Out(val rows: List<Row>, val total: Int, val complete: Boolean, val ms: Long, val notes: List<String>, val approx: Boolean)
 
@@ -42,12 +45,13 @@ object UsSearch {
     }, reverse, foldersFirst)
 
     /** [kind] = "" (all) or a `kind:` value (file, folder, image, video, audio, doc ...); it is added to the query text. */
-    fun run(text: String, kind: String, opt: MatchOptions, sort: SortSpec, offset: Int, limit: Int, cancel: CancelToken): Out? {
+    fun run(text: String, kind: String, opt: MatchOptions, sort: SortSpec, offset: Int, limit: Int, cancel: CancelToken, scope: String = ""): Out? {
         val ix = IndexManager.index() ?: return null
         val full = if (kind.isEmpty()) text else (text.trim() + " kind:" + kind)
-        val q: Query = QueryParser.parse(full)
+        val q: Query = UsSections.scope(QueryParser.parse(full), scope)   // scope = real folder path of "Search here" (blank = whole phone)
         val hf = IndexManager.hiddenFilter()
         val hid = try { com.lanshare.app.NlModel.hidden.isNotEmpty() } catch (_: Throwable) { false }
+        if (q.content == null && (q.ocr != null || q.ai != null)) return runImages(ix, q, opt, sort, offset.coerceAtLeast(0), limit.coerceIn(1, 2000), cancel, hf, hid)
         if (q.content != null) return runContent(ix, q, opt, sort, offset.coerceAtLeast(0), limit.coerceIn(1, 2000), cancel, hf, hid)
         val off = offset.coerceAtLeast(0)
         val lim = limit.coerceIn(1, 2000)
@@ -124,6 +128,64 @@ object UsSearch {
         return Out(rows, cands.size, complete, System.currentTimeMillis() - t0, notes, !complete)
     }
 
+    /**
+     * ocr: / ai: query (Part 7). Candidates come from [UsImageProvider] (ImgSearch owns OCR text and vectors); a picture counts only when it is also
+     * in the name index, so the Universal Search include / exclude folders (us_*) and the Hide list apply on top of ImgSearch's own img_* folders (both must allow it).
+     * The name expression and filters of the query (kind: ext: size: dm: in: ...) are applied like for content:. BEST = score, then newest.
+     */
+    private fun runImages(ix: NameIndex, q: Query, opt: MatchOptions, sort: SortSpec, off: Int, lim: Int, cancel: CancelToken, hf: HiddenFilter, hid: Boolean): Out {
+        val t0 = System.currentTimeMillis()
+        val notes = ArrayList<String>(q.notes)
+        if (!Cfg.usImg()) return Out(emptyList(), 0, true, 0L, notes + "Picture search is off (Settings > Search index)", false)
+        val plan = ImgQuery.plan(q, opt)
+        val r = UsImageProvider.run(plan, Cfg.usAiThreshold())
+        notes.addAll(r.notes)
+        if (cancel.cancelled) return Out(emptyList(), 0, false, System.currentTimeMillis() - t0, notes, true)
+        val extra = ArrayList<QNode>()
+        q.name?.let { extra.add(it) }
+        for (f in q.filters) extra.add(QFilter(f))
+        val m = if (extra.isEmpty()) null else Matcher(QAnd(extra), opt)
+        val ctx = Ctx(ix)
+        class Cand(val id: Int, val h: ImgHit)
+        val cands = ArrayList<Cand>()
+        for (h in r.hits) {
+            val id = ix.find(h.path)
+            if (id == NameIndex.NONE || !ix.isLive(id)) continue
+            if (m != null) { ctx.reset(id); if (!m.test(ctx)) continue }
+            if (hid && hf.isHidden(h.path)) continue
+            cands.add(Cand(id, h))
+        }
+        val cmp: Comparator<Cand> = when (sort.key) {
+            SortKey.NAME -> compareBy<Cand> { ix.nameOf(it.id).lowercase() }
+            SortKey.PATH -> compareBy<Cand> { it.h.path.lowercase() }
+            SortKey.SIZE -> compareByDescending<Cand> { ix.sizeOf(it.id) }
+            SortKey.DATE -> compareByDescending<Cand> { ix.mtimeOf(it.id) }
+            else -> compareByDescending<Cand> { it.h.score }.thenByDescending { ix.mtimeOf(it.id) }
+        }
+        val sorted = cands.sortedWith(if (sort.reverse) cmp.reversed() else cmp)
+        val rows = sorted.drop(off).take(lim).map { c ->
+            Row(c.id, ix.nameOf(c.id), c.h.path, false, ix.sizeOf(c.id), ix.mtimeOf(c.id), ImgQuery.label(c.h), 0, c.h.badge, c.h.score)
+        }
+        if (!IndexManager.isComplete()) notes.add("The name index is still being built")
+        return Out(rows, cands.size, true, System.currentTimeMillis() - t0, notes, false)
+    }
+
+    class Sect(val id: String, val title: String, val query: String, val out: Out)
+
+    /**
+     * "Search everywhere" (Part 8, D4): one section per engine, each limited to [per] rows; scores of different engines are never mixed.
+     * Sections that are switched off (us_c_on / us_img) or fail are left out; a text with its own content: / ocr: / ai: prefix gives one section.
+     */
+    fun everywhere(text: String, kind: String, opt: MatchOptions, sort: SortSpec, scope: String, per: Int, cancel: CancelToken): List<Sect> {
+        val res = ArrayList<Sect>()
+        for (sec in UsSections.plan(text, true, Cfg.usContent(), Cfg.usImg())) {
+            if (cancel.cancelled) break
+            val o = try { run(sec.query, kind, opt, sort, 0, per, cancel, scope) } catch (_: Throwable) { null } ?: continue
+            res.add(Sect(sec.id, sec.title, sec.query, o))
+        }
+        return res
+    }
+
     /** File manager virtual path of the real path [abs] (main storage only); null for another volume. */
     fun virt(abs: String): String? {
         val root = try { Core.local.root.path.trimEnd('/') } catch (_: Throwable) { return null }
@@ -134,7 +196,7 @@ object UsSearch {
     fun toJson(o: Out): JSONObject {
         val a = JSONArray()
         for (r in o.rows) a.put(JSONObject().put("id", r.id).put("name", r.name).put("path", virt(r.path) ?: r.path)
-            .put("dir", r.dir).put("size", r.size).put("mtime", r.mtime).put("snippet", r.snippet).put("line", r.line))
+            .put("dir", r.dir).put("size", r.size).put("mtime", r.mtime).put("snippet", r.snippet).put("line", r.line).put("badge", r.badge).put("score", r.score.toDouble()))
         val st = IndexManager.status()
         return JSONObject().put("total", o.total).put("approx", o.approx).put("complete", o.complete).put("ms", o.ms)
             .put("notes", JSONArray(o.notes)).put("items", a)

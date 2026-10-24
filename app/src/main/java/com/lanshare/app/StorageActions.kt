@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.lanshare.app.core.Core
 import com.lanshare.app.core.SNode
+import com.lanshare.app.core.UsSearch
 import com.lanshare.app.core.errText
 import com.lanshare.app.core.vdir
 import com.lanshare.app.core.vjoin
@@ -52,7 +53,7 @@ object StorageActions {
      * exactly like a tap in the file manager. [v] = the file's virtual path (null for another volume, which the file manager cannot address).
      * Returns false when the file is not a supported kind (the caller then hands it to another app).
      */
-    private fun openNative(a: Activity, f: File, v: String?, line: Int = 0): Boolean {
+    private fun openNative(a: Activity, f: File, v: String?, line: Int = 0, list: List<File>? = null): Boolean {
         if (v == null) return false
         val ext = f.extension.lowercase()
         val origin = Core.url
@@ -85,10 +86,10 @@ object StorageActions {
                 ext in IMG -> {
                     if (ext in setOf("heic", "heif") && android.os.Build.VERSION.SDK_INT < 28) return false
                     val dir = vdir(v)
-                    val sib = (f.parentFile?.listFiles { x -> x.isFile && x.extension.lowercase() in IMG } ?: arrayOf(f)).sortedBy { it.name.lowercase() }
+                    val sib = if (list != null) list.filter { it.extension.lowercase() in IMG } else (f.parentFile?.listFiles { x -> x.isFile && x.extension.lowercase() in IMG } ?: arrayOf(f)).sortedBy { it.name.lowercase() }
                     val items = JSONArray()
-                    for (x in sib) items.put(JSONObject().put("name", x.name).put("url", url(vjoin(dir, x.name))).put("size", x.length()).put("mtime", x.lastModified()))
-                    ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, sib.indexOfFirst { it.name == f.name })).put("items", items).toString()
+                    for (x in sib) items.put(JSONObject().put("name", x.name).put("url", url(if (list != null) (UsSearch.virt(x.path) ?: vjoin(dir, x.name)) else vjoin(dir, x.name))).put("size", x.length()).put("mtime", x.lastModified()))
+                    ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, sib.indexOfFirst { it.path == f.path })).put("items", items).toString()
                     a.startActivity(Intent(a, ImageViewerActivity::class.java)); return true
                 }
                 ext in VID -> {
@@ -106,9 +107,9 @@ object StorageActions {
     }
 
     /** Open a file with an installed app (source / text files go to a text editor, like in the file manager); [pick] = always ask which app. */
-    fun open(a: Activity, f: File, pick: Boolean = false, virtPath: String? = null, line: Int = 0) {
+    fun open(a: Activity, f: File, pick: Boolean = false, virtPath: String? = null, line: Int = 0, list: List<File>? = null) {
         if (!f.isFile) { toast(a, "Only files can be opened"); return }
-        if (!pick && openNative(a, f, virtPath, line)) return
+        if (!pick && openNative(a, f, virtPath, line, list)) return
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"

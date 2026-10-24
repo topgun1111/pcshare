@@ -173,6 +173,7 @@ object IndexManager {
         synchronized(lock) { o.put("pending", dirty.size) }
         o.put("content", JSONObject().put("on", Cfg.usContent()).put("maxMb", Cfg.usContentMaxMb()).put("budgetMb", Cfg.usContentBudgetMb()).put("exts", Cfg.usContentExtsText())
             .put("docs", cDocs).put("done", cDone).put("todo", cTodo).put("budgetHit", cBudgetHit).put("want", contentWant))
+        o.put("images", JSONObject().put("on", Cfg.usImg()).put("threshold", Cfg.usAiThreshold().toDouble()).put("model", ImgSearch.engine != null))
         if (x != null) o.put("entries", x.count()).put("dirs", x.dirCount()).put("dead", x.deadCount()).put("epoch", x.epoch()).put("bytes", x.approxBytes())
         if (sc != null) {
             val n = sc.files + sc.dirs

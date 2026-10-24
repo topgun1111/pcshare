@@ -184,7 +184,7 @@ jobs:
       - name: Run self-test
         run: |
           LOG="$RUNNER_TEMP/usearch-selftest.log"
-          MIN=215
+          MIN=435
           java -jar "$RUNNER_TEMP/ust.jar" < /dev/null > "$LOG" 2>&1 && rc=0 || rc=$?
           ok=$(grep -c -E '^(ok|OK) ' "$LOG" || true); fl=$(grep -c '^FAIL' "$LOG" || true)
           res=PASS

@@ -185,10 +185,11 @@ fun walkerTests() {
         var turk = false
         try {
             val td = File(root, "\u00C7al\u0131\u015Fma_\u0130\u015F")
-            if (td.mkdirs() && File(td, "\u0131\u011Fd\u0131r.txt").createNewFile() && td.isDirectory && File(td, "\u0131\u011Fd\u0131r.txt").exists()) {
-                val names = td.list()
-                turk = names != null && names.contains("\u0131\u011Fd\u0131r.txt"); if (turk) { extraDirs++; extraFiles++ }
-            }
+            val madeDir = td.mkdirs()   // the name may be mangled on a JVM without UTF-8 file names; whatever got created is still walked and counted
+            if (madeDir) extraDirs++
+            if (madeDir && File(td, "\u0131\u011Fd\u0131r.txt").createNewFile()) extraFiles++
+            val names = td.list()
+            turk = names != null && names.contains("\u0131\u011Fd\u0131r.txt")
         } catch (_: Throwable) { }
         println("info symlink created=$loop turkish names on disk=$turk (sun.jnu.encoding=${System.getProperty("sun.jnu.encoding")})")
 
@@ -630,7 +631,7 @@ fun contentTests() {
             val c1254 = TextExtractor.extract(w("e.txt", tr.toByteArray(cp)), "txt", 1L shl 20)
             eq("extract: windows-1254 Turkish letters", c1254?.text, tr); eq("extract: windows-1254 charset name", c1254?.charset, cp.name())
         } else println("info windows-1254 not available on this JVM, cp1254 checks skipped")
-        check("extract: binary (NUL bytes) -> null", TextExtractor.extract(w("f.txt", byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0, 0, 0, 1, 2, 3, 0, 0, 5, 6, 7, 8)), "txt", 1L shl 20) == null)
+        check("extract: binary (NUL bytes) -> null", TextExtractor.extract(w("f.txt", ByteArray(200) { if (it % 10 == 0) 0 else (it % 7 + 1).toByte() }), "txt", 1L shl 20) == null)
         check("extract: over the size cap -> null", TextExtractor.extract(w("g.txt", ByteArray(5000) { 'a'.code.toByte() }), "txt", 1000L) == null)
         check("extract: empty file -> null", TextExtractor.extract(w("h.txt", ByteArray(0)), "txt", 1000L) == null)
         eq("extract: CRLF -> LF", TextExtractor.decode("a\r\nb\rc".toByteArray(), "txt")?.text, "a\nb\nc")
@@ -662,13 +663,44 @@ fun contentTests() {
     } finally { tmp.deleteRecursively() }
 }
 
+/** Part 7: ocr: / ai: planning and merging (pure; ImgSearch itself needs Android and is checked on the device). */
+fun imgTests() {
+    fun pl(q: String, opt: MatchOptions = MatchOptions()) = ImgQuery.plan(QueryParser.parse(q), opt)
+    val a = pl("ocr:fatura ocr:toplam")
+    eq("img: two ocr words are two terms", a.ocr.map { it.text }, listOf("fatura", "toplam")); check("img: no ai part", !a.wantsAi && a.wantsOcr)
+    val b = pl("ocr:fatura !ocr:iptal")
+    eq("img: ocr NOT term kept apart", b.ocrNot.map { it.text }, listOf("iptal"))
+    val c = pl("ai:red car ai:night")
+    eq("img: ai words join into one sentence", c.ai, "red car night"); check("img: ai only wants no ocr", c.wantsAi && !c.wantsOcr)
+    val d = pl("ai:\"red car\" !ai:blue")
+    eq("img: ai phrase text", d.ai, "red car"); check("img: ai NOT ignored with a note", d.notes.any { it.startsWith("ai:") })
+    val e = pl("ocr:fat*")
+    check("img: ocr wildcard gets a note", e.notes.any { it.contains("wildcards") })
+    check("img: whole-word option reaches the term", pl("ocr:kedi", MatchOptions(wholeWord = true)).ocr[0].whole && !pl("ocr:kedi").ocr[0].whole)
+    check("img: only NOT ocr term -> no terms + note", pl("!ocr:iptal").let { !it.wantsOcr && it.notes.isNotEmpty() })
+    check("img: plain name query has no picture part", pl("kedi").let { !it.wantsOcr && !it.wantsAi })
+    eq("img: intersect keeps AND", ImgQuery.intersect(listOf(listOf("/a", "/b", "/c"), listOf("/c", "/a")), emptyList()), listOf("/a", "/c"))
+    eq("img: intersect removes NOT hits", ImgQuery.intersect(listOf(listOf("/a", "/b")), listOf(listOf("/b"))), listOf("/a"))
+    eq("img: intersect of nothing is empty", ImgQuery.intersect(emptyList(), emptyList()), emptyList<String>())
+    eq("img: intersect drops duplicates", ImgQuery.intersect(listOf(listOf("/a", "/a")), emptyList()), listOf("/a"))
+    val m = ImgQuery.merge(listOf("/a", "/b", "/a"), listOf("/b" to 0.31f, "/c" to 0.28f, "/c" to 0.2f))
+    eq("img: merge order OCR first then AI", m.map { it.path }, listOf("/a", "/b", "/c"))
+    eq("img: merge badges", m.map { it.badge }, listOf("OCR", "OCR + AI", "AI"))
+    check("img: both-engine hit keeps the AI score", m[1].score == 0.31f && m[0].score == 1f)
+    eq("img: label OCR", ImgQuery.label(m[0]), "OCR"); eq("img: label AI shows score", ImgQuery.label(m[2]), "AI 0.28")
+    eq("img: toReal", ImgQuery.toReal("/storage/emulated/0/", "/DCIM/a.jpg"), "/storage/emulated/0/DCIM/a.jpg")
+    eq("img: toReal without leading slash", ImgQuery.toReal("/r", "x.png"), "/r/x.png")
+    check("img: threshold clamp", ImgQuery.clampThreshold(0f) == 0.05f && ImgQuery.clampThreshold(9f) == 0.60f && ImgQuery.clampThreshold(Float.NaN) == 0.20f && ImgQuery.clampThreshold(0.3f) == 0.3f)
+    check("img: extensions", "jpg" in ImgQuery.EXTS && "txt" !in ImgQuery.EXTS)
+}
+
 /** Part 6: Office document text out of the office_selftest fixtures (run from the repo root). */
 fun docTests() {
     val D = File("tools/office_selftest")
     check("doc: fixtures found", File(D, "sample.docx").isFile, D.absolutePath)
     val DE = com.lanshare.app.core.office.DocExtractor
     fun ex(n: String) = DE.extract(File(D, n))
-    val want = listOf("sample.docx" to "merged", "sample.xlsx" to "total", "sample.pptx" to "alpha", "sample.odt" to "note text", "sample.ods" to "inline", "sample.odp" to "opening")
+    val want = listOf("sample.docx" to "merged", "sample.xlsx" to "total", "sample.pptx" to "alpha", "sample.odt" to "bold and plain", "sample.ods" to "inline", "sample.odp" to "opening")
     for ((n, w) in want) {
         val t = ex(n)
         check("doc: $n readable", t != null)
@@ -700,6 +732,90 @@ fun docTests() {
     } finally { tmp.deleteRecursively() }
 }
 
+
+fun exportTests() {
+    val rows = listOf(
+        UsExport.ExRow("a,b.txt", "/sdcard/a,b.txt", false, 1234, 0, "say \"hi\"", 7),
+        UsExport.ExRow("=cmd", "/sdcard/=cmd", false, 5, 86400L * 365),
+        UsExport.ExRow("Docs", "/sdcard/Docs", true, 0, 0))
+    val c = UsExport.csv(rows).split("\r\n")
+    eq("export: csv header", c[0], "name,path,type,size,modified_utc,line,snippet")
+    eq("export: csv quoting + line", c[1], "\"a,b.txt\",\"/sdcard/a,b.txt\",file,1234,,7,\"say \"\"hi\"\"\"")
+    check("export: formula neutralised", c[2].startsWith("'=cmd,"), c[2])
+    check("export: date utc", c[2].contains(",1971-01-01 00:00,"), c[2])
+    eq("export: folder row", c[3], "Docs,/sdcard/Docs,folder,,,,")
+    eq("export: text", UsExport.text(rows), "/sdcard/a,b.txt\n/sdcard/=cmd\n/sdcard/Docs/\n")
+    check("export: capped", UsExport.text(List(UsExport.MAX_ROWS + 10) { UsExport.ExRow("x", "/x$it", false, 1, 1) }).lines().size == UsExport.MAX_ROWS + 1)
+    eq("export: empty date", UsExport.date(0), "")
+}
+
+fun stressTests() {
+    val ix = NameIndex(16)
+    val root = ix.addRoot("/r")
+    val long = "L" + "x".repeat(3000) + "end.txt"
+    val emoji = "pic \uD83D\uDE00 beach \uD83C\uDFD6.jpg"
+    val a = ix.add(root, long, false, 1, 1)
+    val b = ix.add(root, emoji, false, 2, 2)
+    eq("stress: long name round trip", ix.nameOf(a), long)
+    eq("stress: emoji name round trip", ix.nameOf(b), emoji)
+    check("stress: long name found", srch(ix, "xxxend").total == 1)
+    check("stress: emoji name found", srch(ix, "beach").total == 1)
+    eq("stress: emoji path", ix.pathOf(b), "/r/" + emoji)
+    var many = 0
+    for (i in 0 until 20000) { ix.add(root, "f$i.bin", false, i.toLong(), 1); many++ }
+    check("stress: 20k adds searchable", srch(ix, "f19999", lim = 5).total == 1)
+}
+
+fun viewTests() {
+    // history
+    var h = UsHistory.push(emptyList(), "invoice")
+    h = UsHistory.push(h, "Beach")
+    h = UsHistory.push(h, "INVOICE")
+    eq("history: newest first, case-merged", h, listOf("INVOICE", "Beach"))
+    eq("history: blank / 1 char ignored", UsHistory.push(h, " a "), h)
+    var big = emptyList<String>()
+    for (i in 0 until 50) big = UsHistory.push(big, "query $i")
+    eq("history: capped", big.size, UsHistory.MAX_RECENT)
+    eq("history: first is newest", big[0], "query 49")
+    val tricky = listOf("a\\b", "line1\nline2", "tab\there", "plain")
+    eq("history: encode / decode round trip", UsHistory.decode(UsHistory.encode(tricky)), tricky)
+    eq("history: decode null / empty", UsHistory.decode(null).size + UsHistory.decode("").size, 0)
+    eq("history: remove ignores case", UsHistory.remove(h, "beach"), listOf("INVOICE"))
+    // saved
+    var sv = UsHistory.save(emptyList(), "Receipts", "ocr:receipt dm:thisyear")
+    sv = UsHistory.save(sv, "Big videos", "kind:video size:>1gb")
+    sv = UsHistory.save(sv, "receipts", "ocr:receipt")
+    eq("saved: same name replaced", sv.map { it.name + "=" + it.query }, listOf("receipts=ocr:receipt", "Big videos=kind:video size:>1gb"))
+    eq("saved: no name = query", UsHistory.save(emptyList(), " ", "x y")[0].name, "x y")
+    eq("saved: blank query ignored", UsHistory.save(sv, "n", "  ").size, sv.size)
+    val odd = listOf(UsHistory.Saved("a\tb", "q\nr"), UsHistory.Saved("n", "in:/x y"))
+    val back = UsHistory.decodeSaved(UsHistory.encodeSaved(odd))
+    eq("saved: round trip", back.map { it.name + "|" + it.query }, odd.map { it.name + "|" + it.query })
+    check("saved: garbage lines skipped", UsHistory.decodeSaved("nolinehere\n\tq\nok\tq2").map { it.name } == listOf("ok"))
+    // sections
+    eq("sections: blank = one", UsSections.plan("  ", true, true, true).size, 1)
+    eq("sections: everywhere off = one", UsSections.plan("beach", false, true, true).map { it.id }, listOf("names"))
+    eq("sections: all four", UsSections.plan("beach", true, true, true).map { it.id }, listOf("names", "content", "ocr", "ai"))
+    eq("sections: content switch off", UsSections.plan("beach", true, false, true).map { it.id }, listOf("names", "ocr", "ai"))
+    eq("sections: pictures switch off", UsSections.plan("beach", true, true, false).map { it.id }, listOf("names", "content"))
+    eq("sections: own engine = one", UsSections.plan("ai:cat", true, true, true).map { it.query }, listOf("ai:cat"))
+    check("sections: hasEngine", UsSections.hasEngine("a !content:b") && !UsSections.hasEngine("contents beach"))
+    eq("sections: queries", UsSections.plan("tax ext:pdf", true, true, true).map { it.query }, listOf("tax ext:pdf", "content: tax ext:pdf", "ocr: tax ext:pdf", "ai: tax ext:pdf"))
+    eq("sections: title", UsSections.title(UsSections.Sec("names", "Names", "x"), 1234, true), "Names  \u00B7  1234+")
+    val q1 = QueryParser.parse("content: tax ext:pdf")
+    check("sections: content query parses to content + filter", q1.content != null && q1.name == null && q1.filters.size == 1)
+    val q2 = QueryParser.parse("ocr: receipt")
+    check("sections: ocr query parses", q2.ocr != null && q2.content == null)
+    // scope
+    val base = QueryParser.parse("beach")
+    val sc = UsSections.scope(base, "/r/Pictures")
+    check("scope: name gets AND in-filter", sc.name is QAnd && sc.filters.size == 1 && sc.filters[0] is InFilter)
+    check("scope: empty dir = same query", UsSections.scope(base, " ") === base)
+    val sc2 = UsSections.scope(QueryParser.parse("content: tax"), "/r/Docs")
+    check("scope: content query keeps content, name = filter only", sc2.content != null && sc2.name is QFilter && sc2.filters.size == 1)
+    check("scope: path with spaces stays one filter", (UsSections.scope(QueryParser.parse("x"), "/r/My Pics").filters[0] as InFilter).dir == "/r/My Pics")
+}
+
 fun main(args: Array<String>) {
     foldTests()
     memoryTests()
@@ -708,6 +824,10 @@ fun main(args: Array<String>) {
     deltaTests()
     contentTests()
     docTests()
+    imgTests()
+    viewTests()
+    exportTests()
+    stressTests()
     fixtureTests(args)
     matcherTests()
     randomQueryTests()
