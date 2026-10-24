@@ -541,7 +541,8 @@ fun deltaTests() {
         check("delta walk: renamed file", ix.find(p("B/kept.txt")) != NameIndex.NONE && ix.find(p("B/keep.txt")) == NameIndex.NONE)
         check("delta walk: renamed folder keeps its child", ix.find(p("Papers/n.txt")) != NameIndex.NONE && ix.find(p("Docs")) == NameIndex.NONE)
         check("delta walk: new nested folders walked completely", ix.find(p("New/x/y/deep2.txt")) != NameIndex.NONE)
-        check("delta walk: some folders changed", st.dirsChanged >= 3)
+        // B (rename) and the volume root (Docs->Papers, New added) are re-listed; New and Papers are walked completely inside the root's syncDir, so they are not counted again
+        check("delta walk: some folders changed", st.dirsChanged >= 2)
 
         // 3) delete a whole folder tree
         File(root, "New").deleteRecursively()
