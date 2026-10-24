@@ -1,7 +1,14 @@
 package com.lanshare.app
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Rect
+import android.media.MediaMetadataRetriever
+import android.os.Handler
+import android.os.Looper
+import android.util.LruCache
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
@@ -58,29 +65,51 @@ internal object WizThemes {
     fun resolve(ctx: Context): WizTheme { val id = pref(ctx); return ALL.firstOrNull { it.id == id } ?: app(ctx) }
 }
 
-/** Rounded tile: folder glyph (kind 0) or a short label such as "JPG" (kind 1) in the colour of its type. */
+/** Rounded tile: folder glyph (kind 0), a short label such as "JPG" (kind 1) in the colour of its type, or the real picture / video frame when [bmp] is set. */
 internal class WizGlyph(ctx: Context) : View(ctx) {
     private var kind = 0
     private var col = Color.GRAY
     private var text = ""
+    private var bmp: Bitmap? = null
+    private var video = false
     private val d = resources.displayMetrics.density
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bp = Paint(Paint.FILTER_BITMAP_FLAG)
     private val r = RectF()
     private val path = Path()
+    private val src = Rect()
 
-    fun set(kind: Int, col: Int, text: String = "") { this.kind = kind; this.col = col; this.text = text; invalidate() }
+    fun set(kind: Int, col: Int, text: String = "", bmp: Bitmap? = null, video: Boolean = false) {
+        this.kind = kind; this.col = col; this.text = text; this.bmp = bmp; this.video = video; invalidate()
+    }
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
+        val b = bmp
+        if (b != null && !b.isRecycled) {
+            // centre-crop the picture into a rounded tile
+            r.set(0f, 0f, w, h)
+            path.reset(); path.addRoundRect(r, 12f * d, 12f * d, Path.Direction.CW)
+            val side = minOf(b.width, b.height)
+            src.set((b.width - side) / 2, (b.height - side) / 2, (b.width + side) / 2, (b.height + side) / 2)
+            c.save(); c.clipPath(path); c.drawBitmap(b, src, r, bp); c.restore()
+            if (video) {
+                p.color = Color.argb(150, 0, 0, 0); c.drawCircle(w / 2f, h / 2f, 11f * d, p)
+                p.color = Color.WHITE
+                path.reset(); path.moveTo(w / 2f - 3.5f * d, h / 2f - 5.5f * d); path.lineTo(w / 2f + 6f * d, h / 2f); path.lineTo(w / 2f - 3.5f * d, h / 2f + 5.5f * d); path.close()
+                c.drawPath(path, p)
+            }
+            return
+        }
         p.color = ColorUtils.setAlphaComponent(col, 56)
         r.set(0f, 0f, w, h); c.drawRoundRect(r, 12f * d, 12f * d, p)
         p.color = col
         if (kind == 0) {
-            val l = w * 0.24f; val rt = w * 0.76f; val t = h * 0.30f; val b = h * 0.72f
+            val l = w * 0.24f; val rt = w * 0.76f; val t = h * 0.30f; val bt = h * 0.72f
             path.reset(); path.addRoundRect(RectF(l, t, w * 0.46f, h * 0.44f), floatArrayOf(3f * d, 3f * d, 3f * d, 3f * d, 0f, 0f, 0f, 0f), Path.Direction.CW)
             c.drawPath(path, p)
-            r.set(l, h * 0.38f, rt, b); c.drawRoundRect(r, 3.5f * d, 3.5f * d, p)
+            r.set(l, h * 0.38f, rt, bt); c.drawRoundRect(r, 3.5f * d, 3.5f * d, p)
         } else {
             p.typeface = Typeface.DEFAULT_BOLD
             var ts = 12f * d * UiScale.tf
@@ -90,6 +119,65 @@ internal class WizGlyph(ctx: Context) : View(ctx) {
             p.textAlign = Paint.Align.CENTER
             c.drawText(text, w / 2f, h / 2f + ts * 0.35f, p)
         }
+    }
+}
+
+/** Small picture / video thumbnails for the list rows: decoded in the background, kept in a memory cache, [done] runs on the main thread. */
+internal object WizThumbs {
+    private val cache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) { override fun sizeOf(k: String, v: Bitmap) = v.byteCount }
+    private val missing = java.util.Collections.synchronizedSet(HashSet<String>())      // could not be decoded: never asked again
+    private val asked = java.util.Collections.synchronizedSet(HashSet<String>())        // queued or running
+    private val pending = java.util.concurrent.atomic.AtomicInteger()
+    private val ui = Handler(Looper.getMainLooper())
+    private val pool = java.util.concurrent.ThreadPoolExecutor(2, 2, 5L, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingQueue<Runnable>(), java.util.concurrent.ThreadFactory { r -> Thread(r, "wiz-rowthumb").also { it.isDaemon = true } })
+
+    /** 0 none, 1 picture, 2 video. */
+    fun kind(ext: String): Int = when (ext) {
+        "jpg", "jpeg", "jfif", "png", "webp", "gif", "bmp", "heic", "heif" -> 1
+        "mp4", "m4v", "mkv", "mov", "avi", "webm", "3gp" -> 2
+        else -> 0
+    }
+
+    fun get(key: String): Bitmap? = cache.get(key)
+
+    fun request(key: String, kind: Int, file: () -> java.io.File?, done: () -> Unit) {
+        if (key in missing || key in asked || pending.get() >= 48) return     // while scrolling fast the rest is asked again when the rows are bound again
+        asked.add(key); pending.incrementAndGet()
+        pool.execute {
+            var bm: Bitmap? = null
+            try {
+                val f = file()
+                if (f != null && f.isFile) bm = if (kind == 1) image(f, 160) else video(f, 160)
+            } catch (_: Throwable) {}
+            val res = bm
+            ui.post {
+                pending.decrementAndGet(); asked.remove(key)
+                if (res == null) missing.add(key) else { cache.put(key, res); done() }
+            }
+        }
+    }
+
+    private fun image(f: java.io.File, side: Int): Bitmap? {
+        val o = BitmapFactory.Options(); o.inJustDecodeBounds = true
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        var ss = 1
+        while (maxOf(o.outWidth, o.outHeight) / (ss * 2) >= side) ss *= 2
+        val o2 = BitmapFactory.Options(); o2.inSampleSize = ss; o2.inPreferredConfig = Bitmap.Config.RGB_565
+        return BitmapFactory.decodeFile(f.absolutePath, o2)
+    }
+
+    private fun video(f: java.io.File, side: Int): Bitmap? {
+        val r = MediaMetadataRetriever()
+        try {
+            r.setDataSource(f.absolutePath)
+            val fr = r.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: r.getFrameAtTime(0L) ?: return null
+            val m = maxOf(fr.width, fr.height)
+            if (m <= side) return fr
+            val k = side.toFloat() / m
+            return Bitmap.createScaledBitmap(fr, (fr.width * k).toInt().coerceAtLeast(1), (fr.height * k).toInt().coerceAtLeast(1), true)
+        } finally { try { r.release() } catch (_: Throwable) {} }
     }
 }
 

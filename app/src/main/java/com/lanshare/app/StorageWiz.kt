@@ -716,6 +716,27 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         if (hl) setStroke(dp(2), WizUtil.RED) else if (sel) setStroke(dp(2), cAcc) else setStroke(1, mix(cBg, cLine, 0.55f))
     }
 
+    /** Row tile of a file: the real picture / video frame when it is one (loaded in the background), else the coloured extension tile. */
+    private fun setFileGlyph(g: WizGlyph, n: SNode) {
+        val ext = WizUtil.extOf(n.name)
+        val col = colorMap[ext] ?: WizUtil.GRAY
+        val k = WizThumbs.kind(ext)
+        var bm: Bitmap? = null
+        if (k != 0) {
+            val key = n.path() + "#160"
+            bm = WizThumbs.get(key)
+            if (bm == null) WizThumbs.request(key, k, { host.realFile(n) }) { thumbDone() }
+        }
+        g.set(1, col, ext.uppercase().ifEmpty { "·" }, bm, k == 2 && bm != null)
+    }
+
+    private var thumbPosted = false
+    private fun thumbDone() {
+        if (thumbPosted) return
+        thumbPosted = true
+        ui.postDelayed({ thumbPosted = false; treeAdapter.notifyDataSetChanged(); fileAdapter.notifyDataSetChanged() }, 120)
+    }
+
     private fun menu() {
         val items = arrayOf("Rescan", "Export CSV", "Theme…", "Classic view")
         AppPal.dlg(act).setItems(items) { _, i -> when (i) { 0 -> host.rescan(); 1 -> export(); 2 -> pickTheme(); else -> host.classic() } }.show()
@@ -1068,7 +1089,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             v.pos = p
             v.indent.layoutParams = LinearLayout.LayoutParams(dp(16) * rowD[p], 1)
             v.tog.text = if (n.dir && n.kids.isNotEmpty() && !n.agg) (if (expanded.contains(n)) "−" else "+") else ""
-            if (n.agg) v.sw.set(1, WizUtil.GRAY, "…") else if (n.dir) v.sw.set(0, WizUtil.FOLDER) else v.sw.set(1, colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY, WizUtil.extOf(n.name).uppercase().ifEmpty { "·" })
+            if (n.agg) v.sw.set(1, WizUtil.GRAY, "…") else if (n.dir) v.sw.set(0, WizUtil.FOLDER) else setFileGlyph(v.sw, n)
             v.name.text = if (n.agg) "<" + n.files + " small files>" else if (n.parent == null) host.label else n.name
             v.name.setTextColor(if (n.denied) cErr else cFg)
             v.name.setTypeface(null, if (n.dir && !n.agg) Typeface.BOLD else Typeface.NORMAL)
@@ -1193,7 +1214,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         override fun getView(p: Int, cv: View?, parent: ViewGroup?): View {
             val v = (cv as? FileRow) ?: FileRow(act)
             val n = shown[p]
-            v.sw.set(1, colorMap[WizUtil.extOf(n.name)] ?: WizUtil.GRAY, WizUtil.extOf(n.name).uppercase().ifEmpty { "·" })
+            setFileGlyph(v.sw, n)
             v.name.text = n.name
             v.dir.text = n.parent?.path() ?: "/"
             v.size.text = NlModel.fmt(n.size)
