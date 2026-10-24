@@ -23,6 +23,9 @@ class OfficeViewerActivity : Activity() {
     private var dev: String? = null      // source device + path (set when opened from the file list): edits are uploaded back there
     private var rpath: String? = null
     private var pendingCsv: String? = null
+    private var markup = DocxHtml.MARK_SHOW    // Part 8: tracked changes view of this document (Show markup / Final / Original); kept while the viewer is open
+    private var gridOverride: Boolean? = null   // Part 9: gridlines of the Excel view (null = as the sheet says); kept while the viewer is open
+    private var curXs: XSheet? = null            // Part 9: the sheet on screen (notes, showGridLines)
     private var curDoc: DDoc? = null          // parsed Word-type document, kept so reading-mode changes re-render without re-parsing
     private val rprefs by lazy { getSharedPreferences("office_read", MODE_PRIVATE) }   // reading mode: on / px (text size) / theme
     private var readRow: android.widget.LinearLayout? = null
@@ -39,7 +42,7 @@ class OfficeViewerActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url
-                if (u.scheme == "lsoffice") { u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }
+                if (u.scheme == "lsoffice") { if (u.host == "comment") showComments(u.lastPathSegment) else if (u.host == "note") showNote(u.lastPathSegment) else u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }   // Part 8: lsoffice://comment/<id> opens that comment
                 if (u.scheme == "https" && u.host == FontMap.HOST && u.fragment != null) return false   // in-page #anchor of the document (base URL is the font host)
                 return u.scheme != "about" && u.scheme != "data"   // block everything else (in-page #anchors are not navigations)
             }
@@ -184,10 +187,18 @@ class OfficeViewerActivity : Activity() {
         if (file?.let { com.lanshare.app.core.OfficeExact.eligible(it.name) } == true) m.add(0, 10, 0, "Show exact pages (PC)")
         m.add(0, 8, 0, "Print on PC")
         m.add(0, 3, 0, "Print / save as PDF (Android)")
-        if (od?.isSheet == true) m.add(0, 4, 1, "Export sheet as CSV")
+        if (od?.isSheet == true) {
+            m.add(0, 4, 1, "Export sheet as CSV")
+            m.add(0, 14, 1, if (gridOverride ?: curXs?.showGrid ?: true) "Gridlines: turn off" else "Gridlines: turn on")   // Part 9
+            curXs?.notes?.takeIf { it.isNotEmpty() }?.let { m.add(0, 15, 1, "Notes (" + it.size + ")") }
+        }
         else if (od != null) {
             m.add(0, 11, 1, if (printOn) "Print layout: turn off" else "Print layout (pages)")
             m.add(0, 9, 1, if (readingOn) "Reading mode: turn off" else "Reading mode")
+            curDoc?.let { d ->   // Part 8
+                if (d.hasRev) m.add(0, 12, 1, "Tracked changes: " + arrayOf("Show markup", "Final", "Original")[markup.coerceIn(0, 2)])
+                if (d.comments.isNotEmpty()) m.add(0, 13, 1, "Comments (" + d.comments.size + ")")
+            }
         }
         if (od?.editable == true && dev != null && rpath != null) {
             if (od?.isSheet == true) { m.add(0, 5, 2, "Edit cell..."); m.add(0, 6, 3, "Insert row...") }
@@ -253,8 +264,8 @@ class OfficeViewerActivity : Activity() {
         }.start()
     }
 
-    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = if (printOn) DocxHtml.renderPrint(doc, title = file?.name ?: "", fontBase = FontMap.FONT_URL, image = imgSrc(o))
-        else DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = imgSrc(o))
+    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = if (printOn) DocxHtml.renderPrint(doc, title = file?.name ?: "", fontBase = FontMap.FONT_URL, image = imgSrc(o), markup = markup)
+        else DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = imgSrc(o), markup = markup)
 
     private fun imgSrc(o: OfficeOpen): (DImage) -> String? = { im ->
         val bytes = try { o.image(im.part) } catch (_: Throwable) { null }
@@ -274,14 +285,15 @@ class OfficeViewerActivity : Activity() {
         tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
         val first = (tabs.firstOrNull { it.first == curSheet } ?: tabs.firstOrNull())?.first ?: return "<body style=\"font:15px sans-serif;padding:16px\">No visible sheets.</body>"
         curSheet = first
-        return XlsxHtml.render(o.readSheet(first), tabs, first, o.styles, FontMap.FONT_URL)
+        val xs = o.readSheet(first); curXs = xs
+        return XlsxHtml.render(xs, tabs, first, o.styles, FontMap.FONT_URL, gridOverride)
     }
 
     private fun showSheet(i: Int) {
         val r = od ?: return
         curSheet = i
         Thread {
-            val html = try { XlsxHtml.render(r.readSheet(i), tabs, i, r.styles, FontMap.FONT_URL) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
+            val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, FontMap.FONT_URL, gridOverride) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }
@@ -296,6 +308,10 @@ class OfficeViewerActivity : Activity() {
         7 -> { undoEdit(); true }
         9 -> { rprefs.edit().putBoolean("on", !readingOn).putBoolean("print", false).apply(); rerender(); true }
         11 -> { rprefs.edit().putBoolean("print", !printOn).apply(); rerender(); true }   // Part 5
+        12 -> { pickMarkup(); true }                                                      // Part 8
+        13 -> { showComments(null); true }
+        14 -> { gridOverride = !(gridOverride ?: curXs?.showGrid ?: true); showSheet(curSheet); true }   // Part 9
+        15 -> { showNote(null); true }
         else -> super.onOptionsItemSelected(i)
     }
 
@@ -392,6 +408,43 @@ class OfficeViewerActivity : Activity() {
     private fun askParagraph() = dlg("Add paragraph at end", listOf("Text")) { v ->
         if (v[0].isEmpty()) return@dlg
         mutate { f -> DocxEditor.insertParagraph(f, DocxEditor.paragraphCount(f), v[0]); "Paragraph added" }
+    }
+
+    /** Part 8: Show markup (insertions underlined, deletions struck through, comment markers) / Final (all changes accepted) / Original (all rejected). */
+    private fun pickMarkup() {
+        val names = arrayOf<CharSequence>("Show markup", "Final (changes accepted)", "Original (changes rejected)")
+        AppPal.dlg(this).setTitle("Tracked changes")
+            .setSingleChoiceItems(names, markup.coerceIn(0, 2)) { d, which -> d.dismiss(); if (which != markup) { markup = which; rerender() } }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Part 8: one comment ([focus] = its id, from a tap on the [n] marker) or all comments of the document ([focus] == null). */
+    private fun showComments(focus: String?) {
+        val d = curDoc ?: return
+        val list = if (focus != null) listOfNotNull(d.comments[focus]) else d.comments.values.toList()
+        if (list.isEmpty()) return
+        val sb = StringBuilder()
+        for (c in list) {
+            if (sb.isNotEmpty()) sb.append("\n\n")
+            sb.append('[').append(d.comments.keys.indexOf(c.id) + 1).append("] ").append(c.author.ifEmpty { "?" })
+            if (c.date.isNotEmpty()) sb.append("  \u00b7  ").append(c.date.take(16).replace('T', ' '))
+            sb.append('\n').append(c.text.ifEmpty { "(empty)" })
+        }
+        AppPal.dlg(this).setTitle(if (focus != null) "Comment" else "Comments (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
+    }
+
+    /** Part 9: one cell note ([ref] = "B2", from a tap on the red corner) or all notes of the sheet on screen ([ref] == null). */
+    private fun showNote(ref: String?) {
+        val xs = curXs ?: return
+        val list = if (ref != null) xs.notes.filter { it.ref.equals(ref, true) } else xs.notes
+        if (list.isEmpty()) return
+        val sb = StringBuilder()
+        for (n in list) {
+            if (sb.isNotEmpty()) sb.append("\n\n")
+            sb.append(n.ref); if (n.author.isNotEmpty()) sb.append("  \u00b7  ").append(n.author)
+            sb.append('\n').append(n.text.ifEmpty { "(empty)" })
+        }
+        AppPal.dlg(this).setTitle(if (ref != null) "Note" else "Notes (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
     }
 
     private fun exportCsv() {

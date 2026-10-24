@@ -14,15 +14,35 @@ class XCell(
     val ref: String get() = XRef.name(col, row)
 }
 
-class XXf(val numFmtId: Int, val fontId: Int, val fillId: Int, val halign: String?, val wrap: Boolean, val valign: String?)
+class XXf(val numFmtId: Int, val fontId: Int, val fillId: Int, val halign: String?, val wrap: Boolean, val valign: String?, val borderId: Int = 0)
 class XFont(val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: String?, val size: Double, val name: String? = null)
+
+/** Part 9: one border side (Excel style name, e.g. thin / medium / dashed; colour "#RRGGBB" or null = automatic black). */
+class XBSide(val style: String, val color: String?)
+class XBorder(val left: XBSide?, val right: XBSide?, val top: XBSide?, val bottom: XBSide?) {
+    val any: Boolean get() = left != null || right != null || top != null || bottom != null
+}
+/** Part 9: differential format (dxf) used by conditional formatting rules. Null = not set by the rule. */
+class XDxf(val color: String?, val fill: String?, val bold: Boolean?, val italic: Boolean?, val underline: Boolean?, val strike: Boolean?)
+/** Part 9: one value object (cfvo) of a colour scale / data bar. */
+class XCfvo(val type: String, val value: String?)
+/** Part 9: a conditional formatting rule with the ranges (c1, r1, c2, r2; 0-based) it applies to. */
+class XCfRule(
+    val ranges: List<IntArray>, val type: String, val priority: Int, val dxfId: Int, val op: String?, val rank: Int, val percent: Boolean, val bottom: Boolean,
+    val text: String?, val above: Boolean, val equalAvg: Boolean, val stopIfTrue: Boolean, val formulas: List<String>,
+    val vos: List<XCfvo>, val colors: List<String?>, val minLen: Int, val maxLen: Int
+)
+/** Part 9: a cell comment (legacy note) of a sheet. */
+class XNote(val ref: String, val row: Int, val col: Int, val author: String, val text: String)
 
 class XStyles(
     val xfs: List<XXf>,
     val fonts: List<XFont>,
     val fills: List<String?>,                 // #RRGGBB or null
     val numFmts: Map<Int, String>,
-    val dateXf: BooleanArray                   // per xf: is this a date format
+    val dateXf: BooleanArray,                  // per xf: is this a date format
+    val borders: List<XBorder> = emptyList(),  // Part 9
+    val dxfs: List<XDxf> = emptyList()         // Part 9
 ) {
     fun code(xf: Int): String = NumFmt.code(xfOrDefault(xf).numFmtId, numFmts)
     fun xfOrDefault(i: Int): XXf = xfs.getOrNull(i) ?: DEFAULT
@@ -45,7 +65,13 @@ class XSheet(
     val maxCol: Int,
     val frozenRows: Int,
     val frozenCols: Int,
-    val truncated: Boolean                     // hit the row/cell limit
+    val truncated: Boolean,                    // hit the row/cell limit
+    val showGrid: Boolean = true,              // Part 9: sheetView showGridLines
+    val cf: List<XCfRule> = emptyList(),       // Part 9: conditional formatting
+    val notes: List<XNote> = emptyList(),      // Part 9: cell comments
+    val fileWidths: Boolean = false,           // Part 9: colWidths are the xlsx `width` values (already include the padding: pixels = width x digit width); false = characters (xls / ods)
+    val defaultColWidth: Double? = null,       // Part 9: sheetFormatPr defaultColWidth (same unit as colWidths)
+    val charts: List<XChartFrame> = emptyList()   // Part 10: charts of the sheet's drawing part (xlsx only)
 ) {
     fun cell(r: Int, c: Int): XCell? = rows[r]?.firstOrNull { it.col == c }
 }

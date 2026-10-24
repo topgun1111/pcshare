@@ -24,7 +24,7 @@ object OfficeWeb {
                 val tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
                 val cur = (tabs.firstOrNull { it.first == sheet } ?: tabs.firstOrNull())?.first
                 if (cur == null) msg("No visible sheets.")
-                else XlsxHtml.render(o.readSheet(cur), tabs, cur, o.styles).replace("href=\"lsoffice://sheet/", "href=\"" + esc(sheetLink))
+                else XlsxHtml.render(o.readSheet(cur), tabs, cur, o.styles).replace("href=\"lsoffice://sheet/", "href=\"" + esc(sheetLink)).replace("href=\"lsoffice://note/", "href=\"#n_")   // Part 9: note corner -> the notes list at the bottom of the page
             }
         }
     } catch (e: Throwable) {

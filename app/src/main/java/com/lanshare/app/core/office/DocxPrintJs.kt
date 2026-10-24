@@ -43,8 +43,34 @@ function fill(p){
   c.removeAttribute('id');qa('[id]',c).forEach(function(e){e.removeAttribute('id');});
   c.style.cssText+=';position:absolute;left:0;top:0;transform:translateX('+(-p.k*fl._stride)+'px)';
   p.vp.appendChild(c);
+  try{objs(p);}catch(e){window.__plObjError=String(e&&e.stack||e);}
 }
-function empty(p){while(p.vp.firstChild)p.vp.removeChild(p.vp.firstChild);}
+function empty(p){
+  while(p.vp.firstChild)p.vp.removeChild(p.vp.firstChild);
+  qa('.ob2',p.sh).forEach(function(e){e.parentNode.removeChild(e);});
+}
+/* Part 6: floating objects in front of / behind the text. The text carries an empty marker (.ao); the object itself sits in #objs.
+   The marker's place on the sheet (measured in the live clone) gives the page and the reference point for the object's offsets. */
+function objs(p){
+  var sh=p.sh,g=M.f[p.fi],sr=sh.getBoundingClientRect(),vl=g.ml+g.gut,cw=(g.cw-(g.cols-1)*g.gap)/g.cols,out=[];
+  qa('.ao',sh).forEach(function(m){
+    var o=document.querySelector('#objs .ob[data-o="'+m.getAttribute('data-o')+'"]');if(!o)return;
+    var r=m.getBoundingClientRect(),x=r.left-sr.left,y=r.top-sr.top,inVp=p.vp.contains(m);
+    if(inVp&&(x<vl-1||x>vl+g.cw+1))return;
+    var d=o.dataset,w=+d.w,h=+d.h,ho=+d.ho,vo=+d.vo,ci=inVp?Math.max(0,Math.min(g.cols-1,Math.floor((x-vl)/(cw+g.gap)))):0;
+    var cl=vl+ci*(cw+g.gap),L,T;
+    var rl=d.rh==='page'?0:(d.rh==='margin'||!inVp?vl:cl),rw=d.rh==='page'?g.pw:(d.rh==='margin'||!inVp?g.cw:cw);
+    if(d.rh==='character')L=x+ho;
+    else if(d.ha==='center')L=rl+(rw-w)/2;else if(d.ha==='right'||d.ha==='outside')L=rl+rw-w;else if(d.ha==='left'||d.ha==='inside')L=rl;else L=rl+ho;
+    var rt=d.rv==='page'?0:(d.rv==='margin'?g.mt:y),rh=d.rv==='page'?g.ph:(d.rv==='margin'?g.ch:h);
+    if(d.va==='center')T=rt+(rh-h)/2;else if(d.va==='bottom')T=rt+rh-h;else if(d.va==='top'||d.va==='inside')T=rt;else T=rt+vo;
+    var c=o.cloneNode(true);c.className='ob2';c.removeAttribute('data-o');
+    c.style.cssText+=';left:'+L+'px;top:'+T+'px;z-index:'+(d.b==='1'?0:1);
+    out.push({c:c,b:d.b==='1',z:+d.z||0});
+  });
+  out.sort(function(a,b){return a.z-b.z;});
+  out.forEach(function(e){if(e.b)sh.insertBefore(e.c,sh.firstChild);else sh.appendChild(e.c);});
+}
 function build(){
   var no=0;
   flows.forEach(function(fl,fi){
