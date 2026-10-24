@@ -231,6 +231,8 @@ class MainActivity : Activity() {
         }
         /** Settings -> Text recognition model: "mode,paddleInstalled" (mode 0 automatic, 1 PaddleOCR, 2 ML Kit; installed 0 / 1). */
         @JavascriptInterface fun ocrEngGet(): String = OcrPrefs.engine(this@MainActivity).toString() + "," + (if (PaddleModels.installed(this@MainActivity)) 1 else 0)
+        @JavascriptInterface fun officeViewGet(): String = com.lanshare.app.core.OfficeExact.mode(this@MainActivity)
+        @JavascriptInterface fun officeViewSet(m: String) { com.lanshare.app.core.OfficeExact.setMode(this@MainActivity, m) }
         @JavascriptInterface fun ocrEngSet(m: Int) { OcrPrefs.setEngine(this@MainActivity, m); if (m != OcrPrefs.ENG_MLKIT) PaddleModels.installAsync(applicationContext) }
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED

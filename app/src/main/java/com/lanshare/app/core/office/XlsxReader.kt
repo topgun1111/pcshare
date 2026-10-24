@@ -225,7 +225,8 @@ class XlsxReader(file: File) : AutoCloseable {
             }
         }
         flush()
-        return XSheet(info, rows, merges, widths, hCols, hRows, maxR, maxC, fr, fc, trunc, grid, cfs, readNotes(info.part), true, defW, if (withCharts) readCharts(info.part) else emptyList())
+        val extras = if (withCharts) readExtras(info.part) else XDrawingExtras(emptyList(), emptyList())
+        return XSheet(info, rows, merges, widths, hCols, hRows, maxR, maxC, fr, fc, trunc, grid, cfs, readNotes(info.part), true, defW, if (withCharts) readCharts(info.part) else emptyList(), extras.pics, extras.shapes)
     }
 
     // ------------------------------------------------------------------ charts (Part 10)
@@ -236,6 +237,14 @@ class XlsxReader(file: File) : AutoCloseable {
             val cache = HashMap<Int, XSheet>()
             ChartParser.parseDrawing(pkg, d.target, theme) { ref -> refCells(ref, cache) }
         } catch (_: Throwable) { emptyList() }
+    }
+
+    /** Part 11: pictures and shapes of the sheet's drawing part. Never throws. */
+    private fun readExtras(sheetPart: String): XDrawingExtras {
+        return try {
+            val d = pkg.rels(sheetPart).values.firstOrNull { it.kind == "drawing" && !it.external } ?: return XDrawingExtras(emptyList(), emptyList())
+            DrawingParser.parse(pkg, d.target, theme)
+        } catch (_: Throwable) { XDrawingExtras(emptyList(), emptyList()) }
     }
 
     /** `Sheet1!$B$2:$B$9` / `'My sheet'!A1:A5` -> the cells row-major (null entries = no cell). Only plain single ranges; null otherwise. */

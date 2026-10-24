@@ -70,6 +70,7 @@ class DPara : DBlock() {
     val runs = ArrayList<DRun>()
     var style = ""                  // resolved style name ("heading 1", "Normal", ...)
     var heading = 0                 // 0 = body text, 1..9 heading level
+    var hid = -1                    // Part 12: outline id (set by DocxOutline.build; the heading element gets id="lsh<hid>"), -1 = not in the outline
     var align: String? = null       // left / center / right / justify
     var label: String? = null       // list label: "1.", "a)", "•"
     var bullet = false

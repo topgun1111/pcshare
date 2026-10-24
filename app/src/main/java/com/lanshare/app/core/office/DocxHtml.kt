@@ -217,6 +217,7 @@ object DocxHtml {
         sb.append('<').append(tag)
         if (cls.isNotEmpty()) sb.append(" class=\"").append(cls).append('"')
         if (st.isNotEmpty()) sb.append(" style=\"").append(st).append('"')
+        if (p.hid >= 0) sb.append(" id=lsh").append(p.hid)   // Part 12: outline target
         sb.append('>')
         val openTag = sb.substring(openAt).replace("break-before:column;", "")
         for (b in p.bookmarks) sb.append("<a id=\"").append(esc(b)).append("\"></a>")   // Part 8: target of internal links (TOC entries, cross references)

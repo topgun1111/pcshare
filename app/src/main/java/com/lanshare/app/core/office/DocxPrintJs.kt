@@ -115,13 +115,44 @@ function links(){
     var i=pageOf(t);if(i>=0)pages[i].sh.scrollIntoView();
   });
 }
+/* Part 12: jump to a heading (outline) by its element id in the stage, and the page thumbnail strip (fixed bar, one small page box per page, current one highlighted). */
+function goId(id){
+  var t=stage.querySelector('[id="'+String(id).replace(/"/g,'')+'"]');if(!t)return false;
+  var i=pageOf(t);if(i<0)return false;pages[i].sh.scrollIntoView();return true;
+}
+function strip(){
+  if(pages.length<2)return;
+  var z=Math.max(1,window.innerWidth/(screen.width||window.innerWidth)),h=Math.round(46*z),boxes=[],cur=-1;
+  var bar=div('','position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:'+Math.round(6*z)+'px;overflow-x:auto;padding:'+Math.round(6*z)+'px;background:rgba(30,30,30,.9)');
+  bar.id='thumbs';
+  pages.forEach(function(p){
+    var g=M.f[p.fi],w=Math.max(Math.round(20*z),Math.round(h*g.pw/g.ph));
+    var b=div('','flex:0 0 auto;box-sizing:border-box;width:'+w+'px;height:'+h+'px;background:#fff;border:'+Math.round(2*z)+'px solid transparent;color:#444;font:'+Math.round(10*z)+'px sans-serif;text-align:center;line-height:'+(h-Math.round(4*z))+'px');
+    b.textContent=String(p.no);
+    b.addEventListener('click',function(){p.sh.scrollIntoView();});
+    bar.appendChild(b);boxes.push(b);
+  });
+  document.body.appendChild(bar);document.body.style.paddingBottom=(h+Math.round(16*z))+'px';
+  var pend=false;
+  function upd(){
+    pend=false;var mid=window.innerHeight/2,k=0,i;
+    for(i=0;i<pages.length;i++){if(pages[i].sh.getBoundingClientRect().top<=mid)k=i;else break;}
+    if(k===cur)return;
+    if(cur>=0)boxes[cur].style.borderColor='transparent';
+    cur=k;boxes[k].style.borderColor='#ee7a1a';
+    bar.scrollLeft=boxes[k].offsetLeft-bar.clientWidth/2+boxes[k].offsetWidth/2;
+  }
+  window.addEventListener('scroll',function(){if(!pend){pend=true;(window.requestAnimationFrame||setTimeout)(upd);}});
+  upd();
+}
 function go(){
   try{
     M=JSON.parse(document.getElementById('meta').textContent);
     pagesEl=document.getElementById('pages');stage=document.getElementById('stage');
     root.className+=' js';
     layout();build();watch();links();
-    window.__pl={pages:total,flows:flows.length,numbers:pages.map(function(p){return p.no;}),pageOf:pageOf};
+    try{strip();}catch(e){window.__plStripError=String(e&&e.stack||e);}
+    window.__pl={pages:total,flows:flows.length,numbers:pages.map(function(p){return p.no;}),pageOf:pageOf,goId:goId};
     window.__plReady=true;
   }catch(e){
     root.className=root.className.replace(/ ?js/g,'');window.__plError=String(e&&e.stack||e);window.__plReady=true;

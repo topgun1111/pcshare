@@ -26,6 +26,9 @@ class OfficeViewerActivity : Activity() {
     private var markup = DocxHtml.MARK_SHOW    // Part 8: tracked changes view of this document (Show markup / Final / Original); kept while the viewer is open
     private var gridOverride: Boolean? = null   // Part 9: gridlines of the Excel view (null = as the sheet says); kept while the viewer is open
     private var curXs: XSheet? = null            // Part 9: the sheet on screen (notes, showGridLines)
+    private var outline: List<OutlineItem> = emptyList()   // Part 12: headings of the open Word-type document
+    private var showHiddenSheets = false                    // Part 12: sheet list shows hidden sheets
+    private var fbar: android.widget.TextView? = null       // Part 12: Excel formula bar (cell tapped -> reference + formula / value)
     private var curDoc: DDoc? = null          // parsed Word-type document, kept so reading-mode changes re-render without re-parsing
     private val rprefs by lazy { getSharedPreferences("office_read", MODE_PRIVATE) }   // reading mode: on / px (text size) / theme
     private var readRow: android.widget.LinearLayout? = null
@@ -42,7 +45,7 @@ class OfficeViewerActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url
-                if (u.scheme == "lsoffice") { if (u.host == "comment") showComments(u.lastPathSegment) else if (u.host == "note") showNote(u.lastPathSegment) else u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }   // Part 8: lsoffice://comment/<id> opens that comment
+                if (u.scheme == "lsoffice") { if (u.host == "cell") showCell(u.pathSegments) else if (u.host == "comment") showComments(u.lastPathSegment) else if (u.host == "note") showNote(u.lastPathSegment) else u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }   // Part 8: lsoffice://comment/<id> opens that comment
                 if (u.scheme == "https" && u.host == FontMap.HOST && u.fragment != null) return false   // in-page #anchor of the document (base URL is the font host)
                 return u.scheme != "about" && u.scheme != "data"   // block everything else (in-page #anchors are not navigations)
             }
@@ -165,6 +168,13 @@ class OfficeViewerActivity : Activity() {
         root.addView(top, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
         root.addView(fr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         root.addView(rr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        val fx = android.widget.TextView(this).apply {   // Part 12: formula bar (sheets only)
+            textSize = 14f; setTextColor(pal.fg); setPadding(dp(12), 0, dp(12), 0); gravity = android.view.Gravity.CENTER_VERTICAL; maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END; visibility = android.view.View.GONE; setBackgroundColor(pal.bg); setTextIsSelectable(false)
+            text = "Tap a cell to see its formula"
+        }
+        fbar = fx
+        root.addView(fx, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
         root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
@@ -188,11 +198,13 @@ class OfficeViewerActivity : Activity() {
         m.add(0, 8, 0, "Print on PC")
         m.add(0, 3, 0, "Print / save as PDF (Android)")
         if (od?.isSheet == true) {
+            if ((od?.sheets?.size ?: 0) > 1) m.add(0, 17, 1, "Sheets (" + (od?.sheets?.count { !it.veryHidden } ?: 0) + ")")   // Part 12
             m.add(0, 4, 1, "Export sheet as CSV")
             m.add(0, 14, 1, if (gridOverride ?: curXs?.showGrid ?: true) "Gridlines: turn off" else "Gridlines: turn on")   // Part 9
             curXs?.notes?.takeIf { it.isNotEmpty() }?.let { m.add(0, 15, 1, "Notes (" + it.size + ")") }
         }
         else if (od != null) {
+            if (outline.isNotEmpty()) m.add(0, 16, 1, "Outline (" + outline.size + ")")   // Part 12
             m.add(0, 11, 1, if (printOn) "Print layout: turn off" else "Print layout (pages)")
             m.add(0, 9, 1, if (readingOn) "Reading mode: turn off" else "Reading mode")
             curDoc?.let { d ->   // Part 8
@@ -212,6 +224,7 @@ class OfficeViewerActivity : Activity() {
     /** Every page load goes through here: JavaScript is on ONLY for the print-layout page of a Word-type document (it paginates; see DocxPrintJs). */
     private fun show(html: String) {
         web.settings.javaScriptEnabled = printOn && od?.isSheet == false && curDoc != null
+        fbar?.visibility = if (od?.isSheet == true && curXs != null) android.view.View.VISIBLE else android.view.View.GONE
         web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null)
     }
 
@@ -279,6 +292,7 @@ class OfficeViewerActivity : Activity() {
         val o = OfficeOpen(f); od = o        // format detected by content (docx/xlsx/doc/xls/odt/ods)
         if (!o.isSheet) {
             val doc = o.readDoc(); curDoc = doc
+            outline = try { DocxOutline.build(doc) } catch (_: Throwable) { emptyList() }   // Part 12: numbers the headings BEFORE they are rendered
             return renderDoc(o, doc)
         }
         curDoc = null
@@ -292,6 +306,7 @@ class OfficeViewerActivity : Activity() {
     private fun showSheet(i: Int) {
         val r = od ?: return
         curSheet = i
+        fbar?.text = "Tap a cell to see its formula"
         Thread {
             val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, FontMap.FONT_URL, gridOverride) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) show(html) }
@@ -312,6 +327,8 @@ class OfficeViewerActivity : Activity() {
         13 -> { showComments(null); true }
         14 -> { gridOverride = !(gridOverride ?: curXs?.showGrid ?: true); showSheet(curSheet); true }   // Part 9
         15 -> { showNote(null); true }
+        16 -> { showOutline(); true }      // Part 12
+        17 -> { showSheets(); true }
         else -> super.onOptionsItemSelected(i)
     }
 
@@ -419,6 +436,49 @@ class OfficeViewerActivity : Activity() {
     }
 
     /** Part 8: one comment ([focus] = its id, from a tap on the [n] marker) or all comments of the document ([focus] == null). */
+    // ---- Part 12: navigation ----
+    /** Word: list of headings; a tap scrolls the page to that heading. */
+    private fun showOutline() {
+        val items = outline
+        if (items.isEmpty()) return
+        val labels = items.map { "\u2003".repeat(it.level - 1) + it.text }.toTypedArray()
+        AppPal.dlg(this).setTitle("Outline").setItems(labels) { _, i -> scrollToId("lsh" + items[i].id) }.setNegativeButton("Close", null).show()
+    }
+
+    /** JavaScript is off for ordinary pages, so it is switched on only for this one call (the page has no scripts of its own then). */
+    private fun scrollToId(id: String) {
+        val was = web.settings.javaScriptEnabled
+        web.settings.javaScriptEnabled = true
+        val js = if (printOn) "(window.__pl&&window.__pl.goId)?window.__pl.goId('" + id + "'):false" else "(function(){var e=document.getElementById('" + id + "');if(e)e.scrollIntoView();return !!e;})()"
+        web.evaluateJavascript(js) { web.settings.javaScriptEnabled = was }
+    }
+
+    /** Excel: all sheets in a bottom sheet; hidden ones can be shown / opened. */
+    private fun showSheets() {
+        val r = od ?: return
+        val all = r.sheets.filter { !it.veryHidden && (showHiddenSheets || !it.hidden) }
+        val labels = all.map { (if (it.index == curSheet) "\u2713 " else "") + it.name + (if (it.hidden) "  (hidden)" else "") }.toTypedArray()
+        val nHidden = r.sheets.count { it.hidden && !it.veryHidden }
+        val b = AppPal.dlg(this).setTitle("Sheets").setItems(labels) { _, i -> showSheet(all[i].index) }.setNegativeButton("Close", null)
+        if (nHidden > 0) b.setNeutralButton(if (showHiddenSheets) "Hide hidden" else "Show hidden ($nHidden)") { _, _ -> showHiddenSheets = !showHiddenSheets; showSheets() }
+        val dlg = b.create()
+        dlg.window?.setGravity(android.view.Gravity.BOTTOM)
+        dlg.show()
+    }
+
+    /** Excel: a tapped cell (lsoffice://cell/ROW/COL, 0-based) -> formula bar. */
+    private fun showCell(seg: List<String>) {
+        val xs = curXs ?: return
+        val r = seg.getOrNull(0)?.toIntOrNull() ?: return
+        val c = seg.getOrNull(1)?.toIntOrNull() ?: return
+        val cell = xs.cell(r, c)
+        val ref = XRef.name(c, r)
+        val f = cell?.formula?.takeIf { it.isNotBlank() }
+        val shown = cell?.text.orEmpty()
+        fbar?.text = if (f != null) ref + "   fx  " + (if (f.startsWith("=")) f else "=" + f) + (if (shown.isNotEmpty()) "   \u2192  " + shown else "")
+                     else ref + "   " + (cell?.raw?.takeIf { it.isNotEmpty() } ?: shown)
+    }
+
     private fun showComments(focus: String?) {
         val d = curDoc ?: return
         val list = if (focus != null) listOfNotNull(d.comments[focus]) else d.comments.values.toList()

@@ -2358,6 +2358,9 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.ocrEngGet){const ro=E('button','set'),to=E('div','t'),so=E('small','');ro.style.width='100%';ro.style.textAlign='left';
     so.textContent=['Automatic','PaddleOCR','ML Kit'][+LSAndroid.ocrEngGet().split(',')[0]]||'Automatic';to.append(E('b','','Text recognition model'),so);ro.append(to);
     ro.onclick=()=>{close();openOcrSettings()};card.append(ro)}
+  if(window.LSAndroid&&LSAndroid.officeViewGet){const rv=E('button','set'),tv=E('div','t'),sv=E('small','');rv.style.width='100%';rv.style.textAlign='left';
+    sv.textContent={auto:'Auto',exact:'Exact pages (PC)',simple:'Simple'}[LSAndroid.officeViewGet()]||'Auto';tv.append(E('b','','Office view'),sv);rv.append(tv);
+    rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
@@ -2376,6 +2379,20 @@ function openTextSettings(){
     rows.forEach(x=>{const r=E('button','set'),t=E('div','t');r.style.width='100%';r.style.textAlign='left';
       t.append(E('b','',(st.def===x.id?'\u2713 ':'')+x.n),E('small','',x.sub));r.append(t);
       r.onclick=()=>{if(st.def===x.id)return;LSAndroid.txtDefSet(x.id);draw()};list.append(r)})};
+  draw();
+  const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
+function openOfficeViewSettings(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Office view'));
+  const info=E('p','','How Word, Excel and PowerPoint files open. Exact pages are made by a paired PC (pcprint.py with Word or LibreOffice) and shown in the PDF viewer; the Simple view works offline and keeps Edit.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const list=E('div');card.append(list);
+  const draw=()=>{list.textContent='';const cur=LSAndroid.officeViewGet();
+    [['auto','Auto','Try the PC for exact pages; if it is not reachable, open the Simple view'],['exact','Exact pages (PC)','Same as Auto today: the PC is tried first, the reason is shown if it fails'],['simple','Simple','Always the offline view on the phone (Edit, Find, Outline, Print layout)']].forEach(([id,n,sub])=>{
+      const r=E('button','set'),t=E('div','t');r.style.width='100%';r.style.textAlign='left';
+      t.append(E('b','',(cur===id?'\u2713 ':'')+n),E('small','',sub));r.append(t);
+      r.onclick=()=>{if(cur===id)return;LSAndroid.officeViewSet(id);draw()};list.append(r)})};
   draw();
   const d=E('button','tbtn fill','Back');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openOcrSettings(){

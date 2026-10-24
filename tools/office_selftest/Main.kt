@@ -14,6 +14,8 @@ fun main(a: Array<String>) {
     if (a.isNotEmpty() && a[0] == "--printtest") { printTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 5
     if (a.isNotEmpty() && a[0] == "--styles") { stylesTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 7
     if (a.isNotEmpty() && a[0] == "--chart") { chartTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 10
+    if (a.isNotEmpty() && a[0] == "--nav") { navTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 12
+    if (a.isNotEmpty() && a[0] == "--chart2") { chart2Test(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 11
     if (a.isNotEmpty() && a[0] == "--cf") { cfTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 9
     if (a.isNotEmpty() && a[0] == "--review") { reviewTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 8
     if (a.isNotEmpty() && a[0] == "--float") { floatTest(File(a.getOrElse(1) { "tools/office_selftest" })); return }   // Part 6
@@ -600,7 +602,7 @@ fun chartTest(dir: File) {
         check("Bars: values come from the cells (no cache in the XML)", p3.series[0].vals.joinToString(",") + " | " + p3.series[1].cats.joinToString(","), "120.0,150.0,90.0,180.0,210.0,170.0 | Jan,Feb,Mar,Apr,May,Jun")
         check("Bars: series names from cells", p3.series.joinToString(",") { it.name }, "North,South")
         check("Bars: axis min / max / major, legend t", "${c3.value.min} ${c3.value.max} ${c3.value.major} ${c3.legend}", "0.0 400.0 100.0 t")
-        // ---- sheet Pie: kept as an unsupported plot
+        // ---- sheet Pie: a plain pie (drawn since Part 11)
         val pie = r.readSheet(2).charts.single().chart
         check("Pie: kinds", pie.kinds.joinToString(","), "pie")
         // ---- scale
@@ -625,7 +627,7 @@ fun chartTest(dir: File) {
         check("svg3 stacked horizontal: 12 bars + bg + 2 swatches", count(svg3, "<rect ").toString(), "15")
         ok("svg3 axis 0..400 labels", svg3.contains(">400<") && svg3.contains(">300<"))
         val svgP = ChartSvg.render(pie, 300, 200)
-        ok("pie: placeholder, no bars", svgP.contains("Pie chart: not drawn yet") && !svgP.contains("<path"))
+        ok("pie: drawn since Part 11 (slices, no placeholder)", svgP.contains("<path") && !svgP.contains("not drawn yet"))
         // ---- locale: a Turkish default locale must not put commas into numbers
         val old = java.util.Locale.getDefault()
         java.util.Locale.setDefault(java.util.Locale("tr", "TR"))
@@ -649,4 +651,90 @@ fun chartTest(dir: File) {
     check("truncated chart XML: no exception, nothing to draw", (ChartParser.parseChart(MiniXml("<c:chartSpace><c:chart><c:plotArea"), Theme.DEFAULT, null)?.plots?.size ?: 0).toString(), "0")
     check("empty plot area -> chart without plots", ChartParser.parseChart(MiniXml("<chartSpace><chart><plotArea/></chart></chartSpace>"), Theme.DEFAULT, null)!!.plots.size.toString(), "0")
     check("render of a chart without plots", ChartSvg.render(ChartParser.parseChart(MiniXml("<chartSpace><chart><plotArea/></chart></chartSpace>"), Theme.DEFAULT, null)!!, 200, 100).contains("No data").toString(), "true")
+}
+
+/** Part 11: pie / doughnut / area / scatter charts, sheet pictures and shapes (fixture `sample_chart2.xlsx`, made by `make_sample_chart2.py`). */
+fun chart2Test(dir: File) {
+    fun ok(name: String, c: Boolean) = check(name, c.toString(), "true")
+    fun count(s: String, sub: String): Int { var n = 0; var i = s.indexOf(sub); while (i >= 0) { n++; i = s.indexOf(sub, i + sub.length) }; return n }
+    check("base64 3 bytes", DrawingParser.base64(byteArrayOf(77, 97, 110)), "TWFu")
+    check("base64 2 bytes", DrawingParser.base64(byteArrayOf(77, 97)), "TWE=")
+    check("base64 1 byte", DrawingParser.base64(byteArrayOf(77)), "TQ==")
+    XlsxReader(File(dir, "sample_chart2.xlsx")).use { r ->
+        check("4 sheets", r.sheets.size.toString(), "4")
+        val tabs = r.sheets.map { Pair(it.index, it.name) }
+        // ---- Pie sheet: pie + doughnut
+        val ps = r.readSheet(0)
+        check("Pie: 2 charts", ps.charts.size.toString(), "2")
+        val pc = ps.charts[0].chart; val pp = pc.plots[0]
+        check("pie: type / title / legend", "${pp.type} / ${pc.title} / ${pc.legend}", "pie / Units by region / r")
+        check("pie: values", pp.series[0].vals.joinToString(","), "120.0,80.0,60.0,40.0,10.0")
+        check("pie: percent labels", pp.series[0].pct.toString(), "true")
+        check("pie: slice colours (accent cycle, slice 1 = dPt gold)", (0..4).joinToString(",") { pp.series[0].ptColors[it] ?: "-" }, "#1F6F8B,#FFC000,#A5A5A5,#FFC000,#5B9BD5")
+        val dn = ps.charts[1].chart.plots[0]
+        check("doughnut: hole / first angle / legend", "${dn.type} ${dn.hole} ${dn.firstAngle} ${ps.charts[1].chart.legend}", "doughnut 55 90 b")
+        val svgPie = ChartSvg.render(pc, 480, 330)
+        check("pie svg: 5 slices", count(svgPie, "<path ").toString(), "5")
+        ok("pie svg: percent labels 39 26 19 13 3", listOf("39", "26", "19", "13", "3").all { svgPie.contains(">$it%<") })
+        ok("pie svg: recoloured slice and legend names", svgPie.contains("fill=\"#FFC000\"") && svgPie.contains(">North<") && svgPie.contains(">Other<"))
+        val svgDn = ChartSvg.render(ps.charts[1].chart, 420, 300)
+        check("doughnut svg: 5 ring segments, no full circle", count(svgDn, "<path ").toString() + " " + count(svgDn, "<circle "), "5 0")
+        // ---- Area sheet
+        val ac = r.readSheet(1).charts.single().chart; val ap = ac.plots[0]
+        check("area: type / grouping / series colours", "${ap.type} ${ap.grouping} " + ap.series.joinToString(",") { it.color }, "area stacked #1F6F8B,#E4572E")
+        val svgA = ChartSvg.render(ac, 560, 330)
+        check("area svg: 2 polygons", count(svgA, "<path ").toString(), "2")
+        ok("area svg: category Jun, axis title Units, legend", svgA.contains(">Jun<") && svgA.contains(">Units<") && svgA.contains(">South<"))
+        // ---- Scatter sheet
+        val sc = r.readSheet(2).charts.single().chart; val sp = sc.plots[0]
+        check("scatter: type / series", "${sp.type} ${sp.series.size}", "scatter 2")
+        check("scatter: x values", sp.series[0].xs.joinToString(","), "1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0")
+        check("scatter: A markers only, B line", "${sp.series[0].line} ${sp.series[1].line}", "false true")
+        check("scatter: A colour from the marker fill", sp.series[0].color, "#E4572E")
+        check("scatter: markers / smooth", "${sp.series[0].marker} ${sp.series[1].marker} ${sp.series[1].smooth}", "diamond circle true")
+        check("scatter: axis titles (x = first value axis)", "${sc.cat.title} / ${sc.value.title}", "Input / Reading")
+        val svgS = ChartSvg.render(sc, 560, 340)
+        check("scatter svg: paths (B line + 8 + 1 diamonds) and circles (8 + 1 legend)", count(svgS, "<path ").toString() + " " + count(svgS, "<circle "), "10 9")
+        ok("scatter svg: smooth curve", svgS.contains(" C"))
+        // ---- Pics sheet
+        val pics = r.readSheet(3)
+        check("Pics: 1 picture, 3 shapes", "${pics.pics.size} ${pics.shapes.size}", "1 3")
+        ok("picture: png bytes", pics.pics[0].mime == "image/png" && pics.pics[0].bytes.size > 100)
+        check("shape geometry", pics.shapes.joinToString(",") { it.prst }, "roundRect,ellipse,rect")
+        val s0 = pics.shapes[0]
+        check("shape 0: fill / text / text colour", "${s0.fill} ${s0.text} ${s0.textColor}", "#1F6F8B Rounded box #FFFFFF")
+        val s2 = pics.shapes[2]
+        check("text box: no fill, 2 lines", "${s2.fill} ${s2.text.lines().size}", "null 2")
+        val html = XlsxHtml.render(pics, tabs, 3, r.styles)
+        check("html: picture + 3 shapes = 4 boxes", count(html, "class=ch ").toString(), "4")
+        ok("html: picture as data URI", html.contains("<img src=\"data:image/png;base64,iVBOR"))
+        ok("html: rounded rectangle", html.contains("border-radius:12px") && html.contains("border-radius:50%"))
+    }
+    println("chart2 done")
+}
+
+/** Part 12: Word outline ids, tappable Excel cells, print-layout script hooks (outline jump + thumbnail strip). */
+fun navTest(dir: File) {
+    fun ok(name: String, c: Boolean) = check(name, c.toString(), "true")
+    OfficeOpen(File(dir, "sample_styles.docx")).use { o ->
+        val doc = o.readDoc()
+        val ol = DocxOutline.build(doc)
+        ok("outline: at least one heading", ol.isNotEmpty())
+        check("outline: first heading text / level / id", "${ol[0].text} ${ol[0].level} ${ol[0].id}", "Styles and theme test 1 0")
+        val h = DocxHtml.render(doc)
+        ok("html: heading carries id=lsh0", h.contains("id=lsh0>") || h.contains("id=lsh0 "))
+        ok("outline: building twice gives the same ids", DocxOutline.build(doc).map { it.id } == ol.map { it.id })
+        val hp = DocxHtml.renderPrint(doc)
+        ok("print html: heading id kept", hp.contains("id=lsh0"))
+    }
+    ok("print script: goId and thumbnail strip", DocxPrintJs.JS.contains("goId:goId") && DocxPrintJs.JS.contains("id='thumbs'") && !DocxPrintJs.JS.contains("$"))
+    XlsxReader(File(dir, "sample_chart2.xlsx")).use { r ->
+        val tabs = r.sheets.map { Pair(it.index, it.name) }
+        val sh = r.readSheet(0)
+        val html = XlsxHtml.render(sh, tabs, 0, r.styles)
+        ok("xlsx html: cells link to lsoffice://cell/ROW/COL", html.contains("<a class=cl href=\"lsoffice://cell/0/0\">") || html.contains("lsoffice://cell/"))
+        val first = sh.rows.firstEntry().value.first { it.text.isNotEmpty() }
+        ok("xlsx html: link for the first filled cell", html.contains("lsoffice://cell/" + first.row + "/" + first.col + "\""))
+    }
+    println("nav done")
 }

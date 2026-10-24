@@ -8,7 +8,7 @@ object XlsxHtml {
     private const val CSS = "body{margin:0;font-size:13px;color:#000;background:#fff}" +
         ".tabs{position:sticky;top:0;z-index:5;display:flex;overflow-x:auto;background:#f0f0f0;border-bottom:1px solid #bbb}" +
         ".tabs a{padding:8px 14px;white-space:nowrap;color:#333;text-decoration:none;border-right:1px solid #ccc}.tabs a.on{background:#fff;font-weight:bold;color:#107c41}" +
-        ".w{overflow:auto;position:relative}.ch{position:absolute;z-index:1}table{border-collapse:collapse}td,th{padding:2px 6px;white-space:pre;max-width:320px;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;height:22px}" +
+        ".w{overflow:auto;position:relative}a.cl{color:inherit;text-decoration:none}.ch{position:absolute;z-index:1}table{border-collapse:collapse}td,th{padding:2px 6px;white-space:pre;max-width:320px;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;height:22px}" +
         "td{box-shadow:inset -1px -1px 0 #d4d4d4}th{border:1px solid #d4d4d4;background:#f3f3f3;color:#555;font-weight:normal;text-align:center}thead th{position:sticky;top:0;z-index:2}.rn{position:sticky;left:0;z-index:1;min-width:28px}thead th.rn{z-index:3}" +
         "td.n{text-align:right}.tr{background:#fff3cd;padding:4px 8px}.e{border:0;background:#fff;box-shadow:none}.ng td{box-shadow:none}" +
         "td.cm{position:relative}a.nt{position:absolute;top:0;right:0;width:14px;height:14px;background:linear-gradient(225deg,#d00 50%,transparent 50%)}" +
@@ -152,6 +152,43 @@ object XlsxHtml {
                 chartBottom = Math.max(chartBottom, Math.round(y).toInt() + h + 8)
             } catch (_: Throwable) { }
         }
+        // Part 11: sheet pictures (data: URIs, 8 MB budget per sheet) and simple shapes / text boxes, placed like the charts.
+        if (sh.pics.isNotEmpty() || sh.shapes.isNotEmpty()) {
+            fun colX2(c: Int): Double { var x = 28.0; for (k in 0 until c) if (k !in sh.hiddenCols) x += cw(k); return x }
+            fun rowY2(r: Int): Double { var hid = 0; for (k in sh.hiddenRows) if (k < r) hid++; return 22.0 + (r - hid) * 22.0 }
+            fun placeOf(a: XAnchor): DoubleArray = when (a.kind) {
+                0 -> { val x0 = colX2(a.c1) + a.x1 / 9525.0; val y0 = rowY2(a.r1) + a.y1 / 9525.0; doubleArrayOf(x0, y0, colX2(a.c2) + a.x2 / 9525.0 - x0, rowY2(a.r2) + a.y2 / 9525.0 - y0) }
+                1 -> doubleArrayOf(colX2(a.c1) + a.x1 / 9525.0, rowY2(a.r1) + a.y1 / 9525.0, a.cx / 9525.0, a.cy / 9525.0)
+                else -> doubleArrayOf(28.0 + a.x1 / 9525.0, 22.0 + a.y1 / 9525.0, a.cx / 9525.0, a.cy / 9525.0)
+            }
+            var picBytes = 0L
+            for (pc in sh.pics) {
+                try {
+                    if (picBytes + pc.bytes.size > 8_000_000L) break
+                    val g = placeOf(pc.anchor)
+                    val w = Math.round(g[2]).toInt().coerceIn(4, 4000); val h = Math.round(g[3]).toInt().coerceIn(4, 4000)
+                    val src = "data:" + pc.mime + ";base64," + DrawingParser.base64(pc.bytes)
+                    picBytes += pc.bytes.size
+                    boxes.add("<div class=ch style=\"left:" + Math.round(g[0]) + "px;top:" + Math.round(g[1]) + "px\"><img src=\"" + src + "\" alt=\"\" style=\"display:block;width:" + w + "px;height:" + h + "px\"></div>")
+                    chartBottom = Math.max(chartBottom, Math.round(g[1]).toInt() + h + 8)
+                } catch (_: Throwable) { }
+            }
+            for (shp in sh.shapes) {
+                try {
+                    val g = placeOf(shp.anchor)
+                    val w = Math.round(g[2]).toInt().coerceIn(4, 4000); val h = Math.round(g[3]).toInt().coerceIn(4, 4000)
+                    val rad = when (shp.prst) { "ellipse" -> "50%"; "roundRect" -> "12px"; else -> "0" }
+                    val tc = shp.textColor ?: if (shp.fill != null && shp.fill.length == 7 && shp.fill.substring(1).toIntOrNull(16)?.let { v -> 0.299 * (v shr 16 and 255) + 0.587 * (v shr 8 and 255) + 0.114 * (v and 255) < 150 } == true) "#ffffff" else "#000000"
+                    val st = "left:" + Math.round(g[0]) + "px;top:" + Math.round(g[1]) + "px;width:" + w + "px;height:" + h + "px;box-sizing:border-box;overflow:hidden;display:flex;align-items:center;" +
+                        "justify-content:" + (if (shp.fill != null) "center" else "flex-start") + ";text-align:" + (if (shp.fill != null) "center" else "left") + ";padding:2px 6px;border-radius:" + rad + ";white-space:pre-wrap;" +
+                        "font-size:" + shp.sizePt + "pt;line-height:1.2;color:" + tc + ";" +
+                        (if (shp.fill != null) "background:" + shp.fill + ";" else "") + (if (shp.line != null) "border:1px solid " + shp.line + ";" else "")
+                    boxes.add("<div class=ch style=\"" + st + "\">" + esc(shp.text) + "</div>")
+                    chartBottom = Math.max(chartBottom, Math.round(g[1]).toInt() + h + 8)
+                } catch (_: Throwable) { }
+            }
+        }
+        var cellLinks = 0   // Part 12: at most 20,000 tappable cells per sheet (page size)
         sb.append("<div class=w").append(if (chartBottom > 0) " style=\"min-height:" + chartBottom + "px\"" else "").append("><table").append(if (gridOn) "" else " class=ng").append(" style=\"table-layout:fixed;width:").append(28 + vis.sumOf { cw(it) }).append("px\"><colgroup><col style=\"width:28px\">")
         for (c in vis) sb.append("<col style=\"width:").append(cw(c)).append("px\">")
         sb.append("</colgroup><thead><tr><th class=rn></th>")
@@ -190,7 +227,9 @@ object XlsxHtml {
                     if (stk.isNotEmpty() && !lk.contains("background:")) sb.append("background:#fff;")   // frozen cells must hide what scrolls under them
                     sb.append('"')
                 }
-                sb.append('>').append(esc(t))
+                sb.append('>')
+                if (x != null && t.isNotEmpty() && ++cellLinks <= 20000) sb.append("<a class=cl href=\"lsoffice://cell/").append(r).append('/').append(c).append("\">").append(esc(t)).append("</a>")   // Part 12: tap = formula bar
+                else sb.append(esc(t))
                 if (nt != null) sb.append("<a class=nt href=\"lsoffice://note/").append(nt.ref).append("\"></a>")
                 sb.append("</td>")
                 i++

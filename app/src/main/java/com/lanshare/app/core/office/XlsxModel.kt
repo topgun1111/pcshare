@@ -71,7 +71,9 @@ class XSheet(
     val notes: List<XNote> = emptyList(),      // Part 9: cell comments
     val fileWidths: Boolean = false,           // Part 9: colWidths are the xlsx `width` values (already include the padding: pixels = width x digit width); false = characters (xls / ods)
     val defaultColWidth: Double? = null,       // Part 9: sheetFormatPr defaultColWidth (same unit as colWidths)
-    val charts: List<XChartFrame> = emptyList()   // Part 10: charts of the sheet's drawing part (xlsx only)
+    val charts: List<XChartFrame> = emptyList(),  // Part 10: charts of the sheet's drawing part (xlsx only)
+    val pics: List<XPic> = emptyList(),           // Part 11: pictures of the drawing part
+    val shapes: List<XShape> = emptyList()        // Part 11: simple shapes / text boxes of the drawing part
 ) {
     fun cell(r: Int, c: Int): XCell? = rows[r]?.firstOrNull { it.col == c }
 }

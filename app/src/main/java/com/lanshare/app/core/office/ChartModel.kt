@@ -2,7 +2,7 @@ package com.lanshare.app.core.office
 
 /**
  * Part 10: Excel charts. Model + parser for `xl/drawings/drawingN.xml` (anchors) and `xl/charts/chartN.xml`. Pure Kotlin (no android.*).
- * Only column / bar / line plots are drawn ([ChartSvg]); other plot kinds are kept as `type = "other:<name>"` (Part 11: pie, area, scatter).
+ * Column / bar / line ([ChartSvg]) and, in Part 11, pie / doughnut / area / scatter ([ChartSvg2]) are drawn; every other plot kind is kept as `type = "other:<name>"`.
  * Values come from the cached `pt` lists in the chart XML. When a series has no cache (openpyxl and some other writers omit it) the parser asks
  * the [Resolver] to read the referenced cells from the workbook instead (no formula engine: plain ranges only).
  */
@@ -11,18 +11,23 @@ class XChartSeries(
     val color: String,             // "#RRGGBB" (explicit, or the automatic accent colour decided by the parser)
     val index: Int,                // position among the drawn series of the chart (automatic colour)
     val marker: String?,           // null = automatic, "none", or a symbol name (circle, square, diamond, triangle, x ...)
-    val smooth: Boolean, val labels: Boolean, val fmt: String?   // fmt = number format code of the values
+    val smooth: Boolean, val labels: Boolean, val fmt: String?,  // fmt = number format code of the values
+    val xs: List<Double?> = emptyList(),          // Part 11: scatter x values (xVal), empty = use 1..n
+    val ptColors: Map<Int, String> = emptyMap(),  // Part 11: pie / doughnut: colour of every point (dPt or automatic accent cycle)
+    val pct: Boolean = false, val catName: Boolean = false,   // Part 11: data labels with showPercent / showCatName
+    val line: Boolean = true                      // Part 11: scatter: false when the series line is `noFill` (markers only)
 )
 
 class XChartPlot(
-    val type: String,              // "bar" | "line" | "other:<kind>"
+    val type: String,              // "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "other:<kind>"
     val horizontal: Boolean,       // barDir = bar
     val grouping: String,          // clustered | stacked | percentStacked | standard
     val gapWidth: Int, val overlap: Int,
     val markers: Boolean,          // lineChart <marker val=1>
     val labels: Boolean,           // plot-level dLbls showVal
     val secondary: Boolean,        // uses axes other than the first plot's: not drawn in Part 10
-    val series: List<XChartSeries>
+    val series: List<XChartSeries>,
+    val hole: Int = 50, val firstAngle: Int = 0   // Part 11: doughnut hole size in %, first slice angle in degrees (clockwise from 12 o'clock)
 )
 
 class XChartAxis(
@@ -47,7 +52,7 @@ object ChartParser {
 
     /** Minimal element tree of a (small) part. Attributes kept: val idx formatCode id cx cy. */
     internal class N(val name: String) {
-        val kids = ArrayList<N>(); var text = ""; var v: String? = null; var idx: String? = null; var fmt: String? = null; var rid: String? = null; var cx: String? = null; var cy: String? = null
+        val kids = ArrayList<N>(); var text = ""; var v: String? = null; var idx: String? = null; var fmt: String? = null; var rid: String? = null; var cx: String? = null; var cy: String? = null; var emb: String? = null; var prst: String? = null; var sz: String? = null
         fun kid(n: String): N? { for (k in kids) if (k.name == n) return k; return null }
         fun all(n: String): List<N> = kids.filter { it.name == n }
         fun path(vararg p: String): N? { var c: N? = this; for (s in p) { c = c?.kid(s) ?: return null }; return c }
@@ -75,7 +80,7 @@ object ChartParser {
         }
         return root
     }
-    private fun fill(n: N, x: MiniXml) { n.v = x.attr("val"); n.idx = x.attr("idx"); n.fmt = x.attr("formatCode"); n.rid = x.attr("id"); n.cx = x.attr("cx"); n.cy = x.attr("cy") }
+    private fun fill(n: N, x: MiniXml) { n.v = x.attr("val"); n.idx = x.attr("idx"); n.fmt = x.attr("formatCode"); n.rid = x.attr("id"); n.cx = x.attr("cx"); n.cy = x.attr("cy"); n.emb = x.attr("embed"); n.prst = x.attr("prst"); n.sz = x.attr("sz") }
 
     // ------------------------------------------------------------------ drawing (anchors)
     /** All chart frames of a sheet's drawing part. [theme] gives the automatic colours; [res] fills series without cached values. */
@@ -102,7 +107,7 @@ object ChartParser {
     }
 
     private fun num(n: N?): Long = n?.text?.trim()?.toDoubleOrNull()?.toLong() ?: 0L
-    private fun anchorOf(a: N, kind: Int): XAnchor? {
+    internal fun anchorOf(a: N, kind: Int): XAnchor? {
         val f = a.kid("from"); val t = a.kid("to"); val e = a.kid("ext"); val p = a.kid("pos")
         val cx = e?.cx?.toDoubleOrNull()?.toLong() ?: 0L; val cy = e?.cy?.toDoubleOrNull()?.toLong() ?: 0L
         return when (kind) {
@@ -114,7 +119,8 @@ object ChartParser {
     }
 
     // ------------------------------------------------------------------ chart part
-    private val PLOTS = mapOf("barChart" to "bar", "bar3DChart" to "bar", "lineChart" to "line", "line3DChart" to "line")
+    private val PLOTS = mapOf("barChart" to "bar", "bar3DChart" to "bar", "lineChart" to "line", "line3DChart" to "line",
+        "pieChart" to "pie", "pie3DChart" to "pie", "doughnutChart" to "doughnut", "areaChart" to "area", "area3DChart" to "area", "scatterChart" to "scatter")
 
     fun parseChart(x: MiniXml, theme: Theme, res: Resolver?): XChart? {
         var root: N? = null
@@ -130,21 +136,30 @@ object ChartParser {
         for (p in area.kids) {
             val kind = PLOTS[p.name] ?: if (p.name.endsWith("Chart") || p.name.endsWith("3DChart")) "other:" + p.name.removeSuffix("3DChart").removeSuffix("Chart") else continue
             kinds.add(kind.removePrefix("other:"))
-            val ids = p.all("axId").mapNotNull { it.v }.toSet()
+            val idList = p.all("axId").mapNotNull { it.v }
+            val ids = idList.toSet()
             if (kind.startsWith("other:")) { plots.add(XChartPlot(kind, false, "standard", 150, 0, false, false, false, emptyList())); continue }
-            if (firstAx == null) {
+            val noAxes = kind == "pie" || kind == "doughnut"
+            if (!noAxes && firstAx == null && ids.isNotEmpty()) {
                 firstAx = ids
-                for (id in ids) axes[id]?.let { if (it.name == "valAx") valAx = it else if (catAx == null) catAx = it }
+                if (kind == "scatter") {   // two value axes: the first axId is x, the second y
+                    axes[idList.getOrNull(0) ?: ""]?.let { catAx = it }
+                    axes[idList.getOrNull(1) ?: ""]?.let { valAx = it }
+                } else for (id in ids) axes[id]?.let { if (it.name == "valAx") valAx = it else if (catAx == null) catAx = it }
             }
-            val secondary = ids.isNotEmpty() && firstAx != null && ids.none { it in firstAx!! }
+            val secondary = !noAxes && ids.isNotEmpty() && firstAx != null && ids.none { it in firstAx!! }
             val isBar = kind == "bar"
+            val fillFirst = isBar || kind == "area" || noAxes   // colour from the fill, not the line
             val grouping = p.kid("grouping")?.v ?: if (isBar) "clustered" else "standard"
             val series = ArrayList<XChartSeries>()
             val plotLbl = p.path("dLbls", "showVal")?.v.let { it == "1" || it == "true" }
-            for (s in p.all("ser")) { if (series.size >= 40) break; series.add(series(s, theme, if (secondary) -1 else si++, isBar, res, plotLbl)) }
+            val plotPct = p.path("dLbls", "showPercent")?.v.let { it == "1" || it == "true" }
+            val plotCat = p.path("dLbls", "showCatName")?.v.let { it == "1" || it == "true" }
+            for (s in p.all("ser")) { if (series.size >= 40) break; series.add(series(s, theme, if (secondary) -1 else si++, fillFirst, res, plotLbl, kind, plotPct, plotCat)) }
             plots.add(XChartPlot(kind, isBar && p.kid("barDir")?.v == "bar", grouping, p.kid("gapWidth")?.v?.toIntOrNull() ?: 150,
                 p.kid("overlap")?.v?.toIntOrNull() ?: (if (grouping == "stacked" || grouping == "percentStacked") 100 else 0),
-                !isBar && p.kid("marker")?.v.let { it == "1" || it == "true" }, plotLbl, secondary, series))
+                kind == "line" && p.kid("marker")?.v.let { it == "1" || it == "true" }, plotLbl, secondary, series,
+                (p.kid("holeSize")?.v?.toIntOrNull() ?: 50).coerceIn(10, 90), p.kid("firstSliceAng")?.v?.toIntOrNull() ?: 0))
         }
         val drawn = plots.filter { !it.secondary && it.series.isNotEmpty() }
         var title: String? = null
@@ -175,7 +190,7 @@ object ChartParser {
     }
 
     // ------------------------------------------------------------------ series
-    private fun series(s: N, theme: Theme, index: Int, isBar: Boolean, res: Resolver?, plotLbl: Boolean): XChartSeries {
+    private fun series(s: N, theme: Theme, index: Int, isBar: Boolean, res: Resolver?, plotLbl: Boolean, kind: String = "bar", plotPct: Boolean = false, plotCat: Boolean = false): XChartSeries {
         // name
         var name: String? = null
         s.kid("tx")?.let { tx ->
@@ -184,7 +199,7 @@ object ChartParser {
             if (name == null) refOf(tx)?.let { r -> res?.cells(r)?.firstOrNull()?.let { name = it.text } }
         }
         // categories and values: cache first, workbook cells as a fallback
-        val catN = s.kid("cat"); val valN = s.kid("val")
+        val catN = s.kid("cat") ?: s.kid("xVal"); val valN = s.kid("val") ?: s.kid("yVal")
         var cats: List<String> = emptyList()
         if (catN != null) {
             val c = cache(catN); val fmt = c.second
@@ -206,10 +221,31 @@ object ChartParser {
             val ln = sp.kid("ln")?.kid("solidFill")?.let { colorOf(it, theme) }
             color = if (isBar) fill ?: ln else ln ?: fill
         }
+        // Part 11: scatter x values, per-point colours (pie / doughnut), percent / category labels, hidden series line
+        var xs: List<Double?> = emptyList()
+        val xn = s.kid("xVal")
+        if (xn != null) {
+            val c = cache(xn); xs = c.first.map { it?.toDoubleOrNull() }
+            if (xs.isEmpty() || xs.all { it == null }) refOf(xn)?.let { r -> res?.cells(r)?.let { cs -> xs = cs.map { cellNum(it) } } }
+        }
+        val pts = HashMap<Int, String>()
+        if (kind == "pie" || kind == "doughnut") {
+            val explicit = HashMap<Int, String>()
+            for (d in s.all("dPt")) {
+                val di = d.kid("idx")?.v?.toIntOrNull() ?: continue
+                val dc = d.kid("spPr")?.kid("solidFill")?.let { colorOf(it, theme) }
+                if (dc != null) explicit[di] = dc
+            }
+            for (k in 0 until Math.min(vals.size, 200)) pts[k] = explicit[k] ?: autoColor(theme, k)
+        }
+        val noLine = sp?.kid("ln")?.kid("noFill") != null
+        val sPct = s.path("dLbls", "showPercent")?.v?.let { it == "1" || it == "true" } ?: plotPct
+        val sCat = s.path("dLbls", "showCatName")?.v?.let { it == "1" || it == "true" } ?: plotCat
+        if (color == null) color = s.path("marker", "spPr")?.kid("solidFill")?.let { colorOf(it, theme) }   // markers-only scatter series
         val sym = s.path("marker", "symbol")?.v
         val smooth = s.kid("smooth")?.let { it.v == null || it.v == "1" || it.v == "true" } ?: false
         val lbl = s.path("dLbls", "showVal")?.v?.let { it == "1" || it == "true" } ?: plotLbl
-        return XChartSeries(name ?: "Series${index + 1}", cats, vals, color ?: autoColor(theme, index.coerceAtLeast(0)), index.coerceAtLeast(0), if (sym == "auto") null else sym, smooth, lbl, vfmt)
+        return XChartSeries(name ?: "Series${index + 1}", cats, vals, color ?: autoColor(theme, index.coerceAtLeast(0)), index.coerceAtLeast(0), if (sym == "auto") null else sym, smooth, lbl, vfmt, xs, pts, sPct, sCat, !noLine)
     }
 
     /** Excel's automatic series colours: accent1..6 of the workbook theme, then darker (60 %) and lighter (80 % + 20 %) rounds. */
@@ -242,7 +278,7 @@ object ChartParser {
     }
 
     /** `solidFill` / `gs` node -> "#RRGGBB" (srgbClr, schemeClr with lumMod / lumOff / tint / shade, sysClr lastClr). */
-    private fun colorOf(f: N, theme: Theme): String? {
+    internal fun colorOf(f: N, theme: Theme): String? {
         val c = f.kid("srgbClr") ?: f.kid("schemeClr") ?: f.kid("sysClr") ?: return null
         fun m(n: String) = c.kid(n)?.v?.toIntOrNull()
         val rgb = when (c.name) { "srgbClr" -> c.v; "sysClr" -> c.kid("lastClr")?.v ?: c.v?.takeIf { it.length == 6 }; else -> null }

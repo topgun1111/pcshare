@@ -6,23 +6,23 @@ package com.lanshare.app.core.office
  * (a small note says so); a chart with nothing drawable becomes a labelled empty box. Text uses the page font (`font-family:inherit`).
  */
 object ChartSvg {
-    private const val TXT = "#595959"
-    private const val GRID = "#d9d9d9"
-    private const val FS = 12.0
-    private const val PAD = 10.0
+    internal const val TXT = "#595959"
+    internal const val GRID = "#d9d9d9"
+    internal const val FS = 12.0
+    internal const val PAD = 10.0
 
-    private fun f(d: Double): String {
+    internal fun f(d: Double): String {
         val r = Math.round(d * 10) / 10.0
         return if (r == Math.rint(r) && Math.abs(r) < 1e9) r.toLong().toString() else r.toString()
     }
-    private fun esc(s: String): String {
+    internal fun esc(s: String): String {
         val sb = StringBuilder(s.length + 8)
         for (c in s) when (c) { '&' -> sb.append("&amp;"); '<' -> sb.append("&lt;"); '>' -> sb.append("&gt;"); '"' -> sb.append("&quot;"); else -> if (c >= ' ') sb.append(c) }
         return sb.toString()
     }
     /** Rough text width in px (average glyph = 0.55 em). */
-    private fun tw(s: String, px: Double = FS) = s.length * px * 0.55
-    private fun cut(s: String, maxPx: Double, px: Double = FS): String { val n = (maxPx / (px * 0.55)).toInt().coerceAtLeast(2); return if (s.length <= n) s else s.substring(0, n - 1) + "…" }
+    internal fun tw(s: String, px: Double = FS) = s.length * px * 0.55
+    internal fun cut(s: String, maxPx: Double, px: Double = FS): String { val n = (maxPx / (px * 0.55)).toInt().coerceAtLeast(2); return if (s.length <= n) s else s.substring(0, n - 1) + "…" }
 
     class Scale(val min: Double, val max: Double, val step: Double) {
         fun ticks(): List<Double> {
@@ -57,6 +57,7 @@ object ChartSvg {
     }
 
     fun render(c: XChart, w: Int, h: Int): String {
+        ChartSvg2.render(c, w, h)?.let { return it }   // Part 11: pie / doughnut / area / scatter (null = not a chart for ChartSvg2)
         val W = w.toDouble(); val H = h.toDouble()
         val sb = StringBuilder(6 * 1024)
         sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"").append(w).append("\" height=\"").append(h).append("\" viewBox=\"0 0 ").append(w).append(' ').append(h)
@@ -280,7 +281,7 @@ object ChartSvg {
     /** Marker symbol of a line series: explicit symbol, else a circle when the plot shows markers; "none" = no marker. */
     private fun markerOf(s: XChartSeries, p: XChartPlot): String = s.marker ?: if (p.markers) "circle" else "none"
 
-    private fun marker(sb: StringBuilder, sym: String, x: Double, y: Double, col: String) {
+    internal fun marker(sb: StringBuilder, sym: String, x: Double, y: Double, col: String) {
         val r = 3.5
         when (sym) {
             "none" -> {}
