@@ -5,7 +5,7 @@ package com.lanshare.app.core.office
  *  Handles merges, col widths, hidden rows/cols, frozen panes (sticky rows/cols) and cell styles (bold/italic/underline/colour/fill/align/wrap) when [render] gets the reader's `styles`.
  *  Theme / indexed colours are only shown when the reader resolved them to #RRGGBB. */
 object XlsxHtml {
-    private const val CSS = "body{margin:0;font:13px Calibri,Carlito,Arial,sans-serif;color:#000;background:#fff}" +
+    private const val CSS = "body{margin:0;font-size:13px;color:#000;background:#fff}" +
         ".tabs{position:sticky;top:0;z-index:5;display:flex;overflow-x:auto;background:#f0f0f0;border-bottom:1px solid #bbb}" +
         ".tabs a{padding:8px 14px;white-space:nowrap;color:#333;text-decoration:none;border-right:1px solid #ccc}.tabs a.on{background:#fff;font-weight:bold;color:#107c41}" +
         ".w{overflow:auto}table{border-collapse:collapse}td,th{border:1px solid #d4d4d4;padding:2px 6px;white-space:pre;max-width:320px;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;height:22px}" +
@@ -30,10 +30,12 @@ object XlsxHtml {
     }
 
     /** [styles]: pass the reader's `styles` to show bold / italic / colours / fills / alignment; null = plain. */
-    fun render(sh: XSheet, tabs: List<Pair<Int, String>>, active: Int, styles: XStyles? = null): String {
+    /** [fontBase]: URL prefix the bundled fonts are served from (FontMap.FONT_URL in the viewer); null = no @font-face, system fonts only. */
+    fun render(sh: XSheet, tabs: List<Pair<Int, String>>, active: Int, styles: XStyles? = null, fontBase: String? = null): String {
+        val defFont = styles?.fonts?.firstOrNull()?.name
         val sb = StringBuilder(32 * 1024)
         sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes\"><style>")
-            .append(CSS).append("</style></head><body>")
+            .append(if (fontBase != null) FontMap.fontFaceCss(fontBase) else "").append(CSS).append("body{font-family:").append(FontMap.stack(defFont)).append("}</style></head><body>")
         if (tabs.size > 1) {
             sb.append("<div class=tabs>")
             for ((i, n) in tabs) sb.append("<a href=\"lsoffice://sheet/").append(i).append('"').append(if (i == active) " class=on" else "").append('>').append(esc(n)).append("</a>")
@@ -62,6 +64,7 @@ object XlsxHtml {
             val sb2 = StringBuilder()
             val f = styles.fonts.getOrNull(xf.fontId)
             if (f != null) {
+                f.name?.let { fn -> if (!fn.equals(defFont, true)) sb2.append("font-family:").append(FontMap.stack(fn)).append(';') }
                 if (f.bold) sb2.append("font-weight:bold;")
                 if (f.italic) sb2.append("font-style:italic;")
                 if (f.underline) sb2.append("text-decoration:underline;")

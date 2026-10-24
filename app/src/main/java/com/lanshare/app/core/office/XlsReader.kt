@@ -49,7 +49,11 @@ class XlsReader(file: File) : AutoCloseable {
                 0x041E -> { val id = u16(wb, d); fmts[id] = longStr(wb, d + 2, d + len) }
                 0x0031 -> {
                     val h = u16(wb, d) / 20.0; val g = u16(wb, d + 2); val ic = u16(wb, d + 4); val bold = u16(wb, d + 6) >= 700; val ul = wb[d + 10].toInt() != 0
-                    fonts.add(XFont(bold, (g and 2) != 0, ul, colorOf(ic, pal), h))
+                    val nm = try {
+                        val n = wb[d + 14].toInt() and 0xFF; val wide = (wb[d + 15].toInt() and 1) != 0; val bytes = if (wide) 2 * n else n
+                        if (n > 0 && d + 16 + bytes <= d + len) String(wb, d + 16, bytes, if (wide) Charsets.UTF_16LE else Charsets.ISO_8859_1) else null
+                    } catch (_: Throwable) { null }
+                    fonts.add(XFont(bold, (g and 2) != 0, ul, colorOf(ic, pal), h, nm))
                 }
                 0x0092 -> { val n = u16(wb, d); for (k in 0 until minOf(n, 56, (len - 2) / 4)) { val o = d + 2 + k * 4; pal[8 + k] = hex(wb[o], wb[o + 1], wb[o + 2]) } }
                 0x00E0 -> if (len >= 20) {

@@ -7,7 +7,7 @@ object DocxHtml {
         "red" to "#ff0000", "darkBlue" to "#000080", "darkCyan" to "#008080", "darkGreen" to "#008000", "darkMagenta" to "#800080",
         "darkRed" to "#800000", "darkYellow" to "#808000", "darkGray" to "#808080", "lightGray" to "#c0c0c0", "black" to "#000000", "white" to "#ffffff")
 
-    private const val CSS = "body{margin:0;background:#e8e8e8;font-family:Calibri,Carlito,Arial,sans-serif;color:#000}" +
+    private const val CSS = "body{margin:0;background:#e8e8e8;color:#000}" +
         ".page{background:#fff;max-width:816px;margin:8px auto;padding:24px 28px;box-sizing:border-box;overflow-wrap:anywhere}" +
         "p{margin:0 0 .6em;white-space:pre-wrap;line-height:1.3}h1,h2,h3,h4,h5,h6{margin:.8em 0 .4em;line-height:1.2}" +
         "h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4,h5,h6{font-size:1.05em}" +
@@ -26,12 +26,15 @@ object DocxHtml {
     }
 
     /** [rd] != null -> phone reading layout (reflowed text, own font size and theme, no page chrome); null -> page-like layout as before. */
-    fun render(doc: DDoc, image: (DImage) -> String? = { null }, title: String = "", rd: DocxReading? = null): String {
+    /** [fontBase]: URL prefix the bundled fonts are served from (FontMap.FONT_URL in the viewer); null = no @font-face, system fonts only. */
+    fun render(doc: DDoc, image: (DImage) -> String? = { null }, title: String = "", rd: DocxReading? = null, fontBase: String? = null): String {
         val notes = LinkedHashMap<String, Int>()
         fun noteNo(id: String) = notes.getOrPut(id) { notes.size + 1 }
         val sb = StringBuilder(16 * 1024)
         sb.append("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes\"><title>")
-            .append(esc(title)).append("</title><style>").append(CSS)
+            .append(esc(title)).append("</title><style>")
+        if (fontBase != null) sb.append(FontMap.fontFaceCss(fontBase))
+        sb.append(CSS).append("body{font-family:").append(FontMap.stack(doc.defaultFont)).append('}')
         if (doc.defaultSize > 0) sb.append(".page{font-size:").append(doc.defaultSize / 2.0).append("pt}")
         if (rd != null) sb.append(readingCss(rd))
         sb.append("</style></head><body><div class=page>")
@@ -113,6 +116,7 @@ object DocxHtml {
     private fun styled(doc: DDoc, r: DRun, html: String, rd: DocxReading?, sb: StringBuilder) {
         val dark = rd != null && rd.theme == DocxReading.DARK   // dark reading theme: author colours / highlights would be unreadable
         val st = StringBuilder()
+        if (rd == null) r.font?.let { fn -> if (!fn.equals(doc.defaultFont, true)) st.append("font-family:").append(FontMap.stack(fn)).append(';') }   // reading mode keeps its own reading font
         if (r.bold) st.append("font-weight:bold;")
         if (r.italic) st.append("font-style:italic;")
         if (r.underline || r.strike) st.append("text-decoration:").append(if (r.underline) "underline" else "").append(if (r.underline && r.strike) " " else "").append(if (r.strike) "line-through" else "").append(';')

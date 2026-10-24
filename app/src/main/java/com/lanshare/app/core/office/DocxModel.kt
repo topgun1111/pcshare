@@ -13,13 +13,14 @@ class DRun(val kind: Int, var text: String = "") {
     var color: String? = null       // RRGGBB
     var highlight: String? = null   // OOXML name: yellow, green, ...
     var size = 0                    // half-points, 0 = default
+    var font: String? = null        // Part 3: font family as the document names it (theme fonts resolved), null = document default
     var script = 0                  // 1 superscript, -1 subscript
     var link: String? = null        // external URL or "#bookmark"
     var image: DImage? = null       // kind == IMAGE
     var endnote = false             // kind == NOTE: text = note id
 
     fun sameStyle(o: DRun) = bold == o.bold && italic == o.italic && underline == o.underline && strike == o.strike &&
-        caps == o.caps && color == o.color && highlight == o.highlight && size == o.size && script == o.script && link == o.link
+        caps == o.caps && color == o.color && highlight == o.highlight && size == o.size && script == o.script && link == o.link && font == o.font
 
     companion object { const val TEXT = 0; const val TAB = 1; const val BREAK = 2; const val PAGE = 3; const val IMAGE = 4; const val NOTE = 5 }
 }
@@ -70,6 +71,7 @@ class DDoc {
     val footnotes = LinkedHashMap<String, List<DBlock>>()
     val endnotes = LinkedHashMap<String, List<DBlock>>()
     var defaultSize = 0                      // half-points of the document default font (0 = unknown)
+    var defaultFont: String? = null          // Part 3: document default font family (null = unknown, Calibri assumed)
     var truncated = false                    // paragraph limit hit
 
     fun plainText(blocks: List<DBlock> = body): String {

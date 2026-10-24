@@ -40,7 +40,20 @@ class OfficeViewerActivity : Activity() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
                 val u = r.url
                 if (u.scheme == "lsoffice") { u.lastPathSegment?.toIntOrNull()?.let { showSheet(it) }; return true }
+                if (u.scheme == "https" && u.host == FontMap.HOST && u.fragment != null) return false   // in-page #anchor of the document (base URL is the font host)
                 return u.scheme != "about" && u.scheme != "data"   // block everything else (in-page #anchors are not navigations)
+            }
+            /** Part 3: the bundled office fonts come from assets over https://appassets.androidplatform.net/office-fonts/ (same origin as the page -> no CORS). */
+            override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? {
+                val u = r.url
+                if (u.scheme != "https" || u.host != FontMap.HOST || u.path?.startsWith(FontMap.PATH) != true) return null
+                val asset = FontMap.assetPath(u.lastPathSegment)
+                    ?: return android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+                return try {
+                    android.webkit.WebResourceResponse("font/ttf", null, 200, "OK", mapOf("Access-Control-Allow-Origin" to "*", "Cache-Control" to "max-age=86400"), assets.open(asset))
+                } catch (_: Throwable) {
+                    android.webkit.WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+                }
             }
             override fun onPageFinished(v: WebView, url: String?) {
                 val fr = pendingFrac; if (fr < 0f) return
@@ -186,7 +199,7 @@ class OfficeViewerActivity : Activity() {
                 val enc = e.message.orEmpty().contains("password", true) || e.message.orEmpty().contains("zip", true) || e.message.orEmpty().contains("end header", true)
                 "<body style=\"font:15px sans-serif;padding:16px\">" + (if (enc) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: " + e.message) + "</body>"
             }
-            runOnUiThread { if (!isDestroyed) { updateReadRow(); web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) } }
+            runOnUiThread { if (!isDestroyed) { updateReadRow(); web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) } }
         }.start()
     }
 
@@ -223,11 +236,11 @@ class OfficeViewerActivity : Activity() {
         updateReadRow()
         Thread {
             val html = try { renderDoc(o, doc) } catch (e: Throwable) { "<body style=\"font:15px sans-serif;padding:16px\">" + e.message + "</body>" }
-            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) }
+            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) }
         }.start()
     }
 
-    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), image = { im ->
+    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = { im ->
         val bytes = try { o.image(im.part) } catch (_: Throwable) { null }
         if (bytes == null || bytes.size > 3_000_000) null else {
             val mime = when (im.part.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "gif" -> "image/gif"; "webp" -> "image/webp"; "svg" -> "image/svg+xml"; else -> null }
@@ -245,15 +258,15 @@ class OfficeViewerActivity : Activity() {
         tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
         val first = (tabs.firstOrNull { it.first == curSheet } ?: tabs.firstOrNull())?.first ?: return "<body style=\"font:15px sans-serif;padding:16px\">No visible sheets.</body>"
         curSheet = first
-        return XlsxHtml.render(o.readSheet(first), tabs, first, o.styles)
+        return XlsxHtml.render(o.readSheet(first), tabs, first, o.styles, FontMap.FONT_URL)
     }
 
     private fun showSheet(i: Int) {
         val r = od ?: return
         curSheet = i
         Thread {
-            val html = try { XlsxHtml.render(r.readSheet(i), tabs, i, r.styles) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
-            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null) }
+            val html = try { XlsxHtml.render(r.readSheet(i), tabs, i, r.styles, FontMap.FONT_URL) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
+            runOnUiThread { if (!isDestroyed) web.loadDataWithBaseURL(FontMap.BASE, html, "text/html", "UTF-8", null) }
         }.start()
     }
 

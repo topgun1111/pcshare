@@ -90,7 +90,7 @@ class XlsxReader(file: File) : AutoCloseable {
         val numFmts = HashMap<Int, String>(); val fonts = ArrayList<XFont>(); val fills = ArrayList<String?>(); val xfs = ArrayList<XXf>()
         var inFonts = false; var inFills = false; var inCellXfs = false
         // current font
-        var fb = false; var fi = false; var fu = false; var fc: String? = null; var fs = 11.0; var inFont = false
+        var fb = false; var fi = false; var fu = false; var fc: String? = null; var fs = 11.0; var fn: String? = null; var inFont = false
         var inFill = false; var fillColor: String? = null
         var xfNum = 0; var xfFont = 0; var xfFill = 0; var xfH: String? = null; var xfW = false; var xfV: String? = null; var inXf = false
         while (true) {
@@ -101,11 +101,12 @@ class XlsxReader(file: File) : AutoCloseable {
                     "fonts" -> inFonts = true
                     "fills" -> inFills = true
                     "cellXfs" -> inCellXfs = true
-                    "font" -> if (inFonts) { inFont = true; fb = false; fi = false; fu = false; fc = null; fs = 11.0 }
+                    "font" -> if (inFonts) { inFont = true; fb = false; fi = false; fu = false; fc = null; fs = 11.0; fn = null }
                     "b" -> if (inFont) fb = on(x)
                     "i" -> if (inFont) fi = on(x)
                     "u" -> if (inFont) fu = x.attr("val") != "none"
                     "sz" -> if (inFont) fs = x.attr("val")?.toDoubleOrNull() ?: 11.0
+                    "name" -> if (inFont) fn = x.attr("val")
                     "color" -> if (inFont) fc = x.attr("rgb")?.let { "#" + it.takeLast(6) }
                     "fill" -> if (inFills) { inFill = true; fillColor = null }
                     "fgColor" -> if (inFill && fillColor == null) fillColor = x.attr("rgb")?.let { "#" + it.takeLast(6) }
@@ -120,7 +121,7 @@ class XlsxReader(file: File) : AutoCloseable {
                     "fonts" -> inFonts = false
                     "fills" -> inFills = false
                     "cellXfs" -> inCellXfs = false
-                    "font" -> if (inFont) { fonts.add(XFont(fb, fi, fu, fc, fs)); inFont = false }
+                    "font" -> if (inFont) { fonts.add(XFont(fb, fi, fu, fc, fs, fn)); inFont = false }
                     "fill" -> if (inFill) { fills.add(fillColor); inFill = false }
                     "xf" -> if (inXf) { xfs.add(XXf(xfNum, xfFont, xfFill, xfH, xfW, xfV)); inXf = false }
                 }

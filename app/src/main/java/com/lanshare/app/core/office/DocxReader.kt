@@ -13,10 +13,10 @@ class DocxReader(file: File) : AutoCloseable {
     private class RPr {
         var b: Boolean? = null; var i: Boolean? = null; var u: Boolean? = null; var strike: Boolean? = null; var caps: Boolean? = null
         var color: String? = null; var hl: String? = null; var rStyle: String? = null
-        var sz = 0; var script = 0
+        var sz = 0; var script = 0; var font: String? = null
         fun overlay(o: RPr) {
             o.b?.let { b = it }; o.i?.let { i = it }; o.u?.let { u = it }; o.strike?.let { strike = it }; o.caps?.let { caps = it }
-            o.color?.let { color = it }; o.hl?.let { hl = it }
+            o.color?.let { color = it }; o.hl?.let { hl = it }; o.font?.let { font = it }
             if (o.sz > 0) sz = o.sz
             if (o.script != 0) script = o.script
         }
@@ -81,6 +81,7 @@ class DocxReader(file: File) : AutoCloseable {
         }
         d.truncated = truncated
         d.defaultSize = defRpr.sz
+        d.defaultFont = defRpr.font
         count = 0
         hdrRid?.let { d.header = readPart(it) }
         ftrRid?.let { d.footer = readPart(it) }
@@ -342,7 +343,7 @@ class DocxReader(file: File) : AutoCloseable {
         fun mk(kind: Int, text: String): DRun {
             val r = DRun(kind, text)
             r.bold = f.b == true; r.italic = f.i == true; r.underline = f.u == true; r.strike = f.strike == true; r.caps = f.caps == true
-            r.color = f.color; r.highlight = f.hl; r.size = f.sz; r.script = f.script; r.link = link
+            r.color = f.color; r.highlight = f.hl; r.size = f.sz; r.script = f.script; r.link = link; r.font = f.font
             p.runs.add(r)
             return r
         }
@@ -443,6 +444,37 @@ class DocxReader(file: File) : AutoCloseable {
         return q
     }
 
+    /** Part 3: w:rFonts -> family name. Explicit ascii / hAnsi name wins; otherwise the theme font (minor = body, major = headings). */
+    private fun fontOf(x: MiniXml): String? {
+        FontMap.clean(x.attr("ascii") ?: x.attr("hAnsi"))?.let { return it }
+        val th = x.attr("asciiTheme") ?: x.attr("hAnsiTheme") ?: return null
+        return FontMap.clean(if (th.startsWith("major")) themeFonts().first else if (th.startsWith("minor")) themeFonts().second else null)
+    }
+
+    /** (major, minor) Latin typeface of word/theme/theme1.xml; (null, null) when there is no theme. */
+    private var themeCache: Pair<String?, String?>? = null   // NOT `by lazy`: styles are parsed in init, before later property initialisers run
+    private fun themeFonts(): Pair<String?, String?> = themeCache ?: loadThemeFonts().also { themeCache = it }
+    private fun loadThemeFonts(): Pair<String?, String?> {
+        var major: String? = null; var minor: String? = null
+        try {
+            val t = pkg.xml("word/theme/theme1.xml")
+            if (t != null) {
+                var mode = 0
+                loop@ while (true) when (t.next()) {
+                    MiniXml.T.EOF -> break@loop
+                    MiniXml.T.START -> when (t.name) {
+                        "majorFont" -> mode = 1
+                        "minorFont" -> mode = 2
+                        "latin" -> { val tf = t.attr("typeface")?.takeIf { it.isNotEmpty() }; if (mode == 1 && major == null) major = tf else if (mode == 2 && minor == null) minor = tf }
+                    }
+                    MiniXml.T.END -> if (t.name == "majorFont" || t.name == "minorFont") mode = 0
+                    else -> {}
+                }
+            }
+        } catch (_: Throwable) {}
+        return major to minor
+    }
+
     private fun parseRPr(x: MiniXml): RPr {
         val q = RPr()
         eachChild(x) { n ->
@@ -454,6 +486,7 @@ class DocxReader(file: File) : AutoCloseable {
                 "caps", "smallCaps" -> q.caps = on(x)
                 "color" -> q.color = x.attr("val")?.takeIf { it.length == 6 }
                 "sz" -> q.sz = x.attr("val")?.toIntOrNull() ?: 0
+                "rFonts" -> q.font = fontOf(x)
                 "highlight" -> q.hl = x.attr("val")?.takeIf { it != "none" }
                 "vertAlign" -> q.script = when (x.attr("val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 }
                 "rStyle" -> q.rStyle = x.attr("val")

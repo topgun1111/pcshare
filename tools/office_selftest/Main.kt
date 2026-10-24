@@ -9,6 +9,7 @@ fun check(name: String, got: String, want: String) { println((if (got == want) "
 fun main(a: Array<String>) {
     if (a.isNotEmpty() && a[0] == "--edit") { editTest(); return }
     if (a.isNotEmpty() && a[0] == "--docx") { docxTest(); return }
+    if (a.isNotEmpty() && a[0] == "--fonts") { fontsTest(java.io.File(a.getOrElse(1) { "tools/office_selftest" }), java.io.File(a.getOrElse(2) { "app/src/main/assets/fonts/office" })); return }
     if (a.size > 1 && a[0] == "--export") {   // Part 8: text + CSV of any office file
         val f = java.io.File(a[1]); println("TEXT:"); println(OfficeExport.text(f))
         OfficeOpen(f).use { o -> if (o.isSheet) { println("CSV:"); print(OfficeExport.sheetToCsv(o.readSheet(o.sheets.first { !it.hidden }.index))) } }
@@ -180,4 +181,78 @@ fun dumpPptx(f: File) {
         for (b in o.readDoc().body) if (b is DTable) println("TABLE grid=" + b.grid + " header=" + b.rows.firstOrNull()?.header + " rows=" + b.rows.joinToString(" / ") { r -> r.cells.joinToString(" | ") { c -> c.span.toString() + ":" + c.blocks.joinToString(" ") { (it as DPara).text } } }) else if (b is DPara) println((if (b.heading > 0) "[h" + b.heading + "] " else "") + b.text + b.runs.filter { it.kind == DRun.IMAGE }.joinToString("") { " [img " + it.image?.part + " " + it.image?.widthEmu + "x" + it.image?.heightEmu + (if (o.image(it.image?.part.orEmpty()) != null) " ok" else " MISSING") + "]" } + (if (b.pageBreakBefore) "   <pagebreak>" else ""))
     }
     println(if (OfficeExport.containsOrFalse(f, "welcome")) "OK   content search" else "FAIL content search")
+}
+
+
+/** Office fidelity Part 3: FontMap + font names read from docx / xlsx / xls.  java -jar ost.jar --fonts [fixtures dir] [fonts dir] */
+fun fontsTest(fix: File, fonts: File) {
+    fun ok(n: String, c: Boolean) = println((if (c) "OK   " else "FAIL ") + n)
+    check("stack Calibri", FontMap.stack("Calibri"), "Carlito,Calibri,Arial,sans-serif")
+    check("stack quoted+case", FontMap.stack("  'CAMBRIA' "), "Caladea,Cambria,'Times New Roman',serif")
+    check("stack Arial", FontMap.stack("Arial"), "'Liberation Sans',Arial,Helvetica,sans-serif")
+    check("stack Times", FontMap.stack("Times New Roman"), "'Liberation Serif','Times New Roman',Times,serif")
+    check("stack Courier", FontMap.stack("Courier New"), "'Liberation Mono','Courier New',Courier,monospace")
+    check("stack list takes first", FontMap.stack("Calibri, sans-serif"), "Carlito,Calibri,Arial,sans-serif")
+    check("stack unknown sans", FontMap.stack("Segoe UI"), "'Segoe UI',sans-serif")
+    check("stack unknown serif", FontMap.stack("Book Antiqua"), "'Book Antiqua',serif")
+    check("stack unknown mono", FontMap.stack("Consolas"), "Consolas,monospace")
+    check("stack null = Calibri", FontMap.stack(null), FontMap.stack("Calibri"))
+    check("stack injection", FontMap.stack("Evil\"};x{"), "Evilx,sans-serif")
+    check("bundled none", FontMap.bundled("Segoe UI").toString(), "null")
+    check("assetPath ok", FontMap.assetPath("Carlito-Bold.ttf").toString(), "fonts/office/Carlito-Bold.ttf")
+    check("assetPath traversal", FontMap.assetPath("../x.ttf").toString(), "null")
+    val css = FontMap.fontFaceCss()
+    ok("font-face count 20", Regex("@font-face").findAll(css).count() == 20)
+    ok("no double quotes in css", !css.contains('"'))
+    for (n in FontMap.files) ok("asset present+TTF: $n", File(fonts, n).let { it.exists() && it.length() > 50_000 && it.inputStream().use { i -> val b = ByteArray(4); i.read(b); b.contentEquals(byteArrayOf(0, 1, 0, 0)) } })
+    for (fam in listOf("Carlito", "Caladea", "LiberationSans")) ok("licence file for $fam", File(fonts, "LICENSES").listFiles()!!.any { it.name.startsWith(fam.take(7)) })
+    val dx = File(fix, "sample.docx")
+    if (dx.exists()) OfficeOpen(dx).use { o ->
+        val d = o.readDoc()
+        val fonts1 = LinkedHashSet<String?>(); for (b in d.body) if (b is DPara) for (r in b.runs) fonts1.add(r.font)
+        println("docx defaultFont=" + d.defaultFont + " run fonts=" + fonts1)
+        val h = DocxHtml.render(d, fontBase = FontMap.FONT_URL)
+        ok("docx html has @font-face", h.contains("@font-face{font-family:'Carlito'"))
+        ok("docx html body font stack", h.contains("body{font-family:" + FontMap.stack(d.defaultFont) + "}"))
+        ok("docx html without fontBase has no @font-face", !DocxHtml.render(d).contains("@font-face"))
+    }
+    File(fix, "sample_fonts.docx").takeIf { it.exists() }?.let { f -> OfficeOpen(f).use { o ->
+        val d = o.readDoc(); val ps = d.body.filterIsInstance<DPara>()
+        val fs = ps.map { p -> p.runs.joinToString("|") { it.font ?: "-" } }
+        println("sample_fonts.docx defaultFont=" + d.defaultFont + " per paragraph=" + fs)
+        check("docx default = theme minor", d.defaultFont.toString(), "Calibri")
+        check("docx heading = theme major via style", fs[0], "Cambria")
+        check("docx body inherits default", fs[1], "Calibri")
+        check("docx explicit fonts", fs[2], "Times New Roman|Courier New")
+        check("docx unknown font kept", fs[3], "Segoe UI")
+        val h = DocxHtml.render(d, fontBase = FontMap.FONT_URL)
+        System.getProperty("fonts.html")?.let { File(it).writeText(h) }   // optional dump for a browser check
+        ok("html: body Carlito stack", h.contains("body{font-family:Carlito,Calibri,"))
+        ok("html: heading span Caladea", h.contains("font-family:Caladea,Cambria,"))
+        ok("html: Times -> Liberation Serif", h.contains("font-family:'Liberation Serif',"))
+        ok("html: Courier -> Liberation Mono", h.contains("font-family:'Liberation Mono',"))
+        ok("html: Segoe kept first then generic", h.contains("font-family:'Segoe UI',sans-serif"))
+        ok("html: default-font runs get no extra font-family", Regex("Body in theme minor font[^<]*").find(h)!!.range.first.let { !h.substring(maxOf(0, it - 40), it).contains("font-family") })
+        val rh = DocxHtml.render(d, rd = DocxReading(), fontBase = FontMap.FONT_URL)
+        ok("reading mode: runs keep the reading font (no run font-family)", !Regex("<span style=\"font-family").containsMatchIn(rh))
+    } }
+    File(fix, "sample_fonts.xlsx").takeIf { it.exists() }?.let { f -> OfficeOpen(f).use { o ->
+        val st = o.styles!!
+        println("sample_fonts.xlsx fonts=" + st.fonts.map { it.name })
+        check("xlsx first font", st.fonts[0].name.toString(), "Calibri")
+        ok("xlsx has Arial + Cambria", st.fonts.any { it.name == "Arial" } && st.fonts.any { it.name == "Cambria" })
+        val tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
+        val h = XlsxHtml.render(o.readSheet(tabs.first().first), tabs, tabs.first().first, st, FontMap.FONT_URL)
+        ok("xlsx html: body Carlito", h.contains("body{font-family:Carlito,Calibri,"))
+        ok("xlsx html: Arial cell -> Liberation Sans", h.contains("font-family:'Liberation Sans',"))
+        ok("xlsx html: Cambria cell -> Caladea", h.contains("font-family:Caladea,"))
+    } }
+    for (nm in listOf("sample.xlsx", "sample.xls")) File(fix, nm).takeIf { it.exists() }?.let { f -> OfficeOpen(f).use { o ->
+        val st = o.styles
+        println(nm + " fonts=" + st?.fonts?.map { it.name })
+        if (nm.endsWith(".xls")) ok("$nm style fonts have names", st != null && st.fonts.any { it.name != null })   // sample.xlsx was written without <name>; sample_fonts.xlsx covers xlsx
+        val tabs = o.sheets.filter { !it.hidden }.map { it.index to it.name }
+        val h = XlsxHtml.render(o.readSheet(tabs.first().first), tabs, tabs.first().first, st, FontMap.FONT_URL)
+        ok("$nm html has @font-face + body stack", h.contains("@font-face") && h.contains("body{font-family:"))
+    } }
 }

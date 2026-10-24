@@ -15,7 +15,7 @@ class XCell(
 }
 
 class XXf(val numFmtId: Int, val fontId: Int, val fillId: Int, val halign: String?, val wrap: Boolean, val valign: String?)
-class XFont(val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: String?, val size: Double)
+class XFont(val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: String?, val size: Double, val name: String? = null)
 
 class XStyles(
     val xfs: List<XXf>,
