@@ -182,48 +182,6 @@ object UsSearch {
             Row(if (c.id >= 0) c.id else -(i + 10), c.nm(ix), c.h.path, false, c.sz(ix), c.mt(ix), ImgQuery.label(c.h), 0, c.h.badge, c.h.score)
         }
         if (!IndexManager.isComplete()) notes.add("The name index is still being built")
-        return Out(rows, cands.size, complete, System.currentTimeMillis() - t0, notes, !complete)
-    }
-
-    /**
-     * ocr: / ai: query (Part 7). Candidates come from [UsImageProvider] (ImgSearch owns OCR text and vectors); a picture counts only when it is also
-     * in the name index, so the Universal Search include / exclude folders (us_*) and the Hide list apply on top of ImgSearch's own img_* folders (both must allow it).
-     * The name expression and filters of the query (kind: ext: size: dm: in: ...) are applied like for content:. BEST = score, then newest.
-     */
-    private fun runImages(ix: NameIndex, q: Query, opt: MatchOptions, sort: SortSpec, off: Int, lim: Int, cancel: CancelToken, hf: HiddenFilter, hid: Boolean): Out {
-        val t0 = System.currentTimeMillis()
-        val notes = ArrayList<String>(q.notes)
-        if (!Cfg.usImg()) return Out(emptyList(), 0, true, 0L, notes + "Picture search is off (Settings > Search index)", false)
-        val plan = ImgQuery.plan(q, opt)
-        val r = UsImageProvider.run(plan, Cfg.usAiThreshold())
-        notes.addAll(r.notes)
-        if (cancel.cancelled) return Out(emptyList(), 0, false, System.currentTimeMillis() - t0, notes, true)
-        val extra = ArrayList<QNode>()
-        q.name?.let { extra.add(it) }
-        for (f in q.filters) extra.add(QFilter(f))
-        val m = if (extra.isEmpty()) null else Matcher(QAnd(extra), opt)
-        val ctx = Ctx(ix)
-        class Cand(val id: Int, val h: ImgHit)
-        val cands = ArrayList<Cand>()
-        for (h in r.hits) {
-            val id = ix.find(h.path)
-            if (id == NameIndex.NONE || !ix.isLive(id)) continue
-            if (m != null) { ctx.reset(id); if (!m.test(ctx)) continue }
-            if (hid && hf.isHidden(h.path)) continue
-            cands.add(Cand(id, h))
-        }
-        val cmp: Comparator<Cand> = when (sort.key) {
-            SortKey.NAME -> compareBy<Cand> { ix.nameOf(it.id).lowercase() }
-            SortKey.PATH -> compareBy<Cand> { it.h.path.lowercase() }
-            SortKey.SIZE -> compareByDescending<Cand> { ix.sizeOf(it.id) }
-            SortKey.DATE -> compareByDescending<Cand> { ix.mtimeOf(it.id) }
-            else -> compareByDescending<Cand> { it.h.score }.thenByDescending { ix.mtimeOf(it.id) }
-        }
-        val sorted = cands.sortedWith(if (sort.reverse) cmp.reversed() else cmp)
-        val rows = sorted.drop(off).take(lim).map { c ->
-            Row(c.id, ix.nameOf(c.id), c.h.path, false, ix.sizeOf(c.id), ix.mtimeOf(c.id), ImgQuery.label(c.h), 0, c.h.badge, c.h.score)
-        }
-        if (!IndexManager.isComplete()) notes.add("The name index is still being built")
         return Out(rows, cands.size, true, System.currentTimeMillis() - t0, notes, false)
     }
 

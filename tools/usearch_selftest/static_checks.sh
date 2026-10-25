@@ -59,5 +59,11 @@ for f in $A/core/usearch/UsExport.kt $A/core/usearch/ArcNames.kt $A/core/UsSearc
   o=$(tr -cd '{' < "$f" | wc -c); c=$(tr -cd '}' < "$f" | wc -c)
   if [ "$o" -eq "$c" ]; then ok "braces balanced $(basename $f)"; else bad "braces unbalanced $(basename $f): { $o  } $c"; fi
 done
+# ---- 9. no function defined twice with the same signature line (a bad splice gives "Conflicting overloads")
+for f in $A/core/UsSearch.kt $A/core/IndexManager.kt $A/UsActivity.kt $A/core/UsImageProvider.kt $A/Shortcuts.kt $A/core/usearch/*.kt; do
+  d=$(grep -E '^    (private |internal )?fun ' "$f" | sort | uniq -d | head -3)
+  if [ -n "$d" ]; then bad "duplicate function in $(basename $f): $(echo "$d" | cut -c1-90 | tr '\n' ' ')"; fi
+done
+ok "duplicate-function scan done"
 echo "static checks: FAIL=$fails"
 [ "$fails" -eq 0 ]
