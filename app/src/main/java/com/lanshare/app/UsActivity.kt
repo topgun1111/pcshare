@@ -87,7 +87,7 @@ class UsActivity : Activity() {
     private var stamp = ""
     private var terms: List<String> = emptyList()
     private val sel = LinkedHashSet<Int>()
-    private var everywhere = false                       // Part 8: sections Names / Contents / Pictures
+    private var everywhere = true                       // Part 8: sections Names / Contents / Pictures
     private var scope = ""                               // Part 8: real folder path of "Search here" (blank = whole phone)
     private var recent: List<String> = emptyList()
     private var saved: List<UsHistory.Saved> = emptyList()
@@ -127,7 +127,7 @@ class UsActivity : Activity() {
         sortKey = sp.getString("sort", "best") ?: "best"; rev = sp.getBoolean("rev", false); ff = sp.getBoolean("ff", false)
         oCase = sp.getBoolean("case", false); oWord = sp.getBoolean("word", false); oPath = sp.getBoolean("path", false)
         oDiac = sp.getBoolean("diac", false); oRe = sp.getBoolean("re", false)
-        everywhere = sp.getBoolean("every", false)
+        everywhere = sp.getBoolean("every2", true)   // v2: Search everywhere is ON by default (plain words also look inside files and pictures); the old "every" key is ignored
         recent = UsHistory.decode(sp.getString("recent", "")); saved = UsHistory.decodeSaved(sp.getString("saved", ""))
         scope = b?.getString("scope") ?: intent.getStringExtra(X_SCOPE) ?: ""
         kind = b?.getString("kind") ?: intent.getStringExtra(X_KIND) ?: ""
@@ -615,7 +615,7 @@ class UsActivity : Activity() {
         val q = when {
             r.badge == "#r" -> r.name
             r.badge == "#s" -> r.snippet
-            r.badge.startsWith("#h:") -> secs.firstOrNull { it.id == r.badge.substring(3) }?.let { everywhere = false; saveOpts(); it.query }   // header: open only this section, with paging
+            r.badge.startsWith("#h:") -> secs.firstOrNull { it.id == r.badge.substring(3) }?.let { it.query }   // header: open only this section, with paging
             else -> null
         } ?: return
         et.setText(q); et.setSelection(q.length)
@@ -699,7 +699,7 @@ class UsActivity : Activity() {
 
     private fun saveOpts() {
         getSharedPreferences("us_ui", MODE_PRIVATE).edit().putString("sort", sortKey).putBoolean("rev", rev).putBoolean("ff", ff)
-            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).putBoolean("every", everywhere).apply()
+            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).putBoolean("every2", everywhere).apply()
     }
 
     // ---------------------------------------------------------------- selection actions
