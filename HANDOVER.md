@@ -1269,7 +1269,10 @@ Next session start: Part N+1, read 16.0, 16.3, block N+1, plus: <extra files>
 - Part 10: one night of indexing on battery and on charger, read the battery stats.
 
 ### Search screen selection dock (UsActivity.kt only)
-Selection bar rebuilt in file-manager style: count row (N selected, Select all, close) + one row of 6 equal cells, icon above label, coloured icons like the main dock (Copy, Share, Details, Folder, Here, Delete). Helper `pressBg()` added. State: NOT compiled here (no Kotlin toolchain) - build by CI and check on device.
+Selection bar rebuilt in file-manager style: count row (N selected, Select all, close) + one row of 6 equal cells, icon above label, coloured icons like the main dock (Select all, Copy, Share, Details, Folder, Delete). Helper `pressBg()` added. State: NOT compiled here (no Kotlin toolchain) - build by CI and check on device.
 
 ### Self tests removed
 All JVM self-test tools (tools/*_selftest, tools/*_test.*, ui smoke scripts), the office-selftest and usearch-selftest CI jobs, usearch-test.yml, and ClipEngine.selfTest + the "selftest" op in Routes.kt are deleted. CI now only builds the APK. Comments that mention tools/..._selftest are stale and harmless.
+
+### Select all per category (UsActivity.kt)
+Long-press a section header (Names / Contents / Pictures) = select that whole section; while selecting, tapping a header toggles it (checkbox shown), and again clears it. Dock "Select all" still selects every result.

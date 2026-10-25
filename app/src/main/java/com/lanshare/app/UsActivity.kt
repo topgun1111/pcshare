@@ -272,19 +272,17 @@ class UsActivity : Activity() {
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         selTv = tv(14f, p.fg, true)
         head.addView(selTv, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
-        head.addView(tv(13f, p.ac, true).apply { text = "Select all"; gravity = Gravity.CENTER; setPadding(dp(12f), 0, dp(12f), 0); background = pressBg(dp(18f))
-            setOnClickListener { for (r in rows) sel.add(r.id); updateSelBar(); ad.notifyDataSetChanged() } }, LinearLayout.LayoutParams(-2, dp(40f)))
         head.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(44f), dp(40f)))
         selBar.addView(head)
         val line = View(this).apply { setBackgroundColor(p.bd) }
         selBar.addView(line, LinearLayout.LayoutParams(-1, 1).apply { setMargins(dp(8f), 0, dp(8f), dp(2f)) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val acts = listOf<Array<Any>>(
+            arrayOf("Select all", "M3 5h2V3c-1.1 0-2 .9-2 2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2c0-1.1-.9-2-2-2zM5 21v-2H3c0 1.1.9 2 2 2zm-2-4h2v-2H3v2zM9 3H7v2h2V3zm2 18h2v-2h-2v2zm8-8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2zm0-12h2V7h-2v2zm0 8h2v-2h-2v2zm-4 4h2v-2h-2v2zm0-16h2V3h-2v2zM7 17h10V7H7v10zm2-8h6v6H9V9z", 0xFF8E24AA.toInt(), { for (r in rows) sel.add(r.id); updateSelBar(); ad.notifyDataSetChanged() }),
             arrayOf("Copy", "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z", 0xFF1E88E5.toInt(), { actCopy() }),
             arrayOf("Share", "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z", 0xFF43A047.toInt(), { actShare() }),
             arrayOf("Details", "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z", 0xFF00ACC1.toInt(), { actDetails() }),
             arrayOf("Folder", "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z", 0xFFFB8C00.toInt(), { actFolder() }),
-            arrayOf("Here", "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z", 0xFF5C6BC0.toInt(), { actHere() }),
             arrayOf("Delete", "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z", 0xFFE53935.toInt(), { actDelete() })
         )
         for (a in acts) {
@@ -393,129 +391,6 @@ class UsActivity : Activity() {
         recent = UsHistory.push(recent, t); saveHist()
     }
 
-    private fun actHere() {
-        val r = picked().singleOrNull()
-        if (r == null || !r.dir) { toast("Select one folder"); return }
-        scope = r.path; paintScope(); endSel(false); runQuery(true, 0)
-    }
-
-    private fun saveDlg() {
-        val t = lastText.trim()
-        if (t.isEmpty()) { toast("Type a search first"); return }
-        val inp = EditText(this).apply { setText(t); setSelection(t.length); setSingleLine(true) }
-        AppPal.dlg(this).setTitle("Save this search").setView(inp)
-            .setPositiveButton("Save") { _, _ -> saved = UsHistory.save(saved, inp.text.toString(), t); saveHist(); toast("Saved") }
-            .setNegativeButton("Cancel", null).show()
-    }
-
-    private fun paintBar() {
-        sortBtn.text = sortLabel() + " \u25BE"
-        viewBtn.text = (when { vmode == "grid" -> "Grid"; vmode == "compact" -> "Compact"; vthumb == "l" -> "Large list"; else -> "List" }) + " \u25BE"
-    }
-
-    private fun setInfo() {
-        paintBar()
-        if (IndexManager.index() == null) { info.text = "Search index is off (Settings \u203A Search index)"; return }
-        if (lastText.isBlank() && kind.isEmpty()) {
-            val st = IndexManager.status()
-            info.text = if (!st.optBoolean("complete")) "Still indexing (" + String.format(Locale.getDefault(), "%,d", st.optInt("entries")) + " items so far). Names come first; contents and pictures follow."
-                        else "Type a name.  ext:pdf  size:>10mb  dm:today  !not  \"exact\"  a|b"
-            return
-        }
-        if (total == 0 && !loading) { info.text = "No results" + (if (!IndexManager.isComplete()) " yet \u2013 the index is still being built" else "") + (if (lastNote.isNotEmpty()) ".  " + lastNote else ""); return }
-        val n = String.format(Locale.getDefault(), "%,d", total) + (if (approx) "+" else "")
-        info.text = (if (total == 1) "1 result" else "$n results") + "  \u00B7  " + ms + " ms"
-    }
-
-    private val tick = object : Runnable {
-        override fun run() { refreshBanner(false); ui.postDelayed(this, 1500) }
-    }
-
-    /** Index progress banner; when the index content changed (indexing grows it, rename / delete / external change) the query runs again. */
-    private fun n(v: Int) = String.format(java.util.Locale.US, "%,d", v.coerceAtLeast(0))
-
-    private fun ago(ms: Long): String {
-        if (ms <= 0) return "never"
-        val m = (System.currentTimeMillis() - ms) / 60000
-        return if (m < 1) "just now" else if (m < 60) "$m min ago" else if (m < 2880) (m / 60).toString() + " h ago" else (m / 1440).toString() + " days ago"
-    }
-
-    /** What is indexed, what is being indexed, what is waiting and why. Built off the UI thread (picture status loads its list). */
-    private fun statusDlg() {
-        Thread {
-            val t = StringBuilder()
-            try {
-                val st = IndexManager.status()
-                val c = st.optJSONObject("content")
-                val state = st.optString("state")
-                t.append("NAMES (files and folders)\n")
-                if (!st.optBoolean("enabled")) t.append("  Index is off (Settings \u203A Search index)\n")
-                else {
-                    t.append("  " + n(st.optInt("entries") - st.optInt("dead")) + " items, " + n(st.optInt("dirs")) + " folders\n")
-                    t.append("  " + (if (st.optBoolean("complete")) "complete" else "first build not finished") + "; last full scan " + ago(st.optLong("lastFull")) + ", last check " + ago(st.optLong("lastDelta")) + "\n")
-                    if (st.optInt("pending") > 0) t.append("  " + n(st.optInt("pending")) + " changed folders waiting to be re-read\n")
-                    val inc = st.optJSONArray("included"); val exc = st.optJSONArray("excluded")
-                    t.append("  Folders: " + (if (inc == null || inc.length() == 0) "whole phone" else (0 until inc.length()).joinToString(", ") { inc.optString(it) }) + "\n")
-                    if (exc != null && exc.length() > 0) t.append("  Left out: " + (0 until exc.length()).joinToString(", ") { exc.optString(it) } + "\n")
-                    if (st.optInt("unreadable") > 0) t.append("  " + n(st.optInt("unreadable")) + " folders could not be read\n")
-                }
-                t.append("\nTEXT INSIDE FILES\n")
-                if (c == null || !c.optBoolean("on")) t.append("  Off\n")
-                else {
-                    t.append("  " + n(c.optInt("docs")) + " files searchable (text, Office documents)\n")
-                    if (c.optInt("todo") > 0) t.append("  " + n(c.optInt("todo")) + " still to read\n")
-                    if (c.optBoolean("budgetHit")) t.append("  Storage limit of " + c.optInt("budgetMb") + " MB reached: raise it in Settings\n")
-                    t.append("  Files up to " + c.optInt("maxMb") + " MB, store up to " + c.optInt("budgetMb") + " MB\n")
-                }
-                try {
-                    val im = com.lanshare.app.core.ImgSearch.status()
-                    t.append("\nPICTURES\n  " + n(im.optInt("indexed")) + " with AI meaning, " + n(im.optInt("withText")) + " with text read (OCR)")
-                    if (im.optInt("failed") > 0) t.append(", " + n(im.optInt("failed")) + " unreadable")
-                    t.append("\n")
-                    if (im.optString("state") == "running") t.append("  Scanning now: " + n(im.optInt("done")) + " of " + n(im.optInt("total")) + "\n")
-                    if (!st.optJSONObject("images")!!.optBoolean("model")) t.append("  Picture model not installed yet (Settings)\n")
-                } catch (_: Throwable) {}
-                t.append("\nNOW\n  ")
-                val ph = st.optString("phase")
-                t.append(when {
-                    state == "paused" -> "Paused: " + st.optString("wait").ifBlank { "by you" }
-                    state == "scanning" && ph == "content" -> "Reading file contents"
-                    state == "scanning" -> "Scanning folders (" + ph + ")" + (if (st.optInt("pct", -1) >= 0) " " + st.optInt("pct") + " %" else "") + (if (st.optString("current").isNotEmpty()) "\n  " + st.optString("current") else "")
-                    else -> "Idle \u2013 up to date"
-                })
-                if (st.optString("error").let { it.isNotEmpty() && it != "null" }) t.append("\n  Last error: " + st.optString("error"))
-            } catch (e: Throwable) { t.append("Could not read the status: " + (e.message ?: e.javaClass.simpleName)) }
-            ui.post { if (!isFinishing) AppPal.dlg(this).setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
-        }.start()
-    }
-
-    private fun refreshBanner(force: Boolean) {
-        val ix = IndexManager.index()
-        if (ix == null) { banner.text = "Search index is off \u2013 turn it on in Settings \u203A Search index"; banner.visibility = View.VISIBLE; return }
-        val st = IndexManager.status()
-        val state = st.optString("state")
-        val pct = st.optInt("pct", -1)
-        val complete = st.optBoolean("complete")
-        val s = state + "|" + st.optInt("entries") + "|" + st.optInt("dead") + "|" + st.optInt("epoch") + "|" + pct
-        when {
-            state == "paused" -> { banner.text = "Indexing paused \u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
-            state == "scanning" && !complete -> { banner.text = "Indexing " + (if (pct >= 0) "$pct % " else "") + "\u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
-            !complete -> { banner.text = "Index not complete yet \u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
-            else -> {
-                val c = st.optJSONObject("content")
-                val todo = c?.optInt("todo", 0) ?: 0
-                banner.text = n(st.optInt("entries") - st.optInt("dead")) + " names" + (if (c != null && c.optBoolean("on")) " \u00B7 " + n(c.optInt("docs")) + " texts" + (if (todo > 0 || st.optString("phase") == "content") " (reading\u2026 " + n(todo) + " left)" else "") else "") + " \u00B7 tap for details"
-                banner.visibility = View.VISIBLE
-            }
-        }
-        banner.setOnClickListener { statusDlg() }
-        if (s == stamp) return
-        if (force) { stamp = s; return }
-        if (loading || sel.isNotEmpty()) return          // try again on the next tick (stamp kept)
-        stamp = s
-        if (lastText.isNotBlank() || kind.isNotEmpty()) runQuery(true, maxOf(PAGE, rows.size))
-    }
-
     // ---------------------------------------------------------------- list
 
     private fun gridCols(): Int = if (vcols > 0) vcols else (resources.displayMetrics.widthPixels / dp(118f)).coerceIn(2, 8)
@@ -550,6 +425,7 @@ class UsActivity : Activity() {
                 t.setTextColor(if (head) p.ac else p.fg); t.typeface = if (head) Fnt.semi() else Fnt.med()
                 t.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (head) 13f else 15f)
                 t.text = (if (r.badge == "#s") "\u2605  " + r.name + (if (r.snippet != r.name) "   " + r.snippet else "") else if (r.badge == "#r") "\u21BA  " + r.name else r.name) + (if (r.badge.startsWith("#h:")) "   \u203A" else "")
+                if (r.badge.startsWith("#h:") && sel.isNotEmpty()) t.text = (if (sectionAllSel(u[0])) "\u2611  " else "\u2610  ") + t.text
                 return t
             }
             if (vmode == "grid") {
@@ -753,6 +629,7 @@ class UsActivity : Activity() {
 
     private fun tap(i: Int) {
         val r = rows.getOrNull(i) ?: return
+        if (pseudo(r) && r.badge.startsWith("#h:") && sel.isNotEmpty()) { toggleSection(i); return }   // selecting: a section header selects / clears the whole section
         if (pseudo(r)) { pseudoTap(r); return }
         if (sel.isNotEmpty()) { toggle(r); return }
         hideKb()
@@ -781,11 +658,29 @@ class UsActivity : Activity() {
     private fun longTap(i: Int) {
         val r = rows.getOrNull(i) ?: return
         if (pseudo(r)) {
-            if (r.badge == "#r") { recent = UsHistory.remove(recent, r.name); saveHist(); showHome() }
+            if (r.badge.startsWith("#h:")) { hideKb(); toggleSection(i) }
+            else if (r.badge == "#r") { recent = UsHistory.remove(recent, r.name); saveHist(); showHome() }
             else if (r.badge == "#s") { saved = saved.filter { it.name != r.name }; saveHist(); showHome() }
             return
         }
         hideKb(); toggle(r)
+    }
+
+    /** Rows of the section whose header is at [i]: everything up to the next header / title row. */
+    private fun sectionIds(i: Int): List<Int> {
+        val out = ArrayList<Int>()
+        var k = i + 1
+        while (k < rows.size && !pseudo(rows[k])) { out.add(rows[k].id); k++ }
+        return out
+    }
+
+    private fun sectionAllSel(i: Int): Boolean { val ids = sectionIds(i); return ids.isNotEmpty() && ids.all { sel.contains(it) } }
+
+    /** Select every result of one category (Names / Contents / Pictures); when all of it is already selected, clear it instead. */
+    private fun toggleSection(i: Int) {
+        val ids = sectionIds(i); if (ids.isEmpty()) return
+        if (ids.all { sel.contains(it) }) sel.removeAll(ids.toSet()) else sel.addAll(ids)
+        updateSelBar(); ad.notifyDataSetChanged()
     }
 
     private fun toggle(r: UsSearch.Row) {
