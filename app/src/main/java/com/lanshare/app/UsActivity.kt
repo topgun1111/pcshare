@@ -391,6 +391,123 @@ class UsActivity : Activity() {
         recent = UsHistory.push(recent, t); saveHist()
     }
 
+    private fun saveDlg() {
+        val t = lastText.trim()
+        if (t.isEmpty()) { toast("Type a search first"); return }
+        val inp = EditText(this).apply { setText(t); setSelection(t.length); setSingleLine(true) }
+        AppPal.dlg(this).setTitle("Save this search").setView(inp)
+            .setPositiveButton("Save") { _, _ -> saved = UsHistory.save(saved, inp.text.toString(), t); saveHist(); toast("Saved") }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun paintBar() {
+        sortBtn.text = sortLabel() + " \u25BE"
+        viewBtn.text = (when { vmode == "grid" -> "Grid"; vmode == "compact" -> "Compact"; vthumb == "l" -> "Large list"; else -> "List" }) + " \u25BE"
+    }
+
+    private fun setInfo() {
+        paintBar()
+        if (IndexManager.index() == null) { info.text = "Search index is off (Settings \u203A Search index)"; return }
+        if (lastText.isBlank() && kind.isEmpty()) {
+            val st = IndexManager.status()
+            info.text = if (!st.optBoolean("complete")) "Still indexing (" + String.format(Locale.getDefault(), "%,d", st.optInt("entries")) + " items so far). Names come first; contents and pictures follow."
+                        else "Type a name.  ext:pdf  size:>10mb  dm:today  !not  \"exact\"  a|b"
+            return
+        }
+        if (total == 0 && !loading) { info.text = "No results" + (if (!IndexManager.isComplete()) " yet \u2013 the index is still being built" else "") + (if (lastNote.isNotEmpty()) ".  " + lastNote else ""); return }
+        val n = String.format(Locale.getDefault(), "%,d", total) + (if (approx) "+" else "")
+        info.text = (if (total == 1) "1 result" else "$n results") + "  \u00B7  " + ms + " ms"
+    }
+
+    private val tick = object : Runnable {
+        override fun run() { refreshBanner(false); ui.postDelayed(this, 1500) }
+    }
+
+    /** Index progress banner; when the index content changed (indexing grows it, rename / delete / external change) the query runs again. */
+    private fun n(v: Int) = String.format(java.util.Locale.US, "%,d", v.coerceAtLeast(0))
+
+    private fun ago(ms: Long): String {
+        if (ms <= 0) return "never"
+        val m = (System.currentTimeMillis() - ms) / 60000
+        return if (m < 1) "just now" else if (m < 60) "$m min ago" else if (m < 2880) (m / 60).toString() + " h ago" else (m / 1440).toString() + " days ago"
+    }
+
+    /** What is indexed, what is being indexed, what is waiting and why. Built off the UI thread (picture status loads its list). */
+    private fun statusDlg() {
+        Thread {
+            val t = StringBuilder()
+            try {
+                val st = IndexManager.status()
+                val c = st.optJSONObject("content")
+                val state = st.optString("state")
+                t.append("NAMES (files and folders)\n")
+                if (!st.optBoolean("enabled")) t.append("  Index is off (Settings \u203A Search index)\n")
+                else {
+                    t.append("  " + n(st.optInt("entries") - st.optInt("dead")) + " items, " + n(st.optInt("dirs")) + " folders\n")
+                    t.append("  " + (if (st.optBoolean("complete")) "complete" else "first build not finished") + "; last full scan " + ago(st.optLong("lastFull")) + ", last check " + ago(st.optLong("lastDelta")) + "\n")
+                    if (st.optInt("pending") > 0) t.append("  " + n(st.optInt("pending")) + " changed folders waiting to be re-read\n")
+                    val inc = st.optJSONArray("included"); val exc = st.optJSONArray("excluded")
+                    t.append("  Folders: " + (if (inc == null || inc.length() == 0) "whole phone" else (0 until inc.length()).joinToString(", ") { inc.optString(it) }) + "\n")
+                    if (exc != null && exc.length() > 0) t.append("  Left out: " + (0 until exc.length()).joinToString(", ") { exc.optString(it) } + "\n")
+                    if (st.optInt("unreadable") > 0) t.append("  " + n(st.optInt("unreadable")) + " folders could not be read\n")
+                }
+                t.append("\nTEXT INSIDE FILES\n")
+                if (c == null || !c.optBoolean("on")) t.append("  Off\n")
+                else {
+                    t.append("  " + n(c.optInt("docs")) + " files searchable (text, Office documents)\n")
+                    if (c.optInt("todo") > 0) t.append("  " + n(c.optInt("todo")) + " still to read\n")
+                    if (c.optBoolean("budgetHit")) t.append("  Storage limit of " + c.optInt("budgetMb") + " MB reached: raise it in Settings\n")
+                    t.append("  Files up to " + c.optInt("maxMb") + " MB, store up to " + c.optInt("budgetMb") + " MB\n")
+                }
+                try {
+                    val im = com.lanshare.app.core.ImgSearch.status()
+                    t.append("\nPICTURES\n  " + n(im.optInt("indexed")) + " with AI meaning, " + n(im.optInt("withText")) + " with text read (OCR)")
+                    if (im.optInt("failed") > 0) t.append(", " + n(im.optInt("failed")) + " unreadable")
+                    t.append("\n")
+                    if (im.optString("state") == "running") t.append("  Scanning now: " + n(im.optInt("done")) + " of " + n(im.optInt("total")) + "\n")
+                    if (!st.optJSONObject("images")!!.optBoolean("model")) t.append("  Picture model not installed yet (Settings)\n")
+                } catch (_: Throwable) {}
+                t.append("\nNOW\n  ")
+                val ph = st.optString("phase")
+                t.append(when {
+                    state == "paused" -> "Paused: " + st.optString("wait").ifBlank { "by you" }
+                    state == "scanning" && ph == "content" -> "Reading file contents"
+                    state == "scanning" -> "Scanning folders (" + ph + ")" + (if (st.optInt("pct", -1) >= 0) " " + st.optInt("pct") + " %" else "") + (if (st.optString("current").isNotEmpty()) "\n  " + st.optString("current") else "")
+                    else -> "Idle \u2013 up to date"
+                })
+                if (st.optString("error").let { it.isNotEmpty() && it != "null" }) t.append("\n  Last error: " + st.optString("error"))
+            } catch (e: Throwable) { t.append("Could not read the status: " + (e.message ?: e.javaClass.simpleName)) }
+            ui.post { if (!isFinishing) AppPal.dlg(this).setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
+        }.start()
+    }
+
+    private fun refreshBanner(force: Boolean) {
+        val ix = IndexManager.index()
+        if (ix == null) { banner.text = "Search index is off \u2013 turn it on in Settings \u203A Search index"; banner.visibility = View.VISIBLE; return }
+        val st = IndexManager.status()
+        val state = st.optString("state")
+        val pct = st.optInt("pct", -1)
+        val complete = st.optBoolean("complete")
+        val s = state + "|" + st.optInt("entries") + "|" + st.optInt("dead") + "|" + st.optInt("epoch") + "|" + pct
+        when {
+            state == "paused" -> { banner.text = "Indexing paused \u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
+            state == "scanning" && !complete -> { banner.text = "Indexing " + (if (pct >= 0) "$pct % " else "") + "\u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
+            !complete -> { banner.text = "Index not complete yet \u2013 results may be incomplete"; banner.visibility = View.VISIBLE }
+            else -> {
+                val c = st.optJSONObject("content")
+                val todo = c?.optInt("todo", 0) ?: 0
+                banner.text = n(st.optInt("entries") - st.optInt("dead")) + " names" + (if (c != null && c.optBoolean("on")) " \u00B7 " + n(c.optInt("docs")) + " texts" + (if (todo > 0 || st.optString("phase") == "content") " (reading\u2026 " + n(todo) + " left)" else "") else "") + " \u00B7 tap for details"
+                banner.visibility = View.VISIBLE
+            }
+        }
+        banner.setOnClickListener { statusDlg() }
+        if (s == stamp) return
+        if (force) { stamp = s; return }
+        if (loading || sel.isNotEmpty()) return          // try again on the next tick (stamp kept)
+        stamp = s
+        if (lastText.isNotBlank() || kind.isNotEmpty()) runQuery(true, maxOf(PAGE, rows.size))
+    }
+
     // ---------------------------------------------------------------- list
 
     private fun gridCols(): Int = if (vcols > 0) vcols else (resources.displayMetrics.widthPixels / dp(118f)).coerceIn(2, 8)
