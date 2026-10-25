@@ -107,25 +107,6 @@ object ClipEngine {
         }, "clip-download").also { it.isDaemon = true; it.start() }
     }
 
-    /** Diagnostics for the first device test (POST /api/imgs {op:"selftest"}): tokenizer ids, text vector norm, timings. Needs the model files. */
-    fun selfTest(): JSONObject {
-        val ctx = Core.appCtx ?: throw BadReq("app not ready")
-        if (!installed(ctx)) throw BadReq("model not downloaded")
-        val r = JSONObject()
-        val t0 = System.currentTimeMillis()
-        val tk = ClipTokenizer(File(dir(ctx), "vocab.json"), File(dir(ctx), "merges.txt"))
-        r.put("tokenizerLoadMs", System.currentTimeMillis() - t0)
-        val ids = tk.encode("a photo of a cat").toList()
-        r.put("catIds", org.json.JSONArray(ids)).put("catIdsOk", ids == listOf(49406, 320, 1125, 539, 320, 2368, 49407))
-        val eng = ImgSearch.engine ?: throw BadReq("engine not loaded")
-        val t1 = System.currentTimeMillis()
-        val a = eng.embedText("a photo of a cat"); val b = eng.embedText("a photo of a dog"); val c = eng.embedText("a photograph of a kitten")
-        r.put("textMs", System.currentTimeMillis() - t1)
-        fun dot(x: FloatArray, y: FloatArray): Double { var d = 0.0; for (i in x.indices) d += x[i] * y[i]; return d }
-        r.put("selfDot", dot(a, a)).put("catVsDog", dot(a, b)).put("catVsKitten", dot(a, c))   // expect ~1.0, < catVsKitten, kitten clearly higher
-        return r
-    }
-
     /** Deletes the model files and the engine (the index stays; it is useless without the engine for new pictures but searchable as text). */
     fun uninstall() {
         if (installing) throw BadReq("download is running")

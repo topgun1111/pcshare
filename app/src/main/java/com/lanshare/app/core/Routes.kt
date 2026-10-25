@@ -424,7 +424,6 @@ object Routes {
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model
                 "uninstall" -> { ClipEngine.uninstall(); ImgSearch.status() }
-                "selftest" -> ClipEngine.selfTest()   // first device test: tokenizer ids + text vector sanity + timings
                 "start" -> { ImgSearch.start(b.optBoolean("ocr", true), b.optBoolean("force", false), dir = b.optString("dir", "")); ImgSearch.status() }
                 "cancel" -> { ImgSearch.cancel(); ImgSearch.status() }
                 "auto" -> { if (b.has("charging")) ImgSearch.setAutoCharging(b.optBoolean("charging", false)); if (b.has("on")) ImgSearch.setAuto(b.optBoolean("on", true)); ImgSearch.status() }   // scan new pictures by itself (default on)
