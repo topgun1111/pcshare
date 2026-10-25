@@ -1267,3 +1267,6 @@ Next session start: Part N+1, read 16.0, 16.3, block N+1, plus: <extra files>
 - Part 7: `ocr:` on a photographed page; `ai:` on a known photo; model-missing card; results open in the viewer with swipe.
 - Part 8: menu > Search everywhere on, type a word that is in a name, a text file and a photo: three sections with counts, header tap opens one section; empty box shows Saved / Recent; open a result, come back, the query is in Recent; Save this search, restart, tap it; long-press a folder row, tap Here, chip appears and results stay inside, tap chip clears; dark theme and rotation.
 - Part 10: one night of indexing on battery and on charger, read the battery stats.
+
+### Search screen selection dock (UsActivity.kt only)
+Selection bar rebuilt in file-manager style: count row (N selected, Select all, close) + one row of 6 equal cells, icon above label, coloured icons like the main dock (Copy, Share, Details, Folder, Here, Delete). Helper `pressBg()` added. State: NOT compiled here (no Kotlin toolchain) - build by CI and check on device.

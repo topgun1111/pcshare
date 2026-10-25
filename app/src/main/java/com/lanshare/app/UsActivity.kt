@@ -184,6 +184,12 @@ class UsActivity : Activity() {
         setOnClickListener { click() }
     }
 
+    /** Rounded press highlight for the selection dock cells. */
+    private fun pressBg(r: Int): android.graphics.drawable.StateListDrawable = android.graphics.drawable.StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { cornerRadius = r.toFloat(); setColor((p.ac and 0x00FFFFFF) or 0x33000000) })
+        addState(intArrayOf(), GradientDrawable().apply { cornerRadius = r.toFloat(); setColor(Color.TRANSPARENT) })
+    }
+
     private fun build() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg); fitsSystemWindows = true }
         // search row
@@ -257,18 +263,41 @@ class UsActivity : Activity() {
             })
         }
         root.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
-        // selection bar
+        // selection bar: file-manager style dock (icon above label, equal cells, count row on top)
         selBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
-            background = GradientDrawable().apply { setColor(p.cont); val r = dp(24f).toFloat(); cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) }; setPadding(dp(12f), 0, dp(8f), 0)
+            orientation = LinearLayout.VERTICAL; visibility = View.GONE
+            background = GradientDrawable().apply { setColor(p.cont); val r = dp(24f).toFloat(); cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) }
+            setPadding(dp(4f), dp(4f), dp(4f), dp(4f)); elevation = dp(8f).toFloat()
         }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         selTv = tv(14f, p.fg, true)
-        selBar.addView(selTv, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(4f) })
-        for ((t, f) in listOf<Pair<String, () -> Unit>>("Copy" to this::actCopy, "Share" to this::actShare, "Details" to this::actDetails, "Folder" to this::actFolder, "Here" to this::actHere, "Delete" to this::actDelete)) {
-            selBar.addView(tv(13f, p.ac, true).apply { text = t; gravity = Gravity.CENTER; setPadding(dp(8f), 0, dp(8f), 0); setOnClickListener { f() } },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48f)))
+        head.addView(selTv, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
+        head.addView(tv(13f, p.ac, true).apply { text = "Select all"; gravity = Gravity.CENTER; setPadding(dp(12f), 0, dp(12f), 0); background = pressBg(dp(18f))
+            setOnClickListener { for (r in rows) sel.add(r.id); updateSelBar(); ad.notifyDataSetChanged() } }, LinearLayout.LayoutParams(-2, dp(40f)))
+        head.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(44f), dp(40f)))
+        selBar.addView(head)
+        val line = View(this).apply { setBackgroundColor(p.bd) }
+        selBar.addView(line, LinearLayout.LayoutParams(-1, 1).apply { setMargins(dp(8f), 0, dp(8f), dp(2f)) })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val acts = listOf<Array<Any>>(
+            arrayOf("Copy", "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z", 0xFF1E88E5.toInt(), { actCopy() }),
+            arrayOf("Share", "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z", 0xFF43A047.toInt(), { actShare() }),
+            arrayOf("Details", "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z", 0xFF00ACC1.toInt(), { actDetails() }),
+            arrayOf("Folder", "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z", 0xFFFB8C00.toInt(), { actFolder() }),
+            arrayOf("Here", "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z", 0xFF5C6BC0.toInt(), { actHere() }),
+            arrayOf("Delete", "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z", 0xFFE53935.toInt(), { actDelete() })
+        )
+        for (a in acts) {
+            @Suppress("UNCHECKED_CAST") val fn = a[3] as () -> Unit
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; background = pressBg(dp(14f)); setPadding(0, dp(6f), 0, dp(4f))
+                contentDescription = a[0] as String; setOnClickListener { fn() }
+            }
+            cell.addView(NlGlyph(this, NlGlyph.parse(a[1] as String), a[2] as Int, dp(26f)), LinearLayout.LayoutParams(-2, -2))
+            cell.addView(tv(11f, if (a[0] == "Delete") (a[2] as Int) else p.fg, true).apply { text = a[0] as String; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3f) })
+            row.addView(cell, LinearLayout.LayoutParams(0, dp(58f), 1f).apply { setMargins(dp(1f), 0, dp(1f), 0) })
         }
-        selBar.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(40f), dp(48f)))
+        selBar.addView(row)
         root.addView(selBar)
         setContentView(root)
     }
