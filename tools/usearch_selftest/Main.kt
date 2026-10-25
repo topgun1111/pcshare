@@ -8,9 +8,14 @@ import java.io.RandomAccessFile
 
 var fails = 0
 var oks = 0
+var curSec = "misc"
+val secOk = LinkedHashMap<String, Int>()
+val secFail = LinkedHashMap<String, Int>()
+fun sec(n: String) { curSec = n; secOk.putIfAbsent(n, 0); secFail.putIfAbsent(n, 0) }
 
 fun check(name: String, cond: Boolean, detail: String = "") {
-    if (cond) { oks++; println("ok   $name") } else { fails++; println("FAIL $name $detail") }
+    if (cond) { oks++; secOk[curSec] = (secOk[curSec] ?: 0) + 1; println("ok   $name") }
+    else { fails++; secFail[curSec] = (secFail[curSec] ?: 0) + 1; println("FAIL [$curSec] $name $detail") }
 }
 
 fun eq(name: String, got: Any?, want: Any?) = check(name, got == want, "got='$got' want='$want'")
@@ -40,6 +45,7 @@ fun hits(ix: NameIndex, needle: String): Int {
 }
 
 fun foldTests() {
+    sec("Fold")
     eq("fold ASCII upper", Fold.fold("ABC.Txt"), "abc.txt")
     eq("fold dotted capital I", Fold.fold("\u0130STANBUL"), "istanbul")
     eq("fold I and dotless", Fold.fold("I\u0131I"), "iii")
@@ -52,6 +58,7 @@ fun foldTests() {
 }
 
 fun memoryTests() {
+    sec("NameIndex + IndexStore")
     val ix = NameIndex(4)
     val r = ix.addRoot("/r")
     val a = ix.add(r, "A", true, 0, 100)
@@ -159,6 +166,7 @@ fun memoryTests() {
 fun mk(dir: File, name: String): File = File(dir, name).also { it.mkdirs() }
 
 fun walkerTests() {
+    sec("Walker")
     val tmp = java.nio.file.Files.createTempDirectory("ust").toFile()
     try {
         val root = File(tmp, "vol"); root.mkdirs()
@@ -276,6 +284,7 @@ const val NOW = 1792929600L                  // 2026-10-25 12:00:00 UTC, a Sunda
 val pctx = ParseContext(NOW, UTC)
 
 fun fixtureTests(args: Array<String>) {
+    sec("QueryParser fixture")
     val cands = listOfNotNull(args.firstOrNull(), "tools/usearch_selftest/query_fixture.txt", "../tools/usearch_selftest/query_fixture.txt")
     val f = cands.map { File(it) }.firstOrNull { it.isFile }
     if (f == null) { check("fixture file found", false, cands.toString()); return }
@@ -301,6 +310,7 @@ fun srch(ix: NameIndex, q: String, opt: MatchOptions = MatchOptions(), sort: Sor
 fun setOf2(ix: NameIndex, q: String, opt: MatchOptions = MatchOptions()): Set<String> = relNames(ix, srch(ix, q, opt)).toSet()
 
 fun matcherTests() {
+    sec("Matcher + Ranker")
     val ix = NameIndex(8)
     val old = 1735689600L
     val r = ix.addRoot("/r")
@@ -424,6 +434,7 @@ fun matcherTests() {
 }
 
 fun randomQueryTests() {
+    sec("Parser fuzz")
     val ix = NameIndex(8)
     val r = ix.addRoot("/r")
     val a = ix.add(r, "abc", true, 0, 5)
@@ -449,6 +460,7 @@ fun randomQueryTests() {
 }
 
 fun perfTests() {
+    sec("Performance")
     val ix = NameIndex(1 shl 17)
     val r = ix.addRoot("/r")
     var seed = 99L
@@ -496,6 +508,7 @@ fun perfTests() {
 fun touchOld(f: File, secsAgo: Long = 100) { f.setLastModified(System.currentTimeMillis() - secsAgo * 1000) }
 
 fun deltaTests() {
+    sec("Delta (freshness)")
     val tmp = java.nio.file.Files.createTempDirectory("ustd").toFile()
     try {
         val root = File(tmp, "vol"); root.mkdirs()
@@ -588,6 +601,7 @@ fun deltaTests() {
 }
 
 fun rulesTests() {
+    sec("Rules (include/exclude/hidden)")
     val inc = UserRules(include = listOf("/s/DCIM", "/s/Docs/work"), exclude = listOf("/s/DCIM/private"))
     eq("include: inside folder kept", inc.skip("/s/DCIM/Camera", "DCIM/Camera", "Camera", true), Skip.NONE)
     eq("include: file inside kept", inc.skip("/s/DCIM/a.jpg", "DCIM/a.jpg", "a.jpg", false), Skip.NONE)
@@ -614,6 +628,7 @@ fun rulesTests() {
 
 // ---------- Part 5: text-file content (TextExtractor, ContentMatch) ----------
 fun contentTests() {
+    sec("TextExtractor + ContentMatch")
     val tmp = java.nio.file.Files.createTempDirectory("usct").toFile()
     try {
         val tr = "\u0130stanbul \u00e7al\u0131\u015f\u0131r, \u011fe\u00e7 \u00f6\u011fle \u00fc\u015f\u00fcd\u00fc"
@@ -665,6 +680,7 @@ fun contentTests() {
 
 /** Part 7: ocr: / ai: planning and merging (pure; ImgSearch itself needs Android and is checked on the device). */
 fun imgTests() {
+    sec("ImgQuery (ocr/ai)")
     fun pl(q: String, opt: MatchOptions = MatchOptions()) = ImgQuery.plan(QueryParser.parse(q), opt)
     val a = pl("ocr:fatura ocr:toplam")
     eq("img: two ocr words are two terms", a.ocr.map { it.text }, listOf("fatura", "toplam")); check("img: no ai part", !a.wantsAi && a.wantsOcr)
@@ -696,6 +712,7 @@ fun imgTests() {
 
 /** Part 6: Office document text out of the office_selftest fixtures (run from the repo root). */
 fun docTests() {
+    sec("DocExtractor (office)")
     val D = File("tools/office_selftest")
     check("doc: fixtures found", File(D, "sample.docx").isFile, D.absolutePath)
     val DE = com.lanshare.app.core.office.DocExtractor
@@ -734,6 +751,7 @@ fun docTests() {
 
 
 fun exportTests() {
+    sec("UsExport")
     val rows = listOf(
         UsExport.ExRow("a,b.txt", "/sdcard/a,b.txt", false, 1234, 0, "say \"hi\"", 7),
         UsExport.ExRow("=cmd", "/sdcard/=cmd", false, 5, 86400L * 365),
@@ -750,6 +768,7 @@ fun exportTests() {
 }
 
 fun arcTests() {
+    sec("ArcNames")
     eq("arc: strip", ArcNames.strip("  ARC: Rapor 2026 "), "Rapor 2026")
     check("arc: plain text is not an archive query", ArcNames.strip("report") == null && ArcNames.strip("arc") == null)
     eq("arc: words folded", ArcNames.words("\u0130\u015Eler  \u00C7ay"), listOf("isler", "cay"))
@@ -760,6 +779,7 @@ fun arcTests() {
 }
 
 fun stressTests() {
+    sec("Stress (long/emoji/20k)")
     val ix = NameIndex(16)
     val root = ix.addRoot("/r")
     val long = "L" + "x".repeat(3000) + "end.txt"
@@ -777,6 +797,7 @@ fun stressTests() {
 }
 
 fun viewTests() {
+    sec("UsView (history/sections/scope)")
     // history
     var h = UsHistory.push(emptyList(), "invoice")
     h = UsHistory.push(h, "Beach")
@@ -826,6 +847,42 @@ fun viewTests() {
     check("scope: path with spaces stays one filter", (UsSections.scope(QueryParser.parse("x"), "/r/My Pics").filters[0] as InFilter).dir == "/r/My Pics")
 }
 
+/** Component -> least number of passing checks (about half of the static check count): a component that silently ran less fails the run. */
+val SECTION_MIN = mapOf(
+    "Fold" to 4,
+    "NameIndex + IndexStore" to 27,
+    "Walker" to 12,
+    "Rules (include/exclude/hidden)" to 9,
+    "Delta (freshness)" to 11,
+    "TextExtractor + ContentMatch" to 14,
+    "DocExtractor (office)" to 9,
+    "ImgQuery (ocr/ai)" to 12,
+    "UsView (history/sections/scope)" to 13,
+    "UsExport" to 4,
+    "Stress (long/emoji/20k)" to 3,
+    "ArcNames" to 3,
+    "QueryParser fixture" to 2,
+    "Matcher + Ranker" to 37,
+    "Parser fuzz" to 1,
+    "Performance" to 2,
+    "E2E pipeline" to 60)
+
+/** Per-component table (stdout lines `SECTION ...`, and a markdown file when --report=<path> is given). Returns the number of problems. */
+fun sectionReport(args: Array<String>): Int {
+    var bad = 0
+    val md = StringBuilder("| component | ok | FAIL | min ok | result |\n|---|---|---|---|---|\n")
+    for ((n, ok) in secOk) {
+        val f = secFail[n] ?: 0; val mn = SECTION_MIN[n] ?: 1
+        val r = if (f > 0) "FAIL" else if (ok < mn) "TOO FEW" else "PASS"
+        if (r != "PASS") bad++
+        println("SECTION %-40s ok=%d FAIL=%d min=%d %s".format(n, ok, f, mn, r))
+        md.append("| $n | $ok | $f | $mn | $r |\n")
+    }
+    for ((n, _) in SECTION_MIN) if (!secOk.containsKey(n)) { bad++; println("SECTION %-40s NEVER RAN".format(n)); md.append("| $n | 0 | 0 | - | NEVER RAN |\n") }
+    args.firstOrNull { it.startsWith("--report=") }?.let { File(it.removePrefix("--report=")).writeText(md.toString()) }
+    return bad
+}
+
 fun main(args: Array<String>) {
     foldTests()
     memoryTests()
@@ -843,6 +900,8 @@ fun main(args: Array<String>) {
     matcherTests()
     randomQueryTests()
     perfTests()
+    e2eTests()
+    val bad = sectionReport(args)
     println("done: ok=$oks FAIL=$fails")
-    if (fails > 0) System.exit(1)
+    if (fails > 0 || bad > 0) System.exit(1)
 }

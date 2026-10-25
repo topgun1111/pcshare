@@ -179,12 +179,12 @@ jobs:
           echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
       - name: Compile core/usearch + self-test
         run: |
-          kotlinc app/src/main/java/com/lanshare/app/core/usearch/*.kt app/src/main/java/com/lanshare/app/core/office/*.kt tools/usearch_selftest/Main.kt -include-runtime -d "$RUNNER_TEMP/ust.jar" 2>&1 | tee "$RUNNER_TEMP/compile.log"
+          kotlinc app/src/main/java/com/lanshare/app/core/usearch/*.kt app/src/main/java/com/lanshare/app/core/office/*.kt tools/usearch_selftest/*.kt -include-runtime -d "$RUNNER_TEMP/ust.jar" 2>&1 | tee "$RUNNER_TEMP/compile.log"
           test "${PIPESTATUS[0]}" -eq 0
       - name: Run self-test
         run: |
           LOG="$RUNNER_TEMP/usearch-selftest.log"
-          MIN=441
+          MIN=480
           java -jar "$RUNNER_TEMP/ust.jar" < /dev/null > "$LOG" 2>&1 && rc=0 || rc=$?
           ok=$(grep -c -E '^(ok|OK) ' "$LOG" || true); fl=$(grep -c '^FAIL' "$LOG" || true)
           res=PASS

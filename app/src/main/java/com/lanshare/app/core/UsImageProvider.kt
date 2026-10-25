@@ -33,6 +33,7 @@ object UsImageProvider {
         }
         val merged = ImgQuery.merge(ocr, ai).map { ImgHit(ImgQuery.toReal(root, it.path), it.score, it.badge) }
         if (plan.wantsOcr && ImgSearch.status().optInt("withText", 1) == 0 && ocr.isEmpty()) notes.add("ocr: no picture has been read yet (Settings > Image search > scan with text)")
+        if (plan.wantsAi && !missing && ai.isEmpty() && ImgSearch.status().optInt("indexed", 1) == 0) notes.add("ai: no picture has been analysed yet (Settings > Image search > scan)")
         return Out(merged, notes, missing)
     }
 }

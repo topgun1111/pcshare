@@ -147,6 +147,62 @@ object UsSearch {
         for (f in q.filters) extra.add(QFilter(f))
         val m = if (extra.isEmpty()) null else Matcher(QAnd(extra), opt)
         val ctx = Ctx(ix)
+        // id >= 0: picture is in the name index; id < 0: found by the picture engine but NOT in the name index (index still building, other path spelling, ...): shown from the disk so a match is never lost
+        class Cand(val id: Int, val h: ImgHit, val f: java.io.File?) {
+            val name: String get() = f?.name ?: ""
+            fun nm(ix: NameIndex) = if (id >= 0) ix.nameOf(id) else name
+            fun sz(ix: NameIndex) = if (id >= 0) ix.sizeOf(id) else f!!.length()
+            fun mt(ix: NameIndex) = if (id >= 0) ix.mtimeOf(id) else f!!.lastModified() / 1000
+        }
+        val cands = ArrayList<Cand>()
+        var offIndex = 0; var skipped = 0
+        for (h in r.hits) {
+            val id = ix.find(h.path)
+            if (id == NameIndex.NONE || !ix.isLive(id)) {
+                offIndex++
+                val f = java.io.File(h.path)
+                if (m == null && f.isFile && !(hid && hf.isHidden(h.path))) cands.add(Cand(-1, h, f)) else skipped++
+                continue
+            }
+            if (m != null) { ctx.reset(id); if (!m.test(ctx)) continue }
+            if (hid && hf.isHidden(h.path)) continue
+            cands.add(Cand(id, h, null))
+        }
+        if (offIndex > 0) notes.add(if (m == null) "$offIndex matching pictures are not in the name index yet; shown anyway" + (if (skipped > 0) " ($skipped missing on disk)" else "")
+            else "$offIndex matching pictures are not in the name index and were left out because the query has filters")
+        val cmp: Comparator<Cand> = when (sort.key) {
+            SortKey.NAME -> compareBy<Cand> { it.nm(ix).lowercase() }
+            SortKey.PATH -> compareBy<Cand> { it.h.path.lowercase() }
+            SortKey.SIZE -> compareByDescending<Cand> { it.sz(ix) }
+            SortKey.DATE -> compareByDescending<Cand> { it.mt(ix) }
+            else -> compareByDescending<Cand> { it.h.score }.thenByDescending { it.mt(ix) }
+        }
+        val sorted = cands.sortedWith(if (sort.reverse) cmp.reversed() else cmp)
+        val rows = sorted.drop(off).take(lim).mapIndexed { i, c ->
+            Row(if (c.id >= 0) c.id else -(i + 10), c.nm(ix), c.h.path, false, c.sz(ix), c.mt(ix), ImgQuery.label(c.h), 0, c.h.badge, c.h.score)
+        }
+        if (!IndexManager.isComplete()) notes.add("The name index is still being built")
+        return Out(rows, cands.size, complete, System.currentTimeMillis() - t0, notes, !complete)
+    }
+
+    /**
+     * ocr: / ai: query (Part 7). Candidates come from [UsImageProvider] (ImgSearch owns OCR text and vectors); a picture counts only when it is also
+     * in the name index, so the Universal Search include / exclude folders (us_*) and the Hide list apply on top of ImgSearch's own img_* folders (both must allow it).
+     * The name expression and filters of the query (kind: ext: size: dm: in: ...) are applied like for content:. BEST = score, then newest.
+     */
+    private fun runImages(ix: NameIndex, q: Query, opt: MatchOptions, sort: SortSpec, off: Int, lim: Int, cancel: CancelToken, hf: HiddenFilter, hid: Boolean): Out {
+        val t0 = System.currentTimeMillis()
+        val notes = ArrayList<String>(q.notes)
+        if (!Cfg.usImg()) return Out(emptyList(), 0, true, 0L, notes + "Picture search is off (Settings > Search index)", false)
+        val plan = ImgQuery.plan(q, opt)
+        val r = UsImageProvider.run(plan, Cfg.usAiThreshold())
+        notes.addAll(r.notes)
+        if (cancel.cancelled) return Out(emptyList(), 0, false, System.currentTimeMillis() - t0, notes, true)
+        val extra = ArrayList<QNode>()
+        q.name?.let { extra.add(it) }
+        for (f in q.filters) extra.add(QFilter(f))
+        val m = if (extra.isEmpty()) null else Matcher(QAnd(extra), opt)
+        val ctx = Ctx(ix)
         class Cand(val id: Int, val h: ImgHit)
         val cands = ArrayList<Cand>()
         for (h in r.hits) {
