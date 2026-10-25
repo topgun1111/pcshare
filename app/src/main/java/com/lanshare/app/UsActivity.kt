@@ -87,6 +87,8 @@ class UsActivity : Activity() {
     private var stamp = ""
     private var terms: List<String> = emptyList()
     private val sel = LinkedHashSet<Int>()
+    private var vmode = "list"; private var vthumb = "s"; private var vcols = 0   // view options like the file manager: list / compact / grid, small / large thumbnails, grid columns (0 = automatic)
+    private var units: List<IntArray> = emptyList(); private var unitsFor = -1; private var unitsMode = ""   // one list row = one unit: a single row index, or up to N row indexes in grid mode
     private var everywhere = true                       // Part 8: sections Names / Contents / Pictures
     private var scope = ""                               // Part 8: real folder path of "Search here" (blank = whole phone)
     private var recent: List<String> = emptyList()
@@ -119,15 +121,20 @@ class UsActivity : Activity() {
 
     private fun dp(v: Float) = Math.round(v * d)
 
+    override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }   // Settings > Interface size / Text size, like the other native screens
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         d = resources.displayMetrics.density
+        Fnt.init(applicationContext)   // the app font (Settings > Interface > Font)
         p = AppPal.pal(this); night = AppPal.night(this)
         val sp = getSharedPreferences("us_ui", MODE_PRIVATE)
         sortKey = sp.getString("sort", "best") ?: "best"; rev = sp.getBoolean("rev", false); ff = sp.getBoolean("ff", false)
         oCase = sp.getBoolean("case", false); oWord = sp.getBoolean("word", false); oPath = sp.getBoolean("path", false)
         oDiac = sp.getBoolean("diac", false); oRe = sp.getBoolean("re", false)
         everywhere = sp.getBoolean("every2", true)   // v2: Search everywhere is ON by default (plain words also look inside files and pictures); the old "every" key is ignored
+        vmode = sp.getString("vmode", "list") ?: "list"; vthumb = sp.getString("vthumb", "s") ?: "s"; vcols = sp.getInt("vcols", 0)
+        if (vmode != "list" && vmode != "compact" && vmode != "grid") vmode = "list"
         recent = UsHistory.decode(sp.getString("recent", "")); saved = UsHistory.decodeSaved(sp.getString("saved", ""))
         scope = b?.getString("scope") ?: intent.getStringExtra(X_SCOPE) ?: ""
         kind = b?.getString("kind") ?: intent.getStringExtra(X_KIND) ?: ""
@@ -165,7 +172,7 @@ class UsActivity : Activity() {
     }
 
     private fun tv(size: Float, col: Int, bold: Boolean = false): TextView = TextView(this).apply {
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setTextColor(col); if (bold) typeface = Typeface.DEFAULT_BOLD
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setTextColor(col); typeface = if (bold) Fnt.semi() else Fnt.med()
         isSingleLine = true; ellipsize = TextUtils.TruncateAt.END
     }
 
@@ -186,8 +193,8 @@ class UsActivity : Activity() {
         box.addView(iconBtn("back", "Back") { finish() }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
         et = EditText(this).apply {
             background = null; setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = EditorInfo.IME_ACTION_SEARCH; hint = "Search this phone"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0)
+            imeOptions = EditorInfo.IME_ACTION_SEARCH; hint = if (scope.isEmpty()) "Search this phone" else "Search in " + File(scope).name
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0); typeface = Fnt.med()
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) { }
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) { }
@@ -199,7 +206,7 @@ class UsActivity : Activity() {
         box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
         bar.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val menuBtn = TextView(this).apply {
-            text = "\u22EE"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f); setTextColor(p.fg); gravity = Gravity.CENTER
+            text = "\u22EE"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f); setTextColor(p.fg); gravity = Gravity.CENTER; typeface = Fnt.semi()
             contentDescription = "Sort and options"; setOnClickListener { menu() }
         }
         bar.addView(menuBtn, LinearLayout.LayoutParams(dp(40f), dp(44f)))
@@ -234,8 +241,8 @@ class UsActivity : Activity() {
         list = ListView(this).apply {
             divider = null; setBackgroundColor(p.bg); isFastScrollEnabled = true
             adapter = ad
-            setOnItemClickListener { _, _, i, _ -> tap(i) }
-            setOnItemLongClickListener { _, _, i, _ -> longTap(i); true }
+            setOnItemClickListener { _, _, i, _ -> units.getOrNull(i)?.let { tap(it[0]) } }
+            setOnItemLongClickListener { _, _, i, _ -> units.getOrNull(i)?.let { longTap(it[0]) }; true }
             setOnScrollListener(object : AbsListView.OnScrollListener {
                 override fun onScrollStateChanged(v: AbsListView?, s: Int) { if (s == AbsListView.OnScrollListener.SCROLL_STATE_TOUCH_SCROLL) hideKb() }
                 override fun onScroll(v: AbsListView?, f: Int, c: Int, t: Int) { if (more && !loading && f + c >= t - 8 && t > 0) runQuery(false, 0) }
@@ -468,26 +475,47 @@ class UsActivity : Activity() {
 
     // ---------------------------------------------------------------- list
 
+    private fun gridCols(): Int = if (vcols > 0) vcols else (resources.displayMetrics.widthPixels / dp(118f)).coerceIn(2, 8)
+
+    private fun buildUnits() {
+        val u = ArrayList<IntArray>(); val n = if (vmode == "grid") gridCols() else 1
+        var i = 0
+        while (i < rows.size) {
+            if (n == 1 || pseudo(rows[i])) { u.add(intArrayOf(i)); i++; continue }
+            var j = i
+            while (j < rows.size && j - i < n && !pseudo(rows[j])) j++
+            val a = i; u.add(IntArray(j - i) { a + it }); i = j
+        }
+        units = u; unitsFor = rows.size; unitsMode = vmode + gridCols()
+    }
+
     private val ad = object : BaseAdapter() {
-        override fun getCount() = rows.size
-        override fun getItem(i: Int) = rows[i]
-        override fun getItemId(i: Int) = rows[i].id.toLong()
-        override fun getViewTypeCount() = 2
-        override fun getItemViewType(i: Int) = if (pseudo(rows[i])) 1 else 0
+        override fun notifyDataSetChanged() { buildUnits(); super.notifyDataSetChanged() }
+        override fun getCount(): Int { if (unitsFor != rows.size || unitsMode != vmode + gridCols()) buildUnits(); return units.size }
+        override fun getItem(i: Int) = rows[units[i][0]]
+        override fun getItemId(i: Int) = rows[units[i][0]].id.toLong()
+        override fun getViewTypeCount() = 3
+        override fun getItemViewType(i: Int) = if (pseudo(rows[units[i][0]])) 1 else if (vmode == "grid") 2 else 0
         override fun isEnabled(i: Int) = true
         override fun getView(i: Int, cv: View?, par: ViewGroup?): View {
-            val r = rows[i]
+            val u = units.getOrNull(i) ?: return View(this@UsActivity)
+            val r = rows[u[0]]
             if (pseudo(r)) {
                 val t = (cv as? TextView) ?: tv(15f, p.fg)
                 val head = r.badge == "#t" || r.badge.startsWith("#h:")
                 t.setPadding(dp(14f), if (head) dp(12f) else dp(10f), dp(14f), dp(if (head) 4f else 10f))
-                t.setTextColor(if (head) p.ac else p.fg); t.setTypeface(null, if (head) Typeface.BOLD else Typeface.NORMAL)
+                t.setTextColor(if (head) p.ac else p.fg); t.typeface = if (head) Fnt.semi() else Fnt.med()
                 t.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (head) 13f else 15f)
                 t.text = (if (r.badge == "#s") "\u2605  " + r.name + (if (r.snippet != r.name) "   " + r.snippet else "") else if (r.badge == "#r") "\u21BA  " + r.name else r.name) + (if (r.badge.startsWith("#h:")) "   \u203A" else "")
                 return t
             }
+            if (vmode == "grid") {
+                val g = (cv?.tag as? GridRow)?.takeIf { it.cols == gridCols() } ?: GridRow(this@UsActivity, gridCols()).also { it.root.tag = it }
+                g.bind(u)
+                return g.root
+            }
             val h = (cv?.tag as? Holder) ?: Holder(this@UsActivity).also { it.root.tag = it }
-            h.bind(rows[i], i)
+            h.bind(r, u[0])
             return h.root
         }
     }
@@ -495,9 +523,11 @@ class UsActivity : Activity() {
     private class Ico(c: Context, val a: UsActivity) : View(c) {
         var name = ""; var dir = false; var ticked = false
         private val pt = Paint(Paint.ANTI_ALIAS_FLAG)
-        override fun onMeasure(w: Int, h: Int) { val s = a.dp(40f); setMeasuredDimension(s, s) }
+        var sz = 0
+        private fun s0() = if (sz > 0) sz else a.dp(40f)
+        override fun onMeasure(w: Int, h: Int) { val s = s0(); setMeasuredDimension(s, s) }
         override fun onDraw(cv: Canvas) {
-            val s = a.dp(40f).toFloat()
+            val s = s0().toFloat()
             if (ticked) {
                 pt.color = a.p.ac; cv.drawCircle(s / 2, s / 2, s / 2 - a.dp(2f), pt)
                 val ck = NlIcons.path("check")
@@ -513,6 +543,9 @@ class UsActivity : Activity() {
 
     private inner class Holder(c: Context) {
         val root = LinearLayout(c)
+        val fl = FrameLayout(c)
+        val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10f), 0, dp(8f), 0) }
+        val rt = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
         val ico = Ico(c, this@UsActivity)
         val img = ImageView(c)
         val nameTv = tv(15f, p.fg)
@@ -524,15 +557,12 @@ class UsActivity : Activity() {
         init {
             root.orientation = LinearLayout.HORIZONTAL; root.gravity = Gravity.CENTER_VERTICAL
             root.setPadding(dp(12f), dp(5f), dp(12f), dp(5f))
-            val fl = FrameLayout(c)
             fl.addView(ico, FrameLayout.LayoutParams(dp(40f), dp(40f)))
             img.scaleType = ImageView.ScaleType.CENTER_CROP; img.visibility = View.GONE
             fl.addView(img, FrameLayout.LayoutParams(dp(40f), dp(40f)))
             root.addView(fl, LinearLayout.LayoutParams(dp(40f), dp(40f)))
-            val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10f), 0, dp(8f), 0) }
             mid.addView(nameTv); mid.addView(pathTv)
             root.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val rt = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
             rt.addView(sizeTv); rt.addView(dateTv)
             root.addView(rt, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
@@ -540,6 +570,17 @@ class UsActivity : Activity() {
         fun bind(r: UsSearch.Row, i: Int) {
             val picked = sel.contains(r.id)
             root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x33000000 else Color.TRANSPARENT)
+            val compact = vmode == "compact"
+            val side = dp(if (compact) 30f else if (vthumb == "l") 72f else 40f)
+            if (ico.sz != side) {
+                ico.sz = side
+                for (v in listOf<View>(ico, img)) v.layoutParams = FrameLayout.LayoutParams(side, side)
+                fl.layoutParams = LinearLayout.LayoutParams(side, side)
+            }
+            root.setPadding(dp(12f), dp(if (compact) 2f else 5f), dp(12f), dp(if (compact) 2f else 5f))
+            nameTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 15f)
+            pathTv.visibility = if (compact) View.GONE else View.VISIBLE
+            dateTv.visibility = if (compact) View.GONE else View.VISIBLE
             nameTv.text = hl(r.name)
             val parent = r.path.substringBeforeLast('/', "")
             val v = UsSearch.virt(r.path)
@@ -560,6 +601,78 @@ class UsActivity : Activity() {
                 ui.post { if (key == want && !sel.contains(r.id)) { img.setImageBitmap(bm); img.visibility = View.VISIBLE } }
             }
         }
+    }
+
+    /** One grid row: [cols] equal cells. */
+    private inner class GridRow(c: Context, val cols: Int) {
+        val root = LinearLayout(c)
+        val cells = List(cols) { GridCell(c, cols) }
+        init {
+            root.orientation = LinearLayout.HORIZONTAL; root.setPadding(dp(4f), dp(4f), dp(4f), dp(4f))
+            for (x in cells) root.addView(x.root, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        fun bind(u: IntArray) { for (k in cells.indices) if (k < u.size) cells[k].bind(rows[u[k]], u[k]) else cells[k].hide() }
+    }
+
+    private inner class GridCell(c: Context, cols: Int) {
+        val root = LinearLayout(c)
+        private val side = resources.displayMetrics.widthPixels / cols - dp(12f)
+        private val ico = Ico(c, this@UsActivity).also { it.sz = side * 55 / 100 }
+        private val img = ImageView(c)
+        private val nameTv = tv(12f, p.fg).apply { gravity = Gravity.CENTER; maxLines = 2; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        private var key = ""; private var idx = -1
+        init {
+            root.orientation = LinearLayout.VERTICAL; root.gravity = Gravity.CENTER_HORIZONTAL; root.setPadding(dp(2f), dp(2f), dp(2f), dp(2f))
+            val fl = FrameLayout(c)
+            fl.addView(ico, FrameLayout.LayoutParams(side * 55 / 100, side * 55 / 100, Gravity.CENTER))
+            img.scaleType = ImageView.ScaleType.CENTER_CROP; img.visibility = View.GONE
+            fl.addView(img, FrameLayout.LayoutParams(side, side))
+            root.addView(fl, LinearLayout.LayoutParams(side, side))
+            root.addView(nameTv, LinearLayout.LayoutParams(side, ViewGroup.LayoutParams.WRAP_CONTENT))
+            root.setOnClickListener { if (idx >= 0) tap(idx) }
+            root.setOnLongClickListener { if (idx >= 0) longTap(idx); true }
+        }
+        fun hide() { root.visibility = View.INVISIBLE; idx = -1; key = "" }
+        fun bind(r: UsSearch.Row, i: Int) {
+            root.visibility = View.VISIBLE; idx = i; key = r.path
+            val picked = sel.contains(r.id)
+            root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x33000000 else Color.TRANSPARENT)
+            nameTv.text = hl(r.name)
+            ico.name = r.name; ico.dir = r.dir; ico.ticked = picked; ico.invalidate()
+            val k = if (r.dir) "" else kindOfName(r.name)
+            if (picked || (k != "img" && k != "vid")) { img.visibility = View.GONE; return }
+            val hit = thumbs.get(r.path)
+            if (hit != null) { img.setImageBitmap(hit); img.visibility = View.VISIBLE; return }
+            img.visibility = View.GONE
+            val want = r.path
+            thPool.execute {
+                val bm = (try { makeThumb(File(want), k == "vid") } catch (_: Throwable) { null }) ?: return@execute
+                thumbs.put(want, bm)
+                ui.post { if (key == want && !sel.contains(r.id)) { img.setImageBitmap(bm); img.visibility = View.VISIBLE } }
+            }
+        }
+    }
+
+    private fun viewDlg() {
+        val items = arrayOf("List", "List \u00B7 large thumbnails", "Compact list", "Grid \u00B7 automatic size", "Grid \u00B7 2 columns", "Grid \u00B7 3 columns", "Grid \u00B7 4 columns", "Grid \u00B7 5 columns")
+        val cur = when {
+            vmode == "compact" -> 2
+            vmode == "grid" -> if (vcols in 2..5) 2 + vcols else 3
+            vthumb == "l" -> 1
+            else -> 0
+        }
+        AppPal.dlg(this).setTitle("View").setSingleChoiceItems(items, cur) { d, w ->
+            when (w) {
+                0 -> { vmode = "list"; vthumb = "s" }
+                1 -> { vmode = "list"; vthumb = "l" }
+                2 -> vmode = "compact"
+                3 -> { vmode = "grid"; vcols = 0 }
+                else -> { vmode = "grid"; vcols = w - 2 }
+            }
+            saveOpts(); d.dismiss()
+            list.adapter = ad   // new adapter binding: drops recycled rows of the other mode
+            ad.notifyDataSetChanged()
+        }.setNegativeButton("Cancel", null).show()
     }
 
     @Suppress("DEPRECATION")
@@ -650,7 +763,7 @@ class UsActivity : Activity() {
 
     private fun menu() {
         hideKb()
-        val items = arrayOf("Sort: " + sortLabel(), "Match options\u2026", "Search everywhere: " + (if (everywhere) "on" else "off"), "Save this search\u2026", "Clear recent searches", "Share results list\u2026", "Index status\u2026", "Rescan index now")
+        val items = arrayOf("Sort: " + sortLabel(), "Match options\u2026", "Search everywhere: " + (if (everywhere) "on" else "off"), "Save this search\u2026", "Clear recent searches", "Share results list\u2026", "Index status\u2026", "View options\u2026", "Rescan index now")
         AppPal.dlg(this).setItems(items) { _, w ->
             when (w) {
                 0 -> sortDlg()
@@ -660,6 +773,7 @@ class UsActivity : Activity() {
                 4 -> { recent = emptyList(); saveHist(); if (lastText.isBlank()) showHome() }
                 5 -> exportList()
                 6 -> statusDlg()
+                7 -> viewDlg()
                 else -> { IndexManager.rescan(); toast("Rescanning the phone"); ui.postDelayed({ refreshBanner(false) }, 600) }
             }
         }.show()
@@ -699,7 +813,7 @@ class UsActivity : Activity() {
 
     private fun saveOpts() {
         getSharedPreferences("us_ui", MODE_PRIVATE).edit().putString("sort", sortKey).putBoolean("rev", rev).putBoolean("ff", ff)
-            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).putBoolean("every2", everywhere).apply()
+            .putBoolean("case", oCase).putBoolean("word", oWord).putBoolean("path", oPath).putBoolean("diac", oDiac).putBoolean("re", oRe).putBoolean("every2", everywhere).putString("vmode", vmode).putString("vthumb", vthumb).putInt("vcols", vcols).apply()
     }
 
     // ---------------------------------------------------------------- selection actions

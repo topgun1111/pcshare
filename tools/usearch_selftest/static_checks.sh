@@ -25,6 +25,8 @@ has "peer route /p/usearch" 'Universal Search on THIS phone' $A/core/Routes.kt
 has "uindex ops: rescan pause on included excluded" '"rescan"' $A/core/Routes.kt
 has "uindex ops: content settings" '"contentrebuild"' $A/core/Routes.kt
 has "bridge openUsearch" 'fun openUsearch' $A/MainActivity.kt
+has "bridge openUsearchIn (per-folder search)" 'fun openUsearchIn' $A/MainActivity.kt
+has "ui.html: search button uses openUsearchIn" 'LSAndroid.openUsearchIn' app/src/main/assets/ui.html
 has "bridge usearchOk" 'fun usearchOk' $A/MainActivity.kt
 has "IndexManager started in Core" 'IndexManager.start' $A/core/Core.kt
 has "IndexManager.onResume in MainActivity" 'IndexManager.onResume' $A/MainActivity.kt
@@ -34,7 +36,11 @@ has "home-screen shortcut" 'us:search' $A/Shortcuts.kt
 
 # ---- 4. screen features present
 for k in statusDlg exportList runQuery saveDlg optDlg showHome refreshBanner; do has "UsActivity.$k" "fun $k" $A/UsActivity.kt; done
-has "UsActivity: two list view types" 'getViewTypeCount\(\) = 2' $A/UsActivity.kt
+has "UsActivity: three list view types (row, heading, grid row)" 'getViewTypeCount\(\) = 3' $A/UsActivity.kt
+for k in viewDlg buildUnits gridCols; do has "UsActivity.$k" "fun $k" $A/UsActivity.kt; done
+has "UsActivity uses the app font" 'Fnt.init' $A/UsActivity.kt
+has "UsActivity uses Interface / Text size" 'UiScale.attach' $A/UsActivity.kt
+has "menu: view options" 'View options' $A/UsActivity.kt
 has "menu: index status" 'Index status' $A/UsActivity.kt
 has "menu: share results list" 'Share results list' $A/UsActivity.kt
 

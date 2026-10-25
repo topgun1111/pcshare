@@ -195,6 +195,16 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openUsearch(q: String) {
             runOnUiThread { try { startActivity(UsActivity.intent(this@MainActivity, q)) } catch (_: Throwable) { } }
         }
+        /** File manager search button: Universal Search limited to the folder [vpath] (file manager path of this phone; "/" = whole storage, blank = whole phone). */
+        @JavascriptInterface fun openUsearchIn(q: String, vpath: String) {
+            runOnUiThread {
+                try {
+                    val v = vpath.trim()
+                    val scope = if (v.isEmpty() || v == "/") "" else java.io.File(Core.local.root, v.trimStart('/')).let { if (it.isDirectory) it.path else "" }
+                    startActivity(UsActivity.intent(this@MainActivity, q, "", scope))
+                } catch (_: Throwable) { }
+            }
+        }
         /** True when Universal Search is switched on (kill switch UniversalSearch.ENABLED / Settings > Search index). */
         @JavascriptInterface fun usearchOk(): Boolean = try { com.lanshare.app.core.IndexManager.enabled() } catch (_: Throwable) { false }
         /** Storage pill on another device (LANShare phone / SMB / FTP / SFTP): read-only analysis of its folder [vpath]. */

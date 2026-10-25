@@ -5094,6 +5094,8 @@ $('#cog').onclick=openSettings;
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');if(NLSR){nlSrPush();NL.nlSrFocus()}else setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};
 $('#srch').onclick=()=>{if(document.body.classList.contains('galm')){isView('','','n');setTimeout(()=>{const i=document.querySelector('#gal .isb input');if(i)i.focus()},150);return}   // Gallery / Videos: one search for names, picture content (AI) and text in pictures (OCR)
+  if(!document.body.classList.contains('srch')&&S.dev==='local'&&!inArc()&&!/^\/@/.test(S.path||'/')&&typeof LSAndroid!=='undefined'&&LSAndroid.openUsearchIn){   // this phone: Universal Search of THIS folder (storage root = whole storage); remote devices / archives / the index switched off keep the in-folder filter below
+    try{if(LSAndroid.usearchOk()){LSAndroid.openUsearchIn('',S.path||'/');return}}catch(e){}}
   sOpen(!document.body.classList.contains('srch'))};
 $('#sback').onclick=()=>sOpen(false);
 $('#sclr').onclick=()=>{$('#sq').value='';S.q='';render();$('#sq').focus()};
