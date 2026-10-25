@@ -40,6 +40,7 @@ has "UsActivity: three list view types (row, heading, grid row)" 'getViewTypeCou
 for k in viewDlg buildUnits gridCols; do has "UsActivity.$k" "fun $k" $A/UsActivity.kt; done
 has "UsActivity uses the app font" 'Fnt.init' $A/UsActivity.kt
 has "UsActivity uses Interface / Text size" 'UiScale.attach' $A/UsActivity.kt
+has "UsActivity: result bar (sort / view buttons)" 'fun paintBar' $A/UsActivity.kt
 has "menu: view options" 'View options' $A/UsActivity.kt
 has "menu: index status" 'Index status' $A/UsActivity.kt
 has "menu: share results list" 'Share results list' $A/UsActivity.kt

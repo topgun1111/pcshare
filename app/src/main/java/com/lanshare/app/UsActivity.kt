@@ -114,6 +114,8 @@ class UsActivity : Activity() {
     private lateinit var et: EditText
     private lateinit var info: TextView
     private lateinit var banner: TextView
+    private lateinit var sortBtn: TextView
+    private lateinit var viewBtn: TextView
     private lateinit var list: ListView
     private lateinit var selBar: LinearLayout
     private lateinit var selTv: TextView
@@ -185,16 +187,16 @@ class UsActivity : Activity() {
     private fun build() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg); fitsSystemWindows = true }
         // search row
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), dp(4f), dp(4f), dp(2f)) }
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(4f), dp(4f)) }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(24f).toFloat() }
         }
-        box.addView(iconBtn("back", "Back") { finish() }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
+        box.addView(iconBtn("back", "Back") { finish() }, LinearLayout.LayoutParams(dp(44f), dp(52f)))
         et = EditText(this).apply {
             background = null; setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_SEARCH; hint = if (scope.isEmpty()) "Search this phone" else "Search in " + File(scope).name
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0); typeface = Fnt.med()
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0); typeface = Fnt.med()
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) { }
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) { }
@@ -202,41 +204,47 @@ class UsActivity : Activity() {
             })
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEARCH) { hideKb(); true } else false }
         }
-        box.addView(et, LinearLayout.LayoutParams(0, dp(44f), 1f))
-        box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
+        box.addView(et, LinearLayout.LayoutParams(0, dp(52f), 1f))
+        box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(44f), dp(52f)))
         bar.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val menuBtn = TextView(this).apply {
-            text = "\u22EE"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f); setTextColor(p.fg); gravity = Gravity.CENTER; typeface = Fnt.semi()
-            contentDescription = "Sort and options"; setOnClickListener { menu() }
-        }
-        bar.addView(menuBtn, LinearLayout.LayoutParams(dp(40f), dp(44f)))
+        val menuBtn = object : View(this) {   // three dots drawn here: no dependency on a font glyph
+            private val pt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.fg }
+            override fun onDraw(cv: Canvas) { val cx = width / 2f; val cy = height / 2f; val g = dp(6f).toFloat(); for (k in -1..1) cv.drawCircle(cx, cy + k * g, dp(2f).toFloat(), pt) }
+        }.apply { contentDescription = "Sort and options"; setOnClickListener { menu() } }
+        bar.addView(menuBtn, LinearLayout.LayoutParams(dp(44f), dp(52f)))
         root.addView(bar)
         // chips
         val hs = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val cr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(8f), dp(2f), dp(8f), dp(4f)) }
+        val cr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12f), dp(4f), dp(12f), dp(6f)) }
         for ((k, t) in listOf("" to "All", "file" to "Files", "folder" to "Folders", "image" to "Images", "doc" to "Docs", "video" to "Video", "audio" to "Audio")) {
-            val c = tv(13f, p.fg).apply {
-                text = t; gravity = Gravity.CENTER; setPadding(dp(12f), 0, dp(12f), 0)
+            val c = tv(14f, p.fg).apply {
+                text = t; gravity = Gravity.CENTER; setPadding(dp(16f), 0, dp(16f), 0)
                 setOnClickListener { kind = k; markChips(); endSel(false); runQuery(true, 0) }
             }
             chips.add(k to c)
-            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32f)).apply { rightMargin = dp(6f) })
+            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36f)).apply { rightMargin = dp(8f) })
         }
         hs.addView(cr); root.addView(hs)
-        scopeTv = tv(13f, p.onac, true).apply {
-            setPadding(dp(12f), dp(4f), dp(12f), dp(4f)); visibility = View.GONE
-            background = GradientDrawable().apply { setColor(p.ac); cornerRadius = dp(12f).toFloat() }
+        scopeTv = tv(13f, p.ac, true).apply {
+            setPadding(dp(14f), dp(6f), dp(14f), dp(6f)); visibility = View.GONE
+            background = GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(16f).toFloat() }
             setOnClickListener { scope = ""; paintScope(); endSel(false); runQuery(true, 0) }
         }
-        root.addView(scopeTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10f); bottomMargin = dp(4f) })
+        root.addView(scopeTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(12f); bottomMargin = dp(6f) })
         // banner (indexing) + info line
-        banner = tv(12f, p.onac).apply {
-            setPadding(dp(12f), dp(4f), dp(12f), dp(4f)); visibility = View.GONE
-            background = GradientDrawable().apply { setColor(p.ac) }
+        banner = tv(12.5f, p.fg).apply {
+            setPadding(dp(14f), dp(8f), dp(14f), dp(8f)); visibility = View.GONE; compoundDrawablePadding = dp(10f)
+            background = GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(14f).toFloat() }
+            setCompoundDrawablesWithIntrinsicBounds(GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(p.ac); setSize(dp(8f), dp(8f)) }, null, null, null)
         }
-        root.addView(banner)
-        info = tv(12f, p.mut).apply { setPadding(dp(14f), dp(2f), dp(14f), dp(4f)) }
-        root.addView(info)
+        root.addView(banner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12f), dp(2f), dp(12f), dp(4f)) })
+        info = tv(12.5f, p.mut).apply { setPadding(dp(16f), dp(4f), dp(8f), dp(4f)) }
+        sortBtn = tv(13f, p.ac, true).apply { setPadding(dp(10f), dp(8f), dp(10f), dp(8f)); setOnClickListener { sortDlg() } }
+        viewBtn = tv(13f, p.ac, true).apply { setPadding(dp(10f), dp(8f), dp(14f), dp(8f)); setOnClickListener { viewDlg() } }
+        val infoRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        infoRow.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); infoRow.addView(sortBtn); infoRow.addView(viewBtn)
+        root.addView(infoRow)
+        paintBar()
         // list
         list = ListView(this).apply {
             divider = null; setBackgroundColor(p.bg); isFastScrollEnabled = true
@@ -252,7 +260,7 @@ class UsActivity : Activity() {
         // selection bar
         selBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
-            setBackgroundColor(p.cont); setPadding(dp(8f), 0, dp(4f), 0)
+            background = GradientDrawable().apply { setColor(p.cont); val r = dp(24f).toFloat(); cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) }; setPadding(dp(12f), 0, dp(8f), 0)
         }
         selTv = tv(14f, p.fg, true)
         selBar.addView(selTv, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(4f) })
@@ -269,7 +277,7 @@ class UsActivity : Activity() {
         for ((k, c) in chips) {
             val on = k == kind
             c.setTextColor(if (on) p.onac else p.fg)
-            c.background = GradientDrawable().apply { cornerRadius = dp(16f).toFloat(); if (on) setColor(p.ac) else { setColor(p.bg); setStroke(dp(1f), p.bd) } }
+            c.background = GradientDrawable().apply { cornerRadius = dp(18f).toFloat(); setColor(if (on) p.ac else p.cont) }
         }
     }
 
@@ -371,7 +379,13 @@ class UsActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
+    private fun paintBar() {
+        sortBtn.text = sortLabel() + " \u25BE"
+        viewBtn.text = (when { vmode == "grid" -> "Grid"; vmode == "compact" -> "Compact"; vthumb == "l" -> "Large list"; else -> "List" }) + " \u25BE"
+    }
+
     private fun setInfo() {
+        paintBar()
         if (IndexManager.index() == null) { info.text = "Search index is off (Settings \u203A Search index)"; return }
         if (lastText.isBlank() && kind.isEmpty()) {
             val st = IndexManager.status()
@@ -670,6 +684,7 @@ class UsActivity : Activity() {
                 else -> { vmode = "grid"; vcols = w - 2 }
             }
             saveOpts(); d.dismiss()
+            paintBar()
             list.adapter = ad   // new adapter binding: drops recycled rows of the other mode
             ad.notifyDataSetChanged()
         }.setNegativeButton("Cancel", null).show()
