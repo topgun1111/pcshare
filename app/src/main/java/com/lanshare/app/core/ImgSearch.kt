@@ -427,6 +427,9 @@ object ImgSearch {
         } catch (t: Throwable) { Log.w("ImgSearch", "auto watch failed: " + errText(t)) }
     }
 
+    /** Check for new pictures now (about 1 s): the same as the automatic scan, obeys the auto switch and the power rules. Called by UsIndexActivity. */
+    fun kickAll() { if (Cfg.imgAuto()) autoPoke(1_000) }
+
     private fun autoPoke(delayMs: Long) { val h = autoH ?: return; h.removeCallbacks(autoRun); h.postDelayed(autoRun, delayMs) }
 
     /** (battery percent or -1, charging). */

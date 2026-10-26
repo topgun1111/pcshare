@@ -862,6 +862,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-27 - CI red again after the `IndexManager.kickAll()` fix: `UsIndexActivity.kt:319:29 kickAll` is a second receiver (column math says `ImgSearch.kickAll()`); added `ImgSearch.kickAll()` = `autoPoke(1000)` when the auto scan is on. Still blind (file not in the zip received).
 - 2026-10-27 - CI red: `UsIndexActivity.kt:318/319 Unresolved reference: kickAll`. That file is NOT in the zip this session received (it exists only in the owner's repo), so `IndexManager.kickAll()` was added blind (sets `contentWant`, requests a delta now, notifies the thread). If the call site passes arguments or expects a return value the build will still fail: send the file / the next `e:` line.
 - 2026-10-26 - Storage analyzer on other devices (`ro` because `dev != local`), NOT compiled: details dialog for a FILE now has "Open" (first) and "Open containing folder" (second) via `StorageActions.revealDev` -> `MainActivity` intent extras `X_SHOW_DEV` / `X_SHOW_OPEN` -> page function `lsGoDev(dev, folder, name)` in `ui.html` (opens the folder on that device, waits for the listing, then opens the file with the normal tap chain). Local files, folders and archives unchanged.
 - 2026-10-26 - Main menu: removed the "FTP Servers" tile from `g2` in `ui.html` (now 3 tiles: Printers, SMB Shares, Favorite folders = one row). `openFtp` and the drawer footer FTP button are unchanged.
