@@ -383,6 +383,8 @@ object IndexManager {
     fun setContent(on: Boolean) { Cfg.setUsContent(on); if (on) { contentWant = true; poke() } else if (phase == "content") scan?.cancel() }
     fun setContentLimits(maxMb: Int, budgetMb: Int) { Cfg.setUsContentLimits(maxMb, budgetMb); contentWant = true; poke() }
     fun setContentExts(v: String) { Cfg.setUsContentExts(v); contentWant = true; poke() }
+    /** Wake every pass without throwing anything away: pending names delta + content pass (the image scan has its own watcher). Added because UsIndexActivity.kt calls it. */
+    fun kickAll() { synchronized(lock) { contentWant = true; wantDelta = true; deltaDueAt = System.currentTimeMillis(); lock.notifyAll() } }
     fun contentRebuild() { content()?.clear(); cDocs = 0; contentWant = true; poke() }
 
     /** Office documents are zipped (small text, big file): own cap of 30 MB; text files use the Settings cap. */

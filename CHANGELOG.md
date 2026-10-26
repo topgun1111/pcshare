@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-27 - Build fix
+
+### Fixed
+- The app builds again (search index screen was missing a function).
+
 ## 2026-10-26 - Storage analyzer on other devices: Open
 
 ### Added
