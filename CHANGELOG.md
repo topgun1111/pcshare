@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-26 - Test suite removed
+
+### Removed
+- All automatic component tests were removed from the project (the app itself is unchanged).
+
 ## 2026-10-26 - Search moved out of the menus
 
 ### Removed
