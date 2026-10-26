@@ -295,6 +295,18 @@ object ImgSearch {
         save()   // the "scan running" flag is on disk from the first second
     }
 
+    /** Starts an incremental scan (AI meaning + text reading) when the model is installed, nothing is running and something is new (or [force]). Returns "" or a reason. */
+    fun kickAll(force: Boolean = false): String {
+        if (running) return ""
+        if (engine == null) return "model"
+        if (Core.storageOk == false) return "storage"
+        return try {
+            ensureLoaded()
+            val empty = synchronized(lock) { items.isEmpty() }
+            if (!force && !empty && !hasNew(true)) "" else { start(true, force); "" }
+        } catch (t: Throwable) { errText(t) }
+    }
+
     fun cancel() { cancel = true }
 
     fun isRunning() = running

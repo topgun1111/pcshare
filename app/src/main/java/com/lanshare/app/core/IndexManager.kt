@@ -145,6 +145,14 @@ object IndexManager {
     fun changed(f: File) = changed(f.path)
 
     /** Throw the index away and build it again (settings change, "Rescan"). The old index keeps answering until the new one is ready. */
+    /** Index screen opened / "Run everything now": no waiting. Un-pauses, re-checks the folders now, and queues the file-content pass. Running jobs are left alone. */
+    fun kickAll() {
+        if (!started || !enabled()) return
+        if (paused) { paused = false; rescanIfNeeded() }
+        contentWant = true
+        synchronized(lock) { if (!complete) wantFull = true; wantDelta = true; deltaDueAt = 0L; notBefore = 0L; lock.notifyAll() }
+    }
+
     fun rescan() { synchronized(lock) { wantFull = true; notBefore = 0L; lock.notifyAll() }; scan?.cancel() }
 
     fun pause(on: Boolean) { paused = on; if (on) scan?.cancel() else rescanIfNeeded(); poke() }
