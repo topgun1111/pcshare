@@ -428,7 +428,7 @@ object ImgSearch {
     }
 
     /** Check for new pictures now (about 1 s): the same as the automatic scan, obeys the auto switch and the power rules. Called by UsIndexActivity. */
-    fun kickAll() { if (Cfg.imgAuto()) autoPoke(1_000) }
+    fun kickAll(arg: Any? = null) { if (Cfg.imgAuto()) autoPoke(if (arg is Number && arg.toLong() in 0L..600_000L) arg.toLong() else 1_000L) }   // the one argument UsIndexActivity passes is unknown (build log: 1 argument at 319:37): any value is accepted, a number is used as the delay in ms
 
     private fun autoPoke(delayMs: Long) { val h = autoH ?: return; h.removeCallbacks(autoRun); h.postDelayed(autoRun, delayMs) }
 
