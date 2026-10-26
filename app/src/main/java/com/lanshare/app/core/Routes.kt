@@ -416,7 +416,7 @@ object Routes {
                     "contentlimits" -> IndexManager.setContentLimits(b.optInt("maxMb", 5), b.optInt("budgetMb", 300))
                     "contentexts" -> IndexManager.setContentExts(b.optString("exts", ""))
                     "contentrebuild" -> IndexManager.contentRebuild()
-                    "images" -> { Cfg.setUsImg(b.optBoolean("on", true)); if (b.has("threshold")) Cfg.setUsAiThreshold(b.optDouble("threshold", 0.20).toFloat()) }
+                    "images" -> { Cfg.setUsImg(b.optBoolean("on", true)); if (b.has("threshold")) Cfg.setUsAiThreshold(b.optDouble("threshold", 0.25).toFloat()) }
                     else -> throw BadReq("unknown op")
                 }
                 IndexManager.status()

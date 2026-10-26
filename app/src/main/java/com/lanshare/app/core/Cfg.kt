@@ -72,7 +72,7 @@ object Cfg {
     /** D10: picture sections (ocr: / ai:) in Universal Search; AI similarity threshold (default = ImgSearch.THRESHOLD). */
     @Synchronized fun usImg(): Boolean = obj.optBoolean("us_img", true)
     @Synchronized fun setUsImg(v: Boolean) { obj.put("us_img", v); save() }
-    @Synchronized fun usAiThreshold(): Float = com.lanshare.app.core.usearch.ImgQuery.clampThreshold(obj.optDouble("us_ai_th", 0.20).toFloat())
+    @Synchronized fun usAiThreshold(): Float = com.lanshare.app.core.usearch.ImgQuery.clampThreshold(obj.optDouble("us_ai_th", 0.25).toFloat())
     @Synchronized fun setUsAiThreshold(v: Float) { obj.put("us_ai_th", com.lanshare.app.core.usearch.ImgQuery.clampThreshold(v).toDouble()); save() }
     @Synchronized fun usIncluded(): List<String> { val a = obj.optJSONArray("us_incl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
     @Synchronized fun setUsIncluded(l: List<String>) { obj.put("us_incl", JSONArray(l)); save() }

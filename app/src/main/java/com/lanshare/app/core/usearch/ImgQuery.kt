@@ -13,7 +13,7 @@ class ImgPlan(val ocr: List<OcrTerm>, val ocrNot: List<OcrTerm>, val ai: String,
 class ImgHit(val path: String, val score: Float, val badge: String)
 
 object ImgQuery {
-    const val DEFAULT_THRESHOLD = 0.20f
+    const val DEFAULT_THRESHOLD = 0.25f
     const val MIN_THRESHOLD = 0.05f
     const val MAX_THRESHOLD = 0.60f
     val EXTS: Set<String> = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif")

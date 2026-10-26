@@ -518,7 +518,7 @@ object ImgSearch {
      * so "Toca Boca" finds pictures in a folder called Toca Boca or with the logo text even when CLIP alone is unsure.
      * Needs [engine] (text tower) and at least one stored vector (pictures without a vector can still match by name / text).
      */
-    fun visual(query: String, top: Int = TOP_N, threshold: Float = THRESHOLD, dir: String = ""): JSONObject {
+    fun visual(query: String, top: Int = TOP_N, threshold: Float = THRESHOLD, dir: String = "", relative: Float = 0f): JSONObject {
         val eng = engine ?: throw BadReq("image search engine is not installed yet")
         ensureLoaded()
         val q = qvec(eng, query)
@@ -541,6 +541,8 @@ object ImgSearch {
             if (sc >= threshold) res.add(e.path to sc.coerceAtMost(1f))
         }
         res.sortByDescending { it.second }
+        // Relative cut: when the best picture is clearly better than the rest, drop everything more than [relative] below it (kills the long tail of loosely related pictures).
+        if (relative > 0f && res.isNotEmpty()) { val cut = res[0].second - relative; res.removeAll { it.second < cut } }
         return JSONObject().put("q", query).put("total", snap.size)
             .put("results", jarr(res.take(top).map { hit(it.first, it.second) }))
     }

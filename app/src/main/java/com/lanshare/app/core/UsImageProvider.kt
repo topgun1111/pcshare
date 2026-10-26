@@ -27,7 +27,7 @@ object UsImageProvider {
         if (plan.wantsAi) {
             if (ImgSearch.engine == null) { missing = true; notes.add("ai: the picture model is not installed (Settings > Image search > install); showing text matches only") }
             else ai = try {
-                val a = ImgSearch.visual(plan.ai, threshold = threshold).optJSONArray("results")
+                val a = ImgSearch.visual(plan.ai, top = 30, threshold = threshold, relative = 0.04f).optJSONArray("results")
                 if (a == null) emptyList() else (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { it.optString("path") to it.optDouble("score", 0.0).toFloat() } }
             } catch (e: BadReq) { notes.add("ai: " + (e.message ?: "failed")); emptyList() }
         }
