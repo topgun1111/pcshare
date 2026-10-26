@@ -938,9 +938,15 @@ class StorageActivity : Activity() {
             act("Open with…") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.open(this, it, pick = true) } }
             act("Share") { StorageActions.realOrToast(this, vpath, n, volBase())?.let { StorageActions.share(this, it) } }
         }
+        // another device (peer / SMB / FTP): a file can be opened and its folder shown through the file manager page (it fetches from that device)
+        val peerFile = dev != "local" && !n.dir && !n.agg
+        if (peerFile) {
+            act("Open") { StorageActions.revealDev(this, dev, StorageActions.folderOf(vpath, n), n.name) }
+            act("Open containing folder") { StorageActions.revealDev(this, dev, StorageActions.folderOf(vpath, n), null) }
+        }
         if (volPath == null && !ro) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
         if (mode == 2 && up != null) act("Show in folder") { showIn(n) }
-        else if (up != null && (wiz != null || up !== c)) act("Open containing folder") { val w = wiz; if (w != null) w.reveal(n) else showNode(up) }
+        else if (!peerFile && up != null && (wiz != null || up !== c)) act("Open containing folder") { val w = wiz; if (w != null) w.reveal(n) else showNode(up) }
         if (!n.agg && n.parent != null && volPath == null && !ro) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
         dlg.show()
     }

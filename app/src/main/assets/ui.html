@@ -3453,7 +3453,16 @@ function lsCloseOverlays(){
   try{if(document.body.classList.contains('srch')){clearQ()}}catch(e){}
 }
 window.lsOpenArc=p=>{lsCloseOverlays();openLoc('local',p+'!')};   // "Open with LANShare" on a zip / rar: browse inside the archive
-window.lsGoLocal=p=>{lsCloseOverlays();openLoc('local',p)};   // Storage Analyzer "Show in file manager": this device, that folder
+window.lsGoLocal=p=>{lsCloseOverlays();openLoc('local',p)};
+/* Storage Analyzer on another device: show that folder on that device and, with a name, open the file (waits for the listing) */
+window.lsGoDev=(dev,p,name)=>{lsCloseOverlays();openLoc(dev,p);if(!name)return;
+  let n=0;const t=setInterval(()=>{n++;
+    if(S.dev!==dev||S.path!==p){if(n>40)clearInterval(t);return}
+    const i=(shown()||[]).find(x=>x.name===name);
+    if(!i){if(n>40)clearInterval(t);return}
+    clearInterval(t);const k=kind(i);
+    try{if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(k==='office'&&nativeOffice(i));else if(isEd(i))editFile(i);else openFile(i)}catch(e){toast('\u26a0 '+e.message,4000)}
+  },250)};   // Storage Analyzer "Show in file manager": this device, that folder
 window.lsPrintFiles=async o=>{   /* picture viewer's Print button: the normal printer picker (this phone, Wi-Fi printers, PCs, PDF) for these files */
   try{lsCloseOverlays();await doPrint(null,{items:o.items.map(x=>({name:x.name,p:x.path,size:0})),dev:o.dev||'local',full:1,path:'/',done(){}})}
   catch(e){toast('\u26a0 '+e.message,5000)}};

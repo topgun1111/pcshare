@@ -147,6 +147,15 @@ object StorageActions {
         } catch (e: Exception) { toast(a, "Cannot open the file manager: " + errText(e)) }
     }
 
+    /** Another device: bring the file manager to the front, open [vfolder] on device [dev] and, when [openName] is set, open that file there. */
+    fun revealDev(a: Activity, dev: String, vfolder: String, openName: String?) {
+        try {
+            a.startActivity(Intent(a, MainActivity::class.java).setAction(MainActivity.ACTION_SHOW_PATH).putExtra(MainActivity.X_SHOW_PATH, vfolder)
+                .putExtra(MainActivity.X_SHOW_DEV, dev).putExtra(MainActivity.X_SHOW_OPEN, openName ?: "")
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        } catch (e: Exception) { toast(a, "Cannot open the file manager: " + errText(e)) }
+    }
+
     private fun toast(a: Activity, m: String) = Toast.makeText(a, m, Toast.LENGTH_LONG).show()
 
     // same list as MainActivity.TEXT_EXT (kept separate: that one is private to the file manager)

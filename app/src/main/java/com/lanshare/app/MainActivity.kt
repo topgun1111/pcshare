@@ -45,6 +45,8 @@ class MainActivity : Activity() {
         const val X_NAMES = "names"
         const val ACTION_SHOW_PATH = "com.lanshare.app.SHOW_PATH"   // from the Storage Analyzer: show this folder in the file manager
         const val X_SHOW_PATH = "path"
+        const val X_SHOW_DEV = "show_dev"     // Storage Analyzer on another device: that device id ("" = this phone)
+        const val X_SHOW_OPEN = "show_open"   // ... and the file name to open in that folder
     }
     private lateinit var web: WebView
     private lateinit var nl: NativeList
@@ -505,6 +507,8 @@ class MainActivity : Activity() {
         }
         if (i != null && i.action == ACTION_SHOW_PATH) {   // Storage Analyzer -> "Show in file manager"
             pendingShowPath = i.getStringExtra(X_SHOW_PATH)
+            pendingShowDev = i.getStringExtra(X_SHOW_DEV) ?: ""
+            pendingShowOpen = i.getStringExtra(X_SHOW_OPEN) ?: ""
             i.action = null   // consume once
             runShowPath()
             return
@@ -659,13 +663,18 @@ class MainActivity : Activity() {
     }
 
     private var pendingShowPath: String? = null
+    private var pendingShowDev = ""
+    private var pendingShowOpen = ""
 
     /** Opens folder [pendingShowPath] (virtual path on this device) in the file manager page; waits until the page is loaded. */
     private fun runShowPath() {
         val p = pendingShowPath ?: return
         if (!pageReady) return
         pendingShowPath = null
-        web.postDelayed({ web.evaluateJavascript("window.lsGoLocal&&lsGoLocal(" + JSONObject.quote(p) + ")", null) }, 300)
+        val d = pendingShowDev; val o = pendingShowOpen
+        pendingShowDev = ""; pendingShowOpen = ""
+        if (d.isNotEmpty()) web.postDelayed({ web.evaluateJavascript("window.lsGoDev&&lsGoDev(" + JSONObject.quote(d) + "," + JSONObject.quote(p) + "," + JSONObject.quote(o) + ")", null) }, 300)
+        else web.postDelayed({ web.evaluateJavascript("window.lsGoLocal&&lsGoLocal(" + JSONObject.quote(p) + ")", null) }, 300)
     }
 
     private fun runOpen() {

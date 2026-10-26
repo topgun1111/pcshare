@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-26 - Storage analyzer on other devices: Open
+
+### Added
+- Storage analyzer on another device (phone, SMB, FTP): touch and hold a file now offers "Open" first and "Open containing folder" second.
+
 ## 2026-10-26 - FTP tile removed from the main menu
 
 ### Removed
