@@ -4,11 +4,17 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -64,11 +70,18 @@ object UpdateCheck {
                     if (o.optString("name").endsWith(".apk")) { url = o.getString("browser_download_url"); size = o.optLong("size", 0L); isApk = true; break }
                 }
                 val dl = url; val dlSize = size; val dlApk = isApk
+                val newer = ArrayList<JSONObject>()   // every release newer than the installed one (a skipped version's notes must not be lost)
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    if (o.optBoolean("draft") || !hasApk(o)) continue
+                    if (isNewer(o.optString("tag_name"), cur)) newer.add(o)
+                }
+                newer.sortWith { x, y -> if (isNewer(x.optString("tag_name"), y.optString("tag_name"))) -1 else if (isNewer(y.optString("tag_name"), x.optString("tag_name"))) 1 else 0 }
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                     AppPal.dlg(a)
                         .setTitle("Yeni sürüm: $tag")
-                        .setMessage("Mevcut sürüm: $cur\nGitHub'da yeni bir güncelleme var.")
+                        .setView(changeView(a, cur, newer))
                         .setPositiveButton("İndir") { _, _ ->
                             if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
                         }
@@ -81,6 +94,60 @@ object UpdateCheck {
                 }
             } catch (_: Throwable) { onMsg?.invoke("Kontrol edilemedi (internet / GitHub)") }   // automatic check stays silent
         }.start()
+    }
+
+    private fun hasApk(o: JSONObject): Boolean {
+        val oa = o.optJSONArray("assets") ?: return false
+        for (k in 0 until oa.length()) if (oa.getJSONObject(k).optString("name").endsWith(".apk")) return true
+        return false
+    }
+
+    /** Scrollable "what changed" panel shown BEFORE the download: current version, then the notes of every newer release. */
+    private fun changeView(a: Activity, cur: String, rels: List<JSONObject>): android.view.View {
+        val p = AppPal.pal(a)
+        val pad = (20 * a.resources.displayMetrics.density).toInt()
+        val tv = TextView(a).apply {
+            setTextColor(p.fg); textSize = 14f
+            text = SpannableStringBuilder().also { sb ->
+                val s0 = sb.length; sb.append("Mevcut sürüm: $cur\n\n")
+                sb.setSpan(ForegroundColorSpan(p.mut), s0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                val s1 = sb.length; sb.append("Neler değişti\n")
+                sb.setSpan(StyleSpan(Typeface.BOLD), s1, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.append(notesText(a, rels))
+            }
+        }
+        return ScrollView(a).apply { setPadding(pad, pad / 2, pad, 0); addView(tv) }
+    }
+
+    /** Release body (CHANGELOG.md "### Added / Removed / Changed / Fixed" lists) as plain styled text: green Added, red Removed, accent for the rest, "•" bullets. */
+    private fun notesText(a: Activity, rels: List<JSONObject>): CharSequence {
+        val p = AppPal.pal(a); val night = AppPal.night(a)
+        val ok = if (night) 0xFF81C784.toInt() else 0xFF2E7D32.toInt()
+        val bad = if (night) 0xFFE57373.toInt() else 0xFFC62828.toInt()
+        val sb = SpannableStringBuilder()
+        fun add(t: String, color: Int?, bold: Boolean) {
+            val st = sb.length; sb.append(t)
+            if (bold) sb.setSpan(StyleSpan(Typeface.BOLD), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (color != null) sb.setSpan(ForegroundColorSpan(color), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        for (o in rels) {
+            val body = (if (o.isNull("body")) "" else o.optString("body", "")).replace("\r", "").take(4000)
+            if (rels.size > 1) add("\n" + o.optString("tag_name") + "\n", p.fg, true)
+            var any = false
+            for (raw in body.lines()) {
+                val l = raw.trim().replace("**", "").replace("`", "")
+                if (l.isEmpty() || l.startsWith("# ") || l.startsWith("## ")) continue
+                if (l.startsWith("###")) {
+                    val h = l.trimStart('#').trim()
+                    add("\n" + h + "\n", when { h.startsWith("Added", true) -> ok; h.startsWith("Removed", true) -> bad; else -> p.ac }, true)
+                } else if (l.startsWith("- ") || l.startsWith("* ")) add("\u2022 " + l.drop(2).trim() + "\n", null, false)
+                else add(l + "\n", null, false)
+                any = true
+            }
+            if (!any) add("(not listed)\n", p.mut, false)
+        }
+        if (rels.isEmpty()) add("\n(not listed)\n", p.mut, false)
+        return sb
     }
 
     private fun openInBrowser(a: Activity, url: String) {

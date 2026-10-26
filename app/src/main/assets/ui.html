@@ -4817,7 +4817,7 @@ const HM_P={
  usr:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'};
 const hmSvg=k=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+HM_P[k]+'"/></svg>';
 const homeOn=()=>$('#home').style.display==='flex';
-/* Universal Search (native screen UsActivity): drawer item, main menu tile, search row of a folder (q = text typed so far) */
+/* Universal Search (native screen UsActivity): reached from the file manager search button / search row of a folder (q = text typed so far) */
 function usOpen(q){if(typeof LSAndroid==='undefined'||!LSAndroid.openUsearch){usWeb(q);return}try{if(!LSAndroid.usearchOk()){toast('Search index is off \u2013 Settings \u203a Search index',4000);return}LSAndroid.openUsearch(q||'')}catch(e){usWeb(q)}}
 /* Universal Search in the browser (PC page) and on another phone: /api/usearch (this phone) or /api/rusearch (device chosen in the top bar). Plain list; tap = open the folder. arc:word = names inside archives. */
 function usWeb(q){let w=$('#usweb');if(w){w.remove()}
@@ -4889,8 +4889,7 @@ function homeShow(){
   const g1=E('div','hg'),g2=E('div','hg');
   g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/@gallery')},'/Pictures','img'),
     tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/@videos')},'/Movies','vid'),
-    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'),
-    tile('usr','Search','Find any file by name',()=>{usOpen('')}));
+    tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
     tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)),
@@ -5036,7 +5035,6 @@ function drawerRender(){
   if(DRW.tab===0){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
     bd.append(dItem({lead:ic('menu'),cls:'mm',title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
-    bd.append(dItem({lead:ic('search'),title:'Search everything',sub:'Names on this phone, instantly',onclick:()=>{drawerClose();usOpen('')}}));
     bd.append(E('div','dsep'));
     {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';

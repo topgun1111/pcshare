@@ -89,9 +89,29 @@ jobs:
           name: LANShare-apk
           path: ${{ steps.ver.outputs.apk }}
 
+      # Release notes = TOP "## " section of CHANGELOG.md (shown by the app's update dialog before the download button).
+      # Same text as the previous release (nobody added a new section) or no bullets = "not listed", never old notes twice.
+      - name: Release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk '/^## /{ if(f) exit; f=1; next } f' CHANGELOG.md 2>/dev/null | sed '/^<!--.*-->$/d' > release-notes.md || true
+          if ! grep -q '^[-*] ' release-notes.md; then
+            echo "::warning::CHANGELOG.md has no new section with '- ' entries at the top - update dialog will say 'not listed' (HANDOVER.md, READ FIRST rule 3)."
+            echo "Changes not listed for this build." > release-notes.md
+          else
+            PREV=$(gh release view --json body -q .body 2>/dev/null || true)
+            if [ "$(printf '%s' "$PREV" | tr -d '\r')" = "$(tr -d '\r' < release-notes.md)" ]; then
+              echo "::warning::CHANGELOG.md top section is identical to the previous release - add a NEW section for this change."
+              echo "Changes not listed for this build." > release-notes.md
+            fi
+          fi
+          cat release-notes.md
+
       # Release kalıcıdır (artifact 90 günde silinir)
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release-notes.md
           tag_name: ${{ steps.ver.outputs.tag }}
           name: LANShare ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
