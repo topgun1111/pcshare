@@ -433,7 +433,53 @@ class UsActivity : Activity() {
     }
 
     /** What is indexed, what is being indexed, what is waiting and why. Built off the UI thread (picture status loads its list). */
-    private fun statusDlg() { startActivity(UsIndexActivity.intent(this)) }   // the full-screen Search index page (starts every indexing job when it opens)
+    private fun statusDlg() {
+        Thread {
+            val t = StringBuilder()
+            try {
+                val st = IndexManager.status()
+                val c = st.optJSONObject("content")
+                val state = st.optString("state")
+                t.append("NAMES (files and folders)\n")
+                if (!st.optBoolean("enabled")) t.append("  Index is off (Settings \u203A Search index)\n")
+                else {
+                    t.append("  " + n(st.optInt("entries") - st.optInt("dead")) + " items, " + n(st.optInt("dirs")) + " folders\n")
+                    t.append("  " + (if (st.optBoolean("complete")) "complete" else "first build not finished") + "; last full scan " + ago(st.optLong("lastFull")) + ", last check " + ago(st.optLong("lastDelta")) + "\n")
+                    if (st.optInt("pending") > 0) t.append("  " + n(st.optInt("pending")) + " changed folders waiting to be re-read\n")
+                    val inc = st.optJSONArray("included"); val exc = st.optJSONArray("excluded")
+                    t.append("  Folders: " + (if (inc == null || inc.length() == 0) "whole phone" else (0 until inc.length()).joinToString(", ") { inc.optString(it) }) + "\n")
+                    if (exc != null && exc.length() > 0) t.append("  Left out: " + (0 until exc.length()).joinToString(", ") { exc.optString(it) } + "\n")
+                    if (st.optInt("unreadable") > 0) t.append("  " + n(st.optInt("unreadable")) + " folders could not be read\n")
+                }
+                t.append("\nTEXT INSIDE FILES\n")
+                if (c == null || !c.optBoolean("on")) t.append("  Off\n")
+                else {
+                    t.append("  " + n(c.optInt("docs")) + " files searchable (text, Office documents)\n")
+                    if (c.optInt("todo") > 0) t.append("  " + n(c.optInt("todo")) + " still to read\n")
+                    if (c.optBoolean("budgetHit")) t.append("  Storage limit of " + c.optInt("budgetMb") + " MB reached: raise it in Settings\n")
+                    t.append("  Files up to " + c.optInt("maxMb") + " MB, store up to " + c.optInt("budgetMb") + " MB\n")
+                }
+                try {
+                    val im = com.lanshare.app.core.ImgSearch.status()
+                    t.append("\nPICTURES\n  " + n(im.optInt("indexed")) + " with AI meaning, " + n(im.optInt("withText")) + " with text read (OCR)")
+                    if (im.optInt("failed") > 0) t.append(", " + n(im.optInt("failed")) + " unreadable")
+                    t.append("\n")
+                    if (im.optString("state") == "running") t.append("  Scanning now: " + n(im.optInt("done")) + " of " + n(im.optInt("total")) + "\n")
+                    if (!st.optJSONObject("images")!!.optBoolean("model")) t.append("  Picture model not installed yet (Settings)\n")
+                } catch (_: Throwable) {}
+                t.append("\nNOW\n  ")
+                val ph = st.optString("phase")
+                t.append(when {
+                    state == "paused" -> "Paused: " + st.optString("wait").ifBlank { "by you" }
+                    state == "scanning" && ph == "content" -> "Reading file contents"
+                    state == "scanning" -> "Scanning folders (" + ph + ")" + (if (st.optInt("pct", -1) >= 0) " " + st.optInt("pct") + " %" else "") + (if (st.optString("current").isNotEmpty()) "\n  " + st.optString("current") else "")
+                    else -> "Idle \u2013 up to date"
+                })
+                if (st.optString("error").let { it.isNotEmpty() && it != "null" }) t.append("\n  Last error: " + st.optString("error"))
+            } catch (e: Throwable) { t.append("Could not read the status: " + (e.message ?: e.javaClass.simpleName)) }
+            ui.post { if (!isFinishing) AppPal.dlg(this).setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
+        }.start()
+    }
 
     private fun refreshBanner(force: Boolean) {
         val ix = IndexManager.index()

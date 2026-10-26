@@ -1013,6 +1013,21 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     fun select(n: SNode) { pick(n) }
 
+    /** "Open containing folder": go to the Folders tab, open the folder that holds [n], select it, show it in the tree and the map, and say where we are. Never collapses anything. */
+    fun reveal(n: SNode) {
+        val f = n.parent ?: root
+        if (tab != 0) showTab(0)
+        sel = f; lastTapped = f; map.sel = f
+        if (f.dir && f.kids.isNotEmpty()) { expanded.add(f); if (f !== focus) setFocus(f) }
+        expandPath(f)
+        rebuildRows()
+        val i = rowN.indexOfFirst { it === f }
+        if (i >= 0) treeList.post { treeList.setSelectionFromTop(i, dp(60)) }
+        paintStatus()
+        treeAdapter.notifyDataSetChanged()
+        Toast.makeText(act, if (f === root) host.label else f.path(), Toast.LENGTH_SHORT).show()
+    }
+
     /** Where the user is (tab, opened folders, selection, scroll): kept when the screen is created again (e.g. after a video player was closed and Android had dropped the activity). */
     fun saveState(): String = try {
         val o = org.json.JSONObject()

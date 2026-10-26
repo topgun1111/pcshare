@@ -940,7 +940,7 @@ class StorageActivity : Activity() {
         }
         if (volPath == null && !ro) act("Show in file manager") { StorageActions.reveal(this, StorageActions.folderOf(vpath, n)) }   // part 9b: not for another volume
         if (mode == 2 && up != null) act("Show in folder") { showIn(n) }
-        else if (up != null && up !== c) act("Open containing folder") { showNode(up) }
+        else if (up != null && (wiz != null || up !== c)) act("Open containing folder") { val w = wiz; if (w != null) w.reveal(n) else showNode(up) }
         if (!n.agg && n.parent != null && volPath == null && !ro) act("Delete…", cErr) { confirmDelete(n) }   // part 8b files, 8c folders (not the scan root, not "small files")
         dlg.show()
     }

@@ -1744,27 +1744,23 @@ function isView(sdir,sname,m0){
     try{const r=await api('POST','/api/imgs',{op:'similar',paths,dir:sdir||''});
       if(!live())return;show((r&&r.results)||[],'similar pictures',true)}
     catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
-  let RS=0,RT=0;   // live search: RS = newest request (older answers are dropped), RT = typing debounce
-  async function run(auto){auto=auto===true;const q=inp.value.trim();if(!q||!live())return;if(auto&&q.length<(mode==='v'?3:2))return;const my=++RS,ok=()=>live()&&my===RS;
+  async function run(){const q=inp.value.trim();if(!q)return;
     if(mode==='n'){   // plain file-name search over the whole phone (or the album): pictures and videos only
-      if(q.length<2){if(!auto)toast('Type at least 2 letters',2500);return}
-      if(!auto){inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'))}else sb.textContent='Searching\u2026';
+      if(q.length<2){toast('Type at least 2 letters',2500);return}
+      inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
       try{const r=await api('GET','/api/search?dev=local&path='+enc(sdir||'/')+'&q='+enc(q),null,120000);
-        if(!ok())return;
+        if(!live())return;
         const it=((r&&r.items)||[]).filter(i=>!i.dir&&i.path&&(kind(i)==='img'||kind(i)==='vid')&&(showHid()||arcP(i.path)||(!i.path.split('/').some(x=>x[0]==='.')&&!hidAnc(i.path))));
         show(it.map(i=>({path:i.path,score:0})),q)}
-      catch(e){if(ok()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
+      catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}
       return}
-    if(!ST||!ST.model||!ST.model.installed){if(!auto)toast('Download the search model first',3000);return}
-    if(!(ST.indexed>0)&&ST.state!=='running'){if(!auto)toast('Scan your pictures first',3000);return}
-    if(!auto){inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'))}else sb.textContent='Searching\u2026';
+    if(!ST||!ST.model||!ST.model.installed){toast('Download the search model first',3000);return}
+    if(!(ST.indexed>0)&&ST.state!=='running'){toast('Scan your pictures first',3000);return}
+    inp.blur();gg.textContent='';gg.append(E('div','ge','Searching\u2026'));
     try{const r=await api('POST','/api/imgs',mode==='v'?{op:'visual',q,dir:sdir||''}:{op:'text',q,mode:whole?'word':'part',dir:sdir||''});
-      if(!ok())return;show((r&&r.results)||[],q)}
-    catch(e){if(ok()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
-  go.onclick=()=>run();inp.addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(RT);run()}});
-  // live search: results follow the typing (no Enter needed); the visual mode waits a little longer because every query is embedded by the model
-  inp.addEventListener('input',e=>{if(e.isComposing)return;clearTimeout(RT);if(!inp.value.trim()){RS++;return}RT=setTimeout(()=>run(true),mode==='v'?450:250)});
-  [tn,tv,tx,cw,cp].forEach(b=>b.addEventListener('click',()=>{if(inp.value.trim()&&mode!=='s'){clearTimeout(RT);RT=setTimeout(()=>run(true),0)}}));
+      if(!live())return;show((r&&r.results)||[],q)}
+    catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
+  go.onclick=run;inp.addEventListener('keydown',e=>{if(e.key==='Enter')run()});
   api('GET','/api/imgs').then(r=>{if(!live())return;ST=r;wasInst=!!(r.model&&r.model.installing);draw();poll()}).catch(e=>{if(live()){card.textContent='';card.append(E('small','','\u26a0 '+e.message))}});
   draw()}
 /* ---- AI search in ANOTHER phone's pictures (HANDOVER_GALLERY.md part 5): runs on that phone through /api/rimgs ---- */
@@ -1820,16 +1816,13 @@ function risView(D,dn,sdir,sname){
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(key(m));c.classList.add('sel');upd()});gg.append(c)})}
-  let RS=0,RT=0;   // live search (see the local page)
-  async function run(auto){auto=auto===true;const q=inp.value.trim();if(!q||!live())return;if(auto&&q.length<(mode==='v'?3:2))return;const my=++RS,ok=()=>live()&&my===RS;
-    if(mode==='v'&&ST&&ST.model&&!ST.model.installed){if(!auto)toast('Install image search on '+dn+' first',3500);return}
-    if(!auto){inp.blur();gg.textContent='';gg.append(E('div','ge','Searching on '+dn+'\u2026'))}else sb.textContent='Searching on '+dn+'\u2026';
+  async function run(){const q=inp.value.trim();if(!q)return;
+    if(mode==='v'&&ST&&ST.model&&!ST.model.installed){toast('Install image search on '+dn+' first',3500);return}
+    inp.blur();gg.textContent='';gg.append(E('div','ge','Searching on '+dn+'\u2026'));
     try{const x={q:q};if(sdir)x.dir=sdir;if(mode==='t')x.whole=whole?'1':'0';
-      const r=await R(mode==='v'?'visual':'text',x);if(!ok())return;show((r&&r.results)||[],q)}
-    catch(e){if(ok()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
-  go.onclick=()=>run();inp.addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(RT);run()}});
-  inp.addEventListener('input',e=>{if(e.isComposing)return;clearTimeout(RT);if(!inp.value.trim()){RS++;return}RT=setTimeout(()=>run(true),mode==='v'?600:400)});   // another phone answers: a bit slower debounce
-  [tv,tx,cw,cp].forEach(b=>b.addEventListener('click',()=>{if(inp.value.trim()){clearTimeout(RT);RT=setTimeout(()=>run(true),0)}}));
+      const r=await R(mode==='v'?'visual':'text',x);if(!live())return;show((r&&r.results)||[],q)}
+    catch(e){if(live()){gg.textContent='';gg.append(E('div','ge','\u26a0 '+e.message))}}}
+  go.onclick=run;inp.addEventListener('keydown',e=>{if(e.key==='Enter')run()});
   R('status').then(r=>{if(!live())return;ST=r;draw()}).catch(e=>{if(live()){ST={error:e.message};draw()}});
   draw()}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
@@ -4899,8 +4892,7 @@ function homeShow(){
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
     tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
-    tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)),
-    tile('ftp','FTP Servers','FTP and FTPS',()=>{openFtp()}));
+    tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)));   // FTP tile removed 2026-10-26 (FTP stays in the drawer footer)
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);

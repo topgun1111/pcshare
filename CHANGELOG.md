@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-26 - FTP tile removed from the main menu
+
+### Removed
+- The "FTP Servers" tile is gone from the main menu (FTP is still in the side menu, bottom row).
+
+## 2026-10-26 - Storage analyzer: Open containing folder
+
+### Fixed
+- Storage analyzer: "Open containing folder" in the details window now really opens the folder (Folders tab, folder selected and shown), also when you came from the Files tab.
+
 ## 2026-10-26 - Test suite removed
 
 ### Removed
