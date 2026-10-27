@@ -3693,7 +3693,7 @@ function psLayout(){
   const live=()=>o._for===tok&&o.style.display==='flex';
   o.classList.remove('lypv');
   o._sel=()=>{if(VIEW==='prev'){setView('edit');return true}openPrintSpace();return true};   // system Back = Preview -> editor -> picture grid
-  let SP=PSL_DEF(),PL=null,LY=null,PICS=[],PLACED={},MODE='front',sheet=0,side='front',selPic=null,selSlot=null,setOpen=true,qn=0,chain=Promise.resolve(),drag=null,lastSh=-1,VIEW='edit',RV=null,RVerr='',pv=0,pTm=0,pn=0,rvTry=0,pBusy=false;
+  let SP=PSL_DEF(),PL=null,LY=null,PICS=[],PLACED={},MODE='front',sheet=0,side='front',selPic=null,selSlot=null,setOpen=true,qn=0,chain=Promise.resolve(),drag=null,lastSh=-1,VIEW='edit',RV=null,RVerr='',pv=0,pTm=0,pn=0,rvTry=0,pBusy=false,RM=null;
   try{const j=JSON.parse(LD('ls_ps_lay','null'));if(j&&j.spec){SP=Object.assign(PSL_DEF(),j.spec);PL=j.plan||null;MODE=j.mode||'front';setOpen=false}}catch(e){}
   const FIL={},pic=id=>PICS.find(m=>m.id===id),thumb=m=>'/api/thumb?dev=local&path='+enc(m.path)+'&q=95',
     hasBack=()=>!!PL&&PL.sheets.some(s=>(s.b||[]).some(Boolean)||(s.fb||[]).length>0),
@@ -3846,9 +3846,11 @@ function psLayout(){
     bxPg.replaceChildren(vrWrap(pg,sw/sh,46))}
   // ---- tray + selection controls
   function dTray(){const f=document.createDocumentFragment();
-    PICS.forEach(m=>{const t=E('div','lyt'+(selPic===m.id?' sel':'')),im=E('img'),n=PLACED[m.id]||0,cp=m.copies||1;
+    PICS.forEach(m=>{const t=E('div','lyt'+(selPic===m.id?' sel':'')+(RM&&RM.has(m.id)?' dt':'')),im=E('img'),n=PLACED[m.id]||0,cp=m.copies||1;
       im.alt='';im.draggable=false;im.src=thumb(m);im.style.transform='rotate('+(m.rot||0)+'deg)';t.append(im,E('span','lyg'+(n>=cp?' ok':''),n+'/'+cp));t.dataset.id=m.id;
-      arm(t,()=>({k:'pic',id:m.id}),()=>{
+      if(RM&&RM.has(m.id))t.append(ic('check','ck'));
+      arm(t,()=>RM?null:({k:'pic',id:m.id}),()=>{
+        if(RM){RM.has(m.id)?RM.delete(m.id):RM.add(m.id);dTray();dCtl();return}   // remove mode: tap = mark / unmark a picture
         if(SP.free){freeAdd(m.id);return}   // free placement: one tap puts the picture on this side
         if(selSlot){const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,m.id);dPage();dCtl();return}   // slot first, then picture
         selPic=selPic===m.id?null:m.id;selSlot=null;dTray();dPage();dCtl()});
@@ -3857,6 +3859,11 @@ function psLayout(){
   function dCtl(){
     const f=document.createDocumentFragment(),mk=(lbl,fn,ico,cls)=>{const b=E('button','tbtn'+(cls?' '+cls:''));if(ico)b.append(ic(ico));b.append(document.createTextNode(lbl));b.onclick=fn;return b},
       m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
+    if(RM){   // remove mode: pick single pictures in the tray, then delete the copies held in Print space
+      const n=RM.size;f.append(E('b','',n?n+' picture'+(n===1?'':'s')+' marked':'Tap pictures below to mark them'),
+        mk('All',()=>{if(RM.size>=PICS.length)RM.clear();else PICS.forEach(q=>RM.add(q.id));dTray();dCtl()},'selall'));
+      const rb=mk(n?'Remove '+n:'Remove',()=>rmPics(),'del','dng');rb.disabled=!n;f.append(rb,mk('Done',()=>{RM=null;dTray();dCtl()}));
+      bxCtl.replaceChildren(f);return}
     if(SP.free){
       const q=fsel>=0&&FRL&&FRL[fsel]?FRL[fsel]:null,fm=q?pic(q.id):null,ub=mk('Undo',()=>fundo(false)),rb=mk('Redo',()=>fundo(true));
       ub.disabled=!FU.length;rb.disabled=!FR.length;f.append(ub,rb,mk(fmm?'Multi: on':'Multi',()=>{fmm=!fmm;fms.clear();if(fmm&&fsel>=0)fms.add(fsel);fmClass()}));
@@ -3876,7 +3883,19 @@ function psLayout(){
       if(side==='front'&&LY&&LY.behind[selSlot.slot]!=null){const b2=LY.behind[selSlot.slot];
         f.append(mk('Back side',()=>{const c2=cellAt(sheet,'back',b2);side='back';selSlot={sheet,side:'back',slot:b2,id:c2?c2.id:null};dTab();dPage();dCtl()},'sort'))}}
     else f.append(E('span','','Tap a picture, then a slot \u00b7 hold and drag to move or swap'));
+    if(PICS.length&&!(SP.free&&(fms.size>1||fsel>=0&&FRL&&FRL[fsel])))f.append(mk('Remove pictures\u2026',()=>{RM=new Set();selPic=null;selSlot=null;dTray();dPage();dCtl()},'del'));
     bxCtl.replaceChildren(f)}
+  /* remove single pictures from Print space BEFORE arranging them: the copies are deleted (originals stay), the server leaves empty slots / drops free items for ids that are gone */
+  async function rmPics(){
+    if(!RM||!RM.size)return;const ids=[...RM],n=ids.length;
+    if(!await dlg({title:'Remove '+n+' picture'+(n===1?'':'s')+' from Print space?',msg:'Only the copies held here are deleted. The original pictures stay where they are.',ok:'Remove',danger:true}))return;
+    try{const r=await api('POST','/api/ps',{op:'rm',ids});if(!live())return;PICS=r.items||PICS.filter(q=>!RM.has(q.id));
+      RM=null;selPic=null;selSlot=null;fsel=-1;if(fms)fms.clear();
+      toast(n+' picture'+(n===1?'':'s')+' removed',2500);
+      if(!PICS.length){PL=null;LY=null;PLACED={};save();draw();return}
+      if(FU)FU.length=0;if(FR)FR.length=0;
+      await call({op:'view'});if(live()&&!LY)draw()}
+    catch(e){toast('\u26a0 '+e.message,5000)}}
   function dHead(){const n=PL?PL.sheets.length:0,pl=Object.values(PLACED).reduce((t,v)=>t+v,0),tot=PICS.reduce((t,m)=>t+(m.copies||1),0);
     sb.textContent=n?n+' sheet'+(n===1?'':'s')+' \u00b7 '+pl+' of '+tot+' placed':(PICS.length?'No sheets':'Empty');
     const any=!!LY&&!!LY.pages&&LY.pages.length>0;pvb.style.display=pr.style.display=PICS.length?'':'none';pr.disabled=pBusy||!any;pvb.disabled=!any&&VIEW!=='prev'}
