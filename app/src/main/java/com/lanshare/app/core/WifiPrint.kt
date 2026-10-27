@@ -131,6 +131,7 @@ object WifiPrint {
                     job.done += maxOf(size - got, 0L)
                 } catch (e: Cancelled) { throw e
                 } catch (e: IOException) {
+                    if (job.cancel) throw Cancelled()
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - got, 0L)
                 } finally { temps.forEach { try { it.delete() } catch (_: Exception) {} } }
@@ -155,8 +156,8 @@ object WifiPrint {
         } catch (e: Cancelled) {
             job.state = "cancel"
         } catch (e: Throwable) {
-            job.error = errText(e)
-            job.state = "error"
+            if (job.cancel) job.state = "cancel"   // Cancel closed the socket that waited for the printer
+            else { job.error = errText(e); job.state = "error" }
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
@@ -270,6 +271,7 @@ object WifiPrint {
                 r = Ipp.printJob(p, name, mime, t, f)
                 busy = !r.ok && (r.status == 0x0507 || r.status == 0x0506 || r.status == 0x0502)
             } catch (e: IOException) {
+                if (curJob.get()?.cancel == true) throw Cancelled()
                 val m = e.message ?: ""
                 if (m.contains("503") || m.contains("busy", true) || m.contains("refused", true) || m.contains("reset", true)) busy = true
                 else throw e

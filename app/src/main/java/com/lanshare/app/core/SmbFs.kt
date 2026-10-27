@@ -114,6 +114,7 @@ object Smb {
             .put("share", share.trim().trim('\\', '/')).put("user", user.trim())
             .put("password", if (password.isEmpty()) old.optString("password", "") else password)
             .put("name", name.trim().take(40).ifEmpty { split(host).first })
+        old.optString("picdir", "").let { if (it.isNotEmpty()) c.put("picdir", it) }   // PC gallery folder chosen by hand stays
         SmbFs.create(c).ls("/")
         val cur = Cfg.smb()
         val list = ArrayList<JSONObject>()
@@ -134,6 +135,7 @@ object Smb {
         list.removeAll { it.optString("id") == id }
         state.remove(id)
         SmbFs.forget(id)
+        PcPictures.forget(id)
         Cfg.setSmb(JSONArray(list.take(10)))
         Cfg.save()
     }

@@ -42,7 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "29"
+VERSION = "30"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -1496,10 +1496,12 @@ param([string]$Name)
 $d = if ($Name) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Name } } else { Get-CimInstance Win32_Printer | Where-Object { $_.Default } }
 if ($d) {
   $p = Get-Printer -Name $d.Name -ErrorAction SilentlyContinue
-  $j = @(Get-PrintJob -PrinterName $d.Name -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.JobStatus })
+  $jb = @(Get-PrintJob -PrinterName $d.Name -ErrorAction SilentlyContinue)
+  $j = @($jb | ForEach-Object { [string]$_.JobStatus })
+  $pg = 0; foreach ($x in $jb) { try { $pg += [int]$x.PagesPrinted } catch { } }
   $hx = 0; $hy = 0
   try { Add-Type -AssemblyName System.Drawing; $ps = New-Object System.Drawing.Printing.PrinterSettings; $ps.PrinterName = $d.Name; $hx = [double]$ps.DefaultPageSettings.HardMarginX; $hy = [double]$ps.DefaultPageSettings.HardMarginY } catch { }
-  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j; hx=$hx; hy=$hy } | ConvertTo-Json -Compress
+  [pscustomobject]@{ name=$d.Name; status=[string]$p.PrinterStatus; offline=[bool]$d.WorkOffline; detected=[int]$d.DetectedErrorState; port=[string]$p.PortName; jobs=$j; pages=$pg; hx=$hx; hy=$hy } | ConvertTo-Json -Compress
 }
 """
 STATUS_TEXT = {   # Get-Printer PrinterStatus -> plain words
@@ -1526,7 +1528,7 @@ def describe_problem(info):
 
 def job_problem(info):
     for flag, text in JOB_TEXT:
-        if any(flag in (j or "") for j in info.get("jobs", [])):
+        if any(flag in (j or "") for j in active_jobs(info)):   # finished / kept-only jobs are ignored
             return text
     return None
 
@@ -1625,26 +1627,49 @@ def port_hint(info):
     return f" (port {port})" if port else ""
 
 
-def watch_printer(seconds=30, printer=None):
+DONE_JOB = ("printed", "complete", "deleted", "deleting")   # job states that mean "finished" (the job may just be kept in the list)
+
+
+def active_jobs(info):
+    """Queue entries that still need the printer. 'Printing, Retained' is a job that is printing AND will be kept in the list afterwards
+    (Windows 'Keep printed documents'); a job that is only 'Retained' / 'Printed' is finished. Before, every kept job counted as stuck."""
+    out = []
+    for j in info.get("jobs", []):
+        parts = [x.strip() for x in str(j or "").split(",") if x.strip()]
+        live = [x for x in parts if x.lower() != "retained" and x.lower() not in DONE_JOB]
+        if live:
+            out.append(", ".join(live))
+    return out
+
+
+def watch_printer(seconds=30, printer=None, stall=150, cap=900):
     """After a file was handed over: wait and report what the printer says if the job gets stuck (else None).
-    A job that is still in the Windows queue at the end is reported too: before, that was logged as 'printed'."""
+    A long job (many copies, duplex, big pictures) legitimately stays in the Windows queue as 'Printing' for minutes, so it is only
+    called stuck when nothing changed (job states, pages printed, number of jobs) for `stall` seconds; `cap` = absolute limit.
+    A real problem the printer / driver names (paper out, jam, offline ...) is reported at once."""
     if not WIN:
         return None
-    end = time.time() + seconds
-    issue, info = None, None
-    while time.time() < end:
+    t0 = time.time()
+    last, last_t, info = None, t0, None
+    while time.time() - t0 < cap:
         time.sleep(2)
         info = printer_info(printer)
         if not info:
             return None
-        if not info["jobs"]:
-            return None   # the job left the Windows queue: the printer took it
+        act = active_jobs(info)
+        if not act:
+            return None   # the job left the Windows queue (or is only kept there as finished): the printer took it
         issue = job_problem(info) or describe_problem(info)
         if issue and not issue.startswith("low on"):
             PRINTER_PROBLEM[0] = issue
             return issue + port_hint(info)
-    if info and info["jobs"]:
-        return f"still in the Windows queue after {seconds}s ({', '.join(info['jobs'])}) - the printer is not taking it" + port_hint(info)
+        sig = (tuple(act), info.get("pages"))
+        if sig != last:
+            last, last_t = sig, time.time()
+        elif time.time() - last_t >= stall and time.time() - t0 >= seconds:
+            return f"still in the Windows queue and no progress for {int(time.time() - last_t)}s ({', '.join(act)}) - the printer is not taking it" + port_hint(info)
+    if info and active_jobs(info):
+        return f"still in the Windows queue after {int(cap)}s ({', '.join(active_jobs(info))}) - the printer is not taking it" + port_hint(info)
     return None
 
 

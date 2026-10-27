@@ -1546,7 +1546,7 @@ function galView(a){
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
   const pcv=+LD('ls_galpc','')||0;if(pcv)gg.style.setProperty('--pc',pcv);
   const tn=E('button','ibtn');tn.append(ic('tune'));tn.setAttribute('aria-label','Size and sort');tn.onclick=()=>galOpts(gg,()=>{if(o._redraw)o._redraw()});
-  tw.append(tt,sb);hd.append(bk,tw);if(rem&&!a.v){const rs=E('button','ibtn');rs.append(ic('search'));rs.setAttribute('aria-label','AI search');rs.onclick=()=>risView(D,devName(D),a.path,a.name);hd.append(rs)}hd.append(tn);sc.append(gg);
+  tw.append(tt,sb);hd.append(bk,tw);if(rem&&!a.v&&!isPc(D)){const rs=E('button','ibtn');rs.append(ic('search'));rs.setAttribute('aria-label','AI search');rs.onclick=()=>risView(D,devName(D),a.path,a.name);hd.append(rs)}hd.append(tn);sc.append(gg);
   // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=E('h2'),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
@@ -1826,12 +1826,14 @@ function risView(D,dn,sdir,sname){
   R('status').then(r=>{if(!live())return;ST=r;draw()}).catch(e=>{if(live()){ST={error:e.message};draw()}});
   draw()}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
-let GALA=null,GALT=0,GALP=null,GALPK=null,GALE='';   // GALA.k = 'vid' | 'img': which kind of albums it holds
+let GALA=null,GALT=0,GALP=null,GALPK=null,GALE='',GALFR=0;   /* GALFR: next PC album read ignores the server's 90 s cache */
+const isPc=d=>String(d||'').startsWith('smb:');   // a PC (SMB share): its Pictures folder is shown as a gallery (photos only, core/PcPictures.kt)
+// GALA.k = 'vid' | 'img': which kind of albums it holds
 function galFetch(){const gk=galVid()?'vid':'img',dev=S.dev,key=gk+'|'+dev;if(GALP&&GALPK===key)return;GALPK=key;GALE='';   // cache is per device AND kind
-  const url=dev==='local'?'/api/albums'+(gk==='vid'?'?kind=vid':''):'/api/ralbums?dev='+enc(dev)+(gk==='vid'?'&kind=vid':'');   // other phone: its own albums, asked through this phone
-  GALP=api('GET',url,null,dev==='local'?undefined:15000).then(r=>{const a=((r&&r.albums)||[]).map(x=>{x.v=gk==='vid';return x}),sig=key+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===key){GALA={a:a,sig:sig,k:gk,dev:dev};GALT=Date.now()}return ch&&GALPK===key}).catch(e=>{if(GALPK===key)GALE=String(e&&e.message||e);try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return GALPK===key&&dev!=='local'}).then(ch=>{if(GALPK===key)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+  const url=dev==='local'?'/api/albums'+(gk==='vid'?'?kind=vid':''):'/api/ralbums?dev='+enc(dev)+(gk==='vid'?'&kind=vid':'')+(isPc(dev)&&GALFR?'&fresh=1':'');GALFR=0;   // other phone: its own albums, asked through this phone
+  GALP=api('GET',url,null,dev==='local'?undefined:isPc(dev)?120000:15000).then(r=>{const a=((r&&r.albums)||[]).map(x=>{x.v=gk==='vid';return x}),sig=key+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===key){GALA={a:a,sig:sig,k:gk,dev:dev};GALT=Date.now()}return ch&&GALPK===key}).catch(e=>{if(GALPK===key)GALE=String(e&&e.message||e);try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return GALPK===key&&dev!=='local'}).then(ch=>{if(GALPK===key)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
 /* pull to refresh / refresh button at the Gallery or Videos album home: drop the 15 s album cache and re-read the albums now */
-function galForce(){GALT=0;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
+function galForce(){GALT=0;GALFR=1;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
 function mkAlbumX(a,P0,V){
   if(S.dev!=='local')return mkAlbumR(a);
   const c=E('div','alb'),cv=E('div','acv');cv.append(raw(FOLD,'fold'));c.title=a.path;
@@ -1855,7 +1857,7 @@ function mkAlbumR(a){
   if(a.cover){if(hit&&hit.u)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'img',url:'/api/rthumb?dev='+enc(dev)+'&path='+enc(a.cover)+'&big=1'+(a.v?'&video=1':''),done:show}))}
   let lp=false,tm=0;
   c.onclick=()=>{if(lp){lp=false;return}galView(Object.assign({},a,{dev:dev}))};
-  if(!a.v&&!galVid()){   // press and hold an album: the AI search button appears on its cover = search only this album
+  if(!a.v&&!galVid()&&!isPc(dev)){   // press and hold an album: the AI search button appears on its cover = search only this album
     const cl=()=>{clearTimeout(tm);tm=0};
     c.addEventListener('touchstart',()=>{lp=false;cl();tm=setTimeout(()=>{tm=0;lp=true;
       const old=cv.querySelector('.asb');
@@ -1877,13 +1879,24 @@ function galPhones(){
   if(S.dev!=='local')row('This phone','Gallery of this device','local',false);
   const ph=peersSorted().filter(p=>p.kind==='LANShare'&&p.id!==S.dev);
   ph.forEach(p=>row(p.name,[connTxt(p),batTxt(p),p.ok===false?'offline':''].filter(Boolean).join(' \u00b7 '),p.id,p.ok===false));
-  if(!ph.length&&S.dev==='local')card.append(E('div','dnote','No other phone with LANShare found yet. Both phones need the same Wi-Fi and the newest LANShare build.'));
+  const pcs=peersSorted().filter(p=>p.kind==='SMB'&&p.id!==S.dev);
+  if(pcs.length){card.append(E('div','dnote','PC \u00b7 Pictures folder and its sub-folders'));
+    pcs.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt'),off=p.ok===false;ld.append(ic('pc'));
+      lt.append(E('span','dn',p.name),E('small','',(p.ip||'')+(off?' \u00b7 not answering':'')));b.append(ld,lt);
+      b.onclick=()=>{if(off){toast('\u26a0 That PC is not answering right now',3000);return}fin();openLoc(p.id,'/@gallery')};card.append(b)})}
+  if(!ph.length&&!pcs.length&&S.dev==='local')card.append(E('div','dnote','No other phone with LANShare found yet. Both phones need the same Wi-Fi and the newest LANShare build. To see a PC\'s pictures, add it first under SMB.'));
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=fin;card.append(c);o.append(card)}
+/* PC gallery: set the PC's Pictures folder by hand (virtual path on the share, e.g. /C$/Users/Ali/Pictures); empty = find it again by itself */
+async function pcPicDir(dev){
+  let cur='';try{const r=await api('GET','/api/pcpicdir?dev='+enc(dev));cur=(r&&r.picdir)||''}catch(e){}
+  const v=await dlg({title:'Pictures folder of '+devName(dev),msg:'Only this folder and its sub-folders are shown. Type its path on the PC (for example /C$/Users/Ali/Pictures), or leave it empty to let LANShare find the Pictures folder itself.',input:{value:cur,label:'/C$/Users/<name>/Pictures'},ok:'Save'});
+  if(v==null||v===true)return;
+  try{await api('POST','/api/pcpicdir',{dev,path:String(v).trim()},30000);toast(String(v).trim()?'Pictures folder saved':'Pictures folder: automatic',2500);GALA=null;galForce()}catch(e){toast('\u26a0 '+e.message,6000)}}
 function galPhoneBar(){
   const bar=E('div','galph'),b=E('button','chip ph'),remote=S.dev!=='local';
-  b.append(ic('phone'),E('span','',remote?devName(S.dev):'Other phones'));if(!remote){const n=S.peers.filter(p=>p.kind==='LANShare').length;if(n)b.append(E('small','',String(n)))}
+  const pc=isPc(S.dev);b.append(ic(pc?'pc':'phone'),E('span','',remote?devName(S.dev):'Other phones'));if(!remote){const n=S.peers.filter(p=>p.kind==='LANShare'||p.kind==='SMB').length;if(n)b.append(E('small','',String(n)))}
   b.onclick=galPhones;bar.append(b);
-  if(remote&&!galVid()){   // Search chip is hidden until the phone chip is pressed and held
+  if(remote&&!galVid()&&!pc){   // Search chip is hidden until the phone chip is pressed and held
     const sh=()=>window.GALSRCH===S.dev;
     const mkq=()=>{const q=E('button','chip');q.append(ic('search'),E('span','','Search'));q.onclick=()=>risView(S.dev,devName(S.dev),'','');return q};
     let tm=0,lp=false,qb=sh()?mkq():null;if(qb)bar.append(qb);
@@ -1894,7 +1907,8 @@ function galPhoneBar(){
     b.addEventListener('touchmove',cl,{passive:true});b.addEventListener('touchend',cl);b.addEventListener('touchcancel',cl);
     b.addEventListener('contextmenu',e=>e.preventDefault());
     b.onclick=e=>{if(lp){lp=false;e.preventDefault();return}galPhones()}}
-  if(remote){const t=E('button','chip'),vd=galVid();t.append(ic(vd?'img':'vid'),E('span','',vd?'Photos':'Videos'));t.onclick=()=>openLoc(S.dev,vd?'/@gallery':'/@videos');bar.append(t)}
+  if(pc){const f=E('button','chip');f.append(ic('folder'),E('span','','Pictures folder'));f.onclick=()=>pcPicDir(S.dev);bar.append(f)}   // which PC folder is the gallery (empty = found by itself)
+  if(remote&&!pc){const t=E('button','chip'),vd=galVid();t.append(ic(vd?'img':'vid'),E('span','',vd?'Photos':'Videos'));t.onclick=()=>openLoc(S.dev,vd?'/@gallery':'/@videos');bar.append(t)}
   return bar}
 function render(){
   applyPrefs();
@@ -4608,7 +4622,7 @@ function lvFeed(id,j){
   else L.now.style.display='none';   // nothing to report right now: never leave the previous step's text (e.g. "Checking the destination folder") on the card
   const fl=j.filesTotal>0?(j.files||0)+' of '+j.filesTotal:(j.files>0?String(j.files):'');
   lvCells(L,[['t',j.bytes?'Transferred':'Items',j.bytes?fmt(j.done)+' of '+fmt(j.total):j.done+' of '+j.total],
-    ['s','Speed',j.speed>0?fmt(j.speed)+'/s':''],['e','Time left',j.eta>0?etaTxt(j.eta):''],['u','Elapsed',durTxt(j.elapsed)],
+    ['s','Speed',j.speed>0?fmt(j.speed)+'/s':''],['e','Time left',j.eta>0&&j.eta<172800?etaTxt(j.eta):''],['u','Elapsed',durTxt(j.elapsed)],
     ['f',j.filesTotal>0?'Files':(j.label&&/^Delet/.test(j.label)?'Items removed':'Files'),fl],['x','Problems',j.failed>0?String(j.failed):'','pjbad']]);
   if(j.live){L.sum.style.display='';L.sum.textContent='↻ '+j.cR+' replaced  ·  ＋ '+j.cN+' new  ·  ↷ '+j.cS+' skipped'}
   lvProblems(L,j);

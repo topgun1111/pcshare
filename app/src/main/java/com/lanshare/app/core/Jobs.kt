@@ -28,7 +28,14 @@ class Job(@Volatile var label: String) {
     @Volatile var total = 1L
     @Volatile var bytes = true
     @Volatile var error: String? = null
-    @Volatile var cancel = false
+    @Volatile private var cancelled = false
+    /** Cancel: besides the flag (polled between steps), every registered abort action runs at once - sockets that wait for a slow printer / PC are closed, so the job stops now instead of after the network timeout. */
+    var cancel: Boolean
+        get() = cancelled
+        set(v) { cancelled = v; if (v) runAborts() }
+    private val aborts = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+    fun onAbort(f: () -> Unit) { aborts.add(f); if (cancelled) try { f() } catch (_: Throwable) {} }
+    private fun runAborts() { for (f in aborts) try { f() } catch (_: Throwable) {} }
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
     @Volatile var result: JSONObject? = null   // structured result (duplicate finder)
@@ -133,7 +140,7 @@ class Job(@Volatile var label: String) {
                 if (r > 0 && warm) {
                     if (bytes) it.put("speed", Math.round(r))
                     val left = maxOf(total - done, 0L)
-                    if (left > 0) it.put("eta", Math.ceil(left / r).toLong())
+                    if (left > 0 && left / r < 172800) it.put("eta", Math.ceil(left / r).toLong())   // no promise when the speed is almost 0
                 }
             }
         }
@@ -331,7 +338,7 @@ object Jobs {
             prune()
             val wjob = Job("Printing on ${wp.name}")
             all[wid] = wjob
-            Thread({ WifiPrint.work(wjob, src, wp, paths, opts) }, "wprint-$wid").also { it.isDaemon = true }.start()
+            Thread({ Http.abortable(wjob) { WifiPrint.work(wjob, src, wp, paths, opts) } }, "wprint-$wid").also { it.isDaemon = true }.start()
             return wid
         }
         val (ip, pcName) = printTarget(dstId)
@@ -339,7 +346,7 @@ object Jobs {
         prune()
         val job = Job("Printing on $pcName")
         all[jid] = job
-        Thread({ printWork(job, src, ip, pcName, paths, opts) }, "print-$jid").also { it.isDaemon = true }.start()
+        Thread({ Http.abortable(job) { printWork(job, src, ip, pcName, paths, opts) } }, "print-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -530,8 +537,8 @@ object Jobs {
         } catch (e: Cancelled) {
             job.state = "cancel"
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
-            job.error = errText(e)
-            job.state = "error"
+            if (job.cancel) job.state = "cancel"   // the socket was closed by Cancel: that is the cancel, not an error
+            else { job.error = errText(e); job.state = "error" }
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()

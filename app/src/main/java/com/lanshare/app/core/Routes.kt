@@ -207,6 +207,10 @@ object Routes {
             "albums" -> return ex.json(Albums.json(q["kind"] == "vid"))
             // "Other phones" gallery (HANDOVER_GALLERY.md part 1): ?dev=<phone id>[&kind=vid]  -> that phone's {albums:[...]}
             "ralbums" -> {
+                if (ex.q("dev").startsWith("smb:")) {   // a PC (SMB share): its Pictures folder + sub-folders as albums, pictures only
+                    if (q["kind"] == "vid") return ex.json(JSONObject().put("albums", JSONArray()).put("video", true))
+                    return ex.json(PcPictures.albums(ex.q("dev"), q["fresh"] == "1"))
+                }
                 val e = remotePhone(ex.q("dev"))
                 val body = try { e.rpc("albums", mapOf("kind" to (if (q["kind"] == "vid") "vid" else "img"))) }
                     catch (x: NotFound) { throw NotFound("Update LANShare on ${e.name}: its version cannot share its gallery yet") }
@@ -249,6 +253,10 @@ object Routes {
                 val st = Jobs.ep(dev).stat(path)
                 val (data, dur) = RemoteThumbs.make(dev, path, st.optLong("size"), st.optLong("mtime"), vid)
                 return ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
+            }
+            "pcpicdir" -> if (ex.method == "GET") {   // PC gallery: the Pictures folder in use (by hand or found) for ?dev=smb:...
+                val dev = ex.q("dev"); val c = Smb.cfg(dev) ?: throw BadReq("not a PC share")
+                return ex.json(JSONObject().put("picdir", c.optString("picdir", "")).put("auto", c.optString("picdir", "").isEmpty()))
             }
             "cleanup" -> if (ex.method == "GET") return ex.json(Cleanup.status())   // Free up space scan (POST starts / cancels it)
             "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
@@ -393,6 +401,7 @@ object Routes {
             "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
+            "pcpicdir" -> ex.json(PcPictures.setDir(b.optString("dev"), b.optString("path")))   // PC gallery: set / clear (empty path = find it again) the Pictures folder
             "ftp" -> ftpUpdate(ex, b)
             "root" -> {   // Settings > Root access: "enable" asks su (the root manager shows its grant prompt) and only then stores the switch; "disable" = off + forget
                 if (RootShell.untrusted.get() == true) throw Denied("Root is only available from the app's own screen")

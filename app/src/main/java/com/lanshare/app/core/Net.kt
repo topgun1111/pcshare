@@ -129,6 +129,15 @@ class HttpResp(val status: Int, val headers: Map<String, String>, private val so
 }
 
 object Http {
+    /** Called with every socket [request] opens on this thread (print jobs: so Cancel can close it while it waits for the printer / PC). */
+    val sockHook = ThreadLocal<((java.net.Socket) -> Unit)?>()
+
+    /** Runs [f] so that every HTTP socket it opens is closed when [job] is cancelled. */
+    fun <T> abortable(job: Job, f: () -> T): T {
+        sockHook.set { s -> job.onAbort { try { s.close() } catch (_: Exception) {} } }
+        try { return f() } finally { sockHook.remove() }
+    }
+
     /** "ip:port" of printers that answered HTTP 426 on plain HTTP: they only accept IPP over TLS (Epson). Remembered for the session. */
     val tlsHosts: MutableSet<String> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
@@ -148,6 +157,7 @@ object Http {
         val raw = Net.newSocket(ip)
         var s: Socket = raw
         try {
+            sockHook.get()?.invoke(raw)
             raw.connect(InetSocketAddress(ip, port), connectMs)
             raw.soTimeout = timeoutMs
             raw.tcpNoDelay = true
