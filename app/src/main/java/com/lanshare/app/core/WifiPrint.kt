@@ -267,12 +267,15 @@ object WifiPrint {
         while (true) {
             var busy = false
             var r: Ipp.Resp? = null
+            var sent = 0L
             try {
-                r = Ipp.printJob(p, name, mime, t, f)
+                r = Ipp.printJob(p, name, mime, t, f) { n -> sent += n }
                 busy = !r.ok && (r.status == 0x0507 || r.status == 0x0506 || r.status == 0x0502)
             } catch (e: IOException) {
                 if (curJob.get()?.cancel == true) throw Cancelled()
                 val m = e.message ?: ""
+                // sending the same job again after part of it went out can print a broken page (noise / half a page) AND a second copy
+                if (sent > 0 && !m.contains("503")) throw PrintFail("the connection to the printer broke while the file was being sent - check the printer for a half-printed page, then print again")
                 if (m.contains("503") || m.contains("busy", true) || m.contains("refused", true) || m.contains("reset", true)) busy = true
                 else throw e
             }
@@ -362,6 +365,10 @@ object WifiPrint {
             if (pages.isEmpty()) throw PrintFail("the page range selects no pages")
             val duplex = jo.sides?.startsWith("two-sided") == true
             val tumble = jo.sides == "two-sided-short-edge"
+            // pixel format the printer says it takes (pwg-raster-document-type-supported): sRGB 8 bit if listed (or unknown), else 8-bit grey.
+            // A printer that gets 24-bit pixels while it expects grey reads the stream with the wrong line length and prints noise.
+            val types = p.rasterTypes
+            val gray = types.isNotEmpty() && "srgb_8" !in types && "sgray_8" in types
             BufferedOutputStream(FileOutputStream(out), 256 * 1024).use { os ->
                 os.write("RaS2".toByteArray(Charsets.US_ASCII))
                 for ((k, i) in pages.withIndex()) {
@@ -397,15 +404,15 @@ object WifiPrint {
                         h.putInt(352, if (land) ptH else ptW); h.putInt(356, if (land) ptW else ptH)
                         h.putInt(368, if (tumble) 1 else 0)
                         h.putInt(372, rw); h.putInt(376, rh)
-                        h.putInt(384, 8); h.putInt(388, 24); h.putInt(392, rw * 3)
-                        h.putInt(396, 0); h.putInt(400, 19)   // chunky, sRGB
-                        h.putInt(420, 3)
+                        h.putInt(384, 8); h.putInt(388, if (gray) 8 else 24); h.putInt(392, if (gray) rw else rw * 3)
+                        h.putInt(396, 0); h.putInt(400, if (gray) 18 else 19)   // chunky; 18 = sGray, 19 = sRGB
+                        h.putInt(420, if (gray) 1 else 3)
                         h.putInt(452, pages.size)
                         h.putInt(456, if (flipX) -1 else 1); h.putInt(460, if (flipY) -1 else 1)
                         h.putInt(464, 0); h.putInt(468, 0); h.putInt(472, rw); h.putInt(476, rh)
                         h.putInt(480, 0x00FFFFFF)
                         os.write(h.array())
-                        writeRasterPixels(os, bmp, flipX, flipY, job)
+                        writeRasterPixels(os, bmp, flipX, flipY, job, gray)
                     } finally { bmp?.recycle(); pg.close() }
                 }
             }
@@ -415,24 +422,25 @@ object WifiPrint {
     }
 
     /** One page of 24-bit sRGB, PWG raster packing: per line a repeat byte (line count - 1), then runs (n-1, pixel) or literals (257-n, n pixels). */
-    private fun writeRasterPixels(os: OutputStream, bmp: Bitmap, flipX: Boolean, flipY: Boolean, job: Job) {
+    private fun writeRasterPixels(os: OutputStream, bmp: Bitmap, flipX: Boolean, flipY: Boolean, job: Job, gray: Boolean = false) {
         val w = bmp.width; val h = bmp.height
+        val bp = if (gray) 1 else 3   // bytes per pixel
         val px = IntArray(w)
-        var cur = ByteArray(w * 3); var prev = ByteArray(w * 3)
+        var cur = ByteArray(w * bp); var prev = ByteArray(w * bp)
         var have = false; var rep = 0
         fun flush() {
             os.write(rep - 1)
             var i = 0
-            fun same(a: Int, b: Int) = prev[a * 3] == prev[b * 3] && prev[a * 3 + 1] == prev[b * 3 + 1] && prev[a * 3 + 2] == prev[b * 3 + 2]
+            fun same(a: Int, b: Int): Boolean { for (k in 0 until bp) if (prev[a * bp + k] != prev[b * bp + k]) return false; return true }
             while (i < w) {
                 var run = 1
                 while (i + run < w && run < 128 && same(i, i + run)) run++
-                if (run > 1) { os.write(run - 1); os.write(prev, i * 3, 3); i += run }
+                if (run > 1) { os.write(run - 1); os.write(prev, i * bp, bp); i += run }
                 else {
                     var lit = 1
                     while (i + lit < w && lit < 128 && !(i + lit + 1 < w && same(i + lit, i + lit + 1))) lit++
                     os.write((257 - lit) and 0xFF)
-                    os.write(prev, i * 3, lit * 3); i += lit
+                    os.write(prev, i * bp, lit * bp); i += lit
                 }
             }
         }
@@ -441,7 +449,8 @@ object WifiPrint {
             bmp.getPixels(px, 0, w, 0, if (flipY) h - 1 - r else r, w, 1)
             for (x in 0 until w) {
                 val c = px[if (flipX) w - 1 - x else x]
-                cur[x * 3] = (c shr 16).toByte(); cur[x * 3 + 1] = (c shr 8).toByte(); cur[x * 3 + 2] = c.toByte()
+                if (gray) cur[x] = (((c shr 16 and 0xFF) * 77 + (c shr 8 and 0xFF) * 151 + (c and 0xFF) * 28) shr 8).toByte()
+                else { cur[x * 3] = (c shr 16).toByte(); cur[x * 3 + 1] = (c shr 8).toByte(); cur[x * 3 + 2] = c.toByte() }
             }
             if (have && rep < 256 && java.util.Arrays.equals(cur, prev)) { rep++; continue }
             if (have) flush()

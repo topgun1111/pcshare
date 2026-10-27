@@ -30,6 +30,7 @@ object WifiPrinters {
         @Volatile var mediaSupported: List<String> = emptyList()
         @Volatile var trays: List<Tray> = emptyList()              // paper trays the printer reports (media-source-supported / media-col-ready / printer-input-tray)
         @Volatile var rasterDpi: List<Int> = emptyList()          // resolutions of image/pwg-raster the printer takes
+        @Volatile var rasterTypes: List<String> = emptyList()     // pwg-raster-document-type-supported: srgb_8, sgray_8, black_1 ...
         @Volatile var sheetBack: String = "normal"                // pwg-raster-document-sheet-back: normal / flipped / rotated / manual-tumble
         @Volatile var margins: DoubleArray? = null                // part 14c: unprintable strip [left, top, right, bottom] in pt from media-*-margin-supported; null = the printer does not say
     }
@@ -363,6 +364,7 @@ object WifiPrinters {
             p.trays = trays(r, p.mediaSupported)
             p.rasterDpi = r.dpis("pwg-raster-document-resolution-supported")
             p.sheetBack = r.strs("pwg-raster-document-sheet-back").firstOrNull() ?: "normal"
+            p.rasterTypes = r.strs("pwg-raster-document-type-supported").map { it.lowercase() }
             p.margins = marginsOf(r)
             val reasons = r.strs("printer-state-reasons").filter { it != "none" }
             val problems = ArrayList<String>()

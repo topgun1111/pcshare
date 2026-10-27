@@ -76,7 +76,7 @@ object Ipp {
         rq.strs(0x44, "requested-attributes", listOf("printer-state", "printer-state-reasons", "printer-name", "printer-make-and-model",
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
             "media-ready", "media-default", "media-supported", "media-source-supported", "media-col-ready", "printer-input-tray", "media-type-supported",
-            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back",
+            "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back", "pwg-raster-document-type-supported",
             "media-left-margin-supported", "media-right-margin-supported", "media-top-margin-supported", "media-bottom-margin-supported"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
