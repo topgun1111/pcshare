@@ -2312,7 +2312,9 @@ function openPcScreen(pc){
   let alive=true,tm=0,pos=-1,fails=0,n=0;
   const close=()=>{alive=false;clearTimeout(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),bar=E('div','pcb'),dot=E('span','pcd'),st=E('div','pcst','Connecting\u2026'),log=E('div','pcl');cb.onclick=close;
-  const sw=E('button','tbtn','Switch');sw.onclick=()=>{close();openPcScreen(null)};const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(sw,cb);hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
+  const sw=E('button','tbtn','Switch');sw.onclick=()=>{close();openPcScreen(null)};const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(sw);
+  if(window.LSAndroid&&LSAndroid.openPrintLog){const lg=E('button','tbtn','Log');lg.onclick=()=>{try{LSAndroid.openPrintLog('',pc.id)}catch(e){}};hb.append(lg)}
+  hb.append(cb);hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
   const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};
   const draw=r=>{
     if(!r||!r.ok){dot.className='pcd red';st.textContent=(r&&r.why)||'PC not reachable - is pcprint.py running?';return}
@@ -2376,6 +2378,9 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
     {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
     tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
+  if(window.LSAndroid&&LSAndroid.openPrintLog){const rL=E('button','set'),tL=E('div','t');rL.style.width='100%';rL.style.textAlign='left';
+    tL.append(E('b','','Print log'),E('small','','What happened when printing (share it when a print fails)'));rL.append(tL);
+    rL.onclick=()=>{close();try{LSAndroid.openPrintLog('',(LASTPC&&LASTPC.id)||'')}catch(e){toast('Print log needs the Android app',3000)}};card.append(rL)}
   {const rD=E('button','set'),tD=E('div','t');rD.style.width='100%';rD.style.textAlign='left';tD.append(E('b','','Debug: performance (temporary)'),E('small','','Startup, slow functions, timers, API calls, frame drops'));rD.append(tD);rD.onclick=()=>{close();openPerfDebug()};card.append(rD)}   /* PERF-DEBUG */
   {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
     const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
@@ -2395,39 +2400,10 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.officeViewGet){const rv=E('button','set'),tv=E('div','t'),sv=E('small','');rv.style.width='100%';rv.style.textAlign='left';
     sv.textContent={auto:'Auto',exact:'Exact pages (PC)',simple:'Simple'}[LSAndroid.officeViewGet()]||'Auto';tv.append(E('b','','Office view'),sv);rv.append(tv);
     rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
-  if(window.LSAndroid&&LSAndroid.settingsExportFile){const rb=E('button','set'),tb=E('div','t');rb.style.width='100%';rb.style.textAlign='left';
-    tb.append(E('b','','Export / import settings'),E('small','','Save your settings to a file, or load them from one'));rb.append(tb);
-    rb.onclick=()=>{close();openSettingsFile()};card.append(rb)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
-function openSettingsFile(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null;window.lsSettingsFileDone=null;window.lsSettingsFileAsk=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Export / import settings'));
-  const info=E('p','','Export saves your settings to a .json file you choose. Import reads such a file and replaces the matching settings on this phone.');
-  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
-  const lab=E('label','set'),cb=E('input');cb.type='checkbox';lab.style.cssText='display:flex;gap:10px;align-items:center;cursor:pointer';
-  const tl=E('div','t');tl.append(E('b','','Include passwords and PIN'),E('small','','The file is plain text: keep it private'));lab.append(cb,tl);card.append(lab);
-  const err=E('p','');err.style.cssText='display:none;color:#e5484d;font-size:13px;margin:8px';card.append(err);
-  const ex=E('button','tbtn fill','Export settings'),im=E('button','tbtn','Import settings'),bk=E('button','tbtn','Back');
-  const act=E('div','dact');act.append(ex,im,bk);card.append(act);
-  const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
-  const bz=b=>{ex.disabled=im.disabled=b};
-  window.lsSettingsFileDone=(ok,msg)=>{bz(false);if(ok){err.style.display='none';toast(msg,3000)}else{err.textContent=msg;err.style.display=''}};
-  window.lsSettingsFileAsk=async t=>{bz(false);
-    const v=await dlg({title:'Import settings',msg:t,ok:'Import',danger:true});
-    if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
-    try{const r=JSON.parse(LSAndroid.settingsFileApply());
-      if(r.error){err.textContent=r.error;err.style.display='';return}
-      Object.keys(r.web||{}).forEach(k=>{try{if(r.web[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,r.web[k])}catch(e){}});
-      toast('Settings imported ('+r.count+')',2500);setTimeout(()=>location.reload(),900)}
-    catch(e){err.textContent=e.message;err.style.display=''}};
-  ex.onclick=()=>{err.style.display='none';try{LSAndroid.settingsExportFile(webSnap(),cb.checked)}catch(e){err.textContent='Export is only available inside the Android app';err.style.display=''}};
-  im.onclick=()=>{err.style.display='none';try{LSAndroid.settingsImportFile()}catch(e){err.textContent='Import is only available inside the Android app';err.style.display=''}};
-  bk.onclick=()=>{close();openSettings()};
-  o.append(card)}
 function openTextSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};

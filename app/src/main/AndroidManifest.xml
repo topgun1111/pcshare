@@ -191,6 +191,10 @@
         <activity android:name=".UsActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
+        <!-- Print log screen (Settings > Print log, PC screen > Print log) -->
+        <activity android:name=".PrintLogActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:launchMode="standard"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <activity android:name=".OfficeShortcutActivity" android:exported="false" android:theme="@style/Theme.LANShare.Clear"
             android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true"/>
         <activity android:name=".ClipSendActivity" android:exported="true" android:theme="@style/Theme.LANShare.Clear"

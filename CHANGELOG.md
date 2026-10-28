@@ -5,10 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-10-28 - Export / import settings
+## 2026-10-28 - Print queue works again
+
+### Fixed
+- Print queue: the screen now lists the jobs waiting on the PC and Cancel works. Copy the new pcprint.py (version 32) to the PC and run it once.
+
+## 2026-10-28 - Print log screen reachable
 
 ### Added
-- Settings > Export / import settings: save all your settings to a .json file you pick, and load them back from one. Passwords and the Phone Explorer PIN are left out unless you tick "Include passwords and PIN". A file is checked first, and a summary asks you to confirm before anything is replaced.
+- Settings > Print log opens the print log: readable lines, Full detail switch, Fetch PC log, Share, Copy, Open folder, Clear.
+- The PC screen has a Log button that opens the print log with that PC ready for Fetch PC log.
 
 ## 2026-10-28 - Faster Office previews
 
