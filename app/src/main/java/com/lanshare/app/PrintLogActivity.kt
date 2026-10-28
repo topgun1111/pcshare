@@ -82,7 +82,7 @@ class PrintLogActivity : Activity() {
         chips.addView(viewBtn)
         scopeBtn = chip("") { onlyJobs = !onlyJobs; render() }
         if (jids.isNotEmpty()) chips.addView(scopeBtn)
-        chips.addView(chip("Refresh") { load() })
+        chips.addView(chip("Refresh") { load(); if (dev.isNotEmpty()) fetchPc() })
         chips.addView(chip("Fetch PC log") { fetchPc() })
         chips.addView(chip("Share") { share() })
         chips.addView(chip("Copy") { copy() })
@@ -109,6 +109,7 @@ class PrintLogActivity : Activity() {
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         load()
+        if (dev.isNotEmpty()) fetchPc()   // the PC log is the first thing shown
     }
 
     override fun onDestroy() { super.onDestroy(); exec.shutdownNow() }
@@ -145,9 +146,19 @@ class PrintLogActivity : Activity() {
         }
     }
 
+    /** PC log first, then the phone's own log (each in time order); the job filter applies to both. */
     private fun shown(): List<Ln> {
-        val all = merge(phone, pc)
-        return if (onlyJobs && jids.isNotEmpty()) all.filter { it.jid != null && it.jid in jids } else all
+        fun f(l: List<Ln>) = if (onlyJobs && jids.isNotEmpty()) l.filter { it.jid != null && it.jid in jids } else l
+        return f(pc) + f(phone)
+    }
+
+    /** Section title when the source changes (only if both logs have lines). */
+    private fun section(sb: SpannableStringBuilder, prev: String?, l: Ln, both: Boolean) {
+        if (!both || prev == l.src) return
+        val s0 = sb.length
+        sb.append(if (l.src == "pc") "PC log" else "Phone log").append('\n')
+        sb.setSpan(StyleSpan(Typeface.BOLD), s0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sb.setSpan(ForegroundColorSpan(pal.mut), s0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     private fun render() {
@@ -160,7 +171,7 @@ class PrintLogActivity : Activity() {
         val sb = SpannableStringBuilder()
         if (simple) renderSimple(lines, sb) else renderTechnical(lines, f, kb, sb)
         body.text = sb
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        scroll.post { scroll.fullScroll(if (pc.isNotEmpty()) View.FOCUS_UP else View.FOCUS_DOWN) }   // PC log is the first section: start at its top
     }
 
     private fun renderTechnical(lines: List<Ln>, f: File, kb: Long, sb: SpannableStringBuilder) {
@@ -169,7 +180,10 @@ class PrintLogActivity : Activity() {
         val last = if (lines.size > MAXV) lines.subList(lines.size - MAXV, lines.size) else lines
         if (lines.size > last.size) sb.append("... ").append((lines.size - last.size).toString()).append(" older lines not shown (Share / Copy give everything)\n\n")
         if (last.isEmpty()) sb.append(if (onlyJobs) "No lines for this job (it may be in the PC log: tap \"Fetch PC log\")." else "The log is empty. Print something and come back.")
+        var prev: String? = null
+        val both = last.any { it.src == "pc" } && last.any { it.src != "pc" }
         for (l in last) {
+            section(sb, prev, l, both); prev = l.src
             val s = sb.length
             sb.append(pretty(l)).append('\n')
             val c = when (l.lvl) { "e" -> RED; "w" -> AMBER; else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
@@ -194,7 +208,10 @@ class PrintLogActivity : Activity() {
         val last = if (items.size > MAXS) items.subList(items.size - MAXS, items.size) else items
         if (items.size > last.size) sb.append("... ").append((items.size - last.size).toString()).append(" older entries not shown\n\n")
         if (last.isEmpty()) sb.append(if (onlyJobs) "Nothing to report for this job (the PC part may be missing: tap \"Fetch PC log\")." else "Nothing to report yet. Print something and come back.")
+        var prev: String? = null
+        val both = last.any { it.first.src == "pc" } && last.any { it.first.src != "pc" }
         for ((l, it) in last) {
+            section(sb, prev, l, both); prev = l.src
             val s = sb.length
             val time = l.t.substringAfter(' ', l.t).substringBefore('.')
             val mark = when (it.kind) { 'e' -> "\u2716"; 'w' -> "\u26A0"; 'o' -> "\u2714"; else -> "\u2022" }

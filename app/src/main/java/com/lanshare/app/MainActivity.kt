@@ -111,6 +111,21 @@ class MainActivity : Activity() {
             } catch (e: Throwable) { JSONObject().put("error", errText(e)).toString() }
         }
         @JavascriptInterface fun settingsCloudDrop() { scStaged = null }
+        /** Settings > Export / import settings: [webJson] as in [settingsCloudBackup]; opens the system "save as" screen. The page hears the result through lsSettingsCloudDone(ok, message). */
+        @JavascriptInterface fun settingsExport(webJson: String, secrets: Boolean) {
+            try {
+                setExpText = com.lanshare.app.core.settings.SettingsIo.export(applicationContext, webJson, secrets)
+                val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, com.lanshare.app.core.settings.SettingsCloud.FILE_NAME)
+                runOnUiThread { try { startActivityForResult(i, reqSetExp) } catch (e: Throwable) { setExpText = null; scJs(false, errText(e)) } }
+            } catch (e: Throwable) { scJs(false, errText(e)) }
+        }
+        /** Opens the system file picker; the chosen file is checked and the page gets lsSettingsCloudAsk(summary) (or lsSettingsCloudDone(false, why)), then calls [settingsCloudApply] or [settingsCloudDrop]. */
+        @JavascriptInterface fun settingsImport() {
+            runOnUiThread {
+                try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), reqSetImp) }
+                catch (e: Throwable) { scJs(false, errText(e)) }
+            }
+        }
         /** Root support: the per-run token the page keeps in a cookie so its requests count as "from the app's own screen" (see RootShell). Other apps cannot call this bridge. */
         @JavascriptInterface fun rootToken(): String = com.lanshare.app.core.RootShell.token
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
@@ -774,6 +789,9 @@ class MainActivity : Activity() {
     @Volatile private var scStaged: com.lanshare.app.core.settings.SettingsSchema.Parsed? = null
     private fun scJs(ok: Boolean, msg: String) = runOnUiThread { try { if (::web.isInitialized) web.evaluateJavascript("window.lsSettingsCloudDone&&lsSettingsCloudDone($ok," + JSONObject.quote(msg) + ")", null) } catch (_: Throwable) {} }
     private val reqGdPick = 12
+    private val reqSetExp = 13
+    private val reqSetImp = 14
+    @Volatile private var setExpText: String? = null
     /** "Add account" (no email yet): ALWAYS show Google's account chooser first. Without it Play Services silently reuses the account that already granted Drive access. */
     private fun gdStart(email: String) {
         if (email.isEmpty()) {
@@ -807,6 +825,38 @@ class MainActivity : Activity() {
         if (req == reqGdrive) {
             if (res != RESULT_OK) gdJs(false, "Sign-in was cancelled")
             else Thread({ try { gdSave(GAuth.finish(d, applicationContext)) } catch (e: Throwable) { gdJs(false, errText(e)) } }, "gd-signin").also { it.isDaemon = true }.start()
+            return
+        }
+        if (req == reqSetExp) {
+            val text = setExpText; setExpText = null
+            val uri = if (res == RESULT_OK) d?.data else null
+            if (uri == null || text == null) { scJs(false, "Export was cancelled"); return }
+            Thread({
+                try {
+                    contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                    scJs(true, "Settings exported")
+                } catch (e: Throwable) { scJs(false, errText(e)) }
+            }, "settings-export").also { it.isDaemon = true }.start()
+            return
+        }
+        if (req == reqSetImp) {
+            val uri = if (res == RESULT_OK) d?.data else null
+            if (uri == null) { scJs(false, "Import was cancelled"); return }
+            Thread({
+                try {
+                    val max = com.lanshare.app.core.settings.SettingsSchema.MAX_FILE_CHARS * 4
+                    val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                    val text = if (bytes.size > max) "" else String(bytes, Charsets.UTF_8)
+                    when (val r = com.lanshare.app.core.settings.SettingsSchema.parse(text)) {
+                        is com.lanshare.app.core.settings.SettingsSchema.Result.Ok -> {
+                            scStaged = r.parsed
+                            val t = com.lanshare.app.core.settings.SettingsIo.describe(r.parsed)
+                            runOnUiThread { try { web.evaluateJavascript("window.lsSettingsCloudAsk&&lsSettingsCloudAsk(" + JSONObject.quote(t) + ")", null) } catch (_: Throwable) {} }
+                        }
+                        is com.lanshare.app.core.settings.SettingsSchema.Result.Refused -> scJs(false, r.reasons.joinToString(" "))
+                    }
+                } catch (e: Throwable) { scJs(false, errText(e)) }
+            }, "settings-import").also { it.isDaemon = true }.start()
             return
         }
         if (req != 10) return super.onActivityResult(req, res, d)

@@ -5,10 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Export / import settings in Settings
+
+### Fixed
+- Settings has the Export / import settings item again: save your settings to a file, or load them from one. Passwords and the Phone Explorer PIN are only included if you tick the box.
+
 ## 2026-10-28 - Logs in plain words
 
 ### Changed
 - The log screen is now called Logs and opens in a Simple view: short plain sentences ("Printing finished", "The printer has a problem"), a count of problems at the top, and a "What to try" tip under each problem. Technical view (tap the top button) keeps all the old details.
+- The Logs screen now fetches the PC log by itself when it opens and shows it first ("PC log"), followed by the phone's own log. Refresh also refreshes the PC part.
 - PC screen: the Switch button is gone. A new Live | Logs tab row sits under the title; Logs opens the Logs screen for that PC.
 
 ## 2026-10-28 - Print queue works again
