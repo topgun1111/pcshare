@@ -2643,16 +2643,21 @@ async function openFtp(){
 /* Google Drive accounts (HANDOVER chapter 17). Part 1: sign in / reconnect / remove. The sign-in itself is native (MainActivity.gdStart, Play Services consent screen) and reports back through window.lsGdriveDone(ok,msg). Uses the .smb sheet styles. */
 async function openGdrive(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null;window.lsGdriveDone=null};o.onclick=e=>{if(e.target===o)close()};
+  const close=()=>{o.style.display='none';o.onclick=null;window.lsGdriveDone=null;window.lsSettingsCloudDone=null;window.lsSettingsCloudAsk=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card smb');
   const head=E('div','smh'),hi=E('span','smi'),ht=E('div','smt');hi.append(ic('ftp'));
   ht.append(E('h3','','Google Drive'),E('small','','Sign in with your Google account'));head.append(hi,ht);
   const info=E('p','smn','Google asks for your permission once. LANShare never sees your password and keeps no token: Google hands out a fresh one when needed. Remove an account here to forget it (also revoke it at myaccount.google.com > Security > Third-party access if you want it gone on Google’s side).');
   info.textContent+=' Google Docs, Sheets and Slides show up as Word, Excel and PowerPoint files (a copy made when you open or copy them; about 10 MB at most). At the top of a Drive: Shared with me, Shared drives and Trash (move an item out of Trash to restore it).';
   const list=E('div','sml'),err=E('div','smerr'),act=E('div','dact');err.style.display='none';
-  card.append(E('div','handle'),head,info,list,err,act);o.append(card);
+  const bk=E('div','smn'),bkSel=E('select','tf'),bkRow=E('div','dact'),bkUp=E('button','tbtn','Back up settings'),bkDown=E('button','tbtn','Restore settings');
+  bk.append(E('b','','Settings backup'),E('br'),'Saves your LANShare settings as LANShare-settings.json in My Drive. Passwords and the Phone Explorer PIN are not uploaded.');
+  bkRow.append(bkUp,bkDown);
+  card.append(E('div','handle'),head,info,list,err,act,bk,bkSel,bkRow);o.append(card);
   const busy=b=>{add.disabled=b;add.textContent=b?'Waiting for Google…':'Add Google account'};
   const draw=l=>{list.textContent='';
+    bkSel.textContent='';l.forEach(x=>{const op=E('option','',x.email);op.value=x.id;bkSel.append(op)});
+    const has=l.length>0;bk.style.display=bkSel.style.display=bkRow.style.display=has?'':'none';
     if(!l.length){const e=E('div','smempty');e.append(E('b','','No account yet'),E('small','','Tap Add Google account.'));list.append(e)}
     l.forEach(x=>{const r=E('div','smr'),av=E('div','sma'),t=E('div','smb2'),rc=E('button','smx'),rm=E('button','smx dng');
       av.append(ic('ftp'));t.append(E('b','',x.name||x.email),E('small','',x.email));
@@ -2670,6 +2675,21 @@ async function openGdrive(){
       toast('Signed in: '+msg,3000);try{draw(await api('GET','/api/gdrive'));S.sig='';pollPeers()}catch(e){}};
     try{LSAndroid.gdriveConnect(email||'')}catch(e){busy(false);err.textContent='Google sign-in is only available inside the Android app';err.style.display=''}};
   add.onclick=()=>go('');
+  const scBusy=b=>{bkUp.disabled=bkDown.disabled=b};
+  const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
+  window.lsSettingsCloudDone=(ok,msg)=>{scBusy(false);if(ok)toast(msg,3500);else{err.textContent=msg;err.style.display=''}};
+  window.lsSettingsCloudAsk=async t=>{scBusy(false);
+    const v=await dlg({title:'Restore settings',msg:t,ok:'Restore',danger:true});
+    if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
+    try{const r=JSON.parse(LSAndroid.settingsCloudApply());
+      if(r.error){err.textContent=r.error;err.style.display='';return}
+      Object.keys(r.web||{}).forEach(k=>{try{if(r.web[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,r.web[k])}catch(e){}});
+      toast('Settings restored ('+r.count+')',2500);setTimeout(()=>location.reload(),900)}
+    catch(e){err.textContent=e.message;err.style.display=''}};
+  bkUp.onclick=()=>{if(!bkSel.value)return;err.style.display='none';scBusy(true);
+    try{LSAndroid.settingsCloudBackup(bkSel.value,webSnap())}catch(e){scBusy(false);err.textContent='Settings backup is only available inside the Android app';err.style.display=''}};
+  bkDown.onclick=()=>{if(!bkSel.value)return;err.style.display='none';scBusy(true);
+    try{LSAndroid.settingsCloudRestore(bkSel.value)}catch(e){scBusy(false);err.textContent='Settings restore is only available inside the Android app';err.style.display=''}};
   const done=E('button','tbtn','Done');done.onclick=close;act.append(add,done);
   try{draw(await api('GET','/api/gdrive'))}catch(e){draw([])}
 }

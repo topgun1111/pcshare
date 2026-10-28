@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Settings backup to Google Drive
+
+### Added
+- Google Drive screen: Back up settings saves your settings to My Drive (LANShare-settings.json), and Restore settings brings them back. Passwords and the Phone Explorer PIN are not uploaded.
+
+### Fixed
+- Add Google account now always asks which account to use, instead of signing in with the previous one.
+
 ## 2026-10-28 - FTP and Cloud servers on the Main menu
 
 ### Added

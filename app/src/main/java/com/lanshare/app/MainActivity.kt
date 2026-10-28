@@ -77,6 +77,40 @@ class MainActivity : Activity() {
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
         /** Main menu > Google Drive > Sign in / Reconnect: [email] = "" lets the user pick the account. The page hears the result through lsGdriveDone(ok, message). */
         @JavascriptInterface fun gdriveConnect(email: String) { gdStart(email) }
+        /** Page keys the settings backup needs from localStorage (JSON array of names). */
+        @JavascriptInterface fun settingsWebKeys(): String = org.json.JSONArray(com.lanshare.app.core.settings.SettingsSchema.WEB_KEYS).toString()
+        /** Settings > Google Drive > Back up settings: [webJson] = {key: value|null} read from localStorage. The page hears the result through lsSettingsCloudDone(ok, message). */
+        @JavascriptInterface fun settingsCloudBackup(accountId: String, webJson: String) {
+            Thread({
+                try { scJs(true, com.lanshare.app.core.settings.SettingsCloud.backup(applicationContext, accountId, webJson)) }
+                catch (e: Throwable) { scJs(false, errText(e)) }
+            }, "settings-cloud").also { it.isDaemon = true }.start()
+        }
+        /** Download + check the backup; the page gets lsSettingsCloudAsk(summary) (or lsSettingsCloudDone(false, why)) and then calls [settingsCloudApply] or [settingsCloudDrop]. */
+        @JavascriptInterface fun settingsCloudRestore(accountId: String) {
+            Thread({
+                try {
+                    when (val r = com.lanshare.app.core.settings.SettingsCloud.fetch(accountId)) {
+                        is com.lanshare.app.core.settings.SettingsSchema.Result.Ok -> {
+                            scStaged = r.parsed
+                            val t = com.lanshare.app.core.settings.SettingsIo.describe(r.parsed)
+                            runOnUiThread { try { web.evaluateJavascript("window.lsSettingsCloudAsk&&lsSettingsCloudAsk(" + JSONObject.quote(t) + ")", null) } catch (_: Throwable) {} }
+                        }
+                        is com.lanshare.app.core.settings.SettingsSchema.Result.Refused -> scJs(false, r.reasons.joinToString(" "))
+                    }
+                } catch (e: Throwable) { scJs(false, errText(e)) }
+            }, "settings-cloud").also { it.isDaemon = true }.start()
+        }
+        /** The user confirmed: write the staged settings. Returns {count, web:{key:value|null}} for the page, or {error}. */
+        @JavascriptInterface fun settingsCloudApply(): String {
+            val p = scStaged ?: return JSONObject().put("error", "Nothing to restore").toString()
+            scStaged = null
+            return try {
+                val a = com.lanshare.app.core.settings.SettingsIo.apply(applicationContext, p)
+                JSONObject().put("count", a.count).put("web", a.web).toString()
+            } catch (e: Throwable) { JSONObject().put("error", errText(e)).toString() }
+        }
+        @JavascriptInterface fun settingsCloudDrop() { scStaged = null }
         /** Root support: the per-run token the page keeps in a cookie so its requests count as "from the app's own screen" (see RootShell). Other apps cannot call this bridge. */
         @JavascriptInterface fun rootToken(): String = com.lanshare.app.core.RootShell.token
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
@@ -733,6 +767,8 @@ class MainActivity : Activity() {
     private fun gdSave(token: String) {
         try { val c = Gdrive.connect(token); gdJs(true, c.optString("email")) } catch (e: Throwable) { gdJs(false, errText(e)) }
     }
+    @Volatile private var scStaged: com.lanshare.app.core.settings.SettingsSchema.Parsed? = null
+    private fun scJs(ok: Boolean, msg: String) = runOnUiThread { try { if (::web.isInitialized) web.evaluateJavascript("window.lsSettingsCloudDone&&lsSettingsCloudDone($ok," + JSONObject.quote(msg) + ")", null) } catch (_: Throwable) {} }
     private val reqGdPick = 12
     /** "Add account" (no email yet): ALWAYS show Google's account chooser first. Without it Play Services silently reuses the account that already granted Drive access. */
     private fun gdStart(email: String) {
