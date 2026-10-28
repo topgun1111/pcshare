@@ -20,7 +20,7 @@ object RemoteThumbs {
         val dir = File(root(), key.substring(0, 2))
         val jf = File(dir, "$key.jpg"); val df = File(dir, "$key.d")
         try { if (jf.isFile) return jf.readBytes() to (try { df.readText().trim().toLong() } catch (_: Exception) { 0L }) } catch (_: IOException) {}
-        val gd = if (dev.startsWith("gd:")) try { (Jobs.ep(dev) as? GdriveFs)?.thumb(path) } catch (_: IOException) { null } else null   // Drive makes its own preview (no download)
+        val gd = if (dev.startsWith("gd:")) try { ((Jobs.ep(dev) as? ArcEp)?.base as? GdriveFs)?.thumb(path) } catch (_: IOException) { null } else null   // Drive makes its own preview (no download)
         val res: Pair<ByteArray, Long> = gd ?: if (video) VideoThumbs.make(Jobs.ep(dev).open(path)) else image(dev, path)
         try {
             dir.mkdirs()

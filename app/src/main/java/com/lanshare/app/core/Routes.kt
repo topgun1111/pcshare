@@ -262,7 +262,7 @@ object Routes {
             "cleanup" -> if (ex.method == "GET") return ex.json(Cleanup.status())   // Free up space scan (POST starts / cancels it)
             "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
-            "gdlink" -> return ex.json(JSONObject().put("url", ((Jobs.ep(ex.q("dev")) as? GdriveFs) ?: throw BadReq("not a Google Drive place")).link(vnorm(q["path"] ?: "/"))))   // Part 8: "Open in Google Drive"
+            "gdlink" -> return ex.json(JSONObject().put("url", (((Jobs.ep(ex.q("dev")) as? ArcEp)?.base as? GdriveFs) ?: throw BadReq("not a Google Drive place")).link(vnorm(q["path"] ?: "/"))))   // Part 8: "Open in Google Drive"
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
