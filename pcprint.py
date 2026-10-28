@@ -20,6 +20,9 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v33: the old service is killed with certainty on every start (HTTP /stop, every python/pythonw process running a pcprint file, every PID listening on the port,
+verified until the port is really free), the port is bound exclusively on Windows (two copies can no longer listen side by side - that is how an old copy kept
+answering the phone), the new service is verified by its /ping version and /jobs waiting list, and this console stays open showing the log.
 v31: reinstall-proof. After a Windows reinstall run LANSharePrint-Setup.bat (written next to this file) - it installs Python when missing and
 starts this file; setup then downloads everything else (winget, SumatraPDF, pypdf, Pillow, LibreOffice if no Office). The running service also
 re-checks all of that in the background (retrying with growing pauses, e.g. while the network is not up yet right after logon) and re-creates its
@@ -53,7 +56,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "32"
+VERSION = "33"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -3232,7 +3235,14 @@ def pc_addresses():
 
 
 class Server(ThreadingHTTPServer):
-    request_queue_size = 32   # default 5: a phone sending a batch of pictures plus pings could get connection refused
+    allow_reuse_address = not WIN   # Windows: SO_REUSEADDR lets a second process listen on the same port (an old copy then keeps answering); exclusive bind instead
+    request_queue_size = 32
+
+    def server_bind(self):
+        if WIN:
+            try: self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            except Exception: pass
+        super().server_bind()   # default 5: a phone sending a batch of pictures plus pings could get connection refused
 
     def handle_error(self, request, client_address):   # a phone that vanished mid-request is normal: one short line, no traceback spam
         e = sys.exc_info()[1]
@@ -3317,38 +3327,102 @@ def is_running():
     return ping() is not None
 
 
-def stop_service():
+def _listeners(port=None):
+    """PIDs that LISTEN on the print port (any address)."""
+    port = port or PORT
+    pids = set()
+    try:
+        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, errors="replace", creationflags=CF, timeout=20).stdout
+        for line in out.splitlines():
+            c = line.split()
+            if len(c) >= 5 and c[3].upper() in ("LISTENING", "ABHÖREN") and c[1].rsplit(":", 1)[-1] == str(port) and c[4].isdigit():
+                pids.add(int(c[4]))
+    except Exception:
+        pass
+    return pids
+
+
+def _pcprint_pids():
+    """PIDs of python / pythonw processes whose command line mentions a pcprint file (old services, old windows, leftovers)."""
+    pids = {}
+    try:
+        ps = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw|py)(\\d.*)?\\.exe$' -and $_.CommandLine -match 'pcprint' } "
+              "| ForEach-Object { \"$($_.ProcessId)`t$($_.Name)\" }")
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, errors="replace", creationflags=CF, timeout=30).stdout
+        for line in out.splitlines():
+            a = line.strip().split("\t")
+            if a and a[0].isdigit():
+                pids[int(a[0])] = a[1] if len(a) > 1 else "?"
+    except Exception:
+        pass
+    return pids
+
+
+def _port_free():
+    """True when nothing holds the print port (an exclusive bind succeeds)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if WIN:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        s.bind(("0.0.0.0", PORT))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def kill_old(say=None):
+    """Make sure NO other print service runs. Order: polite /stop, then kill every pcprint python process, then every PID listening on the port,
+    repeated until the port can really be bound (max ~25 s). Returns True when the port is free. say(text) reports progress (console)."""
+    say = say or (lambda t: None)
+    me = {os.getpid(), os.getppid()}
     try:
         socket.create_connection(("127.0.0.1", PORT), timeout=1.5).close()
         import urllib.request
         urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORT}/stop", data=b"", method="POST"), timeout=3).read()
+        say("old service asked to stop")
+        time.sleep(0.6)
     except Exception:
         pass
-    for _ in range(10):
-        if not is_running(): return True
-        time.sleep(0.3)
-    if WIN:   # old version without /stop: kill whatever listens on the port
-        out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, errors="replace", creationflags=0x08000000).stdout
-        for line in out.splitlines():
-            c = line.split()
-            if len(c) >= 5 and c[3] == "LISTENING" and c[1].endswith(f":{PORT}"):
-                subprocess.run(["taskkill", "/F", "/PID", c[4]], capture_output=True, creationflags=0x08000000)
-        time.sleep(1)
-    return not is_running()
+    if not WIN:
+        return not is_running()
+    for rnd in range(1, 9):
+        victims = {pid: nm for pid, nm in _pcprint_pids().items() if pid not in me}
+        for pid in _listeners():
+            if pid not in me:
+                victims.setdefault(pid, "listener on port %d" % PORT)
+        for pid, nm in victims.items():
+            r = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, text=True, errors="replace", creationflags=CF)
+            say(f"killed PID {pid} ({nm})" if r.returncode == 0 else f"could not kill PID {pid} ({nm}): {(r.stderr or r.stdout).strip()[:120]}")
+        for _ in range(6):
+            if _port_free() and not (_listeners() - me):
+                return True
+            time.sleep(0.5)
+    return _port_free()
 
 
-def start_service():
-    """Make sure the current version of the service runs in the background (detached, no window)."""
+def stop_service():
+    return kill_old()
+
+
+def start_service(force=False, say=None):
+    """Make sure the CURRENT version of the service runs in the background (detached, no window). force=True: kill whatever runs first.
+    Returns True only when the service answers /ping with this file's VERSION."""
+    say = say or (lambda t: None)
     info = ping()
-    if info and info.get("version") != VERSION:
-        stop_service()
+    if force or (info and info.get("version") != VERSION):
+        if not kill_old(say):
+            say("the port is still busy - cannot start")
+            return False
         info = None
     if not info:
-        subprocess.Popen([pyw(), TARGET, "--serve"], creationflags=0x00000008 | 0x08000000, close_fds=True)
-        for _ in range(15):
-            time.sleep(0.3)
+        subprocess.Popen([pyw(), TARGET, "--serve"], creationflags=(0x00000008 | 0x08000000) if WIN else 0, close_fds=True)
+        for _ in range(60):
+            time.sleep(0.5)
             if is_running(): break
-    return is_running()
+    info = ping()
+    return bool(info and info.get("version") == VERSION)
 
 
 def is_admin():
@@ -3635,14 +3709,22 @@ def setup_windows():
     ensure_winget()   # also what the Office engine below needs; harmless when present
     ensure_sumatra()
     ensure_pypdf()   # LibreOffice (if no Office) is fetched by the service in the background: it can take minutes
-    ok = start_service()
+    print(f"LANShare Print v{VERSION}  -  installed copy: {TARGET}")
+    print("Stopping every old print service ...")
+    ok = start_service(force=True, say=lambda t: print("  " + t))
+    info = ping() or {}
     if not ok:
-        print(f"Print service FAILED to start - see {LOG}")
-        input("Press Enter to close...")
+        print(f"\nPrint service FAILED to start (answering version: {info.get('version')}) - see {LOG}")
+        for pid in sorted(_listeners()):
+            print(f"  PID {pid} still listens on port {PORT}")
+        tail_console(lines=40)   # show the last log lines, then keep following
         return
     if not fw:
         log("WARNING: firewall rule was not added; the phone may not be able to connect")
-    subprocess.Popen([pyw(), TARGET, "--ui"], creationflags=0x00000008 | 0x08000000, close_fds=True)   # window opens, this console closes
+    ips, ts = pc_addresses()
+    print(f"\nOK - print service v{info.get('version')} runs on port {PORT} (PID {', '.join(map(str, _listeners())) or '?'}); phone address: {', '.join(ips)}")
+    print("Log below (Ctrl+C or close this window: printing keeps running). Run this file again to restart cleanly.\n" + "-" * 70)
+    tail_console(lines=40)
 
 
 # ------------------------------------------------------------------ window: live print log (viewer only)
@@ -4080,9 +4162,17 @@ def ui():
     root.mainloop()   # closing the window only ends this viewer; the service keeps running
 
 
-def tail_console():
+def tail_console(lines=0):
     pos = 0
     try:
+        if lines:
+            try:
+                with open(LOG, "rb") as f:
+                    f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 20000))
+                    data = f.read(); pos = f.tell()
+                print("\n".join(data.decode("utf-8", "replace").splitlines()[-lines:]))
+            except OSError:
+                pass
         while True:
             try:
                 with open(LOG, "rb") as f:
