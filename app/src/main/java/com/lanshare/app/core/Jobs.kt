@@ -230,6 +230,7 @@ object Jobs {
                     .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
                     .put("default", if (o.isNull("default")) JSONObject.NULL else o.optString("default"))
                     .put("printers", o.optJSONArray("printers") ?: org.json.JSONArray())
+                    .put("hard", o.optDouble("hard", 0.0).let { if (it.isNaN()) 0.0 else it })   // printer's unprintable margin in pt (pcprint.py /ping "hard"): the layout preview and "From printer..." read it
                     .put("quiet", o.optBoolean("quiet", false))   // pcprint.py 27+: this printer's quiet bytes are known, so Quiet / Normal can be offered
                     .put("trays", o.optJSONArray("trays") ?: org.json.JSONArray())   // paper trays of the chosen printer (pcprint.py 21+): [{id, name}]
                     .put("pypdf", o.optBoolean("pypdf", false))
@@ -451,7 +452,7 @@ object Jobs {
                 try {
                     if (r.status != 200) throw IOException("HTTP ${r.status}")
                     try {
-                        val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                        val o = JSONObject(String(r.readUpTo(32768), Charsets.UTF_8))
                         if (!o.isNull("printer")) printer = o.optString("printer")
                         if (!o.isNull("problem")) problem = o.optString("problem")
                     } catch (_: Exception) {}
