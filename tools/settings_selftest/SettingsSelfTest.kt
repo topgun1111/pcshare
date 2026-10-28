@@ -1,4 +1,4 @@
-// JVM self-test of core/settings/SettingsSchema.kt (export format, compatibility gate). No Android classes needed, only org.json.
+// JVM self-test of core/settings/SettingsSchema.kt (export format, per-field compatible import). No Android classes needed, only org.json.
 // Run (CI job settings-selftest, or by hand):
 //   javac -d out/json JSON-java/src/main/java/org/json/*.java        (any org.json build works)
 //   kotlinc app/src/main/java/com/lanshare/app/core/settings/SettingsSchema.kt tools/settings_selftest/SettingsSelfTest.kt -cp out/json -include-runtime -d st.jar
@@ -59,37 +59,45 @@ fun main() {
     t("tampered value", refused(SettingsSchema.parse(JSONObject(txt).apply { getJSONObject("entries").put("cfg/us_on", false) }.toString()), "DAMAGED"))
     t("truncated", refused(SettingsSchema.parse(txt.dropLast(40)), "NOT_SETTINGS"))
 
-    // NEWER file (made by a newer app): schema higher and/or unknown settings
-    val newer = JSONObject(txt).put("schema", SettingsSchema.SCHEMA + 1)
-    val rn = SettingsSchema.parse(newer.toString())
-    t("newer schema refused", refused(rn, "NEWER") && (rn as Result.Refused).reasons.any { "newer" in it })
-    val extra = JSONObject(txt); extra.getJSONObject("entries").put("cfg/future_setting", true)
-    val re = SettingsSchema.parse(reseal(extra))
-    t("unknown setting refused", refused(re, "NEWER") && (re as Result.Refused).reasons.any { "future_setting" in it })
+    // PER-FIELD IMPORT (owner, 2026-10-28): compatible fields are taken, incompatible ones are skipped and reported, nothing else is refused
+    fun ok(r: Result) = (r as? Result.Ok)?.parsed
+    val newer = ok(SettingsSchema.parse(JSONObject(txt).put("schema", SettingsSchema.SCHEMA + 1).toString()))
+    t("newer schema still imports compatible fields", newer != null && newer.values.size == SettingsSchema.ALL.size)
+    val extra = JSONObject(txt); extra.getJSONObject("entries").put("cfg/future_setting", true); extra.getJSONObject("entries").put("web/future_page_key", "x")
+    val pe = ok(SettingsSchema.parse(reseal(extra)))
+    t("unknown settings skipped + reported", pe != null && pe.skipped.size == 2 && pe.skipped.any { it.label == "future_setting" } && "cfg/future_setting" !in pe.values)
+    t("known settings of that file still imported", pe != null && pe.values["cfg/name"] == "Pixel 8" && pe.values.size == SettingsSchema.ALL.size)
 
-    // OLDER file imported by a NEWER app: settings added later are missing -> warning + refusal (the owner's rule)
+    // OLDER file, imported by a newer app: settings that did not exist are simply absent -> left untouched, the rest is imported
     val old = JSONObject(txt); old.getJSONObject("entries").remove("pref/editor/awake"); old.getJSONObject("entries").remove("web/ls_dual")
-    val ro = SettingsSchema.parse(reseal(old))
-    t("older (missing settings) refused", refused(ro, "OLDER"))
-    t("older warning names them", ro is Result.Refused && ro.reasons.any { "Text editor: keep screen on" in it && "Two-pane mode" in it && "2 settings" in it })
-    val oldSchema = JSONObject(txt).put("schema", SettingsSchema.MIN_COMPAT - 1)
-    t("below MIN_COMPAT refused", refused(SettingsSchema.parse(oldSchema.toString()), "OLDER"))
-    t("nothing returned when refused", ro !is Result.Ok)
+    val po = ok(SettingsSchema.parse(reseal(old)))
+    t("older file imports", po != null)
+    t("missing ones not applied", po != null && "pref/editor/awake" !in po.values && "web/ls_dual" !in po.values && po.values.size == SettingsSchema.ALL.size - 2)
+    t("missing ones listed as unchanged", po != null && po.untouched.sorted() == listOf("Text editor: keep screen on", "Two-pane mode").sorted())
+    t("nothing skipped for a clean older file", po != null && po.skipped.isEmpty())
+    t("schema 0 is not a settings file", refused(SettingsSchema.parse(JSONObject(txt).put("schema", 0).toString()), "NOT_SETTINGS"))
 
-    // value validation
-    fun withVal(id: String, v: Any?): Result { val o = JSONObject(txt); o.getJSONObject("entries").put(id, v ?: JSONObject.NULL); return SettingsSchema.parse(reseal(o)) }
-    t("bool wrong type", refused(withVal("cfg/us_on", "yes"), "INVALID"))
-    t("int wrong type", refused(withVal("cfg/us_c_max", "7"), "INVALID"))
-    t("int fraction", refused(withVal("cfg/us_c_max", 7.5), "INVALID"))
-    t("int out of range", refused(withVal("pref/ls_ui/iface", 500), "INVALID"))
-    t("port out of range", refused(withVal("pref/lanshare_pe/port", 80), "INVALID"))
-    t("float out of range", refused(withVal("cfg/us_ai_th", 2.0), "INVALID"))
-    t("enum bad", refused(withVal("pref/office_view/mode", "weird"), "INVALID"))
-    t("list wrong", refused(withVal("cfg/pins", "1.2.3.4"), "INVALID"))
-    t("list element wrong", refused(withVal("cfg/pins", JSONArray().put(5)), "INVALID"))
-    t("objlist element wrong", refused(withVal("cfg/smb", JSONArray().put("x")), "INVALID"))
-    t("null allowed", withVal("cfg/us_on", null) is Result.Ok)
-    t("int 100.0 allowed", withVal("pref/ls_ui/iface", 100.0) is Result.Ok)
+    // value validation: a bad value skips ONLY that field
+    fun withVal(id: String, v: Any?): SettingsSchema.Parsed? { val o = JSONObject(txt); o.getJSONObject("entries").put(id, v ?: JSONObject.NULL); return ok(SettingsSchema.parse(reseal(o))) }
+    fun skippedOnly(id: String, v: Any?): Boolean { val p = withVal(id, v) ?: return false; return id !in p.values && p.skipped.size == 1 && p.skipped[0].label == SettingsSchema.BY_ID.getValue(id).label && p.values.size == SettingsSchema.ALL.size - 1 }
+    t("bool wrong type skipped", skippedOnly("cfg/us_on", "yes"))
+    t("int wrong type skipped", skippedOnly("cfg/us_c_max", "7"))
+    t("int fraction skipped", skippedOnly("cfg/us_c_max", 7.5))
+    t("int out of range skipped", skippedOnly("pref/ls_ui/iface", 500))
+    t("port out of range skipped", skippedOnly("pref/lanshare_pe/port", 80))
+    t("float out of range skipped", skippedOnly("cfg/us_ai_th", 2.0))
+    t("enum bad skipped", skippedOnly("pref/office_view/mode", "weird"))
+    t("list wrong skipped", skippedOnly("cfg/pins", "1.2.3.4"))
+    t("list element wrong skipped", skippedOnly("cfg/pins", JSONArray().put(5)))
+    t("objlist element wrong skipped", skippedOnly("cfg/smb", JSONArray().put("x")))
+    t("null allowed", withVal("cfg/us_on", null)?.values?.containsKey("cfg/us_on") == true)
+    t("int 100.0 allowed", withVal("pref/ls_ui/iface", 100.0) != null && withVal("pref/ls_ui/iface", 100.0)!!.skipped.isEmpty())
+
+    // nothing usable -> refused
+    val alien = JSONObject(txt); val ae = JSONObject(); ae.put("cfg/x1", 1); ae.put("web/x2", "y"); alien.put("entries", ae)
+    t("no compatible field refused", refused(SettingsSchema.parse(reseal(alien)), "NOTHING_COMPATIBLE"))
+    val allBad = JSONObject(txt); allBad.put("entries", JSONObject().put("cfg/us_on", "nope"))
+    t("only invalid fields refused", refused(SettingsSchema.parse(reseal(allBad)), "NOTHING_COMPATIBLE"))
 
     // checksum is independent of key order
     val shuffled = JSONObject(); val ks = SettingsSchema.ALL.map { it.id }.reversed(); val src = JSONObject(txt).getJSONObject("entries")

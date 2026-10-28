@@ -795,8 +795,8 @@ class MainActivity : Activity() {
                 when (r) {
                     is com.lanshare.app.core.settings.SettingsSchema.Result.Refused -> {
                         pendingImport = null
-                        AppPal.dlg(this).setTitle("Settings NOT imported")
-                            .setMessage("\u26a0 This settings file is not fully compatible with this version of LANShare, so nothing was changed.\n\n" + r.reasons.joinToString("\n\n"))
+                        AppPal.dlg(this).setTitle("Cannot import settings")
+                            .setMessage("\u26a0 This file cannot be imported, nothing was changed.\n\n" + r.reasons.joinToString("\n\n"))
                             .setPositiveButton("OK", null).show()
                     }
                     is com.lanshare.app.core.settings.SettingsSchema.Result.Ok -> {

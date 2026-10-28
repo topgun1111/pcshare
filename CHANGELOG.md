@@ -10,7 +10,7 @@
 ### Added
 - Settings > Backup settings: Export saves every setting of the app (from the smallest to the main ones) into one file; Import restores it.
 - Export can include saved passwords and the Phone Explorer PIN (off by default).
-- Import checks the file first: a file that is damaged, not a settings file, or not fully compatible with this version of the app (for example made by an older or a newer version) is refused with a warning and nothing is changed.
+- Import takes every setting that is compatible with this version of the app and skips the ones that are not (for example settings from a newer or older version); the list of skipped settings is shown before you confirm. A file that is damaged, not a settings file, or has nothing usable is refused with a warning.
 
 ## 2026-10-28 - PC gallery finds the Pictures folder by itself
 

@@ -78,7 +78,7 @@ object SettingsIo {
         var n = 0
         // --- lanshare.json
         val keepName = p.values["cfg/name_custom"] == true   // an automatic name (phone model) belongs to the phone it came from, not to this one
-        for (x in SettingsSchema.ALL) if (x.src == Src.CFG) {
+        for (x in SettingsSchema.ALL) if (x.src == Src.CFG && x.id in p.values) {   // only the fields the gate accepted; fields missing from the file keep their current value
             if (x.key == "name" && !keepName) continue
             var v = p.values[x.id]
             if (x.secret && x.type == T.OBJLIST) v = (v as? JSONArray)?.let { mergePasswords(it, Cfg.rawGet(x.key) as? JSONArray, secrets) }
@@ -86,7 +86,7 @@ object SettingsIo {
         }
         Cfg.save()
         // --- SharedPreferences, one commit per file
-        val files = SettingsSchema.ALL.filter { it.src == Src.PREF }.groupBy { it.file }
+        val files = SettingsSchema.ALL.filter { it.src == Src.PREF && it.id in p.values }.groupBy { it.file }
         for ((file, list) in files) {
             val ed = c.getSharedPreferences(file, Context.MODE_PRIVATE).edit()
             for (x in list) {
@@ -106,7 +106,7 @@ object SettingsIo {
         UiScale.tf = UiScale.text(c) / 100f
         // --- page (localStorage is written by the page itself; its native mirrors are written here)
         val mir = c.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).edit()
-        for (x in SettingsSchema.ALL) if (x.src == Src.WEB) {
+        for (x in SettingsSchema.ALL) if (x.src == Src.WEB && x.id in p.values) {
             val v = p.values[x.id] as String?
             web.put(x.key, v ?: JSONObject.NULL); n++
             if (x.key in WEB_MIRRORED) { if (v.isNullOrEmpty()) mir.remove(x.key) else mir.putString(x.key, v) }
@@ -130,15 +130,23 @@ object SettingsIo {
         return out
     }
 
-    /** Short summary for the confirm dialog. */
+    /** Summary for the confirm dialog: what is imported, what is skipped (incompatible) and what stays as it is. */
     fun describe(p: SettingsSchema.Parsed): String {
         val m = p.meta
         val d = if (m.created > 0) java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(m.created)) else "?"
-        val sv = (p.values["cfg/smb"] as? JSONArray)?.length() ?: 0
-        val fv = (p.values["cfg/ftp"] as? JSONArray)?.length() ?: 0
-        return "From \"${m.device.ifEmpty { "?" }}\", exported $d by LANShare ${m.versionName}.\n" +
-            "${SettingsSchema.ALL.size} settings" + (if (sv + fv > 0) ", ${sv + fv} saved server${if (sv + fv == 1) "" else "s"}" else "") + ".\n" +
-            (if (m.secrets) "The file contains passwords and the Phone Explorer PIN." else "Passwords and the Phone Explorer PIN are not in the file: the ones saved on this phone stay.") +
-            "\n\nYour current settings will be replaced and the app restarts its screen."
+        val sb = StringBuilder()
+        sb.append("From \"${m.device.ifEmpty { "?" }}\", exported $d by LANShare ${m.versionName}.\n")
+        val n = p.values.keys.count { id ->
+            val x = SettingsSchema.BY_ID.getValue(id)
+            !(x.secret && !m.secrets && x.type != T.OBJLIST) && !(id == "cfg/name" && p.values["cfg/name_custom"] != true)   // left alone by apply(): PIN without passwords, an automatic device name
+        }
+        sb.append("$n setting${if (n == 1) "" else "s"} will be imported.\n")
+        if (p.skipped.isNotEmpty()) sb.append("\n\u26a0 ${p.skipped.size} not compatible with this version, skipped:\n").append(list(p.skipped.map { it.label + " (" + it.reason + ")" }))
+        if (p.untouched.isNotEmpty()) sb.append("\n${p.untouched.size} not in the file, unchanged on this phone:\n").append(list(p.untouched))
+        sb.append("\n").append(if (m.secrets) "The file contains passwords and the Phone Explorer PIN." else "Passwords and the Phone Explorer PIN are not in the file: the ones saved on this phone stay.")
+        sb.append("\n\nThe settings listed as imported replace the current ones and the app restarts its screen.")
+        return sb.toString()
     }
+
+    private fun list(l: List<String>): String = if (l.size <= 8) l.joinToString("\n") { "\u2022 $it" } + "\n" else l.take(8).joinToString("\n") { "\u2022 $it" } + "\n\u2022 and ${l.size - 8} more\n"
 }

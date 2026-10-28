@@ -11,20 +11,18 @@ import java.security.MessageDigest
  * search index, interface size, theme). NOT settings (never exported): device id, caches (peer / printer lists, indexes), reading
  * positions, history, inbox texts, albums, update-check state. See HANDOVER.md chapter 17.
  *
- * REGISTRY: [ALL] lists EVERY exported setting exactly once. Adding a setting to the app = add a line here, bump [SCHEMA]
- * (otherwise old exports would silently look compatible only by key comparison - the key comparison below still refuses them).
+ * REGISTRY: [ALL] lists EVERY exported setting exactly once. Adding a setting to the app = add a line here and bump [SCHEMA].
  *
- * COMPATIBILITY RULE (owner, 2026-10-28): a file is imported ONLY when it is fully compatible with this app version, else it is
- * refused with a warning and nothing is changed. "Fully compatible" = schema between [MIN_COMPAT] and [SCHEMA], same format,
- * intact checksum, and EXACTLY the same set of setting ids as this version knows (no missing ones = file made by an older version
- * before those settings existed, no unknown ones = file made by a newer version), and every value has the right type / range.
+ * COMPATIBILITY RULE (owner, changed 2026-10-28): import is PER FIELD. A file that is a real settings export (format + intact checksum)
+ * is imported field by field: a setting this version knows and whose value is valid is applied; a setting this version does not know
+ * (made by a newer app), a value with the wrong type / range, or a setting whose meaning changed since the file's schema
+ * (Entry.compatFrom > file schema) is SKIPPED and reported; a setting missing from the file (older app) is left as it is on this phone.
+ * Only a file that is not a settings export, is damaged, or has no usable field at all is refused.
  */
 object SettingsSchema {
     const val FORMAT = "lanshare-settings"
     /** Version of the export layout + meaning of the settings. Bump when a setting is added, removed, renamed or changes meaning. */
     const val SCHEMA = 1
-    /** Oldest schema whose files this version still imports (raise it to SCHEMA when an old value would be misread). */
-    const val MIN_COMPAT = 1
     const val MAX_VALUE_CHARS = 1_500_000
     const val MAX_FILE_CHARS = 8_000_000
 
@@ -35,6 +33,8 @@ object SettingsSchema {
     class Entry(
         val src: Src, val file: String, val key: String, val type: T, val label: String,
         val secret: Boolean = false, val min: Double? = null, val max: Double? = null, val allowed: Set<String>? = null,
+        /** Oldest file schema whose value of THIS setting is still read correctly; raise it to [SCHEMA] when the meaning / format of this one setting changes (older files then skip just this field). */
+        val compatFrom: Int = 1,
     ) {
         val id: String = when (src) { Src.CFG -> "cfg/$key"; Src.PREF -> "pref/$file/$key"; Src.WEB -> "web/$key" }
     }
@@ -104,9 +104,12 @@ object SettingsSchema {
     init { check(BY_ID.size == ALL.size) { "duplicate setting id in SettingsSchema" } }
 
     class Meta(val schema: Int, val versionName: String, val versionCode: Long, val device: String, val created: Long, val secrets: Boolean)
-    class Parsed(val meta: Meta, val values: Map<String, Any?>)
+    /** A field of the file that was not imported, and why (plain words for the dialog). */
+    class Skip(val label: String, val reason: String)
+    /** [values] holds ONLY the accepted fields (id -> value, null = back to the default); [skipped] = fields left out; [untouched] = labels of settings this version has that the file does not contain (they keep their current value). */
+    class Parsed(val meta: Meta, val values: Map<String, Any?>, val skipped: List<Skip>, val untouched: List<String>)
 
-    /** kind: NOT_SETTINGS, DAMAGED, NEWER, OLDER, INVALID. reasons: plain sentences for the warning dialog. */
+    /** kind: NOT_SETTINGS, DAMAGED, NOTHING_COMPATIBLE. reasons: plain sentences for the warning dialog. */
     sealed class Result {
         class Ok(val parsed: Parsed) : Result()
         class Refused(val kind: String, val reasons: List<String>) : Result()
@@ -144,31 +147,24 @@ object SettingsSchema {
         if (o.optString("checksum") != checksum(e))
             return Result.Refused("DAMAGED", listOf("The file is damaged or was edited by hand (checksum does not match). Export the settings again."))
 
-        val reasons = ArrayList<String>(); var kind = ""
-        fun refuse(k: String, r: String) { if (kind.isEmpty()) kind = k; reasons.add(r) }
+        if (schema < 1) return Result.Refused("NOT_SETTINGS", listOf("This file is not a LANShare settings export."))
 
-        if (schema > SCHEMA) refuse("NEWER", "The file was made by a newer LANShare ($ver). This app does not know all of its settings. Update this app, then import again.")
-        else if (schema < MIN_COMPAT) refuse("OLDER", "The file was made by an older LANShare ($ver) whose settings are not compatible with this version.")
-
-        val fileIds = HashSet<String>(); val ki = e.keys(); while (ki.hasNext()) fileIds.add(ki.next())
-        val missing = ALL.map { it.id }.filter { it !in fileIds }
-        val unknown = fileIds.filter { it !in BY_ID }.sorted()
-        if (missing.isNotEmpty()) refuse("OLDER", "The file comes from an older LANShare ($ver) and does not contain ${missing.size} setting${if (missing.size == 1) "" else "s"} that this version has: ${names(missing.map { BY_ID.getValue(it).label })}. Update LANShare on the device the file came from, export again, then import.")
-        if (unknown.isNotEmpty()) refuse("NEWER", "The file has ${unknown.size} setting${if (unknown.size == 1) "" else "s"} this version does not know (${names(unknown.map { it.substringAfterLast('/') })}). It was made by a different LANShare version ($ver).")
-
-        val vals = HashMap<String, Any?>()
-        if (missing.isEmpty() && unknown.isEmpty()) for (x in ALL) {
+        val vals = HashMap<String, Any?>(); val skipped = ArrayList<Skip>(); val untouched = ArrayList<String>()
+        val ki = e.keys()
+        while (ki.hasNext()) { val id = ki.next(); if (id !in BY_ID) skipped.add(Skip(id.substringAfterLast('/'), "this version does not have this setting")) }
+        skipped.sortBy { it.label }
+        for (x in ALL) {
+            if (!e.has(x.id)) { untouched.add(x.label); continue }
+            if (schema < x.compatFrom) { skipped.add(Skip(x.label, "its meaning changed since the version that made the file")); continue }
             val raw = e.get(x.id)
             val v: Any? = if (raw === JSONObject.NULL) null else raw
             val bad = validate(x, v)
-            if (bad != null) refuse("INVALID", "${x.label}: $bad") else vals[x.id] = v
+            if (bad != null) skipped.add(Skip(x.label, bad)) else vals[x.id] = v
         }
-        if (reasons.isNotEmpty()) return Result.Refused(kind, reasons)
+        if (vals.isEmpty()) return Result.Refused("NOTHING_COMPATIBLE", listOf("None of the settings in this file (made by LANShare $ver) can be used by this version."))
         val meta = Meta(schema, ver, app?.optLong("versionCode", 0L) ?: 0L, o.optString("device"), o.optLong("created", 0L), o.optBoolean("secrets", false))
-        return Result.Ok(Parsed(meta, vals))
+        return Result.Ok(Parsed(meta, vals, skipped, untouched))
     }
-
-    private fun names(l: List<String>): String = if (l.size <= 6) l.joinToString(", ") else l.take(6).joinToString(", ") + " and ${l.size - 6} more"
 
     /** null = fine. */
     fun validate(x: Entry, v: Any?): String? {
