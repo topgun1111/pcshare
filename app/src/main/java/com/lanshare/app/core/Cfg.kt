@@ -106,6 +106,14 @@ object Cfg {
     @Synchronized fun peerCache(): JSONArray = obj.optJSONArray("peer_cache") ?: JSONArray()
     @Synchronized fun setPeerCache(a: JSONArray) { obj.put("peer_cache", a); save() }
 
+    @Synchronized fun printVerbose(): Boolean = obj.optBoolean("print_verbose", true)
+    @Synchronized fun setPrintVerbose(v: Boolean) { obj.put("print_verbose", v); save() }
+
+    /** Raw value of a config key (settings export); null when missing. */
+    @Synchronized fun rawGet(key: String): Any? = if (obj.has(key) && !obj.isNull(key)) obj.opt(key) else null
+    /** Raw write of a config key (settings import); null removes it. The caller calls [save]. */
+    @Synchronized fun rawPut(key: String, v: Any?) { if (v == null) obj.remove(key) else obj.put(key, v) }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy

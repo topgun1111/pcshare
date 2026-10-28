@@ -874,6 +874,8 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-28: CI compile fix: added `Cfg.printVerbose/setPrintVerbose` (key `print_verbose`, default true), `Cfg.rawGet/rawPut` (used by SettingsIo; caller saves), `Jobs.pcDiag` (GET /api/pcdiag, 404 = old PC). Other compile errors may still follow.
+
 - 2026-10-28 - Google Drive Part 7 (of 11), NOT compiled: UI polish. `ui.html` cloud icon for `kind==='Drive'` (chip + Devices picker), `/api/warm` for `gd:`, Reconnect dialog on "sign in again" load error, native-docs sentence in the Drive sheet; `GdriveFs.warmUp`. Details 17.5f, check 17.7g.
 - 2026-10-28 - Google Drive Part 8 (of 11), NOT compiled: `GdriveFs.thumb` (Drive's own thumbnails / video length, hooked into `RemoteThumbs.make`), `GdriveFs.link` + `GET /api/gdlink` + `LSAndroid.openLink` + selection-bar "Open in Drive" (`doGdLink` in ui.html). Viewers / Open with / share / Send to needed no change. Details: 17.5g, check 17.7h.
 - 2026-10-28 - Google Drive Part 11 (of 11), NOT compiled: `GdApi.url` adds `supportsAllDrives`; `GdriveFs` virtual views `[Shared with me]` / `[Shared drives]` / `[Trash]` (`fetchRows` on `@shared` / `@drives` / `@trash`, `lq()`, `listDir(virt)`), restore by moving out of Trash, refusals for views, search covers shared areas, `link` / `stat` for views; `ui.html` Drive sheet sentence. Details 17.5j, check 17.7k.

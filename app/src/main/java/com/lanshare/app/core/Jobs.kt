@@ -266,6 +266,19 @@ object Jobs {
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
+    /** pcprint.py 31+: the PC's diag text (GET /api/pcdiag?pos=N). {ok, old?, text, why?}. An older PC answers 404 = old. */
+    fun pcDiag(dev: String, pos: Long): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/api/pcdiag?pos=$pos", emptyMap(), 6000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", true).put("old", true)
+                if (r.status != 200) return JSONObject().put("ok", false).put("why", "HTTP ${r.status}")
+                JSONObject(String(r.readUpTo(4 shl 20), Charsets.UTF_8)).put("ok", true)
+            } finally { r.close() }
+        } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }
+    }
+
     /** Phone Explorer, one tap: asks the PC (pcprint.py 29+) to open Windows Explorer on this phone's FTP share. {ok, result: "ok" | "old" (pcprint.py < 29)}. The PC takes the phone's address from the connection itself. */
     fun pcOpenPhone(dev: String, port: Int, user: String, pin: String): JSONObject {
         val (ip, _) = printTarget(dev)
