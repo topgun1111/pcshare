@@ -2381,7 +2381,27 @@ function openSettings(){
     rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
+  if(window.LSAndroid&&LSAndroid.settingsExport){const rb=E('button','set'),tb=E('div','t');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','Backup settings'),E('small','','Export or import every setting of the app'));rb.append(tb);
+    rb.onclick=()=>{close();openSettingsBackup()};card.append(rb)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
+  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+/* ---- Settings backup: Export / Import (Kotlin: core/settings/*; HANDOVER chapter 17). Export = every setting of the app in one JSON file; Import = all-or-nothing, a file that is not fully compatible with this version is refused with a warning. */
+function lsSettingsApply(j){try{const o=JSON.parse(j);for(const k in o){try{if(o[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,String(o[k]))}catch(e){}}}catch(e){}}   // called by MainActivity after a confirmed import (the page's own keys), then the screen is recreated
+function openSettingsBackup(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Backup settings'));
+  const info=E('p','','Export saves every setting of the app, from the smallest to the main ones, into one file. Import restores it. A file that is not fully compatible with this version of the app (for example one made by an older or newer version) is refused with a warning and nothing is changed.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  let sec=false;
+  const rs=E('button','set'),ts=E('div','t'),ss=E('small','','Off – passwords and the Phone Explorer PIN stay out of the file');rs.style.width='100%';rs.style.textAlign='left';
+  ts.append(E('b','','Include passwords and PIN'),ss);rs.append(ts);
+  rs.onclick=()=>{sec=!sec;ss.textContent=sec?'On – the file is plain text: keep it private':'Off – passwords and the Phone Explorer PIN stay out of the file'};card.append(rs);
+  const re=E('button','set'),te=E('div','t');re.style.width='100%';re.style.textAlign='left';te.append(E('b','','Export settings'),E('small','','Save all settings to a file'));re.append(te);
+  re.onclick=()=>{const web={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}web[k]=v})}catch(e){}
+    close();try{LSAndroid.settingsExport(JSON.stringify(web),sec)}catch(e){toast('⚠ '+e.message,4000)}};card.append(re);
+  const ri=E('button','set'),ti=E('div','t');ri.style.width='100%';ri.style.textAlign='left';ti.append(E('b','','Import settings'),E('small','','Restore from a settings file (replaces the current settings)'));ri.append(ti);
+  ri.onclick=()=>{close();try{LSAndroid.settingsImport()}catch(e){toast('⚠ '+e.message,4000)}};card.append(ri);
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 function openTextSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
