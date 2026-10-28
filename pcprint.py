@@ -47,7 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "32"
+VERSION = "33"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -2148,6 +2148,27 @@ def housekeeping():
 
 
 # ------------------------------------------------------------------ HTTP service
+def pictures_dir():
+    """v33: the Pictures folder of the user this service runs as (Windows known folder: follows OneDrive / moved folders and any language)."""
+    try:
+        if WIN:
+            import ctypes
+            from ctypes import wintypes
+            class GUID(ctypes.Structure):
+                _fields_ = [("a", ctypes.c_ulong), ("b", ctypes.c_ushort), ("c", ctypes.c_ushort), ("d", ctypes.c_ubyte * 8)]
+            g = GUID(0x33E28130, 0x4E1E, 0x4676, (ctypes.c_ubyte * 8)(0x83, 0x5A, 0x98, 0x39, 0x5C, 0x3B, 0xC3, 0xBB))   # FOLDERID_Pictures
+            buf = ctypes.c_wchar_p()
+            if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(g), 0, None, ctypes.byref(buf)) == 0 and buf.value:
+                v = buf.value
+                ctypes.windll.ole32.CoTaskMemFree(buf)
+                if os.path.isdir(v):
+                    return v
+    except Exception as e:
+        dlog_exc("pictures-dir-failed", e) if "dlog_exc" in globals() else None
+    p = os.path.join(os.path.expanduser("~"), "Pictures")
+    return p if os.path.isdir(p) else ""
+
+
 def safe_name(n):
     n = os.path.basename((n or "file").replace("\\", "/"))
     n = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", n).strip(" .")
@@ -2662,6 +2683,8 @@ class H(BaseHTTPRequestHandler):
             except ValueError:
                 pos = None
             return self.reply(200, screen_snapshot(pos, _int((q.get("lines") or [SCREEN_FIRST])[0], SCREEN_FIRST, 1, 500)))
+        if u.path == "/pictures":   # v33: where this PC keeps its Pictures (the phone app finds the gallery folder with it, no typing)
+            return self.reply(200, {"ok": True, "path": pictures_dir(), "user": os.environ.get("USERNAME") or os.environ.get("USER") or "", "name": socket.gethostname()})
         if u.path == "/diag":   # diag.jsonl in pieces: ?pos=<byte offset of the last answer's "pos"> (none = the last ~300 KB); read-only, LAN / Tailscale only like /screen
             try:
                 pos = int((parse_qs(u.query).get("pos") or [""])[0])

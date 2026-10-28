@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - PC gallery finds the Pictures folder by itself
+
+### Changed
+- Gallery of a PC: the PC now tells the app where its Pictures folder is, so you do not have to type the path. Run the new PC print file once.
+
 ## 2026-10-28 - Long file names can be printed on the PC
 
 ### Fixed
