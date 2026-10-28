@@ -266,6 +266,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         "print" -> 0xFF6D4C41.toInt()           // brown
         "add" -> 0xFF26A69A.toInt()             // To Print space
         "openw" -> 0xFF29B6F6.toInt()           // Open with
+        "share" -> 0xFF039BE5.toInt()           // Share
         "merge" -> 0xFFAB47BC.toInt()
         "fwd", "back", "send" -> 0xFF1E88E5.toInt()
         else -> fallback

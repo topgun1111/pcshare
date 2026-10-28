@@ -2846,7 +2846,7 @@ const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.se
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
-  const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
+  const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
   const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
   const has=S.clip&&S.clip.paths.length;
   document.body.classList.toggle('selm',S.sel.size>0);
@@ -2864,6 +2864,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
+    if(files&&!A)btn('share','Share',doShareSel);   // system share sheet (files only; folders cannot be shared directly)
     if(S.sel.size===1&&S.dev.indexOf('gd:')===0&&window.LSAndroid&&LSAndroid.openLink)btn('openw','Open in Drive',doGdLink);   // Part 8
     if(!A&&galRoot()&&it.length>1&&it.every(i=>i.dir))btn('merge','Merge',()=>mergeAlbums(selPaths()));   // Gallery / Videos: merge the selected albums into one
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
@@ -2947,6 +2948,9 @@ async function choosePrinter(here,busy){for(let i=0;i<8;i++){const to=await pick
 /* Part 8: the selected Drive file / folder in Google Drive (browser or Drive app) */
 async function doGdLink(){const i=selItems()[0];if(!i)return;try{const r=await api('GET','/api/gdlink?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),null,20000);S.sel.clear();render();LSAndroid.openLink(r.url)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
+function doShareSel(){const it=selItems().filter(i=>!i.dir);if(!it.length)return;
+  if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:it.map(i=>({name:i.name,size:i.size||0,url:location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name))}))}));S.sel.clear();render()}
+  else toast('Sharing works in the Android app',3000)}
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.openWith){LSAndroid.openWith(location.origin+u);S.sel.clear();render()}
