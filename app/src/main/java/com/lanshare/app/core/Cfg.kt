@@ -27,6 +27,10 @@ object Cfg {
     @Synchronized fun ftp(): JSONArray = obj.optJSONArray("ftp") ?: JSONArray()
     @Synchronized fun setFtp(a: JSONArray) { obj.put("ftp", a) }
 
+    /** Saved Google Drive accounts (see Gdrive.kt): [{id:"gd:xxxxxx", email, name}]. No tokens are stored. */
+    @Synchronized fun gdrive(): JSONArray = obj.optJSONArray("gdrive") ?: JSONArray()
+    @Synchronized fun setGdrive(a: JSONArray) { obj.put("gdrive", a) }
+
     /** Remote (tailnet / other-subnet) device IPs that are re-probed on every scan; filled by "+ IP" and by Tailscale addresses peers advertise. */
     @Synchronized fun pins(): List<String> { val a = obj.optJSONArray("pins") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) } }
     @Synchronized fun addPin(ip: String): Boolean {
@@ -91,9 +95,6 @@ object Cfg {
     @Synchronized fun autoCopy(): Boolean = obj.optBoolean("auto_copy", false)
     @Synchronized fun setAutoCopy(v: Boolean) { obj.put("auto_copy", v); save() }
     /** Copying text while a LANShare screen is open also sends it to the default device (default off). */
-    /** Print log detail (HANDOVER 9.8 part 4): on (default) = long texts / stacks are kept up to 6000 chars as before; off = clipped to 1500 chars (smaller log). */
-    @Synchronized fun printVerbose(): Boolean = obj.optBoolean("print_verbose", true)
-    @Synchronized fun setPrintVerbose(v: Boolean) { obj.put("print_verbose", v); save() }
     @Synchronized fun clipSync(): Boolean = obj.optBoolean("clip_sync", false)
     @Synchronized fun setClipSync(v: Boolean) { obj.put("clip_sync", v); save() }
 
@@ -104,10 +105,6 @@ object Cfg {
     /** LANShare devices this one has seen (kept across restarts, so the Devices list is filled at once; liveLoop then verifies them). */
     @Synchronized fun peerCache(): JSONArray = obj.optJSONArray("peer_cache") ?: JSONArray()
     @Synchronized fun setPeerCache(a: JSONArray) { obj.put("peer_cache", a); save() }
-
-    /** Generic access for settings export / import (core/settings): null = key not set (the app default applies). Values are JSON types (Boolean, Int, Double, String, JSONArray). */
-    @Synchronized fun rawGet(key: String): Any? { if (!obj.has(key) || obj.isNull(key)) return null; return obj.get(key) }
-    @Synchronized fun rawPut(key: String, v: Any?) { if (v == null) obj.remove(key) else obj.put(key, v) }
 
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f

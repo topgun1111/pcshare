@@ -77,10 +77,6 @@ object PdfPrint {
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
         val temps = ArrayList<File>()
         val srcs = ArrayList<Src>()
-        val jid = PrintLog.jid()
-        job.logId = jid
-        PrintLog.bind(jid)
-        PrintLog.ev("pdf-job-start", null, "paths" to paths, "opts" to opts?.toString())
         try {
             val files = ArrayList<Pair<String, Long>>()
             for (p0 in paths) {
@@ -105,14 +101,10 @@ object PdfPrint {
                 job.label = "Preparing ${i + 1}/${files.size}: $name"
                 try {
                     val pages = load(job, src, sp, size, dir, temps, srcs, rots?.optInt(i, 0) ?: 0, PrintPrep.cropBox(opts, i))
-                    PrintLog.ev("pdf-file", null, "i" to i, "file" to name, "bytes" to size, "pages" to pages.size)
                     if (joined) groups[0].pages.addAll(pages)
                     else groups.add(Group(name.substringBeforeLast('.', name)).also { it.pages.addAll(pages) })
                 } catch (e: Cancelled) { throw e
-                } catch (e: Throwable) {   // one unreadable file (also a corrupt PDF / out of memory) must not take the others down
-                    PrintLog.err("pdf-file-failed", null, e, "file" to name, "bytes" to size)
-                    failed.add("$name: ${errText(e)}")
-                }
+                } catch (e: IOException) { failed.add("$name: ${errText(e)}") }
             }
 
             // 2. lay out and save each result
@@ -125,14 +117,9 @@ object PdfPrint {
                 try {
                     val out = File(dir, "o-" + System.nanoTime().toString(36) + ".pdf").also { temps.add(it) }
                     make(job, g.pages, opts, out, g.name)
-                    val where = save(g.name, out)
-                    PrintLog.ev("pdf-saved", null, "name" to g.name, "pages" to g.pages.size, "bytes" to out.length(), "where" to where)
-                    saved.add(where)
+                    saved.add(save(g.name, out))
                 } catch (e: Cancelled) { throw e
-                } catch (e: Throwable) {
-                    PrintLog.err("pdf-make-failed", null, e, "name" to g.name, "pages" to g.pages.size)
-                    failed.add("${g.name}: ${errText(e)}")
-                }
+                } catch (e: IOException) { failed.add("${g.name}: ${errText(e)}") }
             }
             job.done = job.total
             if (saved.isNotEmpty() && failed.isEmpty()) {
@@ -141,22 +128,19 @@ object PdfPrint {
                 job.state = "done"
             } else {
                 job.label = "PDF problem"
-                job.error = (if (saved.isNotEmpty()) "Saved: " + saved.joinToString(", ") + ". " else "") + "Problem - " + failed.joinToString("; ") + " [log $jid]"
+                job.error = (if (saved.isNotEmpty()) "Saved: " + saved.joinToString(", ") + ". " else "") + "Problem - " + failed.joinToString("; ")
                 job.state = "error"
             }
         } catch (e: Cancelled) {
             job.state = "cancel"
         } catch (e: Throwable) {
-            PrintLog.err("pdf-job-crash", null, e)
-            job.error = errText(e) + " [log $jid]"
+            job.error = errText(e)
             job.state = "error"
         } finally {
             srcs.forEach { it.close() }
             temps.forEach { try { it.delete() } catch (_: Exception) {} }
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
-            PrintLog.ev("pdf-job-end", null, "state" to job.state, "error" to job.error, "note" to job.note)
-            PrintLog.bind(null)
         }
     }
 
@@ -310,13 +294,7 @@ object PdfPrint {
                     if (pg == null) continue
                     val cell = RectF(mg + (j % cols) * (cw + gap), mg + (j / cols) * (ch + gap), 0f, 0f)
                     cell.right = cell.left + cw; cell.bottom = cell.top + ch
-                    try { drawPg(cv, pg, cell, multi, fit, scaleOpt, align, autorot, noauto, border, line, bp) }
-                    catch (x: Cancelled) { throw x
-                    } catch (x: Throwable) {   // one page / picture that cannot be drawn leaves a note on its place instead of failing the whole PDF
-                        PrintLog.err("pdf-draw-failed", null, x, "sheet" to (sn + 1), "cell" to j)
-                        job.addProblem("sheet ${sn + 1}: a page or picture could not be drawn")
-                        cv.drawText("could not be drawn", cell.left + 6f, cell.top + 14f, tp)
-                    }
+                    drawPg(cv, pg, cell, multi, fit, scaleOpt, align, autorot, noauto, border, line, bp)
                 }
                 if (wm.isNotEmpty() && !wmUnder) watermark(cv, fill(wm, sn, sheets.size, docName), pw, ph)
                 if (hdr.isNotEmpty()) cv.drawText(fill(hdr, sn, sheets.size, docName), pw / 2, 14f, tp)
@@ -415,7 +393,7 @@ object PdfPrint {
         if ((dir.isDirectory || dir.mkdirs()) && dir.canWrite()) {
             var t = File(dir, "$base.pdf"); var k = 1
             while (t.exists()) { t = File(dir, "$base ($k).pdf"); k++ }
-            try { f.copyTo(t) } catch (e: Throwable) { try { t.delete() } catch (_: Exception) {}; PrintLog.err("pdf-save-failed", null, e, "to" to t.absolutePath); throw e }
+            f.copyTo(t)
             return "$DIR/${t.name}"
         }
         val ctx = Core.appCtx

@@ -84,5 +84,6 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") // image search: CLIP ONNX models (core/ClipEngine.kt)
     implementation("com.google.zxing:core:3.5.3")                       // Phone Explorer: QR pairing code (pe/PePrefs.pairingLink)
     implementation("com.google.android.gms:play-services-base:18.5.0")   // ModuleInstall: check / request the OCR model
+    implementation("com.google.android.gms:play-services-auth:21.2.0")    // Google Drive sign-in: Authorization API, no client secret (core/GAuth.kt, HANDOVER chapter 17)
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1") // image search: OCR via Google Play Services; model downloads on first use, then offline (core/ClipEngine.kt)
 }

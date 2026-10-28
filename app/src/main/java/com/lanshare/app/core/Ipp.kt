@@ -12,8 +12,6 @@ import java.nio.ByteBuffer
 object Ipp {
     private const val OP_PRINT_JOB = 0x0002
     private const val OP_GET_PRINTER_ATTRS = 0x000B
-    private const val OP_CANCEL_JOB = 0x0008
-    private const val OP_GET_JOB_ATTRS = 0x0009
 
     class Attr(val tag: Int, val v: ByteArray)
 
@@ -35,20 +33,6 @@ object Ipp {
                 colls(n).forEachIndexed { i, m -> sb.append(n).append('[').append(i).append("] = ").append(m.entries.joinToString(", ") { it.key + "=" + it.value }).append('\n') }
             }
             return sb.toString().trim()
-        }
-        /** EVERY attribute of the answer as one line (printer state, reasons, job attributes first) - for the print log only. */
-        fun all(): String {
-            fun txt(a: Attr): String = when {
-                (a.tag == 0x21 || a.tag == 0x23) && a.v.size == 4 -> ByteBuffer.wrap(a.v).int.toString()
-                a.tag == 0x22 && a.v.size == 1 -> (a.v[0].toInt() != 0).toString()
-                a.tag in 0x40..0x4F -> String(a.v, Charsets.UTF_8).take(200)
-                else -> a.v.joinToString("") { "%02x".format(it) }.take(60) + "(t" + a.tag.toString(16) + ")"
-            }
-            fun first(n: String) = n.startsWith("printer-state") || n.startsWith("job-") || n.startsWith("printer-alert") || n == "printer-is-accepting-jobs" ||
-                n.startsWith("media-ready") || n == "media-default" || n == "media-col-ready" || n.startsWith("marker-")
-            val head = attrs.keys.sortedBy { if (first(it)) 0 else 1 }.joinToString("; ") { n -> n + "=" + (attrs[n] ?: emptyList()).joinToString(",") { txt(it) } }
-            val tail = if (cols.isEmpty()) "" else " || " + cols.entries.joinToString("; ") { (n, l) -> n + "=" + l.joinToString(" / ") { m -> m.entries.joinToString(",") { it.key + ":" + it.value } } }
-            return head + tail
         }
         fun dpis(n: String): List<Int> = attrs[n]?.mapNotNull { a -> a.v.takeIf { it.size == 9 }?.let { ByteBuffer.wrap(it).int } } ?: emptyList()
     }
@@ -93,25 +77,7 @@ object Ipp {
             "document-format-supported", "sides-supported", "print-color-mode-supported", "printer-is-accepting-jobs",
             "media-ready", "media-default", "media-supported", "media-source-supported", "media-col-ready", "printer-input-tray", "media-type-supported",
             "pwg-raster-document-resolution-supported", "pwg-raster-document-sheet-back", "pwg-raster-document-type-supported",
-            "media-left-margin-supported", "media-right-margin-supported", "media-top-margin-supported", "media-bottom-margin-supported",
-            // only for the print log (a printer that does not know one of them just ignores it): why is it \"stopped\" / \"media needed\"?
-            "printer-state-message", "printer-alert", "printer-alert-description", "printer-info", "printer-device-id", "printer-firmware-version",
-            "ipp-versions-supported", "operations-supported", "marker-names", "marker-levels", "marker-types", "printer-state-change-time"))
-        return call(p, rq.finish(), null, 0, 8000, null)
-    }
-
-    /** Get-Job-Attributes: where is the job the printer accepted (job-state 3 pending, 4 held, 5 processing, 6 stopped, 7 canceled, 8 aborted, 9 completed)? */
-    fun jobAttrs(p: WifiPrinters.P, jobId: Int): Resp {
-        val rq = Req(OP_GET_JOB_ATTRS, p.uri)
-        rq.int("job-id", jobId)
-        rq.strs(0x44, "requested-attributes", listOf("job-state", "job-state-reasons", "job-state-message", "job-impressions-completed", "job-media-sheets-completed", "job-printer-state-message", "job-printer-state-reasons", "time-at-processing", "time-at-completed"))
-        return call(p, rq.finish(), null, 0, 8000, null)
-    }
-
-    /** Cancel-Job (used before a job is sent again without the paper choice, so no second copy can come out). */
-    fun cancelJob(p: WifiPrinters.P, jobId: Int): Resp {
-        val rq = Req(OP_CANCEL_JOB, p.uri)
-        rq.int("job-id", jobId)
+            "media-left-margin-supported", "media-right-margin-supported", "media-top-margin-supported", "media-bottom-margin-supported"))
         return call(p, rq.finish(), null, 0, 8000, null)
     }
 
@@ -157,24 +123,7 @@ object Ipp {
         try { printerAttrs(p) } catch (_: Exception) { probed.remove("${p.host}:${p.port}") }
     }
 
-    /** Every IPP exchange goes to the print log (operation, address, TLS, size, time, IPP status, ALL answer attributes); polls of printer state only while a print runs. */
     private fun call(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
-        val op = if (req.size >= 4) ((req[2].toInt() and 255) shl 8) or (req[3].toInt() and 255) else -1
-        val t0 = System.currentTimeMillis()
-        val addr = "${p.host}:${p.port}/${p.path}"
-        try {
-            val r = call0(p, req, data, dataLen, timeoutMs, onSent)
-            if (op != OP_GET_PRINTER_ATTRS || PrintLog.cur() != null || !r.ok)
-                PrintLog.ev("ipp", null, "op" to "0x" + Integer.toHexString(op), "printer" to p.name, "addr" to addr, "via" to p.viaPeer, "tls" to Http.tlsHosts.contains("${p.host}:${p.port}"),
-                    "req_bytes" to req.size, "data_bytes" to dataLen, "ms" to (System.currentTimeMillis() - t0), "status" to "0x" + Integer.toHexString(r.status), "ok" to r.ok, "attrs" to r.all())
-            return r
-        } catch (e: IOException) {
-            PrintLog.err("ipp-failed", null, e, "op" to "0x" + Integer.toHexString(op), "printer" to p.name, "addr" to addr, "via" to p.viaPeer, "req_bytes" to req.size, "data_bytes" to dataLen, "ms" to (System.currentTimeMillis() - t0))
-            throw e
-        }
-    }
-
-    private fun call0(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
         // a header-only request (attributes query) that gets 426 is repeated once over TLS; the printer is remembered
         if (p.viaPeer == null && data == null && !Http.tlsHosts.contains("${p.host}:${p.port}")) {
             val r0 = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), timeoutMs, ByteArrayInputStream(req), req.size.toLong())
@@ -233,7 +182,7 @@ object Ipp {
     }
 
     private fun parse(b: ByteArray): Resp {
-        if (b.size < 9) { PrintLog.warn("ipp-bad-answer", null, "bytes" to b.size, "hex" to b.joinToString("") { "%02x".format(it) }); throw IOException("the printer sent an empty answer") }
+        if (b.size < 9) throw IOException("the printer sent an empty answer")
         val bb = ByteBuffer.wrap(b)
         bb.short                                   // version
         val status = bb.short.toInt() and 0xFFFF

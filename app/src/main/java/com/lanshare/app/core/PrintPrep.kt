@@ -51,19 +51,6 @@ object PrintPrep {
 
     /** Converts the downloaded copy [f] of [name]. Returns the file to send (may be [f] itself) and the name to send it under. */
     fun convert(kind: Kind, f: File, name: String): Out {
-        val t0 = System.currentTimeMillis()
-        try {
-            val o = convert0(kind, f, name)
-            PrintLog.ev("prep-convert", null, "file" to name, "kind" to kind.name, "in_bytes" to f.length(), "out" to o.name, "out_bytes" to o.file.length(), "ms" to (System.currentTimeMillis() - t0))
-            return o
-        } catch (e: Cancelled) { throw e
-        } catch (e: Throwable) {
-            PrintLog.err("prep-convert-failed", null, e, "file" to name, "kind" to kind.name, "in_bytes" to f.length(), "ms" to (System.currentTimeMillis() - t0))
-            throw e
-        }
-    }
-
-    private fun convert0(kind: Kind, f: File, name: String): Out {
         val ext = name.substringAfterLast('.', "").lowercase()
         val base = if (name.contains('.')) name.substringBeforeLast('.') else name
         return when (kind) {
@@ -91,16 +78,7 @@ object PrintPrep {
     }
 
     /** Crops the picture [f] to [box] (same orientation and pixels the preview used) and returns it as a JPEG. */
-    /** "Trim blank edges": if the crop fails the picture is printed whole (converted normally) instead of failing the file. */
     fun trim(f: File, name: String, box: DoubleArray): Out {
-        try { return trim0(f, name, box) } catch (e: Cancelled) { throw e
-        } catch (e: Throwable) {
-            PrintLog.warn("prep-trim-failed", null, "file" to name, "error" to errText(e), "box" to box.toList())
-            return convert(Kind.PIC, f, name)
-        }
-    }
-
-    private fun trim0(f: File, name: String, box: DoubleArray): Out {
         val base = if (name.contains('.')) name.substringBeforeLast('.') else name
         val jpg = Thumbs.forPrint(f)
         val bmp = BitmapFactory.decodeByteArray(jpg, 0, jpg.size) ?: throw IOException("cannot decode the image")

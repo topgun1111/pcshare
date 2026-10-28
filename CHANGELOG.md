@@ -5,69 +5,42 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-10-28 - Back up and restore all settings
+## 2026-10-28 - Google Drive: shared files and Trash
 
 ### Added
-- Settings > Backup settings: Export saves every setting of the app (from the smallest to the main ones) into one file; Import restores it.
-- Export can include saved passwords and the Phone Explorer PIN (off by default).
-- Import takes every setting that is compatible with this version of the app and skips the ones that are not (for example settings from a newer or older version); the list of skipped settings is shown before you confirm. A file that is damaged, not a settings file, or has nothing usable is refused with a warning.
+- At the top of your Google Drive: "Shared with me", "Shared drives" and "Trash". Open, download and copy shared files; upload into shared drives; search also looks in shared places.
+- Move an item out of "Trash" to restore it.
 
-## 2026-10-28 - PC gallery finds the Pictures folder by itself
+## 2026-10-28 - Google Drive: faster big folders
 
 ### Changed
-- Gallery of a PC: the PC now tells the app where its Pictures folder is, so you do not have to type the path. Run the new PC print file once.
+- Google Drive folders open at once from the last visit and update themselves in the background. Big folders load faster, and Drive's "too many requests" limit no longer stops thumbnails or copies.
 
-## 2026-10-28 - Long file names can be printed on the PC
-
-### Fixed
-- Files with a very long name (over 120 letters) were refused with "this file type cannot be printed". They print now. Run the new PC print file once.
-
-## 2026-10-28 - Print log screen
-
-### Added
-- Settings > Print log: the print log can now be read, shared and copied inside the app, and cleared.
-- "Fetch PC log" adds the PC's log to the phone's, sorted by time.
-- Open folder shows the log file in the file manager.
-- When a print finishes (or fails), the job card shows its job code with "Print log" and "Copy log" buttons.
-- "Full detail" switch: off makes the log smaller (long texts are cut).
-
-## 2026-10-28 - Printing on the phone and Save as PDF: more forgiving
-
-### Added
-- The print log now also records printing on this phone, the "LANShare - print on PC" print service and Save as PDF.
-- Errors of these prints end with a short job code, e.g. "[log A0005]".
+## 2026-10-28 - Google Drive: polish
 
 ### Changed
-- Printing on this phone: if one file cannot be read, the others still print and you are told which one was skipped.
-- A broken PDF only skips itself; a page or picture that cannot be drawn is replaced by a short note instead of stopping the whole print.
-- Save as PDF: one bad file or picture no longer stops the PDF, and half-written PDF files are removed.
-- "Trim blank edges" prints the whole picture if cropping fails.
+- Google Drive places show a cloud icon, open faster, and ask you to reconnect when Google sign-in has expired.
 
-## 2026-10-27 - Wi-Fi printers: more forgiving
+## 2026-10-28 - Google Drive: rename, move, delete
 
 ### Added
-- The print log now also records everything the Wi-Fi printer says (status, paper, errors, job progress), so a printer problem can be found afterwards.
-- Wi-Fi print errors end with a short job code, e.g. "[log A0003]".
+- In Google Drive you can now rename, move and delete files and folders. Deleted items go to Drive's trash, so you can get them back for 30 days.
+- Copying inside the same Drive account is instant, and files copied to or from Drive keep their original date.
 
-### Changed
-- After sending, the app asks the printer what became of the job. If the printer is printing or has finished it, a leftover "media needed" or "stopped" warning is shown as a note, not as a failed print.
-- If the printer holds the job because of the paper choice, the app cancels it and sends it once more, letting the printer pick the paper.
-- If the printer refuses a PDF, the app sends the pages as pictures instead (when the printer supports that).
-- A printer that is asleep gets a second chance before "not reachable" is shown.
-
-## 2026-10-27 - Printing: more forgiving + print log
+## 2026-10-28 - Google Drive: upload
 
 ### Added
-- Print log: every print step is written to a log file on the phone (folder "LANShare Logs") and on the PC, including technical error details, so a printing problem can be found afterwards.
-- Errors from the PC now end with a short job code, e.g. "[log J0007]", that points to the exact place in the PC log.
+- You can now copy files and folders from the phone or other places INTO Google Drive. Big files are sent in pieces and continue after a short network break. Copying a file that already exists in Drive adds a new version instead of a second copy.
 
-### Changed
-- Printing to a PC tries again by itself after a short network drop (the document is never printed twice).
-- If one file cannot be sent, the other files are still printed.
-- New PC print file (run it once): if page layout fails it prints the file plain, if SumatraPDF fails it tries Windows' own PDF printing, it finds the printer even when the name is written a little differently, and it starts the Windows print spooler when it was stopped.
+## 2026-10-28 - Google Drive: browse and download
 
-### Fixed
-- A problem while watching the printer after a successful print no longer shows a false error (which could make the phone print the file again).
+### Added
+- Your Google Drive accounts now appear in the device list. Open one to browse My Drive, search by name, open files and copy files or folders from Drive to the phone or other places. Google Docs, Sheets and Slides come as Word, Excel and PowerPoint files. Putting files into Drive follows in the next versions.
+
+## 2026-10-28 - Google Drive sign-in (first step)
+
+### Added
+- Main menu > Google Drive: sign in with your Google account. You can add, reconnect and remove accounts. Browsing your Drive files follows in the next versions.
 
 ## 2026-10-27 - Build fix
 

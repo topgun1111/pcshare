@@ -1029,7 +1029,7 @@ function renderPeers(){
   const sig=JSON.stringify([S.peers.map(p=>[p.id,p.name,p.ok,p.via,peerSub(p).t]),S.dev]);if(sig===S.sig)return;S.sig=sig;if(typeof drawerRefresh==='function')drawerRefresh();
   const box=$('#peers');box.textContent='';
   const mk=(label,id,warn,p)=>{const c=E('button','chip'+(S.dev===id?' on':''));
-    c.append(id==='local'?ic('phone'):E('i','dot'+(warn?' wn':'')),E('span','',label));
+    c.append(id==='local'?ic('phone'):(p&&p.kind==='Drive')?ic('ftp'):E('i','dot'+(warn?' wn':'')),E('span','',label));
     if(p){const sb=peerSub(p);if(sb.t)c.append(E('small','',sb.t));
       c.title=label+(sb.via?' \u00b7 '+sb.via:'')+(p.ok===false?' \u00b7 not answering'+(p.seen&&!p.smb?', last seen '+(agoTxt(p.seen)||'just now'):''):' \u00b7 online')}
     c.onclick=()=>openDev(id);box.append(c)};
@@ -1045,7 +1045,7 @@ function renderPeers(){
 function devPicker(all){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Devices'));
   const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
-  const row=(label,id,p)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(id==='local'?ic('phone'):E('i','dot'+(p&&p.ok===false?' wn':'')));
+  const row=(label,id,p)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(id==='local'?ic('phone'):(p&&p.kind==='Drive')?ic('ftp'):E('i','dot'+(p&&p.ok===false?' wn':'')));
     const nr=E('div','');nr.append(E('span','dn',label));
     if(p&&p.via){const tb=E('em','',connTxt(p));tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+(p.via==='Tailscale'?'rgba(106,27,154,.15);color:#6A1B9A':'rgba(46,125,50,.15);color:#2E7D32');nr.append(tb)}
     lt.append(nr);if(batTxt(p))lt.append(E('small','',batTxt(p)));if(p&&p.ok===false){const sm=E('small','','offline'+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}
@@ -1077,7 +1077,7 @@ async function pollOnce(){try{const pr=await api('GET','/api/peers');if(Array.is
 async function openDev(id){
   if(id!=='local'&&!S.peers.find(x=>x.id===id))return;homeHide();
   S.newest=false;S.dev=id;S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();
-  if(id.indexOf('ftp:')===0){try{api('GET','/api/warm?dev='+encodeURIComponent(id)).catch(()=>{})}catch(e){}}   /* FTP part 3: log in in the background while the folder is painted */
+  if(id.indexOf('ftp:')===0||id.indexOf('gd:')===0){try{api('GET','/api/warm?dev='+encodeURIComponent(id)).catch(()=>{})}catch(e){}}   /* FTP part 3: log in in the background while the folder is painted */
   return load()}
 async function addIp(){
   const ip=await dlg({title:'Add another LANShare device',msg:'IP address of the other device running LANShare',input:{label:'e.g. 192.168.43.1'},ok:'Connect'});if(!ip)return;
@@ -1158,7 +1158,9 @@ async function loadMain(){
     if(/^cancelled$/i.test(e.message)){const r=arcRoot();toast('Cancelled',2000);if(r)go(pdir(r));return}   // opening a big archive was cancelled: leave it
     if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
       S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
-    else{S.err='';toast('⚠ '+e.message,4500);S.items=[];render()}}}
+    else{S.err='';S.items=[];render();
+      if(/Google Drive needs you to sign in again/.test(e.message||'')){dlg({title:'Google Drive',msg:'Google needs you to sign in again for this account.',ok:'Reconnect'}).then(v=>{if(v)openGdrive()}).catch(()=>{})}
+      else toast('⚠ '+e.message,4500)}}}
 /* ---- native file list (Android app only; Kotlin: NativeList.kt). The folder rows are drawn by a RecyclerView laid over the page.
    Used for every device (this phone, other LANShare devices, SMB shares) in list / compact / grid / large thumbnails, newest mode, archives, subfolder-search hits and the video gallery.
    Kill switches: localStorage ls_nl='0' or NativeList.ENABLED=false.  See HANDOVER_NATIVE_LIST.md ---- */
@@ -2279,7 +2281,7 @@ function openPcScreen(pc){
     o.textContent='';o.style.display='flex';const tok=++PCPICK;const close=()=>{PCPICK++;o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
     const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),body=E('div');cb.onclick=close;hd.append(E('h3','','PC screen'),cb);card.append(E('div','handle'),hd,body);o.append(card);
     const msg=t=>{body.textContent='';body.append(E('div','pqs',t))};msg('Looking for PCs\u2026');
-    const cand=S.peers.filter(p=>p.kind!=='FTP'&&(p.ok!==false||p.smb||p.kind==='SMB')),found=[];let left=cand.length;
+    const cand=S.peers.filter(p=>p.kind!=='FTP'&&p.kind!=='Drive'&&(p.ok!==false||p.smb||p.kind==='SMB')),found=[];let left=cand.length;
     const show=()=>{if(tok!==PCPICK)return;
       if(!found.length){if(left>0)return msg('Looking for PCs\u2026');return msg('No PC with the print service (pcprint.py) found. Phones are not listed here.')}
       body.textContent='';found.sort((a,b)=>(b.id===(LASTPC&&LASTPC.id))-(a.id===(LASTPC&&LASTPC.id)));
@@ -2353,7 +2355,6 @@ function openSettings(){
   {const ru=E('button','set'),tu=E('div','t'),su=E('small','','Checking\u2026');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Search index'),su);ru.append(tu);
     api('GET','/api/uindex').then(r=>{su.textContent=usText(r)}).catch(()=>{su.textContent='Names of all files for Universal search'});
     ru.onclick=()=>{close();openUsSettings()};card.append(ru)}
-  if(window.LSAndroid&&LSAndroid.openPrintLog){const rP=E('button','set'),tP=E('div','t');rP.style.width='100%';rP.style.textAlign='left';tP.append(E('b','','Print log'),E('small','','Every print step, for finding printer problems: share, copy, fetch the PC log'));rP.append(tP);rP.onclick=()=>{close();LSAndroid.openPrintLog('',LASTPC&&LASTPC.id||'')};card.append(rP)}
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
@@ -2381,27 +2382,7 @@ function openSettings(){
     rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
-  if(window.LSAndroid&&LSAndroid.settingsExport){const rb=E('button','set'),tb=E('div','t');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','Backup settings'),E('small','','Export or import every setting of the app'));rb.append(tb);
-    rb.onclick=()=>{close();openSettingsBackup()};card.append(rb)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
-/* ---- Settings backup: Export / Import (Kotlin: core/settings/*; HANDOVER chapter 17). Export = every setting of the app in one JSON file; Import = all-or-nothing, a file that is not fully compatible with this version is refused with a warning. */
-function lsSettingsApply(j){try{const o=JSON.parse(j);for(const k in o){try{if(o[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,String(o[k]))}catch(e){}}}catch(e){}}   // called by MainActivity after a confirmed import (the page's own keys), then the screen is recreated
-function openSettingsBackup(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Backup settings'));
-  const info=E('p','','Export saves every setting of the app, from the smallest to the main ones, into one file. Import restores it. A file that is not fully compatible with this version of the app (for example one made by an older or newer version) is refused with a warning and nothing is changed.');
-  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
-  let sec=false;
-  const rs=E('button','set'),ts=E('div','t'),ss=E('small','','Off – passwords and the Phone Explorer PIN stay out of the file');rs.style.width='100%';rs.style.textAlign='left';
-  ts.append(E('b','','Include passwords and PIN'),ss);rs.append(ts);
-  rs.onclick=()=>{sec=!sec;ss.textContent=sec?'On – the file is plain text: keep it private':'Off – passwords and the Phone Explorer PIN stay out of the file'};card.append(rs);
-  const re=E('button','set'),te=E('div','t');re.style.width='100%';re.style.textAlign='left';te.append(E('b','','Export settings'),E('small','','Save all settings to a file'));re.append(te);
-  re.onclick=()=>{const web={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}web[k]=v})}catch(e){}
-    close();try{LSAndroid.settingsExport(JSON.stringify(web),sec)}catch(e){toast('⚠ '+e.message,4000)}};card.append(re);
-  const ri=E('button','set'),ti=E('div','t');ri.style.width='100%';ri.style.textAlign='left';ti.append(E('b','','Import settings'),E('small','','Restore from a settings file (replaces the current settings)'));ri.append(ti);
-  ri.onclick=()=>{close();try{LSAndroid.settingsImport()}catch(e){toast('⚠ '+e.message,4000)}};card.append(ri);
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 function openTextSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -2644,6 +2625,39 @@ async function openFtp(){
   const d=E('button','tbtn','Done');d.onclick=()=>{close()};
   const add=E('button','tbtn fill','Add server');add.onclick=()=>form(null);
   act.append(d,add);o.append(card)}
+/* Google Drive accounts (HANDOVER chapter 17). Part 1: sign in / reconnect / remove. The sign-in itself is native (MainActivity.gdStart, Play Services consent screen) and reports back through window.lsGdriveDone(ok,msg). Uses the .smb sheet styles. */
+async function openGdrive(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null;window.lsGdriveDone=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card smb');
+  const head=E('div','smh'),hi=E('span','smi'),ht=E('div','smt');hi.append(ic('ftp'));
+  ht.append(E('h3','','Google Drive'),E('small','','Sign in with your Google account'));head.append(hi,ht);
+  const info=E('p','smn','Google asks for your permission once. LANShare never sees your password and keeps no token: Google hands out a fresh one when needed. Remove an account here to forget it (also revoke it at myaccount.google.com > Security > Third-party access if you want it gone on Google’s side).');
+  info.textContent+=' Google Docs, Sheets and Slides show up as Word, Excel and PowerPoint files (a copy made when you open or copy them; about 10 MB at most). At the top of a Drive: Shared with me, Shared drives and Trash (move an item out of Trash to restore it).';
+  const list=E('div','sml'),err=E('div','smerr'),act=E('div','dact');err.style.display='none';
+  card.append(E('div','handle'),head,info,list,err,act);o.append(card);
+  const busy=b=>{add.disabled=b;add.textContent=b?'Waiting for Google…':'Add Google account'};
+  const draw=l=>{list.textContent='';
+    if(!l.length){const e=E('div','smempty');e.append(E('b','','No account yet'),E('small','','Tap Add Google account.'));list.append(e)}
+    l.forEach(x=>{const r=E('div','smr'),av=E('div','sma'),t=E('div','smb2'),rc=E('button','smx'),rm=E('button','smx dng');
+      av.append(ic('ftp'));t.append(E('b','',x.name||x.email),E('small','',x.email));
+      rc.textContent='Reconnect';rc.onclick=e=>{e.stopPropagation();go(x.email)};
+      rm.append(ic('del'));rm.title='Remove';let armed=0,tm=0;
+      rm.onclick=async e=>{e.stopPropagation();
+        if(!armed){armed=1;rm.classList.add('arm');rm.textContent='Remove?';tm=setTimeout(()=>{armed=0;rm.classList.remove('arm');rm.textContent='';rm.append(ic('del'))},3000);return}
+        clearTimeout(tm);
+        try{draw((await api('POST','/api/gdrive',{remove:x.id})).list);S.sig='';pollPeers()}catch(er){toast('⚠ '+er.message,4000)}};
+      r.append(av,t,rc,rm);list.append(r)})};
+  const add=E('button','tbtn fill','Add Google account');
+  const go=email=>{err.style.display='none';busy(true);
+    window.lsGdriveDone=async(ok,msg)=>{busy(false);
+      if(!ok){err.textContent=msg;err.style.display='';return}
+      toast('Signed in: '+msg,3000);try{draw(await api('GET','/api/gdrive'));S.sig='';pollPeers()}catch(e){}};
+    try{LSAndroid.gdriveConnect(email||'')}catch(e){busy(false);err.textContent='Google sign-in is only available inside the Android app';err.style.display=''}};
+  add.onclick=()=>go('');
+  const done=E('button','tbtn','Done');done.onclick=close;act.append(add,done);
+  try{draw(await api('GET','/api/gdrive'))}catch(e){draw([])}
+}
 async function openSmb(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -2810,6 +2824,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
+    if(S.sel.size===1&&S.dev.indexOf('gd:')===0&&window.LSAndroid&&LSAndroid.openLink)btn('openw','Open in Drive',doGdLink);   // Part 8
     if(!A&&galRoot()&&it.length>1&&it.every(i=>i.dir))btn('merge','Merge',()=>mergeAlbums(selPaths()));   // Gallery / Videos: merge the selected albums into one
     if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
     if(!A&&!galRoot()&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon (not for Gallery / Videos albums: their cards show the cover picture, so a folder colour / icon would do nothing)
@@ -2862,7 +2877,7 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
   let pn=null;const draw=(wifi,searching)=>{pn=null;card.textContent='';card.append(E('div','handle'),E('h3','','Print on…'));
   if(here.length){const nc=navigator.connection&&navigator.connection.type;const d=dev('This phone',nc==='cellular'?'Mobile data':nc==='wifi'?'Wi-Fi':'This phone',nc==='cellular'?'mob':'wifi');add(d,here[0],'Any printer (Android print)');acc(d,'Android print','ok')}
   {const d=dev('Save as PDF','This phone','wifi');add(d,{id:'pdf:local',name:'PDF file',pdf:1},'PDF file (all layout options)','no printer needed');acc(d,'saved in LANShare PDF','ok')}
-  peers.filter(p=>p.kind!=='FTP').forEach(p=>{
+  peers.filter(p=>p.kind!=='FTP'&&p.kind!=='Drive').forEach(p=>{
     const ts=p.via==='Tailscale',d=dev(p.name,ts?'Tailscale':'Wi-Fi',ts?'ts':'wifi');
     if(p.ok===false&&!p.smb){acc(d,'offline','off');return}
     wifi.filter(w=>w.viaId===p.id).forEach(w=>add(d,w,w.name+(w.model&&w.model!==w.name?' ('+w.model+')':''),'Wi-Fi printer'));
@@ -2889,6 +2904,8 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
   o.append(card)})}
 /* picker: "Search for printers" yenilenmiş listeyle seçiciyi yeniden açar */
 async function choosePrinter(here,busy){for(let i=0;i<8;i++){const to=await pickPrinter(here,WIFI,S.peers,i?null:busy);if(!(to&&to.rescan))return to}return null}
+/* Part 8: the selected Drive file / folder in Google Drive (browser or Drive app) */
+async function doGdLink(){const i=selItems()[0];if(!i)return;try{const r=await api('GET','/api/gdlink?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name)),null,20000);S.sel.clear();render();LSAndroid.openLink(r.url)}catch(e){toast('\u26a0 '+e.message,5000)}}
 /* Open with: fetch the selected file and let Android show the app chooser (Android app only) */
 function doOpenWith(){const i=selItems()[0];if(!i||i.dir)return;
   const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
@@ -4700,13 +4717,6 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;const vis=lvOn();
   if(j.state==='error'&&j.resume){const rs=E('button','tbtn fill','Resume');
     rs.onclick=async()=>{rs.disabled=true;try{const r=await api('POST','/api/jobresume?id='+encodeURIComponent(j.resume));L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rs.disabled=false;toast('\u26a0 '+e.message,5000)}};
     L.hide.className='tbtn';L.row.insertBefore(rs,L.hide)}   // continues from the kept .lspart parts: finished files are skipped
-  if(window.LSAndroid&&LSAndroid.openPrintLog&&!L.lgb){   /* print jobs: job code + Print log / Copy log (HANDOVER 9.8 part 4) */
-    const ids=[];(String(j.error||'')+' '+String(j.note||'')+' '+(j.problems||[]).join(' ')).replace(/\[log ([AJ]\d{4})\]/g,(m,x)=>{if(ids.indexOf(x)<0)ids.push(x)});
-    if(j.logid&&ids.indexOf(j.logid)<0)ids.unshift(j.logid);
-    if(ids.length){L.lgb=1;const csv=ids.join(','),dv=LASTPC&&LASTPC.id||'';
-      const b1=E('button','tbtn','Print log'),b2=E('button','tbtn','Copy log');b1.onclick=()=>LSAndroid.openPrintLog(csv,dv);b2.onclick=()=>LSAndroid.copyPrintLog(csv,dv);
-      L.row.insertBefore(b2,L.hide);L.row.insertBefore(b1,L.hide);
-      const sm=E('small','','Job code '+ids.join(' \u00b7 '));sm.style.cssText='display:block;color:var(--mut);margin:2px 0 4px';L.sub.after(sm)}}
   const bad=(j.problems||[]).length>1||j.retry>0||!!j.resume;
   if(!vis&&ok)return false;                 // minimized and fine: the toast says it
   if(!vis&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it
@@ -5136,6 +5146,7 @@ function drawerRender(){
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
     if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
+    if(window.LSAndroid&&LSAndroid.gdriveConnect)bd.append(dItem({lead:ic('ftp','s24'),title:'Google Drive',sub:'Sign in with your Google account',onclick:()=>{drawerClose();openGdrive()}}));
     bd.append(dItem({lead:ic('refresh','s24'),title:'Free up space',sub:'Large files, old downloads, duplicates',onclick:()=>{drawerClose();openFreeUp()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',cls:'bin',onclick:()=>{drawerClose();openBin()}}));   // last row of the menu, black
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};

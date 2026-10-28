@@ -41,6 +41,7 @@ object Partials {
 
     @Synchronized fun put(key: String, tag: String) { tags[key] = tag to System.currentTimeMillis(); save() }
     @Synchronized fun matches(key: String, tag: String) = tags[key]?.first == tag
+    @Synchronized fun tagOf(key: String): String? = tags[key]?.first
     @Synchronized fun forget(key: String) { if (tags.remove(key) != null) save() }
 
     // ---- interrupted jobs (copy / move that ended with an error and still have files to finish)

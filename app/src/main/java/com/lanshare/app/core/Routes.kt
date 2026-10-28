@@ -142,6 +142,7 @@ object Routes {
                     .put("vias", JSONArray((listOf(p.ip) + p.ips).map { viaOf(it) }.distinct())))
                 for (s in Smb.peers()) { val v = viaOf(Smb.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "SMB").put("vias", JSONArray(listOf(v)))) }
                 for (s in Ftp.peers()) { val v = viaOf(Ftp.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "FTP").put("vias", JSONArray(listOf(v)))) }
+                for (s in Gdrive.peers()) a.put(s.put("via", "Google Drive").put("kind", "Drive").put("vias", JSONArray(listOf("Google Drive"))))
                 if (Cfg.rootEnabled() && RootShell.granted())   // Settings > Root access is on: the whole file system shows up as one more place
                     a.put(JSONObject().put("id", "root").put("name", "Root").put("ip", "").put("ok", true).put("seen", System.currentTimeMillis() / 1000.0).put("via", "su").put("kind", "Root").put("vias", JSONArray(listOf("su"))))
                 return ex.json(a)
@@ -261,16 +262,11 @@ object Routes {
             "cleanup" -> if (ex.method == "GET") return ex.json(Cleanup.status())   // Free up space scan (POST starts / cancels it)
             "ps" -> if (ex.method == "GET") return ex.json(PrintSpace.json())   // Print space list (HANDOVER 9.7)
             "stat" -> return ex.json(Jobs.ep(ex.q("dev")).stat(vnorm(q["path"] ?: "/")))
+            "gdlink" -> return ex.json(JSONObject().put("url", ((Jobs.ep(ex.q("dev")) as? GdriveFs) ?: throw BadReq("not a Google Drive place")).link(vnorm(q["path"] ?: "/"))))   // Part 8: "Open in Google Drive"
             "space" -> return ex.json(spaceJson(Jobs.ep(ex.q("dev")).space(vnorm(q["path"] ?: "/"))))
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
             "pcscreen" -> return ex.json(Jobs.pcScreen(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC window mirror: status line + live log
-            "pcdiag" -> return ex.json(Jobs.pcDiag(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC diag.jsonl in pieces (pcprint.py 31+), HANDOVER 9.8
-            "printlog" -> {   // this phone's print log (HANDOVER 9.8): GET = path, size and the last ~300 KB; POST ?op=clear empties it
-                val clear = ex.method == "POST" && q["op"] == "clear"
-                if (clear) PrintLog.clear()
-                return ex.json(JSONObject().put("ok", true).put("path", PrintLog.file().absolutePath).put("size", PrintLog.size()).put("text", if (clear) "" else PrintLog.tail()))
-            }
             "pcfind" -> return ex.json(JSONArray().also { a -> com.lanshare.app.pe.PePc.find().forEach { a.put(JSONObject().put("ip", it.ip).put("name", it.name).put("port", it.port)) } })   // Phone Explorer: PCs running phone_explorer.py
             "pcphone" -> {   // Phone Explorer: that PC opens this phone's storage in Explorer
                 com.lanshare.app.pe.PePc.open(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: "", q["name"] ?: "Phone")
@@ -360,6 +356,7 @@ object Routes {
             }
             "smb" -> if (ex.method == "GET") return ex.json(Smb.status())
             "ftp" -> if (ex.method == "GET") return ex.json(Ftp.status())
+            "gdrive" -> if (ex.method == "GET") return ex.json(Gdrive.status())   // POST = remove an account (below); sign-in itself runs in MainActivity (needs an Activity)
             "root" -> if (ex.method == "GET") return ex.json(rootStatus())   // POST = switch on / off (below)
             "smbscan" -> return ex.json(d.smbScan())
             // ---- Storage Analyzer (scan engine: StorageScan.kt). path "/" = the whole main storage, anything else = that folder, recursive.
@@ -409,6 +406,7 @@ object Routes {
             "smb" -> smbUpdate(ex, b)
             "pcpicdir" -> ex.json(PcPictures.setDir(b.optString("dev"), b.optString("path")))   // PC gallery: set / clear (empty path = find it again) the Pictures folder
             "ftp" -> ftpUpdate(ex, b)
+            "gdrive" -> { Gdrive.remove(b.optString("remove")); ex.json(JSONObject().put("ok", true).put("list", Gdrive.status())) }
             "root" -> {   // Settings > Root access: "enable" asks su (the root manager shows its grant prompt) and only then stores the switch; "disable" = off + forget
                 if (RootShell.untrusted.get() == true) throw Denied("Root is only available from the app's own screen")
                 when (b.optString("op")) {

@@ -179,9 +179,6 @@
             <meta-data android:name="android.printservice" android:resource="@xml/printservice"/>
         </service>
         <receiver android:name=".ClipCopyReceiver" android:exported="false"/>
-        <!-- Print log screen (Settings > Print log, job card) -->
-        <activity android:name=".PrintLogActivity" android:exported="false" android:theme="@style/Theme.LANShare"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden"/>
         <!-- Text sharing: Text inbox screen, one-shot sender (share sheet / Direct Share / tile / notification button), notification quick-reply, Quick Settings tile -->
         <activity android:name=".InboxActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateHidden"

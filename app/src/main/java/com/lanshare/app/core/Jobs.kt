@@ -38,7 +38,6 @@ class Job(@Volatile var label: String) {
     private fun runAborts() { for (f in aborts) try { f() } catch (_: Throwable) {} }
     @Volatile var end = 0L
     @Volatile var note: String? = null   // final success text shown in the UI (print jobs)
-    @Volatile var logId: String? = null  // print log job id (A0001..) of a print job: the job card offers "Copy log" with it (HANDOVER 9.8 part 4)
     @Volatile var result: JSONObject? = null   // structured result (duplicate finder)
 
     // details for the progress card: the file being handled now, file counts, problems so far, where it is going
@@ -130,7 +129,6 @@ class Job(@Volatile var label: String) {
             dest?.let { d -> it.put("dest", d) }
             if (state == "error") resumeId?.let { r -> it.put("resume", r) }
             note?.let { n -> it.put("note", n) }
-            logId?.let { n -> it.put("logid", n) }
             result?.let { r -> it.put("result", r) }
             if (live) {
                 it.put("live", true).put("cR", cR).put("cN", cN).put("cS", cS)
@@ -213,6 +211,7 @@ object Jobs {
             Smb.split(c.getString("host")).first to c.optString("name").ifEmpty { c.getString("host") }
         }
         dev.startsWith("ftp:") -> throw BadReq("an FTP server cannot print")
+        dev.startsWith("gd:") -> throw BadReq("Google Drive cannot print")
         else -> (Core.disc.get(dev) ?: throw IOException("that device is offline")).let { it.ip to it.name }
     }
 
@@ -265,19 +264,6 @@ object Jobs {
                 JSONObject(String(r.readUpTo(1 shl 20), Charsets.UTF_8)).put("ok", true)
             } finally { r.close() }
         } catch (_: Exception) { JSONObject().put("ok", false) }
-    }
-
-    /** pcprint.py 31+: a piece of the PC's diag.jsonl. {ok, old?, version, run, size, pos, reset, more, text}. pos < 0 = the last ~300 KB. */
-    fun pcDiag(dev: String, pos: Long): JSONObject {
-        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
-        return try {
-            val r = Http.request(ip, PRINT_PORT, "GET", "/diag?pos=$pos", emptyMap(), 8000)
-            try {
-                if (r.status == 404) return JSONObject().put("ok", true).put("old", true)
-                if (r.status != 200) return JSONObject().put("ok", false)
-                JSONObject(String(r.readUpTo(2 shl 20), Charsets.UTF_8)).put("ok", true)
-            } finally { r.close() }
-        } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }
     }
 
     /** Phone Explorer, one tap: asks the PC (pcprint.py 29+) to open Windows Explorer on this phone's FTP share. {ok, result: "ok" | "old" (pcprint.py < 29)}. The PC takes the phone's address from the connection itself. */
@@ -338,7 +324,6 @@ object Jobs {
     }
 
     fun startPrint(srcId: String, paths: List<String>, dstId: String, opts: JSONObject? = null): String {
-        PrintLog.ev("print-start", null, "src" to srcId, "dst" to dstId, "paths" to paths, "opts" to opts?.toString())
         val src = ep(srcId)
         if (PdfPrint.isPdf(dstId)) {   // "Save as PDF": same layout options, the result is a PDF file on this phone (PdfPrint)
             val pid = UUID.randomUUID().toString().replace("-", "").take(8)
@@ -442,62 +427,24 @@ object Jobs {
         }
     }
 
-    /**
-     * POST of one file to pcprint.py. A network error (Wi-Fi hiccup, Tailscale reconnect, PC busy) is retried up to 3 times with a fresh copy of the body:
-     * the request carries a key, so a file that DID arrive the first time is never printed twice (the PC answers the repeat with the first answer).
-     * Cancel is never retried. Every attempt goes to the print log.
-     */
-    private fun postRetry(job: Job, jid: String, ip: String, path: String, name: String,
-                          openBody: (Int) -> Pair<java.io.InputStream, Long>, onSent: (Int) -> Unit, undo: () -> Unit): HttpResp {
-        var attempt = 0
-        while (true) {
-            attempt++
-            val (b, len) = openBody(attempt)
-            val t0 = System.currentTimeMillis()
-            try {
-                val r = Http.request(ip, PRINT_PORT, "POST", path, emptyMap(), 120_000, b, len) { n -> if (job.cancel) throw Cancelled(); onSent(n) }
-                PrintLog.ev("pc-post", jid, "file" to name, "attempt" to attempt, "status" to r.status, "bytes" to len, "ms" to (System.currentTimeMillis() - t0), "path" to path)
-                return r
-            } catch (x: Cancelled) { throw x
-            } catch (x: IOException) {
-                PrintLog.err("pc-post-failed", jid, x, "file" to name, "attempt" to attempt, "ms" to (System.currentTimeMillis() - t0), "path" to path)
-                if (job.cancel || attempt >= 3) throw x
-                undo()
-                try { Thread.sleep(if (attempt == 1) 1500L else 4000L) } catch (_: InterruptedException) { throw x }
-                if (job.cancel) throw Cancelled()
-            }
-        }
-    }
-
     private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?) {
-        val jid = PrintLog.jid()
-        job.logId = jid
-        PrintLog.bind(jid)
-        val tJob = System.currentTimeMillis()
         try {
             val chosen = opts?.optString("printer").orEmpty()
-            PrintLog.ev("pc-job-start", jid, "pc" to pcName, "ip" to ip, "port" to PRINT_PORT, "printer" to chosen, "paths" to paths, "opts" to opts?.toString())
             val notes = LinkedHashSet<String>()   // things the PC could not honour (e.g. layout options on a .docx)
             var printer = ""
             var problem = ""   // what the printer already reports before we send (paper jam, out of paper, ...)
-            for (attempt in 1..2) {   // one more try after a short pause: the first packet after Wi-Fi sleep / a Tailscale reconnect often fails
+            try {
+                val r = Http.request(ip, PRINT_PORT, "GET", if (chosen.isEmpty()) "/ping" else "/ping?printer=" + URLEncoder.encode(chosen, "UTF-8"), emptyMap(), if (chosen.isEmpty()) 4000 else 9000)
                 try {
-                    val r = Http.request(ip, PRINT_PORT, "GET", if (chosen.isEmpty()) "/ping" else "/ping?printer=" + URLEncoder.encode(chosen, "UTF-8"), emptyMap(), if (chosen.isEmpty()) 4000 else 9000)
+                    if (r.status != 200) throw IOException("HTTP ${r.status}")
                     try {
-                        if (r.status != 200) throw IOException("HTTP ${r.status}")
-                        try {
-                            val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
-                            if (!o.isNull("printer")) printer = o.optString("printer")
-                            if (!o.isNull("problem")) problem = o.optString("problem")
-                            PrintLog.ev("pc-ping", jid, "attempt" to attempt, "reply" to o)
-                        } catch (_: Exception) {}
-                    } finally { r.close() }
-                    break
-                } catch (e: IOException) {
-                    PrintLog.err("pc-ping-failed", jid, e, "attempt" to attempt, "ip" to ip)
-                    if (attempt == 2 || job.cancel) throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
-                    try { Thread.sleep(1500) } catch (_: InterruptedException) {}
-                }
+                        val o = JSONObject(String(r.readUpTo(4096), Charsets.UTF_8))
+                        if (!o.isNull("printer")) printer = o.optString("printer")
+                        if (!o.isNull("problem")) problem = o.optString("problem")
+                    } catch (_: Exception) {}
+                } finally { r.close() }
+            } catch (e: IOException) {
+                throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
             }
             val dest = if (printer.isNotEmpty()) "$pcName ($printer)" else pcName
             val files = ArrayList<Pair<String, Long>>()
@@ -522,7 +469,6 @@ object Jobs {
                 job.label = "Printing ${i + 1}/${files.size} on $dest" + (if (problem.isNotEmpty()) " (printer reports: $problem)" else "")
                 val name = vbase(sp)
                 job.files = i; job.begin(name, size)
-                PrintLog.ev("pc-file", jid, "i" to i, "of" to files.size, "file" to name, "path" to sp, "bytes" to size)
                 var sent = 0L
                 val f = src.open(sp)
                 var tmp: java.io.File? = null
@@ -534,7 +480,6 @@ object Jobs {
                     var body: java.io.InputStream = f
                     var bodyLen = f.size
                     var sendName = name
-                    var bodyFile: java.io.File? = null   // converted copy (the body of a retry is read from it again)
                     val kind = PrintPrep.kind(ext)
                     if (kind == PrintPrep.Kind.NO || (kind == PrintPrep.Kind.SNIFF && size > PrintPrep.SNIFF_MAX)) throw PrintFail(if (ext.isEmpty()) "this file type cannot be printed" else "$ext files cannot be printed")
                     val cropBox = if (ext in PrintPrep.IMG_EXT) PrintPrep.cropBox(opts, i) else null   // "Trim blank edges"
@@ -554,31 +499,17 @@ object Jobs {
                             val out = (if (cropBox != null) PrintPrep.trim(t, name, cropBox) else PrintPrep.convert(kind, t, name)).also { if (it.file != t) tmp2 = it.file }
                             val ins = out.file.inputStream(); opened = ins; body = ins; bodyLen = out.file.length()
                             sendName = out.name
-                            bodyFile = out.file
-                            PrintLog.ev("pc-converted", jid, "file" to name, "as" to out.name, "bytes" to bodyLen, "kind" to kind.name, "crop" to (cropBox != null))
                         } catch (x: Cancelled) { throw x
-                        } catch (x: Throwable) { PrintLog.err("pc-convert-failed", jid, x, "file" to name, "kind" to kind.name); throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
+                        } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     } else if (kind == PrintPrep.Kind.TEXT) sendName = name.substringBeforeLast('.') + ".txt"
                     val counted = body === f   // converted pictures were already counted while they were read
                     // key: a repeated request (retry, reconnect) must not print twice - pcprint.py ignores a key it has already seen
                     val extra = (if (sheet || join) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" + (if (join) "&join=1" else "") else "") + "&key=k$bid-$i"
-                    var attemptSent = 0L
-                    val r = postRetry(job, jid, ip, printQuery(sendName, opts, extra), name,
-                        { attempt ->
-                            if (attempt == 1) body to bodyLen
-                            else {   // retry: a fresh stream of the same bytes
-                                try { opened?.close() } catch (_: Exception) {}
-                                val ns: java.io.InputStream = bodyFile?.inputStream() ?: src.open(sp)
-                                opened = ns
-                                ns to bodyLen
-                            }
-                        },
-                        { n -> if (counted) { sent += n; job.done += n; attemptSent += n } },
-                        { if (counted) { sent -= attemptSent; job.done -= attemptSent }; attemptSent = 0L })
+                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
+                        120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
                     try {
                         registered = r.status == 200 || r.status == 500
                         val t = String(r.readUpTo(2000), Charsets.UTF_8)
-                        PrintLog.ev("pc-response", jid, "file" to name, "status" to r.status, "body" to t)
                         if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
                         // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
                         val w = try { JSONObject(t).let { o -> if (o.isNull("warning")) "" else o.optString("warning") } } catch (_: Exception) { "" }
@@ -586,8 +517,7 @@ object Jobs {
                         if (nt.isNotEmpty()) notes.add("$name: $nt")
                         if (w.isNotEmpty()) { failed.add("$name: sent, but the printer reports $w"); job.done += maxOf(size - sent, 0L) }
                     } finally { r.close() }
-                } catch (e: IOException) {   // PrintFail (the PC refused / failed) or a network error that kept failing after the retries: this file fails, the others still go
-                    PrintLog.warn("pc-file-failed", jid, "file" to name, "error" to errText(e), "type" to e.javaClass.simpleName, "sent" to sent, "registered" to registered)
+                } catch (e: PrintFail) {
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
@@ -609,12 +539,10 @@ object Jobs {
             job.state = "cancel"
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             if (job.cancel) job.state = "cancel"   // the socket was closed by Cancel: that is the cancel, not an error
-            else { PrintLog.err("pc-job-crash", jid, e); job.error = errText(e); job.state = "error" }
+            else { job.error = errText(e); job.state = "error" }
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
-            PrintLog.ev("pc-job-end", jid, "state" to job.state, "error" to job.error, "note" to job.note, "ms" to (job.end - tJob))
-            PrintLog.bind(null)
         }
     }
 
@@ -815,6 +743,7 @@ object Jobs {
         dev == "root" -> RootShell.fs()   // su file access: throws unless Settings > Root access is on, granted, and the request comes from the app's own screen
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
         dev.startsWith("ftp:") -> FtpFs.create(Ftp.cfg(dev) ?: throw IOException("that FTP server was removed"))
+        dev.startsWith("gd:") -> GdriveFs(Gdrive.cfg(dev) ?: throw IOException("that Google account was removed"))
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 
@@ -1096,7 +1025,7 @@ object Jobs {
             var sent = 0L
             var reached = 0L
             try {
-                if (src.id == dst.id && src.id.startsWith("ftp:") && !sp.contains("!/") && !target.contains("!/")) {   // same FTP server: it copies by itself, nothing travels through the phone
+                if (src.id == dst.id && (src.id.startsWith("ftp:") || src.id.startsWith("gd:")) && !sp.contains("!/") && !target.contains("!/")) {   // same FTP server: it copies by itself, nothing travels through the phone
                     val sz = try { src.stat(sp).optLong("size") } catch (e: Cancelled) { throw e } catch (_: Exception) { -1L }
                     if (sz >= 0 && (try { dst.copyWithin(sp, target) } catch (e: Cancelled) { throw e } catch (_: Exception) { false })) {
                         job.begin(vbase(sp), sz); job.curDone = sz
@@ -1106,7 +1035,7 @@ object Jobs {
                 }
                 val f = src.open(sp)
                 try {
-                    val keepMt = (src.id.startsWith("ftp:") || dst.id.startsWith("ftp:")) && dst.setsMtime   // copies to / from an FTP server keep the original date
+                    val keepMt = (src.id.startsWith("ftp:") || dst.id.startsWith("ftp:") || src.id.startsWith("gd:") || dst.id.startsWith("gd:")) && dst.setsMtime   // copies to / from an FTP server keep the original date
                     val statMt = { try { src.stat(sp).optLong("mtime") } catch (e: Cancelled) { throw e } catch (_: Exception) { 0L } }
                     val smt = if (keepMt) statMt() else -1L
                     val can = dst.resumable && f.seekable && f.size >= RESUME_MIN

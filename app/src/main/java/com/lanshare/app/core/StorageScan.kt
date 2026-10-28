@@ -336,7 +336,7 @@ object StorageScan {
             if (v == "/") try {   // used space feeds the percentage / "System / other"
                 Jobs.ep(dev).space(v)?.let { (free, total) -> if (total > 0) { s.usedBytes = maxOf(0L, total - free); s.job?.total = s.usedBytes } }
             } catch (_: Exception) {}
-            if (dev.startsWith("smb:") || dev.startsWith("ftp:")) {
+            if (dev.startsWith("smb:") || dev.startsWith("ftp:") || dev.startsWith("gd:")) {
                 val ep = Jobs.ep(dev)
                 val pool = Executors.newFixedThreadPool(if (dev.startsWith("smb:")) 8 else 4) { r -> Thread(null, r, "sscan-r", 2L shl 20).also { it.isDaemon = true } }
                 s.pending.incrementAndGet()

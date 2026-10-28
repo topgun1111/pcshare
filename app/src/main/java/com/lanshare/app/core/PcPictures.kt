@@ -40,9 +40,7 @@ object PcPictures {
         if (!fresh) found[dev]?.let { return it }
         val hits = ArrayList<String>()
         val shares = ep.ls("/").filter { it.dir }.map { it.name }.filter { !it.equals("IPC$", true) && !it.equals("print$", true) && !it.equals("ADMIN$", true) }
-        var denied: String? = null   // first real reason a share could not be read (access denied, unreachable ...): shown instead of a vague "not found"
-        fun kids(p: String): List<com.lanshare.app.core.Item> = try { ep.lsFast(p).filter { it.dir } } catch (e: Exception) { if (denied == null && e !is NotFound) denied = p + ": " + (e.message ?: e.javaClass.simpleName); emptyList() }
-        hint(dev, ep, shares)?.let { found[dev] = it; return it }   // 0. the PC itself says where its Pictures are (pcprint.py 33+)
+        fun kids(p: String): List<com.lanshare.app.core.Item> = try { ep.lsFast(p).filter { it.dir } } catch (_: Exception) { emptyList() }
         // 1. a share that IS the Pictures folder (or has one at its top)
         for (s in shares) {
             if (low(s).trimEnd('$') in NAMES) { hits.add("/$s"); continue }
@@ -59,40 +57,11 @@ object PcPictures {
                 }
             }
         }
-        if (hits.isEmpty() && denied != null) throw NotFound("Could not read the PC's folders - " + denied + ". Windows often blocks C\$ for accounts that are not real administrators: share the Pictures (or Users) folder in Windows and set it by hand (press and hold the PC chip, e.g. /Pictures), or sign in with an administrator account.")
-        if (hits.isEmpty()) throw NotFound("No Pictures folder found on ${c.optString("name")} (looked for Pictures / Resimler in the shared folders and in Users). Update pcprint.py on the PC (version 33 finds it by itself), or set it by hand: press and hold the PC chip.")
+        if (hits.isEmpty()) throw NotFound("No Pictures folder found on ${c.optString("name")} (looked for Pictures / Resimler in the shared folders and in Users). Set it by hand: press and hold the PC chip.")
         // the one with the most recent pictures is the user's real folder; a quick look at each (first level only)
         val best = hits.maxByOrNull { h -> try { ep.lsFast(h).maxOfOrNull { it.mtime } ?: 0L } catch (_: Exception) { 0L } } ?: hits[0]
         found[dev] = best
         return best
-    }
-
-    /**
-     * Asks the PC's print service (pcprint.py 33+, GET /pictures) for the real Pictures folder, e.g. "C:\\Users\\Ali\\Pictures" (also OneDrive / moved / any language),
-     * and turns it into a virtual path on one of the saved share's folders: <C$>/rest, <Users share>/rest-after-Users, <share named like the folder>, <C>/rest.
-     * Each guess is checked with stat; null = old / no print service / not reachable through this share (the scan below then runs as before).
-     */
-    private fun hint(dev: String, ep: Endpoint, shares: List<String>): String? {
-        try {
-            val ip = Jobs.printTarget(dev).first
-            val r = Http.request(ip, Jobs.PRINT_PORT, "GET", "/pictures", emptyMap(), 4000)
-            val j = try { if (r.status != 200) return null else JSONObject(String(r.readUpTo(8192), Charsets.UTF_8)) } finally { r.close() }
-            val win = j.optString("path").replace('\\', '/').trim().trimEnd('/')
-            if (win.length < 3 || win[1] != ':') return null
-            val drive = win[0].toString()
-            val rest = win.substring(2)                                   // /Users/Ali/Pictures
-            val cands = LinkedHashSet<String>()
-            cands.add("/" + drive + "$" + rest)                           // admin share of the drive
-            for (s in shares) {
-                val sl = low(s)
-                if (sl == drive.lowercase()) cands.add("/$s$rest")        // a share called "C"
-                val i = rest.lowercase().indexOf("/" + sl + "/")          // a share of a folder on the way (Users, or the user's folder)
-                if (i >= 0) cands.add("/$s" + rest.substring(i + 1 + sl.length))
-                if (low(rest.substringAfterLast('/')) == sl) cands.add("/$s")   // a share that IS the Pictures folder
-            }
-            for (c in cands) { val p = vnorm(c); try { if (ep.stat(p).optBoolean("dir", true)) return p } catch (_: Exception) {} }
-        } catch (_: Throwable) {}
-        return null
     }
 
     private class A { var n = 0; var cover = ""; var size = 0L; var mtime = 0L }
