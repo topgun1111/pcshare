@@ -733,7 +733,22 @@ class MainActivity : Activity() {
     private fun gdSave(token: String) {
         try { val c = Gdrive.connect(token); gdJs(true, c.optString("email")) } catch (e: Throwable) { gdJs(false, errText(e)) }
     }
+    private val reqGdPick = 12
+    /** "Add account" (no email yet): ALWAYS show Google's account chooser first. Without it Play Services silently reuses the account that already granted Drive access. */
     private fun gdStart(email: String) {
+        if (email.isEmpty()) {
+            runOnUiThread {
+                try {
+                    val opts = com.google.android.gms.common.AccountPicker.AccountChooserOptions.Builder()
+                        .setAllowableAccountsTypes(listOf("com.google")).setAlwaysShowAccountPicker(true).build()
+                    startActivityForResult(com.google.android.gms.common.AccountPicker.newChooseAccountIntent(opts), reqGdPick)
+                } catch (e: Throwable) { gdAuth("") }   // no chooser available: fall back to the old behaviour
+            }
+            return
+        }
+        gdAuth(email)
+    }
+    private fun gdAuth(email: String) {
         Thread({
             try {
                 val s = GAuth.begin(email.ifEmpty { null })
@@ -744,6 +759,11 @@ class MainActivity : Activity() {
     }
 
     override fun onActivityResult(req: Int, res: Int, d: Intent?) {
+        if (req == reqGdPick) {
+            val picked = if (res == RESULT_OK) d?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME) else null
+            if (picked.isNullOrEmpty()) gdJs(false, "Sign-in was cancelled") else gdAuth(picked)
+            return
+        }
         if (req == reqGdrive) {
             if (res != RESULT_OK) gdJs(false, "Sign-in was cancelled")
             else Thread({ try { gdSave(GAuth.finish(d, applicationContext)) } catch (e: Throwable) { gdJs(false, errText(e)) } }, "gd-signin").also { it.isDaemon = true }.start()
