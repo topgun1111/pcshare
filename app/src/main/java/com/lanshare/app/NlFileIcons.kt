@@ -164,7 +164,7 @@ object NlFileIcons {
     /** Office-style: white sheet with coloured detail on the right, big coloured square with the letter on the left. */
     private fun office(cv: Canvas, base: Int, light: Int, ch: String, deco: Int) {
         fillRound(cv, 14f, 4f, 45f, 44f, 3f, 0xFFFFFFFF.toInt())
-        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(14f, 4f, 45f, 44f); cv.drawRoundRect(rf, 3f, 3f, q)
+        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(14f, 4f, 45f, 44f); cv.drawRoundRect(rf, 5f, 5f, q)
         q.color = light; q.strokeWidth = 2.2f
         when (deco) {
             0 -> for (yy in floatArrayOf(11f, 17f, 23f, 29f, 35f)) cv.drawLine(31f, yy, 42f, yy, q)
@@ -207,8 +207,8 @@ object NlFileIcons {
         q.style = Paint.Style.FILL
         q.color = Color.WHITE; cv.drawCircle(13f, 12f, 2.4f, q)
         q.color = 0xFF3776AB.toInt(); cv.drawCircle(35f, 36f, 2.4f, q)
-        q.color = 0xFF2B5B84.toInt(); rf.set(11f, 19f, 24f, 24f); cv.drawRoundRect(rf, 2.5f, 2.5f, q)
-        q.color = 0xFFE0B52B.toInt(); rf.set(24f, 24f, 37f, 29f); cv.drawRoundRect(rf, 2.5f, 2.5f, q)
+        q.color = 0xFF2B5B84.toInt(); rf.set(11f, 19f, 24f, 24f); cv.drawRoundRect(rf, 3.5f, 3.5f, q)
+        q.color = 0xFFE0B52B.toInt(); rf.set(24f, 24f, 37f, 29f); cv.drawRoundRect(rf, 3.5f, 3.5f, q)
     }
 
     private fun json(cv: Canvas) {
@@ -253,7 +253,7 @@ object NlFileIcons {
         pa.reset(); pa.moveTo(4f, 40f); pa.lineTo(4f, 35f); pa.lineTo(12f, 30f); pa.lineTo(22f, 40f); pa.close()
         q.color = 0xFF2E7D32.toInt(); cv.drawPath(pa, q)
         cv.restore()
-        q.style = Paint.Style.STROKE; q.strokeWidth = 1.6f; q.color = Color.WHITE; cv.drawRoundRect(rf, 4f, 4f, q)
+        q.style = Paint.Style.STROKE; q.strokeWidth = 1.6f; q.color = Color.WHITE; cv.drawRoundRect(rf, 5.5f, 5.5f, q)
         q.style = Paint.Style.FILL
     }
 
@@ -315,7 +315,7 @@ object NlFileIcons {
     /** Calendar page with red header (ics). */
     private fun calendar(cv: Canvas) {
         fillRound(cv, 6f, 6f, 42f, 44f, 4f, Color.WHITE)
-        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(6f, 6f, 42f, 44f); cv.drawRoundRect(rf, 4f, 4f, q)
+        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(6f, 6f, 42f, 44f); cv.drawRoundRect(rf, 6f, 6f, q)
         fillRound(cv, 6f, 6f, 42f, 18f, 4f, 0xFFE53935.toInt())
         q.style = Paint.Style.FILL; q.color = 0xFFE53935.toInt(); cv.drawRect(6f, 13f, 42f, 18f, q)
         fillRound(cv, 14f, 3f, 17.5f, 10f, 1.7f, 0xFF9E9E9E.toInt())
@@ -368,7 +368,7 @@ object NlFileIcons {
     /** Windows program window with the four-pane logo (exe / msi). */
     private fun exe(cv: Canvas) {
         fillRound(cv, 4f, 7f, 44f, 41f, 4f, Color.WHITE)
-        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(4f, 7f, 44f, 41f); cv.drawRoundRect(rf, 4f, 4f, q)
+        q.style = Paint.Style.STROKE; q.strokeWidth = 1f; q.color = BORDER; rf.set(4f, 7f, 44f, 41f); cv.drawRoundRect(rf, 6f, 6f, q)
         fillRound(cv, 4f, 7f, 44f, 17f, 4f, 0xFF1976D2.toInt())
         q.style = Paint.Style.FILL; q.color = 0xFF1976D2.toInt(); cv.drawRect(4f, 13f, 44f, 17f, q)
         q.color = 0xAAFFFFFF.toInt(); cv.drawCircle(9.5f, 12f, 1.3f, q); cv.drawCircle(13.5f, 12f, 1.3f, q); cv.drawCircle(17.5f, 12f, 1.3f, q)

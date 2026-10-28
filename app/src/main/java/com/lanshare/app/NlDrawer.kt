@@ -365,7 +365,8 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         val p = j.getJSONObject("p")
         hov = p.optLong("hov").toInt()
         val card = p.optLong("card").toInt()
-        dp.setBackgroundColor(if (card == 0) -1 else card)
+        val ct = p.optLong("ct").toInt(); val cb = p.optLong("cb").toInt()
+        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(if (card == 0) -1 else card)
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.setPadding(0, Math.round(j.optDouble("pt", 0.0).toFloat() * d), 0, Math.round(j.optDouble("pb", 0.0).toFloat() * d))
         val lp = dp.layoutParams

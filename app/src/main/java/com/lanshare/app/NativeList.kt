@@ -105,6 +105,8 @@ class NlPal(private val j: JSONObject) {
     private fun c(n: String) = j.optLong(n).toInt()
     val card = c("card"); val bg = c("bg"); val fg = c("fg"); val mut = c("mut"); val bd = c("bd"); val sel = c("sel")
     val onsel = c("onsel"); val hov = c("hov"); val ac = c("ac"); val onac = c("onac"); val warn = c("warn"); val cont = c("cont"); val tl = c("tl")
+    // gradient themes only (0 = flat theme): list bg, surfaces (sheets / drawer / dialogs), selection, header; highlight + dark divider line
+    val gt = c("gt"); val gb = c("gb"); val ct = c("ct"); val cb = c("cb"); val st = c("st"); val sb = c("sb"); val ht = c("ht"); val hb = c("hb"); val hl = c("hl"); val dv = c("dv")
     val kc = HashMap<String, Int>(); val kb = HashMap<String, Int>()
     init {
         val k = j.optJSONObject("k")
@@ -229,9 +231,17 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
             return
         }
-        if (isSel) { p.color = pl.sel; cv.drawRect(0f, 0f, w, h, p) }
-        else if (isPressed) { p.color = pl.hov; cv.drawRect(0f, 0f, w, h, p) }
-        p.color = pl.bd; cv.drawRect(0f, h - 2f * d, w, h, p)           // border-bottom 2px
+        if (isSel || isPressed) {
+            val gsel = isSel && pl.st != 0
+            if (gsel) { p.color = Color.WHITE; p.shader = LinearGradient(0f, 1f * d, 0f, h - 3f * d, pl.st, pl.sb, Shader.TileMode.CLAMP) } else p.color = if (isSel) pl.sel else pl.hov
+            rf.set(6f * d, 1f * d, w - 6f * d, h - 3f * d); cv.drawRoundRect(rf, 14f * d, 14f * d, p); p.shader = null   // rounded highlight like the grid cells (the 2px divider below stays square)
+            if (gsel) {   // Yaru: lit top edge + orange marker on the left
+                p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.hl; rf.set(6.5f * d, 1.5f * d, w - 6.5f * d, h - 3.5f * d); cv.drawRoundRect(rf, 13.5f * d, 13.5f * d, p)
+                p.style = Paint.Style.FILL; p.color = pl.ac; rf.set(10f * d, h * 0.28f, 13f * d, h * 0.72f - 2f * d); cv.drawRoundRect(rf, 1.5f * d, 1.5f * d, p)
+            }
+        }
+        if (pl.dv != 0) { p.color = pl.dv; cv.drawRect(0f, h - 2f * d, w, h - 1f * d, p); p.color = pl.hl; cv.drawRect(0f, h - 1f * d, w, h, p) }   // engraved two-tone divider (gradient themes)
+        else { p.color = pl.bd; cv.drawRect(0f, h - 2f * d, w, h, p) }           // border-bottom 2px
 
         val c = compact
         val lg = large && !c
@@ -268,7 +278,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 val sw = (dw / sc).toInt(); val sh = (dh / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - sh) / 2, (bm.width - sw) / 2 + sw, (bm.height - sh) / 2 + sh)
                 rf.set(L, T, R, B)
-                clip.reset(); clip.addRoundRect(rf, 8f * d, 8f * d, Path.Direction.CW)
+                clip.reset(); clip.addRoundRect(rf, 12f * d, 12f * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
@@ -613,7 +623,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             val on = (first + k) in sel
             rf.set(x, y, x + cs, y + cs)
             if (r.hid) cv.saveLayerAlpha(rf, 110) else cv.save()
-            clip.reset(); clip.addRoundRect(rf, 8f * d, 8f * d, Path.Direction.CW); cv.clipPath(clip)
+            clip.reset(); clip.addRoundRect(rf, 14f * d, 14f * d, Path.Direction.CW); cv.clipPath(clip)
             p.style = Paint.Style.FILL
             p.color = pl.kb["vid"] ?: pl.kb["file"] ?: 0; p.shader = null; cv.drawRect(rf, p)
             val bm = th[k]
@@ -1121,7 +1131,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setPalette(json: String) {
         if (json == palJson) return
         palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
-        rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac)
+        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac)
         ad.notifyDataSetChanged()
     }
 

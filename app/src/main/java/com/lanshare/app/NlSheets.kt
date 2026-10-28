@@ -120,7 +120,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val card = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(24f), 0, dp(8f))
-            background = round(p.card, 28f)
+            background = if (p.ct != 0) NlTex.card(p.ct, p.cb, 28f * d, p.bd, Math.max(1, Math.round(d))) else round(p.card, 28f)
         }
         card.addView(tv("Sort By", 20f, p.fg, true).apply { setPadding(dp(24f), 0, dp(24f), dp(8f)) })
         fun opt(k: String, asc: Boolean) {
@@ -158,7 +158,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val p = s.pal
         val dl = newDialog(true)
         val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12f), 0, dp(12f), dp(8f)) }
-        val scroll = ScrollView(act).apply { setBackgroundColor(p.card); addView(col) }
+        val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb) else setBackgroundColor(p.card); addView(col) }
 
         fun hr() = View(act).apply { setBackgroundColor(p.bd) }.also { col.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)) }
         fun head(t: String) { col.addView(tv(t, 16f, p.tl, true).apply { setPadding(dp(4f), dp(14f), dp(4f), dp(6f)) }) }

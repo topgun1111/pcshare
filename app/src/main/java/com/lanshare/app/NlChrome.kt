@@ -401,11 +401,11 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
     override fun onDraw(cv: Canvas) {
         if (pal == null || bw <= 0f) return
         fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = 0xFF2E3133.toInt()
-        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 12f * d, 12f * d, fillP)
+        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
         txP.color = 0xFFF0F0F0.toInt()
         lay?.let { cv.save(); cv.translate(16f * d, layY); it.draw(cv); cv.restore() }
         if (cancel) {
-            if (pressed == "tc") { fillP.color = 0x22FFFFFF; cv.drawRoundRect(cancelR, 8f * d, 8f * d, fillP) }
+            if (pressed == "tc") { fillP.color = 0x22FFFFFF; cv.drawRoundRect(cancelR, 12f * d, 12f * d, fillP) }
             cxP.color = 0xFFFFB77C.toInt()
             cv.drawText("Cancel", cancelR.left + 12f * d, ty(cancelR.centerY(), cxP), cxP)
         }
@@ -447,14 +447,14 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
         for (k in cards) {
             val y = k.y * d; val h = k.h * d
             fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = 0xFF2E3133.toInt()
-            rf.set(0f, y, bw, y + h); cv.drawRoundRect(rf, 12f * d, 12f * d, fillP)
+            rf.set(0f, y, bw, y + h); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
             val rowC = y + 12f * d + 13.1f * d
             val br = btnR[k.key]
             nmP.color = 0xFFF0F0F0.toInt()
             val right = (br?.left ?: (bw - 14f * d)) - (if (br != null) 10f * d else 0f)
             cv.drawText(fit(k.n, nmP, right - 14f * d), 14f * d, ty(rowC, nmP), nmP)
             if (br != null) {
-                if (pressed == "dl:" + k.key) { fillP.color = 0x22FFFFFF; cv.drawRoundRect(br, 8f * d, 8f * d, fillP) }
+                if (pressed == "dl:" + k.key) { fillP.color = 0x22FFFFFF; cv.drawRoundRect(br, 12f * d, 12f * d, fillP) }
                 cxP.color = 0xFFFFB77C.toInt()
                 cv.drawText("Cancel", br.left + 8f * d, ty(br.centerY(), cxP), cxP)
             }

@@ -5,6 +5,22 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Rounder corners
+
+### Changed
+- Photo, video and Print space grids: the picture tiles now have rounded corners, like the album covers.
+- File list: the highlight of a selected or pressed row is now rounded, like the grid cells.
+
+## 2026-10-28 - Print button in the text viewer
+
+### Added
+- Text files: a Print button at the top of the viewer opens the same printer picker as the file list. Unsaved changes are saved first.
+
+## 2026-10-28 - Print space: layout for the selected pictures only
+
+### Added
+- Print space: select pictures and tap Layout. The layout editor then shows, arranges and prints only those pictures, not everything held in Print space. The Layout button at the top still opens all of them.
+
 ## 2026-10-28 - Photo albums show only photos
 
 ### Fixed

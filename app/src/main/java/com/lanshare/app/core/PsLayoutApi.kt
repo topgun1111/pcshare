@@ -27,22 +27,23 @@ object PsLayoutApi {
         return intArrayOf(w, h)
     }
 
-    private fun pics(): List<PsLayoutJson.Pict> = PrintSpace.items().map { it0 ->
+    /** [b] may carry "sel" = ids of the pictures the editor was opened with; only those exist for this request (absent = every picture of the Print space). */
+    private fun pics(b: JSONObject): List<PsLayoutJson.Pict> = PrintSpace.items().filter { x -> val s = b.optJSONArray("sel"); s == null || (0 until s.length()).any { i -> s.optString(i) == x.id } }.map { it0 ->
         val d = dims.getOrPut(it0.id) { read(it0.path()) }
         PsLayoutJson.Pict(it0.id, d[0], d[1], it0.rot, it0.copies)
     }
 
     fun post(b: JSONObject): JSONObject {
-        val list = pics()
-        dims.keys.retainAll(list.map { p -> p.id }.toSet())   // forget removed pictures
+        val list = pics(b)
+        dims.keys.retainAll(PrintSpace.items().map { p -> p.id }.toSet())   // forget removed pictures (not the ones a selection leaves out)
         try { return PsLayoutJson.handle(b, list) }
         catch (e: IllegalArgumentException) { throw BadReq(e.message ?: "bad layout request") }
     }
 
     /** Part 6: the request's spec + plan composed into pages (what the editor shows), for the renderer. Same sizes / same errors as [post]. */
     fun resolve(b: JSONObject): PsLayoutJson.Resolved {
-        val list = pics()
-        dims.keys.retainAll(list.map { p -> p.id }.toSet())
+        val list = pics(b)
+        dims.keys.retainAll(PrintSpace.items().map { p -> p.id }.toSet())
         try { return PsLayoutJson.resolve(b, list) }
         catch (e: IllegalArgumentException) { throw BadReq(e.message ?: "bad layout request") }
     }

@@ -790,8 +790,8 @@ class PdfViewerActivity : Activity() {
                 h.num.text = if (on) "\u2713 ${position + 1}" else (position + 1).toString()
                 h.num.setTextColor(if (on) acc else Color.WHITE)
                 h.box.background = when {
-                    on -> GradientDrawable().apply { setStroke(dp(3), acc); setColor(0x55FFB77C); cornerRadius = dp(4).toFloat() }
-                    position == curPage -> GradientDrawable().apply { setStroke(dp(2), 0xAAFFFFFF.toInt()); cornerRadius = dp(4).toFloat() }
+                    on -> GradientDrawable().apply { setStroke(dp(3), acc); setColor(0x55FFB77C); cornerRadius = dp(8).toFloat() }
+                    position == curPage -> GradientDrawable().apply { setStroke(dp(2), 0xAAFFFFFF.toInt()); cornerRadius = dp(8).toFloat() }
                     else -> null
                 }
                 h.iv.colorFilter = if (night) PdfPageView.INVERT else null

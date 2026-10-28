@@ -194,6 +194,7 @@ class TextEditorActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var back: TextView
     private lateinit var saveBtn: TextView
+    private lateinit var printBtn: TextView
     private lateinit var moreBtn: TextView
     private lateinit var palBtn: TextView
     private lateinit var sizeBtn: TextView
@@ -294,13 +295,14 @@ class TextEditorActivity : Activity() {
         // top bar: back, (spacer), save, more
         back = tvBtn("←", 24f).apply { setOnClickListener { leave() } }
         saveBtn = tvBtn("✓", 24f).apply { setOnClickListener { save(auto = false) }; visibility = View.GONE }
+        printBtn = tvBtn("\uD83D\uDDA8", 20f).apply { setOnClickListener { printFile() }; visibility = View.GONE }
         moreBtn = tvBtn("⋮", 24f).apply { setOnClickListener { showMenu(it) } }
         spin = ProgressBar(this).apply { isIndeterminate = true; layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(8) }; visibility = View.GONE }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(2), dp(4), 0)
             addView(back)
             addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
-            addView(spin); addView(saveBtn); addView(moreBtn)
+            addView(spin); addView(printBtn); addView(saveBtn); addView(moreBtn)
         }
         root.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -535,7 +537,7 @@ class TextEditorActivity : Activity() {
     private fun codeCard(b: MdRender.Block.Code): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(ColorUtils.setAlphaComponent(textColor, 26)) }
+            background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(ColorUtils.setAlphaComponent(textColor, 26)) }
         }
         val lbl = TextView(this).apply {
             text = b.lang.ifEmpty { "code" }; setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setTextColor(sub()); typeface = Fnt.semi()
@@ -668,7 +670,7 @@ class TextEditorActivity : Activity() {
         window.statusBarColor = bg; window.navigationBarColor = bg
         val light = ColorUtils.calculateLuminance(bg) > 0.5
         WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
-        for (t in listOf(back, saveBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
+        for (t in listOf(back, saveBtn, printBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
         for (t in listOf(locTv, status, findCount)) t.setTextColor(sub)
         banner.setTextColor(textColor)
@@ -687,6 +689,7 @@ class TextEditorActivity : Activity() {
 
     private fun updateButtons() {
         saveBtn.visibility = if (dirty && !readOnly && loaded) View.VISIBLE else View.GONE
+        printBtn.visibility = if (loaded) View.VISIBLE else View.GONE
         val ed = !readOnly && loaded
         undoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
         redoBtn.visibility = if (ed && !previewOn) View.VISIBLE else View.GONE
@@ -1063,6 +1066,23 @@ class TextEditorActivity : Activity() {
         dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dlg.setContentView(grid)
         dlg.show()
+    }
+
+    /** Print button: saves pending edits first (the printer picker reads the file itself), then opens the file manager's printer picker for it, like the picture viewer's Print button. */
+    private fun printFile() {
+        if (!loaded) return
+        save(auto = false) {
+            val p = path
+            if (p == null) toast("Nothing to print yet")
+            else if (arcSplit(p) != null) toast("Copy the file out of the archive to print it")
+            else try {
+                startActivity(Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_PRINT_FILES)
+                    .putExtra(MainActivity.X_DEV, dev)
+                    .putExtra(MainActivity.X_PATHS, arrayOf(p))
+                    .putExtra(MainActivity.X_NAMES, arrayOf(p.substringAfterLast('/')))
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            } catch (x: Exception) { toast("Cannot print: ${errText(x)}") }
+        }
     }
 
     private fun shareText() {

@@ -258,7 +258,7 @@ class StorageActivity : Activity() {
         // header (back / title / path / Rescan) is intentionally not attached: the screen starts with the volume chips / treemap (system Back still works)
 
         // part 9b: "All files access" banner (only while the permission is off) and the volume chips (only at the storage root, when an SD card / USB volume is mounted)
-        val ab = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = rounded(cCard, 12f); visibility = View.GONE }
+        val ab = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = rounded(cCard, 16f); visibility = View.GONE }
         ab.addView(TextView(this).apply {
             text = "All files access is off, so Android hides most folders from this scan and the sizes are far too small."
             textSize = 13f; setTextColor(cErr)
@@ -272,7 +272,7 @@ class StorageActivity : Activity() {
         rootView.addView(vs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // volume card: used bar + Used / Free / Total (moved here from the old spaceInfo sheet)
-        val vol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = rounded(cCard, 12f) }
+        val vol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = rounded(cCard, 16f) }
         volBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progress = 0; progressDrawable = barDrawable(cAcc, cLine) }
         vol.addView(volBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)))
         volTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setPadding(0, dp(8), 0, 0) }
@@ -614,7 +614,7 @@ class StorageActivity : Activity() {
             infoTv = info
             val act = TextView(this).apply {
                 textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
-                setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(cAcc, 10f); setTextColor(cOnAcc)
+                setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(cAcc, 16f); setTextColor(cOnAcc)
                 setTypeface(typeface, Typeface.BOLD); visibility = View.GONE
                 setOnClickListener {
                     val n = selNode
@@ -674,7 +674,7 @@ class StorageActivity : Activity() {
             val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(12), dp(6)) }
             val et = EditText(this).apply {
                 hint = "Filter by name"; textSize = 14f; setTextColor(cFg); setHintTextColor(cDim); setSingleLine(true)
-                inputType = InputType.TYPE_CLASS_TEXT; setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(cCard, 10f); setText(query)
+                inputType = InputType.TYPE_CLASS_TEXT; setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(cCard, 20f); setText(query)
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
                     override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
@@ -795,7 +795,7 @@ class StorageActivity : Activity() {
         box.visibility = View.VISIBLE
         val order = (0 until Math.min(cats.size, SCat.COUNT)).filter { cats[it] > 0L }.sortedByDescending { cats[it] }
         // stacked bar: one coloured segment per category (weight = bytes), the others faded while one is highlighted
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; background = rounded(cLine, 4f) }
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; background = rounded(cLine, 8f) }
         for (c in order) {
             bar.addView(View(this).apply {
                 setBackgroundColor(StorageTreemap.CAT_COL[c]); alpha = if (hl < 0 || hl == c) 1f else 0.25f
@@ -1044,7 +1044,7 @@ class StorageActivity : Activity() {
 
     private fun barBtn(t: String, bg: Int, fg: Int, fn: () -> Unit) = TextView(this).apply {
         text = t; textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
-        setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(bg, 10f); setTextColor(fg); setTypeface(typeface, Typeface.BOLD)
+        setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(bg, 16f); setTextColor(fg); setTypeface(typeface, Typeface.BOLD)
         setOnClickListener { fn() }
     }
 
@@ -1198,7 +1198,7 @@ class StorageActivity : Activity() {
     }
 
     private fun paintSeg(b: TextView, on: Boolean) {
-        b.background = rounded(if (on) cAcc else cCard, 10f)
+        b.background = rounded(if (on) cAcc else cCard, 16f)
         b.setTextColor(if (on) cOnAcc else cFg)
         b.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
     }

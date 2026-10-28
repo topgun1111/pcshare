@@ -102,7 +102,7 @@ object ClipPush {
         val card = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(a, 14f), dp(a, 10f), dp(a, 14f), dp(a, 12f))
-            background = GradientDrawable().apply { setColor(0xF2202124.toInt()); cornerRadius = dp(a, 12f).toFloat() }
+            background = GradientDrawable().apply { setColor(0xF2202124.toInt()); cornerRadius = dp(a, 20f).toFloat() }
             elevation = dp(a, 16f).toFloat()
             isClickable = true
         }

@@ -47,6 +47,13 @@ object AppPal {
         return (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 
+    /** Gradient surface colours (top, bottom) of gradient themes such as Ubuntu, null for flat themes. */
+    fun surf(c: Context): IntArray? = try {
+        val o = JSONObject(json(c) ?: "")
+        val t = o.optLong("ct").toInt(); val b = o.optLong("cb").toInt()
+        if (t != 0) intArrayOf(t, b) else null
+    } catch (_: Throwable) { null }
+
     /** Palette as ARGB ints, with the built-in light / dark defaults when the page sent none. */
     fun pal(c: Context): P = load(c) ?: if (night(c)) P(0xFF1E1E1E.toInt(), 0xFF2B2B2B.toInt(), 0xFFF2F2F2.toInt(), 0xFFB0B0B0.toInt(), 0xFF444444.toInt(), 0xFFFF8A3D.toInt(), Color.WHITE)
         else P(Color.WHITE, 0xFFF3F3F3.toInt(), 0xFF161616.toInt(), 0xFF5F5F5F.toInt(), 0xFFDDDDDD.toInt(), 0xFFC25100.toInt(), Color.WHITE)
@@ -59,7 +66,9 @@ object AppPal {
             val d = super.create()
             val p = pal(c)
             val r = 28f * c.resources.displayMetrics.density
-            d.window?.setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
+            val sf = surf(c)
+            d.window?.setBackgroundDrawable(if (sf != null) NlTex.card(sf[0], sf[1], r, p.bd, Math.max(1, Math.round(c.resources.displayMetrics.density)))
+                else android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
             d.setOnShowListener {
                 try {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)

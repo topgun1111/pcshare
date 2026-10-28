@@ -185,7 +185,11 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
 
         // backgrounds + bottom borders
         fillP.style = Paint.Style.FILL
-        fillP.color = p.card; cv.drawRect(0f, 0f, w, hA + hB, fillP)
+        if (p.ht != 0) {   // gradient themes: headerbar-style gradient with a lit top edge
+            fillP.color = Color.WHITE; fillP.shader = LinearGradient(0f, 0f, 0f, hA + hB, p.ht, p.hb, Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, w, hA + hB, fillP); fillP.shader = null
+            fillP.color = p.hl; cv.drawRect(0f, 0f, w, line, fillP)
+        } else { fillP.color = p.card; cv.drawRect(0f, 0f, w, hA + hB, fillP) }
         fillP.color = p.bd
         cv.drawRect(0f, hA - line, w, hA, fillP)
         cv.drawRect(0f, hA + hB - line, w, hA + hB, fillP)

@@ -291,7 +291,7 @@ class StorageList(ctx: Context) : ListView(ctx) {
             if (inMulti && !n.agg) {
                 val bx = padX; val by0 = (h - dp(20f)) / 2f; val bs = dp(20f)
                 if (tick) {
-                    fill.color = colAcc; canvas.drawRoundRect(bx, by0, bx + bs, by0 + bs, dp(4f), dp(4f), fill)
+                    fill.color = colAcc; canvas.drawRoundRect(bx, by0, bx + bs, by0 + bs, dp(6f), dp(6f), fill)
                     tp.style = Paint.Style.STROKE; tp.strokeWidth = dp(2.2f); tp.color = Color.WHITE; tp.strokeCap = Paint.Cap.ROUND
                     canvas.drawLine(bx + bs * 0.24f, by0 + bs * 0.54f, bx + bs * 0.43f, by0 + bs * 0.72f, tp)
                     canvas.drawLine(bx + bs * 0.43f, by0 + bs * 0.72f, bx + bs * 0.78f, by0 + bs * 0.30f, tp)
