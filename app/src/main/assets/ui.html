@@ -3462,7 +3462,8 @@ async function printRecentPs(){
   let R;try{R=await api('GET','/api/pssess')}catch(e){return printRecent(true,true)}
   if(!R||!Array.isArray(R.sessions))return printRecent(true,true);
   const mut='display:block;font-size:12px;color:var(--mut);margin-top:2px';
-  const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','','Recent prints'));
+  let SEL=null;   /* Select mode: Set of sids (null = off); tap a print to tick it, Remove deletes all ticked at once (op rm takes sids[]) */
+  const draw=()=>{card.textContent='';card.append(E('div','handle'),E('h3','',SEL?SEL.size+' selected':'Recent prints'));
     const old=lsGet('printHist',[]).filter(h=>h.ps&&!h.sid);
     if(!R.sessions.length&&!old.length)card.append(E('p','','Nothing printed from Print space yet.'));
     R.sessions.forEach(x=>{
@@ -3480,16 +3481,27 @@ async function printRecentPs(){
       row.style.cssText='margin-top:6px';ed.onclick=()=>{fin();pssEdit(x.sid)};ag.onclick=()=>{fin();pssAgain(x.sid)};
       let tm=0;rm.onclick=async()=>{if(!tm){rm.textContent='Remove?';tm=setTimeout(()=>{tm=0;rm.textContent='\u2715'},3000);return}
         clearTimeout(tm);try{R=await api('POST','/api/pssess',{op:'rm',sids:[x.sid]})}catch(e){toast('\u26a0 '+e.message,4000)}draw()};
+      if(SEL){const on=SEL.has(x.sid),cb=E('input');cb.type='checkbox';cb.checked=on;cb.style.cssText='float:right;width:22px;height:22px;margin:0 0 0 8px;pointer-events:none';
+        box.style.cursor='pointer';if(on)box.style.background='rgba(128,128,128,.18)';box.prepend(cb);
+        box.onclick=()=>{SEL.has(x.sid)?SEL.delete(x.sid):SEL.add(x.sid);draw()};card.append(box);return}
       row.append(ed);if(x.hasPdf)row.append(ag);row.append(rm);box.append(row);card.append(box)});
     if(old.length){const t=E('small','','Older prints (no kept pictures)');t.style.cssText=mut+';margin-top:10px';card.append(t);
       old.forEach(h=>{const b=E('button','tbtn'),nm=(h.names||[]).join(', ');b.style.cssText='display:block;width:100%;text-align:left;margin:6px 0';
         const sm=E('small','',[h.toName||'',new Date(h.t).toLocaleString()].filter(Boolean).join(' \u00b7 '));sm.style.cssText=mut;
         b.append(E('b','',(h.ok===true?'\u2713 ':h.ok===false?'\u26a0 ':'')+nm),sm);b.onclick=()=>{fin();phGo(h)};card.append(b)})}
-    const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close');
+    if(SEL){const n=SEL.size,b=E('div','dact'),al=E('button','tbtn',n&&n>=R.sessions.length?'None':'All'),dl=E('button','tbtn fill','Remove'+(n?' ('+n+')':'')),cn=E('button','tbtn','Cancel');
+      al.onclick=()=>{if(n&&n>=R.sessions.length)SEL.clear();else R.sessions.forEach(q=>SEL.add(q.sid));draw()};
+      cn.onclick=()=>{SEL=null;draw()};
+      dl.onclick=async()=>{if(!n)return toast('Tap the prints to remove first',2500);
+        if(!await dlg({title:'Remove '+n+' print'+(n===1?'':'s')+'?',msg:'Their kept pictures, previews and PDFs will be deleted.',ok:'Remove',danger:true}))return;
+        try{R=await api('POST','/api/pssess',{op:'rm',sids:[...SEL]})}catch(e){toast('\u26a0 '+e.message,4000)}SEL=null;draw()};
+      b.append(al,dl,cn);card.append(b);return}
+    const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close'),sl=E('button','tbtn','Select');
+    sl.onclick=()=>{SEL=new Set();draw()};
     cl.onclick=async()=>{if(!R.sessions.length&&!old.length)return fin();
       if(R.sessions.length&&!await dlg({title:'Clear recent prints?',msg:'The kept pictures, previews and PDFs of '+R.sessions.length+' print'+(R.sessions.length===1?'':'s')+' will be deleted.',ok:'Clear',danger:true}))return;
       try{if(R.sessions.length)R=await api('POST','/api/pssess',{op:'clear'});const k=lsGet('printHist',[]).filter(h=>!h.ps);if(k.length)localStorage.setItem('printHist',JSON.stringify(k));else localStorage.removeItem('printHist')}catch(e){toast('\u26a0 '+e.message,4000)}fin()};
-    cx.onclick=fin;row.append(cl,cx);card.append(row)};
+    cx.onclick=fin;if(R.sessions.length>1)row.append(sl);row.append(cl,cx);card.append(row)};
   draw()}
 async function doPrint(preset,cx){
   const ALL=cx?cx.items:selItems(),IT=()=>ALL.filter(pvOK),PP=cx?cx.path:S.path,N=IT().length,PS=()=>IT().map(i=>PF(i)),done=()=>{if(cx)cx.done();else{S.sel.clear();render()}},DV=cx&&cx.dev||S.dev,PF=i=>cx&&cx.full?i.p:jn(PP,i.name);
@@ -3694,7 +3706,9 @@ function openPrintSpace(){
   const apply=r=>{LIST=(r&&r.items)||[];BYTES=r&&r.bytes||0;MAX=r&&r.max||500;if(r&&r.cfg)CFG={days:r.cfg.days||0,mb:r.cfg.mb||0};
     if(r&&r.swept)toast(r.swept+' old picture'+(r.swept===1?'':'s')+' removed from Print space',4000);
     if(!(r&&r.undo))ubHide();
-    for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);draw();upd()};
+    for(const id of [...GS])if(!LIST.some(m=>m.id===id))GS.delete(id);
+    {const V=LIST.map(m=>({name:m.name,p:m.path,size:m.size||0,mtime:m.at||0}));GCX={dev:'local',path:'/',list:V,all:V}}   // the viewers take their picture list from GCX (galClose clears it)
+    draw();upd()};
   const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
   const upd=()=>{gNum(GS,els);
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
@@ -3747,7 +3761,11 @@ function openPrintSpace(){
   function mk(m){const c=E('div','gc'+(GS.has(m.id)?' sel':''));els.set(m.id,c);c.append(ic('check','ck'));
     const im=E('img');im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.path)+'&q=95';im.onerror=()=>{im.style.display='none';if(!c.querySelector('.gn'))c.append(E('span','gn',m.name))};if(m.rot)im.style.transform='rotate('+m.rot+'deg)';c.insertBefore(im,c.firstChild);
     if((m.copies||1)>1)c.append(E('span','gd','×'+m.copies));
-    c.onclick=()=>{GS.has(m.id)?GS.delete(m.id):GS.add(m.id);c.classList.toggle('sel',GS.has(m.id));upd()};   // tap = select (no viewer here yet)
+    /* press and hold starts the selection; a tap opens the picture (viewer swipes through the held pictures); once something is selected a tap ticks / unticks */
+    c.onclick=()=>{if(c._lp){c._lp=false;return}
+      if(GS.size){GS.has(m.id)?GS.delete(m.id):GS.add(m.id);c.classList.toggle('sel',GS.has(m.id));upd()}
+      else viewImg({name:m.name,p:m.path,size:m.size||0,mtime:m.at||0})};
+    holdMenu(c,m,()=>{GS.add(m.id);c.classList.add('sel');upd()});
     return c}
   function draw(){gg.textContent='';els.clear();
     if(!LIST.length){const e=E('div','ge');e.append(E('b','','Nothing to print yet'),document.createElement('br'),E('small','','Pictures you add to Print space are kept here as copies until you print or remove them.'));gg.append(e);return}

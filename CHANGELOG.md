@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Print space: tap opens, hold selects
+
+### Changed
+- Print space: tap a picture to open it (swipe through the held pictures); press and hold to start selecting. While selecting, tap ticks or unticks.
+
+## 2026-10-28 - Select several recent prints
+
+### Added
+- Print space > Recent prints: new Select button. Tick several prints (or All) and remove them in one go.
+
 ## 2026-10-28 - Two on the front, one on the back
 
 ### Added
