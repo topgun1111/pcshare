@@ -14,6 +14,7 @@ import android.os.Looper
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -32,7 +33,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * "Print log" screen (HANDOVER 9.8, part 4). Shows the phone's print log (core/PrintLog.kt) as readable lines, newest at the bottom;
+ * "Logs" screen (was "Print log"; HANDOVER 9.8, part 4). Two views: SIMPLE (default, PlainLog.kt: plain sentences, a problem count and a "what to try" tip) and TECHNICAL (the old detailed lines). Shows the phone's print log (core/PrintLog.kt) as readable lines, newest at the bottom;
  * "Fetch PC log" adds the PC's diag.jsonl (pcprint.py 31+, GET /api/pcdiag) merged by time; Share / Copy hand the RAW json lines to another app
  * (that is what the developer reads); Clear empties the phone's file; Open folder shows <storage>/LANShare Logs in the file manager;
  * "Full detail" is the verbose switch (Cfg.printVerbose). Intent extras: [X_JIDS] job ids to show (comma list, empty = everything), [X_DEV] the PC for "Fetch PC log".
@@ -46,6 +47,9 @@ class PrintLogActivity : Activity() {
     private lateinit var body: TextView
     private lateinit var scroll: ScrollView
     private lateinit var scopeBtn: TextView
+    private lateinit var viewBtn: TextView
+    private lateinit var verbose: Switch
+    private var simple = true
     private var jids: List<String> = emptyList()
     private var dev = ""
     private var onlyJobs = false
@@ -65,14 +69,17 @@ class PrintLogActivity : Activity() {
         jids = (intent.getStringExtra(X_JIDS) ?: "").split(',').map { it.trim() }.filter { it.isNotEmpty() }
         dev = intent.getStringExtra(X_DEV) ?: ""
         onlyJobs = jids.isNotEmpty()
+        simple = try { getSharedPreferences("logs_ui", MODE_PRIVATE).getBoolean("simple", true) } catch (_: Throwable) { true }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
-        root.addView(TextView(this).apply { text = "Print log"; textSize = 20f; setTextColor(pal.fg); setTypeface(typeface, Typeface.BOLD); setPadding(dp(16), dp(12), dp(16), dp(2)) })
+        root.addView(TextView(this).apply { text = "Logs"; textSize = 20f; setTextColor(pal.fg); setTypeface(typeface, Typeface.BOLD); setPadding(dp(16), dp(12), dp(16), dp(2)) })
         info = TextView(this).apply { textSize = 12f; setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
         root.addView(info)
 
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
+        viewBtn = chip("") { simple = !simple; try { getSharedPreferences("logs_ui", MODE_PRIVATE).edit().putBoolean("simple", simple).apply() } catch (_: Throwable) {}; render() }
+        chips.addView(viewBtn)
         scopeBtn = chip("") { onlyJobs = !onlyJobs; render() }
         if (jids.isNotEmpty()) chips.addView(scopeBtn)
         chips.addView(chip("Refresh") { load() })
@@ -83,13 +90,13 @@ class PrintLogActivity : Activity() {
         chips.addView(chip("Clear") { clear() })
         root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(chips) })
 
-        val sw = Switch(this).apply {
+        verbose = Switch(this).apply {
             text = "Full detail (long texts and stack traces are kept in full)"; textSize = 13f; setTextColor(pal.fg)
             isChecked = try { Cfg.printVerbose() } catch (_: Throwable) { true }
             setPadding(dp(16), dp(4), dp(16), dp(8))
             setOnCheckedChangeListener { _, v -> try { Cfg.setPrintVerbose(v) } catch (_: Throwable) {} }
         }
-        root.addView(sw)
+        root.addView(verbose)
 
         body = TextView(this).apply {
             typeface = Typeface.MONOSPACE; textSize = 11f; setTextColor(pal.fg); setTextIsSelectable(true)
@@ -147,20 +154,61 @@ class PrintLogActivity : Activity() {
         val f = File(try { PrintLog.file().absolutePath } catch (_: Throwable) { "" })
         val kb = try { PrintLog.size() / 1024 } catch (_: Throwable) { 0L }
         scopeBtn.text = if (onlyJobs) "Job " + jids.joinToString(" ") + " (tap: all)" else "All jobs (tap: this job)"
+        viewBtn.text = if (simple) "Simple view (tap: technical)" else "Technical view (tap: simple)"
+        verbose.visibility = if (simple) View.GONE else View.VISIBLE
         val lines = shown()
+        val sb = SpannableStringBuilder()
+        if (simple) renderSimple(lines, sb) else renderTechnical(lines, f, kb, sb)
+        body.text = sb
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun renderTechnical(lines: List<Ln>, f: File, kb: Long, sb: SpannableStringBuilder) {
+        body.typeface = Typeface.MONOSPACE; body.textSize = 11f
         info.text = (if (f.path.isEmpty()) "" else f.name + " - " + kb + " KB - " + f.parent) + (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nTimes of the PC lines are the PC's clock."
         val last = if (lines.size > MAXV) lines.subList(lines.size - MAXV, lines.size) else lines
-        val sb = SpannableStringBuilder()
         if (lines.size > last.size) sb.append("... ").append((lines.size - last.size).toString()).append(" older lines not shown (Share / Copy give everything)\n\n")
         if (last.isEmpty()) sb.append(if (onlyJobs) "No lines for this job (it may be in the PC log: tap \"Fetch PC log\")." else "The log is empty. Print something and come back.")
         for (l in last) {
             val s = sb.length
             sb.append(pretty(l)).append('\n')
-            val c = when (l.lvl) { "e" -> 0xFFD64545.toInt(); "w" -> 0xFFC58A00.toInt(); else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
+            val c = when (l.lvl) { "e" -> RED; "w" -> AMBER; else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
             if (c != pal.fg) sb.setSpan(ForegroundColorSpan(c), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        body.text = sb
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    /** Plain sentences (PlainLog): "21:30:05  PC  Printing finished (3.2 s)", a tip line under problems, a problem count on top. */
+    private fun renderSimple(lines: List<Ln>, sb: SpannableStringBuilder) {
+        body.typeface = Typeface.DEFAULT; body.textSize = 14f
+        val items = ArrayList<Pair<Ln, PlainLog.Item>>()
+        for (l in lines) { val it = PlainLog.of(l); if (it != null) items.add(l to it) }
+        val errs = items.count { it.second.kind == 'e' }
+        val warns = items.count { it.second.kind == 'w' }
+        val head = when {
+            errs > 0 -> errs.toString() + (if (errs == 1) " problem" else " problems") + (if (warns > 0) ", $warns warning" + (if (warns == 1) "" else "s") else "") + " found - shown in red below."
+            warns > 0 -> "$warns warning" + (if (warns == 1) "" else "s") + " - shown in orange below."
+            items.isEmpty() -> "Nothing to report yet."
+            else -> "No problems found."
+        }
+        info.text = head + (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nPC times are the PC's clock. Tap \"Technical view\" for all the details."
+        val last = if (items.size > MAXS) items.subList(items.size - MAXS, items.size) else items
+        if (items.size > last.size) sb.append("... ").append((items.size - last.size).toString()).append(" older entries not shown\n\n")
+        if (last.isEmpty()) sb.append(if (onlyJobs) "Nothing to report for this job (the PC part may be missing: tap \"Fetch PC log\")." else "Nothing to report yet. Print something and come back.")
+        for ((l, it) in last) {
+            val s = sb.length
+            val time = l.t.substringAfter(' ', l.t).substringBefore('.')
+            val mark = when (it.kind) { 'e' -> "\u2716"; 'w' -> "\u26A0"; 'o' -> "\u2714"; else -> "\u2022" }
+            sb.append(time).append("  ").append(mark).append(' ').append(if (l.src == "pc") "PC: " else "Phone: ").append(it.text).append('\n')
+            val c = when (it.kind) { 'e' -> RED; 'w' -> AMBER; 'o' -> GREEN; else -> pal.fg }
+            if (c != pal.fg) sb.setSpan(ForegroundColorSpan(c), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (it.kind == 'e') sb.setSpan(StyleSpan(Typeface.BOLD), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (it.tip != null) {
+                val t0 = sb.length
+                sb.append("      What to try: ").append(it.tip).append('\n')
+                sb.setSpan(ForegroundColorSpan(pal.mut), t0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            sb.append('\n')
+        }
     }
 
     // ------------------------------------------------------------ buttons
@@ -210,6 +258,10 @@ class PrintLogActivity : Activity() {
         const val X_JIDS = "jids"
         const val X_DEV = "dev"
         private const val MAXV = 600
+        private const val MAXS = 300
+        private const val RED = 0xFFD64545.toInt()
+        private const val AMBER = 0xFFC58A00.toInt()
+        private const val GREEN = 0xFF1E9E5A.toInt()
         private const val COPY_MAX = 200_000
         private val SKIP = setOf("t", "run", "n", "src", "jid", "th", "lvl", "ev")
 

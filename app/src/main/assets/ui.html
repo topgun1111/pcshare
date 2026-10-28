@@ -639,6 +639,7 @@ body.dopen{overflow:hidden}
 #pq,#pcs{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
 #pq .card,#pcs .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
 #pq .card>*,#pcs .card>*{flex-shrink:0}.pqh{display:flex;align-items:center;justify-content:space-between}.pqh h3{margin:0;font-size:20px;font-weight:500}.pqs{font-size:13px;color:var(--mut);margin:0 0 4px}
+.pct{display:flex;gap:6px;margin:2px 0 4px}.pct .tbtn{flex:1;border:1px solid var(--bd)}.pct .tbtn.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 .pcb{display:flex;align-items:center;gap:8px;margin:2px 0 6px}.pcst{font-size:12px;color:var(--mut);word-break:break-word}
 .pcd{width:10px;height:10px;border-radius:50%;background:#888;flex:none}.pcd.green{background:#4ade80}.pcd.amber{background:#fbbf24}.pcd.red{background:#f87171}
 .pcl{background:#0b0f17;color:#d7dde8;border-radius:12px;padding:10px;height:60vh;overflow:auto;font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
@@ -2312,9 +2313,11 @@ function openPcScreen(pc){
   let alive=true,tm=0,pos=-1,fails=0,n=0;
   const close=()=>{alive=false;clearTimeout(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card'),hd=E('div','pqh'),cb=E('button','tbtn','Close'),bar=E('div','pcb'),dot=E('span','pcd'),st=E('div','pcst','Connecting\u2026'),log=E('div','pcl');cb.onclick=close;
-  const sw=E('button','tbtn','Switch');sw.onclick=()=>{close();openPcScreen(null)};const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(sw);
-  if(window.LSAndroid&&LSAndroid.openPrintLog){const lg=E('button','tbtn','Log');lg.onclick=()=>{try{LSAndroid.openPrintLog('',pc.id)}catch(e){}};hb.append(lg)}
-  hb.append(cb);hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,bar,log);o.append(card);
+  /* tabs under the title: Live (this screen) | Logs (opens the Logs screen, plain-words view, with this PC ready for Fetch PC log). The old Switch button is gone: the side menu's PC screen lists the PCs. */
+  const tabs=E('div','pct'),tLive=E('button','tbtn on','Live');tabs.append(tLive);
+  if(window.LSAndroid&&LSAndroid.openPrintLog){const tLogs=E('button','tbtn','Logs');tLogs.onclick=()=>{try{LSAndroid.openPrintLog('',pc.id)}catch(e){}};tabs.append(tLogs)}
+  const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(cb);
+  hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,tabs,bar,log);o.append(card);
   const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};
   const draw=r=>{
     if(!r||!r.ok){dot.className='pcd red';st.textContent=(r&&r.why)||'PC not reachable - is pcprint.py running?';return}
