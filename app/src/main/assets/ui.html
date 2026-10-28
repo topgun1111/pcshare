@@ -2353,6 +2353,7 @@ function openSettings(){
   {const ru=E('button','set'),tu=E('div','t'),su=E('small','','Checking\u2026');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Search index'),su);ru.append(tu);
     api('GET','/api/uindex').then(r=>{su.textContent=usText(r)}).catch(()=>{su.textContent='Names of all files for Universal search'});
     ru.onclick=()=>{close();openUsSettings()};card.append(ru)}
+  if(window.LSAndroid&&LSAndroid.openPrintLog){const rP=E('button','set'),tP=E('div','t');rP.style.width='100%';rP.style.textAlign='left';tP.append(E('b','','Print log'),E('small','','Every print step, for finding printer problems: share, copy, fetch the PC log'));rP.append(tP);rP.onclick=()=>{close();LSAndroid.openPrintLog('',LASTPC&&LASTPC.id||'')};card.append(rP)}
   {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
     api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
     rx.onclick=()=>{close();openExcluded()};card.append(rx)}
@@ -4679,6 +4680,13 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;const vis=lvOn();
   if(j.state==='error'&&j.resume){const rs=E('button','tbtn fill','Resume');
     rs.onclick=async()=>{rs.disabled=true;try{const r=await api('POST','/api/jobresume?id='+encodeURIComponent(j.resume));L.hide.onclick();watchJob(r.job);track(r.job)}catch(e){rs.disabled=false;toast('\u26a0 '+e.message,5000)}};
     L.hide.className='tbtn';L.row.insertBefore(rs,L.hide)}   // continues from the kept .lspart parts: finished files are skipped
+  if(window.LSAndroid&&LSAndroid.openPrintLog&&!L.lgb){   /* print jobs: job code + Print log / Copy log (HANDOVER 9.8 part 4) */
+    const ids=[];(String(j.error||'')+' '+String(j.note||'')+' '+(j.problems||[]).join(' ')).replace(/\[log ([AJ]\d{4})\]/g,(m,x)=>{if(ids.indexOf(x)<0)ids.push(x)});
+    if(j.logid&&ids.indexOf(j.logid)<0)ids.unshift(j.logid);
+    if(ids.length){L.lgb=1;const csv=ids.join(','),dv=LASTPC&&LASTPC.id||'';
+      const b1=E('button','tbtn','Print log'),b2=E('button','tbtn','Copy log');b1.onclick=()=>LSAndroid.openPrintLog(csv,dv);b2.onclick=()=>LSAndroid.copyPrintLog(csv,dv);
+      L.row.insertBefore(b2,L.hide);L.row.insertBefore(b1,L.hide);
+      const sm=E('small','','Job code '+ids.join(' \u00b7 '));sm.style.cssText='display:block;color:var(--mut);margin:2px 0 4px';L.sub.after(sm)}}
   const bad=(j.problems||[]).length>1||j.retry>0||!!j.resume;
   if(!vis&&ok)return false;                 // minimized and fine: the toast says it
   if(!vis&&!bad&&!j.live&&j.state!=='cancel')return false;   // minimized, one short error: the toast carries it

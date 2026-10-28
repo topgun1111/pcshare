@@ -18,6 +18,11 @@ Fitting options: scaling (shrink / fit / actual size / fill-and-crop / custom %)
 turn-pages-to-fit-the-sheet.
 Layout / fitting / watermark / header-footer work for PDF, image and .txt/.log/.md files; other files get printer + copies only.
 Python stdlib only (pypdf is optional and installed automatically).
+v31: fault tolerance + diagnostic log. `diag.jsonl` (next to log.txt) records EVERYTHING as one JSON object per line - every request, option, conversion step,
+command line (exit code, stdout, stderr), printer / queue snapshot, full Python traceback - for the developer / Claude to read, not for the window; every job has an id
+(J0007) that is also shown in the app's error text. `GET /diag?pos=N` returns it in pieces. Tolerance: layout failure -> printed plain (note), SumatraPDF failure -> Windows
+print handler, printer name matched ignoring case / accents / suffix, print spooler restarted if stopped, a crash in the watcher no longer turns a printed job into an error,
+transient PowerShell failures keep the last known printer state. Window button: Diag log.
 v28: screen mirror - `GET /screen?pos=N` returns what the window shows (status line + coloured log lines, incremental by byte position) so the app can open a
 read-only "code window" that mirrors this PC's output live. The window and the endpoint share log_tag() / status_parts(). /ping has "screen": true.
 v27: Quiet mode (Default / Quiet / Normal) for printers whose "Sessiz Modu" lives in the driver's private DEVMODE data (Epson L1250 built in; others via
@@ -42,7 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "30"
+VERSION = "31"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -65,8 +70,144 @@ MIN_FREE = 150 << 20          # keep this much disk free: uploads are refused be
 INBOX_CAP = 1 << 30           # old files in the queue folder are deleted (oldest first) above this total size
 
 
+# ------------------------------------------------------------------ diagnostic log (v31)
+# diag.jsonl: one JSON object per line, EVERY step (also everything log() writes). Fields: t (local time), run (service start id), n (counter), src ("pc"),
+# jid (job id J0001.. when the line belongs to a print job), th (thread), lvl (i / w / e), ev (event name) + event fields. Written for the developer / Claude:
+# raw exit codes, stdout / stderr, tracebacks and printer dumps go in untouched (long strings are clipped). Never raises, never blocks printing.
+DIAG = os.path.join(APP, "diag.jsonl")
+DIAG_MAX = 4 << 20            # above this the file rotates: diag.jsonl -> diag.1.jsonl -> diag.2.jsonl (oldest deleted)
+RUN_ID = time.strftime("%m%d%H%M%S")
+_DIAGLOCK = threading.Lock()
+_DSEQ = itertools.count(1)
+_JSEQ = itertools.count(1)
+_CTX = threading.local()      # jid of the job this thread works on, "sent" = the print command was already started (no plain re-print after that)
+_ONCE = {}
+
+
+def new_jid():
+    return "J%04d" % next(_JSEQ)
+
+
+def _clip(v, n=6000):
+    if isinstance(v, str):
+        return v if len(v) <= n else v[:n] + "...[+%d chars]" % (len(v) - n)
+    if isinstance(v, bytes):
+        return _clip(v.decode("utf-8", "replace"), n)
+    if isinstance(v, dict):
+        return {str(k): _clip(x, n) for k, x in list(v.items())[:80]}
+    if isinstance(v, (list, tuple, set)):
+        return [_clip(x, n) for x in list(v)[:80]]
+    return v
+
+
+def dlog(ev, lvl="i", jid=None, **kw):
+    try:
+        rec = {"t": time.strftime("%Y-%m-%d %H:%M:%S") + ".%03d" % (int(time.time() * 1000) % 1000), "run": RUN_ID, "n": next(_DSEQ), "src": "pc"}
+        j = jid or getattr(_CTX, "jid", None)
+        if j:
+            rec["jid"] = j
+        rec["th"] = threading.current_thread().name
+        rec["lvl"] = lvl
+        rec["ev"] = ev
+        for k, v in kw.items():
+            rec[k] = _clip(v, 16000 if k in ("text", "tb") else 6000)
+        line = json.dumps(rec, ensure_ascii=False, default=repr)
+        with _DIAGLOCK:
+            os.makedirs(APP, exist_ok=True)
+            with open(DIAG, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+            if os.path.getsize(DIAG) > DIAG_MAX:
+                base = os.path.splitext(DIAG)[0]
+                for a, b in ((base + ".1.jsonl", base + ".2.jsonl"), (DIAG, base + ".1.jsonl")):
+                    try: os.replace(a, b)
+                    except OSError: pass
+    except Exception:
+        pass
+
+
+def exc_info(e):
+    """Everything useful about an exception, as plain data (type, message, errno / winerror, exit code, stdout / stderr, traceback)."""
+    d = {"type": type(e).__name__, "msg": str(e)[:1500], "repr": repr(e)[:1500]}
+    for k in ("errno", "winerror", "strerror", "filename", "returncode", "cmd", "timeout", "code", "reason"):
+        v = getattr(e, k, None)
+        if v not in (None, ""):
+            d[k] = v
+    for k in ("stdout", "stderr", "output"):
+        v = getattr(e, k, None)
+        if v:
+            d[k] = v.decode("utf-8", "replace") if isinstance(v, bytes) else str(v)
+    if getattr(e, "__traceback__", None):
+        d["tb"] = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-6000:]
+    if getattr(e, "__cause__", None):
+        d["cause"] = repr(e.__cause__)[:500]
+    return d
+
+
+def dlog_exc(ev, e, lvl="e", **kw):
+    dlog(ev, lvl, exc=exc_info(e), **kw)
+
+
+def dlog_change(key, sig, ev, lvl="w", **kw):
+    """Logs only when `sig` differs from the last time for `key`: a polling thread that fails every 20 s must not fill the file."""
+    if _ONCE.get(key) == sig:
+        return
+    _ONCE[key] = sig
+    dlog(ev, lvl, **kw)
+
+
+def run_logged(cmd, what, **kw):
+    """subprocess.run with the command line, exit code, seconds, stdout and stderr written to diag.jsonl. check=True raises like subprocess.run."""
+    check = kw.pop("check", False)
+    kw.setdefault("capture_output", True)
+    kw.setdefault("text", True)
+    kw.setdefault("errors", "replace")
+    t0 = time.time()
+    dlog("run", what=what, cmd=cmd, timeout=kw.get("timeout"))
+    try:
+        r = subprocess.run(cmd, **kw)
+    except subprocess.TimeoutExpired as e:
+        dlog_exc("run-timeout", e, what=what, sec=round(time.time() - t0, 2))
+        raise
+    except Exception as e:
+        dlog_exc("run-exception", e, what=what, sec=round(time.time() - t0, 2))
+        raise
+    dlog("run-done", "i" if r.returncode == 0 else "w", what=what, rc=r.returncode, sec=round(time.time() - t0, 2), out=r.stdout, err=r.stderr)
+    if check and r.returncode:
+        raise subprocess.CalledProcessError(r.returncode, cmd, r.stdout, r.stderr)
+    return r
+
+
+def diag_read(pos, cap=300_000):
+    """Piece of diag.jsonl for GET /diag: from byte `pos` (None / negative / past the end = the last `cap` bytes, reset=true). Only complete lines."""
+    try:
+        size = os.path.getsize(DIAG)
+    except OSError:
+        return {"ok": True, "version": VERSION, "run": RUN_ID, "size": 0, "pos": 0, "reset": True, "more": False, "text": ""}
+    reset = pos is None or pos < 0 or pos > size
+    start = max(0, size - cap) if reset else pos
+    with open(DIAG, "rb") as f:
+        f.seek(start)
+        b = f.read(min(cap, size - start))
+    skipped = 0
+    if reset and start > 0:
+        i = b.find(b"\n")
+        if i >= 0:
+            b, skipped = b[i + 1:], i + 1
+    cut = b.rfind(b"\n")
+    b = b[:cut + 1] if cut >= 0 else b""
+    end = start + skipped + len(b)
+    return {"ok": True, "version": VERSION, "run": RUN_ID, "size": size, "pos": end, "reset": reset, "more": end < size, "text": b.decode("utf-8", "replace")}
+
+
+def _lvl_of(msg):
+    if msg.startswith(("PRINT FAILED", "CRASH", "THREAD CRASH", "PRINT WORKER ERROR")) or "cannot listen" in msg:
+        return "e"
+    return "w" if msg.startswith(("WARNING", "NOTE")) else "i"
+
+
 def log(msg):
     line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
+    dlog("log", _lvl_of(msg), msg=msg)
     with _LOGLOCK:
         try:
             os.makedirs(APP, exist_ok=True)
@@ -1150,23 +1291,30 @@ def spool_count(printer):
 def run_retry(cmd, printer=None, **kw):
     """A print command that exits with an error is tried once more after a pause (the spooler is often busy for a moment) - but ONLY when
     it failed straight away and left nothing in the print queue. A command that ran for a while, or that left a new job in the queue, may
-    already have sent the document: trying again would print it twice. A timeout is never retried either."""
+    already have sent the document: trying again would print it twice. A timeout is never retried either.
+    The exception of a command that may have printed carries maybe_printed=True (no other way of printing is tried then)."""
     n0 = spool_count(printer)
+    dlog("spool-before", printer=printer, n=n0)
     t0 = time.time()
     try:
-        subprocess.run(cmd, check=True, **kw)
+        run_logged(cmd, "print-cmd", check=True, **kw)
     except subprocess.CalledProcessError as e:
         took = time.time() - t0
         n1 = spool_count(printer)
+        dlog("print-cmd-failed", "w", rc=e.returncode, sec=round(took, 1), spool_before=n0, spool_after=n1)
         if n0 is not None and n1 is not None and n1 > n0:
             log(f"print command exited with {e.returncode}, but the job is in the queue - not sending it again")
             return
         if took > RETRY_FAST:
             log(f"print command failed after {took:.0f}s (exit {e.returncode}) - not retried, it may have printed")
+            e.maybe_printed = True
             raise
         log(f"print command failed at once (exit {e.returncode}), trying once more")
         time.sleep(3)
-        subprocess.run(cmd, check=True, **kw)
+        run_logged(cmd, "print-cmd-retry", check=True, **kw)
+    except subprocess.TimeoutExpired as e:
+        e.maybe_printed = True
+        raise
 
 
 SWAP_FILE = os.path.join(APP, "duplex_swap.txt")   # printer names (one per line, # = comment, * = every printer) whose landscape sheets come out upside down on the back
@@ -1246,8 +1394,28 @@ def swap_duplex(pdf, o, pr):
     return o
 
 
+def fallback_print(pdf, pr, o, notes, why):
+    """SumatraPDF failed and nothing reached the queue: hand the PDF to Windows' own handler for .pdf (printer / copies only)."""
+    dlog("fallback-start", "w", why=why, printer=pr)
+    log(f"NOTE: SumatraPDF failed - trying Windows' own PDF print handler{' for ' + pr if pr else ''}")
+    for _ in range(min(o["copies"], 10)):
+        if pr:
+            r = run_logged(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_script("printto.ps1", PS_PRINTTO), pdf, pr],
+                           "printto-fallback", timeout=120, creationflags=CF)
+            if r.returncode != 0:
+                raise RuntimeError("printto failed: " + ((r.stderr or r.stdout or "").strip()[:200] or f"exit {r.returncode}"))
+        else:
+            os.startfile(pdf, "print")
+        time.sleep(1)
+    notes.append("SumatraPDF could not print this; Windows' own PDF handler printed it (duplex / colour / tray / paper settings were not applied)")
+    dlog("fallback-ok", printer=pr)
+
+
 def send_pdf(pdf, o, pr, sm, notes):
     o = swap_duplex(pdf, o, pr)
+    _CTX.sent = True   # from here on a failure is not repaired by printing the plain file again (it may already be on its way)
+    try: dlog("send-pdf", pdf=pdf, size=os.path.getsize(pdf), printer=pr, sumatra=sm, copies=o["copies"], duplex=o["duplex"], color=o["color"], fit=o["fit"], paper=o["paper"], tray=o.get("tray"))
+    except OSError as e: dlog_exc("send-pdf-missing", e, pdf=pdf)
     if not WIN:
         cmd = ["lp"] + (["-d", pr] if pr else []) + ["-n", str(o["copies"])]
         sides = {"off": "one-sided", "long": "two-sided-long-edge", "short": "two-sided-short-edge"}.get(o["duplex"])
@@ -1261,8 +1429,18 @@ def send_pdf(pdf, o, pr, sm, notes):
         cmd = sumatra_args(sm, pdf, o, pr)
         log("SumatraPDF: " + subprocess.list2cmdline(cmd))   # exact command, to compare with a manual run when a printer does not print
         t0 = time.time()
-        run_retry(cmd, printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
-        log(f"SumatraPDF finished in {time.time() - t0:.1f}s")
+        ensure_spooler()
+        try:
+            run_retry(cmd, printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
+            log(f"SumatraPDF finished in {time.time() - t0:.1f}s")
+        except (subprocess.CalledProcessError, OSError) as e:
+            if getattr(e, "maybe_printed", False):
+                raise
+            try:
+                fallback_print(pdf, pr, o, notes, repr(e)[:200])
+            except Exception as e2:
+                dlog_exc("fallback-failed", e2)
+                raise e   # the original error is the one worth showing
     else:
         if pr or o["duplex"] or o["color"] or o.get("tray"):
             notes.append("printer / duplex / colour / tray ignored: SumatraPDF is not installed")
@@ -1395,11 +1573,34 @@ class quiet_mode:
         return False
 
 
+PLAIN = dict(nup=1, booklet=False, border=False, pages="", reverse=False, range="", wm="", wm_under=False, hdr="", ftr="",
+             margin=-1, scale=0, align="center", autorot=False, fit="shrink", paper="")   # no layout, no fitting: what is left is printer / copies / duplex / colour
+
+
 def print_file(path, o):
-    """Prints one file with the chosen options (quiet mode patched in around the job); returns notes (things that could not be honoured)."""
+    """Prints one file with the chosen options (quiet mode patched in around the job); returns notes (things that could not be honoured).
+    If laying the pages out fails BEFORE anything was sent to the printer, the file is printed plain instead of failing (with a note)."""
     notes = []
+    _CTX.sent = False
     with quiet_mode(o["printer"] or None, o.get("quiet", ""), notes):
-        notes += _print_file(path, o)
+        try:
+            notes += _print_file(path, o)
+        except Exception as e:
+            if getattr(_CTX, "sent", False) or not (needs_layout(o) or needs_fitting(o)):
+                raise
+            dlog_exc("layout-failed", e, lvl="w", path=path if isinstance(path, str) else list(path))
+            log(f"NOTE: layout / fitting failed ({str(e)[:120]}) - printing without it")
+            o2 = dict(o, **PLAIN)
+            try:
+                if isinstance(path, (list, JoinJob)):   # several files: one by one, in order
+                    for p in path:
+                        notes += _print_file(p[0] if isinstance(p, tuple) else p, o2)
+                else:
+                    notes += _print_file(path, o2)
+            except Exception as e2:
+                dlog_exc("plain-failed", e2)
+                raise e   # the first error says what was wrong with the layout
+            notes.append(f"layout / fitting options were skipped because they failed ({str(e)[:100]}); printed plain")
     return notes
 
 
@@ -1428,6 +1629,7 @@ def _print_file(path, o):
     name = os.path.basename(path).split("_", 1)[-1]
     fitting = needs_fitting(o)
     layout = needs_layout(o)
+    dlog("plan", path=path, ext=ext, size=os.path.getsize(path) if os.path.isfile(path) else None, layout=layout, fitting=fitting, sumatra=sm, office=office_engine(ext) if ext in OFFICE_EXT else None)
     pdf = path if ext == ".pdf" else None
     converted = False   # office document turned into a PDF below: from here on it is handled like a real PDF
     ol = o   # options for process_pdf: pictures and text are fitted while they are converted, so only a real PDF is fitted again
@@ -1438,6 +1640,7 @@ def _print_file(path, o):
         except Exception as e:
             if layout or fitting:
                 raise
+            dlog_exc("image-convert-failed", e, lvl="w", path=path)
             log(f"image conversion failed ({e}), printing the picture directly")
     elif ext in TEXT_EXT and (layout or fitting):
         pdf = txt_to_pdf(path, o)
@@ -1447,6 +1650,7 @@ def _print_file(path, o):
             pdf = office_to_pdf(path)
             converted = True
         except Exception as e:
+            dlog_exc("office-convert-failed", e, lvl="w", path=path, ext=ext, engine=office_engine(ext))
             log(f"{ext} -> PDF failed: {e}")
             notes.append(f"could not convert {ext} to PDF ({str(e)[:140]}) - printed by its own app: only printer and copies apply")
             pdf = None
@@ -1540,15 +1744,95 @@ def list_printers():
     if not WIN:
         try:
             return [l.split()[1] for l in subprocess.run(["lpstat", "-a"], capture_output=True, text=True, errors="replace", timeout=10).stdout.splitlines() if l.strip()]
-        except Exception:
+        except Exception as e:
+            dlog_change("list-printers", repr(e), "list-printers-failed", exc=exc_info(e))
             return []
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
-                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Printer | ForEach-Object { $_.Name } | ConvertTo-Json -Compress"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000)
+        out = (r.stdout or "").strip()
+        if not out:
+            dlog_change("list-printers", "empty", "list-printers-empty", rc=r.returncode, err=r.stderr)
         v = json.loads(out) if out else []
         return [v] if isinstance(v, str) else [str(x) for x in v]
-    except Exception:
+    except Exception as e:
+        dlog_change("list-printers", repr(e), "list-printers-failed", exc=exc_info(e))
         return []
+
+
+def _pn_key(s):
+    """Printer name for comparing: ignores case, accents (Turkish dotless i too), repeated spaces."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").casefold().replace("\u0131", "i")
+    return re.sub(r"\s+", " ", "".join(c for c in s if not unicodedata.combining(c))).strip()
+
+
+def spooler_state():
+    """Windows print spooler state word (RUNNING, STOPPED, START_PENDING ...) or None when it cannot be read."""
+    if not WIN:
+        return None
+    try:
+        r = subprocess.run(["sc", "query", "spooler"], capture_output=True, text=True, errors="replace", timeout=8, creationflags=CF)
+        m = re.search(r"STATE\s*:\s*\d+\s+(\w+)", r.stdout or "")
+        return m.group(1) if m else None
+    except Exception as e:
+        dlog_change("spooler-read", repr(e), "spooler-read-failed", exc=exc_info(e))
+        return None
+
+
+def ensure_spooler():
+    """A stopped print spooler makes every print fail with an unclear error: start it (works when the service runs with enough rights)."""
+    st = spooler_state()
+    if st in (None, "RUNNING"):
+        return st
+    dlog("spooler-down", "w", state=st)
+    log(f"WARNING: the Windows print spooler is {st} - trying to start it")
+    try:
+        run_logged(["sc", "start", "spooler"], "spooler-start", timeout=15, creationflags=CF)
+        for _ in range(10):
+            time.sleep(1)
+            st = spooler_state()
+            if st == "RUNNING":
+                break
+    except Exception as e:
+        dlog_exc("spooler-start-failed", e)
+    dlog("spooler-after", "i" if st == "RUNNING" else "e", state=st)
+    return st
+
+
+PS_DIAG = r"""
+param([string]$Name)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'SilentlyContinue'
+if (-not $Name) { $Name = (Get-CimInstance Win32_Printer | Where-Object { $_.Default }).Name }
+"== name: $Name"
+"== Get-Printer";   Get-Printer -Name $Name | Format-List * | Out-String -Width 200
+"== Win32_Printer"; Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $Name } | Select-Object Name,PrinterStatus,PrinterState,DetectedErrorState,ExtendedDetectedErrorState,ExtendedPrinterStatus,WorkOffline,Availability,PortName,DriverName,Local,Network,Shared,Default,SpoolEnabled,KeepPrintedJobs,EnableBIDI | Format-List | Out-String -Width 200
+"== Port";          $pn = (Get-Printer -Name $Name).PortName; Get-PrinterPort -Name $pn | Format-List * | Out-String -Width 200
+"== Jobs";          Get-PrintJob -PrinterName $Name | Select-Object Id,DocumentName,JobStatus,SubmittedTime,TotalPages,PagesPrinted,Size,UserName | Format-Table -AutoSize | Out-String -Width 220
+"== Spooler";       Get-Service Spooler | Format-List Name,Status,StartType | Out-String
+"== PrintService/Operational (last 12)"; Get-WinEvent -LogName 'Microsoft-Windows-PrintService/Operational' -MaxEvents 12 | Select-Object TimeCreated,Id,LevelDisplayName,Message | Format-List | Out-String -Width 220
+"== PrintService/Admin (last 8)";        Get-WinEvent -LogName 'Microsoft-Windows-PrintService/Admin' -MaxEvents 8 | Select-Object TimeCreated,Id,LevelDisplayName,Message | Format-List | Out-String -Width 220
+"""
+_DIAG_LAST = [0.0]
+
+
+def printer_diag(printer, why):
+    """Writes everything Windows (or CUPS) knows about the printer, its port, its queue and the print service events into diag.jsonl as raw text.
+    Called when a job fails or the printer reports trouble. At most once per 15 s."""
+    if time.time() - _DIAG_LAST[0] < 15:
+        dlog("printer-diag-skipped", why=why)
+        return
+    _DIAG_LAST[0] = time.time()
+    try:
+        if WIN:
+            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_script("pdiag.ps1", PS_DIAG)] + (["-Name", printer] if printer else []),
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40, creationflags=CF)
+        else:
+            r = subprocess.run(["lpstat", "-t"], capture_output=True, text=True, errors="replace", timeout=15)
+        dlog("printer-diag", "w", why=why, printer=printer, rc=r.returncode, text=r.stdout, err=r.stderr)
+    except Exception as e:
+        dlog_exc("printer-diag-failed", e, why=why)
 
 
 def fix_printer_name(n):
@@ -1561,7 +1845,15 @@ def fix_printer_name(n):
         except (UnicodeEncodeError, UnicodeDecodeError):
             continue
         if c in PRINTERS:
+            dlog("printer-matched", how="codepage " + enc, asked=n, got=c)
             return c
+    k = _pn_key(n)   # same printer written a little differently (case, accents, spaces, a suffix such as "(Copy 1)")
+    for how, test in (("same-ignoring-case", lambda p: _pn_key(p) == k),
+                      ("prefix", lambda p: k and (_pn_key(p).startswith(k) or k.startswith(_pn_key(p))))):
+        hits = [p for p in PRINTERS if test(p)]
+        if len(hits) == 1:
+            dlog("printer-matched", how=how, asked=n, got=hits[0])
+            return hits[0]
     return n
 
 
@@ -1588,33 +1880,56 @@ def printer_info(name=None, max_age=0):
 
 
 def _printer_info(name=None):
-    try:
-        ps1 = ps_script("pstate.ps1", PS_STATE)
-        out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
-                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000).stdout.strip()
-        info = json.loads(out) if out else None
-        if info:
-            if isinstance(info.get("jobs"), str):
-                info["jobs"] = [info["jobs"]]
-            info["jobs"] = info.get("jobs") or []
-        return info
-    except Exception:
-        return None
+    for attempt in (1, 2):
+        try:
+            ps1 = ps_script("pstate.ps1", PS_STATE)
+            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1] + (["-Name", name] if name else []),
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=0x08000000)
+            out = (r.stdout or "").strip()
+            info = json.loads(out) if out else None
+            if info is None:
+                dlog_change("pinfo-empty:" + str(name), (r.returncode, (r.stderr or "")[:200]), "printer-info-empty", name=name, rc=r.returncode, err=r.stderr)
+            else:
+                _ONCE.pop("pinfo-empty:" + str(name), None)
+                if isinstance(info.get("jobs"), str):
+                    info["jobs"] = [info["jobs"]]
+                info["jobs"] = info.get("jobs") or []
+            return info
+        except Exception as e:
+            dlog_change("pinfo-exc:" + str(name), repr(e), "printer-info-failed", name=name, attempt=attempt, exc=exc_info(e))
+            if attempt == 1 and isinstance(e, (ValueError, OSError)):   # a half-written answer / a busy PowerShell start: once more (never after a timeout - that already took 30 s)
+                time.sleep(1)
+                continue
+            return None
+    return None
 
 
 def refresh_printer():
+    fails = 0
     while True:
         try:
-            PRINTERS[:] = list_printers()
+            new = list_printers()
+            if new or not PRINTERS:
+                PRINTERS[:] = new
             if WIN:
                 info = printer_info()
-                DEFAULT_PRINTER[0] = info["name"] if info else None
-                PRINTER_PROBLEM[0] = describe_problem(info)
+                if info:
+                    fails = 0
+                    DEFAULT_PRINTER[0] = info["name"]
+                    PRINTER_PROBLEM[0] = describe_problem(info)
+                else:
+                    fails += 1   # PowerShell hiccup: keep the last known printer for a minute instead of reporting "no printer"
+                    if fails >= 3:
+                        DEFAULT_PRINTER[0] = None
+                        PRINTER_PROBLEM[0] = None
             else:
                 out = subprocess.run(["lpstat", "-d"], capture_output=True, text=True, errors="replace", timeout=10).stdout.split(":")[-1].strip()
                 DEFAULT_PRINTER[0] = out or None
-        except Exception:
-            DEFAULT_PRINTER[0] = None
+        except Exception as e:
+            dlog_change("refresh-printer", repr(e), "refresh-printer-failed", exc=exc_info(e))
+            fails += 1
+            if fails >= 3:
+                DEFAULT_PRINTER[0] = None
         time.sleep(20)
 
 
@@ -1658,27 +1973,45 @@ def watch_printer(seconds=30, printer=None, stall=150, cap=900):
             return None
         act = active_jobs(info)
         if not act:
+            dlog("watch-done", sec=round(time.time() - t0, 1), jobs_left=len(info.get("jobs", [])))
             return None   # the job left the Windows queue (or is only kept there as finished): the printer took it
         issue = job_problem(info) or describe_problem(info)
         if issue and not issue.startswith("low on"):
             PRINTER_PROBLEM[0] = issue
+            dlog("watch-issue", "w", issue=issue, info=info, sec=round(time.time() - t0, 1))
             return issue + port_hint(info)
         sig = (tuple(act), info.get("pages"))
         if sig != last:
+            dlog("watch", jobs=list(act), pages=info.get("pages"), status=info.get("status"), detected=info.get("detected"), offline=info.get("offline"), port=info.get("port"), sec=round(time.time() - t0, 1))
             last, last_t = sig, time.time()
         elif time.time() - last_t >= stall and time.time() - t0 >= seconds:
+            dlog("watch-stalled", "w", info=info, stall=int(time.time() - last_t))
             return f"still in the Windows queue and no progress for {int(time.time() - last_t)}s ({', '.join(act)}) - the printer is not taking it" + port_hint(info)
     if info and active_jobs(info):
         return f"still in the Windows queue after {int(cap)}s ({', '.join(active_jobs(info))}) - the printer is not taking it" + port_hint(info)
     return None
 
 
+WINERR_TEXT = {5: "Windows refused access to the printer (access denied)", 1801: "Windows does not know that printer name", 1722: "the print spooler / printer cannot be reached (RPC unavailable)",
+               1155: "no app on the PC can print this file type", 1156: "no app on the PC can print this file type", 32: "the file is in use by another program", 2: "a needed file was not found"}
+
+
 def friendly(e, name):
     ext = os.path.splitext(name)[1] or "this file type"
-    if isinstance(e, OSError) and getattr(e, "winerror", None) in (1155, 1156):
+    w = getattr(e, "winerror", None)
+    if isinstance(e, OSError) and w in (1155, 1156):
         return f"no app on the PC can print {ext} files"
     if isinstance(e, subprocess.TimeoutExpired):
         return "printing took too long"
+    if isinstance(e, subprocess.CalledProcessError):
+        tail = ((e.stderr or e.stdout or "") if isinstance(e.stderr or e.stdout, str) else "").strip().splitlines()
+        return f"the print program failed (exit {e.returncode})" + (": " + tail[-1][:120] if tail else "")
+    if isinstance(e, OSError) and w in WINERR_TEXT:
+        return WINERR_TEXT[w]
+    if isinstance(e, FileNotFoundError):
+        return "a file or program the PC needs was not found: " + str(getattr(e, "filename", "") or e)[:120]
+    if isinstance(e, MemoryError):
+        return "the PC ran out of memory while preparing the pages"
     return (str(e) or e.__class__.__name__)[:300]
 
 
@@ -1687,38 +2020,63 @@ def record(name, res):
                         note=res.get("note"), warning=res.get("warning"), error=res.get("error")))
 
 
+def _job_files(path):
+    out = []
+    for p in ([path] if isinstance(path, str) else list(path)):
+        p = p[0] if isinstance(p, tuple) else p
+        try: out.append({"file": os.path.basename(p), "bytes": os.path.getsize(p)})
+        except OSError: out.append({"file": os.path.basename(str(p)), "bytes": None})
+    return out
+
+
 def print_one(path, evt, res, o):
     name = f"{len(path)} files (one job)" if isinstance(path, JoinJob) else f"{len(path)} pictures" if isinstance(path, list) else os.path.basename(path)
+    jid = o.get("jid") or new_jid()
+    _CTX.jid, _CTX.sent = jid, False
+    t_job = time.time()
     CURRENT[0] = name
     try:
         pr = o["printer"] or DEFAULT_PRINTER[0]
         d = describe_opts(o)
-        log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else ""))
+        dlog("job-start", name=name, files=_job_files(path), opts={k: v for k, v in o.items() if k != "jid"}, printer=pr, default=DEFAULT_PRINTER[0],
+             printers=PRINTERS, waiting=PRINTQ.qsize(), version=VERSION)
+        log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else "") + f" ({jid})")
         info0 = printer_info(o["printer"] or None, max_age=60)
+        dlog("printer-info", info=info0)
         if info0:
             log(f"printer {info0.get('name')}: status={info0.get('status')} port={info0.get('port')} queued={len(info0['jobs'])}{port_hint(info0) if str(info0.get('port') or '').upper().startswith(('WSD', 'EPSON')) else ''}")
         notes = print_file(path, o)
         if notes:
             res["note"] = "; ".join(notes)
             log(f"NOTE {name}: {res['note']}")
-        warn = watch_printer(30, o["printer"] or None)
+        try:
+            warn = watch_printer(30, o["printer"] or None)
+        except Exception as e:   # the document is already with the printer: a failing watcher must not turn this into an error (the phone would print it again)
+            dlog_exc("watch-failed", e, lvl="w")
+            warn = None
         if warn:
             log(f"WARNING {name}: printer reports {warn}")
-            res["warning"] = warn
+            res["warning"] = f"{warn} [log {jid}]"
+            printer_diag(o["printer"] or None, "printer reports: " + warn[:120])
         else:
             log("printed " + name)
         res.update(ok=True, printer=pr)
+        dlog("job-end", ok=True, sec=round(time.time() - t_job, 1), notes=notes, warning=warn)
         record(name, res)
         evt.set()   # tell the phone
         time.sleep(4)   # let the spooler pick the file up before the next one starts
     except Exception as e:
         msg = friendly(e, name) if not isinstance(e, (RuntimeError, ValueError)) else str(e)[:300]
-        log(f"PRINT FAILED {name}: {msg}")
-        res["error"] = msg
+        log(f"PRINT FAILED {name}: {msg} ({jid})")
+        dlog_exc("job-failed", e, name=name, sec=round(time.time() - t_job, 1), shown=msg)
+        printer_diag(o.get("printer") or None, "job failed: " + msg[:120])
+        res["error"] = f"{msg} [log {jid}]"
         record(name, res)
         evt.set()
     finally:
         CURRENT[0] = None
+        _CTX.jid = None
+        _CTX.sent = False
 
 
 def print_worker():
@@ -1733,6 +2091,7 @@ def print_worker():
             print_one(path, evt, res, o)
         except BaseException as e:   # not reachable for normal errors (print_one handles them), this is the last line of defence
             log(f"PRINT WORKER ERROR: {e!r}\n{traceback.format_exc()}")
+            dlog_exc("worker-error", e)
             res.setdefault("error", "internal error: " + str(e)[:200])
             evt.set()
         finally:
@@ -1762,14 +2121,18 @@ def cleanup_old(days=3):
             except OSError:
                 pass
     total = sum(k[1] for k in keep)
+    dropped = 0
     for _, size, p in sorted(keep):
         if total <= INBOX_CAP:
             break
         try:
             os.remove(p)
             total -= size
+            dropped += 1
         except OSError:
             pass
+    if dropped:
+        dlog("cleanup", removed_over_cap=dropped, kept_bytes=total)
 
 
 def housekeeping():
@@ -2096,10 +2459,46 @@ class H(BaseHTTPRequestHandler):
     server_version = "LANSharePrint/" + VERSION
     timeout = 60   # idle socket limit: a phone that drops off Wi-Fi mid-upload used to keep its handler thread (and file) forever
 
+    _code = None   # status of the answer (for the request log)
+    _err = None
+    _jid = None
+
     def log_message(self, *a):
         pass
 
+    def _dispatch(self, fn):
+        """Runs a GET / POST handler: every request is written to diag.jsonl (not the quiet polling routes when they succeed),
+        and a bug in a handler becomes a logged 500 instead of a dropped connection."""
+        t0 = time.time()
+        self._code = self._err = self._jid = None
+        u = urlparse(self.path)
+        try:
+            fn()
+        except (ConnectionError, TimeoutError, socket.timeout) as e:   # the phone vanished: normal
+            dlog("http-drop", "w", m=self.command, p=u.path, ip=self.client_address[0], what=repr(e)[:200], jid=self._jid)
+            self.close_connection = True
+        except Exception as e:
+            dlog_exc("http-error", e, m=self.command, p=u.path, q=u.query[:1500], ip=self.client_address[0], jid=self._jid)
+            log(f"request {self.command} {u.path} failed: {e!r}")
+            if self._code is None:
+                try: self.reply(500, {"error": "internal error: " + (str(e) or type(e).__name__)[:150]})
+                except Exception: pass
+        finally:
+            quiet = u.path in ("/ping", "/screen", "/jobs", "/diag") and self._code == 200
+            if not quiet:
+                dlog("http", "i" if (self._code or 0) < 400 else "w", m=self.command, p=u.path, q=u.query[:1500], ip=self.client_address[0], code=self._code,
+                     ms=int((time.time() - t0) * 1000), len=self.headers.get("Content-Length"), ua=self.headers.get("User-Agent"), err=self._err, jid=self._jid)
+
+    def do_GET(self):
+        self._dispatch(self._get)
+
+    def do_POST(self):
+        self._dispatch(self._post)
+
     def reply(self, code, obj):
+        self._code = code
+        if code >= 400 and isinstance(obj, dict):
+            self._err = obj.get("error")
         b = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -2227,7 +2626,7 @@ class H(BaseHTTPRequestHandler):
                 except OSError:
                     pass
 
-    def do_GET(self):
+    def _get(self):
         if not self.local_only():
             return self.reply(403, {"error": "LAN/Tailscale only"})
         u = urlparse(self.path)
@@ -2241,7 +2640,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine(), "convert": True, "clip": True, "screen": True,
+                                    "office": office_engine(), "convert": True, "clip": True, "screen": True, "diag": True,
                                     "hard": hard_margin(pr), "trays": printer_bins(pr), "quiet": bool(WIN and quiet_map(pr))})
         if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
             if not self.is_local():
@@ -2259,11 +2658,17 @@ class H(BaseHTTPRequestHandler):
             except ValueError:
                 pos = None
             return self.reply(200, screen_snapshot(pos, _int((q.get("lines") or [SCREEN_FIRST])[0], SCREEN_FIRST, 1, 500)))
+        if u.path == "/diag":   # diag.jsonl in pieces: ?pos=<byte offset of the last answer's "pos"> (none = the last ~300 KB); read-only, LAN / Tailscale only like /screen
+            try:
+                pos = int((parse_qs(u.query).get("pos") or [""])[0])
+            except ValueError:
+                pos = None
+            return self.reply(200, diag_read(pos))
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "queued": PRINTQ.qsize(), "history": list(HISTORY)})
         self.reply(404, {"error": "not found"})
 
-    def do_POST(self):
+    def _post(self):
         if not self.local_only():
             return self.reply(403, {"error": "LAN/Tailscale only"})
         u = urlparse(self.path)
@@ -2325,9 +2730,17 @@ class H(BaseHTTPRequestHandler):
         if n > MAX_BYTES:
             return self.reply(413, {"error": "file too large"})
         o = parse_opts(parse_qs(u.query))
+        o["jid"] = self._jid = jid = new_jid()
+        asked = o["printer"]
         o["printer"] = fix_printer_name(o["printer"])
         if o["printer"] and PRINTERS and o["printer"] not in PRINTERS:
-            return self.reply(400, {"error": f"unknown printer '{o['printer']}'"})
+            PRINTERS[:] = list_printers() or PRINTERS   # maybe the printer was added a moment ago
+            o["printer"] = fix_printer_name(o["printer"])
+        if o["printer"] and PRINTERS and o["printer"] not in PRINTERS:
+            dlog("printer-unknown", "e", jid=jid, asked=asked, known=PRINTERS)
+            return self.reply(400, {"error": f"unknown printer '{o['printer']}' (this PC has: {', '.join(PRINTERS)[:200]}) [log {jid}]"})
+        if asked != o["printer"]:
+            dlog("printer-renamed", jid=jid, asked=asked, used=o["printer"])
         if PRINTQ.qsize() >= MAX_QUEUE:
             return self.reply(503, {"error": f"print queue is full ({MAX_QUEUE} waiting) - the printer is probably stuck"})
         os.makedirs(INBOX, exist_ok=True)
@@ -2349,12 +2762,15 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             try: os.remove(dest)
             except OSError: pass
+            dlog_exc("upload-failed", e, jid=jid, name=name, got=n - left, of=n, ip=self.client_address[0])
             log(f"upload failed {name}: {e}")
             self.close_connection = True   # the rest of the body is unread: this connection cannot be reused
             return
-        log(f"received {name} ({n} bytes) from {self.client_address[0]}")
+        log(f"received {name} ({n} bytes) from {self.client_address[0]} ({jid})")
         evt, res = threading.Event(), {}
         qs = parse_qs(u.query)
+        dlog("received", jid=jid, name=name, bytes=n, file=dest, ip=self.client_address[0], query=u.query, opts={k: v for k, v in o.items() if k != "jid"},
+             key=(qs.get("key") or [""])[0], batch=(qs.get("batch") or [""])[0], idx=(qs.get("idx") or [""])[0], n=(qs.get("n") or [""])[0])
         bid = re.sub(r"[^0-9A-Za-z]", "", (qs.get("batch") or [""])[0])[:20]
         key = re.sub(r"[^0-9A-Za-z_-]", "", (qs.get("key") or [""])[0])[:60]
         job = dest
@@ -2380,6 +2796,7 @@ class H(BaseHTTPRequestHandler):
                     ent = SEEN[key] = {"t": time.time(), "evt": None, "res": None}
             if old is not None:
                 drop_dest()
+                dlog("duplicate-key", "w", jid=jid, name=name, key=key, answered=old["evt"] is not None)
                 log(f"repeated request ignored: {name} (key {key})")
                 if old["evt"] is not None:
                     return answer(old["evt"], old["res"])   # same answer as the first one gets
@@ -2398,6 +2815,7 @@ class H(BaseHTTPRequestHandler):
                 if not finished:
                     bt = BATCHES.setdefault(bid, {"t": time.time(), "items": {}})
                     bt["items"][idx] = None if skip else (dest, rot)
+            dlog("batch-slot", jid=jid, batch=bid, idx=idx, n=cnt, skip=skip, join=join, finished=finished, have=len(bt["items"]) if not finished else None)
             if skip:
                 drop_dest()
             if finished:   # this set of sheets is already queued: a late or repeated picture would print alone on a sheet
@@ -2417,11 +2835,16 @@ class H(BaseHTTPRequestHandler):
                 job = JoinJob(d for d, _ in got) if join else got
                 BATCHES.pop(bid, None)
                 FINISHED_BATCHES[bid] = time.time()
+            missing = cnt - len(bt["items"])
+            dlog("batch-ready", "w" if missing > 0 or not got else "i", jid=jid, batch=bid, expected=cnt, received=len(bt["items"]), printable=len(got), missing=missing)
+            if missing > 0:
+                log(f"WARNING: {missing} of {cnt} files of this job never arrived - printing the {len(got)} that did ({jid})")
             if not got:
-                return self.reply(400, {"error": "nothing to print"})
+                return self.reply(400, {"error": f"nothing to print [log {jid}]"})
         if ent is not None:
             ent["evt"], ent["res"] = evt, res
         PRINTQ.put((job, evt, res, o))
+        dlog("queued", jid=jid, waiting=PRINTQ.qsize(), job=job if isinstance(job, str) else [x if isinstance(x, str) else x[0] for x in job])
         answer(evt, res)
 
 
@@ -2462,10 +2885,41 @@ class Server(ThreadingHTTPServer):
             log(f"request from {client_address[0]} failed: {e!r}")
 
 
+def _safe(fn, *a):
+    try:
+        return fn(*a)
+    except Exception as e:
+        return "error: " + repr(e)[:200]
+
+
+def diag_start():
+    """First lines of every run: what this PC looks like (so a later log can be read without asking). Runs in the background."""
+    def ver(p):
+        if not WIN or not p:
+            return None
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", f"(Get-Item '{p}').VersionInfo.FileVersion"], capture_output=True, text=True, errors="replace", timeout=15, creationflags=CF)
+        return (r.stdout or "").strip()
+    sm = _safe(find_sumatra) if WIN else None
+    ips, ts = _safe(pc_addresses) if not isinstance(_safe(pc_addresses), str) else ([], "")
+    dlog("start", version=VERSION, pid=os.getpid(), python=sys.version.split()[0], exe=sys.executable, platform=sys.platform, os=_safe(lambda: __import__("platform").platform()),
+         argv=sys.argv, app=APP, port=PORT, admin=_safe(is_admin) if WIN else None, ips=ips, tailscale=ts,
+         free_mb=_safe(lambda: shutil.disk_usage(APP).free >> 20),
+         readme="diag.jsonl: one JSON per line. t=time run=service start n=counter src=pc|app jid=job id lvl=i|w|e ev=event. Search a job id (e.g. J0007) to see its whole story.")
+    dlog("tools", sumatra=sm, sumatra_version=_safe(ver, sm), office=_safe(office_engine), soffice=_safe(find_soffice), pypdf=_safe(have_pypdf), pil=_safe(have_pil),
+         spooler=_safe(spooler_state))
+    pl = _safe(list_printers)
+    dlog("printers", printers=pl, default=_safe(lambda: (printer_info() or {}).get("name")), info=_safe(printer_info))
+
+
 def serve():
     os.makedirs(INBOX, exist_ok=True)
-    threading.excepthook = lambda a: log(f"THREAD CRASH in {getattr(a.thread, 'name', '?')}: {a.exc_value!r}\n"
-                                         + "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+
+    def _crash(a):
+        log(f"THREAD CRASH in {getattr(a.thread, 'name', '?')}: {a.exc_value!r}\n" + "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+        dlog_exc("thread-crash", a.exc_value, thread=getattr(a.thread, "name", "?"))
+    threading.excepthook = _crash
+    sys.excepthook = lambda t, v, tb: dlog_exc("uncaught", v)
+    threading.Thread(target=lambda: _safe(diag_start), daemon=True, name="diag-start").start()
     try:
         srv = Server(("0.0.0.0", PORT), H)
     except OSError as e:   # pythonw has no console: without this line a second copy / busy port just vanished silently
@@ -2985,7 +3439,7 @@ def ui():
             log(f"cannot open the text window: {e}")
 
     for label, cmd in (("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
-                       ("Open log", lambda: open_path(LOG)), ("Test page", test_page), ("Text", open_text)):
+                       ("Open log", lambda: open_path(LOG)), ("Diag log", lambda: open_path(DIAG)), ("Test page", test_page), ("Text", open_text)):
         tk.Button(bot, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(0, 6))
 
     pos = [0]

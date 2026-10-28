@@ -383,6 +383,9 @@ object WifiPrinters {
                 .put("trayinfo", r.dump(listOf("media-source-supported", "media-col-ready", "printer-input-tray", "media-ready", "media-default", "media-type-supported")))
                 .put("color", if (p.colorModes.isNotEmpty()) p.colorModes.contains("color") else (p.color ?: JSONObject.NULL))
                 .put("duplex", if (p.sides.isNotEmpty()) p.sides.any { it.startsWith("two-sided") } else (p.duplex ?: JSONObject.NULL))
-        } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }
+        } catch (e: Exception) {
+            if (PrintLog.cur() != null) PrintLog.err("wifi-status-failed", null, e, "printer" to p.name)
+            JSONObject().put("ok", false).put("why", errText(e))
+        }
     }
 }

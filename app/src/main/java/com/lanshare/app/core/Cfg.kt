@@ -91,6 +91,9 @@ object Cfg {
     @Synchronized fun autoCopy(): Boolean = obj.optBoolean("auto_copy", false)
     @Synchronized fun setAutoCopy(v: Boolean) { obj.put("auto_copy", v); save() }
     /** Copying text while a LANShare screen is open also sends it to the default device (default off). */
+    /** Print log detail (HANDOVER 9.8 part 4): on (default) = long texts / stacks are kept up to 6000 chars as before; off = clipped to 1500 chars (smaller log). */
+    @Synchronized fun printVerbose(): Boolean = obj.optBoolean("print_verbose", true)
+    @Synchronized fun setPrintVerbose(v: Boolean) { obj.put("print_verbose", v); save() }
     @Synchronized fun clipSync(): Boolean = obj.optBoolean("clip_sync", false)
     @Synchronized fun setClipSync(v: Boolean) { obj.put("clip_sync", v); save() }
 

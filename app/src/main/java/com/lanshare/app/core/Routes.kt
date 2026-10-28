@@ -265,6 +265,12 @@ object Routes {
             "printer" -> return ex.json(Jobs.printerStatus(ex.q("dev"), q["printer"]))
             "pcqueue" -> return ex.json(Jobs.pcQueue(ex.q("dev")))   // print queue screen: current job, waiting jobs, recent jobs of that PC
             "pcscreen" -> return ex.json(Jobs.pcScreen(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC window mirror: status line + live log
+            "pcdiag" -> return ex.json(Jobs.pcDiag(ex.q("dev"), (q["pos"] ?: "-1").toLongOrNull() ?: -1L))   // PC diag.jsonl in pieces (pcprint.py 31+), HANDOVER 9.8
+            "printlog" -> {   // this phone's print log (HANDOVER 9.8): GET = path, size and the last ~300 KB; POST ?op=clear empties it
+                val clear = ex.method == "POST" && q["op"] == "clear"
+                if (clear) PrintLog.clear()
+                return ex.json(JSONObject().put("ok", true).put("path", PrintLog.file().absolutePath).put("size", PrintLog.size()).put("text", if (clear) "" else PrintLog.tail()))
+            }
             "pcfind" -> return ex.json(JSONArray().also { a -> com.lanshare.app.pe.PePc.find().forEach { a.put(JSONObject().put("ip", it.ip).put("name", it.name).put("port", it.port)) } })   // Phone Explorer: PCs running phone_explorer.py
             "pcphone" -> {   // Phone Explorer: that PC opens this phone's storage in Explorer
                 com.lanshare.app.pe.PePc.open(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: "", q["name"] ?: "Phone")

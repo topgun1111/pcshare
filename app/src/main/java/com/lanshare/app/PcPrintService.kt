@@ -19,6 +19,7 @@ import android.print.PrinterInfo
 import android.printservice.PrintJob
 import android.printservice.PrintService
 import android.printservice.PrinterDiscoverySession
+import com.lanshare.app.core.PrintLog
 import java.io.File
 import java.io.IOException
 
@@ -39,6 +40,11 @@ class PcPrintService : PrintService() {
         const val ID_PC = "lanshare-pc"
         const val ID_PDF = "lanshare-pdf"
         const val DIR_PDF = "LANShare PDF"
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        PrintLog.init(applicationContext)
     }
 
     override fun onCreatePrinterDiscoverySession(): PrinterDiscoverySession = object : PrinterDiscoverySession() {
@@ -92,26 +98,40 @@ class PcPrintService : PrintService() {
             .build()
     }
 
-    override fun onRequestCancelPrintJob(job: PrintJob) { job.cancel() }
+    override fun onRequestCancelPrintJob(job: PrintJob) {
+        PrintLog.ev("service-cancel", null, "label" to job.info.label)
+        job.cancel()
+    }
 
     override fun onPrintJobQueued(job: PrintJob) {
         Thread {
+            val jid = PrintLog.jid()
+            PrintLog.bind(jid)
+            var f: File? = null
             try {
                 job.start()
+                val a = job.info.attributes
+                PrintLog.ev("service-job", null, "label" to job.info.label, "printer" to job.info.printerId?.localId, "copies" to job.info.copies, "pages" to job.info.pages?.map { "${it.start}-${it.end}" },
+                    "media" to a.mediaSize?.id, "duplex" to a.duplexMode, "color" to a.colorMode, "orientation_landscape" to (a.mediaSize?.isPortrait == false))
                 if (job.info.printerId?.localId == ID_PDF) { savePdf(job); return@Thread }
                 val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
                 if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No storage access - allow \"All files access\" for LANShare")
                 var base = (job.info.label ?: "document").replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(80).ifEmpty { "document" }
                 if (!base.lowercase().endsWith(".pdf")) base += ".pdf"
-                var f = File(dir, base); var k = 1
-                while (f.exists()) { f = File(dir, "${base.removeSuffix(".pdf")} ($k).pdf"); k++ }
+                var out = File(dir, base); var k = 1
+                while (out.exists()) { out = File(dir, "${base.removeSuffix(".pdf")} ($k).pdf"); k++ }
+                f = out
                 val pfd: ParcelFileDescriptor = job.document.data ?: throw IOException("No document data")
-                ParcelFileDescriptor.AutoCloseInputStream(pfd).use { ins -> f.outputStream().use { ins.copyTo(it) } }
+                ParcelFileDescriptor.AutoCloseInputStream(pfd).use { ins -> out.outputStream().use { ins.copyTo(it) } }
+                if (out.length() == 0L) throw IOException("The document was empty")
+                PrintLog.ev("service-saved", null, "file" to out.absolutePath, "bytes" to out.length())
                 job.complete()
-                openInApp(f.name)
-            } catch (e: Exception) {
-                try { job.fail(e.message ?: "LANShare could not read the document") } catch (_: Exception) {}
-            }
+                openInApp(out.name)
+            } catch (e: Throwable) {
+                PrintLog.err("service-job-failed", null, e, "file" to f?.absolutePath)
+                try { f?.delete() } catch (_: Exception) {}   // never leave a half-written PDF for LANShare to open
+                try { job.fail(e.message ?: "LANShare could not read the document [log $jid]") } catch (_: Exception) {}
+            } finally { PrintLog.bind(null) }
         }.start()
     }
 
@@ -142,6 +162,7 @@ class PcPrintService : PrintService() {
                 uri = u
             } else throw IOException("No storage access - allow \"All files access\" for LANShare")
         }
+        PrintLog.ev("service-pdf-saved", null, "name" to shown, "uri" to uri?.toString())
         job.complete()
         notifySaved(shown, uri)
     }

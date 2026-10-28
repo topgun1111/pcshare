@@ -184,6 +184,12 @@ class MainActivity : Activity() {
                 mapOf<com.google.zxing.EncodeHintType, Any>(com.google.zxing.EncodeHintType.MARGIN to 1))
             (0 until m.height).joinToString("\n") { y -> (0 until m.width).joinToString("") { x -> if (m.get(x, y)) "1" else "0" } }
         } catch (_: Throwable) { "" }
+        /** Settings > Print log / job card "Print log": the native log screen. [jids] = comma list of job ids to show first (may be empty), [dev] = the PC for "Fetch PC log" (may be empty). */
+        @JavascriptInterface fun openPrintLog(jids: String, dev: String) {
+            runOnUiThread { try { PrintLogActivity.open(this@MainActivity, jids, dev) } catch (_: Throwable) { } }
+        }
+        /** Job card "Copy log": the lines of these job ids (phone log + the PC's diag for J ids) go to the clipboard. */
+        @JavascriptInterface fun copyPrintLog(jids: String, dev: String) { PrintLogActivity.copyJobs(this@MainActivity, jids, dev) }
         /** Menu -> "Text inbox": the native send / receive text screen (InboxActivity). */
         @JavascriptInterface fun openInbox() {
             runOnUiThread { try { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) } catch (_: Throwable) { } }
