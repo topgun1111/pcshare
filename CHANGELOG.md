@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Back up and restore all settings
+
+### Added
+- Settings > Backup settings: Export saves every setting of the app (from the smallest to the main ones) into one file; Import restores it.
+- Export can include saved passwords and the Phone Explorer PIN (off by default).
+- Import checks the file first: a file that is damaged, not a settings file, or not fully compatible with this version of the app (for example made by an older or a newer version) is refused with a warning and nothing is changed.
+
 ## 2026-10-28 - PC gallery finds the Pictures folder by itself
 
 ### Changed

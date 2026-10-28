@@ -105,6 +105,10 @@ object Cfg {
     @Synchronized fun peerCache(): JSONArray = obj.optJSONArray("peer_cache") ?: JSONArray()
     @Synchronized fun setPeerCache(a: JSONArray) { obj.put("peer_cache", a); save() }
 
+    /** Generic access for settings export / import (core/settings): null = key not set (the app default applies). Values are JSON types (Boolean, Int, Double, String, JSONArray). */
+    @Synchronized fun rawGet(key: String): Any? { if (!obj.has(key) || obj.isNull(key)) return null; return obj.get(key) }
+    @Synchronized fun rawPut(key: String, v: Any?) { if (v == null) obj.remove(key) else obj.put(key, v) }
+
     @Synchronized fun load(f: File, phoneModel: String, hostName: String) {
         file = f
         obj = readOr(f) ?: readOr(File(f.path + ".bak")) ?: JSONObject()   // a torn main file falls back to the last good copy

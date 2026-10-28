@@ -39,6 +39,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 14. Changelog (newest first)
 15. Appendix: source map, unused code, documentation gaps
 16. Universal Search (multipart plan, in progress)
+17. Settings export / import (Settings > Backup settings)
 
 ---
 
@@ -948,6 +949,10 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+## Oct 28 2026 - Settings export / import (chapter 17)
+- New `core/settings/SettingsSchema.kt` (registry of every exported setting + file format + compatibility gate, pure Kotlin/org.json), `core/settings/SettingsIo.kt` (Android read / apply), `Cfg.rawGet/rawPut`, MainActivity bridge `settingsWebKeys / settingsExport / settingsImport` (+ request codes 11 / 12), `ui.html` Settings > "Backup settings" sheet (`openSettingsBackup`, `lsSettingsApply`), JVM test `tools/settings_selftest` + CI job `settings-selftest`.
+- JVM selftest (kotlinc 2.0.21 + org.json 20240303): 41 ok, 0 FAIL. The Android side (SettingsIo, MainActivity, ui.html sheet) is NOT compiled and NOT device-tested.
+
 - 2026-10-28 - `pcprint.py` v33 `/pictures` + `PcPictures.hint` (PC gallery auto-detects the Pictures folder; Kotlin NOT compiled). `CHANGELOG.md` section added.
 - 2026-10-28 - `pcprint.py` v32: long file names keep their extension (`safe_name`). `CHANGELOG.md` section added.
 - 2026-10-28 - Print resilience Part 4 (9.8), Kotlin NOT compiled: `PrintLogActivity.kt` (log screen, Fetch PC log, Share / Copy / Clear / Open folder, Full detail), `Cfg.printVerbose`, `PrintLog.clip` honours it, `Job.logId` (`logid` in the job JSON) set in `Jobs.printWork` / `WifiPrint.work` / `PdfPrint.work`, Bridge `openPrintLog` / `copyPrintLog`, manifest entry, `ui.html` Settings row + job card buttons (`lvEnd`). `CHANGELOG.md` section added.
@@ -1391,3 +1396,45 @@ Long-press a section header (Names / Contents / Pictures) = select that whole se
 - find() now remembers the first real error while scanning shares and throws it ("Could not read the PC's folders - /C$: Access denied ..."), with the fix: share Pictures/Users and set it by hand (/Pictures), or use an administrator account (LocalAccountTokenFilterPolicy=1 for C$).
 - Also needed on the PC: Windows Firewall SMB-In rule scope must include 100.64.0.0/10; pcprint.py port 8799 must be allowed on Tailscale for the automatic hint.
 - NOT compiled / NOT device-tested.
+
+---
+
+## 17. Settings export / import
+
+**Summary.** Settings > **Backup settings** (sheet in `ui.html`): *Export settings* writes every app setting, from the smallest (editor "Keep screen on") to the main ones (saved servers, search index, interface size, theme), into one JSON file the user saves anywhere (system "save file" screen). *Import settings* picks such a file, checks it, asks for confirmation, applies it all-or-nothing and recreates the screen. Option *Include passwords and PIN* (default off).
+
+**Owner rule (2026-10-28):** when a NEWER app imports OLDER settings and they are not fully compatible, show a warning and REFUSE the import (nothing is changed). Implemented as a strict gate, see below; the same gate also refuses files from a newer app.
+
+**Files**
+- `core/settings/SettingsSchema.kt` - the REGISTRY (`ALL`, one line per setting), `SCHEMA` / `MIN_COMPAT`, `build()`, `parse()` (= the gate), value validation, checksum. Pure Kotlin + org.json, no Android.
+- `core/settings/SettingsIo.kt` - `export()` reads lanshare.json (`Cfg.rawGet`), SharedPreferences, and the page's localStorage snapshot; `apply()` writes them back; `describe()` text of the confirm dialog.
+- `MainActivity.kt` - bridge `settingsWebKeys / settingsExport / settingsImport`, `settingsExportStart/Done`, `settingsImportStart/Picked/Apply` (request codes 11 import, 12 export), warning + confirm dialogs.
+- `ui.html` - `openSettingsBackup()`, `lsSettingsApply(json)`; the button sits under "Check for updates" in the Settings sheet.
+- `tools/settings_selftest/SettingsSelfTest.kt`, CI job `settings-selftest`.
+
+**File format.** `{format:"lanshare-settings", schema, app:{versionName,versionCode}, device, created, secrets, count, entries:{<id>: value|null}, checksum}`. Ids: `cfg/<key>` (lanshare.json), `pref/<file>/<key>` (SharedPreferences), `web/<key>` (page localStorage, raw string). `null` = never changed (the app default applies; import removes the key). The checksum (SHA-256 over the canonical entries) detects damage / hand edits; it is not a signature.
+
+**Compatibility gate (`SettingsSchema.parse`).** A file is accepted ONLY if all hold: format ok; checksum ok; `MIN_COMPAT <= schema <= SCHEMA`; the set of ids in the file is EXACTLY the set of ids in `ALL` (a missing id = file from an older version that did not have that setting yet -> refused as OLDER, listing the settings by name; an unknown id = file from a newer version -> refused as NEWER); every value has the right type and range. Refusal shows a warning dialog with the reasons and changes nothing.
+
+**What is exported:** device name (applied only when it was set by hand), saved SMB / FTP / SFTP servers, remote IPs, picture-scan and search-index settings, root, text-sharing / clipboard / print-log options; interface size, text size, font; OCR, Office, PDF, video, text-editor, phone-print, storage-analyzer and search-screen settings; Phone Explorer (port, read-only, FTPS, autostart, shared folders; PIN only with passwords); the page's view / sort / theme / hidden files / gallery / quick folders / folder styles / print options etc. (`web/*`).
+
+**What is NOT exported (state, caches, user data):** device id, peer and printer caches, indexes, reading / playback positions, search history (`recent`), update-check state, model-link state, inbox texts, albums, notes, print history and last-used PC, thumbnails cache.
+
+**Passwords.** Default: `password` is stripped from every saved SMB / FTP entry and the Phone Explorer PIN is left out; on import, entries with the same id keep the password stored on this phone and the PIN is untouched. With *Include passwords and PIN* the file is plain text and replaces them.
+
+**How to add a setting (MANDATORY, else old exports are refused - by design):** add ONE line in `SettingsSchema` init, bump `SCHEMA` (and `MIN_COMPAT` too if an old value would now be misread), run the selftest. A setting that the app stores but is missing from `ALL` is silently not exported - when you add a new SharedPreferences key / Cfg key / page localStorage key, add it here too.
+
+**Limits / not done**
+- Android side never compiled here; CI `build` is the first compile. Device checklist below.
+- After import the activity is recreated; background features that read settings once at start (search index schedule, running Phone Explorer server) pick up everything after the app process restarts.
+- No migration of older files by design (owner rule: refuse). A future "import with defaults for missing settings" mode would be a separate, explicit choice.
+- Page keys come from `ui.html` localStorage of the current origin (port-dependent); `ls_g` / `ls_pf` fall back to their native mirror (`ui_prefs`).
+
+**Test checklist (device)**
+1. Settings > Backup settings > Export: save the file; open it: readable JSON, `count` = number of settings, no `password` values.
+2. Change a few settings (theme, interface size, a search-index toggle, editor wrap), Import the file: confirm dialog shows device, date, version; after import the screen restarts and the old values are back.
+3. Import with a hand-edited value: "damaged" warning. Import a random .json / .txt: "not a settings file".
+4. Remove a line from `entries` (simulate an older file) or bump `schema`: warning dialog lists the reasons, nothing changes.
+5. Export with *Include passwords and PIN*, delete a saved server, Import: the server is back with its password.
+6. Export without passwords, edit a server's password, Import: the local password is kept.
+

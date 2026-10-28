@@ -47,6 +47,8 @@ class MainActivity : Activity() {
         const val X_SHOW_PATH = "path"
         const val X_SHOW_DEV = "show_dev"     // Storage Analyzer on another device: that device id ("" = this phone)
         const val X_SHOW_OPEN = "show_open"   // ... and the file name to open in that folder
+        private const val REQ_SET_IMPORT = 11   // Settings > Backup: pick a settings file
+        private const val REQ_SET_EXPORT = 12   // Settings > Backup: choose where to save the export
     }
     private lateinit var web: WebView
     private lateinit var nl: NativeList
@@ -242,6 +244,12 @@ class MainActivity : Activity() {
         /** Page preferences that must survive a change of the page's origin (port) or cleared web storage: per-folder sort / view (ls_g, ls_pf). */
         @JavascriptInterface fun prefGet(k: String): String = try { getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).getString(k, "") ?: "" } catch (_: Throwable) { "" }
         @JavascriptInterface fun prefSet(k: String, v: String) { try { if (k.startsWith("ls_") && v.length < 1_500_000) getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).edit().putString(k, v).apply() } catch (_: Throwable) { } }
+        /** Settings > Backup (core/settings): the page's own localStorage keys that belong to the export, as a JSON array. */
+        @JavascriptInterface fun settingsWebKeys(): String = org.json.JSONArray(com.lanshare.app.core.settings.SettingsSchema.WEB_KEYS).toString()
+        /** [webJson] = {key: string|null} read from the page's localStorage; [secrets] = put saved-server passwords + Phone Explorer PIN into the file. Opens the system "save file" screen. */
+        @JavascriptInterface fun settingsExport(webJson: String, secrets: Boolean) { settingsExportStart(webJson, secrets) }
+        /** Opens the system file picker; the chosen file is checked (all-or-nothing) and applied only after the user confirms. */
+        @JavascriptInterface fun settingsImport() { runOnUiThread { settingsImportStart() } }
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
         /** Settings -> Font: current id and the list as "id|name" lines. */
@@ -725,12 +733,103 @@ class MainActivity : Activity() {
     }
 
     override fun onActivityResult(req: Int, res: Int, d: Intent?) {
+        if (req == REQ_SET_IMPORT) { settingsImportPicked(res, d); return }
+        if (req == REQ_SET_EXPORT) { settingsExportDone(res, d); return }
         if (req != 10) return super.onActivityResult(req, res, d)
         val out: Array<Uri>? = if (res != RESULT_OK || d == null) null else {
             val c = d.clipData
             if (c != null) Array(c.itemCount) { c.getItemAt(it).uri } else d.data?.let { arrayOf(it) }
         }
         chooser?.onReceiveValue(out); chooser = null
+    }
+
+    // ---------------------------------------------------------------- Settings export / import (core/settings/*, HANDOVER chapter 17)
+    private var pendingExport: String? = null
+    private var pendingImport: com.lanshare.app.core.settings.SettingsSchema.Parsed? = null
+    private fun longToast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
+
+    private fun settingsExportStart(webJson: String, secrets: Boolean) {
+        Thread {
+            try {
+                val text = com.lanshare.app.core.settings.SettingsIo.export(applicationContext, webJson, secrets)
+                val nm = com.lanshare.app.core.Cfg.name.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').take(24).ifEmpty { "device" }
+                val fn = "lanshare-settings-" + nm + "-" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date()) + ".json"
+                runOnUiThread {
+                    pendingExport = text
+                    try { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, fn), REQ_SET_EXPORT) }
+                    catch (e: Exception) { pendingExport = null; longToast("Cannot open the file saver: " + errText(e)) }
+                }
+            } catch (e: Throwable) { runOnUiThread { longToast("Export failed: " + errText(e)) } }
+        }.start()
+    }
+
+    private fun settingsExportDone(res: Int, d: Intent?) {
+        val text = pendingExport; pendingExport = null
+        val uri = d?.data
+        if (res != RESULT_OK || uri == null || text == null) return
+        Thread {
+            val msg = try {
+                contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                "Settings exported"
+            } catch (e: Throwable) { "Export failed: " + errText(e) }
+            runOnUiThread { longToast(msg) }
+        }.start()
+    }
+
+    private fun settingsImportStart() {
+        try { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_SET_IMPORT) }
+        catch (e: Exception) { longToast("Cannot open the file picker: " + errText(e)) }
+    }
+
+    private fun settingsImportPicked(res: Int, d: Intent?) {
+        val uri = d?.data
+        if (res != RESULT_OK || uri == null) return
+        Thread {
+            val r: com.lanshare.app.core.settings.SettingsSchema.Result = try {
+                val max = com.lanshare.app.core.settings.SettingsSchema.MAX_FILE_CHARS
+                val bytes = contentResolver.openInputStream(uri)!!.use { it.readNBytesCompat(max * 4 + 1) }
+                if (bytes.size > max * 4) com.lanshare.app.core.settings.SettingsSchema.Result.Refused("NOT_SETTINGS", listOf("The file is too large to be a settings export."))
+                else com.lanshare.app.core.settings.SettingsSchema.parse(String(bytes, Charsets.UTF_8))
+            } catch (e: Throwable) { com.lanshare.app.core.settings.SettingsSchema.Result.Refused("NOT_SETTINGS", listOf("The file cannot be read: " + errText(e))) }
+            runOnUiThread {
+                when (r) {
+                    is com.lanshare.app.core.settings.SettingsSchema.Result.Refused -> {
+                        pendingImport = null
+                        AppPal.dlg(this).setTitle("Settings NOT imported")
+                            .setMessage("\u26a0 This settings file is not fully compatible with this version of LANShare, so nothing was changed.\n\n" + r.reasons.joinToString("\n\n"))
+                            .setPositiveButton("OK", null).show()
+                    }
+                    is com.lanshare.app.core.settings.SettingsSchema.Result.Ok -> {
+                        pendingImport = r.parsed
+                        AppPal.dlg(this).setTitle("Import settings?")
+                            .setMessage(com.lanshare.app.core.settings.SettingsIo.describe(r.parsed))
+                            .setPositiveButton("Import") { _, _ -> settingsImportApply() }
+                            .setNegativeButton("Cancel") { _, _ -> pendingImport = null }.show()
+                    }
+                }
+            }
+        }.start()
+    }
+
+    private fun settingsImportApply() {
+        val p = pendingImport ?: return; pendingImport = null
+        Thread {
+            try {
+                val a = com.lanshare.app.core.settings.SettingsIo.apply(applicationContext, p)
+                runOnUiThread {
+                    val done = { longToast("Settings imported (" + a.count + "). Restarting the screen\u2026"); recreate() }
+                    // the page writes its own localStorage keys first, then the activity is recreated (reloads the page with everything applied)
+                    try { web.evaluateJavascript("lsSettingsApply(" + JSONObject.quote(a.web.toString()) + ")") { done() } } catch (_: Throwable) { done() }
+                }
+            } catch (e: Throwable) { runOnUiThread { longToast("Import failed: " + errText(e)) } }
+        }.start()
+    }
+
+    /** InputStream.readNBytes needs API 33; this reads at most [n] bytes on every supported API level. */
+    private fun java.io.InputStream.readNBytesCompat(n: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(65536); var left = n
+        while (left > 0) { val k = read(buf, 0, minOf(buf.size, left)); if (k < 0) break; out.write(buf, 0, k); left -= k }
+        return out.toByteArray()
     }
 
     /** Push download progress to the page: state = run | done | err | cancel */
