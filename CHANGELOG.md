@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Faster Office previews
+
+### Changed
+- Word, Excel and PowerPoint previews on the PC are much quicker: the PC keeps these apps ready in the background (hidden) instead of starting them for every file.
+- Opening the same document again shows its preview straight away.
+
 ## 2026-10-28 - Print space: tap opens, hold selects
 
 ### Changed

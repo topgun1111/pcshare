@@ -37,7 +37,7 @@ v12: sturdier service (worker that survives any error, idle-socket timeout, queu
 cached printer status, window restarts a dead service), `GET /jobs` (current job + history), window buttons: Test page, Clear queue,
 Queue folder, Open log.
 """
-import collections, ctypes, importlib, io, ipaddress, itertools, json, math, os, queue, re, shutil, socket, subprocess, sys, threading, time, traceback, zlib
+import atexit, base64, collections, ctypes, hashlib, importlib, io, ipaddress, itertools, json, math, os, queue, re, shutil, socket, subprocess, sys, threading, time, traceback, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -940,11 +940,306 @@ def office_engine(ext=None):
     return "LibreOffice" if find_soffice() else None
 
 
+# ---- always-on Office: Word / Excel / PowerPoint are started once (hidden) and stay open, so a preview or print skips the 2-6 s start-up.
+# One PowerShell process holds the Office objects and answers one line per request (paths travel base64-encoded). The keeper thread
+# pings it every 3 s: it restarts a dead / hung worker, re-opens an Office app that was closed, and hands an app over to the user
+# (made visible and let go, never closed) when they opened one of their own files in it. Set LANSHARE_NO_WARM=1 to switch it off.
+WARM_OFFICE = WIN and os.environ.get("LANSHARE_NO_WARM") != "1"
+OFFICE_KEYS = (("word", "Word.Application"), ("excel", "Excel.Application"), ("ppt", "PowerPoint.Application"))
+
+PS_WARM = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$ids = @{ word = 'Word.Application'; excel = 'Excel.Application'; ppt = 'PowerPoint.Application' }
+$procs = @{ word = 'WINWORD'; excel = 'EXCEL'; ppt = 'POWERPNT' }
+$apps = @{}; $own = @{}; $pidmap = @{}; $retry = @{}
+function Out1([string]$s) { [Console]::Out.WriteLine($s); [Console]::Out.Flush() }
+function Enc([string]$s) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) }
+function Dec([string]$s) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) }
+function Alive($a) { try { $null = $a.Name; return $true } catch { return $false } }
+function Forget([string]$k) { $apps.Remove($k); $own.Remove($k); $pidmap.Remove($k) }
+function Send-Pids {
+  $l = @(); foreach ($k in @($pidmap.Keys)) { if ($own[$k]) { $l += $pidmap[$k] } }
+  Out1 ('PIDS ' + (($l | ForEach-Object { [string]$_ }) -join ','))
+}
+function Get-App([string]$k) {
+  if ($apps.ContainsKey($k) -and (Alive $apps[$k])) { return $apps[$k] }
+  Forget $k
+  $before = @(Get-Process -Name $procs[$k] -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+  $a = New-Object -ComObject $ids[$k]
+  try { if ($k -eq 'word') { $a.Visible = $false; $a.DisplayAlerts = 0 } elseif ($k -eq 'excel') { $a.Visible = $false; $a.DisplayAlerts = $false } else { $a.DisplayAlerts = 1 } } catch {}
+  try { $a.AutomationSecurity = 3 } catch {}
+  $new = @(Get-Process -Name $procs[$k] -ErrorAction SilentlyContinue | Where-Object { $before -notcontains $_.Id } | ForEach-Object { $_.Id })
+  $apps[$k] = $a; $pidmap[$k] = $new
+  $own[$k] = ($k -ne 'ppt') -or ($before.Count -eq 0)
+  Send-Pids
+  return $a
+}
+function Do-Convert([string]$src, [string]$dst) {
+  $ext = [IO.Path]::GetExtension($src).ToLower()
+  if ($ext -in '.doc','.docx','.rtf','.odt') {
+    $a = Get-App 'word'
+    $d = $a.Documents.Open($src, $false, $true, $false)
+    try { $d.ExportAsFixedFormat($dst, 17) } finally { $d.Close($false) }
+  } elseif ($ext -in '.xls','.xlsx','.csv','.ods') {
+    $a = Get-App 'excel'
+    $b = $a.Workbooks.Open($src, 0, $true)
+    try { $b.ExportAsFixedFormat(0, $dst) } finally { $b.Close($false) }
+  } elseif ($ext -in '.ppt','.pptx','.odp') {
+    $a = Get-App 'ppt'
+    $p = $a.Presentations.Open($src, -1, 0, 0)
+    try { $p.SaveAs($dst, 32) } finally { $p.Close() }
+  } else { throw 'not an office file' }
+}
+function Do-Check([string]$list) {
+  foreach ($k in @($apps.Keys)) {
+    $a = $apps[$k]
+    if (-not (Alive $a)) { Forget $k; continue }
+    if ($k -eq 'ppt') { continue }
+    $n = 0
+    try { if ($k -eq 'word') { $n = $a.Documents.Count } else { $n = @($a.Workbooks | Where-Object { $_.Name -ne 'PERSONAL.XLSB' }).Count } } catch {}
+    if ($n -gt 0) {   # the user opened a file of their own in our hidden app: show it and let it go (we never close it)
+      try { $a.Visible = $true } catch {}
+      Forget $k
+      Out1 ('LOG handed over ' + $k + ' to the user')
+    }
+  }
+  Send-Pids
+  foreach ($k in $list.Split(',')) {
+    if (-not $k -or $k -eq '-') { continue }
+    if ($retry.ContainsKey($k) -and (Get-Date) -lt $retry[$k]) { continue }
+    try { $null = Get-App $k; $retry.Remove($k) }
+    catch { $retry[$k] = (Get-Date).AddSeconds(60); Out1 ('LOG could not start ' + $k + ': ' + ($_.Exception.Message -replace '[\r\n]+', ' ')) }
+  }
+}
+$run = $true
+try {
+  while ($run) {
+    $line = [Console]::In.ReadLine()
+    if ($null -eq $line) { break }
+    $p = $line.Trim().Split(' ')
+    try {
+      if ($p[0] -eq 'CONV') { Do-Convert (Dec $p[1]) (Dec $p[2]); Out1 'OK' }
+      elseif ($p[0] -eq 'CHECK') { Do-Check $p[1]; Out1 'OK' }
+      elseif ($p[0] -eq 'QUIT') { $run = $false; Out1 'OK' }
+      else { Out1 ('ERR ' + (Enc 'unknown command')) }
+    } catch {
+      $m = $_.Exception.Message
+      foreach ($k in @($apps.Keys)) { if (-not (Alive $apps[$k])) { Forget $k } }
+      Send-Pids
+      Out1 ('ERR ' + (Enc $m))
+    }
+  }
+} finally {
+  foreach ($k in @($apps.Keys)) {
+    if (-not $own[$k]) { continue }
+    try {
+      if ($k -eq 'ppt' -and $apps[$k].Presentations.Count -gt 0) { continue }
+      $apps[$k].Quit()
+    } catch {}
+  }
+}
+"""
+
+
+def _b64(t):
+    return base64.b64encode(t.encode("utf-8")).decode("ascii")
+
+
+class OfficeWarm:
+    def __init__(self):
+        self.lock = threading.Lock()   # one request on the pipe at a time
+        self.proc = None
+        self.q = queue.Queue()
+        self.pids = set()              # Office processes the worker started itself (killed with it when it hangs)
+
+    def _spawn(self):
+        ps1 = ps_script("officewarm.ps1", PS_WARM)
+        self.pids = set()
+        p = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             text=True, encoding="ascii", errors="replace", bufsize=1, creationflags=CF)
+        q = queue.Queue()
+        self.proc, self.q = p, q
+        threading.Thread(target=self._read, args=(p, q), daemon=True, name="office-warm-reader").start()
+        log("Office worker started")
+
+    def _read(self, p, q):
+        try:
+            for line in p.stdout:
+                line = line.rstrip("\r\n")
+                if line.startswith("PIDS "):
+                    if p is self.proc:
+                        self.pids = {int(x) for x in line[5:].split(",") if x.strip().isdigit()}
+                elif line.startswith("LOG "):
+                    log("Office worker: " + line[4:])
+                elif line:
+                    q.put(line)
+        except Exception:
+            pass
+        q.put(None)
+
+    def _kill(self, why):
+        log("Office worker stopped: " + why)
+        p, pids = self.proc, set(self.pids)
+        self.proc, self.pids = None, set()
+        if p is not None:
+            pids.add(p.pid)
+        for pid in pids:
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=15, creationflags=CF)
+            except Exception:
+                pass
+
+    def _ask(self, cmd, timeout):
+        """One request / one answer line. Caller holds self.lock. Raises TimeoutError (hung: worker + its Office apps are killed) or RuntimeError."""
+        p = self.proc
+        if p is not None and p.poll() is not None:
+            self._kill("it exited")
+            p = None
+        if p is None:
+            self._spawn()
+            p = self.proc
+        q = self.q
+        try:
+            while True:
+                q.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            p.stdin.write(cmd + "\n")
+            p.stdin.flush()
+        except (OSError, ValueError):
+            self._kill("pipe closed")
+            raise RuntimeError("Office worker not running")
+        try:
+            line = q.get(timeout=timeout)
+        except queue.Empty:
+            self._kill("no answer within %d s" % timeout)
+            raise TimeoutError("Office did not answer")
+        if line is None:
+            self._kill("it exited")
+            raise RuntimeError("Office worker exited")
+        return line
+
+    def convert(self, src, dst, timeout=180):
+        with self.lock:
+            line = self._ask("CONV %s %s" % (_b64(src), _b64(dst)), timeout)
+        if line == "OK":
+            return
+        if line.startswith("ERR "):
+            try:
+                msg = base64.b64decode(line[4:]).decode("utf-8", "replace").strip()
+            except Exception:
+                msg = line
+            raise RuntimeError((msg.splitlines() or ["failed"])[0][:150])
+        raise RuntimeError("unexpected answer from the Office worker")
+
+    def keeper(self):
+        """Keeps the worker and the Office apps alive for the whole time the service runs (started once in serve())."""
+        fails = 0
+        while True:
+            wait = 3
+            keys = ",".join(k for k, prog in OFFICE_KEYS if has_com(prog))
+            if keys and self.lock.acquire(timeout=2):   # busy converting = nothing to check
+                try:
+                    self._ask("CHECK " + keys, 150)
+                    fails = 0
+                except Exception as e:
+                    fails += 1
+                    if fails <= 3 or fails % 20 == 0:
+                        log(f"Office worker check failed ({fails}): {e!r}")
+                    wait = min(60, 5 * fails)
+                finally:
+                    self.lock.release()
+            time.sleep(wait)
+
+    def shutdown(self):
+        p = self.proc
+        try:
+            if p is not None and p.poll() is None:
+                p.stdin.write("QUIT\n")
+                p.stdin.flush()
+                p.stdin.close()
+                p.wait(timeout=8)
+        except Exception:
+            pass
+
+
+OFFICE = OfficeWarm()
+atexit.register(OFFICE.shutdown)
+
+
+# ---- converted previews are cached by file content: opening the same document again needs no conversion at all
+PV_CACHE = os.path.join(APP, "pv-cache")
+PV_CACHE_KEEP, PV_CACHE_BYTES = 40, 400 << 20
+
+
+def pv_cache_get(key):
+    p = os.path.join(PV_CACHE, key)
+    try:
+        if os.path.getsize(p) > 0:
+            with open(p, "rb") as f:
+                data = f.read()
+            os.utime(p, None)   # most recently used stays longest
+            return data
+    except OSError:
+        pass
+    return None
+
+
+def pv_cache_put(key, data):
+    try:
+        os.makedirs(PV_CACHE, exist_ok=True)
+        p = os.path.join(PV_CACHE, key)
+        tmp = p + ".%d.tmp" % threading.get_ident()
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, p)
+        files = []
+        for n in os.listdir(PV_CACHE):
+            fp = os.path.join(PV_CACHE, n)
+            try:
+                st = os.stat(fp)
+                files.append((st.st_mtime, st.st_size, fp))
+            except OSError:
+                pass
+        files.sort(reverse=True)
+        total = 0
+        for i, (_, size, fp) in enumerate(files):
+            total += size
+            if i >= PV_CACHE_KEEP or total > PV_CACHE_BYTES:
+                try:
+                    os.remove(fp)
+                except OSError:
+                    pass
+    except OSError as e:
+        log(f"preview cache not written: {e}")
+
+
+
 def office_to_pdf(path):
     ext = os.path.splitext(path)[1].lower()
     dst = out_pdf(path, "office")
     errs = []
-    if has_com(OFFICE_COM.get(ext, "")):
+    com = has_com(OFFICE_COM.get(ext, ""))
+    skip_com = False
+    if com and WARM_OFFICE:
+        try:
+            try:
+                os.remove(dst)
+            except OSError:
+                pass
+            OFFICE.convert(os.path.abspath(path), os.path.abspath(dst))
+            if os.path.isfile(dst) and os.path.getsize(dst) > 0:
+                return dst
+            log("warm Office gave no file, trying a one-off start")
+        except TimeoutError:
+            errs.append("Microsoft Office took too long (password or a dialog open?)")
+            skip_com = True
+        except Exception as e:
+            log(f"warm Office failed ({e}), trying a one-off start")
+    if com and not skip_com:
         ps1 = ps_script("office2pdf.ps1", PS_OFFICE)
         try:
             os.remove(dst)
@@ -2193,6 +2488,7 @@ class H(BaseHTTPRequestHandler):
         os.makedirs(INBOX, exist_ok=True)
         src = os.path.join(INBOX, f"pv{int(time.time() * 1000) % 10**9}_{name}")
         left, pdf = n, None
+        hs = hashlib.sha1()
         try:
             with open(src, "wb") as f:
                 while left > 0:
@@ -2200,10 +2496,17 @@ class H(BaseHTTPRequestHandler):
                     if not b:
                         raise ConnectionError("upload interrupted")
                     f.write(b)
+                    hs.update(b)
                     left -= len(b)
-            with H.CONVERT_LOCK:
-                pdf = office_to_pdf(src)
-            data = open(pdf, "rb").read()
+            key = hs.hexdigest() + ext + ".pdf"
+            data = pv_cache_get(key)
+            if data is None:
+                with H.CONVERT_LOCK:
+                    pdf = office_to_pdf(src)
+                data = open(pdf, "rb").read()
+                pv_cache_put(key, data)
+            else:
+                log(f"preview {name}: from cache")
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Length", str(len(data)))
@@ -2476,6 +2779,8 @@ def serve():
     threading.Thread(target=print_worker, daemon=True, name="print-worker").start()
     threading.Thread(target=refresh_printer, daemon=True, name="printer-state").start()
     threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
+    if WARM_OFFICE:
+        threading.Thread(target=OFFICE.keeper, daemon=True, name="office-warm").start()
     threading.Thread(target=beacon_listener, daemon=True, name="text-beacons").start()
     if not all(have_pkg(m) for m, _ in PKGS):
         threading.Thread(target=ensure_packages, daemon=True).start()
