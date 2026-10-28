@@ -2395,10 +2395,39 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.officeViewGet){const rv=E('button','set'),tv=E('div','t'),sv=E('small','');rv.style.width='100%';rv.style.textAlign='left';
     sv.textContent={auto:'Auto',exact:'Exact pages (PC)',simple:'Simple'}[LSAndroid.officeViewGet()]||'Auto';tv.append(E('b','','Office view'),sv);rv.append(tv);
     rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
+  if(window.LSAndroid&&LSAndroid.settingsExportFile){const rb=E('button','set'),tb=E('div','t');rb.style.width='100%';rb.style.textAlign='left';
+    tb.append(E('b','','Export / import settings'),E('small','','Save your settings to a file, or load them from one'));rb.append(tb);
+    rb.onclick=()=>{close();openSettingsFile()};card.append(rb)}
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+function openSettingsFile(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null;window.lsSettingsFileDone=null;window.lsSettingsFileAsk=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','Export / import settings'));
+  const info=E('p','','Export saves your settings to a .json file you choose. Import reads such a file and replaces the matching settings on this phone.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const lab=E('label','set'),cb=E('input');cb.type='checkbox';lab.style.cssText='display:flex;gap:10px;align-items:center;cursor:pointer';
+  const tl=E('div','t');tl.append(E('b','','Include passwords and PIN'),E('small','','The file is plain text: keep it private'));lab.append(cb,tl);card.append(lab);
+  const err=E('p','');err.style.cssText='display:none;color:#e5484d;font-size:13px;margin:8px';card.append(err);
+  const ex=E('button','tbtn fill','Export settings'),im=E('button','tbtn','Import settings'),bk=E('button','tbtn','Back');
+  const act=E('div','dact');act.append(ex,im,bk);card.append(act);
+  const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
+  const bz=b=>{ex.disabled=im.disabled=b};
+  window.lsSettingsFileDone=(ok,msg)=>{bz(false);if(ok){err.style.display='none';toast(msg,3000)}else{err.textContent=msg;err.style.display=''}};
+  window.lsSettingsFileAsk=async t=>{bz(false);
+    const v=await dlg({title:'Import settings',msg:t,ok:'Import',danger:true});
+    if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
+    try{const r=JSON.parse(LSAndroid.settingsFileApply());
+      if(r.error){err.textContent=r.error;err.style.display='';return}
+      Object.keys(r.web||{}).forEach(k=>{try{if(r.web[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,r.web[k])}catch(e){}});
+      toast('Settings imported ('+r.count+')',2500);setTimeout(()=>location.reload(),900)}
+    catch(e){err.textContent=e.message;err.style.display=''}};
+  ex.onclick=()=>{err.style.display='none';try{LSAndroid.settingsExportFile(webSnap(),cb.checked)}catch(e){err.textContent='Export is only available inside the Android app';err.style.display=''}};
+  im.onclick=()=>{err.style.display='none';try{LSAndroid.settingsImportFile()}catch(e){err.textContent='Import is only available inside the Android app';err.style.display=''}};
+  bk.onclick=()=>{close();openSettings()};
+  o.append(card)}
 function openTextSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};

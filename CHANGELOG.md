@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Export / import settings
+
+### Added
+- Settings > Export / import settings: save all your settings to a .json file you pick, and load them back from one. Passwords and the Phone Explorer PIN are left out unless you tick "Include passwords and PIN". A file is checked first, and a summary asks you to confirm before anything is replaced.
+
 ## 2026-10-28 - Faster Office previews
 
 ### Changed
