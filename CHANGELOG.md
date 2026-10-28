@@ -5,6 +5,18 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - FTP and Cloud servers on the Main menu
+
+### Added
+- Main menu: two new icons, FTP servers and Cloud servers. Tap one to see your saved servers or accounts and open them; the last row adds or edits them.
+
+### Removed
+- Main menu: the Printers and Favorite folders icons (Printers and Quick folders are still in the side menu).
+- FTP servers and Google Drive accounts no longer appear in the Devices list (Main menu, side menu, device picker). The side menu's FTP button and Google Drive row are gone too.
+
+### Changed
+- Swiping left or right between devices skips FTP servers and Google Drive accounts.
+
 ## 2026-10-28 - Build fix
 
 ### Fixed

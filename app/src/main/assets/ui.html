@@ -1023,6 +1023,8 @@ const connTxt=p=>{if(!p.via)return '';const v=(p.vias&&p.vias.length?p.vias:[p.v
 const batTxt=p=>(p&&p.kind==='LANShare'&&p.ok!==false&&p.bat>=0)?(p.chg?'\u26a1 ':'\ud83d\udd0b ')+p.bat+'%':'';   // phones only: PCs / SMB / FTP send no battery; hidden while offline (stale)
 function peerSub(p){const via=connTxt(p),ago=(p.ok===false&&p.seen&&!p.smb)?agoTxt(p.seen):'';
   return {via:via,t:[via,batTxt(p),p.ok===false?'offline':'',ago?'seen '+ago:''].filter(Boolean).join(' \u00b7 ')}}
+const isSrv=p=>!!p&&(p.kind==='FTP'||p.kind==='Drive');   // FTP / SFTP servers and Google Drive accounts: listed only behind the Main menu tiles "FTP servers" / "Cloud servers", never in Devices
+const devsOnly=()=>peersSorted().filter(p=>!isSrv(p));
 const peersSorted=()=>S.peers.slice().sort((a,b)=>((a.ok===false)-(b.ok===false))||String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()));   // every saved device is listed; online ones first
 function renderPeers(){
   hmDevSub();
@@ -1038,10 +1040,10 @@ function renderPeers(){
   if(S.dev==='local')mk('This device','local');
   else if(cur)mk(cur.name,cur.id,cur.ok===false,cur);
   else mk(S.known[S.dev]||'device',S.dev,true);
-  const nOther=S.peers.filter(p=>p.id!==S.dev).length+(S.dev!=='local'?1:0);
+  const nOther=S.peers.filter(p=>!isSrv(p)&&p.id!==S.dev).length+(S.dev!=='local'?1:0);
   if(nOther){const db=E('button','chip');db.append(ic('phone'),E('span','','Devices'),E('small','',String(nOther)));db.onclick=devPicker;box.append(db)}
   const add=E('button','chip add');add.append(ic('add'),E('span','','IP'));add.onclick=addIp;box.append(add);
-  $('#hint').textContent=S.peers.length?'':'Searching for devices\u2026 tap refresh, or add one by IP in Main menu > Devices'+(S.ips?' \u00b7 This device: '+S.ips:'')}
+  $('#hint').textContent=devsOnly().length?'':'Searching for devices\u2026 tap refresh, or add one by IP in Main menu > Devices'+(S.ips?' \u00b7 This device: '+S.ips:'')}
 function devPicker(all){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Devices'));
   const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
@@ -1051,9 +1053,22 @@ function devPicker(all){
     lt.append(nr);if(batTxt(p))lt.append(E('small','',batTxt(p)));if(p&&p.ok===false){const sm=E('small','','offline'+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}
     b.append(ld,lt);b.onclick=()=>{fin();openDev(id)};card.append(b)};
   if(all===true||S.dev!=='local')row('This device','local');
-  peersSorted().filter(p=>all===true||p.id!==S.dev).forEach(p=>row(p.name,p.id,p));
-  if(all===true&&!S.peers.length){const n=E('div','dnote','Searching for devices\u2026');card.append(n)}
+  devsOnly().filter(p=>all===true||p.id!==S.dev).forEach(p=>row(p.name,p.id,p));
+  if(all===true&&!devsOnly().length){const n=E('div','dnote','Searching for devices\u2026');card.append(n)}
   {const ab=E('button','li'),al=E('div','lead'),at=E('div','lt');al.append(ic('add'));at.append(E('span','dn','Add by IP'));ab.append(al,at);ab.onclick=()=>{fin();addIp()};card.append(ab)}
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=fin;card.append(c);o.append(card)}
+/* Main menu tiles "FTP servers" / "Cloud servers": the saved servers are listed only here. Tap = browse it; the bottom row opens the add / edit sheet (openFtp / openGdrive). */
+function srvPicker(kind){
+  const cloud=kind==='Drive',o=$('#sheet');o.textContent='';o.style.display='flex';
+  const card=E('div','card');card.append(E('div','handle'),E('h3','',cloud?'Cloud servers':'FTP servers'));
+  const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
+  const l=peersSorted().filter(p=>p.kind===kind);
+  l.forEach(p=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(cloud?ic('ftp'):E('i','dot'+(p.ok===false?' wn':'')));
+    const nr=E('div','');nr.append(E('span','dn',p.name));lt.append(nr);
+    const sb=peerSub(p);if(sb.t)lt.append(E('small','',sb.t));if(p.ok===false)lt.append(E('small','','offline'));
+    b.append(ld,lt);b.onclick=()=>{fin();openDev(p.id)};card.append(b)});
+  if(!l.length)card.append(E('div','dnote',cloud?'No cloud account yet.':'No FTP server saved yet.'));
+  {const ab=E('button','li'),al=E('div','lead'),at=E('div','lt');al.append(ic('add'));at.append(E('span','dn',cloud?'Add or manage accounts':'Add or edit servers'));ab.append(al,at);ab.onclick=()=>{fin();if(cloud)openGdrive();else openFtp()};card.append(ab)}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=fin;card.append(c);o.append(card)}
 let pollGen=0,pollTimer;
 async function pollPeers(){
@@ -4844,7 +4859,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     /^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'')||(t&&t.closest&&t.closest('#peers,#crumbs'));
   const tx=(x,o,ms)=>{const l=L();l.style.transition=ms?'transform '+ms+'ms ease-out,opacity '+ms+'ms ease-out':'none';l.style.transform=x?'translateX('+x+')':'';l.style.opacity=o}
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
-  const step=async dir=>{const ids=['local',...S.peers.map(p=>p.id)];if(S.dev!=='local'&&!ids.includes(S.dev))ids.push(S.dev);
+  const step=async dir=>{const ids=['local',...S.peers.filter(p=>!isSrv(p)).map(p=>p.id)];if(S.dev!=='local'&&!ids.includes(S.dev))ids.push(S.dev);
     const i=ids.indexOf(S.dev),j=i+dir;if(j<0||j>=ids.length){if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}tx('',1,180);return false}
     busy=true;if(navigator.vibrate)try{navigator.vibrate(12)}catch(_){}
     tx(dir>0?'-35%':'35%',0,110);await wait(110);          // old list slides away
@@ -4889,7 +4904,8 @@ const HM_P={
  vid:'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
  dl:'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
  prn:'M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z',
- ftp:'M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z',
+ ftp:'M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z',
+ cld:'M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z',
  smb:'M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z',
  fav:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2.06 11L15 15.28 12.06 17l.78-3.33-2.59-2.24 3.41-.29L15 8l1.34 3.14 3.41.29-2.59 2.24.78 3.33z',
  dev:'M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z',
@@ -4913,7 +4929,8 @@ function usWeb(q){let w=$('#usweb');if(w){w.remove()}
         d.onclick=()=>{w.remove();const p=i.dir&&i.badge!=='arc'?i.path:(i.path.replace(/\/[^\/]*$/,'')||'/');go(p)};lst.append(d)}
     }catch(e){if(my===seq){nn.textContent='Search failed: '+(e.message||e)}}};
   inp.oninput=()=>{clearTimeout(t);t=setTimeout(run,250)};$('#usx').onclick=()=>w.remove();inp.focus();if(inp.value)run()}
-function hmDevSub(){const e=$('#hmdev');if(e){const n=S.peers.length;e.textContent=n?n+(n===1?' other device':' other devices'):'Searching\u2026'}}
+function hmDevSub(){const e=$('#hmdev');if(e){const n=S.peers.filter(p=>!isSrv(p)).length;e.textContent=n?n+(n===1?' other device':' other devices'):'Searching\u2026'}
+  const sv=(id,k,none)=>{const t=$(id);if(t){const n=S.peers.filter(p=>p.kind===k).length;t.textContent=n?n+' saved':none}};sv('#hmftp','FTP','Add a server');sv('#hmcld','Drive','Add an account')}
 function homeHide(){const o=$('#home');o.style.display='none';o.textContent=''}
 function hmFavClose(){const a=$('#hmfavs'),m=$('#hmfav');if(a)a.remove();if(m)m.remove()}
 function hmFavMenu(anchor){
@@ -4958,7 +4975,7 @@ function homeShow(){
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',usr:'var(--hc2)',smb:'var(--hc6)',ftp:'var(--hc6)',fav:'var(--hc7)',dev:'var(--hc5)'};
+  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',usr:'var(--hc2)',smb:'var(--hc6)',ftp:'var(--hc4)',cld:'var(--hc7)',fav:'var(--hc7)',dev:'var(--hc5)'};
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
     const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
@@ -4970,9 +4987,9 @@ function homeShow(){
   g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/@gallery')},'/Pictures','img'),
     tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/@videos')},'/Movies','vid'),
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
-  g2.append(tile('prn','Printers','On this Wi-Fi',()=>{showPrinters()}),
-    tile('smb','SMB Shares','Network folders',()=>{openSmb()}),
-    tile('fav','Favorite folders',QF.length+(QF.length===1?' folder':' folders'),b=>hmFavMenu(b)));   // FTP tile removed 2026-10-26 (FTP stays in the drawer footer)
+  const tFtp=tile('ftp','FTP servers','',()=>srvPicker('FTP')),tCld=tile('cld','Cloud servers','',()=>srvPicker('Drive'));   // Printers and Favorite folders tiles removed 2026-10-28 (both stay in the drawer)
+  tFtp.querySelector('.ts').id='hmftp';tCld.querySelector('.ts').id='hmcld';
+  g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld);
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);
@@ -5115,12 +5132,12 @@ function drawerRender(){
     const used=S.dev==='local'&&S.used!=null?S.used:(+LD('ls_used','')||null);
     bd.append(dItem({lead:ic('menu'),cls:'mm',title:'Main menu',sub:'Gallery, videos, printers\u2026',on:homeOn(),onclick:()=>{drawerClose();homeShow()}}));
     bd.append(E('div','dsep'));
-    {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(S.peers.length?S.peers.length+' \u00b7 ':'')+(col?'Show':'Hide'));
+    {const col=DEVCOL,h=E('div','dsec'),eb=E('button','',(devsOnly().length?devsOnly().length+' \u00b7 ':'')+(col?'Show':'Hide'));
       h.append(E('span','','Devices'),eb);h.style.cursor='pointer';
       h.onclick=()=>{DEVCOL=!col;drawerRender()};bd.append(h);
-      if(!col){peersSorted().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
+      if(!col){devsOnly().forEach(p=>{const d=E('span','ddot'+(p.ok===false?' wn':''));const sb=peerSub(p);
           bd.append(dItem({lead:d,title:p.name,sub:(sb.t||'online'),on:S.dev===p.id,cls:'dev',onclick:()=>openLoc(p.id,'/')}))});
-        if(!S.peers.length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
+        if(!devsOnly().length)bd.append(E('div','dnone','Searching for devices\u2026'))}}
     bd.append(E('div','dsep'));
     {const h=E('div','dsec');h.append(E('span','','Quick folders'));const eb=E('button','',DRW.edit?'Done':'Edit');eb.onclick=()=>{DRW.edit=!DRW.edit;drawerRender()};h.append(eb);bd.append(h)}
     QF.forEach((q,n)=>{
@@ -5146,14 +5163,12 @@ function drawerRender(){
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
     if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
-    if(window.LSAndroid&&LSAndroid.gdriveConnect)bd.append(dItem({lead:ic('ftp','s24'),title:'Google Drive',sub:'Sign in with your Google account',onclick:()=>{drawerClose();openGdrive()}}));
     bd.append(dItem({lead:ic('refresh','s24'),title:'Free up space',sub:'Large files, old downloads, duplicates',onclick:()=>{drawerClose();openFreeUp()}}));
     bd.append(dItem({lead:ic('del','s24'),title:'Recycle bin',sub:'Deleted from this phone',cls:'bin',onclick:()=>{drawerClose();openBin()}}));   // last row of the menu, black
     const add=E('button');add.append(ic('add'),E('span','','Add IP'));add.onclick=()=>{drawerClose();addIp()};
     const smb=E('button');smb.append(ic('pc'),E('span','','SMB'));smb.onclick=()=>{drawerClose();openSmb()};
     const st=E('button');st.append(ic('settings'),E('span','','Settings'));st.onclick=()=>{drawerClose();openSettings()};
-    const ftp=E('button');ftp.append(ic('ftp'),E('span','','FTP'));ftp.onclick=()=>{drawerClose();openFtp()};
-    ft.append(add,smb,ftp,st);
+    ft.append(add,smb,st);
   }
   bd.scrollTop=keep}
 $('#menub').onclick=drawerOpen;
