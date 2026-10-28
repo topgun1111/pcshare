@@ -40,7 +40,8 @@ object PcPictures {
         if (!fresh) found[dev]?.let { return it }
         val hits = ArrayList<String>()
         val shares = ep.ls("/").filter { it.dir }.map { it.name }.filter { !it.equals("IPC$", true) && !it.equals("print$", true) && !it.equals("ADMIN$", true) }
-        fun kids(p: String): List<com.lanshare.app.core.Item> = try { ep.lsFast(p).filter { it.dir } } catch (_: Exception) { emptyList() }
+        var denied: String? = null   // first real reason a share could not be read (access denied, unreachable ...): shown instead of a vague "not found"
+        fun kids(p: String): List<com.lanshare.app.core.Item> = try { ep.lsFast(p).filter { it.dir } } catch (e: Exception) { if (denied == null && e !is NotFound) denied = p + ": " + (e.message ?: e.javaClass.simpleName); emptyList() }
         hint(dev, ep, shares)?.let { found[dev] = it; return it }   // 0. the PC itself says where its Pictures are (pcprint.py 33+)
         // 1. a share that IS the Pictures folder (or has one at its top)
         for (s in shares) {
@@ -58,6 +59,7 @@ object PcPictures {
                 }
             }
         }
+        if (hits.isEmpty() && denied != null) throw NotFound("Could not read the PC's folders - " + denied + ". Windows often blocks C\$ for accounts that are not real administrators: share the Pictures (or Users) folder in Windows and set it by hand (press and hold the PC chip, e.g. /Pictures), or sign in with an administrator account.")
         if (hits.isEmpty()) throw NotFound("No Pictures folder found on ${c.optString("name")} (looked for Pictures / Resimler in the shared folders and in Users). Update pcprint.py on the PC (version 33 finds it by itself), or set it by hand: press and hold the PC chip.")
         // the one with the most recent pictures is the user's real folder; a quick look at each (first level only)
         val best = hits.maxByOrNull { h -> try { ep.lsFast(h).maxOfOrNull { it.mtime } ?: 0L } catch (_: Exception) { 0L } } ?: hits[0]

@@ -1385,3 +1385,9 @@ All JVM self-test tools (tools/*_selftest, tools/*_test.*, ui smoke scripts), th
 
 ### Select all per category (UsActivity.kt)
 Long-press a section header (Names / Contents / Pictures) = select that whole section; while selecting, tapping a header toggles it (checkbox shown), and again clears it. Dock "Select all" still selects every result.
+
+## Oct 28 2026 - PC gallery over Tailscale (PcPictures.find)
+- SMB over Tailscale (100.64.0.0/10) is already supported (pins, viaOf, socket binding only for local subnets). Gallery "0" on a tailnet PC = the Pictures folder was not found/readable, not a network problem.
+- find() now remembers the first real error while scanning shares and throws it ("Could not read the PC's folders - /C$: Access denied ..."), with the fix: share Pictures/Users and set it by hand (/Pictures), or use an administrator account (LocalAccountTokenFilterPolicy=1 for C$).
+- Also needed on the PC: Windows Firewall SMB-In rule scope must include 100.64.0.0/10; pcprint.py port 8799 must be allowed on Tailscale for the automatic hint.
+- NOT compiled / NOT device-tested.
