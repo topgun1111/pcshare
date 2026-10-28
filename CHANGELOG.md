@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Photo albums show only photos
+
+### Fixed
+- Opening an album in the Photos gallery no longer shows the videos in that folder. Videos are in the Videos gallery.
+
 ## 2026-10-28 - Export / import settings in Settings
 
 ### Fixed

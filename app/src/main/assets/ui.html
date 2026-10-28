@@ -1503,7 +1503,7 @@ function mkAlbum(i,P0){
     if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else galView({name:i.name,path:pth,n:0,v:galVid()})};
   albHold(c,pth,i.name);
   return c}
-/* ---- gallery album view (like a gallery app): one album's pictures + videos in a single grid; the file browser's folder is never opened ---- */
+/* ---- gallery album view (like a gallery app): one album's pictures (Photos) or videos (Videos) in a grid; the file browser's folder is never opened ---- */
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
@@ -1633,7 +1633,7 @@ function galView(a){
   o._pst=pasteUpd;o._reload=reload;pasteUpd();
   api('GET','/api/ls?dev='+enc(D)+'&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
-    const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':(kind(x)==='img'||kind(x)==='vid'))).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
+    const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':kind(x)==='img')).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
     GCX={dev:D,path:a.path,list:it,all:all.filter(x=>!x.dir)};LIST=it;
     sb.textContent=it.length+(it.length===1?' item':' items');
     if(!it.length){gg.append(E('div','ge','Nothing here'));return}
