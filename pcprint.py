@@ -27,6 +27,9 @@ v31: reinstall-proof. After a Windows reinstall run LANSharePrint-Setup.bat (wri
 starts this file; setup then downloads everything else (winget, SumatraPDF, pypdf, Pillow, LibreOffice if no Office). The running service also
 re-checks all of that in the background (retrying with growing pauses, e.g. while the network is not up yet right after logon) and re-creates its
 autostart entry if it was lost. Set LANSHARE_NO_LIBREOFFICE=1 to skip the LibreOffice download.
+v36: the logs go into a sub-folder named "Pcprint logs" beside the original pcprint.py (made when missing).
+v35: log.txt, log.old, diag.jsonl (+ diag.1 / diag.2) are written in the folder of the ORIGINAL pcprint.py (the file you run); setup remembers that folder in logdir.txt next to the installed copy; unwritable / missing folder = back to the installed copy folder.
+v34: PowerPoint is no longer kept warm - only Word and Excel stay open (hidden); .ppt / .pptx / .odp convert with a one-off start that closes PowerPoint afterwards.
 v31 (diag): fault tolerance + diagnostic log. `diag.jsonl` (next to log.txt) records EVERYTHING as one JSON object per line - every request, option, conversion step,
 command line (exit code, stdout, stderr), printer / queue snapshot, full Python traceback - for the developer / Claude to read, not for the window; every job has an id
 (J0007) that is also shown in the app's error text. `GET /diag?pos=N` returns it in pieces. Tolerance: layout failure -> printed plain (note), SumatraPDF failure -> Windows
@@ -56,12 +59,30 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "33"
+VERSION = "36"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
 INBOX = os.path.join(APP, "queue")
-LOG = os.path.join(APP, "log.txt")
+
+
+def _log_dir():
+    """Folder for log.txt / diag.jsonl: "Pcprint logs" beside the original pcprint.py (setup_windows writes its path to APP/logdir.txt).
+    Only that last folder is created here; when its parent is gone (removed drive, deleted folder) or not writable the logs stay in APP."""
+    try:
+        with open(os.path.join(APP, "logdir.txt"), "r", encoding="utf-8-sig") as f:
+            d = f.read().strip()
+        if d and os.path.isdir(os.path.dirname(d)):
+            os.makedirs(d, exist_ok=True)
+            if os.access(d, os.W_OK):
+                return d
+    except OSError:
+        pass
+    return APP
+
+
+LOGDIR = _log_dir()
+LOG = os.path.join(LOGDIR, "log.txt")
 TARGET = os.path.join(APP, "pcprint.py")
 FW_RULE = "LANSharePrint-TS"   # v3 rule: LAN + Tailscale; the old "LANSharePrint" rule is removed
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -83,7 +104,7 @@ INBOX_CAP = 1 << 30           # old files in the queue folder are deleted (oldes
 # diag.jsonl: one JSON object per line, EVERY step (also everything log() writes). Fields: t (local time), run (service start id), n (counter), src ("pc"),
 # jid (job id J0001.. when the line belongs to a print job), th (thread), lvl (i / w / e), ev (event name) + event fields. Written for the developer / Claude:
 # raw exit codes, stdout / stderr, tracebacks and printer dumps go in untouched (long strings are clipped). Never raises, never blocks printing.
-DIAG = os.path.join(APP, "diag.jsonl")
+DIAG = os.path.join(LOGDIR, "diag.jsonl")
 DIAG_MAX = 4 << 20            # above this the file rotates: diag.jsonl -> diag.1.jsonl -> diag.2.jsonl (oldest deleted)
 RUN_ID = time.strftime("%m%d%H%M%S")
 _DIAGLOCK = threading.Lock()
@@ -122,7 +143,7 @@ def dlog(ev, lvl="i", jid=None, **kw):
             rec[k] = _clip(v, 16000 if k in ("text", "tb") else 6000)
         line = json.dumps(rec, ensure_ascii=False, default=repr)
         with _DIAGLOCK:
-            os.makedirs(APP, exist_ok=True)
+            os.makedirs(LOGDIR, exist_ok=True)
             with open(DIAG, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
             if os.path.getsize(DIAG) > DIAG_MAX:
@@ -219,7 +240,7 @@ def log(msg):
     dlog("log", _lvl_of(msg), msg=msg)
     with _LOGLOCK:
         try:
-            os.makedirs(APP, exist_ok=True)
+            os.makedirs(LOGDIR, exist_ok=True)
             with open(LOG, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
             if os.path.getsize(LOG) > 500_000:
@@ -1095,7 +1116,8 @@ def office_engine(ext=None):
 # pings it every 3 s: it restarts a dead / hung worker, re-opens an Office app that was closed, and hands an app over to the user
 # (made visible and let go, never closed) when they opened one of their own files in it. Set LANSHARE_NO_WARM=1 to switch it off.
 WARM_OFFICE = WIN and os.environ.get("LANSHARE_NO_WARM") != "1"
-OFFICE_KEYS = (("word", "Word.Application"), ("excel", "Excel.Application"), ("ppt", "PowerPoint.Application"))
+WARM_SKIP_EXT = {".ppt", ".pptx", ".odp"}   # PowerPoint files never go through the warm worker (PowerPoint is not kept in memory)
+OFFICE_KEYS = (("word", "Word.Application"), ("excel", "Excel.Application"))   # PowerPoint is NOT kept warm (v34): .ppt/.pptx/.odp use the one-off start, which closes it again
 
 PS_WARM = r"""
 $ErrorActionPreference = 'Stop'
@@ -1374,7 +1396,7 @@ def office_to_pdf(path):
     errs = []
     com = has_com(OFFICE_COM.get(ext, ""))
     skip_com = False
-    if com and WARM_OFFICE:
+    if com and WARM_OFFICE and ext not in WARM_SKIP_EXT:
         try:
             try:
                 os.remove(dst)
@@ -3267,7 +3289,7 @@ def diag_start():
     sm = _safe(find_sumatra) if WIN else None
     ips, ts = _safe(pc_addresses) if not isinstance(_safe(pc_addresses), str) else ([], "")
     dlog("start", version=VERSION, pid=os.getpid(), python=sys.version.split()[0], exe=sys.executable, platform=sys.platform, os=_safe(lambda: __import__("platform").platform()),
-         argv=sys.argv, app=APP, port=PORT, admin=_safe(is_admin) if WIN else None, ips=ips, tailscale=ts,
+         argv=sys.argv, app=APP, logdir=LOGDIR, port=PORT, admin=_safe(is_admin) if WIN else None, ips=ips, tailscale=ts,
          free_mb=_safe(lambda: shutil.disk_usage(APP).free >> 20),
          readme="diag.jsonl: one JSON per line. t=time run=service start n=counter src=pc|app jid=job id lvl=i|w|e ev=event. Search a job id (e.g. J0007) to see its whole story.")
     dlog("tools", sumatra=sm, sumatra_version=_safe(ver, sm), office=_safe(office_engine), soffice=_safe(find_soffice), pypdf=_safe(have_pypdf), pil=_safe(have_pil),
@@ -3703,6 +3725,13 @@ def setup_windows():
     me = os.path.abspath(__file__)
     if os.path.normcase(me) != os.path.normcase(TARGET):
         shutil.copyfile(me, TARGET)   # always refresh the installed copy
+        try:   # logs go beside the original file (the installed copy's folder is what a reinstall wipes)
+            ld = os.path.join(os.path.dirname(me), "Pcprint logs")
+            os.makedirs(ld, exist_ok=True)
+            with open(os.path.join(APP, "logdir.txt"), "w", encoding="utf-8") as f:
+                f.write(ld)
+        except OSError as e:
+            print(f"  log folder not saved: {e}")
     write_bootstrap(me)
     fw = ensure_firewall()
     ensure_autostart()
