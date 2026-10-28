@@ -551,6 +551,7 @@ Three ways to print, all from the same print dialog in `ui.html` (`doPrint`, `pr
 ### 9.2 `pcprint.py` version history (PC side - run the newest file once, it restarts the old service by itself)
 | Version | What |
 |---|---|
+| 32 | `safe_name` kept only 120 characters, so a long file name lost its extension (\".png\" cut off) and the PC answered \"this file type cannot be printed\"; now the base name is shortened and the extension is kept. Found from a screenshot (Brother DCP-T830DW, 2026-10-28). |
 | v9 | fitting options: `fit=fill`, `margin`, `scale`, `align`, `autorot`; `needs_fitting(o)`, `fit_cell()`, `neutral_fit()`; paper size from `paper` |
 | v10 | office files (doc docx rtf odt xls xlsx csv ods ppt pptx odp) converted to PDF on the PC (Microsoft Office via COM, else LibreOffice headless) when layout / fitting options are asked for; `/ping` reports `office` |
 | v11 | `POST /convert?name=` (office in, PDF out, nothing printed, one at a time; `/ping` `convert: true`) for real office previews |
@@ -946,6 +947,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-28 - `pcprint.py` v32: long file names keep their extension (`safe_name`). `CHANGELOG.md` section added.
 - 2026-10-28 - Print resilience Part 4 (9.8), Kotlin NOT compiled: `PrintLogActivity.kt` (log screen, Fetch PC log, Share / Copy / Clear / Open folder, Full detail), `Cfg.printVerbose`, `PrintLog.clip` honours it, `Job.logId` (`logid` in the job JSON) set in `Jobs.printWork` / `WifiPrint.work` / `PdfPrint.work`, Bridge `openPrintLog` / `copyPrintLog`, manifest entry, `ui.html` Settings row + job card buttons (`lvEnd`). `CHANGELOG.md` section added.
 - 2026-10-28 - Print resilience Part 3 (9.8), Kotlin NOT compiled: `PhonePrint.kt` (per-item try, fetch retry, unreadable PDF skipped, per-page draw guard, job id `jid` through `Adapter`, events), `PcPrintService.kt` (`PrintLog.init`, events, half-file cleanup, empty-document check), `PdfPrint.kt` (job id, events, `Throwable` per file / group, per-cell draw guard, partial-file cleanup in `save`), `PrintPrep.kt` (`convert` = logged wrapper of `convert0`, `trim` = tolerant wrapper of `trim0`), `Jobs.printWork` binds the job id. `CHANGELOG.md` section added.
 - 2026-10-27 - Print resilience Part 2 (9.8), Kotlin NOT compiled: `PrintLog.bind/cur` (thread-bound job id); `Ipp.kt`: `Resp.all()`, `call` = logging wrapper around `call0`, `jobAttrs` / `cancelJob`, more requested printer attributes, `ipp-bad-answer`; `WifiPrint.kt`: job id + events, `submit` = `submit1` + `settle` (job-state check) + one media-less resend of a held job, soft post-send check, status retry, PDF -> raster / JPEG fallback on "format not supported", `[log A000x]` in errors; `WifiPrinters.status` logs failures during a print. `CHANGELOG.md` section added.

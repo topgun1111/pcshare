@@ -47,7 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "31"
+VERSION = "32"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -2151,7 +2151,11 @@ def housekeeping():
 def safe_name(n):
     n = os.path.basename((n or "file").replace("\\", "/"))
     n = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", n).strip(" .")
-    return n[:120] or "file"
+    if len(n) > 120:   # v32: a long name is shortened in the MIDDLE of the base name, the extension must survive (it decides what can be printed)
+        b, e = os.path.splitext(n)
+        e = e[:12]
+        n = b[:120 - len(e)].rstrip(" .") + e
+    return n or "file"
 
 
 # ------------------------------------------------------------------ text sharing (v26): phone <-> PC text and links
