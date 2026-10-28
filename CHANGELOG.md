@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-28 - Two on the front, one on the back
+
+### Added
+- Print space > Layout > Auto-fill: new "2 on front + 1 on back" choice (the number follows Pictures per sheet). Each sheet gets the grid on the front and one picture on the whole back. Works in Grid and Free placement, Preview and Print.
+
 ## 2026-10-28 - Settings backup to Google Drive
 
 ### Added

@@ -874,6 +874,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-28 - Print space layout "N + 1" (N on the front, ONE picture on the whole back), NOT compiled: `SheetLayout.Spec.backOne` + `Mode.FRONT_PLUS_ONE` + `gridFor(s, portrait, side)` (back = Grid(1,1)) + `slotBoxes(.., side)`; `compose` / `autoFill` (chunks of per+1) / `reflow` / `backOf` honour it. `PsLayoutJson`: spec key `backOne`, fill mode `"one"` (the fill op sets backOne = mode is one, so every other mode clears it), `layout.bslots`, `behind[]` all 0. `PrintSpaceRender.Prep.boxesBack`. `ui.html`: Auto-fill chip `'one'`, `dPage` draws `LY.bslots` on the Back tab. Check: Layout > Auto-fill > "2 on front + 1 on back", 3 pictures -> sheet 1 front 2 pictures, Back tab one full-sheet slot; Preview shows the same; change Pictures per sheet to 4 -> chunks of 4+1.
 - 2026-10-28: CI compile fix: added `Cfg.printVerbose/setPrintVerbose` (key `print_verbose`, default true), `Cfg.rawGet/rawPut` (used by SettingsIo; caller saves), `Jobs.pcDiag` (GET /api/pcdiag, 404 = old PC). Other compile errors may still follow.
 
 - 2026-10-28 - Google Drive Part 7 (of 11), NOT compiled: UI polish. `ui.html` cloud icon for `kind==='Drive'` (chip + Devices picker), `/api/warm` for `gd:`, Reconnect dialog on "sign in again" load error, native-docs sentence in the Drive sheet; `GdriveFs.warmUp`. Details 17.5f, check 17.7g.

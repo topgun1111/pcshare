@@ -27,8 +27,9 @@ object SheetLayout {
     enum class Side { FRONT, BACK }
 
     /** FRONT_ONLY: one side. BOTH_SIDES: fill the front, then the back, sheet by sheet.
-     *  PAIRS: pictures 0+1, 2+3, ... are (front, behind it), e.g. both sides of an ID card. */
-    enum class Mode { FRONT_ONLY, BOTH_SIDES, PAIRS }
+     *  PAIRS: pictures 0+1, 2+3, ... are (front, behind it), e.g. both sides of an ID card.
+     *  FRONT_PLUS_ONE: the front takes the whole grid (e.g. 2 pictures), the back takes ONE picture on the whole sheet (see [Spec.backOne]). */
+    enum class Mode { FRONT_ONLY, BOTH_SIDES, PAIRS, FRONT_PLUS_ONE }
 
     data class Paper(val name: String, val w: Double, val h: Double)
 
@@ -73,7 +74,9 @@ object SheetLayout {
         /** Part 14b: free placement keeps the pictures of one side apart (no overlap). The page enforces it while editing; 14c repeats it here. */
         val keep: Boolean = true,
         /** Part 14b: clear space between two pictures in pt (0-40) when [keep] is on. */
-        val keepGap: Double = 6.0
+        val keepGap: Double = 6.0,
+        /** "N + 1": the back side of every sheet is ONE picture on the whole sheet, whatever the front grid is (e.g. 2 on the front, 1 on the back). */
+        val backOne: Boolean = false
     ) {
         companion object {
             fun preset(n: Int): Grid = PRESETS[n] ?: Grid(1, 1)
@@ -149,6 +152,10 @@ object SheetLayout {
 
     fun gridFor(s: Spec, portrait: Boolean): Grid = if (portrait) s.grid else s.grid.turned()
 
+    /** Grid of one SIDE: the back is a single big slot when [Spec.backOne] is on, else the same grid as the front. */
+    fun gridFor(s: Spec, portrait: Boolean, side: Side): Grid =
+        if (side == Side.BACK && s.backOne) Grid(1, 1) else gridFor(s, portrait)
+
     /** Returns null when the spec is usable, else a short reason for a toast. */
     fun validate(s0: Spec): String? {
         val s = clean(s0)
@@ -186,6 +193,7 @@ object SheetLayout {
     /** Same, for a plan and spec. */
     fun backOf(plan: Plan, spec: Spec, frontSlot: Int): Int {
         val s = clean(spec)
+        if (s.backOne) return 0   // one big slot on the back: every front slot lies (partly) behind it
         return backSlot(frontSlot, gridFor(s, plan.portrait), s.flip, plan.portrait)
     }
 
@@ -223,6 +231,8 @@ object SheetLayout {
         val sheets: List<Sheet> = when (mode) {
             Mode.FRONT_ONLY -> frontOnly(seq, per)
             Mode.BOTH_SIDES -> seq.chunked(per * 2).map { c -> Sheet(pad(c.take(per), per), pad(c.drop(per), per)) }
+            // front grid full, then ONE picture for the back (back slot 0); callers set spec.backOne for this mode
+            Mode.FRONT_PLUS_ONE -> seq.chunked(per + 1).map { c -> Sheet(pad(c.take(per), per), pad(c.drop(per), per)) }
             Mode.PAIRS -> {
                 // the copies of the FRONT picture decide how often the pair repeats
                 val pairs = ArrayList<Pair<Int, Int?>>()
@@ -264,7 +274,8 @@ object SheetLayout {
             Orient.AUTO -> plan.portrait
         }
         val per = gridFor(s, portrait).per
-        val sheets = if (duplex) flat.chunked(per * 2).map { c -> Sheet(pad(c.take(per), per), pad(c.drop(per), per)) }
+        val sheets = if (duplex && s.backOne) flat.chunked(per + 1).map { c -> Sheet(pad(c.take(per), per), pad(c.drop(per), per)) }
+        else if (duplex) flat.chunked(per * 2).map { c -> Sheet(pad(c.take(per), per), pad(c.drop(per), per)) }
         else frontOnly(flat, per)
         return Plan(portrait, sheets)
     }
@@ -356,12 +367,12 @@ object SheetLayout {
     class Box(val x: Double, val y: Double, val w: Double, val h: Double)
 
     /** Cell boxes of ONE side of a sheet, EMPTY slots included (slot order = row by row). The editor draws its drop targets from these. */
-    fun slotBoxes(spec0: Spec, portrait: Boolean): List<Box> {
+    fun slotBoxes(spec0: Spec, portrait: Boolean, side: Side = Side.FRONT): List<Box> {
         val s = clean(spec0)
         val pp = paper(s.paper)
         val sw = if (portrait) pp.w else pp.h
         val sh = if (portrait) pp.h else pp.w
-        val g = gridFor(s, portrait)
+        val g = gridFor(s, portrait, side)
         val cw = max(1.0, (sw - 2 * s.margin - s.gap * (g.cols - 1)) / g.cols)
         val ch = max(1.0, (sh - 2 * s.margin - s.gap * (g.rows - 1)) / g.rows)
         return List(g.per) { slot ->
@@ -384,9 +395,10 @@ object SheetLayout {
             for (side in Side.values()) {
                 if (side == Side.BACK && !anyBack) continue
                 val cells = ArrayList<Cell>()
+                val gs = gridFor(s, portrait, side)   // the back can be one big slot (spec.backOne)
                 if (!s.free) sheet.side(side).forEachIndexed { slot, e ->
-                    if (e != null && e in pics.indices && slot < g.per) {
-                        val c = cellFor(slot, e, pics[e], g, s, sw, sh)
+                    if (e != null && e in pics.indices && slot < gs.per) {
+                        val c = cellFor(slot, e, pics[e], gs, s, sw, sh)
                         score += c.fk * c.fk * max(1, pics[e].w).toDouble() * max(1, pics[e].h).toDouble()
                         cells.add(c)
                     }

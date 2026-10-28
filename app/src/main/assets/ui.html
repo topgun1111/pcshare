@@ -3870,7 +3870,7 @@ function psLayout(){
       ...(SP.free?[]:[step('Margin','margin',0,72,2),step('Gap','gap',0,40,2),
       chips('Turn pictures to fit',[[true,'On'],[false,'Off']],SP.autoRot,v=>setSpec({autoRot:v},'view')),
       chips('Order',[[false,'Normal'],[true,'Reverse']],SP.reverse,v=>setSpec({reverse:v},'fill'))]),
-      chips(SP.free?'Auto-arrange (then move)':'Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)']],MODE,fillMode));
+      chips(SP.free?'Auto-arrange (then move)':'Auto-fill',[['front','Front only'],['both','Both sides'],['pairs','Pairs (front + back)'],['one',(+SP.cols*+SP.rows)+' on front + 1 on back']],MODE,fillMode));
     f.append(presetRow());
     const tr=E('button','tbtn','Remove empty sheets');tr.onclick=()=>{selSlot=null;call({op:'trim'})};f.append(tr);
     {const rc=E('button','tbtn','Recent prints');rc.onclick=()=>printRecent(true);f.append(rc)}   // part 8 (only jobs sent from Print space): print a finished sheet set again
@@ -3923,12 +3923,12 @@ function psLayout(){
     pg.style.setProperty('--ar',sw/sh);pg.style.aspectRatio=sw+' / '+sh;
     const P=FIL[sheet+':'+side];if(P)P.cells.forEach(c=>{cells[c.slot]=c});
     const G=FIL[sheet+':front'];if(side==='back'&&G)G.cells.forEach(c=>{gh[c.slot]=c});
-    LY.slots.forEach((s,i)=>{
+    (side==='back'&&LY.bslots?LY.bslots:LY.slots).forEach((s,i)=>{   // "N + 1" (spec.backOne): the back is ONE whole-sheet slot
       const d=E('div','lys'+((selSlot&&selSlot.sheet===sheet&&selSlot.side===side&&selSlot.slot===i)?' sel':'')),c=cells[i];d.dataset.slot=i;
       d.style.left=(s.x/sw*100)+'%';d.style.top=(s.y/sh*100)+'%';d.style.width=(s.w/sw*100)+'%';d.style.height=(s.h/sh*100)+'%';
       const put=(cc,cls)=>{const m=pic(cc.id);if(!m)return;const im=E('img',cls||'');im.alt='';im.draggable=false;im.src=thumb(m);
         im.style.width=(cc.dw/s.w*100)+'%';im.style.height=(cc.dh/s.h*100)+'%';im.style.transform='translate(-50%,-50%) rotate('+cc.rot+'deg)';d.append(im)};
-      if(c)put(c);else{const g=side==='back'?gh[LY.behind[i]]:null;if(g)put(g,'gh');d.append(E('span','lyn',String(i+1)))}   // empty back slot: the front picture behind it, faint
+      if(c)put(c);else{const g=side==='back'&&!LY.bslots?gh[LY.behind[i]]:null;if(g)put(g,'gh');d.append(E('span','lyn',String(i+1)))}   // empty back slot: the front picture behind it, faint
       arm(d,()=>c?{k:'slot',sheet,side,slot:i,id:c.id}:null,()=>tapSlot(i,c));pg.append(d)});
     bxPg.replaceChildren(vrWrap(pg,sw/sh,46))}
   // ---- tray + selection controls

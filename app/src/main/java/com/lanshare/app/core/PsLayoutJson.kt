@@ -14,9 +14,10 @@ import kotlin.math.max
  * answer carries the cleaned spec, the new plan and the composed layout. Plans use picture IDS (not list indices),
  * so removing a picture from the space later only empties its slots.
  *
- * Request  {op, spec{paper, orient, cols, rows, margin, gap, fit, flip, autoRot, reverse, free, safe, keep, keepGap}, plan{portrait, sheets:[{f:[id|null], b:[id|null]}]}, ...}
+ * Request  {op, spec{paper, orient, cols, rows, margin, gap, fit, flip, autoRot, reverse, free, safe, keep, keepGap, backOne}, plan{portrait, sheets:[{f:[id|null], b:[id|null]}]}, ...}
  *   op "view"                      compose only (no plan = fill the front sides)
- *   op "fill"   {mode}             FRONT_ONLY | BOTH_SIDES | PAIRS (auto-fill from the picture list, copies expanded)
+ *   op "fill"   {mode}             FRONT_ONLY | BOTH_SIDES | PAIRS | "one" (front grid full, then ONE picture on the whole back; sets spec.backOne, every other mode clears it)
+ *                                  (auto-fill from the picture list, copies expanded)
  *   op "assign" {sheet, side, slot, id|null}
  *   op "swap"   {a:{sheet,side,slot}, b:{sheet,side,slot}}
  *   op "behind" {sheet, slot, id|null}   puts the picture on the back, behind the given FRONT slot
@@ -30,7 +31,8 @@ import kotlin.math.max
  *   (draw the UNTURNED picture dw x dh centred on cx, cy turned by rot; no clipping to a slot).
  * Answer   {ok, spec, plan, layout{portrait, sw, sh, cols, rows, slots[{x,y,w,h}], behind[], pages[{sheet, side, cells[{slot, id, rot, dw, dh}]}]}, placed{id:n}, sheets}
  *   cell: the picture is drawn dw x dh (unturned, pt), turned by rot degrees about the centre of the slot box, clipped to the slot box.
- *   behind[i] = back slot that lies physically behind front slot i (the mapping is its own inverse).
+ *   behind[i] = back slot that lies physically behind front slot i (the mapping is its own inverse; always 0 with spec.backOne).
+ *   bslots[] = slot boxes of the BACK side, only with spec.backOne (one box = the whole sheet); the back uses `slots` otherwise.
  * Errors are IllegalArgumentException with a text for a toast.
  */
 object PsLayoutJson {
@@ -65,7 +67,8 @@ object PsLayoutJson {
             free = o.optBoolean("free", d.free),
             safe = num(o, "safe", d.safe),
             keep = o.optBoolean("keep", d.keep),
-            keepGap = num(o, "keepGap", d.keepGap)
+            keepGap = num(o, "keepGap", d.keepGap),
+            backOne = o.optBoolean("backOne", d.backOne)
         )
     }
 
@@ -75,7 +78,7 @@ object PsLayoutJson {
         .put("cols", s.grid.cols).put("rows", s.grid.rows)
         .put("margin", s.margin).put("gap", s.gap)
         .put("fit", s.fit.name.lowercase()).put("flip", s.flip.name.lowercase())
-        .put("autoRot", s.autoRot).put("reverse", s.reverse).put("free", s.free).put("safe", s.safe).put("keep", s.keep).put("keepGap", s.keepGap)
+        .put("autoRot", s.autoRot).put("reverse", s.reverse).put("free", s.free).put("safe", s.safe).put("keep", s.keep).put("keepGap", s.keepGap).put("backOne", s.backOne)
 
     private fun freeList(a: JSONArray?, idx: Map<String, Int>): List<SheetLayout.Free> {
         val out = ArrayList<SheetLayout.Free>()
@@ -126,6 +129,7 @@ object PsLayoutJson {
     private fun modeOf(s: String): SheetLayout.Mode = when (s.lowercase()) {
         "both", "both_sides" -> SheetLayout.Mode.BOTH_SIDES
         "pairs" -> SheetLayout.Mode.PAIRS
+        "one", "front_plus_one" -> SheetLayout.Mode.FRONT_PLUS_ONE
         else -> SheetLayout.Mode.FRONT_ONLY
     }
 
@@ -154,7 +158,9 @@ object PsLayoutJson {
         val slots = JSONArray()
         for (b in SheetLayout.slotBoxes(spec, plan.portrait)) slots.put(JSONObject().put("x", r2(b.x)).put("y", r2(b.y)).put("w", r2(b.w)).put("h", r2(b.h)))
         val behind = JSONArray()
-        for (i in 0 until g.per) behind.put(SheetLayout.backSlot(i, g, spec.flip, plan.portrait))
+        for (i in 0 until g.per) behind.put(if (spec.backOne) 0 else SheetLayout.backSlot(i, g, spec.flip, plan.portrait))
+        val bslots = JSONArray()   // only with spec.backOne: the back has its own (single, whole-sheet) slot
+        if (spec.backOne) for (b in SheetLayout.slotBoxes(spec, plan.portrait, SheetLayout.Side.BACK)) bslots.put(JSONObject().put("x", r2(b.x)).put("y", r2(b.y)).put("w", r2(b.w)).put("h", r2(b.h)))
         val pages = JSONArray()
         for (p in lay.pages) {
             val cells = JSONArray()
@@ -167,8 +173,10 @@ object PsLayoutJson {
             for (f in p.free) fr.put(JSONObject().put("id", pics[f.pic].id).put("cx", r2(f.cx)).put("cy", r2(f.cy)).put("dw", r2(f.dw)).put("dh", r2(f.dh)).put("rot", r2(f.rot)))
             pages.put(JSONObject().put("sheet", p.sheet).put("side", p.side.name.lowercase()).put("cells", cells).put("free", fr))
         }
-        return JSONObject().put("portrait", lay.portrait).put("sw", r2(lay.sw)).put("sh", r2(lay.sh))
+        val out = JSONObject().put("portrait", lay.portrait).put("sw", r2(lay.sw)).put("sh", r2(lay.sh))
             .put("cols", g.cols).put("rows", g.rows).put("slots", slots).put("behind", behind).put("pages", pages)
+        if (spec.backOne) out.put("bslots", bslots)
+        return out
     }
 
     private fun placedJson(plan: SheetLayout.Plan, pics: List<Pict>): JSONObject {
@@ -220,7 +228,11 @@ object PsLayoutJson {
         var plan = bs.plan
         when (val op = b.optString("op", "view")) {
             "view" -> {}
-            "fill" -> plan = SheetLayout.autoFill(spec, sp, modeOf(b.optString("mode")))
+            "fill" -> {
+                val m = modeOf(b.optString("mode"))
+                spec = spec.copy(backOne = m == SheetLayout.Mode.FRONT_PLUS_ONE)   // "N + 1": the back is ONE picture on the whole sheet; every other mode keeps the front grid on the back
+                plan = SheetLayout.autoFill(spec, sp, m)
+            }
             "assign" -> plan = SheetLayout.assign(plan, ref(b), pick(b))
             "swap" -> plan = SheetLayout.swap(plan, ref(b.optJSONObject("a")), ref(b.optJSONObject("b")))
             "behind" -> plan = SheetLayout.placeBehind(plan, spec, b.getInt("sheet"), b.getInt("slot"), pick(b))

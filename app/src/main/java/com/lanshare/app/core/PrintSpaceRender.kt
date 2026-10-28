@@ -50,6 +50,7 @@ object PrintSpaceRender {
 
     private class Prep(val id: String, val res: PsLayoutJson.Resolved, val paths: Map<String, String>) {
         val boxes: List<SheetLayout.Box> = SheetLayout.slotBoxes(res.spec, res.plan.portrait)
+        val boxesBack: List<SheetLayout.Box> = SheetLayout.slotBoxes(res.spec, res.plan.portrait, SheetLayout.Side.BACK)
     }
 
     private val preps = object : LinkedHashMap<String, Prep>(16, 0.75f, true) {
@@ -155,7 +156,7 @@ object PrintSpaceRender {
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         for (c in page.cells) {
             val pic = p.res.pics.getOrNull(c.pic) ?: continue
-            val box = p.boxes.getOrNull(c.slot) ?: continue
+            val box = (if (page.side == SheetLayout.Side.BACK) p.boxesBack else p.boxes).getOrNull(c.slot) ?: continue
             val vp = p.paths[pic.id] ?: throw NotFound("A picture was removed from the print space - open Layout again")
             val d = PsRenderGeom.draw(box, maxOf(1, pic.w) * c.k, maxOf(1, pic.h) * c.k, c.rot)
             val bmp = pool.get(pic.id, Core.local.real(vp), PsRenderGeom.needPx(d.dw.toDouble(), d.dh.toDouble(), pxPerPt))
