@@ -364,9 +364,15 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         ver = j.optInt("v")
         val p = j.getJSONObject("p")
         hov = p.optLong("hov").toInt()
-        val card = p.optLong("card").toInt()
-        val ct = p.optLong("ct").toInt(); val cb = p.optLong("cb").toInt()
-        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(if (card == 0) -1 else card)
+        // Surface = the SAME palette the rest of the native UI uses (AppPal, sent by ui.html nlPal() on every theme change), so the drawer always follows the general theme;
+        // the model's own colours are only a fallback, and a white panel is never used (it made the light theme text unreadable).
+        val pj = try { JSONObject(AppPal.json(act) ?: "{}") } catch (_: Throwable) { JSONObject() }
+        var card = pj.optLong("card").toInt()
+        var ct = pj.optLong("ct").toInt(); var cb = pj.optLong("cb").toInt()
+        if (card == 0) card = p.optLong("card").toInt()
+        if (ct == 0) { ct = p.optLong("ct").toInt(); cb = p.optLong("cb").toInt() }
+        if (card == 0) card = AppPal.pal(act).bg
+        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(card)
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.setPadding(0, Math.round(j.optDouble("pt", 0.0).toFloat() * d), 0, Math.round(j.optDouble("pb", 0.0).toFloat() * d))
         val lp = dp.layoutParams

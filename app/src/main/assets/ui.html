@@ -613,7 +613,7 @@ body.kid #fab svg{width:20px;height:20px}
 /* side drawer (hamburger, top left) */
 #menub svg{width:32px;height:32px}.bar.mainb{padding-left:4px}.bar.mainb .ttl{margin-left:2px}
 #dscrim{position:fixed;inset:0;z-index:13;background:#000;opacity:0;visibility:hidden;transition:opacity .22s,visibility 0s .22s}
-#dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(84vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform .22s ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+#dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(88vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform .22s ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity .22s}
 body.dopen #dwr{transform:none;visibility:visible;transition:transform .22s ease-out}
 body.dopen{overflow:hidden}
@@ -622,24 +622,26 @@ body.dopen{overflow:hidden}
 #dtabs button.on{color:var(--fg)}
 #dtabs button.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ac)}
 #dbody{flex:1;overflow-y:auto;overscroll-behavior:contain}
-.di{display:flex;align-items:center;gap:16px;width:100%;min-height:56px;padding:6px 8px 6px 16px;text-align:left;border-bottom:1px solid var(--bd);transition:background .15s}
+.di{display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:6px 8px 6px 14px;text-align:left;border-bottom:1px solid var(--bd);transition:background .15s}
 .di:active{background:var(--hov)}
 .di.on{background:var(--sel);color:var(--onsel)}
-.di .dl{flex:none;width:36px;height:36px;display:grid;place-items:center}
-.di .dl svg{width:36px;height:36px}.di .dl svg.s24{width:24px;height:24px}
+.di .dl{flex:none;width:32px;height:32px;display:grid;place-items:center}
+.di .dl svg{width:32px;height:32px}.di .dl svg.s24{width:22px;height:22px}
 .di .dt{flex:1;min-width:0;display:flex;flex-direction:column}
 .di.dev .dt b{font-weight:700}
 #peers .chip>span{font-weight:700}.li .dn{font-weight:700}
-.di .dt b{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.di .dt small{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di .dt b{font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di .dt small{font-size:11.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .di.on .dt small{color:inherit;opacity:.75}
-.di .dr2{flex:none;font-size:14px;color:var(--mut)}
-.di .dx{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
-.di .dx svg{width:20px;height:20px}
+.di .dr2{flex:none;font-size:12px;white-space:nowrap;color:var(--mut)}
+.di .dx{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
+.di .dx svg{width:18px;height:18px}
 .dmeter{height:3px;border-radius:2px;background:var(--bd);margin-top:4px;overflow:hidden}.dmeter i{display:block;height:100%;background:var(--ac)}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
+#dbody .dsec{gap:8px;padding:12px 6px 4px 14px;font-size:11px;font-weight:600;letter-spacing:.4px;white-space:nowrap}#dbody .dsec>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
-.dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
+.dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}
+#dbody .dsec button{flex:none;height:28px;padding:0 10px;border-radius:14px;font-size:12px;font-weight:600;letter-spacing:0;white-space:nowrap;text-transform:none}.dsec button:active{background:var(--hov)}
 /* folder colour / icon picker */
 .fspv{display:flex;justify-content:center;padding:4px 0 8px}.fspv .pf{position:relative;width:88px;height:77px}.fspv .pf .fold,.fspv .pf .fold svg{display:block;width:100%;height:100%}
 .fspv .pb{position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:34px;height:34px;border-radius:12px;background:#fff;box-shadow:0 1px 3px #0004;display:none;align-items:center;justify-content:center}.fspv .pb svg{width:22px;height:22px}
@@ -672,14 +674,15 @@ body.dopen{overflow:hidden}
 .smb .smpw{display:flex;align-items:center;gap:6px}.smb .smshow{flex:none;height:40px;padding:0 12px;border-radius:20px;color:var(--ac);font-weight:700;font-size:13px}
 .smb .smerr{margin:0 8px 10px;padding:10px 14px;border-radius:12px;background:var(--hov);color:var(--err);font-size:14px;overflow-wrap:anywhere}
 .smb .dact{margin-top:8px}
-.di.mm{min-height:76px;gap:14px}.di.mm .dl{width:44px;height:44px}.di.mm .dl svg{width:44px;height:44px}.di.mm .dt b{font-size:23px;font-weight:600}.di.mm .dt small{font-size:15px}
+.di.mm{min-height:64px;gap:12px}.di.mm .dl{width:36px;height:36px}.di.mm .dl svg{width:36px;height:36px}.di.mm .dt b{font-size:18px;font-weight:600}.di.mm .dt small{font-size:12px}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
 .di.bin{background:#000;color:#fff}.di.bin .dt small{color:#fff;opacity:.7}.di.bin:active{background:#1a1a1a}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
-#dfoot button{flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--ac)}
-#dfoot button:active{background:var(--hov)}#dfoot svg{width:20px;height:20px}
+#dfoot button{flex:1 1 0;min-width:0;height:48px;padding:0 4px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;letter-spacing:0;white-space:nowrap;color:var(--ac)}
+#dfoot button:active{background:var(--hov)}#dfoot svg{flex:none;width:18px;height:18px}
+@media (max-width:260px){#dfoot svg{display:none}}
 #dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
 body.dual #dedge,body.selm #dedge{display:none}
 /* start menu (home): Material 3 look built on the app's own theme tokens; spec history in HANDOVER_HOME_MENU.md */
@@ -773,7 +776,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 :root[data-theme=vivaldi] .tbtn:not(.fill):active{background:var(--hov)}
 :root[data-theme=vivaldi] .dcard,:root[data-theme=vivaldi] #sheet .card{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 24px 48px #00000073}
 :root[data-theme=vivaldi] #dock{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 -3px 14px #0000004d;border-top-color:var(--dv)}
-:root[data-theme=vivaldi] #dwr{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset -1px 0 0 var(--dv),3px 0 18px #00000066}
+:root[data-theme=vivaldi] #dwr{background-color:var(--cb);background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset -1px 0 0 var(--dv),3px 0 18px #00000066}
 :root[data-theme=vivaldi] .row{position:relative;border-bottom:1px solid var(--dv)}
 :root[data-theme=vivaldi] .row.sel,:root[data-theme=vivaldi] .row.dnt{background:linear-gradient(180deg,var(--st),var(--sb))}
 :root[data-theme=vivaldi] .row.sel::before{content:"";position:absolute;left:3px;top:50%;width:3px;height:22px;margin-top:-11px;border-radius:2px;background:var(--ac)}
@@ -801,7 +804,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 :root[data-theme=vivaldi] #home .sec::after{content:"";flex:1;height:1px;background:var(--bd)}
 :root[data-theme=vivaldi] #home .ht{border-left:3px solid var(--c,var(--ac))}
 :root[data-theme=vivaldi] #home .ht .tb{background:color-mix(in srgb,var(--c,var(--ac)) 22%,var(--cb));box-shadow:0 0 14px color-mix(in srgb,var(--c,var(--ac)) 30%,transparent)}
-:root[data-theme=vivaldi] #hmfav .mh,:root[data-theme=vivaldi] .dsec{letter-spacing:.12em}
+:root[data-theme=vivaldi] #hmfav .mh,:root[data-theme=vivaldi] .dsec{letter-spacing:.12em}:root[data-theme=vivaldi] #dbody .dsec{letter-spacing:.06em}
 :root[data-theme=vivaldi] .chip{background:var(--cont)}
 :root[data-theme=vivaldi] .chip.on,:root[data-theme=vivaldi] #newb.on{border-color:var(--ac);box-shadow:0 0 0 1px #e8538a40,0 0 12px #e8538a33}
 :root[data-theme=vivaldi] .chip.add{border-color:#e8538a99;background:#e8538a14}
@@ -829,7 +832,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 :root[data-theme=vivaldi] #top.el{box-shadow:0 2px 12px #00000073}
 :root[data-theme=vivaldi] .row:active{background:#e8538a22}
 :root[data-theme=vivaldi] .di{position:relative;border-bottom-color:var(--dv)}
-:root[data-theme=vivaldi] .di.on{background:linear-gradient(90deg,#e8538a33,#e8538a0d);color:var(--ac)}
+:root[data-theme=vivaldi] .di.on{background-color:#e8538a22;background-image:linear-gradient(90deg,#e8538a33,#e8538a0d);color:var(--ac)}
 :root[data-theme=vivaldi] .di.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--ac)}
 :root[data-theme=vivaldi] .di:active{background:#e8538a22}
 :root[data-theme=vivaldi] .dmeter{background:#0000004d}
@@ -1585,19 +1588,19 @@ function nlDrFlat(root){
       if(s0&&s0.trim()){const fs=parseFloat(cs.fontSize)||14,pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0,ta=cs.textAlign;
         const h=g[3]-pt-pb;
         it.push({t:'t',g:[q(g[0]+pl),q(g[1]+pt),q(g[2]-pl-pr),q(h)],s:cs.textTransform==='uppercase'?s0.toUpperCase():s0,sz:fs,wt:parseInt(cs.fontWeight)||400,c:nlRgb(cs.color,op),
-          ls:parseFloat(cs.letterSpacing)||0,al:ta==='center'?1:(ta==='right'||ta==='end')?2:0,ml:h>fs*1.9?1:0})}}
+          ls:parseFloat(cs.letterSpacing)||0,al:ta==='center'?1:(ta==='right'||ta==='end')?2:0,ml:(h>fs*1.9&&cs.whiteSpace.indexOf('nowrap')<0)?1:0})}}
     else for(const c of e.children)visit(c,op)};
   visit(root,1);return{h:q(R.height),it}}
 function nlDrBuild(){
   const dw=$('#dwr'),bd=$('#dbody'),tb=$('#dtabs'),ft=$('#dfoot'),cs=getComputedStyle(dw),q=nlQ2;
   const pr=document.createElement('i');pr.style.cssText='position:absolute;visibility:hidden;color:var(--hov)';document.body.append(pr);const hov=nlRgb(getComputedStyle(pr).color,1);pr.remove();
-  const T=nlDrFlat(tb);T.hit=[];[...tb.children].forEach((b,j)=>{const g=nlDrRel(b,tb);T.hit.push({k:'t',j,g});if(j===DRW.tab)T.it.push({t:'r',g:[g[0],q(g[1]+g[3]-3),g[2],3],c:0xFF0D8F7E,r:0})});
+  const T=nlDrFlat(tb);T.hit=[];[...tb.children].forEach((b,j)=>{const g=nlDrRel(b,tb);T.hit.push({k:'t',j,g});if(j===DRW.tab)T.it.push({t:'r',g:[g[0],q(g[1]+g[3]-3),g[2],3],c:document.documentElement.dataset.theme==='vivaldi'?nlCol(getComputedStyle(document.documentElement).getPropertyValue('--ac')):0xFF0D8F7E,r:0})});
   const rows=[...bd.children].map((c,i)=>{const f=nlDrFlat(c),hs=[],R=c.getBoundingClientRect();
     if(c.classList.contains('di')){c.querySelectorAll('.dx').forEach((x,j)=>{if(!x.disabled)hs.push({k:'x',j,g:nlDrRel(x,c)})});hs.push({k:'r',j:0,g:[0,0,q(R.width),q(R.height)]})}
     else{const b=c.querySelector(':scope>button');if(b)hs.push({k:'b',j:0,g:nlDrRel(b,c)})}
     f.hit=hs;return f});
   const F=nlDrFlat(ft);F.hit=[...ft.children].map((b,j)=>({k:'f',j,g:nlDrRel(b,ft)}));
-  return{w:dw.offsetWidth,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
+  return{w:dw.offsetWidth,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:(()=>{const rs=getComputedStyle(document.documentElement),tk=n=>{const v=rs.getPropertyValue('--'+n).trim();return v?nlCol(v):0},c=nlRgb(cs.backgroundColor,1)||tk('card');return rs.getPropertyValue('--ct').trim()?{card:c,hov,ct:tk('ct'),cb:tk('cb')}:{card:c,hov}})(),tabs:T,rows,foot:F}}
 function nlDrState(){if(!document.body.classList.contains('dopen'))return'0';
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   return(vis($('#sheet'))||vis($('#dlg')))?'h':'o'}      // a page dialog / bottom sheet opened from the drawer (rename shortcut ...) must show above it

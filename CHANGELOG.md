@@ -11,6 +11,9 @@
 - New theme "Vivaldi Portal" (Settings > Theme): the dark look of the school portal, with dark violet-grey surfaces, a pink accent and a soft multi-colour glow behind the screens.
 - The theme styles every part of the app: buttons, chips, tabs, switches, search box, path bar, side menu, dialogs, pop-up menus, progress bars, gallery bars and the main menu tiles (each with its own colour stripe, like the portal cards).
 
+### Fixed
+- Vivaldi Portal: the side menu is no longer white; it now uses the dark theme colours, and its selected tab shows the pink accent.
+
 ## 2026-10-28 - Rounder corners
 
 ### Changed
