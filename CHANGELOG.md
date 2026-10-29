@@ -5,10 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-10-29 - Aurora themes
+## 2026-10-29 - New theme: Vivaldi Portal
 
 ### Added
-- New colour themes "Aurora Northern Lights" (dark) and "Aurora Light" (Settings > Theme): night-sky (or pale-sky) background with soft teal and violet glow, glass top bar, teal-to-violet buttons, glowing selection, dialogs and the main menu in the same style.
+- New theme "Vivaldi Portal" (Settings > Theme): the dark look of the school portal, with dark violet-grey surfaces, a pink accent and a soft multi-colour glow behind the screens.
+- The theme styles every part of the app: buttons, chips, tabs, switches, search box, path bar, side menu, dialogs, pop-up menus, progress bars, gallery bars and the main menu tiles (each with its own colour stripe, like the portal cards).
 
 ## 2026-10-28 - Rounder corners
 
