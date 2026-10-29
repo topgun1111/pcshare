@@ -900,7 +900,7 @@ class MainActivity : Activity() {
                 nm.createNotificationChannel(NotificationChannel("lanshare_results", "Job results", NotificationManager.IMPORTANCE_HIGH))
             val b = NotificationCompat.Builder(this, if (alert) "lanshare_results" else "lanshare_transfers")
                 .setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(text)
-                .setContentIntent(open).setOnlyAlertOnce(!alert).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(this)) }
+                .setContentIntent(open).setOnlyAlertOnce(!alert).setColor(NoteTint.lite(this))
                 .setCategory(if (alert) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
             if (alert) b.setStyle(NotificationCompat.BigTextStyle().bigText(text)).setPriority(NotificationCompat.PRIORITY_HIGH)
             if (st == "run") b.setOngoing(true).setProgress(100, if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0, total <= 0)

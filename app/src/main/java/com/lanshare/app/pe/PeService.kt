@@ -134,7 +134,7 @@ class PeService : Service() {
         val stop = PendingIntent.getService(this, 11, Intent(this, PeService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL) else Notification.Builder(this)
         return b.setContentTitle(if (transferring) "Phone Explorer - transferring" else "Phone Explorer is sharing storage")
-            .setContentText(text).setSmallIcon(R.drawable.ic_notification).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(this)) }.setContentIntent(open)
+            .setContentText(text).setSmallIcon(R.drawable.ic_notification).setColor(NoteTint.lite(this)).setContentIntent(open)
             .setOngoing(true).setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
     }

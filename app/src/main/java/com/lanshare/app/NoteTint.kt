@@ -2,7 +2,7 @@ package com.lanshare.app
 
 import android.content.Context
 
-/** Bildirim vurgu rengi: sadece lite surumde mor (brand_lite); full surumde 0 = sistemin kendi rengi (davranis degismez). */
+/** Notification accent colour: lite = purple (brand_lite), full = orange (brand). Always set, so the two apps are told apart in the shade. */
 object NoteTint {
-    fun lite(c: Context): Int = if (BuildConfig.LITE) c.getColor(R.color.brand_lite) else 0
+    fun lite(c: Context): Int = c.getColor(if (BuildConfig.LITE) R.color.brand_lite else R.color.brand)
 }

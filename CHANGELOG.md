@@ -7,6 +7,7 @@
 
 ## 2026-10-29 - Sidebar text size
 ### Fixed
+- Notifications now always use the app's own colour (orange for LANShare, purple for Lite)
 - The sidebar text now follows Settings -> Text size exactly like the rest of the app (it was scaled twice and looked too big)
 
 ## 2026-10-29 - Purple lite notifications

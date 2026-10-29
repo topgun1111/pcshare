@@ -116,7 +116,7 @@ class LanShareService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val b = NotificationCompat.Builder(this, "lanshare")
             .setSmallIcon(R.drawable.ic_notification).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-        if (BuildConfig.LITE) b.setColor(NoteTint.lite(this))   // lite: mor bildirim rengi
+        b.setColor(NoteTint.lite(this))   // lite: mor bildirim rengi
         // text sharing: type here (inline box) -> default device, or send the clipboard; both without opening the app
         val tgt = try { TextSend.defaultName() ?: (if (com.lanshare.app.core.Cfg.defTarget().isEmpty()) "ask each time" else "offline device") } catch (_: Throwable) { "device" }
         val replyFlags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
