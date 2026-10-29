@@ -299,6 +299,15 @@ class MainActivity : Activity() {
         @JavascriptInterface fun prefGet(k: String): String = try { getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).getString(k, "") ?: "" } catch (_: Throwable) { "" }
         @JavascriptInterface fun prefSet(k: String, v: String) { try { if (k.startsWith("ls_") && v.length < 1_500_000) getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).edit().putString(k, v).apply() } catch (_: Throwable) { } }
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
+        /** Settings > Exit app: stops the sharing service (the notification's Stop button does the same), closes the screen and ends the process. */
+        @JavascriptInterface fun exitApp() {
+            runOnUiThread {
+                try { startService(Intent(this@MainActivity, LanShareService::class.java).setAction("STOP")) } catch (_: Throwable) {}
+                try { com.lanshare.app.pe.PeService.stop(applicationContext) } catch (_: Throwable) {}
+                try { finishAndRemoveTask() } catch (_: Throwable) {}
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ android.os.Process.killProcess(android.os.Process.myPid()) }, 600)
+            }
+        }
         @JavascriptInterface fun uiSet(i: Int, t: Int) { UiScale.save(this@MainActivity, i, t); runOnUiThread { recreate() } }
         /** Settings -> Font: current id and the list as "id|name" lines. */
         @JavascriptInterface fun fontGet(): String = UiScale.font(this@MainActivity).let { if (Fnt.valid(it)) it else "figtree" }

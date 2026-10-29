@@ -2518,6 +2518,8 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
     ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
   if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
+  if(window.LSAndroid&&LSAndroid.exitApp){const rx=E('button','tbtn dng','Exit app');rx.style.alignSelf='flex-start';rx.style.marginTop='8px';
+    rx.onclick=async()=>{if(await dlg({title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rx)}
   const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
 /* Settings > Export / import settings: a file on the phone (the Google Drive screen has the cloud copy). Uses the same native callbacks as the Drive backup. */
 function openSettingsFile(){
