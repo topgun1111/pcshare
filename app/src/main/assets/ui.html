@@ -567,6 +567,24 @@ body.kid #list .row.sel{touch-action:none}
 .sw i:after{content:'';position:absolute;left:4px;top:6px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:.2s}
 .sw input:checked+i{background:var(--ac);border-color:var(--ac)}
 .sw input:checked+i:after{left:20px;top:2px;width:24px;height:24px;background:var(--onac)}
+/* Settings: full-screen page, search box, grouped sections (openSettings) */
+#sheet .card.fu.sx{background:var(--bg)}
+.sx .sxs{display:flex;align-items:center;gap:10px;margin:2px 16px 4px;padding:0 16px;height:48px;border-radius:24px;background:var(--cont);flex:none}
+.sx .sxs svg{width:22px;height:22px;fill:var(--mut);flex:none}
+.sx .sxs input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:inherit;font:inherit;font-size:16px;outline:0;-webkit-appearance:none;appearance:none}
+.sx .sxh{padding:20px 20px 8px;font-size:13px;font-weight:700;letter-spacing:.3px;color:var(--ac)}
+.sx .sxg{margin:0 16px;border-radius:22px;background:var(--cont);overflow:hidden}
+.sx .sxr{display:flex;align-items:center;gap:16px;width:100%;min-height:68px;padding:10px 16px;text-align:left;border-top:1px solid color-mix(in srgb,var(--bd) 70%,transparent);-webkit-tap-highlight-color:transparent}
+.sx .sxr.f1{border-top:0}
+.sx button.sxr:active,.sx label.sxr:active{background:var(--hov)}
+.sx .sxi{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--sc) 16%,transparent)}
+.sx .sxi svg{width:22px;height:22px;fill:var(--sc)}
+.sx .sxr .t{flex:1;min-width:0}
+.sx .sxr .t b{display:block;font-weight:500;font-size:16px;overflow-wrap:anywhere}
+.sx .sxr .t small{display:block;margin-top:2px;color:var(--mut);font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.sx .sxc{width:22px;height:22px;fill:var(--mut);flex:none}
+.sx .thg{padding:4px 12px 14px;gap:8px}
+.sx .sxe{display:block;margin:24px 16px 8px;width:calc(100% - 32px);height:52px;border-radius:26px;font-size:16px;background:color-mix(in srgb,var(--err) 12%,transparent)}
 .pf{display:flex;flex-direction:column;gap:6px;margin:8px 0 2px}.pf>b{font-size:12px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
 .pf .cr{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pf .tf{height:44px;margin:0;font-size:15px}.pf select.tf{padding:0 10px;background:var(--cont)}
 .pf .sub{font-size:12px;color:var(--mut)}.pf .sub.bad{color:var(--err)}.pf .sub.good{color:var(--ok)}.pf .chip{height:32px}.pf .chip.n{min-width:32px;justify-content:center;padding:0 8px}
@@ -2450,88 +2468,112 @@ function openPcScreen(pc){
 function openSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');card.append(E('div','handle'),E('h3','','Settings'));
-  const row=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=S.hid;
-  t.append(E('b','','Show hidden files'),E('small','','Files and folders starting with a dot (.)'));
-  cb.onchange=()=>{if(cb.checked!==S.hid)toggleHidden(true)};
-  sw.append(cb,E('i'));row.append(t,sw);card.append(row);
-  {const rn=E('button','set'),tn=E('div','t'),sn=E('small','',$('#nm').dataset.n||'');rn.style.width='100%';rn.style.textAlign='left';tn.append(E('b','','Device name'),sn);rn.append(tn);
-    rn.onclick=()=>{close();$('#nm').onclick()};card.append(rn)}
-  {const rq=E('button','set'),tq=E('div','t'),sq=E('small','');rq.style.width='100%';rq.style.textAlign='left';rq.style.display='none';tq.append(E('b','','Interrupted transfers'),sq);rq.append(tq);
-    api('GET','/api/resumable').then(l=>{if(l&&l.length){sq.textContent=l.length+(l.length===1?' copy':' copies')+' can be continued';rq.style.display=''}}).catch(()=>{});
-    rq.onclick=()=>{close();openResumable()};card.append(rq)}
-  if(window.LSAndroid&&LSAndroid.txtDevs){const rT=E('button','set'),tT=E('div','t'),sT=E('small','');rT.style.width='100%';rT.style.textAlign='left';
-    try{sT.textContent='Default device: '+(JSON.parse(LSAndroid.txtDevs()).defName||'ask every time')}catch(e){}
-    tT.append(E('b','','Text sharing'),sT);rT.append(tT);rT.onclick=()=>{close();openTextSettings()};card.append(rT)}
-  const THN={light:'Light',dark:'Dark',auto:'Follow system'};LSTH.forEach(t=>THN[t.id]=t.n);
-  const THL=[{id:'light',n:'Light',sw:['#ffffff','#1f1f1f','#c25100','#ffdcc2']},{id:'dark',n:'Dark',sw:['#18120d','#e3e3e3','#ffb77c','#7a3e00']},{id:'auto',n:'Follow system',sw:['#ffffff','#1f1f1f','#c25100','#18120d']}].concat(LSTH);
-  const rt=E('button','set'),tt=E('div','t'),sm=E('small','',THN[S.theme]);rt.style.width='100%';rt.style.textAlign='left';tt.append(E('b','','Theme'),sm);rt.append(tt);
-  const thGrid=E('div','thg');thGrid.style.display='none';
-  THL.forEach(t=>{const b=E('button','thc'+(t.id===S.theme?' on':''));b.dataset.id=t.id;b.style.background=t.sw[0];b.style.color=t.sw[1];
-    const dots=E('i');t.sw.slice(1).forEach(c=>{const d=E('b');d.style.background=c;dots.append(d)});b.append(dots,E('span','',t.n));
-    b.onclick=()=>{S.theme=t.id;SV('ls_theme',t.id);document.documentElement.dataset.theme=t.id;nlTheme();sm.textContent=THN[t.id];thGrid.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x.dataset.id===t.id))};thGrid.append(b)});
-  rt.onclick=()=>{thGrid.style.display=thGrid.style.display==='none'?'grid':'none'};card.append(rt);card.append(thGrid);
-  const rb=E('button','set'),tb=E('div','t'),sb=E('small','','Browse all drives of a PC or NAS');rb.style.width='100%';rb.style.textAlign='left';tb.append(E('b','','SMB shares'),sb);rb.append(tb);
-  rb.onclick=()=>{close();openSmb()};card.append(rb);
-  api('GET','/api/smb').then(l=>{if(l.length)sb.textContent=l.length+(l.length===1?' PC':' PCs')}).catch(()=>{});
-  {const fb=E('button','set'),ft=E('div','t'),fs=E('small','','Browse FTP / FTPS servers');fb.style.width='100%';fb.style.textAlign='left';ft.append(E('b','','FTP servers'),fs);fb.append(ft);
-    fb.onclick=()=>{close();openFtp()};card.append(fb);
-    api('GET','/api/ftp').then(l=>{if(l.length)fs.textContent=l.length+(l.length===1?' server':' servers')}).catch(()=>{})}
-  {const rr=E('button','set'),tr=E('div','t'),sr=E('small','','Checking…');rr.style.width='100%';rr.style.textAlign='left';tr.append(E('b','','Root access'),sr);rr.append(tr);
+  const card=E('div','card fu sx');o.append(card);
+  const hb=E('button','ibtn');hb.append(ic('back'));hb.setAttribute('aria-label','Back');hb.onclick=close;
+  const hd=E('div','fh');hd.append(hb,E('h3','','Settings'));
+  const sb=E('div','sxs'),si=E('input');si.type='search';si.placeholder='Search settings';si.setAttribute('aria-label','Search settings');sb.append(ic('search'),si);
+  const body=E('div','fb'),none=E('div','fempty','No settings match your search');none.style.display='none';
+  card.append(hd,sb,body);
+  const secs=[];let cur=null;
+  const sec=(title,color)=>{const h=E('div','sxh',title),g=E('div','sxg');g.style.setProperty('--sc',color);body.append(h,g);cur={h,g,rows:[]};secs.push(cur)};
+  const filter=()=>{const q=si.value.trim().toLowerCase();let any=false;
+    secs.forEach(s=>{let n=0,first=true;
+      s.rows.forEach(r=>{const vis=!r.hidden&&(!q||r.el.textContent.toLowerCase().indexOf(q)>=0);
+        r.el.style.display=vis?'':'none';r.el.classList.toggle('f1',vis&&first);if(vis){first=false;n++}
+        if(r.extra)r.extra.style.display=vis&&r.open?'grid':'none'});
+      s.h.style.display=s.g.style.display=n?'':'none';if(n)any=true});
+    none.style.display=any?'none':''};
+  si.oninput=filter;
+  card._back=()=>{if(si.value){si.value='';filter();return true}return false};   // Back clears the search first, then closes
+  /* one row: icon chip, title, grey subtitle, then a chevron (opens a screen), a switch (opt.sw) or nothing (fn = null) */
+  const row=(i,title,sub,fn,opt)=>{opt=opt||{};
+    const el=E(opt.sw?'label':fn?'button':'div','sxr'),ch=E('span','sxi'),t=E('div','t'),sm=E('small','');
+    ch.append(ic(i));t.append(E('b','',title),sm);el.append(ch,t);
+    const r={el,hidden:!!opt.hidden,open:false,set:x=>{sm.textContent=x||'';sm.style.display=x?'':'none'}};r.set(sub);
+    if(opt.sw){const w=E('span','sw'),cb=E('input');cb.type='checkbox';w.append(cb,E('i'));el.append(w);r.cb=cb;cb.onchange=()=>fn(cb.checked)}
+    else if(fn){el.append(ic('chev','sxc'));el.onclick=fn}
+    cur.g.append(el);cur.rows.push(r);return r};
+  const IMGS=api('GET','/api/imgs');   // one request feeds the three picture-search rows
+
+  /* ---- Appearance ---- */
+  sec('Appearance','#8e4ec6');
+  {const THN={light:'Light',dark:'Dark',auto:'Follow system'};LSTH.forEach(t=>THN[t.id]=t.n);
+    const THL=[{id:'light',n:'Light',sw:['#ffffff','#1f1f1f','#c25100','#ffdcc2']},{id:'dark',n:'Dark',sw:['#18120d','#e3e3e3','#ffb77c','#7a3e00']},{id:'auto',n:'Follow system',sw:['#ffffff','#1f1f1f','#c25100','#18120d']}].concat(LSTH);
+    const rt=row('palette','Theme',THN[S.theme],()=>{rt.open=!rt.open;filter()});
+    const thGrid=E('div','thg');thGrid.style.display='none';
+    THL.forEach(t=>{const b=E('button','thc'+(t.id===S.theme?' on':''));b.dataset.id=t.id;b.style.background=t.sw[0];b.style.color=t.sw[1];
+      const dots=E('i');t.sw.slice(1).forEach(c=>{const d=E('b');d.style.background=c;dots.append(d)});b.append(dots,E('span','',t.n));
+      b.onclick=()=>{S.theme=t.id;SV('ls_theme',t.id);document.documentElement.dataset.theme=t.id;nlTheme();rt.set(THN[t.id]);thGrid.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x.dataset.id===t.id))};thGrid.append(b)});
+    rt.extra=thGrid;cur.g.append(thGrid)}
+  if(window.LSAndroid&&LSAndroid.uiGet){const [u,x]=LSAndroid.uiGet().split(',').map(Number);
+    row('tune','Interface settings','Interface '+u+'% \u00b7 Text '+x+'% \u00b7 Font',()=>{close();openInterfaceSettings()})}
+  {const r=row('hide','Show hidden files','Files and folders starting with a dot (.)',v=>{if(v!==S.hid)toggleHidden(true)},{sw:1});r.cb.checked=S.hid}
+
+  /* ---- Files and storage ---- */
+  sec('Files and storage','#2e7d32');
+  row('img','Gallery settings',HGAL.length?HGAL.length+' hidden item'+(HGAL.length===1?'':'s'):'Hidden items, small albums',()=>{close();openGallerySettings()});
+  {const r=row('folder','USB / OTG drives','Checking\u2026',()=>{close();openUsb()});
+    api('GET','/api/otg').then(x=>{r.set(!x.on?'Off':(x.drives.length?x.drives.length+(x.drives.length===1?' drive':' drives')+' plugged in':'On \u00b7 no drive plugged in')+(x.ro?' \u00b7 read-only':''))}).catch(()=>{r.set('Memory sticks and disks on an OTG cable')})}
+  {let R0=null;
     const isOn=r=>!!(r&&r.enabled&&r.state==='granted');
     const txt=r=>isOn(r)?'On - \"Root\" is in the device list (whole file system). Tap to switch off':(r&&r.state==='denied'&&r.why?'Off - '+r.why:'Off - needs a rooted phone; the root manager asks once');
-    api('GET','/api/root').then(r=>{rr._r=r;sr.textContent=txt(r)}).catch(()=>{sr.textContent=''});
-    rr.onclick=async()=>{if(!rr._r)return;const on=!isOn(rr._r);
+    const rr=row('lock','Root access','Checking\u2026',async()=>{if(!R0)return;const on=!isOn(R0);
       if(on&&!await dlg({title:'Turn on root access?',msg:'This app can then read and change ANY file on the phone as root, including other apps data and system files. Deleting there is permanent (no Recycle bin). Only turn it on if you know what you are doing.',ok:'Turn on',danger:true}))return;
-      try{if(on)sr.textContent='Waiting for the root manager…';const r=await api('POST','/api/root',{op:on?'enable':'disable'});rr._r=r;sr.textContent=txt(r);
-        if(on&&!isOn(r))toast('⚠ '+(r.why||'Root access was not granted'),5000);
+      try{if(on)rr.set('Waiting for the root manager\u2026');const r=await api('POST','/api/root',{op:on?'enable':'disable'});R0=r;rr.set(txt(r));
+        if(on&&!isOn(r))toast('\u26a0 '+(r.why||'Root access was not granted'),5000);
         if(!on&&S.dev==='root'){openDev('local')}
-        pollPeers()}catch(e){sr.textContent=txt(rr._r);toast('⚠ '+e.message,5000)}};card.append(rr)}
-  {const ro=E('button','set'),to=E('div','t'),so=E('small','','Checking\u2026');ro.style.width='100%';ro.style.textAlign='left';to.append(E('b','','USB / OTG drives'),so);ro.append(to);
-    api('GET','/api/otg').then(r=>{so.textContent=!r.on?'Off':(r.drives.length?r.drives.length+(r.drives.length===1?' drive':' drives')+' plugged in':'On \u00b7 no drive plugged in')+(r.ro?' \u00b7 read-only':'')}).catch(()=>{so.textContent='Memory sticks and disks on an OTG cable'});
-    ro.onclick=()=>{close();openUsb()};card.append(ro)}
-  const rg=E('button','set'),tg=E('div','t'),sg=E('small','',HGAL.length?HGAL.length+' hidden item'+(HGAL.length===1?'':'s'):'Hidden items, small albums');rg.style.width='100%';rg.style.textAlign='left';tg.append(E('b','','Gallery settings'),sg);rg.append(tg);
-  rg.onclick=()=>{close();openGallerySettings()};card.append(rg);
-  {const ru=E('button','set'),tu=E('div','t'),su=E('small','','Checking\u2026');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Search index'),su);ru.append(tu);
-    api('GET','/api/uindex').then(r=>{su.textContent=usText(r)}).catch(()=>{su.textContent='Names of all files for Universal search'});
-    ru.onclick=()=>{close();openUsSettings()};card.append(ru)}
-  {const rx=E('button','set'),tx=E('div','t'),sx=E('small','','Limit or skip folders in Image search');rx.style.width='100%';rx.style.textAlign='left';tx.append(E('b','','Image search folders'),sx);rx.append(tx);
-    api('GET','/api/imgs').then(r=>{const a=(r&&r.included||[]).length,b=(r&&r.excluded||[]).length;if(a||b)sx.textContent=[a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 ')}).catch(()=>{});
-    rx.onclick=()=>{close();openExcluded()};card.append(rx)}
-  if(window.LSAndroid&&LSAndroid.uiGet){const rI=E('button','set'),tI=E('div','t'),sI=E('small','');rI.style.width='100%';rI.style.textAlign='left';
-    {const [u,x]=LSAndroid.uiGet().split(',').map(Number);sI.textContent='Interface '+u+'% \u00b7 Text '+x+'%'}
-    tI.append(E('b','','Interface settings'),sI);rI.append(tI);rI.onclick=()=>{close();openInterfaceSettings()};card.append(rI)}
-  if(window.LSAndroid&&LSAndroid.openPrintLog){const rL=E('button','set'),tL=E('div','t');rL.style.width='100%';rL.style.textAlign='left';
-    tL.append(E('b','','Print log'),E('small','','What happened when printing (share it when a print fails)'));rL.append(tL);
-    rL.onclick=()=>{close();try{LSAndroid.openPrintLog('',(LASTPC&&LASTPC.id)||'')}catch(e){toast('Print log needs the Android app',3000)}};card.append(rL)}
-  {const rD=E('button','set'),tD=E('div','t');rD.style.width='100%';rD.style.textAlign='left';tD.append(E('b','','Debug: performance (temporary)'),E('small','','Startup, slow functions, timers, API calls, frame drops'));rD.append(tD);rD.onclick=()=>{close();openPerfDebug()};card.append(rD)}   /* PERF-DEBUG */
-  {const ra=E('button','set'),ta=E('div','t'),sa=E('small','','Checking\u2026');ra.style.width='100%';ra.style.textAlign='left';ta.append(E('b','','Scan new pictures automatically'),sa);ra.append(ta);
-    const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
-    api('GET','/api/imgs').then(r=>{ra._on=r.auto!==false;sa.textContent=txt(ra._on)}).catch(()=>{sa.textContent=''});
-    ra.onclick=async()=>{if(ra._on===undefined)return;try{const r=await api('POST','/api/imgs',{op:'auto',on:!ra._on});ra._on=r.auto!==false;sa.textContent=txt(ra._on)}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(ra)}
-  {const rc=E('button','set'),tc=E('div','t'),sc=E('small','','Checking\u2026');rc.style.width='100%';rc.style.textAlign='left';tc.append(E('b','','Auto-scan only while charging'),sc);rc.append(tc);
-    const txt=on=>on?'On - new pictures wait until the charger is connected':'Off - scans also run on battery (paused below 20%)';
-    api('GET','/api/imgs').then(r=>{rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}).catch(()=>{sc.textContent=''});
-    rc.onclick=async()=>{if(rc._on===undefined)return;try{const r=await api('POST','/api/imgs',{op:'auto',charging:!rc._on});rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rc)}
-  {const rm=E('button','set'),tm=E('div','t'),sm2=E('small','','Search model for Image search');rm.style.width='100%';rm.style.textAlign='left';tm.append(E('b','','Image search model'),sm2);rm.append(tm);
-    api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.lite?'Not in the lite edition (install the full APK)':m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
-    rm.onclick=async()=>{if(!rm._ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;
-      try{await api('POST','/api/imgs',{op:'uninstall'});rm._ok=false;sm2.textContent='Not installed';toast('Model files deleted')}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rm)}
-  if(window.LSAndroid&&LSAndroid.ocrEngGet){const ro=E('button','set'),to=E('div','t'),so=E('small','');ro.style.width='100%';ro.style.textAlign='left';
-    so.textContent=['Automatic','PaddleOCR','ML Kit'][+LSAndroid.ocrEngGet().split(',')[0]]||'Automatic';to.append(E('b','','Text recognition model'),so);ro.append(to);
-    ro.onclick=()=>{close();openOcrSettings()};card.append(ro)}
-  if(window.LSAndroid&&LSAndroid.officeViewGet){const rv=E('button','set'),tv=E('div','t'),sv=E('small','');rv.style.width='100%';rv.style.textAlign='left';
-    sv.textContent={auto:'Auto',exact:'Exact pages (PC)',simple:'Simple'}[LSAndroid.officeViewGet()]||'Auto';tv.append(E('b','','Office view'),sv);rv.append(tv);
-    rv.onclick=()=>{close();openOfficeViewSettings()};card.append(rv)}
-  if(window.LSAndroid&&LSAndroid.settingsExport){const rE=E('button','set'),tE=E('div','t');rE.style.width='100%';rE.style.textAlign='left';
-    tE.append(E('b','','Export / import settings'),E('small','','Save your settings to a file, or load them from one'));rE.append(tE);
-    rE.onclick=()=>{close();openSettingsFile()};card.append(rE)}
-  if(window.LSAndroid&&LSAndroid.checkUpdate){const ru=E('button','set'),tu=E('div','t');ru.style.width='100%';ru.style.textAlign='left';tu.append(E('b','','Check for updates'),E('small','','Look for a newer version on GitHub'));ru.append(tu);
-    ru.onclick=()=>{toast('Checking\u2026');LSAndroid.checkUpdate()};card.append(ru)}
-  if(S.ips){const r2=E('div','set'),t2=E('div','t');t2.append(E('b','','This device'),E('small','',S.ips));r2.append(t2);card.append(r2)}
-  if(window.LSAndroid&&LSAndroid.exitApp){const rx=E('button','tbtn dng','Exit app');rx.style.alignSelf='flex-start';rx.style.marginTop='8px';
-    rx.onclick=async()=>{if(await dlg({title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rx)}
-  const d=E('button','tbtn fill','Done');d.style.alignSelf='flex-end';d.onclick=close;card.append(d);o.append(card)}
+        pollPeers()}catch(e){rr.set(txt(R0));toast('\u26a0 '+e.message,5000)}});
+    api('GET','/api/root').then(r=>{R0=r;rr.set(txt(r))}).catch(()=>{rr.set('')})}
+  {const rq=row('refresh','Interrupted transfers','',()=>{close();openResumable()},{hidden:true});
+    api('GET','/api/resumable').then(l=>{if(l&&l.length){rq.set(l.length+(l.length===1?' copy':' copies')+' can be continued');rq.hidden=false;filter()}}).catch(()=>{})}
+
+  /* ---- Network and sharing ---- */
+  sec('Network and sharing','#1e6fd9');
+  row('phone','Device name',$('#nm').dataset.n||'',()=>{close();$('#nm').onclick()});
+  if(window.LSAndroid&&LSAndroid.txtDevs){let s='';try{s='Default device: '+(JSON.parse(LSAndroid.txtDevs()).defName||'ask every time')}catch(e){}
+    row('send','Text sharing',s,()=>{close();openTextSettings()})}
+  {const r=row('pc','SMB shares','Browse all drives of a PC or NAS',()=>{close();openSmb()});
+    api('GET','/api/smb').then(l=>{if(l.length)r.set(l.length+(l.length===1?' PC':' PCs'))}).catch(()=>{})}
+  {const r=row('cloud','FTP servers','Browse FTP / FTPS servers',()=>{close();openFtp()});
+    api('GET','/api/ftp').then(l=>{if(l.length)r.set(l.length+(l.length===1?' server':' servers'))}).catch(()=>{})}
+
+  /* ---- Search ---- */
+  sec('Search','#e65100');
+  {const r=row('search','Search index','Checking\u2026',()=>{close();openUsSettings()});
+    api('GET','/api/uindex').then(x=>{r.set(usText(x))}).catch(()=>{r.set('Names of all files for Universal search')})}
+  {const r=row('folders','Image search folders','Limit or skip folders in Image search',()=>{close();openExcluded()});
+    IMGS.then(x=>{const a=(x&&x.included||[]).length,b=(x&&x.excluded||[]).length;if(a||b)r.set([a?a+' included':'',b?b+' excluded':''].filter(Boolean).join(' \u00b7 '))}).catch(()=>{})}
+  {const txt=on=>on?'On - new pictures are added to image search by themselves (after the first scan)':'Off - use \"Scan new pictures\" in Image search';
+    const r=row('refresh','Scan new pictures automatically','Checking\u2026',async v=>{try{const x=await api('POST','/api/imgs',{op:'auto',on:v});const n=x.auto!==false;r.cb.checked=n;r.set(txt(n))}catch(e){r.cb.checked=!v;toast('\u26a0 '+e.message,4000)}},{sw:1});
+    r.cb.disabled=true;IMGS.then(x=>{const n=x.auto!==false;r.cb.checked=n;r.cb.disabled=false;r.set(txt(n))}).catch(()=>{r.set('')})}
+  {const txt=on=>on?'On - new pictures wait until the charger is connected':'Off - scans also run on battery (paused below 20%)';
+    const r=row('refresh','Auto-scan only while charging','Checking\u2026',async v=>{try{const x=await api('POST','/api/imgs',{op:'auto',charging:v});const n=!!x.autoCharging;r.cb.checked=n;r.set(txt(n))}catch(e){r.cb.checked=!v;toast('\u26a0 '+e.message,4000)}},{sw:1});
+    r.cb.disabled=true;IMGS.then(x=>{const n=!!x.autoCharging;r.cb.checked=n;r.cb.disabled=false;r.set(txt(n))}).catch(()=>{r.set('')})}
+  {let ok=false;
+    const rm=row('download','Image search model','Search model for Image search',async()=>{if(!ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;
+      try{await api('POST','/api/imgs',{op:'uninstall'});ok=false;rm.set('Not installed');toast('Model files deleted')}catch(e){toast('\u26a0 '+e.message,4000)}});
+    IMGS.then(x=>{const m=(x&&x.model)||{};rm.set(m.lite?'Not in the lite edition (install the full APK)':m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)');ok=!!m.installed}).catch(()=>{})}
+  if(window.LSAndroid&&LSAndroid.ocrEngGet)row('tune','Text recognition model',['Automatic','PaddleOCR','ML Kit'][+LSAndroid.ocrEngGet().split(',')[0]]||'Automatic',()=>{close();openOcrSettings()});
+
+  /* ---- Documents and printing ---- */
+  sec('Documents and printing','#c2185b');
+  if(window.LSAndroid&&LSAndroid.officeViewGet)row('doc','Office view',{auto:'Auto',exact:'Exact pages (PC)',simple:'Simple'}[LSAndroid.officeViewGet()]||'Auto',()=>{close();openOfficeViewSettings()});
+  if(window.LSAndroid&&LSAndroid.openPrintLog)row('print','Print log','What happened when printing (share it when a print fails)',()=>{close();try{LSAndroid.openPrintLog('',(LASTPC&&LASTPC.id)||'')}catch(e){toast('Print log needs the Android app',3000)}});
+
+  /* ---- Backup and updates ---- */
+  sec('Backup and updates','#00838f');
+  if(window.LSAndroid&&LSAndroid.settingsExport)row('zip','Export / import settings','Save your settings to a file, or load them from one',()=>{close();openSettingsFile()});
+  if(window.LSAndroid&&LSAndroid.checkUpdate)row('download','Check for updates','Look for a newer version on GitHub',()=>{toast('Checking\u2026');LSAndroid.checkUpdate()});
+
+  /* ---- About and advanced ---- */
+  sec('About and advanced','#6d6d6d');
+  if(S.ips)row('info','This device',S.ips,null);
+  row('build','Debug: performance (temporary)','Startup, slow functions, timers, API calls, frame drops',()=>{close();openPerfDebug()});   /* PERF-DEBUG */
+
+  body.append(none);
+  if(window.LSAndroid&&LSAndroid.exitApp){const rx=E('button','tbtn dng sxe','Exit app');
+    rx.onclick=async()=>{if(await dlg({title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};body.append(rx)}
+  filter()}
 /* Settings > Export / import settings: a file on the phone (the Google Drive screen has the cloud copy). Uses the same native callbacks as the Drive backup. */
 function openSettingsFile(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';

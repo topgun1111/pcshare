@@ -141,7 +141,12 @@ class PrintLogActivity : Activity() {
         bg {
             val r = pcText(dev)
             ui.post {
-                if (r.first != null) { pc = parse(r.first!!, "pc"); pcNote = "PC log: " + pc.size + " lines"; render() }
+                if (r.first != null) {
+                    val before = pc.size
+                    pc = parse(r.first!!, "pc"); pcNote = "PC log: " + pc.size + " lines"; render()
+                    val d = pc.size - before
+                    toast("PC log updated: " + pc.size + " lines" + (if (before == 0) "" else if (d > 0) " (+" + d + " new)" else " (no new lines)"))
+                }
                 else { pcNote = ""; toast(r.second) }
             }
         }
