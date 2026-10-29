@@ -82,6 +82,7 @@ class OfficeViewerActivity : Activity() {
         val rd = dev; val rp = rpath
         if (rd != null && rp != null) OfficeShortcutActivity.Recent.add(applicationContext, rd, rp, rp.substringAfterLast('/'))   // launcher "recent office files"
         val mode = if (intent.getBooleanExtra("simple", false)) "simple" else com.lanshare.app.core.OfficeExact.mode(this)
+        com.lanshare.app.core.PrintLog.ev("office-open", null, "name" to f.name, "bytes" to f.length(), "mode" to mode, "remote" to (dev != null))   // Logs screen: Office previews
         if (mode != "simple" && com.lanshare.app.core.OfficeExact.eligible(f.name)) exactOrSimple(f, true) else load(f)
     }
 
@@ -96,10 +97,15 @@ class OfficeViewerActivity : Activity() {
         status("Preparing exact pages\u2026")
         Thread {
             var pdf: File? = null; var why: String? = null; var md5 = ""
+            val t0 = System.currentTimeMillis(); var hit = false; var err: Throwable? = null
             try {
-                pdf = oe.cached(applicationContext, f) ?: oe.convert(applicationContext, f, auto) { status(it) }
+                pdf = oe.cached(applicationContext, f)?.also { hit = true } ?: oe.convert(applicationContext, f, auto) { status(it) }
                 md5 = oe.md5(f)
-            } catch (e: Throwable) { why = e.message ?: e.javaClass.simpleName }
+            } catch (e: Throwable) { why = e.message ?: e.javaClass.simpleName; err = e }
+            val ms = System.currentTimeMillis() - t0
+            val pf = pdf
+            if (pf != null) com.lanshare.app.core.PrintLog.ev("office-exact-ok", null, "name" to f.name, "cached" to hit, "sec" to ms / 1000.0, "pdf_size" to pf.length())
+            else com.lanshare.app.core.PrintLog.warn("office-exact-failed", null, "name" to f.name, "auto" to auto, "sec" to ms / 1000.0, "why" to why, "exc" to err?.let { com.lanshare.app.core.PrintLog.exc(it) })
             runOnUiThread {
                 if (isDestroyed || isFinishing) return@runOnUiThread
                 val p = pdf
@@ -231,7 +237,9 @@ class OfficeViewerActivity : Activity() {
 
     private fun load(f: File) {
         Thread {
-            val html = try { build(f) } catch (e: Throwable) {
+            val t0 = System.currentTimeMillis()
+            val html = try { build(f).also { h -> com.lanshare.app.core.PrintLog.ev("office-view-ok", null, "name" to f.name, "kind" to (if (od?.isSheet == true) "sheet" else "document"), "sec" to (System.currentTimeMillis() - t0) / 1000.0, "html_kb" to h.length / 1024) } } catch (e: Throwable) {
+                com.lanshare.app.core.PrintLog.err("office-view-failed", null, e, "name" to f.name, "bytes" to f.length(), "sec" to (System.currentTimeMillis() - t0) / 1000.0)
                 val enc = e.message.orEmpty().contains("password", true) || e.message.orEmpty().contains("zip", true) || e.message.orEmpty().contains("end header", true)
                 "<body style=\"font:15px sans-serif;padding:16px\">" + (if (enc) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: " + e.message) + "</body>"
             }

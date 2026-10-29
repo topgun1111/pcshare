@@ -6,7 +6,11 @@
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
 ## 2026-10-29 - Sidebar text size
+### Added
+- Logs now also show Office previews: when a Word, Excel or PowerPoint file is opened, whether exact pages or the simple view was used, how long it took, and why it failed
+
 ### Fixed
+- The Logs screen now uses the app font like the rest of the app
 - Notifications now always use the app's own colour (orange for LANShare, purple for Lite)
 - The sidebar text now follows Settings -> Text size exactly like the rest of the app (it was scaled twice and looked too big)
 

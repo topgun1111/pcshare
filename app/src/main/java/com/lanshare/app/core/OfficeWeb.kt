@@ -12,6 +12,7 @@ object OfficeWeb {
 
     /** [sheetLink]: URL prefix the sheet tabs append the sheet index to (e.g. `/api/office?dev=local&path=%2Fa.xlsx&sheet=`). */
     fun page(f: File, sheet: Int, sheetLink: String): String = try {
+        val t0 = System.currentTimeMillis()
         OfficeOpen(f).use { o ->
             if (!o.isSheet) DocxHtml.render(o.readDoc(), title = f.name, image = { im ->
                 val b = o.image(im.part)
@@ -26,8 +27,9 @@ object OfficeWeb {
                 if (cur == null) msg("No visible sheets.")
                 else XlsxHtml.render(o.readSheet(cur), tabs, cur, o.styles).replace("href=\"lsoffice://sheet/", "href=\"" + esc(sheetLink)).replace("href=\"lsoffice://note/", "href=\"#n_")   // Part 9: note corner -> the notes list at the bottom of the page
             }
-        }
+        }.also { PrintLog.ev("office-view-ok", null, "name" to f.name, "where" to "pc-web", "sec" to (System.currentTimeMillis() - t0) / 1000.0, "html_kb" to it.length / 1024) }
     } catch (e: Throwable) {
+        PrintLog.err("office-view-failed", null, e, "name" to f.name, "bytes" to f.length(), "where" to "pc-web")
         val m = e.message.orEmpty()
         msg(if (m.contains("password", true) || m.contains("zip", true) || m.contains("end header", true)) "Cannot open: file is password protected or not a valid Office file." else "Cannot open: $m")
     }

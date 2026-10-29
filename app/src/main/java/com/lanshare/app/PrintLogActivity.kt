@@ -62,6 +62,7 @@ class PrintLogActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        Fnt.init(applicationContext)   // the app font (Settings > Interface > Font) for the whole screen
         pal = AppPal.pal(this)
         val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
         window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
@@ -73,8 +74,8 @@ class PrintLogActivity : Activity() {
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
-        root.addView(TextView(this).apply { text = "Logs"; textSize = 20f; setTextColor(pal.fg); setTypeface(typeface, Typeface.BOLD); setPadding(dp(16), dp(12), dp(16), dp(2)) })
-        info = TextView(this).apply { textSize = 12f; setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
+        root.addView(TextView(this).apply { text = "Logs"; textSize = 20f; setTextColor(pal.fg); typeface = Fnt.semi(); setPadding(dp(16), dp(12), dp(16), dp(2)) })
+        info = TextView(this).apply { typeface = Fnt.med(); textSize = 12f; setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
         root.addView(info)
 
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
@@ -91,7 +92,7 @@ class PrintLogActivity : Activity() {
         root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(chips) })
 
         verbose = Switch(this).apply {
-            text = "Full detail (long texts and stack traces are kept in full)"; textSize = 13f; setTextColor(pal.fg)
+            text = "Full detail (long texts and stack traces are kept in full)"; typeface = Fnt.med(); textSize = 13f; setTextColor(pal.fg)
             isChecked = try { Cfg.printVerbose() } catch (_: Throwable) { true }
             setPadding(dp(16), dp(4), dp(16), dp(8))
             setOnCheckedChangeListener { _, v -> try { Cfg.setPrintVerbose(v) } catch (_: Throwable) {} }
@@ -99,7 +100,7 @@ class PrintLogActivity : Activity() {
         root.addView(verbose)
 
         body = TextView(this).apply {
-            typeface = Typeface.MONOSPACE; textSize = 11f; setTextColor(pal.fg); setTextIsSelectable(true)
+            typeface = Fnt.med(); textSize = 11f; setTextColor(pal.fg); setTextIsSelectable(true)
             setPadding(dp(12), dp(8), dp(12), dp(16))
         }
         scroll = ScrollView(this).apply {
@@ -115,7 +116,7 @@ class PrintLogActivity : Activity() {
     override fun onDestroy() { super.onDestroy(); exec.shutdownNow() }
 
     private fun chip(t: String, f: () -> Unit) = TextView(this).apply {
-        text = t; textSize = 13f; setTextColor(pal.fg); gravity = Gravity.CENTER
+        text = t; typeface = Fnt.med(); textSize = 13f; setTextColor(pal.fg); gravity = Gravity.CENTER
         setPadding(dp(14), dp(8), dp(14), dp(8))
         background = GradientDrawable().apply { setColor(pal.cont); cornerRadius = dp(18).toFloat(); setStroke(dp(1), pal.bd) }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
@@ -175,7 +176,7 @@ class PrintLogActivity : Activity() {
     }
 
     private fun renderTechnical(lines: List<Ln>, f: File, kb: Long, sb: SpannableStringBuilder) {
-        body.typeface = Typeface.MONOSPACE; body.textSize = 11f
+        body.typeface = Fnt.med(); body.textSize = 11f
         info.text = (if (f.path.isEmpty()) "" else f.name + " - " + kb + " KB - " + f.parent) + (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nTimes of the PC lines are the PC's clock."
         val last = if (lines.size > MAXV) lines.subList(lines.size - MAXV, lines.size) else lines
         if (lines.size > last.size) sb.append("... ").append((lines.size - last.size).toString()).append(" older lines not shown (Share / Copy give everything)\n\n")
@@ -193,7 +194,7 @@ class PrintLogActivity : Activity() {
 
     /** Plain sentences (PlainLog): "21:30:05  PC  Printing finished (3.2 s)", a tip line under problems, a problem count on top. */
     private fun renderSimple(lines: List<Ln>, sb: SpannableStringBuilder) {
-        body.typeface = Typeface.DEFAULT; body.textSize = 14f
+        body.typeface = Fnt.med(); body.textSize = 14f
         val items = ArrayList<Pair<Ln, PlainLog.Item>>()
         for (l in lines) { val it = PlainLog.of(l); if (it != null) items.add(l to it) }
         val errs = items.count { it.second.kind == 'e' }
