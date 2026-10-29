@@ -314,6 +314,7 @@ object Routes {
                 val (data, dur) = VideoThumbs.make(Jobs.ep(ex.q("dev")).open(p))
                 return ex.reply(200, data, "image/jpeg", mapOf("X-Duration" to dur.toString(), "Cache-Control" to "private, max-age=86400"))
             }
+            "arcinfo" -> return ex.json(ArcInfo.json(Jobs.ep(ex.q("dev")), ex.q("path")))   // archive details: strip + sheet in the web UI (ZIP: central directory only)
             "arcjob" -> return ex.json(ArcProg.current())   // what a slow folder listing is busy with (fetching an archive ...): {} when nothing
             "jobcancel" -> {
                 (Jobs.all[ex.q("id")] ?: throw NotFound("unknown job")).cancel = true

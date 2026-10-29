@@ -1511,3 +1511,4 @@ Mapping from the first plan of 6 parts: old 2 -> new 2, 3, 4; old 3 -> new 5, 6;
 
 ### 17.9 Prompt for the next session (paste it)
 "Read HANDOVER.md chapter 17 (17.1-17.6, 17.5j, 17.7k, 17.8). All 11 Drive parts are coded; paste the CI compile errors / the failing check of 17.7k and fix them in `core/GdApi.kt` / `core/GdriveFs.kt` / `core/GAuth.kt`. Honour 17.3. Update section 14 and deliver as `pcshare-gdrive-part12.zip`."
+- 2026-10-29 - Fix: archive details showed "Archive details unavailable" / "unknown api" because `core/ZipInfo.kt`, `core/ArcInfo.kt` and the `arcinfo` GET route in `Routes.kt` were missing from the project (only `ui.html` had the client side). Re-created all three (ZipInfo: end record + ZIP64 + windowed central-directory read, AES / ZipCrypto detection, SFX stub offset; ArcInfo: ZIP via ranged reads, other formats from `ArcStore.index`). NOT compiled here - build and open a ZIP, a password ZIP, a .7z and a .tar.gz.
