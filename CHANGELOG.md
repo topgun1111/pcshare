@@ -7,6 +7,7 @@
 
 ## 2026-10-29 - Sidebar text size
 ### Added
+- Deleting from Universal search now shows what is happening: a progress bar, the item being moved (name, folder, size, date), counts, megabytes, time and time left, a Cancel button, and a list of what failed and why
 - Emptying the recycle bin (Free up space) now shows a progress bar, items and megabytes freed, the item being deleted, the time taken and time left, and a Cancel button
 - Logs now also show Office previews: when a Word, Excel or PowerPoint file is opened, whether exact pages or the simple view was used, how long it took, and why it failed
 

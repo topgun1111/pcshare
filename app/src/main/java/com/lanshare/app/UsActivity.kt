@@ -922,21 +922,73 @@ class UsActivity : Activity() {
 
     private fun actDelete() {
         val ps = picked(); if (ps.isEmpty()) return
-        val vs = ps.mapNotNull { UsSearch.virt(it.path) }.filter { Bin.canTrash(it) }
-        if (vs.isEmpty()) { toast("These items cannot be moved to the recycle bin"); return }
-        AppPal.dlg(this).setTitle("Delete " + vs.size + (if (vs.size == 1) " item?" else " items?"))
-            .setMessage("They are moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days.")
-            .setPositiveButton("Delete") { _, _ ->
-                val keep = maxOf(PAGE, rows.size)
-                Thread {
-                    var bad = 0
-                    for (v in vs) try { Bin.trash(v) } catch (_: Throwable) { bad++ }
-                    ui.post {
-                        if (bad > 0) toast("$bad could not be deleted")
-                        endSel(false); runQuery(true, keep)
-                    }
-                }.start()
-            }.setNegativeButton("Cancel", null).show()
+        val jobs = ps.mapNotNull { r -> UsSearch.virt(r.path)?.takeIf { Bin.canTrash(it) }?.let { r to it } }
+        if (jobs.isEmpty()) { toast("These items cannot be moved to the recycle bin"); return }
+        val folders = jobs.count { it.first.dir }; val files = jobs.size - folders
+        val what = (if (files > 0) files.toString() + (if (files == 1) " file" else " files") else "") + (if (files > 0 && folders > 0) " and " else "") + (if (folders > 0) folders.toString() + (if (folders == 1) " folder" else " folders") else "")
+        AppPal.dlg(this).setTitle("Delete " + what + "?")
+            .setMessage(jobs.take(5).joinToString("\n") { it.first.name } + (if (jobs.size > 5) "\n+ " + (jobs.size - 5) + " more" else "") +
+                "\n\nThey are moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days.")
+            .setPositiveButton("Delete") { _, _ -> runDelete(jobs, maxOf(PAGE, rows.size)) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Moves the picked items to the recycle bin on a background thread with a live dialog: which item (name, folder, size), counts, bytes, time, Cancel, and a list of what failed and why. */
+    private fun runDelete(jobs: List<Pair<UsSearch.Row, String>>, keep: Int) {
+        val n = jobs.size
+        val totalBytes = jobs.sumOf { if (it.first.dir) 0L else it.first.size }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24f), dp(8f), dp(24f), dp(4f)) }
+        val head = tv(15f, p.fg, true)
+        val bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000; progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(p.ac)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(p.bd)
+        }
+        val nameTv = tv(15f, p.fg, true).apply { isSingleLine = false; maxLines = 2 }
+        val whereTv = tv(12f, p.mut).apply { isSingleLine = false; maxLines = 3; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        val sizeTv = tv(12f, p.mut)
+        val statTv = tv(12f, p.mut).apply { isSingleLine = false; maxLines = 2 }
+        val failTv = tv(12f, 0xFFE53935.toInt()).apply { isSingleLine = false; maxLines = 3 }
+        box.addView(head); box.addView(bar, LinearLayout.LayoutParams(-1, dp(10f)).apply { topMargin = dp(8f); bottomMargin = dp(10f) })
+        box.addView(nameTv); box.addView(whereTv); box.addView(sizeTv); box.addView(statTv, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8f) }); box.addView(failTv)
+        head.text = "0 of $n"
+        val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
+        val dlg = AppPal.dlg(this).setTitle("Moving to the recycle bin").setView(box).setCancelable(false).setNegativeButton("Cancel", null).create()
+        dlg.show()
+        dlg.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)?.setOnClickListener { cancel.set(true); (it as TextView).text = "Cancelling\u2026"; it.isEnabled = false }
+        val t0 = System.currentTimeMillis()
+        fun secs(ms: Long): String { val x = ms / 1000; return if (x < 60) "$x s" else (x / 60).toString() + " min " + (x % 60) + " s" }
+        Thread {
+            var done = 0; var bytes = 0L; var moved = 0
+            val fails = ArrayList<String>()
+            for ((r, v) in jobs) {
+                if (cancel.get()) break
+                val i = done + 1; val where = r.path.substringBeforeLast('/', "/").ifEmpty { "/" }
+                ui.post {
+                    head.text = "$i of $n"
+                    nameTv.text = r.name
+                    whereTv.text = "In: " + where
+                    sizeTv.text = (if (r.dir) "Folder" else NlModel.fmt(r.size)) + (if (r.mtime > 0) "  \u00b7  " + dateF.format(Date(r.mtime * 1000L)) else "")
+                }
+                try { Bin.trash(v); moved++ } catch (e: Throwable) { fails.add(r.name + " \u2013 " + (e.message ?: e.javaClass.simpleName).take(80)) }
+                done++; if (!r.dir) bytes += r.size
+                val el = System.currentTimeMillis() - t0
+                val left = if (done in 1 until n && el > 1500) el * (n - done) / done else 0L
+                ui.post {
+                    bar.progress = (done * 1000L / n).toInt()
+                    statTv.text = "$moved moved" + (if (totalBytes > 0) "  \u00b7  " + NlModel.fmt(bytes) + " of " + NlModel.fmt(totalBytes) else "") + "  \u00b7  " + secs(el) + (if (left > 1500) "  \u00b7  about " + secs(left) + " left" else "")
+                    failTv.text = if (fails.isEmpty()) "" else fails.size.toString() + " could not be moved: " + fails.last()
+                }
+            }
+            ui.post {
+                try { dlg.dismiss() } catch (_: Throwable) {}
+                if (fails.isEmpty()) toast((if (cancel.get() && moved < n) "Cancelled \u2013 " else "") + moved + (if (moved == 1) " item" else " items") + " moved to the recycle bin" + (if (totalBytes > 0 && !cancel.get()) " (" + NlModel.fmt(bytes) + ")" else ""))
+                else AppPal.dlg(this).setTitle(fails.size.toString() + " could not be moved")
+                    .setMessage(moved.toString() + " moved, " + fails.size + " failed:\n\n" + fails.take(8).joinToString("\n") + (if (fails.size > 8) "\n+ " + (fails.size - 8) + " more" else ""))
+                    .setPositiveButton("OK", null).show()
+                endSel(false); runQuery(true, keep)
+            }
+        }.also { it.isDaemon = true }.start()
     }
 
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
