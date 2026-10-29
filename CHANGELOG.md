@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - Sidebar text size
+### Fixed
+- The sidebar text now follows Settings -> Text size exactly like the rest of the app (it was scaled twice and looked too big)
+
 ## 2026-10-29 - Purple lite notifications
 
 ### Changed

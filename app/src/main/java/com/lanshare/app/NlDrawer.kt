@@ -135,7 +135,7 @@ private class DrView(c: Context, private val d: Float) : View(c) {
         if (lay == null || it.layW != wpx) {
             val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
             tp.color = it.c
-            tp.textSize = it.sz * d * UiScale.tf
+            tp.textSize = it.sz * d   // sz is the WebView computed font-size, which already includes Settings -> Text size (textZoom): do not multiply by UiScale.tf again
             tp.typeface = tf(it.wt)
             if (it.ls != 0f && it.sz > 0f) tp.letterSpacing = it.ls / it.sz
             val al = when (it.al) {
