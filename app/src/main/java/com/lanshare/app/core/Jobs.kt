@@ -620,31 +620,51 @@ object Jobs {
     private val BUILD_DIRS = setOf("build", "dist", "node_modules", "__pycache__", "venv", ".venv", "target", ".gradle", ".idea", ".git")
     private fun isBuildPart(seg: String) = seg in BUILD_DIRS || seg.endsWith(".pyc") || seg.endsWith(".class")
 
+    private val TEXT_EXT = setOf("txt", "md", "csv", "tsv", "json", "xml", "html", "htm", "css", "js", "ts", "kt", "java", "py", "php", "c", "cpp", "h",
+        "sql", "log", "yml", "yaml", "ini", "svg", "rtf", "srt", "gradle", "properties", "bat", "sh")
+
+    /** Rough size of one file inside the ZIP (before it is made): by kind - already-compressed files stay as they are, text shrinks a lot - plus ~120 bytes of headers. */
+    private fun zipEst(name: String, size: Long): Long {
+        val x = name.substringAfterLast('.', "").lowercase()
+        val r = when { x in STORE_EXT -> 1.0; x in TEXT_EXT -> 0.25; x == "bmp" -> 0.15; x == "wav" -> 0.8; else -> 0.6 }
+        return (maxOf(size, 0L) * r).toLong() + 120L
+    }
+
     /**
-     * What the ZIP dialog offers to leave out: inside the selected items, the topmost hidden entry (name starts with ".") or build / dependency folder of every branch
-     * with its size and file count, e.g. {path:"/Proj/app/.gradle", rel:"app/.gradle", dir:true, kind:"hidden", size, files}. The selected items themselves are never listed.
+     * What the ZIP dialog shows before zipping: {size, files, est} = original size / file count / estimated ZIP size of everything selected, and
+     * "items" = what it offers to leave out: inside the selected items, the topmost hidden entry (name starts with ".") or build / dependency folder of every branch
+     * with its size, file count and estimated zipped size, e.g. {path:"/Proj/app/.gradle", rel:"app/.gradle", dir:true, kind:"hidden", size, files, est}. The selected items themselves are never listed.
      */
-    fun zipScan(devId: String, paths: List<String>): JSONArray {
+    fun zipScan(devId: String, paths: List<String>): JSONObject {
         val e = ep(devId)
         val res = LinkedHashMap<String, JSONObject>()
+        var tSize = 0L
+        var tFiles = 0L
+        var tEst = 0L
         for (p0 in paths) {
             val p = vnorm(p0)
             if (p == "/") continue
             for (w in e.walk(p)) {
-                if (w.rel.isEmpty() || w.skip) continue
+                if (w.skip) continue
+                val fname = if (w.rel.isEmpty()) vbase(p) else w.rel.substringAfterLast('/')
+                if (!w.dir) { tSize += w.size; tFiles++; tEst += zipEst(fname, w.size) }
+                if (w.rel.isEmpty()) continue
                 val segs = w.rel.split('/')
                 val at = segs.indexOfFirst { it.startsWith(".") || isBuildPart(it) }
                 if (at < 0) continue
                 val relTop = segs.subList(0, at + 1).joinToString("/")
-                val o = res.getOrPut(p + "/" + relTop) {
-                    JSONObject().put("path", p + "/" + relTop).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
-                        .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L)
+                val key = p + "/" + relTop
+                var o = res[key]
+                if (o == null) {
+                    if (res.size >= 400) continue
+                    o = JSONObject().put("path", key).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
+                        .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L).put("est", 0L)
+                    res[key] = o
                 }
-                if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1) }
-                if (res.size >= 400) break
+                if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1); o.put("est", o.getLong("est") + zipEst(fname, w.size)) }
             }
         }
-        return JSONArray(res.values.toList())
+        return JSONObject().put("items", JSONArray(res.values.toList())).put("size", tSize).put("files", tFiles).put("est", tEst)
     }
 
     private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList()) {

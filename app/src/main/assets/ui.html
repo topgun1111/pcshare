@@ -5461,28 +5461,34 @@ setInterval(async()=>{
 function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   const d=$('#dlg');d.textContent='';d.style.display='flex';
   const card=E('div','dcard');card.append(E('h3','','Create ZIP'),E('p','',msg));
+  const sum=E('p','','Calculating size\u2026');sum.style.cssText='font-size:13.5px;font-weight:600;margin:2px 2px 8px';card.append(sum);
   const inp=E('input','tf');inp.value=base;inp.placeholder='File name';inp.autocomplete='off';card.append(inp);
   const chk=new Set(),row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn','Zip');
-  let alive=true;
+  let alive=true,tot=null;const by={};
+  const upd=()=>{if(!tot)return;let s=tot.size,e=tot.est,f=tot.files;chk.forEach(p=>{const i=by[p];if(i){s-=i.size;e-=i.est;f-=i.files}});s=Math.max(s,0);e=Math.max(e,0);
+    sum.textContent='Original '+fmt(s)+' \u2192 zipped \u2248 '+fmt(e)+(s>0&&e<s?' (\u2248'+Math.round((1-e/s)*100)+'% smaller)':'')+' \u00b7 '+f.toLocaleString()+(f===1?' file':' files')};
   const done=v=>{alive=false;d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>done({name:inp.value,ex:[...chk]});
   d.onclick=e=>{if(e.target===d)done(null)};inp.onkeydown=e=>{if(e.key==='Enter'&&!k.disabled)k.click()};
+  let box=null,st=null,all=null;
   if(hasDir){
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:10px 0 2px';
-    const lb=E('b','','Leave out (tick):'),all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
-    const box=E('div');box.style.cssText='max-height:38vh;overflow-y:auto;overflow-x:hidden';
-    const st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:13px;color:var(--mut);margin:6px 2px';box.append(st);
-    card.append(hd,box);k.disabled=true;
-    api('POST','/api/zipscan',{dev:S.dev,paths:paths},60000).then(r=>{
-      if(!alive)return;const it=(r&&r.items)||[];st.remove();k.disabled=false;
-      if(!it.length){box.append(E('p','','No hidden or build folders found inside.'));return}
-      const cbs=[];all.style.display='';
-      it.forEach(i=>{const lab=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';
-        cb.onchange=()=>{cb.checked?chk.add(i.path):chk.delete(i.path)};cbs.push([cb,i.path]);
-        t.append(E('b','',i.rel+(i.dir?'/':'')),E('small','',(i.kind==='hidden'?'Hidden':'Build output')+' \u00b7 '+fmt(i.size)+(i.dir?' \u00b7 '+i.files+' file'+(i.files===1?'':'s'):'')));
-        sw.append(cb,E('i'));lab.append(t,sw);box.append(lab)});
-      all.onclick=()=>{const on=cbs.some(x=>!x[0].checked);cbs.forEach(x=>{x[0].checked=on;on?chk.add(x[1]):chk.delete(x[1])});all.textContent=on?'Untick all':'Tick all'}
-    }).catch(e=>{if(!alive)return;st.textContent='\u26a0 Could not list hidden folders: '+e.message;k.disabled=false})}
+    const lb=E('b','','Leave out (tick):');all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
+    box=E('div');box.style.cssText='max-height:38vh;overflow-y:auto;overflow-x:hidden';
+    st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:13px;color:var(--mut);margin:6px 2px';box.append(st);
+    card.append(hd,box);k.disabled=true}
+  api('POST','/api/zipscan',{dev:S.dev,paths:paths},60000).then(r=>{
+    if(!alive)return;tot={size:r.size||0,est:r.est||0,files:r.files||0};upd();
+    if(!hasDir)return;
+    const it=(r&&r.items)||[];st.remove();k.disabled=false;
+    if(!it.length){box.append(E('p','','No hidden or build folders found inside.'));return}
+    const cbs=[];all.style.display='';
+    it.forEach(i=>{by[i.path]=i;const lab=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';
+      cb.onchange=()=>{cb.checked?chk.add(i.path):chk.delete(i.path);upd()};cbs.push([cb,i.path]);
+      t.append(E('b','',i.rel+(i.dir?'/':'')),E('small','',(i.kind==='hidden'?'Hidden':'Build output')+' \u00b7 '+fmt(i.size)+' \u2192 \u2248 '+fmt(i.est||0)+(i.dir?' \u00b7 '+i.files+' file'+(i.files===1?'':'s'):'')));
+      sw.append(cb,E('i'));lab.append(t,sw);box.append(lab)});
+    all.onclick=()=>{const on=cbs.some(x=>!x[0].checked);cbs.forEach(x=>{x[0].checked=on;on?chk.add(x[1]):chk.delete(x[1])});all.textContent=on?'Untick all':'Tick all';upd()}
+  }).catch(e=>{if(!alive)return;sum.textContent='';if(hasDir){st.textContent='\u26a0 Could not list hidden folders: '+e.message;k.disabled=false}});
   row.append(c,k);card.append(row);d.append(card);setTimeout(()=>{inp.focus();inp.select()},60)})}
 async function doZip(){   // pack the selected files / folders into a new .zip next to them (on whichever device is open)
   const it=selItems();if(!it.length||inArc())return;
