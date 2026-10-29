@@ -22,10 +22,14 @@ private const val PAR_MIN = 150      // folders with fewer entries are read on t
 private const val PAR_THREADS = 4
 
 /** Files on this device, exposed as virtual paths rooted at '/'. */
-class LocalFs(rootPath: String) : Endpoint {
-    override val id = "local"
-    override val name = "This device"
+class LocalFs(rootPath: String, override val id: String = "local", override val name: String = "This device",
+              private val readOnly: () -> Boolean = { false }) : Endpoint {   // id / name / readOnly: only a USB drive ([Otg]) passes them
     val root: File = File(rootPath).canonicalFile
+
+    /** Throws [Denied] when this place is a USB drive the user switched to read-only (Settings > USB drives read-only). Called before EVERY change. */
+    fun checkWritable() { if (readOnly()) throw Denied("$name is read-only (Settings > USB drives read-only)") }
+    /** Tells the name index about a change - only this phone's own storage is indexed, a USB drive is not. */
+    private fun ix(f: File) { if (id == "local") IndexManager.changed(f) }
 
     fun real(v: String): File {
         val p = File(root, vnorm(v).trimStart('/')).canonicalFile
@@ -254,6 +258,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun write(v: String, input: InputStream, size: Long, cb: ((Int) -> Unit)?) {
+        checkWritable()
         if (size < 0) throw BadReq("missing size")
         val p = real(v)
         try {   // refuse up front instead of failing at 95 % of a big transfer (keeps 5 MB spare for Android itself)
@@ -281,7 +286,7 @@ class LocalFs(rootPath: String) : Endpoint {
                 if (!tmp.renameTo(p)) { if (hadOld) bak.renameTo(p); throw IOException("could not move the file into place") }
                 if (hadOld) bak.delete()
             }
-            IndexManager.changed(p)   // name index (Universal Search)
+            ix(p)   // name index (Universal Search)
         } finally {
             if (tmp.exists()) tmp.delete()
             Partials.forget(tmp.path)
@@ -289,7 +294,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override val setsMtime: Boolean get() = true
-    override fun setMtime(v: String, sec: Long) { if (sec > 0) try { val f = real(v); f.setLastModified(sec * 1000); IndexManager.changed(f) } catch (_: Exception) {} }
+    override fun setMtime(v: String, sec: Long) { if (sec > 0 && !readOnly()) try { val f = real(v); f.setLastModified(sec * 1000); ix(f) } catch (_: Exception) {} }
 
     override val resumable: Boolean get() = true
 
@@ -299,6 +304,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun writeResume(v: String, input: InputStream, size: Long, offset: Long, tag: String, cb: ((Int) -> Unit)?) {
+        checkWritable()
         if (size < 0) throw BadReq("missing size")
         if (offset < 0 || offset > size) throw BadReq("bad resume offset")
         val p = real(v)
@@ -335,7 +341,7 @@ class LocalFs(rootPath: String) : Endpoint {
                 if (hadOld) bak.delete()
             }
             keep = false
-            IndexManager.changed(p)
+            ix(p)
         } catch (e: Cancelled) { keep = false; throw e
         } finally {
             if (!keep) { if (tmp.exists()) tmp.delete(); Partials.forget(tmp.path) }
@@ -343,17 +349,19 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun mkdir(v: String) {
+        checkWritable()
         val d = real(v)
         if (!d.mkdirs() && !d.isDirectory) throw IOException("could not create the folder")
-        IndexManager.changed(d)
+        ix(d)
     }
 
     override fun remove(v: String, progress: ((String) -> Unit)?) {
+        checkWritable()
         val p = lreal(v)
         if (p == root) throw Denied("cannot delete the shared root")
         if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
         val fails = ArrayList<String>()
-        try { delRec(p, fails, progress) } finally { IndexManager.changed(p) }   // also after a cancel / partial failure: whatever went is dropped from the name index
+        try { delRec(p, fails, progress) } finally { ix(p) }   // also after a cancel / partial failure: whatever went is dropped from the name index
         if (fails.isNotEmpty())
             throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
     }
@@ -372,6 +380,7 @@ class LocalFs(rootPath: String) : Endpoint {
     }
 
     override fun rename(v: String, newName: String) {
+        checkWritable()
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
         val p = lreal(v)
         if (p == root) throw Denied("cannot rename the shared root")
@@ -383,10 +392,11 @@ class LocalFs(rootPath: String) : Endpoint {
             if (!same) throw Exists("name already exists")
         }
         if (!p.renameTo(dst)) throw IOException("could not rename")
-        IndexManager.changed(p); IndexManager.changed(dst)
+        ix(p); ix(dst)
     }
 
     override fun move(v: String, toV: String) {
+        checkWritable()
         val s = lreal(v)                                // a link is moved itself
         if (!s.exists() && !isLink(s)) throw NotFound("No such file or directory")
         var d = real(toV)
@@ -404,6 +414,6 @@ class LocalFs(rootPath: String) : Endpoint {
             delRec(s, fails)   // only reached when the copy above worked completely
             if (fails.isNotEmpty()) throw IOException("copied, but the original could not be removed: " + fails.take(3).joinToString("; "))
         }
-        } finally { IndexManager.changed(s); IndexManager.changed(d) }   // also after a half-done cross-volume move
+        } finally { ix(s); ix(d) }   // also after a half-done cross-volume move
     }
 }

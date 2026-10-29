@@ -22,7 +22,7 @@ import java.security.MessageDigest
 object SettingsSchema {
     const val FORMAT = "lanshare-settings"
     /** Version of the export layout + meaning of the settings. Bump when a setting is added, removed, renamed or changes meaning. */
-    const val SCHEMA = 1
+    const val SCHEMA = 2
     const val MAX_VALUE_CHARS = 1_500_000
     const val MAX_FILE_CHARS = 8_000_000
 
@@ -57,6 +57,7 @@ object SettingsSchema {
         cfg("us_img", T.BOOL, "Search in pictures"); cfg("us_ai_th", T.FLOAT, "Search: picture similarity", min = 0.0, max = 1.0)
         cfg("us_incl", T.STRLIST, "Search index: only these folders"); cfg("us_excl", T.STRLIST, "Search index: excluded folders")
         cfg("root_on", T.BOOL, "Root access")
+        cfg("otg_on", T.BOOL, "Show USB / OTG drives"); cfg("otg_auto", T.BOOL, "Open USB drive when plugged in"); cfg("otg_ro", T.BOOL, "USB drives read-only")
         cfg("def_target", T.STR, "Default device for text sharing"); cfg("auto_copy", T.BOOL, "Copy received text automatically")
         cfg("clip_sync", T.BOOL, "Clipboard sync"); cfg("print_verbose", T.BOOL, "Detailed print log")
         // ---- interface

@@ -88,6 +88,14 @@ object Cfg {
     @Synchronized fun rootEnabled(): Boolean = obj.optBoolean("root_on", false)
     @Synchronized fun setRootEnabled(v: Boolean) { obj.put("root_on", v); save() }
 
+    /** USB / OTG drives (see Otg.kt): shown as places in the device list (default on), opened at once when plugged in (default off), never written to (default off). */
+    @Synchronized fun otgOn(): Boolean = obj.optBoolean("otg_on", true)
+    @Synchronized fun setOtgOn(v: Boolean) { obj.put("otg_on", v); save() }
+    @Synchronized fun otgAuto(): Boolean = obj.optBoolean("otg_auto", false)
+    @Synchronized fun setOtgAuto(v: Boolean) { obj.put("otg_auto", v); save() }
+    @Synchronized fun otgRo(): Boolean = obj.optBoolean("otg_ro", false)
+    @Synchronized fun setOtgRo(v: Boolean) { obj.put("otg_ro", v); save() }
+
     /** Text sharing: the device that "Send clipboard" (Quick Settings tile / notification), the share-sheet entry and the inbox send to without asking (peer id; "" = ask / the only online device). */
     @Synchronized fun defTarget(): String = obj.optString("def_target", "")
     @Synchronized fun setDefTarget(v: String) { obj.put("def_target", v); save() }

@@ -143,6 +143,7 @@ object Routes {
                 for (s in Smb.peers()) { val v = viaOf(Smb.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "SMB").put("vias", JSONArray(listOf(v)))) }
                 for (s in Ftp.peers()) { val v = viaOf(Ftp.split(s.optString("ip")).first); a.put(s.put("via", v).put("kind", "FTP").put("vias", JSONArray(listOf(v)))) }
                 for (s in Gdrive.peers()) a.put(s.put("via", "Google Drive").put("kind", "Drive").put("vias", JSONArray(listOf("Google Drive"))))
+                for (s in Otg.peers()) a.put(s)   // USB / OTG drives (Settings > USB / OTG drives)
                 if (Cfg.rootEnabled() && RootShell.granted())   // Settings > Root access is on: the whole file system shows up as one more place
                     a.put(JSONObject().put("id", "root").put("name", "Root").put("ip", "").put("ok", true).put("seen", System.currentTimeMillis() / 1000.0).put("via", "su").put("kind", "Root").put("vias", JSONArray(listOf("su"))))
                 return ex.json(a)
@@ -359,6 +360,7 @@ object Routes {
             "ftp" -> if (ex.method == "GET") return ex.json(Ftp.status())
             "gdrive" -> if (ex.method == "GET") return ex.json(Gdrive.status())   // POST = remove an account (below); sign-in itself runs in MainActivity (needs an Activity)
             "root" -> if (ex.method == "GET") return ex.json(rootStatus())   // POST = switch on / off (below)
+            "otg" -> if (ex.method == "GET") return ex.json(Otg.status())   // POST = change one switch (below)
             "smbscan" -> return ex.json(d.smbScan())
             // ---- Storage Analyzer (scan engine: StorageScan.kt). path "/" = the whole main storage, anything else = that folder, recursive.
             "sscan" -> return ex.json(sscanStart(vnorm(q["path"] ?: "/"), q["rescan"] == "1"))   // start (or return the running / newest finished scan of that folder)
@@ -408,6 +410,7 @@ object Routes {
             "pcpicdir" -> ex.json(PcPictures.setDir(b.optString("dev"), b.optString("path")))   // PC gallery: set / clear (empty path = find it again) the Pictures folder
             "ftp" -> ftpUpdate(ex, b)
             "gdrive" -> { Gdrive.remove(b.optString("remove")); ex.json(JSONObject().put("ok", true).put("list", Gdrive.status())) }
+            "otg" -> { Otg.set(b.optString("key"), b.optBoolean("value")); ex.json(Otg.status()) }   // Settings > USB / OTG drives
             "root" -> {   // Settings > Root access: "enable" asks su (the root manager shows its grant prompt) and only then stores the switch; "disable" = off + forget
                 if (RootShell.untrusted.get() == true) throw Denied("Root is only available from the app's own screen")
                 when (b.optString("op")) {

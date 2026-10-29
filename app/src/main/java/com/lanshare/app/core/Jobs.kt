@@ -381,7 +381,7 @@ object Jobs {
 
     /** A delete the user asked for: this phone's own files go to the recycle bin, everything else is deleted for good. */
     fun removeUser(e: Endpoint, p: String, progress: ((String) -> Unit)? = null) {
-        if (((e as? ArcEp)?.base ?: e) is LocalFs && Bin.canTrash(p)) Bin.trash(p, progress) else e.remove(p, progress)
+        if (((e as? ArcEp)?.base ?: e) === Core.local && Bin.canTrash(p)) Bin.trash(p, progress) else e.remove(p, progress)   // === Core.local: the recycle bin lives on the phone's own storage; a USB drive's files are deleted for good (the bin would act on the SAME virtual path of the phone!)
     }
 
     private fun deleteWork(job: Job, e: Endpoint, paths: List<String>) {
@@ -693,6 +693,7 @@ object Jobs {
             val finalName = if (replace && name in taken) name else uniqueName(name, taken, false)
             target = vjoin(dir, finalName)
             val local = dst as? LocalFs
+            local?.checkWritable()   // this path writes the file itself (not through LocalFs.write), so the USB read-only switch is checked here
             val out: File
             if (local != null) {   // written straight into the destination folder (as .lspart, renamed when complete)
                 val real = local.real(target)
@@ -774,6 +775,7 @@ object Jobs {
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
         dev.startsWith("ftp:") -> FtpFs.create(Ftp.cfg(dev) ?: throw IOException("that FTP server was removed"))
         dev.startsWith("gd:") -> GdriveFs(Gdrive.cfg(dev) ?: throw IOException("that Google account was removed"))
+        dev.startsWith("otg:") -> Otg.fs(dev) ?: throw IOException(if (Cfg.otgOn()) "that USB drive was removed" else "USB drives are switched off in Settings")
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 

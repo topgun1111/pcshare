@@ -732,6 +732,7 @@ class ArcEp(val base: Endpoint) : Endpoint by base {
         val fmt = arcFmt(vbase(a.first))
         if (!ArcEdit.canEdit(fmt)) throw Denied(ArcEdit.whyNot(fmt))
         val lb = base as? LocalFs ?: throw Denied("An archive can be edited only on this phone - copy it here first")
+        lb.checkWritable()
         val f = lb.real(a.first)
         if (!f.isFile) throw NotFound("No such archive")
         if (!f.canWrite()) throw Denied("This archive file is read-only")

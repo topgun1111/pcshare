@@ -138,6 +138,14 @@ class MainActivity : Activity() {
             if (!(url.startsWith("https://drive.google.com/") || url.startsWith("https://docs.google.com/"))) return
             runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)) } catch (_: Exception) {} }
         }
+        /** USB / OTG drives, "Eject": Android's own storage screen, where a drive is unmounted safely (an app cannot unmount a volume itself). */
+        @JavascriptInterface fun openUsbSettings() {
+            runOnUiThread {
+                for (a in listOf(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS, android.provider.Settings.ACTION_MEMORY_CARD_SETTINGS)) {
+                    try { startActivity(Intent(a).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return@runOnUiThread } catch (_: Exception) {}
+                }
+            }
+        }
         /** Same, but always shows the system "Open with" app chooser. */
         @JavascriptInterface fun openWith(url: String) { saveToDownloads(url, null, true, true) }
         /** Share one or more LANShare files: fetched to cache/open, then the system share sheet. [json] = {items:[{name,url,size}]} */

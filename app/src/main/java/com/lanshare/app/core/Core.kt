@@ -57,6 +57,7 @@ object Core {
             PerfMarks.mark("core.cleanup")   // PERF-DEBUG
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
+            try { Otg.start(app) } catch (_: Throwable) {}   // USB / OTG drives: plug / unplug broadcasts (Otg.kt)
             PerfMarks.mark("core.pageAndFs")   // PERF-DEBUG
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             Thread({   // "LANShare Shared": cleaned at start and then every day while the app / service is alive

@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - USB / OTG drives
+### Added
+- Memory sticks and disks on an OTG cable now show up in the device list like any other place: browse, copy, move, search, preview and open files on them
+- Settings > USB / OTG drives: Show USB drives (on by default), Open drive when plugged in (off by default), Read-only (off by default, nothing on a drive can then be copied to, changed or deleted)
+- Each drive shows its free space and has an Eject button that opens Android's storage screen
+- The three new switches are part of Export / import settings
+
+### Changed
+- Files deleted on a USB drive are removed for good (the recycle bin only holds files from this phone)
+
 ## 2026-10-29 - Sidebar text size
 ### Added
 - Settings now ends with an "Exit app" button that stops sharing and closes the app
