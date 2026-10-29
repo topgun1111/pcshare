@@ -1815,6 +1815,8 @@ function isView(sdir,sname,m0){
       const pg=E('div','isp'),pi=E('i');pg.append(pi);pi.style.width=(m.totalBytes>0?Math.min(100,Math.round(m.bytes*100/m.totalBytes)):0)+'%';card.append(pg);
       if(m.totalBytes>0)card.append(E('small','',mb(m.bytes)+' of '+mb(m.totalBytes)));
       sb.textContent='Downloading model\u2026';
+    }else if(m.lite){
+      card.append(E('b','','Not in the lite edition'),E('small','','Image search needs the full LANShare APK. Install the one without "-lite" in its name (it installs next to this one; settings are not shared).'));sb.textContent='Lite edition';
     }else if(!m.installed){
       card.append(E('b','','One-time download needed'),E('small','','The search model is about 150 MB (Wi-Fi recommended). It stays on this phone; pictures never leave it.'));
       if(m.error)card.append(E('small','','\u26a0 '+m.error));
@@ -2500,7 +2502,7 @@ function openSettings(){
     api('GET','/api/imgs').then(r=>{rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}).catch(()=>{sc.textContent=''});
     rc.onclick=async()=>{if(rc._on===undefined)return;try{const r=await api('POST','/api/imgs',{op:'auto',charging:!rc._on});rc._on=!!r.autoCharging;sc.textContent=txt(rc._on)}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rc)}
   {const rm=E('button','set'),tm=E('div','t'),sm2=E('small','','Search model for Image search');rm.style.width='100%';rm.style.textAlign='left';tm.append(E('b','','Image search model'),sm2);rm.append(tm);
-    api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
+    api('GET','/api/imgs').then(r=>{const m=(r&&r.model)||{};sm2.textContent=m.lite?'Not in the lite edition (install the full APK)':m.installed?'Installed - tap to delete the model files (~150 MB)':m.installing?'Downloading\u2026':'Not installed (Image search in the menu downloads it)';rm._ok=!!m.installed}).catch(()=>{});
     rm.onclick=async()=>{if(!rm._ok)return;if(!await dlg({title:'Delete the search model?',msg:'Frees about 150 MB. Image search needs the download again, and the scanned index is kept.',ok:'Delete',danger:true}))return;
       try{await api('POST','/api/imgs',{op:'uninstall'});rm._ok=false;sm2.textContent='Not installed';toast('Model files deleted')}catch(e){toast('\u26a0 '+e.message,4000)}};card.append(rm)}
   if(window.LSAndroid&&LSAndroid.ocrEngGet){const ro=E('button','set'),to=E('div','t'),so=E('small','');ro.style.width='100%';ro.style.textAlign='left';

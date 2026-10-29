@@ -65,10 +65,7 @@ object UpdateCheck {
                 var url = j.getString("html_url")
                 var size = 0L
                 var isApk = false
-                if (assets != null) for (i in 0 until assets.length()) {
-                    val o = assets.getJSONObject(i)
-                    if (o.optString("name").endsWith(".apk")) { url = o.getString("browser_download_url"); size = o.optLong("size", 0L); isApk = true; break }
-                }
+                pickApk(assets)?.let { url = it.getString("browser_download_url"); size = it.optLong("size", 0L); isApk = true }   // no file of this edition = the release page opens instead
                 val dl = url; val dlSize = size; val dlApk = isApk
                 val newer = ArrayList<JSONObject>()   // every release newer than the installed one (a skipped version's notes must not be lost)
                 for (i in 0 until arr.length()) {
@@ -94,6 +91,16 @@ object UpdateCheck {
                 }
             } catch (_: Throwable) { onMsg?.invoke("Kontrol edilemedi (internet / GitHub)") }   // automatic check stays silent
         }.start()
+    }
+
+    /** Every release carries two APKs: "...-lite.apk" and the full one. Each edition only ever downloads its own file. */
+    private fun pickApk(oa: JSONArray?): JSONObject? {
+        if (oa == null) return null
+        for (k in 0 until oa.length()) {
+            val o = oa.getJSONObject(k); val n = o.optString("name")
+            if (n.endsWith(".apk") && n.endsWith("-lite.apk") == BuildConfig.LITE) return o
+        }
+        return null
     }
 
     private fun hasApk(o: JSONObject): Boolean {

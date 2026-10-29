@@ -14,8 +14,7 @@ object Fnt {
     @Volatile private var s: Typeface? = null
     @Volatile private var cur: String = ""
 
-    /** id, display name. "figtree" = built-in default, "system" = the phone's own font. */
-    @JvmField val LIST: List<Pair<String, String>> = listOf(
+    private val ALL: List<Pair<String, String>> = listOf(
         "figtree" to "Figtree (default)", "system" to "System font",
         "anton" to "Anton",
         "archivo" to "Archivo",
@@ -63,6 +62,9 @@ object Fnt {
         "worksans" to "Work Sans",
         "zillaslab" to "Zilla Slab"
     )
+
+    /** id, display name. "figtree" = built-in default, "system" = the phone's own font. */
+    @JvmField val LIST: List<Pair<String, String>> = ALL.filter { !BuildConfig.LITE || it.first == "figtree" || it.first == "system" }   // lite APK has no ff_*.ttf files
 
     fun valid(id: String) = LIST.any { it.first == id }
 

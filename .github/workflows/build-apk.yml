@@ -12,18 +12,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Job 1: version + shared versionCode (one value for both editions)
+  prep:
     runs-on: ubuntu-latest
+    outputs:
+      ver: ${{ steps.ver.outputs.ver }}
+      tag: ${{ steps.ver.outputs.tag }}
+      code: ${{ steps.ver.outputs.code }}
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }   # commit sayısı için tam geçmiş şart
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
-      - name: Android lisansları
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-      - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.9' }
-
+        with: { fetch-depth: 0 }
       - name: Sürüm
         id: ver
         run: |
@@ -36,7 +34,25 @@ jobs:
           VER="$MAJOR.$MINOR"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=v$VER" >> "$GITHUB_OUTPUT"
-          echo "apk=LANShare-v$VER.apk" >> "$GITHUB_OUTPUT"
+          echo "code=$(( ($(date -u +%s) - 1767225600) / 60 ))" >> "$GITHUB_OUTPUT"
+
+  # Jobs 2 + 3: full and lite build IN PARALLEL on two runners (matrix)
+  build:
+    needs: prep
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [full, lite]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # commit sayısı için tam geçmiş şart
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Android lisansları
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
 
       # Secret keystore only when ALL four secrets exist; otherwise the build signs with app/lanshare.jks
       - name: İmza hazırlığı
@@ -52,42 +68,63 @@ jobs:
             echo "::warning::Keystore secrets incomplete/invalid - signing with app/lanshare.jks"
           fi
 
-      - name: Release APK
+      - name: Release APK (${{ matrix.edition }})
         env:
-          APP_VERSION: ${{ steps.ver.outputs.ver }}
+          EDITION: ${{ matrix.edition }}
+          APP_VERSION: ${{ needs.prep.outputs.ver }}
+          VERSION_CODE: ${{ needs.prep.outputs.code }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set +e
-          gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if [ "$EDITION" = lite ]; then OUT="LANShare-v$APP_VERSION-lite.apk"; else OUT="LANShare-v$APP_VERSION.apk"; fi
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" -Pedition="$EDITION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
             # Surface the real error in the Annotations list (readable on a phone)
-            grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -8 | while IFS= read -r l; do echo "::error::$l"; done
-            grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::$l"; done
+            grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -8 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
+            grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
+            exit $rc
           fi
-          exit $rc
-
-      - name: Sürümü doğrula
-        run: |
           AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
-          if [ -z "$AAPT2" ]; then echo "::warning::aapt2 yok, sürüm doğrulaması atlandı"; exit 0; fi
-          WANT="${{ steps.ver.outputs.ver }}"
-          GOT=$("$AAPT2" dump badging app/build/outputs/apk/release/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
-          echo "APK versionName: $GOT (beklenen: $WANT)"
-          case "$GOT" in
-            "$WANT"|"$WANT"-*) ;;
-            *) echo "::error::APK versionName '$GOT' but release is '$WANT' - app/build.gradle.kts is missing the appVersion line?"; exit 1 ;;
-          esac
-
-      - name: APK adlandır
-        run: cp app/build/outputs/apk/release/*.apk "${{ steps.ver.outputs.apk }}"
+          if [ -n "$AAPT2" ]; then
+            GOT=$("$AAPT2" dump badging app/build/outputs/apk/release/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+            echo "[$EDITION] APK versionName: $GOT (beklenen: $APP_VERSION)"
+            case "$GOT" in
+              "$APP_VERSION"|"$APP_VERSION"-*) ;;
+              *) echo "::error::[$EDITION] APK versionName '$GOT' but release is '$APP_VERSION' - app/build.gradle.kts is missing the appVersion line?"; exit 1 ;;
+            esac
+          else
+            echo "::warning::aapt2 yok, sürüm doğrulaması atlandı"
+          fi
+          cp app/build/outputs/apk/release/*.apk "$OUT"
+          if [ "$EDITION" = lite ] && unzip -l "$OUT" | grep -qE 'assets/fonts/(office/|ff_)'; then
+            echo "::error::lite APK still contains the bundled fonts (liteExclude in app/build.gradle.kts did not apply)"; exit 1
+          fi
+          if [ "$EDITION" = lite ] && unzip -l "$OUT" | grep -q 'libonnxruntime'; then
+            echo "::error::lite APK still contains the ONNX runtime (compileOnly in app/build.gradle.kts did not apply)"; exit 1
+          fi
+          echo "- $EDITION: $(( $(stat -c %s "$OUT") / 1048576 )) MB ($OUT)" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LANShare-apk
-          path: ${{ steps.ver.outputs.apk }}
+          name: LANShare-apk-${{ matrix.edition }}
+          path: ${{ env.OUT }}
+          if-no-files-found: error
+
+  # Job 4: publishes ONE release carrying both APKs, only when both builds succeeded
+  release:
+    needs: [prep, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: LANShare-apk-*
+          merge-multiple: true
+          path: apks
 
       # Release notes = TOP "## " section of CHANGELOG.md (shown by the app's update dialog before the download button).
       # Same text as the previous release (nobody added a new section) or no bullets = "not listed", never old notes twice.
@@ -107,14 +144,17 @@ jobs:
             fi
           fi
           cat release-notes.md
+          ls -l apks
 
       # Release kalıcıdır (artifact 90 günde silinir)
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: LANShare ${{ steps.ver.outputs.tag }}
+          tag_name: ${{ needs.prep.outputs.tag }}
+          name: LANShare ${{ needs.prep.outputs.tag }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           fail_on_unmatched_files: true
-          files: ${{ steps.ver.outputs.apk }}
+          files: |
+            apks/LANShare-v${{ needs.prep.outputs.ver }}.apk
+            apks/LANShare-v${{ needs.prep.outputs.ver }}-lite.apk

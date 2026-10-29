@@ -39,13 +39,14 @@ object PaddleModels {
     @Volatile var failedAt = 0L; private set
 
     fun dir(c: Context) = File(c.filesDir, "models/ocr")
-    fun installed(c: Context) = FILES.all { (n, v) -> File(dir(c), n).length() >= v.second }
+    fun installed(c: Context) = !BuildConfig.LITE && FILES.all { (n, v) -> File(dir(c), n).length() >= v.second }
 
     /** (label, url) of every file, for the daily link check in [ModelLinks]. */
     fun links(): List<Pair<String, String>> = FILES.map { (n, v) -> "PaddleOCR model $n" to BASE + v.first }
 
     /** Downloads in the background when not installed, not already running, and the network is not metered. Retries at most every 30 min. */
     @Synchronized fun installAsync(c: Context) {
+        if (BuildConfig.LITE) return   // lite APK has no ONNX runtime
         if (busy || installed(c)) return
         if (System.currentTimeMillis() - failedAt < 30 * 60_000L) return
         val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -285,6 +286,7 @@ class AutoOcr(private val ctx: Context) : OcrEngine {
     private var told = false
 
     override fun recognize(bm: Bitmap, cb: (Result<List<OcrLine>>) -> Unit) {
+        if (BuildConfig.LITE) { ml.recognize(bm, cb); return }   // lite: ML Kit only, PaddleOcr (ONNX) is never created
         val mode = OcrPrefs.engine(ctx)   // Settings -> Text recognition model, read on every call so a change applies at once
         if (mode == OcrPrefs.ENG_MLKIT) { ml.recognize(bm, cb); return }
         if (!PaddleModels.installed(ctx)) {

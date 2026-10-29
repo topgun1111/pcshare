@@ -5,6 +5,20 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - Smaller lite edition
+
+### Removed
+- Lite edition only: Image search and the PaddleOCR text model are left out to make the APK about 7 MB smaller (text recognition in pictures and PDFs still works through the Google ML Kit reader). Use the normal APK if you want them.
+- Lite is now a separate app ("LANShare Lite"): it installs next to the normal one instead of replacing it. Settings are not shared between the two; run only one at a time.
+
+## 2026-10-29 - Lite edition
+
+### Added
+- Every release now comes as two APKs: the normal app and a smaller "lite" one. Lite leaves out the bundled Word / Excel look-alike fonts and the extra app fonts (the default font stays). Everything else works the same; Office files may show in the phone's own fonts.
+
+### Changed
+- Settings > Check for updates downloads the same edition you have installed (lite stays lite).
+
 ## 2026-10-29 - Print button only for printable files
 
 ### Fixed

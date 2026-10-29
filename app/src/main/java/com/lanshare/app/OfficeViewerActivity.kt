@@ -33,6 +33,7 @@ class OfficeViewerActivity : Activity() {
     private val rprefs by lazy { getSharedPreferences("office_read", MODE_PRIVATE) }   // reading mode: on / px (text size) / theme
     private var readRow: android.widget.LinearLayout? = null
     private var readLbl: android.widget.TextView? = null
+    private val fontUrl: String? = if (BuildConfig.LITE) null else FontMap.FONT_URL   // lite APK has no bundled office fonts: no @font-face, the CSS stack falls back to the phone fonts
     private var pendingFrac = -1f             // scroll position (0..1) to restore after a reading-mode re-render
     private val undoStack = ArrayList<File>()   // Part 10a: copies of the cache file taken before each edit (any format); newest last, max 10
 
@@ -277,8 +278,8 @@ class OfficeViewerActivity : Activity() {
         }.start()
     }
 
-    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = if (printOn) DocxHtml.renderPrint(doc, title = file?.name ?: "", fontBase = FontMap.FONT_URL, image = imgSrc(o), markup = markup)
-        else DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = FontMap.FONT_URL, image = imgSrc(o), markup = markup)
+    private fun renderDoc(o: OfficeOpen, doc: DDoc): String = if (printOn) DocxHtml.renderPrint(doc, title = file?.name ?: "", fontBase = fontUrl, image = imgSrc(o), markup = markup)
+        else DocxHtml.render(doc, title = file?.name ?: "", rd = readingCfg(), fontBase = fontUrl, image = imgSrc(o), markup = markup)
 
     private fun imgSrc(o: OfficeOpen): (DImage) -> String? = { im ->
         val bytes = try { o.image(im.part) } catch (_: Throwable) { null }
@@ -300,7 +301,7 @@ class OfficeViewerActivity : Activity() {
         val first = (tabs.firstOrNull { it.first == curSheet } ?: tabs.firstOrNull())?.first ?: return "<body style=\"font:15px sans-serif;padding:16px\">No visible sheets.</body>"
         curSheet = first
         val xs = o.readSheet(first); curXs = xs
-        return XlsxHtml.render(xs, tabs, first, o.styles, FontMap.FONT_URL, gridOverride)
+        return XlsxHtml.render(xs, tabs, first, o.styles, fontUrl, gridOverride)
     }
 
     private fun showSheet(i: Int) {
@@ -308,7 +309,7 @@ class OfficeViewerActivity : Activity() {
         curSheet = i
         fbar?.text = "Tap a cell to see its formula"
         Thread {
-            val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, FontMap.FONT_URL, gridOverride) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
+            val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, fontUrl, gridOverride) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }

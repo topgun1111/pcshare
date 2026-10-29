@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
-    <application android:name=".App" android:largeHeap="true" android:label="LANShare" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
+    <application android:name=".App" android:largeHeap="true" android:label="${appLabel}" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.LANShare">
         <!-- Ask Play Services to fetch the OCR model at install time (otherwise it downloads on first OCR use) -->
@@ -106,7 +106,7 @@
         </activity>
         <!-- Second share-sheet entry: the plain "LANShare" share entry opens the print dialog; this one sends the clipboard (link / text) to the device picked from the "Send to..." list -->
         <activity-alias android:name=".SendShareAlias" android:targetActivity=".MainActivity" android:exported="true"
-            android:label="LANShare Send" android:icon="@mipmap/ic_launcher">
+            android:label="${appLabel} Send" android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>
@@ -116,7 +116,7 @@
         </activity-alias>
         <!-- Third share-sheet entry (Print space part 3b): pictures and PDFs (one picture per page) go straight into the Print space (copies), nothing is printed or sent -->
         <activity-alias android:name=".PrintSpaceShareAlias" android:targetActivity=".MainActivity" android:exported="true"
-            android:label="LANShare Print space" android:icon="@mipmap/ic_launcher">
+            android:label="${appLabel} Print space" android:icon="@mipmap/ic_launcher">
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>
@@ -198,7 +198,7 @@
         <activity android:name=".OfficeShortcutActivity" android:exported="false" android:theme="@style/Theme.LANShare.Clear"
             android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true"/>
         <activity android:name=".ClipSendActivity" android:exported="true" android:theme="@style/Theme.LANShare.Clear"
-            android:label="LANShare Text" android:icon="@mipmap/ic_launcher"
+            android:label="${appLabel} Text" android:icon="@mipmap/ic_launcher"
             android:launchMode="standard" android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true">
             <!-- own share-sheet entry: sends the shared text to the default device at once (no picker) -->
             <intent-filter>

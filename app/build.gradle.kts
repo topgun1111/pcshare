@@ -20,6 +20,10 @@ val appVersion = (project.findProperty("appVersion") as String?)?.takeIf { it.is
 // Never switch this scheme back to a smaller number, or Android refuses to update.
 val buildCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: ((System.currentTimeMillis() / 1000 - 1767225600L) / 60).toInt()
 
+// Edition: "full" (default) or "lite" (gradle -Pedition=lite). Lite leaves the bundled fonts out of the APK (BuildConfig.LITE = true tells the code).
+val lite = (project.findProperty("edition") as String?) == "lite"
+val liteExclude = listOf("fonts/office/**", "fonts/ff_*.ttf", "fonts/tnr-*.ttf", "fonts/urbanist-*.ttf")   // Office look-alike fonts, the 45 picker fonts, 2 unused families; Figtree (the default UI font) stays
+
 android {
     namespace = "com.lanshare.app"
     compileSdk = 34
@@ -28,10 +32,15 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = buildCode
-        versionName = appVersion + (if (shortSha.isNotEmpty()) "-$shortSha" else "")
+        versionName = appVersion + (if (shortSha.isNotEmpty()) "-$shortSha" else "") + (if (lite) "-lite" else "")
+        buildConfigField("boolean", "LITE", lite.toString())
         // Image search libraries (ONNX Runtime) ship native code per CPU type; keep only 64-bit ARM (all current phones) to cut the APK by ~3/4 of that.
         ndk { abiFilters += "arm64-v8a" }
+        // Lite is a SEPARATE app (own package id + name): installs next to the full one, data is not shared.
+        if (lite) applicationIdSuffix = ".lite"
+        manifestPlaceholders["appLabel"] = if (lite) "LANShare Lite" else "LANShare"
     }
+    buildFeatures { buildConfig = true }
     // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.
     // CI secret'ları (KEYSTORE_FILE...) verilirse onlar, yoksa depodaki app/lanshare.jks kullanılır.
     signingConfigs {
@@ -64,6 +73,12 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
+// Lite: drop [liteExclude] from the merged assets (the source tree is untouched; CI also checks the finished APK).
+if (lite) tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("Assets")) doLast {
+        outputs.files.forEach { d -> project.fileTree(d) { include(liteExclude) }.forEach { it.delete() } }
+    }
+}
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")      // thumbnails: EXIF rotation
@@ -81,7 +96,8 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")         // native file browser (BrowserActivity)
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0") // pull-to-refresh in BrowserActivity
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") // image search: CLIP ONNX models (core/ClipEngine.kt)
+    // image search + PaddleOCR (core/ClipEngine.kt, PaddleOcr.kt). Lite: compile-only, the runtime (~6-8 MB) is NOT in the APK; every use is behind BuildConfig.LITE.
+    if (lite) compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") else implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
     implementation("com.google.zxing:core:3.5.3")                       // Phone Explorer: QR pairing code (pe/PePrefs.pairingLink)
     implementation("com.google.android.gms:play-services-base:18.5.0")   // ModuleInstall: check / request the OCR model
     implementation("com.google.android.gms:play-services-auth:21.2.0")    // Google Drive sign-in: Authorization API, no client secret (core/GAuth.kt, HANDOVER chapter 17)

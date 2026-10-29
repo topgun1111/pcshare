@@ -17,6 +17,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.lanshare.app.AutoOcr
+import com.lanshare.app.BuildConfig
 import com.lanshare.app.MlKitOcr
 import com.lanshare.app.OcrLine
 import com.lanshare.app.TiledOcr
@@ -64,17 +65,18 @@ object ClipEngine {
     @Volatile private var bytesTotal = 0L
 
     private fun dir(ctx: Context) = File(ctx.filesDir, "models/clip")
-    fun installed(ctx: Context) = FILES.keys.all { File(dir(ctx), it).length() > 0 }
+    fun installed(ctx: Context) = !BuildConfig.LITE && FILES.keys.all { File(dir(ctx), it).length() > 0 }
 
     fun state(): JSONObject {
         val ctx = Core.appCtx
         return JSONObject().put("installed", ctx != null && installed(ctx)).put("installing", installing)
             .put("msg", msg).put("error", err ?: JSONObject.NULL)
-            .put("bytes", bytesDone).put("totalBytes", bytesTotal)
+            .put("bytes", bytesDone).put("totalBytes", bytesTotal).put("lite", BuildConfig.LITE)
     }
 
     /** App start: when the files are already there, the engine is ready at once (sessions are created lazily on first use). */
     fun tryLoad(ctx: Context) {
+        if (BuildConfig.LITE) return   // lite APK has no ONNX runtime: Impl must never be created
         if (ImgSearch.engine == null && installed(ctx)) ImgSearch.engine = Impl(dir(ctx))
         if (ImgSearch.engine != null) ImgSearch.resumeIfInterrupted()   // a scan the system killed goes on where it stopped
     }
@@ -82,6 +84,7 @@ object ClipEngine {
     /** Downloads the model files in the background (progress in [state]), then sets [ImgSearch.engine]. Ignored when already running. */
     @Synchronized
     fun install() {
+        if (BuildConfig.LITE) throw BadReq("Image search is not in the lite edition")
         val ctx = Core.appCtx ?: throw BadReq("app not ready")
         if (installing) return
         if (installed(ctx)) { tryLoad(ctx); return }
@@ -109,6 +112,7 @@ object ClipEngine {
 
     /** Deletes the model files and the engine (the index stays; it is useless without the engine for new pictures but searchable as text). */
     fun uninstall() {
+        if (BuildConfig.LITE) return
         if (installing) throw BadReq("download is running")
         if (ImgSearch.isRunning()) throw BadReq("a picture scan is running - stop it first")
         val ctx = Core.appCtx ?: return
