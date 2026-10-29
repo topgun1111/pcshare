@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - Aurora themes
+
+### Added
+- New colour themes "Aurora Northern Lights" (dark) and "Aurora Light" (Settings > Theme): night-sky (or pale-sky) background with soft teal and violet glow, glass top bar, teal-to-violet buttons, glowing selection, dialogs and the main menu in the same style.
+
 ## 2026-10-28 - Rounder corners
 
 ### Changed
