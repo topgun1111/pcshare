@@ -297,7 +297,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lys img{position:absolute;left:50%;top:50%;max-width:none;pointer-events:none}
 #gal .lys img.gh{opacity:.22}
 #gal .lyn{position:absolute;left:4px;top:2px;font-size:11px;color:#777}
-#gal .lypg.lyfp{touch-action:none;overflow:visible;outline:1px dashed #8886;margin-top:40px;margin-bottom:40px}
+#gal .lypg.lyfp{touch-action:pan-y;overflow:visible;outline:1px dashed #8886;margin-top:40px;margin-bottom:40px}
 #gal .lyf{position:absolute;touch-action:none;cursor:move}
 #gal .lyf img{width:100%;height:100%;display:block;max-width:none;pointer-events:none;-webkit-user-drag:none}
 #gal .lyf.sel{outline:2px solid var(--ac)}#gal .lyf.msel{outline:2px dashed var(--ac);outline-offset:1px}
@@ -4410,6 +4410,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
         f.cx=s.cx;f.cy=s.cy;f.w=s.w;f.rot=s.rot;if(w.mode==='s'&&s.a>0)f.a=s.a;w.last={cx:s.cx,cy:s.cy,w:s.w,rot:s.rot,a:f.a}};
     pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
       try{pg.setPointerCapture(e.pointerId)}catch(x){}
+      if(e.isPrimary){P.clear();if(fg)clearTimeout(fg.lpt)}
       P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
       const cl=e.target.classList,isC=!!(cl&&cl.contains('lyh')),isR=!!(cl&&cl.contains('lyk')),isH=isC||isR,t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();fixN=0;
       if(P.size===1){
@@ -4434,6 +4435,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
         f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(fg.f0.rot+(an-fg.an0)*180/Math.PI);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height;fClamp(f,pic(f.id),R)}
       kLim(fg,i,f);if(fg.mode==='s')f.st=Math.max(.2,Math.min(5,(fg.f0.st||1)*fg.f0.a/f.a));fPlace(i);fKnob(i,r.width,r.height)};
     const up=e=>{P.delete(e.pointerId);if(!fg)return;
+      if(e.type==='pointercancel'&&fg.mode==='bg'&&P.size===0){fg=null;return}   // the page started scrolling: not a tap
       if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
       if(P.size>0)return;
       gv.style.display=gh.style.display='none';const w=fg;clearTimeout(w.lpt);
@@ -4453,6 +4455,8 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
   // ---- long-press drag (pointer events): tray picture -> slot (place), slot -> slot (swap), slot -> tray (clear). A non-passive touchmove stops the page scrolling while dragging.
   const tm=e=>{if(!live()){document.removeEventListener('touchmove',tm);return}if(drag)e.preventDefault()};
   document.addEventListener('touchmove',tm,{passive:false});
+  const dUp=e=>{if(!live()){document.removeEventListener('pointerup',dUp,false);document.removeEventListener('pointercancel',dUp,false);return}if(!drag)return;if(e.type==='pointercancel')dragStop();else dragEnd(e.clientX,e.clientY)};
+  document.addEventListener('pointerup',dUp,false);document.addEventListener('pointercancel',dUp,false);
   const hit=(x,y)=>{const el=document.elementFromPoint(x,y);return{slot:el&&el.closest?el.closest('.lys'):null,tray:el&&el.closest?el.closest('.lytr'):null,stage:el&&el.closest?el.closest('.lyfp'):null}};
   const dragStop=()=>{if(!drag)return;if(drag.gh)drag.gh.remove();if(drag.tg)drag.tg.classList.remove('dt');drag=null};
   function dragMove(x,y){if(!drag)return;drag.gh.style.left=(x-30)+'px';drag.gh.style.top=(y-30)+'px';
