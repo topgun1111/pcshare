@@ -1,4 +1,4 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/brand_lite"/>
+    <item android:drawable="@color/brand_lite_bg"/>
     <item android:drawable="@drawable/ic_fg"/>
 </layer-list>

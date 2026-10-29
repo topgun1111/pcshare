@@ -1,3 +1,4 @@
 <resources>
     <color name="brand_lite">#7B2CBF</color>
+    <color name="brand_lite_bg">#B794F0</color>   <!-- light purple tile behind the Lite app icon (launcher + the logo in the notification list) -->
 </resources>
