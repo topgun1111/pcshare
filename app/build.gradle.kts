@@ -39,6 +39,7 @@ android {
         // Lite is a SEPARATE app (own package id + name): installs next to the full one, data is not shared.
         if (lite) applicationIdSuffix = ".lite"
         manifestPlaceholders["appLabel"] = if (lite) "LANShare Lite" else "LANShare"
+        manifestPlaceholders["appIcon"] = if (lite) "@mipmap/ic_launcher_lite" else "@mipmap/ic_launcher"   // lite = purple icon (res/mipmap-anydpi*/ic_launcher_lite.xml)
     }
     buildFeatures { buildConfig = true }
     // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.

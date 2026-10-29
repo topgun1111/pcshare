@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - Purple lite icon
+
+### Changed
+- The Lite edition now has a purple app icon, so it is easy to tell apart from the normal orange one on the home screen.
+
 ## 2026-10-29 - Smaller lite edition
 
 ### Removed

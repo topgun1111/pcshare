@@ -30,7 +30,7 @@ object Shortcuts {
                 ShortcutInfoCompat.Builder(ctx, "peer:" + p.id)
                     .setShortLabel(p.name.take(24).ifBlank { "Device" })
                     .setLongLabel("Send to " + p.name)
-                    .setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher))
+                    .setIcon(IconCompat.createWithResource(ctx, (if (BuildConfig.LITE) R.mipmap.ic_launcher_lite else R.mipmap.ic_launcher)))
                     .setIntent(Intent(ctx, ClipSendActivity::class.java).setAction(TextSend.ACT_SEND).putExtra("to", p.id))
                     .setCategories(setOf(CATEGORY))
                     .setLongLived(true)
@@ -39,7 +39,7 @@ object Shortcuts {
             }
             // office: new Word / Excel file (always), then the most recently opened office files while there is room (rank after the devices)
             fun office(id: String, short: String, long: String, i: Intent, rank: Int) = ShortcutInfoCompat.Builder(ctx, id)
-                .setShortLabel(short.take(24)).setLongLabel(long).setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher)).setIntent(i).setRank(rank).build()
+                .setShortLabel(short.take(24)).setLongLabel(long).setIcon(IconCompat.createWithResource(ctx, (if (BuildConfig.LITE) R.mipmap.ic_launcher_lite else R.mipmap.ic_launcher))).setIntent(i).setRank(rank).build()
             val more = ArrayList<ShortcutInfoCompat>()
             more.add(office("office:new:docx", "New Word doc", "New Word document", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "docx"), 50))
             more.add(office("office:new:xlsx", "New Excel", "New Excel workbook", Intent(ctx, OfficeShortcutActivity::class.java).setAction(OfficeShortcutActivity.ACT_NEW).putExtra("kind", "xlsx"), 51))
