@@ -654,13 +654,9 @@ object Jobs {
                 if (at < 0) continue
                 val relTop = segs.subList(0, at + 1).joinToString("/")
                 val key = p + "/" + relTop
-                var o = res[key]
-                if (o == null) {
-                    if (res.size >= 400) continue
-                    o = JSONObject().put("path", key).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
-                        .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L).put("est", 0L)
-                    res[key] = o
-                }
+                val o: JSONObject = res[key] ?: (if (res.size >= 400) null else JSONObject().put("path", key).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
+                    .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L).put("est", 0L)) ?: continue
+                res[key] = o
                 if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1); o.put("est", o.getLong("est") + zipEst(fname, w.size)) }
             }
         }
