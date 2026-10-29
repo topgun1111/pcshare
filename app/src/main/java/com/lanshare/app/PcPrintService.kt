@@ -64,7 +64,7 @@ class PcPrintService : PrintService() {
             .setColorModes(PrintAttributes.COLOR_MODE_COLOR or PrintAttributes.COLOR_MODE_MONOCHROME, PrintAttributes.COLOR_MODE_COLOR)
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
-        return PrinterInfo.Builder(id, "LANShare - print on PC", PrinterInfo.STATUS_IDLE)
+        return PrinterInfo.Builder(id, NoteTint.appName + " - print on PC", PrinterInfo.STATUS_IDLE)
             .setDescription("Choose the PC and options in LANShare")
             .setCapabilities(caps)
             .build()
@@ -86,7 +86,7 @@ class PcPrintService : PrintService() {
             .setColorModes(PrintAttributes.COLOR_MODE_COLOR or PrintAttributes.COLOR_MODE_MONOCHROME, PrintAttributes.COLOR_MODE_COLOR)
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
-        return PrinterInfo.Builder(id, "LANShare - save as PDF", PrinterInfo.STATUS_IDLE)
+        return PrinterInfo.Builder(id, NoteTint.appName + " - save as PDF", PrinterInfo.STATUS_IDLE)
             .setDescription("Saves a PDF in the \"LANShare PDF\" folder")
             .setCapabilities(caps)
             .build()
@@ -180,7 +180,7 @@ class PcPrintService : PrintService() {
                 nm.createNotificationChannel(NotificationChannel("lanshare_print", "Print requests", NotificationManager.IMPORTANCE_HIGH))
                 Notification.Builder(this, "lanshare_print")
             } else @Suppress("DEPRECATION") Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
-            nm.notify(nid, b.setSmallIcon(R.drawable.ic_notification).setColor(NoteTint.lite(this)).setContentTitle("Print with LANShare")
+            nm.notify(nid, b.setSmallIcon(R.drawable.ic_notification).setColor(NoteTint.lite(this)).setContentTitle("Print with " + NoteTint.appName)
                 .setContentText(name).setContentIntent(pi).setAutoCancel(true).build())
         } catch (_: Exception) {}
         try { startActivity(i) } catch (_: Exception) {}

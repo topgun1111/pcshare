@@ -11,6 +11,7 @@
 - Logs now also show Office previews: when a Word, Excel or PowerPoint file is opened, whether exact pages or the simple view was used, how long it took, and why it failed
 
 ### Fixed
+- LANShare Lite now says "LANShare Lite" in its notifications and printer names
 - LANShare Lite's icon (app list and notification list) now has a light purple background so it is easy to tell from LANShare
 - The Logs screen now uses the app font like the rest of the app
 - Notifications now always use the app's own colour (orange for LANShare, purple for Lite)
