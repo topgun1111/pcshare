@@ -103,8 +103,6 @@ window.addEventListener('orientationchange',window.lsFit);var ft=0;window.addEve
 :root[data-theme=trueblack] #home{--hc1:#ffffff;--hc2:#cccccc;--hc3:#aaaaaa;--hc4:#dddddd;--hc5:#bbbbbb;--hc6:#999999}
 :root[data-theme=hcd]{--bg:#000000;--fg:#ffffff;--card:#000000;--cont:#0d0d0d;--ac:#ffd600;--onac:#000000;--mut:#e0e0e0;--bd:#8a8a8a;--sel:#003c8f;--onsel:#ffffff;--fab:#ffd600;--onfab:#000000;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f2b8b5;--ok:#81c995;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;--bar:#000000;--onbar:#ffffff;--barmut:#e0e0e0;--k-folder-c:#ffffff;--k-folder-b:#003c8f;--k-file-c:#e0e0e0;--k-file-b:#0d0d0d;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#f0dbff;--k-vid-b:#5b1e82;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#ffe3c2;--k-doc-b:#8a4600;--tl:#ffd600;color-scheme:dark}
 :root[data-theme=hcd] #home{--hc1:#ffd600;--hc2:#ff80ab;--hc3:#69f0ae;--hc4:#40c4ff;--hc5:#ffab40;--hc6:#ea80fc}
-:root[data-theme=vivaldi]{--bg:#1c1b22;--fg:#e0dfe8;--card:#1c1b22;--cont:#2e2d38;--ac:#e8538a;--onac:#ffffff;--mut:#a9a8b6;--bd:#403e4f;--sel:#4b2a42;--onsel:#ffe3ee;--fab:#c93a73;--onfab:#ffffff;--hov:#ffffff14;--errc:#8c1d18;--onerr:#f9dedc;--err:#f87171;--ok:#4ade80;--warn:#fdd663;--sh:0 1px 3px #000a,0 4px 8px 3px #0006;--bar:#26252e;--onbar:#e0dfe8;--barmut:#a9a8b6;--k-folder-c:#ffd6e6;--k-folder-b:#5c2a45;--k-file-c:#c9c8d4;--k-file-b:#363544;--k-img-c:#c4eed0;--k-img-b:#0f5223;--k-vid-c:#e4d4ff;--k-vid-b:#51308f;--k-aud-c:#ffd8ea;--k-aud-b:#7a0f49;--k-pdf-c:#f9dedc;--k-pdf-b:#8c1d18;--k-zip-c:#ebdbd0;--k-zip-b:#4e342e;--k-apk-c:#c2f0e8;--k-apk-b:#00504a;--k-doc-c:#ffe3c2;--k-doc-b:#8a4600;--tl:#e8538a;color-scheme:dark;--gt:#26252e;--gb:#1c1b22;--ct:#34333f;--cb:#2b2a35;--st:#5a3150;--sb:#47263f;--ht:#2b2a35;--hb:#23222b;--hl:#ffffff14;--dv:#33323f;--b1:#ee5f93;--b2:#d9457f;--bb:#a92f5d;--bt:#ffffff;--wall:radial-gradient(80% 55% at 5% 8%,#e8538a52 0%,#e8538a00 55%),radial-gradient(70% 50% at 95% 5%,#8b5cf64a 0%,#8b5cf600 55%),radial-gradient(80% 55% at 50% 100%,#3b82f640 0%,#3b82f600 55%),radial-gradient(55% 45% at 90% 62%,#06b6d430 0%,#06b6d400 50%),radial-gradient(60% 45% at 8% 66%,#f59e0b2b 0%,#f59e0b00 50%),linear-gradient(180deg,#1c1b22 0%,#15141b 100%)}
-:root[data-theme=vivaldi] #home{--hc1:#e8538a;--hc2:#a78bfa;--hc3:#fbbf24;--hc4:#22d3ee;--hc5:#4ade80;--hc6:#60a5fa;--hc7:#fb923c}
 /* theme picker (Settings): swatch cards, colours come from the theme tokens */
 .thg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 16px 12px}
 .thc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:10px 12px;border-radius:14px;border:2px solid transparent;font:600 13px/1.2 inherit;text-align:left;cursor:pointer;outline:1px solid #8884}
@@ -171,6 +169,13 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #sum{flex:1;min-width:0;line-height:1.25;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #sum b{font-size:13px;font-weight:600;color:var(--fg)}
 #sum small{font-size:12px}#sum small:before{content:' \00b7  '}
+/* archive details strip (inside a ZIP / RAR / 7z ...): one fixed-height row of chips, tap = full details sheet */
+#arcrow{display:none;align-items:center;gap:5px;height:38px;padding:0 10px 0 12px;background:var(--card);border-bottom:1px solid var(--bd);overflow-x:auto;white-space:nowrap;scrollbar-width:none;cursor:pointer}
+#arcrow::-webkit-scrollbar{display:none}
+body.inarc #arcrow{display:flex}body.galm #arcrow{display:none}
+#arcrow .ac{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:13px;background:var(--bg);font-size:12px;color:var(--fg)}
+#arcrow .ac b{font-weight:700}#arcrow .ac.lk{color:#E65100}#arcrow .ac.ok{color:#2E7D32}#arcrow .ac.ld{color:var(--mut)}
+#arcrow .am{flex:none;margin-left:auto;padding-left:6px;font-size:12px;font-weight:700;color:var(--ac)}
 #sortb{display:flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 8px;border-radius:16px;font-size:13px;font-weight:600;color:var(--ac)}#sortb:active{background:var(--hov)}
 #sortb svg{width:18px;height:18px}#sortb svg.ar{width:14px;height:14px}
 #srow{display:none;align-items:center;height:48px;margin:6px 12px;padding:0 4px;border-radius:24px;background:var(--cont)}body.srch #srow{display:flex}
@@ -299,7 +304,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .lys img{position:absolute;left:50%;top:50%;max-width:none;pointer-events:none}
 #gal .lys img.gh{opacity:.22}
 #gal .lyn{position:absolute;left:4px;top:2px;font-size:11px;color:#777}
-#gal .lypg.lyfp{touch-action:pan-y;overflow:visible;outline:1px dashed #8886;margin-top:40px;margin-bottom:40px}
+#gal .lypg.lyfp{touch-action:none;overflow:visible;outline:1px dashed #8886;margin-top:40px;margin-bottom:40px}
 #gal .lyf{position:absolute;touch-action:none;cursor:move}
 #gal .lyf img{width:100%;height:100%;display:block;max-width:none;pointer-events:none;-webkit-user-drag:none}
 #gal .lyf.sel{outline:2px solid var(--ac)}#gal .lyf.msel{outline:2px dashed var(--ac);outline-offset:1px}
@@ -613,7 +618,7 @@ body.kid #fab svg{width:20px;height:20px}
 /* side drawer (hamburger, top left) */
 #menub svg{width:32px;height:32px}.bar.mainb{padding-left:4px}.bar.mainb .ttl{margin-left:2px}
 #dscrim{position:fixed;inset:0;z-index:13;background:#000;opacity:0;visibility:hidden;transition:opacity .22s,visibility 0s .22s}
-#dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(88vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform .22s ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+#dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(84vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform .22s ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity .22s}
 body.dopen #dwr{transform:none;visibility:visible;transition:transform .22s ease-out}
 body.dopen{overflow:hidden}
@@ -622,26 +627,24 @@ body.dopen{overflow:hidden}
 #dtabs button.on{color:var(--fg)}
 #dtabs button.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ac)}
 #dbody{flex:1;overflow-y:auto;overscroll-behavior:contain}
-.di{display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:6px 8px 6px 14px;text-align:left;border-bottom:1px solid var(--bd);transition:background .15s}
+.di{display:flex;align-items:center;gap:16px;width:100%;min-height:56px;padding:6px 8px 6px 16px;text-align:left;border-bottom:1px solid var(--bd);transition:background .15s}
 .di:active{background:var(--hov)}
 .di.on{background:var(--sel);color:var(--onsel)}
-.di .dl{flex:none;width:32px;height:32px;display:grid;place-items:center}
-.di .dl svg{width:32px;height:32px}.di .dl svg.s24{width:22px;height:22px}
+.di .dl{flex:none;width:36px;height:36px;display:grid;place-items:center}
+.di .dl svg{width:36px;height:36px}.di .dl svg.s24{width:24px;height:24px}
 .di .dt{flex:1;min-width:0;display:flex;flex-direction:column}
 .di.dev .dt b{font-weight:700}
 #peers .chip>span{font-weight:700}.li .dn{font-weight:700}
-.di .dt b{font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.di .dt small{font-size:11.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di .dt b{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.di .dt small{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .di.on .dt small{color:inherit;opacity:.75}
-.di .dr2{flex:none;font-size:12px;white-space:nowrap;color:var(--mut)}
-.di .dx{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
-.di .dx svg{width:18px;height:18px}
+.di .dr2{flex:none;font-size:14px;color:var(--mut)}
+.di .dx{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--mut)}.di .dx:active{background:var(--hov)}
+.di .dx svg{width:20px;height:20px}
 .dmeter{height:3px;border-radius:2px;background:var(--bd);margin-top:4px;overflow:hidden}.dmeter i{display:block;height:100%;background:var(--ac)}
 .dsec{display:flex;align-items:center;justify-content:space-between;padding:14px 8px 6px 16px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut)}
-#dbody .dsec{gap:8px;padding:12px 6px 4px 14px;font-size:11px;font-weight:600;letter-spacing:.4px;white-space:nowrap}#dbody .dsec>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .dsep{height:8px;background:var(--bg);border-bottom:1px solid var(--bd)}
-.dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}
-#dbody .dsec button{flex:none;height:28px;padding:0 10px;border-radius:14px;font-size:12px;font-weight:600;letter-spacing:0;white-space:nowrap;text-transform:none}.dsec button:active{background:var(--hov)}
+.dsec button{height:32px;padding:0 12px;border-radius:16px;font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--ac)}.dsec button:active{background:var(--hov)}
 /* folder colour / icon picker */
 .fspv{display:flex;justify-content:center;padding:4px 0 8px}.fspv .pf{position:relative;width:88px;height:77px}.fspv .pf .fold,.fspv .pf .fold svg{display:block;width:100%;height:100%}
 .fspv .pb{position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:34px;height:34px;border-radius:12px;background:#fff;box-shadow:0 1px 3px #0004;display:none;align-items:center;justify-content:center}.fspv .pb svg{width:22px;height:22px}
@@ -674,15 +677,14 @@ body.dopen{overflow:hidden}
 .smb .smpw{display:flex;align-items:center;gap:6px}.smb .smshow{flex:none;height:40px;padding:0 12px;border-radius:20px;color:var(--ac);font-weight:700;font-size:13px}
 .smb .smerr{margin:0 8px 10px;padding:10px 14px;border-radius:12px;background:var(--hov);color:var(--err);font-size:14px;overflow-wrap:anywhere}
 .smb .dact{margin-top:8px}
-.di.mm{min-height:64px;gap:12px}.di.mm .dl{width:36px;height:36px}.di.mm .dl svg{width:36px;height:36px}.di.mm .dt b{font-size:18px;font-weight:600}.di.mm .dt small{font-size:12px}
+.di.mm{min-height:76px;gap:14px}.di.mm .dl{width:44px;height:44px}.di.mm .dl svg{width:44px;height:44px}.di.mm .dt b{font-size:23px;font-weight:600}.di.mm .dt small{font-size:15px}
 .di.add .dt b{color:var(--ac)}.di.dis{opacity:.45}
 .di.bin{background:#000;color:#fff}.di.bin .dt small{color:#fff;opacity:.7}.di.bin:active{background:#1a1a1a}
 .dnone{padding:40px 24px;text-align:center;color:var(--mut);font-size:14px}
 .ddot{width:12px;height:12px;border-radius:50%;background:var(--ok);margin:0 12px}.ddot.wn{background:var(--warn,#e0a100)}
 #dfoot{flex:none;border-top:1px solid var(--bd);display:flex;background:var(--bg)}
-#dfoot button{flex:1 1 0;min-width:0;height:48px;padding:0 4px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;letter-spacing:0;white-space:nowrap;color:var(--ac)}
-#dfoot button:active{background:var(--hov)}#dfoot svg{flex:none;width:18px;height:18px}
-@media (max-width:260px){#dfoot svg{display:none}}
+#dfoot button{flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--ac)}
+#dfoot button:active{background:var(--hov)}#dfoot svg{width:20px;height:20px}
 #dedge{position:fixed;left:0;top:96px;bottom:120px;width:14px;z-index:5}
 body.dual #dedge,body.selm #dedge{display:none}
 /* start menu (home): Material 3 look built on the app's own theme tokens; spec history in HANDOVER_HOME_MENU.md */
@@ -762,101 +764,6 @@ body.dual #dedge,body.selm #dedge{display:none}
 :root[data-theme^=win11] #home .ht .tb{box-shadow:inset 0 1px 0 var(--hl)}
 :root[data-theme^=win11] #home .meter{box-shadow:inset 0 1px 2px #00000040}
 :root[data-theme^=win11] #home .meter i{background:linear-gradient(90deg,var(--b2),var(--b1))}
-/* ===== Vivaldi Portal (dark ink, pink accent, colour-glow wallpaper) - same look as the school portal's default theme (theme vivaldi) ===== */
-:root[data-theme=vivaldi] body{background-color:var(--bg);background-image:var(--wall);background-attachment:fixed;background-repeat:no-repeat;background-size:cover}
-:root[data-theme=vivaldi]{accent-color:var(--ac);scrollbar-color:var(--mut) transparent;scrollbar-width:thin}
-:root[data-theme=vivaldi] ::selection{background:color-mix(in srgb,var(--ac) 40%,transparent);color:inherit}
-:root[data-theme=vivaldi] :focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-:root[data-theme=vivaldi] .bar{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl),inset 0 -1px 0 var(--dv)}
-:root[data-theme=vivaldi] #top:before{background:var(--ht)}
-:root[data-theme=vivaldi] #top{background:transparent}
-:root[data-theme=vivaldi] #fab,:root[data-theme=vivaldi] .tbtn.fill,:root[data-theme=vivaldi] .ib.pri .ii{background:linear-gradient(135deg,var(--b1),var(--b2));color:var(--bt);box-shadow:inset 0 1px 0 #ffffff33,0 0 0 1px var(--bb),0 4px 14px #e8538a59}
-:root[data-theme=vivaldi] #fab:active,:root[data-theme=vivaldi] .tbtn.fill:active{filter:brightness(.92);box-shadow:0 0 0 1px var(--bb)}
-:root[data-theme=vivaldi] .tbtn:not(.fill):not(.dng){background:var(--cont);box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd)}
-:root[data-theme=vivaldi] .tbtn:not(.fill):active{background:var(--hov)}
-:root[data-theme=vivaldi] .dcard,:root[data-theme=vivaldi] #sheet .card{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 24px 48px #00000073}
-:root[data-theme=vivaldi] #dock{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 -3px 14px #0000004d;border-top-color:var(--dv)}
-:root[data-theme=vivaldi] #dwr{background-color:var(--cb);background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset -1px 0 0 var(--dv),3px 0 18px #00000066}
-:root[data-theme=vivaldi] .row{position:relative;border-bottom:1px solid var(--dv)}
-:root[data-theme=vivaldi] .row.sel,:root[data-theme=vivaldi] .row.dnt{background:linear-gradient(180deg,var(--st),var(--sb))}
-:root[data-theme=vivaldi] .row.sel::before{content:"";position:absolute;left:3px;top:50%;width:3px;height:22px;margin-top:-11px;border-radius:2px;background:var(--ac)}
-:root[data-theme=vivaldi] .chip.on{background:linear-gradient(180deg,var(--st),var(--sb))}
-:root[data-theme=vivaldi] .chip,:root[data-theme=vivaldi] .pill{box-shadow:inset 0 1px 0 var(--hl),0 1px 2px #00000040}
-:root[data-theme=vivaldi] .li:active{background:linear-gradient(180deg,var(--st),var(--sb))}
-:root[data-theme=vivaldi] .vc{box-shadow:0 1px 3px #0000004d,0 0 0 1px var(--bd)}
-:root[data-theme=vivaldi] #toast,:root[data-theme=vivaldi] .dlc{background:linear-gradient(180deg,#3a3946,#2b2a35);box-shadow:inset 0 1px 0 #ffffff1f,0 0 0 1px #00000066,0 10px 24px #0000006b}
-:root[data-theme=vivaldi] #dlg input,:root[data-theme=vivaldi] #dlg textarea,:root[data-theme=vivaldi] #sheet input,:root[data-theme=vivaldi] #sheet textarea{box-shadow:0 0 0 1px var(--bd),inset 0 -1px 0 #0000003d}
-:root[data-theme=vivaldi] #dlg input:focus,:root[data-theme=vivaldi] #dlg textarea:focus,:root[data-theme=vivaldi] #sheet input:focus,:root[data-theme=vivaldi] #sheet textarea:focus{box-shadow:0 0 0 1px var(--bd),inset 0 -2px 0 var(--ac)}
-:root[data-theme=vivaldi] #sheet hr{border-top-color:var(--dv)}
-:root[data-theme=vivaldi] .sw input:checked+i{background-color:var(--ac);border-color:var(--ac)}
-/* Vivaldi on the main menu (#home) */
-:root[data-theme=vivaldi] #home{background-color:var(--bg);background-image:var(--wall);background-size:cover;background-repeat:no-repeat}
-:root[data-theme=vivaldi] #home .hb{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl),inset 0 -1px 0 var(--dv)}
-:root[data-theme=vivaldi] #home .hero{background-image:linear-gradient(135deg,#e8538a40,#8b5cf633);box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 4px 14px #0000004d}
-:root[data-theme=vivaldi] #home .hero .ic{background-image:linear-gradient(135deg,var(--b1),var(--b2));color:var(--bt);box-shadow:inset 0 1px 0 #ffffff40,0 0 0 1px var(--bb)}
-:root[data-theme=vivaldi] #home .ht{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 3px 10px #00000040}
-:root[data-theme=vivaldi] #home .ht:active{background-image:linear-gradient(180deg,var(--st),var(--sb))}
-:root[data-theme=vivaldi] #home .ht .tb{box-shadow:inset 0 1px 0 var(--hl)}
-:root[data-theme=vivaldi] #home .meter{box-shadow:inset 0 1px 2px #00000059}
-:root[data-theme=vivaldi] #home .meter i{background:linear-gradient(90deg,var(--b2),var(--b1))}
-/* Vivaldi Portal: component details (chips, tabs, switches, search, path bar, drawer, dialogs, menus, progress, gallery, home) */
-:root[data-theme=vivaldi] #home .sec{display:flex;align-items:center;gap:12px;text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:700}
-:root[data-theme=vivaldi] #home .sec::after{content:"";flex:1;height:1px;background:var(--bd)}
-:root[data-theme=vivaldi] #home .ht{border-left:3px solid var(--c,var(--ac))}
-:root[data-theme=vivaldi] #home .ht .tb{background:color-mix(in srgb,var(--c,var(--ac)) 22%,var(--cb));box-shadow:0 0 14px color-mix(in srgb,var(--c,var(--ac)) 30%,transparent)}
-:root[data-theme=vivaldi] #hmfav .mh,:root[data-theme=vivaldi] .dsec{letter-spacing:.12em}:root[data-theme=vivaldi] #dbody .dsec{letter-spacing:.06em}
-:root[data-theme=vivaldi] .chip{background:var(--cont)}
-:root[data-theme=vivaldi] .chip.on,:root[data-theme=vivaldi] #newb.on{border-color:var(--ac);box-shadow:0 0 0 1px #e8538a40,0 0 12px #e8538a33}
-:root[data-theme=vivaldi] .chip.add{border-color:#e8538a99;background:#e8538a14}
-:root[data-theme=vivaldi] .pill{border-color:var(--ac);color:var(--ac);background:#e8538a1a}
-:root[data-theme=vivaldi] .pill i{background:conic-gradient(var(--ac) var(--p,0%),var(--bd) 0)}
-:root[data-theme=vivaldi] .pseg{background:#0000004d;box-shadow:inset 0 1px 2px #0006}
-:root[data-theme=vivaldi] .pseg .chip{background:transparent;box-shadow:none}
-:root[data-theme=vivaldi] .pseg .chip.on{background:linear-gradient(135deg,var(--b1),var(--b2));color:#fff;box-shadow:0 2px 8px #e8538a59}
-:root[data-theme=vivaldi] .ptabs{border-bottom-color:var(--dv)}
-:root[data-theme=vivaldi] .ptabs button.on{text-shadow:0 0 12px #e8538a80}
-:root[data-theme=vivaldi] #dtabs button.on{color:var(--ac)}
-:root[data-theme=vivaldi] #dtabs button.on:after{background:linear-gradient(90deg,var(--b1),#8b5cf6);border-radius:3px 3px 0 0}
-:root[data-theme=vivaldi] .sw i{background:#0000004d;border-color:var(--bd)}
-:root[data-theme=vivaldi] .sw i:after{background:#8d8b9c}
-:root[data-theme=vivaldi] .sw input:checked+i{background:linear-gradient(135deg,var(--b1),var(--b2));border-color:var(--bb);box-shadow:0 0 10px #e8538a66}
-:root[data-theme=vivaldi] .sw input:checked+i:after{background:#fff}
-:root[data-theme=vivaldi] .cbx{accent-color:var(--ac)}
-:root[data-theme=vivaldi] .rdo.on .rd,:root[data-theme=vivaldi] .opt.on .rd{box-shadow:0 0 8px #e8538a80}
-:root[data-theme=vivaldi] .opt.on{background:#e8538a14}
-:root[data-theme=vivaldi] #srow{background:var(--cont);box-shadow:0 0 0 1px var(--bd),inset 0 1px 2px #0000004d}
-:root[data-theme=vivaldi] #srow:focus-within{box-shadow:0 0 0 1px var(--ac),0 0 14px #e8538a40}
-:root[data-theme=vivaldi] #pathrow{background:var(--bar);border-bottom-color:var(--dv)}
-:root[data-theme=vivaldi] .crumb.cur{color:var(--ac)}
-:root[data-theme=vivaldi] .ibtn:active,:root[data-theme=vivaldi] .ib:active .ii,:root[data-theme=vivaldi] #home .hb button:active,:root[data-theme=vivaldi] .crumb:active{background:#e8538a29}
-:root[data-theme=vivaldi] #top.el{box-shadow:0 2px 12px #00000073}
-:root[data-theme=vivaldi] .row:active{background:#e8538a22}
-:root[data-theme=vivaldi] .di{position:relative;border-bottom-color:var(--dv)}
-:root[data-theme=vivaldi] .di.on{background-color:#e8538a22;background-image:linear-gradient(90deg,#e8538a33,#e8538a0d);color:var(--ac)}
-:root[data-theme=vivaldi] .di.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--ac)}
-:root[data-theme=vivaldi] .di:active{background:#e8538a22}
-:root[data-theme=vivaldi] .dmeter{background:#0000004d}
-:root[data-theme=vivaldi] .dmeter i{background:linear-gradient(90deg,var(--b2),var(--b1))}
-:root[data-theme=vivaldi] .di.bin{background:#15141b}
-:root[data-theme=vivaldi] .di.bin:active{background:#1f1d28}
-:root[data-theme=vivaldi] .li .lead{background:linear-gradient(135deg,#e8538a40,#8b5cf633);color:var(--onsel)}
-:root[data-theme=vivaldi] .li.dng{color:var(--err)}
-:root[data-theme=vivaldi] #sheet,:root[data-theme=vivaldi] #dlg{background:#0b0a1080;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-:root[data-theme=vivaldi] #sheet .card{border-top:1px solid var(--bd)}
-:root[data-theme=vivaldi] .dmb:active{background:#e8538a26}
-:root[data-theme=vivaldi] .dmb.pri{background:#e8538a1f;border-radius:12px}
-:root[data-theme=vivaldi] .tbtn:not(.fill):not(.dng){color:var(--fg)}
-:root[data-theme=vivaldi] .tbtn.dng{color:var(--err);box-shadow:0 0 0 1px #f8717166}
-:root[data-theme=vivaldi] #hmfav{background:linear-gradient(180deg,var(--ct),var(--cb));border-color:var(--bd);box-shadow:inset 0 1px 0 var(--hl),0 12px 32px #0000008c}
-:root[data-theme=vivaldi] #hmfav .mi{border-bottom-color:var(--dv)}
-:root[data-theme=vivaldi] #hmfav .mi:active{background:#e8538a26}
-:root[data-theme=vivaldi] #banner{border-left:3px solid var(--err);background:#f8717126;color:#ffd9d9}
-:root[data-theme=vivaldi] .dlc button,:root[data-theme=vivaldi] #tc{color:var(--ac)}
-:root[data-theme=vivaldi] .dlc .bar i,:root[data-theme=vivaldi] #tp i{background:linear-gradient(90deg,var(--b2),var(--b1))}
-:root[data-theme=vivaldi] .dlc .bar,:root[data-theme=vivaldi] #tp{background:#ffffff1f;box-shadow:none}
-:root[data-theme=vivaldi] #pv .prg{accent-color:var(--ac)}
-:root[data-theme=vivaldi] #gal .gh.sl{background:linear-gradient(135deg,var(--st),var(--sb))}
-:root[data-theme=vivaldi] #gal .gb{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 8px 24px #0000005c}
 @media(prefers-color-scheme:dark){:root[data-theme=auto] #home{--hc1:#ce93d8;--hc2:#f48fb1;--hc3:#ffcc80;--hc4:#b0bec5;--hc5:#bdbdbd;--hc6:#80cbc4;--hc7:#ffe082}}
 #home .hb{flex:none;height:calc(52px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 2px 0 14px;display:flex;align-items:center;gap:0;background:var(--bar);color:var(--onbar)}
 #home .hb h1{flex:1;min-width:0;margin:0;font-size:18px;line-height:24px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -923,6 +830,7 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
   <div id=peers></div><div id=hint></div><div id=free></div>
   <div id=pathrow><div id=crumbs></div><div class=pill id=used><i></i><span></span></div></div>
   <div id=toolrow><div id=sum></div><button id=newb>Newest</button><button id=sortb aria-label="Sort"></button></div>
+  <div id=arcrow></div>
 </header>
 <div id=banner></div><div id=list></div>
 <button id=fab><span data-i=newfolder></span>New folder</button>
@@ -1050,7 +958,7 @@ const SORTS={name:{t:'Name',l:'Name',a:'A \u2192 Z',d:'Z \u2192 A'},date:{t:'Dat
 const VIEWS={list:{t:'List',i:'vlist',n:'compact'},compact:{t:'Compact',i:'vcomp',n:'grid'},grid:{t:'Grid',i:'vgrid',n:'list'}};
 SORTS.none={t:'No Sort',l:'No Sort',a:'',d:''};
 if(!SORTS[S.sort])S.sort='date';if(!VIEWS[S.view])S.view='list';
-S.q='';S.aa=false;S.thumb='s';S.cols=0;const LSTH=[{"id":"win11","n":"Windows 11 Mica Dark","d":1,"sw":["#202020","#ffffff","#60cdff","#3a4753"]},{"id":"win11light","n":"Windows 11 Mica Light","d":0,"sw":["#f3f3f3","#1a1a1a","#005fb8","#e1ecf8"]},{"id":"ubuntu","n":"Ubuntu Aubergine","d":1,"sw":["#2c001e","#f3eeeb","#e95420","#5e2750"]},{"id":"ubuntulight","n":"Ubuntu Yaru Light","d":0,"sw":["#f6f5f4","#2f2b28","#e95420","#f8d6c6"]},{"id":"vivaldi","n":"Vivaldi Portal","d":1,"sw":["#1c1b22","#e0dfe8","#e8538a","#4b2a42"]},{"id":"mint","n":"Aurora Mint","d":0,"sw":["#f6fffb","#14261f","#00796b","#b7ecdc"]},{"id":"sakura","n":"Sakura","d":0,"sw":["#fff8fa","#2b1520","#c2185b","#ffd0e1"]},{"id":"lavender","n":"Lavender Dream","d":0,"sw":["#fbf8ff","#1f1730","#6a4bc4","#e2d6ff"]},{"id":"sand","n":"Sand & Slate","d":0,"sw":["#faf7f2","#23211c","#3b5b73","#d3e3ee"]},{"id":"sky","n":"Sky Blue","d":0,"sw":["#f5faff","#0f1e2e","#1565c0","#cfe4ff"]},{"id":"solar","n":"Solarized Light","d":0,"sw":["#fdf6e3","#073642","#1f6fb2","#d9e8f2"]},{"id":"graphite","n":"Graphite Mono","d":0,"sw":["#ffffff","#111111","#111111","#e0e0e0"]},{"id":"ocean","n":"Ocean Deep","d":1,"sw":["#0b1620","#e3eef7","#4fc3f7","#0d4a66"]},{"id":"amoled","n":"AMOLED Violet","d":1,"sw":["#000000","#ececf2","#b388ff","#3a2370"]},{"id":"forest","n":"Deep Forest","d":1,"sw":["#0d1a12","#e2f0e4","#81c784","#1f5a2c"]},{"id":"nord","n":"Nord","d":1,"sw":["#2e3440","#eceff4","#88c0d0","#434c5e"]},{"id":"dracula","n":"Dracula","d":1,"sw":["#282a36","#f8f8f2","#bd93f9","#44475a"]},{"id":"sunset","n":"Sunset Dusk","d":1,"sw":["#1c1220","#f6e9ee","#ff8a65","#6b2e4a"]},{"id":"cyber","n":"Neon Cyber","d":1,"sw":["#0a0a14","#e8f9ff","#00e5ff","#4a0f55"]},{"id":"crimson","n":"Crimson Noir","d":1,"sw":["#140b0d","#f5e6e8","#ff6b81","#6a1b2a"]},{"id":"peach","n":"Peach Cream","d":0,"sw":["#fffaf5","#2a1c12","#d4551a","#ffd9bf"]},{"id":"matcha","n":"Matcha","d":0,"sw":["#f9fbf1","#1e2615","#4f7a12","#d8e8a8"]},{"id":"coffee","n":"Latte Coffee","d":0,"sw":["#fbf6f1","#2b1f18","#6f4e37","#e6d3c0"]},{"id":"arctic","n":"Arctic Teal","d":0,"sw":["#f7fafc","#14202b","#0e7490","#c5e8f1"]},{"id":"citrus","n":"Citrus Zest","d":0,"sw":["#fffdf2","#262200","#a16207","#fde68a"]},{"id":"hcl","n":"High Contrast Light","d":0,"sw":["#ffffff","#000000","#0000cc","#cfd8ff"]},{"id":"midnight","n":"Midnight Blue","d":1,"sw":["#0f1424","#e6ebff","#8ab4ff","#243a78"]},{"id":"mocha","n":"Cocoa Mocha","d":1,"sw":["#1a1411","#efe4da","#d7a77c","#5a3d28"]},{"id":"gruvbox","n":"Gruvbox","d":1,"sw":["#282828","#ebdbb2","#fabd2f","#665c54"]},{"id":"tokyo","n":"Tokyo Night","d":1,"sw":["#1a1b26","#c0caf5","#7aa2f7","#33467c"]},{"id":"rosepine","n":"Rosé Pine","d":1,"sw":["#191724","#e0def4","#ebbcba","#403d52"]},{"id":"catppuccin","n":"Catppuccin Mocha","d":1,"sw":["#1e1e2e","#cdd6f4","#cba6f7","#45475a"]},{"id":"tealnight","n":"Teal Night","d":1,"sw":["#0a1716","#dff5f2","#4dd0c4","#0f5a54"]},{"id":"trueblack","n":"True Black Mono","d":1,"sw":["#000000","#f0f0f0","#ffffff","#333333"]},{"id":"hcd","n":"High Contrast Dark","d":1,"sw":["#000000","#ffffff","#ffd600","#003c8f"]}];   // colour themes: id, name, dark, swatches [bg,fg,accent,selection]
+S.q='';S.aa=false;S.thumb='s';S.cols=0;const LSTH=[{"id":"win11","n":"Windows 11 Mica Dark","d":1,"sw":["#202020","#ffffff","#60cdff","#3a4753"]},{"id":"win11light","n":"Windows 11 Mica Light","d":0,"sw":["#f3f3f3","#1a1a1a","#005fb8","#e1ecf8"]},{"id":"ubuntu","n":"Ubuntu Aubergine","d":1,"sw":["#2c001e","#f3eeeb","#e95420","#5e2750"]},{"id":"ubuntulight","n":"Ubuntu Yaru Light","d":0,"sw":["#f6f5f4","#2f2b28","#e95420","#f8d6c6"]},{"id":"mint","n":"Aurora Mint","d":0,"sw":["#f6fffb","#14261f","#00796b","#b7ecdc"]},{"id":"sakura","n":"Sakura","d":0,"sw":["#fff8fa","#2b1520","#c2185b","#ffd0e1"]},{"id":"lavender","n":"Lavender Dream","d":0,"sw":["#fbf8ff","#1f1730","#6a4bc4","#e2d6ff"]},{"id":"sand","n":"Sand & Slate","d":0,"sw":["#faf7f2","#23211c","#3b5b73","#d3e3ee"]},{"id":"sky","n":"Sky Blue","d":0,"sw":["#f5faff","#0f1e2e","#1565c0","#cfe4ff"]},{"id":"solar","n":"Solarized Light","d":0,"sw":["#fdf6e3","#073642","#1f6fb2","#d9e8f2"]},{"id":"graphite","n":"Graphite Mono","d":0,"sw":["#ffffff","#111111","#111111","#e0e0e0"]},{"id":"ocean","n":"Ocean Deep","d":1,"sw":["#0b1620","#e3eef7","#4fc3f7","#0d4a66"]},{"id":"amoled","n":"AMOLED Violet","d":1,"sw":["#000000","#ececf2","#b388ff","#3a2370"]},{"id":"forest","n":"Deep Forest","d":1,"sw":["#0d1a12","#e2f0e4","#81c784","#1f5a2c"]},{"id":"nord","n":"Nord","d":1,"sw":["#2e3440","#eceff4","#88c0d0","#434c5e"]},{"id":"dracula","n":"Dracula","d":1,"sw":["#282a36","#f8f8f2","#bd93f9","#44475a"]},{"id":"sunset","n":"Sunset Dusk","d":1,"sw":["#1c1220","#f6e9ee","#ff8a65","#6b2e4a"]},{"id":"cyber","n":"Neon Cyber","d":1,"sw":["#0a0a14","#e8f9ff","#00e5ff","#4a0f55"]},{"id":"crimson","n":"Crimson Noir","d":1,"sw":["#140b0d","#f5e6e8","#ff6b81","#6a1b2a"]},{"id":"peach","n":"Peach Cream","d":0,"sw":["#fffaf5","#2a1c12","#d4551a","#ffd9bf"]},{"id":"matcha","n":"Matcha","d":0,"sw":["#f9fbf1","#1e2615","#4f7a12","#d8e8a8"]},{"id":"coffee","n":"Latte Coffee","d":0,"sw":["#fbf6f1","#2b1f18","#6f4e37","#e6d3c0"]},{"id":"arctic","n":"Arctic Teal","d":0,"sw":["#f7fafc","#14202b","#0e7490","#c5e8f1"]},{"id":"citrus","n":"Citrus Zest","d":0,"sw":["#fffdf2","#262200","#a16207","#fde68a"]},{"id":"hcl","n":"High Contrast Light","d":0,"sw":["#ffffff","#000000","#0000cc","#cfd8ff"]},{"id":"midnight","n":"Midnight Blue","d":1,"sw":["#0f1424","#e6ebff","#8ab4ff","#243a78"]},{"id":"mocha","n":"Cocoa Mocha","d":1,"sw":["#1a1411","#efe4da","#d7a77c","#5a3d28"]},{"id":"gruvbox","n":"Gruvbox","d":1,"sw":["#282828","#ebdbb2","#fabd2f","#665c54"]},{"id":"tokyo","n":"Tokyo Night","d":1,"sw":["#1a1b26","#c0caf5","#7aa2f7","#33467c"]},{"id":"rosepine","n":"Rosé Pine","d":1,"sw":["#191724","#e0def4","#ebbcba","#403d52"]},{"id":"catppuccin","n":"Catppuccin Mocha","d":1,"sw":["#1e1e2e","#cdd6f4","#cba6f7","#45475a"]},{"id":"tealnight","n":"Teal Night","d":1,"sw":["#0a1716","#dff5f2","#4dd0c4","#0f5a54"]},{"id":"trueblack","n":"True Black Mono","d":1,"sw":["#000000","#f0f0f0","#ffffff","#333333"]},{"id":"hcd","n":"High Contrast Dark","d":1,"sw":["#000000","#ffffff","#ffd600","#003c8f"]}];   // colour themes: id, name, dark, swatches [bg,fg,accent,selection]
 S.theme=LD('ls_theme','light');if(['light','dark','auto'].concat(LSTH.map(t=>t.id)).indexOf(S.theme)<0)S.theme='light';document.documentElement.dataset.theme=S.theme;
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
 setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(()=>nlTheme(),50))}catch(e){}
@@ -1145,6 +1053,7 @@ function findDups(items){if(DUPC&&DUPC.items===items)return DUPC.set;if(items.le
     const k=i.size+'|'+e+'|'+b;(g[k]=g[k]||[]).push(i.name)});
   const out=new Set();Object.keys(g).forEach(k=>{if(g[k].length>1)g[k].forEach(n=>out.add(n))});DUPC={items:items,set:out};return out}
 function renderTools(V){
+  try{arcRow()}catch(e){}
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
   const n=V.length,sm=$('#sum');sm.textContent='';
   sm.append(E('b','',n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):'')));
@@ -1588,19 +1497,19 @@ function nlDrFlat(root){
       if(s0&&s0.trim()){const fs=parseFloat(cs.fontSize)||14,pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0,ta=cs.textAlign;
         const h=g[3]-pt-pb;
         it.push({t:'t',g:[q(g[0]+pl),q(g[1]+pt),q(g[2]-pl-pr),q(h)],s:cs.textTransform==='uppercase'?s0.toUpperCase():s0,sz:fs,wt:parseInt(cs.fontWeight)||400,c:nlRgb(cs.color,op),
-          ls:parseFloat(cs.letterSpacing)||0,al:ta==='center'?1:(ta==='right'||ta==='end')?2:0,ml:(h>fs*1.9&&cs.whiteSpace.indexOf('nowrap')<0)?1:0})}}
+          ls:parseFloat(cs.letterSpacing)||0,al:ta==='center'?1:(ta==='right'||ta==='end')?2:0,ml:h>fs*1.9?1:0})}}
     else for(const c of e.children)visit(c,op)};
   visit(root,1);return{h:q(R.height),it}}
 function nlDrBuild(){
   const dw=$('#dwr'),bd=$('#dbody'),tb=$('#dtabs'),ft=$('#dfoot'),cs=getComputedStyle(dw),q=nlQ2;
   const pr=document.createElement('i');pr.style.cssText='position:absolute;visibility:hidden;color:var(--hov)';document.body.append(pr);const hov=nlRgb(getComputedStyle(pr).color,1);pr.remove();
-  const T=nlDrFlat(tb);T.hit=[];[...tb.children].forEach((b,j)=>{const g=nlDrRel(b,tb);T.hit.push({k:'t',j,g});if(j===DRW.tab)T.it.push({t:'r',g:[g[0],q(g[1]+g[3]-3),g[2],3],c:document.documentElement.dataset.theme==='vivaldi'?nlCol(getComputedStyle(document.documentElement).getPropertyValue('--ac')):0xFF0D8F7E,r:0})});
+  const T=nlDrFlat(tb);T.hit=[];[...tb.children].forEach((b,j)=>{const g=nlDrRel(b,tb);T.hit.push({k:'t',j,g});if(j===DRW.tab)T.it.push({t:'r',g:[g[0],q(g[1]+g[3]-3),g[2],3],c:0xFF0D8F7E,r:0})});
   const rows=[...bd.children].map((c,i)=>{const f=nlDrFlat(c),hs=[],R=c.getBoundingClientRect();
     if(c.classList.contains('di')){c.querySelectorAll('.dx').forEach((x,j)=>{if(!x.disabled)hs.push({k:'x',j,g:nlDrRel(x,c)})});hs.push({k:'r',j:0,g:[0,0,q(R.width),q(R.height)]})}
     else{const b=c.querySelector(':scope>button');if(b)hs.push({k:'b',j:0,g:nlDrRel(b,c)})}
     f.hit=hs;return f});
   const F=nlDrFlat(ft);F.hit=[...ft.children].map((b,j)=>({k:'f',j,g:nlDrRel(b,ft)}));
-  return{w:dw.offsetWidth,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:(()=>{const rs=getComputedStyle(document.documentElement),tk=n=>{const v=rs.getPropertyValue('--'+n).trim();return v?nlCol(v):0},c=nlRgb(cs.backgroundColor,1)||tk('card');return rs.getPropertyValue('--ct').trim()?{card:c,hov,ct:tk('ct'),cb:tk('cb')}:{card:c,hov}})(),tabs:T,rows,foot:F}}
+  return{w:dw.offsetWidth,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
 function nlDrState(){if(!document.body.classList.contains('dopen'))return'0';
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   return(vis($('#sheet'))||vis($('#dlg')))?'h':'o'}      // a page dialog / bottom sheet opened from the drawer (rename shortcut ...) must show above it
@@ -3071,18 +2980,18 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
     if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
     const A=inArc();
-    if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.some(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
+    if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
-    if(files&&it.some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());
-    if(!A&&psOK(it.filter(i=>!i.dir).map(i=>i.name)))btn('add','To Print space',()=>{const ps=it.filter(i=>!i.dir&&psPic(i.name)).map(i=>jn(S.path,i.name));S.sel.clear();render();psAdd(S.dev,ps)});
+    if(files&&it.every(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());   // only when EVERY selected file can be printed (a zip next to a .py used to show it)
+    if(!A&&files&&psOK(it.map(i=>i.name),1))btn('add','To Print space',()=>{const ps=it.filter(i=>!i.dir&&psPic(i.name)).map(i=>jn(S.path,i.name));S.sel.clear();render();psAdd(S.dev,ps)});
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
     if(files&&!A)btn('share','Share',doShareSel);   // system share sheet (files only; folders cannot be shared directly)
     if(S.sel.size===1&&S.dev.indexOf('gd:')===0&&window.LSAndroid&&LSAndroid.openLink)btn('openw','Open in Drive',doGdLink);   // Part 8
     if(!A&&galRoot()&&it.length>1&&it.every(i=>i.dir))btn('merge','Merge',()=>mergeAlbums(selPaths()));   // Gallery / Videos: merge the selected albums into one
-    if(!A&&it.some(i=>i.dir))btn('dup','Duplicates',()=>doDups());
+    if(!A&&it.every(i=>i.dir))btn('dup','Duplicates',()=>doDups());
     if(!A&&!galRoot()&&it.length&&it.every(i=>i.dir))btn('palette','Style',()=>openFolderStyle(it.map(i=>jn(S.path,i.name))));   // folder colour + icon (not for Gallery / Videos albums: their cards show the cover picture, so a folder colour / icon would do nothing)
     if(!A&&!galVid()&&it.length===1&&it[0].dir)btn('search','AI search',()=>{const i=it[0],p=jn(S.path,i.name);S.sel.clear();render();isView(p,i.disp||i.name)});   // every folder / album, anywhere
     if(!A&&galRoot()&&it.every(i=>i.dir)){   // Pictures / Movies albums
@@ -3881,7 +3790,7 @@ function gNum(GS,els){let i=0;for(const k of GS){i++;const e=els.get(k);if(e)e.d
 const PS_ON=()=>LD('ls_ps','1')!=='0';
 /* Part 3 intake: any screen can add pictures to Print space with psAdd(dev, paths). Only pictures go in (PV_IMG); the phone copies them (core/PrintSpace.kt). */
 const psPic=name=>{const x=(String(name).split('.').pop()||'').toLowerCase();return x==='pdf'||PV_IMG.includes(x)};   // PDFs go in as one picture per page (core/PrintSpace.kt addPdf)
-const psOK=names=>PS_ON()&&names.some(psPic);
+const psOK=(names,all)=>PS_ON()&&(all?names.length>0&&names.every(psPic):names.some(psPic));
 let PSBUSY=false;
 async function psAdd(dev,paths,done){
   if(!PS_ON())return;   // part 9a: kill switch ls_ps='0' stops every way in, not only the drawer entry
@@ -4510,7 +4419,6 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
         f.cx=s.cx;f.cy=s.cy;f.w=s.w;f.rot=s.rot;if(w.mode==='s'&&s.a>0)f.a=s.a;w.last={cx:s.cx,cy:s.cy,w:s.w,rot:s.rot,a:f.a}};
     pg.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;
       try{pg.setPointerCapture(e.pointerId)}catch(x){}
-      if(e.isPrimary){P.clear();if(fg)clearTimeout(fg.lpt)}
       P.set(e.pointerId,{x:e.clientX,y:e.clientY});e.preventDefault();
       const cl=e.target.classList,isC=!!(cl&&cl.contains('lyh')),isR=!!(cl&&cl.contains('lyk')),isH=isC||isR,t=e.target.closest?e.target.closest('.lyf'):null,r=pg.getBoundingClientRect();fixN=0;
       if(P.size===1){
@@ -4535,7 +4443,6 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
         f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(fg.f0.rot+(an-fg.an0)*180/Math.PI);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height;fClamp(f,pic(f.id),R)}
       kLim(fg,i,f);if(fg.mode==='s')f.st=Math.max(.2,Math.min(5,(fg.f0.st||1)*fg.f0.a/f.a));fPlace(i);fKnob(i,r.width,r.height)};
     const up=e=>{P.delete(e.pointerId);if(!fg)return;
-      if(e.type==='pointercancel'&&fg.mode==='bg'&&P.size===0){fg=null;return}   // the page started scrolling: not a tap
       if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
       if(P.size>0)return;
       gv.style.display=gh.style.display='none';const w=fg;clearTimeout(w.lpt);
@@ -4555,8 +4462,6 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
   // ---- long-press drag (pointer events): tray picture -> slot (place), slot -> slot (swap), slot -> tray (clear). A non-passive touchmove stops the page scrolling while dragging.
   const tm=e=>{if(!live()){document.removeEventListener('touchmove',tm);return}if(drag)e.preventDefault()};
   document.addEventListener('touchmove',tm,{passive:false});
-  const dUp=e=>{if(!live()){document.removeEventListener('pointerup',dUp,false);document.removeEventListener('pointercancel',dUp,false);return}if(!drag)return;if(e.type==='pointercancel')dragStop();else dragEnd(e.clientX,e.clientY)};
-  document.addEventListener('pointerup',dUp,false);document.addEventListener('pointercancel',dUp,false);
   const hit=(x,y)=>{const el=document.elementFromPoint(x,y);return{slot:el&&el.closest?el.closest('.lys'):null,tray:el&&el.closest?el.closest('.lytr'):null,stage:el&&el.closest?el.closest('.lyfp'):null}};
   const dragStop=()=>{if(!drag)return;if(drag.gh)drag.gh.remove();if(drag.tg)drag.tg.classList.remove('dt');drag=null};
   function dragMove(x,y){if(!drag)return;drag.gh.style.left=(x-30)+'px';drag.gh.style.top=(y-30)+'px';
@@ -4810,6 +4715,80 @@ async function openBin(){
     bars();
     if(r.task&&r.task.running&&!busy)follow(r.task)}
   await draw()}
+/* ---- archive details (core/ArcInfo.kt, /api/arcinfo): strip of chips under the tool row while an archive is open + a full sheet on tap ---- */
+const ARCI={};
+const arcLabel=r=>(r.label||'Archive')+(r.ext&&r.label&&r.ext.toUpperCase()!==String(r.label).split(' ')[0].toUpperCase()?' (.'+r.ext+')':'');
+function arcRatio(r){   /* packed vs unpacked: exact for ZIP (central directory), archive size vs content size for the other formats */
+  const un=r.unpacked||0,pk=r.packed>=0?r.packed:r.size||0;if(!(un>0&&pk>0))return null;
+  const saved=Math.max(0,Math.round((1-pk/un)*100));return{saved:saved,x:un/pk,exact:r.packed>=0}}
+function arcEncTxt(r){
+  if(r.enc==='none')return 'No';
+  if(r.enc==='unknown')return 'Not needed to list the files';
+  const k=(r.encKinds||[]).join(' + '),weak=/ZipCrypto/.test(k)?' (weak protection)':'';
+  return (r.enc==='all'?'Yes — all '+r.files.toLocaleString()+' files':'Some files — '+r.encFiles.toLocaleString()+' of '+r.files.toLocaleString())+(k?' · '+k+weak:'')}
+function arcRow(){
+  const el=$('#arcrow'),on=inArc();document.body.classList.toggle('inarc',on);
+  if(!on){return}
+  const root=arcRoot(),key=S.dev+'|'+root;
+  let c=ARCI[key];
+  if(!c){c=ARCI[key]={t:0,busy:false,r:null,err:''}}
+  const draw=()=>{
+    el.textContent='';const chip=(t,cl,b)=>{const x=E('span','ac'+(cl?' '+cl:''));if(b){x.append(E('b','',b),document.createTextNode(t?' '+t:''))}else x.textContent=t;el.append(x)};
+    const r=c.r;
+    if(!r){chip(c.err?'⚠ Archive details unavailable':'Reading archive details…','ld');return}
+    chip(String(r.label||'Archive'),'',null);
+    if(r.size>0)chip(fmt(r.size));
+    chip((r.files||0).toLocaleString()+((r.files||0)===1?' file':' files'));
+    const q=arcRatio(r);if(q)chip(q.saved>0?q.saved+'% saved':'no saving',q.saved>=50?'ok':'');
+    if(r.enc==='none')chip('No password');else if(r.enc==='all'||r.enc==='some')chip('\uD83D\uDD12 '+(r.enc==='all'?'Password':'Some locked'),'lk');
+    const m=E('span','am','Details ›');el.append(m)};
+  draw();
+  if(!c.busy&&Date.now()-c.t>3000){   /* stale-while-revalidate: the chips stay, new numbers replace them (an edit of the archive changes them) */
+    c.busy=true;
+    api('GET','/api/arcinfo?dev='+enc(S.dev)+'&path='+enc(root),null,120000).then(r=>{c.r=r;c.err='';c.t=Date.now()}).catch(e=>{c.err=e.message||'error';c.t=Date.now()}).then(()=>{c.busy=false;if(inArc()&&arcRoot()===root&&S.dev+'|'+root===key)draw()})}
+}
+async function doArcInfo(){
+  const root=arcRoot();if(!root)return;const dev=S.dev,key=dev+'|'+root;
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card'),box=E('div','det');card.append(E('div','handle'),E('h3','',root.split('/').pop().replace(/!$/,'')),box);
+  const cb=E('button','tbtn','Close');cb.style.alignSelf='flex-end';cb.onclick=close;card.append(cb);o.append(card);
+  box.append(E('div','dnote','Reading archive details…'));
+  let r;try{r=await api('GET','/api/arcinfo?dev='+enc(dev)+'&path='+enc(root),null,120000);if(ARCI[key]){ARCI[key].r=r;ARCI[key].t=Date.now()}}
+  catch(e){box.textContent='';box.append(E('div','dnote w','⚠ '+e.message));return}
+  if(o.style.display!=='flex')return;
+  box.textContent='';
+  const row=(k,v)=>{if(v==null||v==='')return;const x=E('div','dr');x.append(E('span','dk',k),E('span','dv',v));box.append(x)};
+  const sec=t=>box.append(E('div','dsec',t));
+  const bytes=n=>fmt(n)+(n>=1024?' ('+n.toLocaleString()+' bytes)':'');
+  sec('Archive');
+  row('Name',r.name);
+  row('Location',(dev==='local'?'':devName(dev)+': ')+pdir(root.slice(0,-1)));
+  row('Type',arcLabel(r)+(r.zip64?' · ZIP64 (very large archive)':''));
+  if(r.size>0)row('Archive size',bytes(r.size));
+  if(r.mtime>0)row('Modified',fmtDT(r.mtime));
+  row('Editing',zipEd()?'Allowed here (add / delete files)':'Read-only (copy or extract to change it)');
+  sec('Contents');
+  row('Files',(r.files||0).toLocaleString());
+  row('Folders',(r.folders||0).toLocaleString());
+  if(r.unpacked>0)row('Unpacked size',bytes(r.unpacked));
+  if(r.largest&&r.largest.size>=0)row('Largest file',r.largest.name+' · '+fmt(r.largest.size));
+  if(r.oldest>0)row('Oldest file',fmtDT(r.oldest));
+  if(r.newest>0&&r.newest!==r.oldest)row('Newest file',fmtDT(r.newest));
+  sec('Compression');
+  if(r.packed>=0&&r.files>0)row('Packed size',bytes(r.packed));
+  const q=arcRatio(r);
+  if(q)row('Ratio',(q.saved>0?q.saved+'% saved':'No saving')+' · '+q.x.toFixed(q.x>=10?0:2).replace(/\.?0+$/,'')+' : 1'+(q.exact?'':' (archive size vs content size)'));
+  if(r.methods&&r.methods.length)row('Methods',r.methods.map(m=>m[0]+' × '+m[1].toLocaleString()).join(', '));
+  sec('Password');
+  row('Password',arcEncTxt(r));
+  if(r.enc==='unknown'&&!/^(zip)$/.test(r.fmt||''))box.append(E('div','dnote','An archive with locked file names does not open at all; it is reported as password-protected.'));
+  if(r.comment||r.prefix>0||r.multi||r.note){
+    sec('Other');
+    row('Comment',r.comment);
+    if(r.prefix>0)row('Extra data',fmt(r.prefix)+' in front of the ZIP (self-extracting archive?)');
+    if(r.multi)row('Split archive','This is one part of a split ZIP; the other parts are needed to extract everything.');
+    row('Note',r.note)}}
 async function doDetails(it,pth0){
   const i=(it&&it.name?it:null)||selItems()[0];if(!i)return;const dev=S.dev,pth=pth0||jn(S.path,i.name);
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -5601,6 +5580,7 @@ async function doAddToZip(){
   const cf=await askConflicts(S.dev,S.path,ps,'local');if(!cf)return;
   try{const r=await api('POST','/api/addzip',{paths:ps,dir:S.path,conflict:cf});watchJob(r.job);toast('Adding to archive\u2026',0,0);if(await track(r.job))load()}catch(e){toast('\u26a0 '+e.message,5000)}}
 $('#fab').onclick=()=>inArc()?(zipEd()?doZipMenu():doExtract(2)):doNew();
+$('#arcrow').onclick=()=>{if(inArc())doArcInfo()};
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{const a=shown().map(i=>i.name);S.sel=(a.length&&S.sel.size>=a.length&&a.every(n=>S.sel.has(n)))?new Set():new Set(a);render()};   // second tap with everything selected = unselect all
 $('#scan').onclick=async()=>{const b=$('#scan');b.classList.remove('spin');void b.offsetWidth;b.classList.add('spin');

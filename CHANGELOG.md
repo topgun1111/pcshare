@@ -5,14 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-10-29 - New theme: Vivaldi Portal
-
-### Added
-- New theme "Vivaldi Portal" (Settings > Theme): the dark look of the school portal, with dark violet-grey surfaces, a pink accent and a soft multi-colour glow behind the screens.
-- The theme styles every part of the app: buttons, chips, tabs, switches, search box, path bar, side menu, dialogs, pop-up menus, progress bars, gallery bars and the main menu tiles (each with its own colour stripe, like the portal cards).
+## 2026-10-29 - Print button only for printable files
 
 ### Fixed
-- Vivaldi Portal: the side menu is no longer white; it now uses the dark theme colours, and its selected tab shows the pink accent.
+- The Print button in the selection bar now appears only when every selected file can be printed (before, one printable file was enough, even with a zip selected).
+- Same rule for Extract (only when everything selected is an archive), To Print space (only pictures / PDFs) and Duplicates (only folders): the button no longer shows when part of the selection would be ignored.
+
+## 2026-10-29 - Archive details
+
+### Added
+- Inside a ZIP, RAR, 7z or TAR file, a new strip under the path bar shows the type, archive size, number of files, how much space the compression saves, and whether a password is needed. Tap the strip for the full details: unpacked size, folders, largest file, oldest and newest file dates, compression methods, password type (for example AES-256 or the weak ZipCrypto), comment and more.
 
 ## 2026-10-28 - Rounder corners
 
