@@ -489,6 +489,7 @@ body.kid #list .row.sel{touch-action:none}
 .bn .bh{display:flex;align-items:center;gap:4px}.bn .bh h3{flex:1;margin:0}.bn .bh .tbtn:disabled{opacity:.4}
 .bn .bs{color:var(--mut);font-size:13px;margin:0 4px 2px;min-height:0}.bn .bs:empty{display:none}
 .bn .bt{display:flex;align-items:center;gap:4px;padding:4px 0 8px;border-bottom:1px solid var(--bd);overflow-x:auto}.bn .bt:empty{display:none}.bn .bn1{flex:1;min-width:84px;font-size:14px;font-weight:600;padding-left:4px}
+.bpr{display:none;flex-direction:column;gap:6px;min-width:0;flex:1}.bpr .bpt{font-size:14px;font-weight:600}.bpr .bpb{height:8px;border-radius:4px;background:var(--bd);overflow:hidden}.bpr .bpb i{display:block;height:100%;width:0;background:var(--ac);transition:width .3s}.bpr .bpd{color:var(--mut);font-size:13px;white-space:pre-line;overflow:hidden;text-overflow:ellipsis;word-break:break-word}.bpr .tbtn{align-self:flex-start}
 .bn .bpg{display:none;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bd)}.bn .bw{flex:1;min-width:0;font-size:13px}.bn .bp{height:4px;border-radius:2px;background:var(--hov);overflow:hidden;margin-top:6px}.bn .bp i{display:block;height:100%;background:var(--ac);transition:width .25s}
 #sheet .card.bn>.bl{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
 .bn .br{display:flex;align-items:center;gap:14px;padding:10px 6px;min-height:56px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-tap-highlight-color:transparent}.bn .br.sel{background:color-mix(in srgb,var(--ac) 12%,transparent)}
@@ -4510,6 +4511,21 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
 }
 /* ---- Recycle bin: sticky top bar (Empty bin / select / Restore / Delete), rows drawn in chunks while scrolling, restore / delete run as a background task on the phone with a progress bar */
 let BINTOK=null;
+/* ONE progress block for every Recycle bin task (sidebar bin and Free up space use it): title + %, bar, items / bytes / time / current item, Cancel. show(task) updates it, show(null) hides it. */
+function binProgress(){
+  const el=E('div','bpr'),tt=E('div','bpt'),bb=E('div','bpb'),fl=E('i'),dt=E('div','bpd'),cx=E('button','tbtn','Cancel');
+  bb.append(fl);el.append(tt,bb,dt,cx);
+  const secs=ms=>{const x=Math.max(0,Math.round(ms/1000));return x<60?x+' s':Math.floor(x/60)+' min '+(x%60)+' s'};
+  const unit=n=>n+' item'+(n===1?'':'s');
+  cx.onclick=()=>{cx.disabled=true;cx.textContent='Cancelling\u2026';api('POST','/api/bin',{op:'cancel'}).catch(()=>{})};
+  return{el,show(t){
+    if(!t||!t.running){el.style.display='none';cx.disabled=false;cx.textContent='Cancel';return}
+    el.style.display='flex';
+    const byB=t.totalBytes>0,pc=byB?Math.min(100,Math.round(t.bytes*100/t.totalBytes)):(t.total?Math.round(t.done*100/t.total):0);
+    const el0=(t.now||0)-(t.started||0),rate=t.bytes>0&&el0>1500?t.bytes/el0:0,left=rate&&byB?(t.totalBytes-t.bytes)/rate:0;
+    const verb={restore:'Restoring',purge:'Deleting',empty:'Emptying the bin'}[t.op]||'Working';
+    tt.textContent=verb+' \u00b7 '+pc+'%';fl.style.width=pc+'%';
+    dt.textContent=(t.op==='restore'?unit(t.done)+' of '+t.total+' restored':unit(t.done)+' of '+t.total+' deleted')+(byB?' \u00b7 '+fmt(t.bytes)+' of '+fmt(t.totalBytes):'')+' \u00b7 '+secs(el0)+(left>1500?' \u00b7 about '+secs(left)+' left':'')+(t.cur?'\n'+t.cur:'')}}}
 /* ---- Free up space (HANDOVER 12.10): scan result of GET /api/cleanup (big files, old downloads, installers, recycle bin) + duplicates; deleting = normal /api/rm (-> Recycle bin) ---- */
 async function openFreeUp(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -4602,10 +4618,21 @@ async function openFreeUp(){
     const row=E('div');row.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
     const op=E('button','tbtn','Open bin');op.onclick=()=>openBin();
     const em=E('button','tbtn dng','Empty bin');em.disabled=!R.bin.items;em.style.opacity=R.bin.items?1:.5;
+    const BP=binProgress(),pg=BP.el,show=t=>{BP.show(t);if(t&&t.running)row.style.display='none'};
+    async function follow(t){
+      show(t);let last=t;
+      try{while(t&&t.running&&live()){await new Promise(r=>setTimeout(r,350));
+        const r=await api('GET','/api/bin?items=0',null,8000);t=r.task||{running:false,done:last.done,total:last.total,bytes:last.bytes,totalBytes:last.totalBytes,errors:[]};last=t;if(live())show(t)}}
+      catch(e){if(live())toast('\u26a0 '+e.message,5000)}
+      if(!live())return;show(null);row.style.display='flex';
+      if(last.errors&&last.errors.length)toast('\u26a0 '+last.errors.length+' failed: '+last.errors[0],7000);
+      else toast('Bin emptied \u00b7 '+plural(last.done,'item')+(last.totalBytes?' \u00b7 '+fmt(last.bytes)+' freed':''),3500);
+      start()}
     em.onclick=async()=>{if(!await dlg({title:'Empty the Recycle bin?',msg:'Deletes '+plural(R.bin.items,'item')+' for good.',ok:'Empty'}))return;
-      try{await api('POST','/api/bin',{op:'empty'});toast('Emptying the bin\u2026',3000)}catch(e){toast('\u26a0 '+e.message,5000);return}
-      setTimeout(()=>{if(live())start()},2500)};
-    row.append(op,em);hero.append(row);body.append(hero);card.append(body)}
+      let r;try{r=await api('POST','/api/bin',{op:'empty'},15000)}catch(e){toast('\u26a0 '+e.message,5000);return}
+      follow(r.task)};
+    row.append(op,em);hero.append(row,pg);body.append(hero);card.append(body);
+    api('GET','/api/bin?items=0',null,8000).then(r=>{if(live()&&r.task&&r.task.running)follow(r.task)}).catch(()=>{})}   // a delete started earlier is still running: show it
 
   // ---------- LANShare's own cache page
   function drawCache(){
@@ -4671,7 +4698,7 @@ async function openBin(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const tok=BINTOK={};const live=()=>BINTOK===tok;
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card bn'),hd=E('div','bh'),sub=E('div','bs'),bar=E('div','bt'),pg=E('div','bpg'),list=E('div','bl');
+  const card=E('div','card bn'),hd=E('div','bh'),sub=E('div','bs'),bar=E('div','bt'),pg=E('div','bpg'),BP=binProgress(),list=E('div','bl');pg.append(BP.el);
   const ttl=E('h3','','Recycle bin'),eb=E('button','tbtn dng','Empty bin'),xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Close');xb.onclick=close;
   hd.append(ttl,eb,xb);card.append(E('div','handle'),hd,sub,bar,pg,list);o.append(card);
   let items=[],days=30,sel=new Set(),shown=0,busy=null;const rows=new Map(),CH=80;
@@ -4697,12 +4724,7 @@ async function openBin(){
     else{const all=E('button','tbtn','Select all');all.onclick=()=>{items.forEach(i=>sel.add(i.id));rows.forEach(r=>r.classList.add('sel'));bars()};bar.append(all)}}
   eb.onclick=async()=>{if(busy||!items.length)return;
     if(await dlg({title:'Empty the Recycle bin?',msg:plural(items.length)+' will be deleted forever.',ok:'Empty',danger:true}))go('empty',[])};
-  function prog(t){pg.textContent='';if(!t||!t.running){pg.style.display='none';return}
-    pg.style.display='flex';const bp=E('div','bp'),f=E('i'),tx=E('span','',''),cx=E('button','tbtn','Cancel');
-    f.style.width=(t.total?Math.round(t.done*100/t.total):0)+'%';bp.append(f);
-    tx.textContent=({restore:'Restoring',purge:'Deleting',empty:'Emptying'}[t.op]||'Working')+' '+t.done+' / '+t.total+'…';
-    cx.onclick=()=>{cx.disabled=true;api('POST','/api/bin',{op:'cancel'}).catch(()=>{})};
-    const w=E('div','bw');w.append(tx,bp);pg.append(w,cx)}
+  function prog(t){BP.show(t);pg.style.display=t&&t.running?'block':'none'}
   async function follow(t){   // poll the background task until it ends, then reconcile with the real list
     if(!t||typeof t!=='object'){toast('\u26a0 Unexpected answer from the phone',5000);return draw()}
     busy=t;bars();prog(t);

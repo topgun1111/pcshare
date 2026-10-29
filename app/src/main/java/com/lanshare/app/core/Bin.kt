@@ -116,13 +116,17 @@ object Bin {
     fun sweepDeleted() { try { root().listFiles()?.forEach { if (it.name.startsWith(".del-")) deleteTree(it) } } catch (_: Exception) {} }
 
     // ---- background task: restore / delete / empty run on their own thread, the UI polls [status] and shows the progress
-    class Task(val op: String, val total: Int) {
+    class Task(val op: String, val total: Int, val totalBytes: Long = 0L) {
         @Volatile var done = 0
+        @Volatile var bytes = 0L          // size of the entries finished so far (of [totalBytes])
+        @Volatile var cur = ""            // name of the entry being handled right now
+        val started = System.currentTimeMillis()
         @Volatile var running = true
         @Volatile var cancel = false
         val errors = java.util.Collections.synchronizedList(ArrayList<String>())
         val paths = java.util.Collections.synchronizedList(ArrayList<String>())
         fun toJson(): JSONObject = JSONObject().put("op", op).put("total", total).put("done", done).put("running", running)
+            .put("bytes", bytes).put("totalBytes", totalBytes).put("cur", cur).put("started", started).put("now", System.currentTimeMillis())
             .put("errors", org.json.JSONArray(errors.toList())).put("paths", org.json.JSONArray(paths.toList()))
     }
     @Volatile private var task: Task? = null
@@ -136,18 +140,21 @@ object Bin {
         if (task?.running == true) throw BadReq("the recycle bin is busy - wait for the current action to finish")
         if (op != "restore" && op != "purge" && op != "empty") throw BadReq("unknown bin op")
         val ids = if (op == "empty") (root().listFiles()?.filter { it.isDirectory && !it.name.startsWith(".del-") }?.map { it.name } ?: emptyList()) else ids0
-        val t = Task(op, ids.size)
+        val info = try { list().associateBy { it.id } } catch (_: Exception) { emptyMap() }
+        val t = Task(op, ids.size, ids.sumOf { info[it]?.size ?: 0L })
         task = t
         Thread({
             try {
                 for (id in ids) {
                     if (t.cancel) break
+                    t.cur = info[id]?.name ?: ""
                     try {
                         if (op == "restore") t.paths.add(restore(id)) else purge(id)
                     } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
                     t.done++
+                    t.bytes += info[id]?.size ?: 0L
                 }
-            } finally { t.running = false }
+            } finally { t.cur = ""; t.running = false }
         }, "bin-$op").also { it.isDaemon = true; it.start() }
         return t
     }
