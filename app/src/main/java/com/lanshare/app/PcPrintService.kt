@@ -155,7 +155,7 @@ class PcPrintService : PrintService() {
                 nm.createNotificationChannel(NotificationChannel("lanshare_print", "Print requests", NotificationManager.IMPORTANCE_HIGH))
                 Notification.Builder(this, "lanshare_print")
             } else @Suppress("DEPRECATION") Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
-            b.setSmallIcon(R.drawable.ic_notification).setContentTitle("PDF saved").setContentText("$name  -  $DIR_PDF").setAutoCancel(true)
+            b.setSmallIcon(R.drawable.ic_notification).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(this)) }.setContentTitle("PDF saved").setContentText("$name  -  $DIR_PDF").setAutoCancel(true)
             if (uri != null) {
                 val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -180,7 +180,7 @@ class PcPrintService : PrintService() {
                 nm.createNotificationChannel(NotificationChannel("lanshare_print", "Print requests", NotificationManager.IMPORTANCE_HIGH))
                 Notification.Builder(this, "lanshare_print")
             } else @Suppress("DEPRECATION") Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
-            nm.notify(nid, b.setSmallIcon(R.drawable.ic_notification).setContentTitle("Print with LANShare")
+            nm.notify(nid, b.setSmallIcon(R.drawable.ic_notification).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(this)) }.setContentTitle("Print with LANShare")
                 .setContentText(name).setContentIntent(pi).setAutoCancel(true).build())
         } catch (_: Exception) {}
         try { startActivity(i) } catch (_: Exception) {}

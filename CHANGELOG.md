@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-29 - Purple lite notifications
+
+### Changed
+- The Lite edition's notifications now use the purple colour too, so they are easy to tell apart from the normal app's orange ones.
+
 ## 2026-10-29 - Purple lite icon
 
 ### Changed

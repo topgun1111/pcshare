@@ -144,7 +144,7 @@ object ClipPush {
             PendingIntent.getActivity(ctx, id, Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE), fl)
         else copyPi
         val b = NotificationCompat.Builder(ctx, CH)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(ctx)) }
             .setContentTitle((if (link != null) "Link from " else "Clipboard from ") + from)
             .setContentText(text.trim().take(200))
             .setStyle(NotificationCompat.BigTextStyle().bigText(text.trim().take(2000)))

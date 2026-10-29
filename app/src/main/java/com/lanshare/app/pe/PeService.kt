@@ -17,6 +17,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import com.lanshare.app.MainActivity
+import com.lanshare.app.BuildConfig
+import com.lanshare.app.NoteTint
 import com.lanshare.app.R
 
 /** Foreground service of "Phone Explorer": FTP server on the phone storage (Windows Explorer opens it natively) + UDP discovery for the PC tool. */
@@ -132,7 +134,7 @@ class PeService : Service() {
         val stop = PendingIntent.getService(this, 11, Intent(this, PeService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL) else Notification.Builder(this)
         return b.setContentTitle(if (transferring) "Phone Explorer - transferring" else "Phone Explorer is sharing storage")
-            .setContentText(text).setSmallIcon(R.drawable.ic_notification).setContentIntent(open)
+            .setContentText(text).setSmallIcon(R.drawable.ic_notification).also { if (BuildConfig.LITE) it.setColor(NoteTint.lite(this)) }.setContentIntent(open)
             .setOngoing(true).setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
     }
