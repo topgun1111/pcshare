@@ -7,6 +7,7 @@
 
 ## 2026-10-31 - Remote shell ends when you leave
 ### Added
+- Remote shell: tapping the tile now first asks cmd or PowerShell, then shows the PCs found and the password (filled in from last time). It no longer connects by itself
 - Remote shell: a Paste key in the key row pastes the clipboard straight into the shell, in one tap, with no extra box or question (also for many lines of code)
 ### Changed
 - Remote shell: going back from the screen, or closing the app, now ends the shell on the PC (and anything it was running). Before, it stayed open for 30 minutes

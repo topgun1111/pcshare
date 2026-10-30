@@ -5801,23 +5801,22 @@ function openRemoteShell(){
     const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;overscroll-behavior:contain;background:var(--bg);border-radius:20px;padding:16px';
     const sm=(t)=>{const s=E('small','',t);s.style.cssText='display:block;color:var(--mut);margin:10px 0 4px 4px';return s};
     const fld=(ph,type)=>{const i=E('input','tf');i.placeholder=ph;i.type=type||'text';i.style.cssText='height:46px;margin:0;width:100%';i.autocomplete='off';i.autocapitalize='none';return i};
-    const h=E('h3','','Connect to a PC');h.style.margin='0 0 4px';
+    const h=E('h3','','Connect to a PC · '+(cfg.sh==='ps'?'PowerShell':'cmd'));h.style.margin='0 0 4px';
     const nt=E('div','dnote','On the PC: open the Phone Explorer window, save a password and press “Remote commands: ON”. Same Wi-Fi or Tailscale.');
     const pcl=E('div'),st=E('div','dnote','Looking for PCs…');st.style.margin='6px 0';
     const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip||'';
     const pw=fld('Password','password');pw.value=RSH_PW||'';
-    let shSel=cfg.sh==='ps'?'ps':'cmd';const shr=E('div');shr.style.cssText='display:flex;gap:8px;margin-top:4px';
-    const paintShr=()=>{shr.textContent='';[['cmd','cmd (Command Prompt)'],['ps','PowerShell']].forEach(([v,l])=>{const b=E('button','tbtn'+(shSel===v?' fill':''),l);b.style.cssText='flex:1;height:44px';b.onclick=()=>{shSel=v;paintShr()};shr.append(b)})};paintShr();
+    const shSel=cfg.sh==='ps'?'ps':'cmd';   // chosen in the first step (openPick); the ps / cmd chip in the header switches it later
     const rl=E('label');rl.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px';const rc=E('input');rc.type='checkbox';rc.checked=!!cfg.rem;rl.append(rc,E('span','','Remember password'));
     const er=E('div');er.style.cssText='color:var(--err);margin:10px 4px 0;min-height:18px;white-space:pre-wrap';
     const acts=E('div');acts.style.cssText='display:flex;gap:8px;margin-top:12px';
     const cn=E('button','tbtn','Cancel'),go=E('button','tbtn fill','Connect');cn.style.cssText=go.style.cssText='flex:1;height:46px';acts.append(cn,go);
-    cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,sm('Shell'),shr,rl,er,acts);ov.append(cd);w.append(ov);
+    cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,rl,er,acts);ov.append(cd);w.append(ov);
     let sel=cfg.fromList?{ip:cfg.ip,name:cfg.name,port:cfg.port}:null,list=[];
     const showList=()=>{pcl.textContent='';list.forEach(p=>{const b=E('button','set'),t=E('div','t');b.style.cssText='width:100%;text-align:left'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
       t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value=p.ip;showList()};pcl.append(b)})};
     ad.oninput=()=>{if(sel&&ad.value.trim()!==sel.ip){sel=null;showList()}};
-    cn.onclick=()=>{ov.remove();if(!cfg.ip)close()};ov.onclick=e=>{if(e.target===ov)cn.onclick()};
+    cn.onclick=()=>{ov.remove();if(!opened)close()};ov.onclick=e=>{if(e.target===ov)cn.onclick()};
     (async()=>{let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
       try{const seen=new Set(a.map(x=>x.ip)),ps2=(await api('GET','/api/peers',null,5000))||[];
         ps2.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h2=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
@@ -5840,9 +5839,21 @@ function openRemoteShell(){
     if(RSH_S){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}
     cfg.sh=to;saveCfg();paintSh();
     try{await start(cfg,RSH_PW)}catch(e){toast(e.message,4000)}};
+  /* Step 1 when the screen opens: which shell? (the one used last is marked). Then step 2 = the Connect sheet (PCs found + password, filled in from last time). Nothing connects by itself. Back / Cancel leaves the screen. */
+  const openPick=()=>{
+    const old=w.querySelector('.rshc');if(old)old.remove();
+    const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:2';
+    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;background:var(--bg);border-radius:20px;padding:16px';
+    const h=E('h3','','Remote shell');h.style.margin='0 0 4px';
+    const nt=E('div','dnote','Which shell do you want on the PC?');nt.style.marginBottom='10px';
+    const mk=(v,title,sub)=>{const b=E('button','tbtn'+(cfg.sh===v?' fill':''));b.style.cssText='width:100%;height:auto;min-height:64px;margin:6px 0;text-align:left;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:10px 16px';
+      b.append(E('b','',title+(cfg.sh===v?'  · last used':'')),E('small','',sub));
+      b.onclick=()=>{cfg.sh=v;saveCfg();paintSh();ov.remove();openConn()};return b};
+    const cn=E('button','tbtn','Cancel');cn.style.cssText='width:100%;height:46px;margin-top:6px';cn.onclick=()=>{ov.remove();close()};
+    cd.append(h,nt,mk('cmd','cmd','Command Prompt: dir, ping, for /L, batch style'),mk('ps','PowerShell','Get-Process, pipelines, objects'),cn);ov.append(cd);w.append(ov);
+    ov.onclick=e=>{if(e.target===ov)cn.onclick()}};
   chip.onclick=openConn;
-  paintChip();paintSh();
-  if(cfg.ip&&RSH_PW){start(cfg,RSH_PW).catch(e=>{toast(e.message,5000);if(/wrong password|No password|off on this PC|^PC not reachable|^timed out/i.test(e.message||''))openConn()})}else openConn()}
+  paintChip();paintSh();openPick()}
 
 function drawerRender(){
   $('#dtabs').textContent='';
