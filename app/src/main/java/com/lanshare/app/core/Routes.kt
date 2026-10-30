@@ -410,7 +410,7 @@ object Routes {
             "pslayout" -> ex.json(PsLayoutApi.post(b))   // Print space layout editor: fill / assign / swap / ... (HANDOVER 9.7, part 5)
             "psrender" -> ex.json(PrintSpaceRender.post(b))   // Print space sheets: prepare (preview id) / pdf (background job) (HANDOVER 9.7, part 6a)
             "pssess" -> ex.json(PrintSessions.post(b))   // Print space Recent prints: save / get / restore / pdf / mark / rm / clear / cfg (HANDOVER 9.7, part 13)
-            "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings())))
+            "rm" -> ex.json(JSONObject().put("job", Jobs.startDelete(b.getString("dev"), b.getJSONArray("paths").strings(), b.optBoolean("perm"))))
             "print" -> ex.json(JSONObject().put("job", Jobs.startPrint(b.getString("dev"), b.getJSONArray("paths").strings(), b.getString("to"), b.optJSONObject("opts"))))
             "smb" -> smbUpdate(ex, b)
             "pcpicdir" -> ex.json(PcPictures.setDir(b.optString("dev"), b.optString("path")))   // PC gallery: set / clear (empty path = find it again) the Pictures folder

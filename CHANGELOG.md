@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Permanent delete and quick Undo
+### Added
+- The delete dialog now has a red "Delete permanently" button next to "Move to bin" (this phone's files and the gallery); it skips the Recycle bin
+- After a delete to the Recycle bin, a small round Undo button appears for 5 seconds with the countdown in the middle; tap it to put the items back
+
 ## 2026-10-30 - Quick corruption check for archives
 ### Added
 - When you open an archive, the app now runs a quick check and shows "Checked" (all fine), "May be damaged" or "Damaged" next to the archive size; tap Details for the reason

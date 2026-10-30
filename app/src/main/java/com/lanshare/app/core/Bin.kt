@@ -26,8 +26,8 @@ object Bin {
 
     fun canTrash(v: String): Boolean = arcSplit(vnorm(v)) == null && vnorm(v) != "/" && !inBin(v)
 
-    /** Moves [v] into the bin; [progress] gets the name once. Throws when it cannot (nothing is deleted then). */
-    @Synchronized fun trash(v: String, progress: ((String) -> Unit)? = null) {
+    /** Moves [v] into the bin; [progress] gets the name once. Returns the bin id (for Restore / undo). Throws when it cannot (nothing is deleted then). */
+    @Synchronized fun trash(v: String, progress: ((String) -> Unit)? = null): String {
         val src = Core.local.real(v)
         if (src == Core.local.root) throw Denied("cannot delete the shared root")
         val link = Core.local.isLink(src)
@@ -58,6 +58,7 @@ object Bin {
         }
         IndexManager.changed(src)   // name index: the item left its folder (the bin folder itself is never indexed)
         progress?.invoke(src.name)
+        return id
     }
 
     /** Entries (newest first). Folders starting with "." (being deleted) are skipped. Not locked: a long delete never blocks the list. */

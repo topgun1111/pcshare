@@ -543,6 +543,15 @@ body.kid #list .row.sel{touch-action:none}
 #jb b{position:relative;font-size:18px;font-weight:700;color:var(--fg)}
 #jb.ind{animation:jbpulse 1.2s ease-in-out infinite}#jb.ok{background:var(--ok)}#jb.bad{background:var(--err)}
 @media (max-width:420px),(max-height:420px){#jb{width:42px;height:42px}#jb b{font-size:15px}}
+#ubn{display:none;position:fixed;left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(var(--dockh,0px) + 84px + env(safe-area-inset-bottom));z-index:22;box-sizing:border-box;width:44px;height:44px;border-radius:50%;padding:0;align-items:center;justify-content:center;background:var(--card);color:var(--fg);border:1px solid var(--bd);box-shadow:var(--sh);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#ubn:active{transform:scale(.94)}
+#ubn svg{position:absolute;inset:-1px;width:44px;height:44px;transform:rotate(-90deg);pointer-events:none}
+#ubn circle{fill:none;stroke-width:3}#ubn .rb{stroke:var(--bd)}
+#ubn .rf{stroke:var(--ac);stroke-linecap:round;stroke-dasharray:119.4;stroke-dashoffset:0}
+#ubn.go .rf{animation:ubn 5s linear forwards}
+@keyframes ubn{to{stroke-dashoffset:119.4}}
+#ubn b{position:relative;font-size:16px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#ubn small{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;font-size:10px;font-weight:600;color:var(--mut);white-space:nowrap;pointer-events:none}
 #jp{display:none;position:fixed;z-index:22;box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:calc(var(--lvh,100vh)*.6);flex-direction:column;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);padding:8px 12px}
 #jp .jh{display:flex;align-items:center;gap:4px;flex:0 0 auto}#jp .jh b{flex:1;font-size:15px}
 #jp .jh button{background:none;border:0;color:var(--ac);font-size:13px;padding:8px 10px;min-height:40px}#jp .jh .jm{color:var(--fg);font-size:22px;width:40px;padding:0}
@@ -620,7 +629,7 @@ body.kid #list .row.sel{touch-action:none}
 .dcard{background:var(--cont);width:100%;max-width:420px;border-radius:28px;padding:24px 24px 16px;animation:up .2s ease-out}
 .dcard p{margin:0 0 16px;color:var(--mut)}
 .tf{width:100%;height:56px;border:1px solid var(--mut);border-radius:12px;background:transparent;color:var(--fg);font:inherit;font-size:16px;padding:0 16px;margin-bottom:16px;outline:0}.tf:focus{border:2px solid var(--ac);padding:0 15px}
-.dact{display:flex;justify-content:flex-end;gap:8px}
+.dact{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 /* ---- one size scale: text 16 / 13 / 12, file icons 40, folder icons same visual weight ---- */
 .row{gap:12px;min-height:60px}
 .lead{width:48px;height:44px}
@@ -1135,7 +1144,7 @@ function dlg(o){return new Promise(res=>{
   const card=E('div','dcard');card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=o.input.label||'';inp.autocomplete='off';card.append(inp)}
   const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':''),o.ok||'OK');
-  let al=null;if(o.alt){al=E('button','tbtn',o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
+  let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>done(inp?inp.value:true);
   d.onclick=e=>{if(e.target===d)done(null)};
@@ -1396,7 +1405,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
   const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'))||vis($('#home'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
-  ['#fab','#toast','#dlw','#jb','#jp'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
+  ['#fab','#toast','#dlw','#jb','#jp','#ubn'].forEach(q=>{const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg','#pcs','#pq'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
   const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
   let hd=null;                                                         // native path bar + tool row sit exactly on top of these two rows
@@ -1747,8 +1756,9 @@ function galView(a){
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;
-      if(!await dlg({title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin'}))return;
-      try{const r=await api('POST','/api/rm',{dev:'local',paths:gp()});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if(o._for===tok)reload()}
+      const ch=await dlg({title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin',alt:'Delete permanently',altDanger:true});
+      if(!ch)return;
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:gp(),perm:ch==='alt'});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
     gb.style.setProperty('--cols',gb.children.length<=5?gb.children.length:Math.ceil(gb.children.length/2))};
   // copied / cut something and opened this album: a "Paste here" bar (the file browser's own paste bar sits behind this screen); hidden while selecting
@@ -3875,8 +3885,9 @@ const vbase0=p=>p.slice(p.lastIndexOf('/')+1);
 async function doDelete(){
   const n=S.sel.size;
   const L=S.dev==='local'&&!inArc();
-  if(!await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L}))return;
-  try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths()});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
+  const a=await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L,alt:L?'Delete permanently':null,altDanger:true});
+  if(!a)return;
+  try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths(),perm:a==='alt'});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 /* ---- Print space (HANDOVER 9.7, part 2): pictures held for printing. Store = core/PrintSpace.kt (/api/ps). Screen reuses the #gal overlay (like image search) so Back, hiding the native list / chrome / search and swipe lock keep working. Kill switch: localStorage ls_ps='0' hides the drawer entry. */
@@ -5119,10 +5130,38 @@ let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 $('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#tc'))return;if(LVS&&LVS.id===curJob)lvShow()});
 let trk=0;
+/* ---- Undo after a delete: round mini button (bottom left, above the toast), countdown 5..1 in the middle, ring runs down; tap = restore what that delete moved to the Recycle bin.
+   The ids come from the delete job (j.bin). A second delete while it is showing adds to it and restarts the 5 s. ---- */
+const UB={ids:[],end:0,t:0,busy:false};
+function ubEl(){let e=$('#ubn');if(e)return e;
+  e=E('button');e.id='ubn';e.type='button';e.setAttribute('aria-label','Undo delete (restore from the Recycle bin)');
+  e.innerHTML='<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="rb" cx="22" cy="22" r="19"/><circle class="rf" cx="22" cy="22" r="19"/></svg><b></b><small>Undo</small>';
+  e.onclick=()=>ubRestore();document.body.append(e);return e}
+function ubHide(){clearInterval(UB.t);UB.t=0;UB.ids=[];const e=$('#ubn');if(e){e.style.display='none';e.classList.remove('go')}
+  try{nlLay(true)}catch(_){}try{jbPos()}catch(_){}}
+function ubShow(ids){
+  const e=ubEl(),b=e.querySelector('b');
+  UB.ids=UB.ids.concat(ids.filter(x=>!UB.ids.includes(x)));UB.end=Date.now()+5000;
+  const tick=()=>{const left=UB.end-Date.now();if(left<=0)return ubHide();b.textContent=Math.ceil(left/1000)};
+  clearInterval(UB.t);tick();UB.t=setInterval(tick,200);
+  e.style.display='flex';e.classList.remove('go');void e.offsetWidth;e.classList.add('go');
+  try{nlLay(true)}catch(_){}try{jbPos()}catch(_){}}
+async function ubRestore(){
+  if(UB.busy||!UB.ids.length)return;const ids=UB.ids.slice();UB.busy=true;ubHide();
+  try{toast('Restoring\u2026',0);
+    const r=await api('POST','/api/bin',{op:'restore',ids:ids},15000);let t=r&&r.task;
+    while(t&&t.running){await new Promise(x=>setTimeout(x,250));const q=await api('GET','/api/bin?items=0',null,8000);t=q.task||{running:false,done:ids.length,errors:[]}}
+    const n=t?t.done:ids.length;
+    if(t&&t.errors&&t.errors.length)toast('\u26a0 '+t.errors.length+' failed: '+t.errors[0],7000);
+    else toast('Restored '+n+' item'+(n===1?'':'s'),3000);
+    try{GALT=0}catch(_){}load()}
+  catch(e){toast('\u26a0 '+e.message,6000)}
+  finally{UB.busy=false}}
 async function track(id){
   let ok=false,jf=0;curJob=id;trk++;jbKick();
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
+    if(j.state!=='run'&&j.bin&&j.bin.length)ubShow(j.bin);   // delete job that put things into the Recycle bin: round Undo button for 5 s
     if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
     if(j.state==='cancel'){const c=lvEnd(id,j);if(!c)toast('Cancelled',2500);break}
     if(j.state==='done'){const c=lvEnd(id,j);if(!c)toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
@@ -5144,7 +5183,7 @@ function jbVis(e){if(!e)return false;const c=getComputedStyle(e);return c.displa
 function jbPos(){const top=JB.c<2,left=JB.c%2===0,W=window.innerWidth,H=window.innerHeight,bw=jbB.offsetWidth||52;
   let t=0,b=H;   // free band: below the (native) top bar / path rows, above dock / clipboard strip / toast / download cards / FAB
   ['#top','#pathrow','#toolrow'].forEach(q=>{const e=$(q);if(jbVis(e)){const r=e.getBoundingClientRect();if(r.height>0&&r.bottom<H/2)t=Math.max(t,r.bottom)}});
-  ['#clip','#dock','#toast','#dlw','#fab'].forEach(q=>{const e=$(q);if(!jbVis(e))return;const r=e.getBoundingClientRect();if(r.height<=0||r.top<H/3)return;
+  ['#clip','#dock','#toast','#dlw','#fab','#ubn'].forEach(q=>{const e=$(q);if(!jbVis(e))return;const r=e.getBoundingClientRect();if(r.height<=0||r.top<H/3)return;
     if(q==='#fab'&&(left?r.left>16+bw+8:r.right<W-16-bw-8))return;   // FAB is on the other side
     b=Math.min(b,r.top)});
   [jbB,jbP].forEach(e=>{e.style.transform='';e.style.top=e.style.bottom=e.style.left=e.style.right='auto';

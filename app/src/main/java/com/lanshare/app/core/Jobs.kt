@@ -52,6 +52,10 @@ class Job(@Volatile var label: String) {
     @Volatile var resumeId: String? = null     // set when the job ended with an error and can be continued: the UI shows a Resume button
     private val problems = ArrayList<String>()
     @Synchronized fun addProblem(s: String) { if (problems.size < 30) problems.add(s) }
+    private val binIds = ArrayList<String>()   // delete jobs: recycle-bin ids of what was moved there (the UI's "Undo" button restores them)
+    @Synchronized fun addBin(id: String) { binIds.add(id) }
+    @Synchronized private fun binJson() = org.json.JSONArray(binIds.toList())
+    @Synchronized private fun hasBin() = binIds.isNotEmpty()
     @Synchronized private fun problemsJson() = org.json.JSONArray(problems.toList())
     /** A new file starts: the card shows its name and its own progress bar. */
     fun begin(name: String, size: Long) { cur = name; curDone = 0L; curTotal = size }
@@ -126,6 +130,7 @@ class Job(@Volatile var label: String) {
             if (cur.isNotEmpty()) it.put("cur", cur).put("curDone", curDone).put("curTotal", curTotal)
             if (files > 0 || filesTotal > 0) it.put("files", files).put("filesTotal", filesTotal)
             if (failed > 0) it.put("failed", failed).put("problems", problemsJson())
+            if (hasBin()) it.put("bin", binJson())
             dest?.let { d -> it.put("dest", d) }
             if (state == "error") resumeId?.let { r -> it.put("resume", r) }
             note?.let { n -> it.put("note", n) }
@@ -366,7 +371,7 @@ object Jobs {
     }
 
     /** Deletes the paths in the background with a live label ("Deleting x - 128 items removed") and a Cancel button. */
-    fun startDelete(devId: String, paths: List<String>): String {
+    fun startDelete(devId: String, paths: List<String>, perm: Boolean = false): String {
         val e = ep(devId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
         prune()
@@ -375,16 +380,17 @@ object Jobs {
         job.total = maxOf(paths.size, 1).toLong()
         job.filesTotal = 0
         all[jid] = job
-        Thread({ deleteWork(job, e, paths) }, "del-$jid").also { it.isDaemon = true }.start()
+        Thread({ deleteWork(job, e, paths, perm) }, "del-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
     /** A delete the user asked for: this phone's own files go to the recycle bin, everything else is deleted for good. */
-    fun removeUser(e: Endpoint, p: String, progress: ((String) -> Unit)? = null) {
-        if (((e as? ArcEp)?.base ?: e) === Core.local && Bin.canTrash(p)) Bin.trash(p, progress) else e.remove(p, progress)   // === Core.local: the recycle bin lives on the phone's own storage; a USB drive's files are deleted for good (the bin would act on the SAME virtual path of the phone!)
+    fun removeUser(e: Endpoint, p: String, progress: ((String) -> Unit)? = null, perm: Boolean = false, onTrash: ((String) -> Unit)? = null) {
+        // perm = the user chose "Delete permanently": skip the bin. === Core.local: the recycle bin lives on the phone's own storage; a USB drive's files are deleted for good (the bin would act on the SAME virtual path of the phone!)
+        if (!perm && ((e as? ArcEp)?.base ?: e) === Core.local && Bin.canTrash(p)) { val id = Bin.trash(p, progress); onTrash?.invoke(id) } else e.remove(p, progress)
     }
 
-    private fun deleteWork(job: Job, e: Endpoint, paths: List<String>) {
+    private fun deleteWork(job: Job, e: Endpoint, paths: List<String>, perm: Boolean) {
         val fails = ArrayList<String>()
         var failCount = 0
         var removed = 0
@@ -409,12 +415,12 @@ object Jobs {
                 val top = vbase(p)
                 job.label = "Deleting ${i + 1}/${paths.size}: $top" + (if (removed > 0) " ($removed items removed)" else "")
                 try {
-                    removeUser(e, p) { n ->
+                    removeUser(e, p, { n ->
                         if (job.cancel) throw Cancelled()
                         removed++
                         job.files = removed; job.cur = top
                         job.label = "Deleting ${i + 1}/${paths.size}: $top - $removed items removed" + (if (n != top) " (now: $n)" else "")
-                    }
+                    }, perm) { id -> job.addBin(id) }
                 } catch (x: Cancelled) { throw x
                 } catch (x: Exception) { failCount++; job.failed = failCount; job.addProblem("$top: ${errText(x)}"); if (fails.size < 50) fails.add("$top: ${errText(x)}") }
                 job.done = (i + 1).toLong()
