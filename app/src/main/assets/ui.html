@@ -5587,7 +5587,7 @@ function openRemoteShell(){
       for(let k=0;my===gen;k++){try{await call('in',{seq:sq,data},20000);stat('');break}
         catch(e){const m=e.message||'';if(!netErr(m)||Date.now()-t0>150000){inq=[];if(my===gen)note(/^terminal not found|ended/.test(m)?m:'keys not sent: '+m,'31');stat('');break}stat('reconnecting…');await nap(Math.min(3000,500*(k+1)))}}}}
     finally{sending=false}};
-  const push=s=>{inq.push(new TextEncoder().encode(s));flush()};
+  const push=s=>{if(!RSH_S){note('not connected to a shell - tap the PC name above','31');return}inq.push(new TextEncoder().encode(s));flush()};
   /* Ctrl / Alt from the key row stay pressed for the NEXT key only (typed on the phone keyboard or tapped in the key row). Ctrl+letter = control code, Alt+key = Esc + key. */
   const clearMods=()=>{ctrl=alt=false;if(cb)cb.classList.remove('fill');if(ab)ab.classList.remove('fill')};
   const mod=d=>{if(d.length===1&&(ctrl||alt)){if(ctrl&&d.charCodeAt(0)<128){const c=d.toUpperCase().charCodeAt(0);if(c>=64&&c<=95)d=String.fromCharCode(c-64)}if(alt)d='\x1b'+d;clearMods()}return d};
@@ -5608,13 +5608,24 @@ function openRemoteShell(){
         fails++;down=true;stat('reconnecting…');
         if(Date.now()-okAt>600000){note('Lost contact with the PC ('+m+') - tap the PC name above to reconnect','31');stat('offline');return}
         await nap(Math.min(5000,1000*fails))}}};
+  /* soft keyboard: blur first, so a textarea that still has focus after the keyboard was hidden with Back gets a fresh focus (a plain focus() is a no-op then and the keyboard stays away) */
+  const showKb=()=>{if(!xt)return;try{xt.blur()}catch(e){}xt.focus();const t=xt.textarea;if(t){try{t.focus({preventScroll:true})}catch(e){}}};
+  /* Android keyboards (word suggestions) type through IME composition, which xterm 5.3 loses or delays. So the hidden textarea is followed here: what is new in it is sent, what the keyboard replaced / deleted becomes Backspaces. xterm still gets every real key (Enter, Backspace on an empty box, hardware keyboard). */
+  const hookIme=()=>{const t=xt.textarea;if(!t)return;let prev='';const stop=e=>e.stopImmediatePropagation();
+    ['compositionstart','compositionupdate','compositionend'].forEach(n=>t.addEventListener(n,stop,true));
+    t.addEventListener('keydown',e=>{if(e.keyCode===229)stop(e)},true);   // xterm would diff the textarea again and send the text twice
+    t.addEventListener('input',e=>{if(!/^(insertText|insertCompositionText|insertReplacementText|deleteContentBackward|deleteCompositionText)$/.test(e.inputType||''))return;stop(e);
+      const n=t.value,m=Math.min(prev.length,n.length);let p=0;while(p<m&&prev[p]===n[p])p++;
+      if(prev.length>p)typed('\x7f'.repeat(prev.length-p));if(n.length>p)typed(n.slice(p).replace(/\n/g,'\r'));
+      prev=n;if(!e.isComposing&&n.length>40){t.value='';prev=''}},true);
+    t.addEventListener('blur',()=>{t.value='';prev=''})};
   const mkTerm=()=>{
     xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,theme:curTheme()});
     fit=new FitAddon.FitAddon();xt.loadAddon(fit);xt.open(tw);try{fit.fit()}catch(e){}
     xt.onData(typed);
     xt.onResize(()=>{clearTimeout(rt);rt=setTimeout(()=>{if(RSH_S)call('resize',{cols:xt.cols,rows:xt.rows},15000).catch(()=>{})},150)});
     ro=new ResizeObserver(()=>{try{fit.fit();xt.scrollToBottom()}catch(e){}});ro.observe(tw);
-    tw.addEventListener('click',()=>{if(!selMode&&!lpFired)xt.focus();lpFired=false});hookSel()};
+    tw.addEventListener('click',()=>{if(!selMode&&!lpFired)showKb();lpFired=false});hookSel();hookIme()};
   /* open (or re-attach to) the shell on that PC. Throws the PC's message so the Connect sheet can show it. */
   const start=async(tgt,pw)=>{
     await loadXterm();RSH_PW=pw;const sh=cfg.sh==='ps'?'ps':'cmd',port=tgt.port||8798;
@@ -5711,6 +5722,7 @@ function openRemoteShell(){
     b.onpointerdown=e=>{e.preventDefault();stop();const q=keySeq(k);push(q);
       if(k.r)t1=setTimeout(()=>{t2=setInterval(()=>{if(inq.length<20)push(q)},70)},400)};   // held = repeats (the same bytes; not while 20 are still waiting to be sent)
     b.onpointerup=b.onpointercancel=b.onpointerleave=stop;kr.append(b)});
+  {const kk=kb('⌨',()=>{if(selMode)selOff();showKb()});kk.setAttribute('aria-label','Show keyboard');kr.prepend(kk)}   // always-visible way to bring the keyboard back
   const hookSel=()=>{tw.style.background=curTheme().background;xt.onScroll(placeH);
     xt.attachCustomKeyEventHandler(e=>{   // real keyboard: Ctrl+C copies when text is selected, otherwise it stops the command
       if(e.type==='keydown'&&e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='c'||e.key==='C')&&xt.hasSelection()){copySel();if(selMode)selOff();return false}return true})};

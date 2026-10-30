@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote shell: typing on the phone keyboard
+### Fixed
+- Remote shell: letters typed on the phone keyboard (with word suggestions) now reach the PC; before, they could be lost
+- Typing while no shell is open now says so instead of doing nothing
+
+## 2026-10-30 - Remote shell: keyboard comes back
+### Fixed
+- Remote shell: tapping the terminal now brings the keyboard back even after it was hidden with the Back button
+### Added
+- New ⌨ key at the start of the key row: tap it to show the keyboard
+
 ## 2026-10-30 - Remote shell: zoom, find, colours, save (part 5)
 ### Added
 - Pinch with two fingers to make the terminal text bigger or smaller (also A− / A+ in the ⋮ menu); the size is remembered
