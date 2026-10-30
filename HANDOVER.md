@@ -147,7 +147,7 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 - **JVM-testable core**: `core/office/*` has no `android.*` imports on purpose; compile with `kotlinc 2.0.21` (see 8.2). Algorithms with a Python mirror: `tools/storage_scan_mirror_test.py`.
 - **Kill switches / flags** (use them to bisect a bad build): `InProc.enabled`, `NativeList.HEAD` / `ls_nlh='0'`, `NlChrome.ENABLED` / `ls_nlc='0'`, `NlDrawer.ENABLED` / `ls_nld='0'`, `TiledOcr.skipTilesIfEmpty`, `ENGINE_ID` (bump to discard the image index).
 - **Gotcha list for Kotlin**: `org.json` drops a key on `put(k, null)` (use `JSONObject.NULL`); never call `removeFirst()/removeLast()` on a `java.util.List` below Android 15 (only on `kotlin.collections.ArrayDeque`); KDoc must not contain `/*` (it nests - an `_rels/*.rels` comment once broke a whole file).
-- **PC helper build**: `build-phone-explorer-exe.yml` builds `tools/phone_explorer.py` to an .exe; `pcprint.py` is run directly with Python on the PC.
+- **PC helper build**: none. The exe workflow was removed (2026-10-30); `tools/phone_explorer.py` and `pcprint.py` are run directly with Python on the PC.
 
 ---
 
@@ -885,6 +885,9 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-30 - Removed `.github/workflows/build-phone-explorer-exe.yml` (no more PhoneExplorer.exe build at the owner's request); the PC tool is run as `python tools/phone_explorer.py`.
+- 2026-10-30 - Remote shell: no automatic `inp.focus()` any more on open / after Connect (the keyboard popped up by itself); after a command the box is refocused only if it had focus when the command started (Enter), not after tapping Run.
+- 2026-10-30 - Remote shell tile on the Main menu did nothing: the screen (z-index 7) opened BEHIND `#home` (z-index 8). Now z-index 9 (above `#home`/`#dual` 8, below sheets/dialogs 10-11, toast 12, drawer 13-14). Never set it below 9.
 - 2026-10-30 - Remote shell robustness (see `REMOTE_EXEC_HANDOVER.md`): `/exec` = idempotent JOBS (`id`, `poll=1`, long-poll <=20 s, `/exec?probe=1` -> v2), PC-side fixes in `tools/phone_explorer.py` (stdin DEVNULL, process-tree kill, byte decoding, catch-all 500, `live_cfg`, atomic `save_config`, `ensure_firewall()`), `PePc.exec` = ONE step (v2: POST body, 3 tries; v1: single request, never resent), `Routes` `pcexec` reads `pass`/`cmd` from JSON body + `id` + `poll`, `ui.html openRemoteShell()` `exec()` is now a step loop (24-hex id, retry on `PC not reachable|timed out|paused` while last success < 30 s / < 150 s polling, budget 1,860,000 ms, connect test 40,000 ms). Kotlin and PC program NOT rebuilt; device tests pending (see 10.3 update).
 - 2026-10-30 - `phone_explorer.py` now ALWAYS runs as Administrator (Windows): relaunches elevated via UAC, retries once, quits with a message if declined; `--no-admin` ignored.
 - 2026-10-30 - Remote shell overlay: z-index 9000 -> 7 (it covered dialogs / the file manager and got mixed up when a zip was opened), and a 300 ms watcher closes it when `S.dev`/`S.path`/`homeOn()` change (user navigated elsewhere). Known: a long silent command (e.g. chkdsk) can drop with 'Software caused connection abort' (idle connection cut over Tailscale); the command may keep running on the PC. Possible follow-up: background job + polling.
@@ -1040,7 +1043,7 @@ java/com/lanshare/app/                      screens + native views
   core/office/ MiniXml OoxmlPackage NumFmt XlsxModel/Reader/Html/Editor/Writer DocxModel/Reader/Html/Editor/Writer DocReader XlsReader OleFile
                OdfReader OdpReader PptxReader OfficeOpen OfficeExport OfficeThumb
 tools/  sheet_layout_mirror_test.py sheetlayout_selftest/ psrender_geom_selftest/ phone_explorer.py ftp_smoke_test.py ftps_smoke_test.py storage_scan_mirror_test.py office_selftest/ patch_pcprint.py (one-off)
-pcprint.py   VERSION   build.gradle.kts / settings.gradle.kts / gradle.properties   .github/workflows/build-apk.yml, build-phone-explorer-exe.yml
+pcprint.py   VERSION   build.gradle.kts / settings.gradle.kts / gradle.properties   .github/workflows/build-apk.yml
 ```
 
 ### 15.2 Unused files and code (scan of 2026-10-20, nothing deleted; dead code costs APK size only, no runtime cost)

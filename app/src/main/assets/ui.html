@@ -5490,7 +5490,7 @@ function openRemoteShell(){
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
   let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
   let busy=false,ps=false,hi=-1,wt=0;
-  const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:7;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
+  const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
   const close=()=>{clearInterval(wt);w.remove()};w._close=close;
   const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
   wt=setInterval(()=>{if(!w.isConnected){clearInterval(wt);return}if(sig()!==s0)close()},300);
@@ -5562,7 +5562,7 @@ function openRemoteShell(){
       go.disabled=true;go.textContent='Connecting…';
       try{const r=await exec(tgt,pw.value,'hostname',false,40000);
         RSH_PW=pw.value;cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:''};saveCfg();paintChip();
-        ov.remove();add('Connected to '+((r.out||'').trim()||tgt.name)+' ('+tgt.ip+')','ok');inp.focus()}
+        ov.remove();add('Connected to '+((r.out||'').trim()||tgt.name)+' ('+tgt.ip+')','ok')}
       catch(e){const m=e.message,hint='\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.';
         er.textContent=m==='timed out'?'No answer from the PC.'+hint:/^(PC not reachable|Lost contact)/.test(m)?m+hint:m}
       finally{go.disabled=false;go.textContent='Connect'}}};
@@ -5570,13 +5570,14 @@ function openRemoteShell(){
   const doRun=async()=>{const cmd=inp.value.trim();if(!cmd||busy)return;
     if(!cfg.ip||!RSH_PW){openConn();return}
     hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
+    const kb=document.activeElement===inp;   // keyboard was open (Enter pressed): keep it; Run button tapped: leave it closed
     busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();
     try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000);
       if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));
       if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e');
       add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}
     catch(e){const m=e.message;add('⚠ '+(m==='timed out'?'No answer from the PC (the command may still be running there).':m),'e');if(/wrong password|No password/i.test(m))openConn()}
-    finally{busy=false;run.disabled=false;run.textContent='Run';inp.focus()}};
+    finally{busy=false;run.disabled=false;run.textContent='Run';if(kb)inp.focus()}};
   run.onclick=doRun;
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doRun()}
     else if(e.key==='ArrowUp'&&!inp.value.includes('\n')&&hist.length){e.preventDefault();hi=Math.min(hi+1,hist.length-1);inp.value=hist[hi]}
@@ -5584,7 +5585,7 @@ function openRemoteShell(){
   pb.onclick=()=>{ps=!ps;paintPs();toast(ps?'PowerShell mode ON':'PowerShell mode OFF (cmd.exe)',1500)};
   clr.onclick=()=>{term.textContent=''};chip.onclick=openConn;
   paintChip();paintPs();paintHist();
-  if(cfg.ip&&RSH_PW){add('PC: '+(cfg.name||cfg.ip)+'  ·  type a command below','m');inp.focus()}else openConn()}
+  if(cfg.ip&&RSH_PW){add('PC: '+(cfg.name||cfg.ip)+'  ·  type a command below','m')}else openConn()}
 
 function drawerRender(){
   $('#dtabs').textContent='';
