@@ -29,7 +29,7 @@ Root cause: a command was held on ONE idle HTTP connection for minutes. Android 
    - On error: if message matches `/^PC not reachable|^timed out|paused/` -> sleep min(5000,1000*n), retry while the last success is < 30 s ago (before first answer) / < 150 s (while polling); then throw "Lost contact with the PC (...). The command may still be running there." Other errors (wrong password, turned off, job not found) throw at once. Keep the existing `wrong password|No password` -> openConn().
    - Connect dialog: for messages starting "PC not reachable" or 'timed out' show the message plus the existing hint.
 2. CHANGELOG.md: new top section (`## 2026-10-30 - Remote shell keeps working on Tailscale`; Fixed: no more "connection abort" over Tailscale / Wi-Fi changes, commands up to 30 min, Turkish characters, commands waiting for input no longer hang, PC opens the firewall for Tailscale itself). Add developer line to HANDOVER.md section 14 and chapter 10 (protocol above).
-3. Rebuild PhoneExplorer.exe (CI) AND the APK; restart/update the PC program (a running tray copy keeps the old code).
+3. Rebuild the APK (CI); restart/update the PC program (`python tools/phone_explorer.py`; a running tray copy keeps the old code). The exe workflow was removed.
 4. Device tests: `hostname`; `ping -n 40 127.0.0.1` over Tailscale while toggling Tailscale on the phone; `chkdsk`; `dir C:\ /s` (cap, 'ü'); `pause` returns; new APK + old PC program and old APK + new PC program; `netsh advfirewall firewall show rule name="Phone Explorer TCP 8798"`.
 5. Optional: Cancel for a running job (not implemented).
 
