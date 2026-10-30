@@ -885,6 +885,8 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-10-30 - Audit after the Remote shell fixes: added `overscroll-behavior:contain` to the 10 scroll containers that lacked it (`#sheet .card`, `#pq/#pcs .card`, `.pjl`, `.pcl`, `#home .hbd`, `#hmfav`, two list boxes, a log `pre`, the Remote shell Connect card). Checked and left as is: other `position:fixed` overlays (only the Remote shell was below `#home`; `usWeb` 9999 is the PC-browser page) and other `.focus()` calls (all follow a user tap).
+- 2026-10-30 - Remote shell terminal scrolling could get stuck: `term` now `flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y` (same pattern as the other scroll panels). Not device-tested; if it still sticks, suspect very long single outputs (one huge pre-wrap div).
 - 2026-10-30 - Removed `.github/workflows/build-phone-explorer-exe.yml` (no more PhoneExplorer.exe build at the owner's request); the PC tool is run as `python tools/phone_explorer.py`.
 - 2026-10-30 - Remote shell: no automatic `inp.focus()` any more on open / after Connect (the keyboard popped up by itself); after a command the box is refocused only if it had focus when the command started (Enter), not after tapping Run.
 - 2026-10-30 - Remote shell tile on the Main menu did nothing: the screen (z-index 7) opened BEHIND `#home` (z-index 8). Now z-index 9 (above `#home`/`#dual` 8, below sheets/dialogs 10-11, toast 12, drawer 13-14). Never set it below 9.

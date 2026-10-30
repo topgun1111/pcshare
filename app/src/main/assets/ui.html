@@ -483,7 +483,7 @@ body.kid #list .row.sel{touch-action:none}
 #sheet,#sheet *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #sheet input,#sheet textarea{-webkit-user-select:text;user-select:text}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
-#sheet .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
+#sheet .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;overscroll-behavior:contain;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
 #sheet .card>*{flex-shrink:0}
 #sheet .card.bn{height:85vh;height:85dvh;overflow:hidden;padding-bottom:0}
 .bn .bh{display:flex;align-items:center;gap:4px}.bn .bh h3{flex:1;margin:0}.bn .bh .tbtn:disabled{opacity:.4}
@@ -501,7 +501,7 @@ body.kid #list .row.sel{touch-action:none}
 .pj .pjg{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:8px}.pj .pjc{min-width:0}.pj .pjc small{display:block;color:var(--mut);font-size:12px}.pj .pjc b{display:block;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pj .pjc b.pjbad{color:var(--err)}
 .pj .pjm{font-size:13px;color:var(--mut);margin-bottom:6px}.pj .pja{border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0 8px}
 .pj .pjr{border-radius:12px;padding:8px 10px;margin:4px 0 8px;background:color-mix(in srgb,var(--err) 10%,transparent);font-size:12px;overflow-wrap:anywhere}.pj .pjr b{display:block;color:var(--err);font-size:13px;margin-bottom:2px}.pj .pjr small{color:var(--mut)}
-.pj .pjl{max-height:calc(var(--lvh,100vh)*.26);overflow:auto;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px}.pj .dact{margin-top:10px}
+.pj .pjl{max-height:calc(var(--lvh,100vh)*.26);overflow:auto;overscroll-behavior:contain;font:12px/1.55 monospace;word-break:break-all;border-top:1px solid var(--bd);padding-top:6px}.pj .dact{margin-top:10px}
 #toast{cursor:pointer}
 /* progress card fits any window (foldable split screen, pop-up, short landscape): handle + title + bar stay on top, Minimize/Cancel stay at the bottom, only the middle scrolls.
    --lvh = real window height in px (set from JS; plain vh can be stale while a split-screen window is being resized) */
@@ -685,12 +685,12 @@ body.dopen{overflow:hidden}
 .fsi{width:46px;height:46px;border-radius:13px;border:0;display:flex;align-items:center;justify-content:center;background:var(--hov);color:var(--fg);font-size:18px}.fsi svg{width:24px;height:24px;fill:currentColor}.fsi.on{background:var(--ac);color:var(--onac)}
 /* print queue screen (own overlay, so it can open on top of the print dialog) */
 #pq,#pcs{display:none;position:fixed;inset:0;background:#0000006b;z-index:12;align-items:flex-end;animation:fade .2s}
-#pq .card,#pcs .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
+#pq .card,#pcs .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;overscroll-behavior:contain;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
 #pq .card>*,#pcs .card>*{flex-shrink:0}.pqh{display:flex;align-items:center;justify-content:space-between}.pqh h3{margin:0;font-size:20px;font-weight:500}.pqs{font-size:13px;color:var(--mut);margin:0 0 4px}
 .pct{display:flex;gap:6px;margin:2px 0 4px}.pct .tbtn{flex:1;border:1px solid var(--bd)}.pct .tbtn.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 .pcb{display:flex;align-items:center;gap:8px;margin:2px 0 6px}.pcst{font-size:12px;color:var(--mut);word-break:break-word}
 .pcd{width:10px;height:10px;border-radius:50%;background:#888;flex:none}.pcd.green{background:#4ade80}.pcd.amber{background:#fbbf24}.pcd.red{background:#f87171}
-.pcl{background:#0b0f17;color:#d7dde8;border-radius:12px;padding:10px;height:60vh;overflow:auto;font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.pcl{background:#0b0f17;color:#d7dde8;border-radius:12px;padding:10px;height:60vh;overflow:auto;overscroll-behavior:contain;font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 .pcln.ok{color:#6ee7a0}.pcln.fail{color:#ff7b7b}.pcln.dim{color:#7d8aa3}
 #pq .pqok{color:var(--ok)}#pq .pqbad{color:var(--err)}.pql{display:inline-block;margin-top:2px;padding:2px 0;border:0;background:transparent;color:var(--ac);font:inherit;font-size:12px;font-weight:700}
 /* SMB (PC drives) sheet */
@@ -803,7 +803,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .hb button{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;flex:none;color:var(--onbar);transition:background .15s}
 #home .hb button:active{background:var(--hov)}
 #home .hb svg{width:30px;height:30px}#home .hb button:first-child svg{width:32px;height:32px}
-#home .hbd{flex:1;overflow-y:auto;padding:8px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:20px;-webkit-overflow-scrolling:touch}
+#home .hbd{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:20px;-webkit-overflow-scrolling:touch}
 #home .hero{flex:none;background:var(--sel);color:var(--onsel);border-radius:28px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;cursor:pointer;animation:hmin .4s cubic-bezier(.2,.8,.25,1) both;-webkit-tap-highlight-color:transparent}
 #home .hero:active{filter:brightness(.96)}
 /* top row: Main storage and Devices side by side, each half the width */
@@ -831,7 +831,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .ht .ts{font-size:11px;color:var(--mut);text-align:center;line-height:1.2}
 #home .ht.off{opacity:.5;pointer-events:none}
 #hmfavs{position:fixed;inset:0;z-index:20}
-#hmfav{position:fixed;z-index:21;overflow-y:auto;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:20px;box-shadow:0 8px 28px #0006;padding:6px 0;animation:hmpop .16s ease-out both;-webkit-overflow-scrolling:touch}
+#hmfav{position:fixed;z-index:21;overflow-y:auto;overscroll-behavior:contain;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:20px;box-shadow:0 8px 28px #0006;padding:6px 0;animation:hmpop .16s ease-out both;-webkit-overflow-scrolling:touch}
 #hmfav .mh{padding:10px 18px 6px;font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
 #hmfav .mn{padding:10px 18px 14px;font-size:14px;color:var(--mut);white-space:pre-line}
 #hmfav .mi{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:6px 16px;text-align:left;border-bottom:1px solid var(--bd)}
@@ -921,7 +921,7 @@ function openPerfDebug(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card');card.append(E('div','handle'),E('h3','','Debug: performance (temporary)'));
-  const pre=E('pre');pre.style.cssText='font:11px/1.35 monospace;white-space:pre;overflow:auto;max-height:55vh;margin:0 0 8px;padding:8px;background:var(--cont);border-radius:12px;user-select:text;-webkit-user-select:text';
+  const pre=E('pre');pre.style.cssText='font:11px/1.35 monospace;white-space:pre;overflow:auto;overscroll-behavior:contain;max-height:55vh;margin:0 0 8px;padding:8px;background:var(--cont);border-radius:12px;user-select:text;-webkit-user-select:text';
   const draw=()=>{pre.textContent=perfReport()};draw();card.append(pre);
   const bar=E('div');bar.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end';
   const btn=(t,f)=>{const b=E('button','tbtn',t);b.onclick=f;bar.append(b);return b};
@@ -3832,7 +3832,7 @@ async function doDups(ps,similar){   // ps: explicit folder paths on this phone 
   const close=()=>{stop=true;o.style.display='none';o.onclick=null};
   const card=E('div','card');card.append(E('div','handle'),E('h3','',similar?'Similar images':'Duplicate finder'));
   const msg=E('p','','Starting…');msg.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px;word-break:break-all';
-  const box=E('div');box.style.cssText='max-height:55vh;overflow-y:auto;overflow-x:hidden';
+  const box=E('div');box.style.cssText='max-height:55vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain';
   const row=E('div','set');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
   const cb=E('button','tbtn','Cancel');
   cb.onclick=async()=>{if(jid&&!stop&&cb.textContent==='Cancel'){try{await api('POST','/api/jobcancel?id='+jid)}catch(e){}}close()};
@@ -5500,7 +5500,7 @@ function openRemoteShell(){
   const chip=E('button','tbtn');chip.style.cssText='height:36px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
   const clr=E('button','tbtn','Clear');clr.style.cssText='height:36px';
   hd.append(bk,ti,chip,clr);
-  const term=E('div');term.style.cssText='flex:1;overflow:auto;padding:10px 12px;background:#101418;color:#d8dee4;font:13px/1.45 Consolas,Menlo,monospace;-webkit-user-select:text;user-select:text';
+  const term=E('div');term.style.cssText='flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:10px 12px;background:#101418;color:#d8dee4;font:13px/1.45 Consolas,Menlo,monospace;-webkit-user-select:text;user-select:text';
   const add=(t,k)=>{const d=E('div','',t);d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='p'?';color:#7fd1ff;font-weight:bold':k==='e'?';color:#ff8a80':k==='m'?';color:#8b98a5;font-size:12px':k==='ok'?';color:#8be28b':'');term.append(d);term.scrollTop=term.scrollHeight};
   const hr=E('div');hr.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:6px 8px 0;background:var(--bg)';
   const bar=E('div');bar.style.cssText='display:flex;gap:8px;align-items:flex-end;padding:8px;background:var(--bg)';
@@ -5533,7 +5533,7 @@ function openRemoteShell(){
   const openConn=()=>{
     const old=w.querySelector('.rshc');if(old)old.remove();
     const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px';
-    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;background:var(--bg);border-radius:20px;padding:16px';
+    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;overscroll-behavior:contain;background:var(--bg);border-radius:20px;padding:16px';
     const sm=(t)=>{const s=E('small','',t);s.style.cssText='display:block;color:var(--mut);margin:10px 0 4px 4px';return s};
     const fld=(ph,type)=>{const i=E('input','tf');i.placeholder=ph;i.type=type||'text';i.style.cssText='height:46px;margin:0;width:100%';i.autocomplete='off';i.autocapitalize='none';return i};
     const h=E('h3','','Connect to a PC');h.style.margin='0 0 4px';
@@ -5692,7 +5692,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   if(hasDir){
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:10px 0 2px';
     const lb=E('b','','Leave out (tick):');all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
-    box=E('div');box.style.cssText='max-height:38vh;overflow-y:auto;overflow-x:hidden';
+    box=E('div');box.style.cssText='max-height:38vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain';
     st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:13px;color:var(--mut);margin:6px 2px';box.append(st);
     card.append(hd,box);k.disabled=true}
   api('POST','/api/zipscan',{dev:S.dev,paths:paths},60000).then(r=>{
