@@ -182,6 +182,7 @@ class TextEditorActivity : Activity() {
     private lateinit var scroll: ScrollView
     private lateinit var column: LinearLayout
     private lateinit var locTv: TextView
+    private lateinit var linesTv: TextView      // line count, shown in the top bar
     private lateinit var titleEt: EditText
     private lateinit var body: CodeEdit
     private lateinit var hsv: FitHScroll        // holds [body]: follows the screen width (wrap on) or scrolls sideways (wrap off)
@@ -298,10 +299,14 @@ class TextEditorActivity : Activity() {
         printBtn = tvBtn("\uD83D\uDDA8", 20f).apply { setOnClickListener { printFile() }; visibility = View.GONE }
         moreBtn = tvBtn("⋮", 24f).apply { setOnClickListener { showMenu(it) } }
         spin = ProgressBar(this).apply { isIndeterminate = true; layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(8) }; visibility = View.GONE }
+        linesTv = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            maxLines = 1; setPadding(dp(8), 0, dp(8), 0)
+        }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(2), dp(4), 0)
             addView(back)
-            addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(linesTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(spin); addView(printBtn); addView(saveBtn); addView(moreBtn)
         }
         root.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -672,7 +677,7 @@ class TextEditorActivity : Activity() {
         WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         for (t in listOf(back, saveBtn, printBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
-        for (t in listOf(locTv, status, findCount)) t.setTextColor(sub)
+        for (t in listOf(locTv, status, findCount, linesTv)) t.setTextColor(sub)
         banner.setTextColor(textColor)
         body.numColor = ColorUtils.setAlphaComponent(textColor, 110)
         body.invalidate()
@@ -710,7 +715,8 @@ class TextEditorActivity : Activity() {
             diskMtime > 0 -> "Edited " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(diskMtime * 1000))
             else -> "Saved"
         }
-        statusBase = "$base · $lines lines · ${t.length} chars"
+        statusBase = "$base · ${t.length} chars"
+        linesTv.text = if (loaded) "$lines lines" else ""
         renderStatus()
     }
 
