@@ -188,7 +188,7 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #arcrow::-webkit-scrollbar{display:none}
 body.inarc #arcrow{display:flex}body.galm #arcrow{display:none}
 #arcrow .ac{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:13px;background:var(--bg);font-size:12px;color:var(--fg)}
-#arcrow .ac b{font-weight:700}#arcrow .ac.lk{color:#E65100}#arcrow .ac.ok{color:#2E7D32}#arcrow .ac.ld{color:var(--mut)}
+#arcrow .ac b{font-weight:700}#arcrow .ac.lk{color:#E65100}#arcrow .ac.ok{color:#2E7D32}#arcrow .ac.ld{color:var(--mut)}#arcrow .ac.bd{color:#C62828;font-weight:700}
 #arcrow .am{flex:none;margin-left:auto;padding-left:6px;font-size:12px;font-weight:700;color:var(--ac)}
 #sortb{display:flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 8px;border-radius:16px;font-size:13px;font-weight:600;color:var(--ac)}#sortb:active{background:var(--hov)}
 #sortb svg{width:18px;height:18px}#sortb svg.ar{width:14px;height:14px}
@@ -4833,6 +4833,13 @@ async function openBin(){
   await draw()}
 /* ---- archive details (core/ArcInfo.kt, /api/arcinfo): strip of chips under the tool row while an archive is open + a full sheet on tap ---- */
 const ARCI={};
+const ARCW={};   /* archives already warned about in this session (key -> problem text), so the warning shows once per archive */
+function arcWarn(r,key,root){
+  const ck=r&&r.check;if(!ck||(ck.state!=='bad'&&ck.state!=='warn'))return;
+  const sig=ck.state+'|'+(ck.msg||'');if(ARCW[key]===sig)return;ARCW[key]=sig;
+  dlg({title:ck.state==='bad'?'\u26a0 This archive is damaged':'\u26a0 This archive may be damaged',
+    msg:(ck.msg||'The quick check found a problem.')+' Some files may not open or extract correctly. Copy the original again if you can.',ok:'Details'})
+    .then(v=>{if(v&&inArc()&&arcRoot()===root)doArcInfo()}).catch(()=>{})}
 const arcLabel=r=>(r.label||'Archive')+(r.ext&&r.label&&r.ext.toUpperCase()!==String(r.label).split(' ')[0].toUpperCase()?' (.'+r.ext+')':'');
 function arcRatio(r){   /* packed vs unpacked: exact for ZIP (central directory), archive size vs content size for the other formats */
   const un=r.unpacked||0,pk=r.packed>=0?r.packed:r.size||0;if(!(un>0&&pk>0))return null;
@@ -4853,6 +4860,9 @@ function arcRow(){
     const r=c.r;
     if(!r){chip(c.err?'⚠ Archive details unavailable':'Reading archive details…','ld');return}
     chip(String(r.label||'Archive'),'',null);
+    const ck=r.check;   /* quick corruption check (core/ArcInfo.kt, ZipInfo.quickCheck) */
+    if(ck&&ck.state==='bad'){chip('\u26a0 Damaged','bd');el.append(E('span','am','Details \u203a'));return}
+    if(ck&&ck.state==='warn')chip('\u26a0 May be damaged','bd');else if(ck&&ck.state==='ok')chip('\u2713 Checked','ok');
     if(r.size>0)chip(fmt(r.size));
     chip((r.files||0).toLocaleString()+((r.files||0)===1?' file':' files'));
     const q=arcRatio(r);if(q)chip(q.saved>0?q.saved+'% saved':'no saving',q.saved>=50?'ok':'');
@@ -4861,7 +4871,7 @@ function arcRow(){
   draw();
   if(!c.busy&&Date.now()-c.t>3000){   /* stale-while-revalidate: the chips stay, new numbers replace them (an edit of the archive changes them) */
     c.busy=true;
-    api('GET','/api/arcinfo?dev='+enc(S.dev)+'&path='+enc(root),null,120000).then(r=>{c.r=r;c.err='';c.t=Date.now()}).catch(e=>{c.err=e.message||'error';c.t=Date.now()}).then(()=>{c.busy=false;if(inArc()&&arcRoot()===root&&S.dev+'|'+root===key)draw()})}
+    api('GET','/api/arcinfo?dev='+enc(S.dev)+'&path='+enc(root),null,120000).then(r=>{c.r=r;c.err='';c.t=Date.now();arcWarn(r,key,root)}).catch(e=>{c.err=e.message||'error';c.t=Date.now()}).then(()=>{c.busy=false;if(inArc()&&arcRoot()===root&&S.dev+'|'+root===key)draw()})}
 }
 async function doArcInfo(){
   const root=arcRoot();if(!root)return;const dev=S.dev,key=dev+'|'+root;
@@ -4884,6 +4894,12 @@ async function doArcInfo(){
   if(r.size>0)row('Archive size',bytes(r.size));
   if(r.mtime>0)row('Modified',fmtDT(r.mtime));
   row('Editing',zipEd()?'Allowed here (add / delete files)':'Read-only (copy or extract to change it)');
+  if(r.check){
+    sec('Quick check');
+    const ck=r.check;
+    row('Result',ck.state==='ok'?'\u2713 No problem found'+(ck.checked>0?' (file list and '+ck.checked+' sample files tested)':''):ck.state==='warn'?'\u26a0 Possibly damaged':'\u26a0 Damaged');
+    if(ck.msg)box.append(E('div','dnote w',ck.msg));
+    if(ck.state==='ok')box.append(E('div','dnote','Quick check only looks at the file list and a few files. It cannot prove every file inside is intact.'))}
   sec('Contents');
   row('Files',(r.files||0).toLocaleString());
   row('Folders',(r.folders||0).toLocaleString());

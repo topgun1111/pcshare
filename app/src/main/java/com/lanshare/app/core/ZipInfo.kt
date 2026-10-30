@@ -24,6 +24,8 @@ class ZipSummary {
     var comment = ""
     var prefix = 0L          // bytes in front of the ZIP (self-extracting stub)
     var multi = false        // one part of a split ZIP
+    var checked = 0          // entries whose local header was looked at by the quick check
+    val problems = ArrayList<String>()   // what the quick check found wrong (empty = looks fine)
 }
 
 /**
@@ -132,6 +134,8 @@ object ZipInfo {
             }
         }
         var minOff = Long.MAX_VALUE
+        // quick check: remember (offset, packed size, name length of the central entry) of every entry; a few are verified after the loop
+        val sampOff = ArrayList<Long>(); val sampCs = ArrayList<Long>(); val sampName = ArrayList<String>()
         var p = cdStart
         val stop = cdStart + cdSize
         var n = 0L
@@ -172,6 +176,7 @@ object ZipInfo {
                 x += 4 + len
             }
             val name = decode(b.copyOfRange(o + 46, o + 46 + nlen), (flags and 0x800) != 0).replace('\\', '/')
+            if (!name.endsWith("/") && sampOff.size < 200000) { sampOff.add(off); sampCs.add(csize); sampName.add(name) }
             if (name.endsWith("/")) {
                 addDir(name)
             } else {
@@ -201,6 +206,7 @@ object ZipInfo {
             n++
         }
         if (n == 0L && entries > 0) throw IOException("damaged ZIP central directory")
+        if (!s.multi) quickCheck(s, readAt, size, n, entries, cdStart, shift, sampOff, sampCs, sampName)
         s.folders = dirs.size.toLong()
         // a ZIP normally starts with a local header; anything else in front of it is a stub
         val head = readAt(0, 4)
@@ -209,5 +215,38 @@ object ZipInfo {
             s.prefix = if (shift > 0) shift else if (minOff != Long.MAX_VALUE && minOff > 0) minOff else 0L
         }
         return s
+    }
+
+    /**
+     * Quick corruption check (no file data is inflated): the entry count must match the end record, and the local header of up to
+     * ~24 entries (first, last and evenly spread) must exist where the central directory says, carry the right signature, and
+     * its data must end before the central directory starts. A cut-off or overwritten ZIP fails at least one of these.
+     */
+    private fun quickCheck(s: ZipSummary, readAt: (Long, Int) -> ByteArray, size: Long, n: Long, entries: Long,
+                           cdStart: Long, shift: Long, off: List<Long>, cs: List<Long>, name: List<String>) {
+        fun bad(m: String) { if (s.problems.size < 5) s.problems.add(m) }
+        if (entries != 0xffffL && n < entries) bad("the file list is incomplete (" + n + " of " + entries + " entries could be read)")
+        val cnt = off.size
+        if (cnt == 0) return
+        val picks = LinkedHashSet<Int>()
+        for (i in 0 until minOf(cnt, 4)) picks.add(i)
+        for (i in maxOf(0, cnt - 4) until cnt) picks.add(i)
+        val spread = minOf(cnt, 16)
+        for (k in 0 until spread) picks.add((k.toLong() * (cnt - 1) / maxOf(1, spread - 1)).toInt())
+        var failed = 0
+        for (i in picks) {
+            val pos = off[i] + shift
+            val label = name[i].substringAfterLast('/')
+            try {
+                if (pos < 0 || pos + 30 > cdStart) { failed++; if (failed <= 3) bad("\"" + label + "\" points outside the file"); continue }
+                val h = readAt(pos, 30)
+                if (u32(h, 0) != 0x04034b50L) { failed++; if (failed <= 3) bad("\"" + label + "\" has a damaged header"); continue }
+                val end = pos + 30 + u16(h, 26) + u16(h, 28) + cs[i]
+                if (end > cdStart) { failed++; if (failed <= 3) bad("\"" + label + "\" is cut off"); continue }
+                s.checked++
+            } catch (_: IOException) { failed++; if (failed <= 3) bad("\"" + label + "\" could not be read") }
+        }
+        if (failed > 3) bad((failed - 3).toString() + " more entries look damaged")
+        if (size < cdStart) bad("the file is shorter than its directory says")
     }
 }

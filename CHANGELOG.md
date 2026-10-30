@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Quick corruption check for archives
+### Added
+- When you open an archive, the app now runs a quick check and shows "Checked" (all fine), "May be damaged" or "Damaged" next to the archive size; tap Details for the reason
+- A warning pops up (once per archive) when damage is found, with a Details button
+- ZIP files: the file list and a sample of files inside are tested without unpacking anything, so it stays instant even for big archives
+- 7z, TAR.GZ, TAR.BZ2, TAR.XZ and RAR files: the start (and the end of XZ files) is tested for a valid header
+
 ## 2026-10-30 - Remote shell shows output live
 ### Changed
 - Remote shell now shows a command's output line by line while it runs (needs the updated Phone Explorer program on the PC; an older one still shows everything at the end)

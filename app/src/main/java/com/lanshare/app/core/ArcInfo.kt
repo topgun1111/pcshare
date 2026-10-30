@@ -20,6 +20,7 @@ object ArcInfo {
         val size = st.optLong("size")
         val o = JSONObject().put("fmt", fmt).put("label", label(fmt)).put("ext", name.substringAfterLast('.', "").lowercase())
             .put("name", name).put("size", size).put("mtime", st.optLong("mtime"))
+        var zipErr = ""
         if (fmt == "zip") {
             try {   // ZIP: the central directory only (a few ranged reads, also for other devices / shares)
                 val s = base.open(ap)
@@ -38,9 +39,15 @@ object ArcInfo {
                     }
                 } finally { try { s.close() } catch (_: Exception) {} }
                 if (z != null) return fill(o, z)
-            } catch (c: Cancelled) { throw c } catch (_: Exception) { /* odd layout: fall back to the file list below */ }
+            } catch (c: Cancelled) { throw c } catch (e: Exception) { zipErr = e.message ?: "" /* odd layout: fall back to the file list below */ }
         }
-        val ix = ArcStore.index(base, ap)
+        val ix = try { ArcStore.index(base, ap) } catch (c: Cancelled) { throw c } catch (e: Exception) {
+            // a password is not damage; anything else that stops the file list is
+            val m = (e.message ?: "") + " " + e.javaClass.simpleName
+            if (m.contains("password", true) || m.contains("encrypt", true)) throw e
+            return o.put("files", 0L).put("folders", 0L).put("unpacked", 0L).put("packed", -1L).put("enc", "unknown")
+                .put("check", JSONObject().put("state", "bad").put("msg", "The file list cannot be read: " + (e.message ?: "unknown error").take(160)))
+        }
         var files = 0L; var folders = 0L; var un = 0L; var enc = 0L
         var big = -1L; var bigName = ""; var old = 0L; var new = 0L
         for (e in ix.all.values) {
@@ -55,7 +62,45 @@ object ArcInfo {
             .put("enc", if (enc == 0L) "unknown" else if (enc == files) "all" else "some").put("encFiles", enc)
             .put("encKinds", JSONArray(if (enc > 0) listOf("ZIP") else emptyList<String>()))
         if (big >= 0) o.put("largest", JSONObject().put("name", bigName).put("size", big))
-        return o
+        val pr = ArrayList<String>()
+        if (zipErr.isNotEmpty()) pr.add("the ZIP directory is odd or damaged (" + zipErr.take(100) + ")")
+        magicProblem(base, ap, fmt, size)?.let { pr.add(it) }
+        return o.put("check", checkJson(pr, 0))
+    }
+
+    private fun checkJson(problems: List<String>, checked: Int): JSONObject {
+        val c = JSONObject().put("checked", checked)
+        if (problems.isEmpty()) return c.put("state", "ok")
+        return c.put("state", "warn").put("msg", problems.joinToString("; ").replaceFirstChar { it.uppercase() })
+    }
+
+    /** Cheap signature / end-marker test for the non-ZIP formats (head bytes, and the XZ footer); null = looks fine or could not be tested. */
+    private fun magicProblem(base: Endpoint, ap: String, fmt: String, size: Long): String? {
+        if (size <= 0L) return "the archive file is empty"
+        try {
+            val s = base.open(ap)
+            try {
+                val h = ByteArray(8)
+                var got = 0
+                while (got < h.size) { val r = s.read(h, got, h.size - got); if (r < 0) break; got += r }
+                fun starts(vararg b: Int) = got >= b.size && b.indices.all { (h[it].toInt() and 0xff) == b[it] }
+                val okHead = when (fmt) {
+                    "7z" -> starts(0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C)
+                    "gz", "tgz" -> starts(0x1F, 0x8B)
+                    "bz2", "tbz" -> starts(0x42, 0x5A, 0x68)
+                    "xz", "txz" -> starts(0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00)
+                    "rar" -> starts(0x52, 0x61, 0x72, 0x21)
+                    else -> true   // plain TAR has no signature at the start
+                }
+                if (!okHead) return "the start of the file is not a valid " + label(fmt) + " header"
+                if ((fmt == "xz" || fmt == "txz") && s.seekable && size >= 12) {
+                    s.seek(size - 2)
+                    val a = s.read(); val b = s.read()
+                    if (a != 0x59 || b != 0x5A) return "the end of the XZ file is missing (cut off?)"
+                }
+            } finally { try { s.close() } catch (_: Exception) {} }
+        } catch (c: Cancelled) { throw c } catch (_: Exception) { }
+        return null
     }
 
     private fun fill(o: JSONObject, z: ZipSummary): JSONObject {
@@ -70,6 +115,7 @@ object ArcInfo {
         if (z.comment.isNotEmpty()) o.put("comment", z.comment)
         if (z.prefix > 0) o.put("prefix", z.prefix)
         if (z.multi) o.put("multi", true)
+        o.put("check", checkJson(z.problems, z.checked))
         return o
     }
 }
