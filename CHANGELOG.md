@@ -5,6 +5,43 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote shell: zoom, find, colours, save (part 5)
+### Added
+- Pinch with two fingers to make the terminal text bigger or smaller (also A− / A+ in the ⋮ menu); the size is remembered
+- ⋮ menu: Find (searches the whole scroll-back, ▲ ▼ to jump, Turkish i / İ / ı match each other), Colours (Campbell, Classic black, PowerShell blue), Save screen as a file, Share screen text
+- Scroll-back is now about 10,000 lines (was 5,000)
+- When you connect you choose cmd or PowerShell on the same sheet
+
+## 2026-10-30 - Remote shell survives network changes (part 4)
+### Changed
+- If Wi-Fi or Tailscale changes, or the phone sleeps, the shell reconnects by itself and keeps retrying for 10 minutes; the title shows "reconnecting…" meanwhile. Turning the screen on or getting the network back reconnects at once
+- Keys you type while the connection is away wait and are sent when it is back (up to 2.5 minutes), each exactly once
+- Close the app and open it again: Remote shell comes back to the same shell on the PC with its output (the PC keeps it for 30 minutes without the phone)
+- Big output such as `dir C:\ /s` no longer freezes the phone: the screen is fed at the speed it can draw
+- Needs the updated PC program for the shell to be found again with the right key counter (an older one still works)
+
+## 2026-10-30 - Remote shell: full key row (part 3)
+### Added
+- The key row under the terminal now has Esc, Tab, Ctrl, Alt, the four arrows, Home, End, PgUp, PgDn, and the symbols | \ ~ /, plus ^C, Backspace and Del
+- Ctrl and Alt stay pressed for the next key only: tap Ctrl, then C (on the phone keyboard or in the row); Ctrl or Alt with an arrow, Home, End or PgUp / PgDn also works
+- Arrows, PgUp, PgDn, Backspace and Del repeat while you hold them
+- A real keyboard connected to the phone keeps its shortcuts; Turkish letters (ç ğ ı ö ş ü) type and show correctly
+
+## 2026-10-30 - Remote shell: select, copy, paste (part 2)
+### Added
+- Long-press the terminal to select a word, then drag the two round handles (or drag over the text) to select more; a small menu shows Copy, Paste, Select all, Clear and Done
+- Paste puts your clipboard into the PC shell; pasting several lines asks first because every line runs at once. If Android blocks reading the clipboard, a box opens where you long-press and paste
+- Ctrl+C (the ^C key or a real keyboard) copies when text is selected, otherwise it stops the running command
+- New Backspace and Del keys in the key row; hold them to repeat
+- Clear wipes what the phone shows; the PC shell is not touched
+
+## 2026-10-30 - Remote shell is a real terminal (part 1)
+### Changed
+- Remote shell now shows the real cmd (or PowerShell) of your PC on a full black terminal screen: type right after the prompt, `cd` stays, Backspace, Tab and arrow keys work, and programs like `python` or `ping -t` run as on the PC
+- A small key row (Esc, Tab, Ctrl, arrows, ^C) sits under the terminal; the cmd / PS button in the top bar switches the shell
+- If you leave the screen, the shell stays open on the PC and you come back to it
+- Needs the new PC program (Phone Explorer, Windows 10 version 1809 or newer)
+
 ## 2026-10-30 - Permanent delete and quick Undo
 ### Added
 - The delete dialog now has a red "Delete permanently" button next to "Move to bin" (this phone's files and the gallery); it skips the Recycle bin

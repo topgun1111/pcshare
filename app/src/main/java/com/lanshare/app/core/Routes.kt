@@ -18,6 +18,8 @@ object Routes {
         return c.split(';').any { it.trim() == "lsroot=$t" }
     }
 
+    private val xtermCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
     fun handle(ex: Exchange) {
         val trusted = rootTrusted(ex)
         RootShell.untrusted.set(!trusted)   // Jobs.ep("root") reads this on the request thread
@@ -30,6 +32,12 @@ object Routes {
                 p.startsWith("/p/") -> peer(ex, p.substring(3))
                 p == "/" -> ex.reply(200, Core.page, "text/html; charset=utf-8")
                 p.startsWith("/api/") -> api(ex, p.substring(5))
+                p.startsWith("/xterm/") -> {   // Remote shell terminal (xterm.js 5.3 + fit addon, assets/xterm): loaded by the page only when that screen opens
+                    val n = p.substring(7)
+                    if (n != "xterm.js" && n != "xterm.css" && n != "xterm-addon-fit.js") throw NotFound("no such file")
+                    val b = xtermCache.getOrPut(n) { (Core.appCtx ?: throw NotFound("app not ready")).assets.open("xterm/$n").use { it.readBytes() } }
+                    ex.reply(200, b, if (n.endsWith(".css")) "text/css; charset=utf-8" else "application/javascript; charset=utf-8", mapOf("Cache-Control" to "max-age=86400"))
+                }
                 else -> ex.reply(404, "not found".toByteArray(), "text/plain")
             }
         } catch (e: NotFound) { ex.fail(404, errText(e))
@@ -282,6 +290,12 @@ object Routes {
                 val r = com.lanshare.app.pe.PePc.exec(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", q["pass"] ?: ""),
                     b.optString("cmd", q["cmd"] ?: ""), q["id"] ?: "", q["poll"] == "1", (q["o"] ?: "0").toLongOrNull() ?: 0L, (q["e"] ?: "0").toLongOrNull() ?: 0L)
                 return ex.json(JSONObject().put("out", r.out).put("err", r.err).put("code", r.code).put("truncated", r.truncated).put("done", r.done).put("o", r.o).put("e", r.e))
+            }
+            "pcterm" -> {   // Remote shell: one step of the real terminal on that PC (PePc.term); the screen (xterm.js) repeats read steps
+                val b = try { ex.bodyJson() } catch (_: Exception) { JSONObject() }
+                val extra = LinkedHashMap<String, String>()
+                for (k in listOf("shell", "cols", "rows", "o", "wait", "seq", "data")) if (b.has(k)) extra[k] = b.get(k).toString()
+                return ex.json(com.lanshare.app.pe.PePc.term(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", ""), b.optString("act", ""), b.optString("sid", ""), extra))
             }
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {

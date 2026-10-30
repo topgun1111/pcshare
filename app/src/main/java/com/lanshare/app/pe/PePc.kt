@@ -181,4 +181,20 @@ object PePc {
         }
         return result(st, o)
     }
+
+    /**
+     * One step of the real terminal on the PC (phone_explorer.py /term, Remote shell screen): [act] = open | read | in | resize | close,
+     * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data). Every act is safe to repeat (open = same sid -> same shell,
+     * read = same offset -> same bytes, in = same seq -> typed once), so a cut connection is simply tried again with a new socket.
+     */
+    fun term(ip0: String, hport0: Int, pass: String, act: String, sid: String, extra: Map<String, String>): JSONObject {
+        val (ip, hport) = target(ip0, hport0)
+        val form = StringBuilder("act=${e(act)}&sid=${e(sid)}&pass=${e(pass)}")
+        for ((k, v) in extra) form.append('&').append(k).append('=').append(e(v))
+        val (st, o) = try { call(ip, hport, "/term", form.toString(), 45_000, 8_000, 3, true) } catch (x: Exception) { throw unreachable(x) }
+        if (st == 404 && o?.optString("error") == "not found") throw PcError("update Phone Explorer on the PC (the real terminal needs the new program)")
+        if (o == null) throw IOException("PC answered something unexpected (HTTP $st) - is another program using that port?")
+        if (st != 200) throw PcError(o.optString("error", "PC answered $st"))
+        return o
+    }
 }

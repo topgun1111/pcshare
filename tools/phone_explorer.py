@@ -28,6 +28,7 @@ Run:   python phone_explorer.py [--pair "phoneexplorer://..."] [--auto] [--tray]
        --no-admin   ignored (always runs as Administrator)
        --install-startup / --uninstall-startup   add / remove the Windows autostart entry
 """
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -629,6 +630,353 @@ def exec_job(jid, cmd, limit, cap=EXEC_MAX):
     return j
 
 
+# ------------------------------------------------------------------------------------ terminal (Remote shell)
+# One REAL shell per session (Windows ConPTY: cmd / PowerShell with prompt, history, Tab, Ctrl+C, cd that stays...).
+# The phone shows it with xterm.js. Protocol (POST /term, form body, password like /exec):
+#   act=open   sid shell(cmd|ps) cols rows   -> starts the session (same sid again = the same session, never a second shell)
+#   act=read   sid o wait                    -> long-poll: raw terminal bytes (base64) after offset o; {data,o,alive,code,reset}
+#   act=in     sid seq data(base64)          -> keys typed on the phone (seq counts up: a repeated request is not typed twice)
+#   act=resize sid cols rows
+#   act=close  sid
+TERM_BUF_MAX = 4 << 20      # bytes of output kept per session (a phone that reconnects gets the rest of it)
+TERM_SESS_MAX = 3
+TERM_IDLE = 1800            # s: a session nobody asks about for 30 min is closed
+_ID_RE_T = re.compile(r"[A-Za-z0-9_-]{8,64}")
+_terms = {}
+_terms_lock = threading.Lock()
+
+
+class _ConPty:
+    """Windows 10 1809+ pseudo console through ctypes (nothing to install)."""
+
+    def __init__(self, cmdline, cols, rows, cwd):
+        import ctypes.wintypes as wt
+        k32 = ctypes.windll.kernel32
+        self.k32, self.wt = k32, wt
+
+        class COORD(ctypes.Structure):
+            _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
+
+        class STARTUPINFOW(ctypes.Structure):
+            _fields_ = [("cb", wt.DWORD), ("lpReserved", wt.LPWSTR), ("lpDesktop", wt.LPWSTR), ("lpTitle", wt.LPWSTR),
+                        ("dwX", wt.DWORD), ("dwY", wt.DWORD), ("dwXSize", wt.DWORD), ("dwYSize", wt.DWORD),
+                        ("dwXCountChars", wt.DWORD), ("dwYCountChars", wt.DWORD), ("dwFillAttribute", wt.DWORD),
+                        ("dwFlags", wt.DWORD), ("wShowWindow", wt.WORD), ("cbReserved2", wt.WORD),
+                        ("lpReserved2", ctypes.c_void_p), ("hStdInput", wt.HANDLE), ("hStdOutput", wt.HANDLE),
+                        ("hStdError", wt.HANDLE)]
+
+        class STARTUPINFOEXW(ctypes.Structure):
+            _fields_ = [("StartupInfo", STARTUPINFOW), ("lpAttributeList", ctypes.c_void_p)]
+
+        class PROCESS_INFORMATION(ctypes.Structure):
+            _fields_ = [("hProcess", wt.HANDLE), ("hThread", wt.HANDLE), ("dwProcessId", wt.DWORD), ("dwThreadId", wt.DWORD)]
+
+        self.COORD = COORD
+        for fn, res, args in (
+                ("CreatePipe", wt.BOOL, [ctypes.POINTER(wt.HANDLE), ctypes.POINTER(wt.HANDLE), ctypes.c_void_p, wt.DWORD]),
+                ("CreatePseudoConsole", ctypes.c_long, [COORD, wt.HANDLE, wt.HANDLE, wt.DWORD, ctypes.POINTER(ctypes.c_void_p)]),
+                ("ResizePseudoConsole", ctypes.c_long, [ctypes.c_void_p, COORD]),
+                ("ClosePseudoConsole", None, [ctypes.c_void_p]),
+                ("InitializeProcThreadAttributeList", wt.BOOL, [ctypes.c_void_p, wt.DWORD, wt.DWORD, ctypes.POINTER(ctypes.c_size_t)]),
+                ("UpdateProcThreadAttribute", wt.BOOL, [ctypes.c_void_p, wt.DWORD, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p]),
+                ("DeleteProcThreadAttributeList", None, [ctypes.c_void_p]),
+                ("CreateProcessW", wt.BOOL, [wt.LPCWSTR, wt.LPWSTR, ctypes.c_void_p, ctypes.c_void_p, wt.BOOL, wt.DWORD, ctypes.c_void_p, wt.LPCWSTR, ctypes.c_void_p, ctypes.POINTER(PROCESS_INFORMATION)]),
+                ("ReadFile", wt.BOOL, [wt.HANDLE, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD), ctypes.c_void_p]),
+                ("WriteFile", wt.BOOL, [wt.HANDLE, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD), ctypes.c_void_p]),
+                ("CloseHandle", wt.BOOL, [wt.HANDLE]),
+                ("WaitForSingleObject", wt.DWORD, [wt.HANDLE, wt.DWORD]),
+                ("GetExitCodeProcess", wt.BOOL, [wt.HANDLE, ctypes.POINTER(wt.DWORD)]),
+                ("TerminateProcess", wt.BOOL, [wt.HANDLE, wt.UINT])):
+            f = getattr(k32, fn)
+            f.restype, f.argtypes = res, args
+        in_r, in_w, out_r, out_w = wt.HANDLE(), wt.HANDLE(), wt.HANDLE(), wt.HANDLE()
+        if not k32.CreatePipe(ctypes.byref(in_r), ctypes.byref(in_w), None, 0) or not k32.CreatePipe(ctypes.byref(out_r), ctypes.byref(out_w), None, 0):
+            raise OSError("CreatePipe failed")
+        self.hpc = ctypes.c_void_p()
+        hr = k32.CreatePseudoConsole(COORD(cols, rows), in_r, out_w, 0, ctypes.byref(self.hpc))
+        if hr != 0:
+            raise OSError("this Windows has no pseudo console (needs Windows 10 version 1809 or newer), code 0x%08X" % (hr & 0xFFFFFFFF))
+        k32.CloseHandle(in_r)       # the console owns these ends now
+        k32.CloseHandle(out_w)
+        self.h_in, self.h_out = in_w, out_r
+        size = ctypes.c_size_t(0)
+        k32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+        self._attr = ctypes.create_string_buffer(size.value)
+        if not k32.InitializeProcThreadAttributeList(self._attr, 1, 0, ctypes.byref(size)):
+            raise OSError("InitializeProcThreadAttributeList failed")
+        if not k32.UpdateProcThreadAttribute(self._attr, 0, 0x00020016, self.hpc, ctypes.sizeof(ctypes.c_void_p), None, None):   # PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
+            raise OSError("UpdateProcThreadAttribute failed")
+        si = STARTUPINFOEXW()
+        si.StartupInfo.cb = ctypes.sizeof(STARTUPINFOEXW)
+        si.lpAttributeList = ctypes.cast(self._attr, ctypes.c_void_p)
+        pi = PROCESS_INFORMATION()
+        cmd = ctypes.create_unicode_buffer(cmdline)
+        if not k32.CreateProcessW(None, cmd, None, None, False, 0x00080000 | 0x08000000, None, cwd, ctypes.byref(si), ctypes.byref(pi)):   # EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW
+            err = ctypes.GetLastError()
+            raise OSError("could not start the shell (error %d)" % err)
+        self.h_proc, self.pid = pi.hProcess, pi.dwProcessId
+        k32.CloseHandle(pi.hThread)
+        self.closed = False
+
+    def read(self):
+        buf = ctypes.create_string_buffer(65536)
+        n = self.wt.DWORD(0)
+        if not self.k32.ReadFile(self.h_out, buf, 65536, ctypes.byref(n), None) or n.value == 0:
+            return b""
+        return buf.raw[:n.value]
+
+    def write(self, data):
+        n = self.wt.DWORD(0)
+        i = 0
+        while i < len(data):
+            chunk = data[i:i + 4096]
+            if not self.k32.WriteFile(self.h_in, chunk, len(chunk), ctypes.byref(n), None) or n.value == 0:
+                return False
+            i += n.value
+        return True
+
+    def resize(self, cols, rows):
+        self.k32.ResizePseudoConsole(self.hpc, self.COORD(cols, rows))
+
+    def alive(self):
+        return self.k32.WaitForSingleObject(self.h_proc, 0) == 258        # WAIT_TIMEOUT
+
+    def exit_code(self):
+        c = self.wt.DWORD(0)
+        self.k32.GetExitCodeProcess(self.h_proc, ctypes.byref(c))
+        return int(c.value)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.alive():
+                kill_pid_tree(self.pid)
+                self.k32.TerminateProcess(self.h_proc, 1)
+        except Exception:
+            pass
+        try:
+            self.k32.ClosePseudoConsole(self.hpc)       # also ends a blocked read()
+        except Exception:
+            pass
+        for h in (self.h_in, self.h_out, self.h_proc):
+            try:
+                self.k32.CloseHandle(h)
+            except Exception:
+                pass
+        try:
+            self.k32.DeleteProcThreadAttributeList(self._attr)
+        except Exception:
+            pass
+
+
+class _PosixPty:
+    """Same interface on Linux / macOS: only used to test the protocol away from Windows."""
+
+    def __init__(self, cmdline, cols, rows, cwd):
+        import pty, fcntl, termios, struct
+        self._fcntl, self._termios, self._struct = fcntl, termios, struct
+        self.pid, self.fd = pty.fork()
+        if self.pid == 0:
+            try:
+                os.chdir(cwd or os.path.expanduser("~"))
+            except Exception:
+                pass
+            os.environ["TERM"] = "xterm-256color"
+            os.execvp("/bin/sh", ["/bin/sh", "-c", cmdline])
+        self.resize(cols, rows)
+        self.closed = False
+        self._code = None
+
+    def read(self):
+        try:
+            return os.read(self.fd, 65536)
+        except OSError:
+            return b""
+
+    def write(self, data):
+        try:
+            os.write(self.fd, data)
+            return True
+        except OSError:
+            return False
+
+    def resize(self, cols, rows):
+        try:
+            self._fcntl.ioctl(self.fd, self._termios.TIOCSWINSZ, self._struct.pack("HHHH", rows, cols, 0, 0))
+        except Exception:
+            pass
+
+    def alive(self):
+        if self._code is not None:
+            return False
+        try:
+            p, st = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            self._code = 0
+            return False
+        if p == 0:
+            return True
+        self._code = os.waitstatus_to_exitcode(st)
+        return False
+
+    def exit_code(self):
+        self.alive()
+        return self._code if self._code is not None else -1
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            os.kill(self.pid, signal.SIGHUP)
+        except Exception:
+            pass
+        try:
+            os.close(self.fd)
+        except Exception:
+            pass
+        try:
+            os.waitpid(self.pid, os.WNOHANG)
+        except Exception:
+            pass
+
+
+def kill_pid_tree(pid):
+    try:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, timeout=10, creationflags=_NO_WIN)
+    except Exception:
+        pass
+
+
+def _shell_cmdline(shell):
+    if sys.platform == "win32":
+        if shell == "ps":
+            sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+            return r'"%s\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo' % sysroot
+        return os.environ.get("COMSPEC", "cmd.exe")
+    return "bash -i" if shutil.which("bash") else "sh -i"
+
+
+class TermSession:
+    def __init__(self, sid, shell, cols, rows):
+        self.id, self.shell = sid, shell
+        self.cols, self.rows = cols, rows
+        self.buf = bytearray()
+        self.base = 0                      # absolute offset of buf[0]
+        self.cv = threading.Condition()
+        self.seq = 0                       # last typed-input batch applied
+        self.in_lock = threading.Lock()
+        self.touch = time.time()
+        self.dead = False
+        self.code = None
+        cwd = os.path.expanduser("~")
+        cmd = _shell_cmdline(shell)
+        self.pty = (_ConPty if sys.platform == "win32" else _PosixPty)(cmd, cols, rows, cwd if os.path.isdir(cwd) else None)
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self):
+        try:
+            while True:
+                d = self.pty.read()
+                if not d:
+                    break
+                with self.cv:
+                    self.buf += d
+                    if len(self.buf) > TERM_BUF_MAX:
+                        cut = len(self.buf) - TERM_BUF_MAX
+                        del self.buf[:cut]
+                        self.base += cut
+                    self.cv.notify_all()
+        except Exception:
+            pass
+        finally:
+            time.sleep(0.2)
+            try:
+                self.code = self.pty.exit_code()
+            except Exception:
+                self.code = -1
+            with self.cv:
+                self.dead = True
+                self.cv.notify_all()
+
+    def read(self, o, wait):
+        """Bytes after absolute offset o (waits up to [wait] s for some). Same o again = same answer (nothing is consumed)."""
+        self.touch = time.time()
+        end = time.time() + wait
+        with self.cv:
+            reset = False
+            if o < self.base:
+                o, reset = self.base, True      # the phone was away longer than the buffer holds
+            while o >= self.base + len(self.buf) and not self.dead:
+                left = end - time.time()
+                if left <= 0:
+                    break
+                self.cv.wait(min(left, 1.0))
+            data = bytes(self.buf[o - self.base:o - self.base + 262144])
+            return {"data": base64.b64encode(data).decode(), "from": o, "o": o + len(data), "alive": not (self.dead and o + len(data) >= self.base + len(self.buf)),
+                    "code": self.code, "reset": reset}
+
+    def write(self, seq, data):
+        self.touch = time.time()
+        with self.in_lock:
+            if seq and seq <= self.seq:
+                return True                  # this batch was already typed (the answer got lost, the phone asked again)
+            ok = self.pty.write(data)
+            if ok and seq:
+                self.seq = seq
+            return ok
+
+    def resize(self, cols, rows):
+        self.touch = time.time()
+        self.cols, self.rows = cols, rows
+        self.pty.resize(cols, rows)
+
+    def close(self):
+        self.pty.close()
+
+
+def term_open(sid, shell, cols, rows):
+    with _terms_lock:
+        now = time.time()
+        for k, t in list(_terms.items()):
+            if t.dead and now - t.touch > 60 or now - t.touch > TERM_IDLE:
+                del _terms[k]
+                threading.Thread(target=t.close, daemon=True).start()
+        t = _terms.get(sid)
+        if t is not None:
+            return t, True
+        if len(_terms) >= TERM_SESS_MAX:
+            raise RuntimeError("too many terminals are open on the PC already")
+        t = TermSession(sid, shell, cols, rows)
+        _terms[sid] = t
+    _keep_awake_term()
+    return t, False
+
+
+def _keep_awake_term():
+    """Same idea as for commands: a PC that goes to sleep drops the connection."""
+    if sys.platform != "win32":
+        return
+
+    def loop():
+        try:
+            while True:
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+                time.sleep(5)
+                with _terms_lock:
+                    if not any(not t.dead for t in _terms.values()):
+                        break
+        except Exception:
+            pass
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+        except Exception:
+            pass
+    threading.Thread(target=loop, daemon=True).start()
+
+
 # ------------------------------------------------------------------------------------ firewall
 
 def ensure_firewall():
@@ -719,6 +1067,8 @@ def start_listeners(app):
                     return self._do_open(q)
                 if u.path == "/exec":
                     return self._do_exec(q)
+                if u.path == "/term":
+                    return self._do_term(q)
                 return self._reply(404, {"error": "not found"})
             except Exception as e:      # never leave the phone with a silently closed socket
                 self._reply(500, {"error": "PC error: %s" % e})
@@ -741,13 +1091,90 @@ def start_listeners(app):
                 return self._reply(503, {"error": "the Phone Explorer window on the PC is closing"})
             self._reply(200, {"ok": True})
 
+        def _auth(self, q):
+            """Same checks as /exec (remote commands ON, password, lock after 5 wrong ones). Returns True, or answers the error and returns False."""
+            cfg = live_cfg(app)
+            if not cfg.get("exec_enabled"):
+                self._reply(403, {"error": "Remote commands are turned off on this PC"})
+                return False
+            ip = self.client_address[0].split("%")[0]
+            f = _fails.setdefault(ip, [0, 0.0])
+            if time.time() < f[1]:
+                self._reply(429, {"error": "too many wrong passwords - try again in a minute"})
+                return False
+            if not cfg.get("exec_hash"):
+                self._reply(403, {"error": "No password is set on the PC (Phone Explorer window -> Remote commands)"})
+                return False
+            if not check_pass(cfg, q.get("pass", [""])[0][:200]):
+                f[0] += 1
+                if f[0] >= 5:
+                    f[0] = 0
+                    f[1] = time.time() + 60
+                self._reply(403, {"error": "wrong password"})
+                return False
+            f[0] = 0
+            return True
+
+        def _do_term(self, q):
+            """Real terminal session (see the protocol at TermSession). Every request is safe to repeat."""
+            if not self._auth(q):
+                return
+            g = lambda k, d="": q.get(k, [d])[0]
+            act, sid = g("act"), g("sid")
+            if not _ID_RE_T.fullmatch(sid):
+                return self._reply(400, {"error": "bad session id"})
+
+            def num(k, d, lo, hi):
+                try:
+                    return max(lo, min(hi, int(g(k, str(d)))))
+                except ValueError:
+                    return d
+            cols, rows = num("cols", 80, 20, 500), num("rows", 24, 5, 200)
+            if act == "open":
+                try:
+                    t, existed = term_open(sid, "ps" if g("shell") == "ps" else "cmd", cols, rows)
+                except (RuntimeError, OSError) as e:
+                    return self._reply(500 if isinstance(e, OSError) else 429, {"error": str(e)})
+                if existed:
+                    t.resize(cols, rows)
+                else:
+                    try:
+                        app.after(0, app.set_status, "Remote shell opened")
+                    except Exception:
+                        pass
+                return self._reply(200, {"ok": True, "existed": existed, "base": t.base, "end": t.base + len(t.buf), "alive": not t.dead, "seq": t.seq})
+            with _terms_lock:
+                t = _terms.get(sid)
+            if t is None:
+                return self._reply(404, {"error": "terminal not found - it was closed or the Phone Explorer program on the PC was restarted"})
+            if act == "read":
+                wait = max(0.0, min(25.0, float(num("wait", 20, 0, 25))))
+                return self._reply(200, t.read(num("o", 0, 0, 1 << 62), wait))
+            if act == "in":
+                try:
+                    data = base64.b64decode(g("data"), validate=False)[:65536]
+                except Exception:
+                    return self._reply(400, {"error": "bad data"})
+                if t.dead:
+                    return self._reply(409, {"error": "the shell has ended"})
+                return self._reply(200, {"ok": bool(t.write(num("seq", 0, 0, 1 << 62), data))})
+            if act == "resize":
+                t.resize(cols, rows)
+                return self._reply(200, {"ok": True})
+            if act == "close":
+                with _terms_lock:
+                    _terms.pop(sid, None)
+                threading.Thread(target=t.close, daemon=True).start()
+                return self._reply(200, {"ok": True})
+            return self._reply(400, {"error": "unknown act"})
+
         def _do_exec(self, q):
             """Runs a command line on this PC and returns its output. Off by default - the person at the PC
             must press the "Remote commands" button to turn it ON, and the phone must send the password.
             No id = old behaviour (one request waits for the end). With id = job: the first request starts it, later
             ones (poll=1, or the same request again) wait up to `wait` s for the end and answer {"done": false} if it runs on."""
             if q.get("probe"):      # the phone asks which version this is (no command, no password)
-                return self._reply(200, {"v": 3, "exec": bool(live_cfg(app).get("exec_enabled"))})
+                return self._reply(200, {"v": 3, "term": 1, "exec": bool(live_cfg(app).get("exec_enabled"))})
             cfg = live_cfg(app)
             if not cfg.get("exec_enabled"):
                 return self._reply(403, {"error": "Remote commands are turned off on this PC"})

@@ -5534,68 +5534,242 @@ function openPhoneExplorer(){
   np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd()};
   o.append(card);upd();
   tm=setInterval(()=>{if(!card.isConnected||o.style.display==='none'){clearInterval(tm);return}try{st=JSON.parse(B.peState());if(wait>0&&!st.run)wait--;upd()}catch(e){}},1000)}
-/* ---- Remote shell: full-screen terminal for a PC running phone_explorer.py (/exec: its ON button + the password saved in its window).
+/* ---- Remote shell: the REAL cmd / PowerShell of a PC running phone_explorer.py, shown with xterm.js (files: assets/xterm, served as /xterm/*, loaded only when this screen opens).
    Opened from the Main menu tile "Remote shell" (and the drawer). The PC + password + Remember live in the Connect sheet inside this screen.
-   App routes /api/pcfind, /api/peers (SMB devices, also over Tailscale) and /api/pcexec (pe/PePc.kt exec()). ---- */
+   App routes /api/pcfind, /api/peers (SMB devices, also over Tailscale) and /api/pcterm (pe/PePc.kt term()): the PC keeps ONE shell per session (phone_explorer.py /term, ConPTY);
+   the screen long-polls its output (act=read, offset based) and sends the typed keys (act=in, numbered). Leaving the screen keeps the shell open on the PC (30 min). ---- */
 Object.assign(IC,{term:'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z'});
 let RSH_PW='';   // password typed this session (kept only in memory unless "Remember password" is ticked)
+let RSH_S=null;  // {ip,port,sid,sh,seq}: the shell that stays open on the PC while this screen is closed
+let XT_P=null;
+function loadXterm(){if(window.Terminal&&window.FitAddon)return Promise.resolve();if(XT_P)return XT_P;
+  const ld=src=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=()=>no(new Error('terminal files are missing in this app'));document.head.append(e)});
+  XT_P=(async()=>{const l=document.createElement('link');l.rel='stylesheet';l.href='/xterm/xterm.css';document.head.append(l);await ld('/xterm/xterm.js');await ld('/xterm/xterm-addon-fit.js')})().catch(e=>{XT_P=null;throw e});return XT_P}
 function openPcExec(){openRemoteShell()}
 function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
-  let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
-  let busy=false,ps=false,hi=-1,wt=0,curId='';
+  let wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const nap=ms=>new Promise(r=>{const t=setTimeout(()=>{wk=null;r()},ms);wk=()=>{clearTimeout(t);wk=null;r()}});   // a sleep that the phone coming back (screen on, network up) cuts short
+  const wake=()=>{if(wk)wk()};
+  /* phone screen on again / network back: cut the sleep short and start a fresh read at once (a read that was waiting on a dead socket is dropped; its late answer is ignored) */
+  const kick=()=>{wake();if(opened&&RSH_S&&xt&&w.isConnected)loop()};
+  const onVis=()=>{if(!document.hidden)kick()};
+  document.addEventListener('visibilitychange',onVis);window.addEventListener('online',kick);
   const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
-  const close=()=>{clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;w.remove()};w._close=close;
+  const close=()=>{gen++;lg++;document.removeEventListener('visibilitychange',onVis);window.removeEventListener('online',kick);clearInterval(wt);clearTimeout(rt);if(ro)ro.disconnect();try{xt&&xt.dispose()}catch(e){}if(window.RSH_X===chk)window.RSH_X=null;w.remove()};w._close=close;   // the shell itself stays open on the PC
   const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
   const chk=()=>{if(!w.isConnected){clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;return}if(sig()!==s0)close()};window.RSH_X=chk;
   wt=setInterval(chk,150);   /* fallback; load() / homeShow() call chk at once */
   const hd=E('div');hd.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 8px 8px 4px;background:var(--bar);color:var(--onbar)';
   const bk=E('button','ibtn');bk.setAttribute('aria-label','Back');bk.append(ic('back'));bk.onclick=close;bk.style.color='inherit';
   const ti=E('b','','Remote shell');ti.style.cssText='font-size:18px;flex:1';
+  const shb=E('button','tbtn');shb.style.cssText='height:36px;min-width:52px';shb.setAttribute('aria-label','Shell: cmd or PowerShell');
   const chip=E('button','tbtn');chip.style.cssText='height:36px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-  const clr=E('button','tbtn','Clear');clr.style.cssText='height:36px';
-  hd.append(bk,ti,chip,clr);
-  const term=E('div');term.style.cssText='flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:10px 12px;background:#101418;color:#d8dee4;font:13px/1.45 Consolas,Menlo,monospace;-webkit-user-select:text;user-select:text';
-  const add=(t,k)=>{const d=E('div','',t);d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='p'?';color:#7fd1ff;font-weight:bold':k==='e'?';color:#ff8a80':k==='m'?';color:#8b98a5;font-size:12px':k==='ok'?';color:#8be28b':'');term.append(d);term.scrollTop=term.scrollHeight};
-  /* live output: chunks of one stream (stdout 'o' / stderr 'e') are appended to one block while the command runs */
-  let lv=null;
-  const live=(t,k)=>{if(!t)return;const nb=term.scrollHeight-term.scrollTop-term.clientHeight<60;
-    if(!lv||lv.k!==k){const d=E('div');d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='e'?';color:#ff8a80':'');term.append(d);lv={k,d,raw:''}}
-    lv.raw+=t;lv.d.textContent=lv.raw.replace(/\n+$/,'');if(nb)term.scrollTop=term.scrollHeight};
-  const hr=E('div');hr.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:6px 8px 0;background:var(--bg)';
-  const bar=E('div');bar.style.cssText='display:flex;gap:8px;align-items:flex-end;padding:8px;background:var(--bg)';
-  const pb=E('button','tbtn','PS');pb.title='PowerShell';pb.style.cssText='height:48px;min-width:48px';pb.setAttribute('aria-label','PowerShell mode');
-  const inp=E('textarea');inp.rows=2;inp.placeholder='Command (Enter = run, Shift+Enter = new line)';inp.autocomplete='off';inp.autocapitalize='none';inp.spellcheck=false;inp.setAttribute('autocorrect','off');
-  inp.style.cssText='flex:1;min-width:0;resize:none;padding:8px 10px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--fg);font:14px/1.4 Consolas,Menlo,monospace';
-  const run=E('button','tbtn fill','Run');run.style.cssText='height:48px;min-width:64px';
-  bar.append(pb,inp,run);w.append(hd,term,hr,bar);document.body.append(w);
+  hd.append(bk,ti,shb,chip);
+  const tw=E('div');tw.style.cssText='flex:1 1 0;min-height:0;background:#0c0c0c;padding:4px 4px 0;overflow:hidden;position:relative';
+  const kr=E('div');kr.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:6px 8px;background:#161616';
+  const fb=E('div','rshf');fb.style.cssText='display:none;gap:6px;align-items:center;padding:6px 8px;background:#161616';
+  w.append(hd,fb,tw,kr);document.body.append(w);
   const paintChip=()=>{chip.textContent=cfg.ip?(cfg.name||cfg.ip):'Choose PC ›'};
-  const paintPs=()=>{pb.classList.toggle('fill',ps);pb.title=ps?'PowerShell is ON':'PowerShell is OFF (cmd.exe)'};
-  const paintHist=()=>{hr.textContent='';hist.slice(0,8).forEach(c=>{const b=E('button','tbtn',c.length>28?c.slice(0,27)+'…':c);b.style.cssText='height:30px;flex:none;font:12px Consolas,monospace';b.onclick=()=>{inp.value=c;inp.focus()};hr.append(b)});hr.style.display=hist.length?'flex':'none'};
-  const b64=s=>{let b='';for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);b+=String.fromCharCode(c&255,c>>8)}return btoa(b)};
-  /* One command = one job on the PC (same id every step, so a resend never runs it twice). Each step is a short long-poll; a dropped connection (Tailscale / Wi-Fi change) is retried instead of losing the answer. */
-  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-  const exec=async(tgt,pw,cmd,usePs,budget,onChunk)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
-    const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');if(onChunk)curId=id;
-    const base='/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&id='+id;
-    const t0=Date.now();let st=0,okAt=t0,n=0,oo=0,oe=0,streamed=false;
-    for(;;){
-      try{const r=await api('POST',base+(st?'&poll=1':'')+'&o='+oo+'&e='+oe,{pass:pw,cmd:line},340000);
-        okAt=Date.now();n=0;
-        if(r.o>=0){streamed=true;oo=r.o;oe=r.e;if(onChunk&&(r.out||r.err))onChunk(r.out,r.err)}   // live mode: r.out / r.err = only the NEW text (offsets advance only after a successful answer, so a lost answer is simply asked again)
-        if(r.done!==false){r.streamed=streamed;return r}st=1}
-      catch(e){const m=e.message||'';
-        if(!/^PC not reachable|^timed out|paused/i.test(m))throw e;   // wrong password, remote commands off, job not found...: no point retrying
-        n++;if(Date.now()-okAt>=(st?150000:30000))throw new Error('Lost contact with the PC ('+m+'). The command may still be running there.');
-        await sleep(Math.min(5000,1000*n))}
-      if(Date.now()-t0>budget)throw new Error('timed out')}};
+  const paintSh=()=>{shb.textContent=cfg.sh==='ps'?'PS':'cmd';shb.title=cfg.sh==='ps'?'PowerShell':'cmd.exe'};
+  const note=(t,c)=>{if(xt)xt.write('\r\n\x1b['+(c||'33')+'m['+t+']\x1b[0m\r\n')};
+  const call=(act,ex,ms)=>api('POST','/api/pcterm?ip='+enc(RSH_S.ip)+'&hport='+(RSH_S.port||8798),Object.assign({pass:RSH_PW,act,sid:RSH_S.sid},ex),ms||30000);
+  const netErr=m=>/^PC not reachable|^timed out|paused/i.test(m||'');
+  /* typed keys -> the PC: one request at a time, numbered (the PC types a number only once, so a repeated request never doubles a key) */
+  const saveSess=()=>{try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}};
+  const stat=t=>{ti.textContent='Remote shell'+(t?' · '+t:'')};
+  /* A batch keeps its number until the PC has taken it: a lost answer is asked again with the same number (typed once). Keys wait here while the network is away (up to 150 s). */
+  const flush=async()=>{if(sending)return;sending=true;const my=gen;
+    try{while(inq.length&&my===gen&&RSH_S){let n=0;inq.forEach(a=>n+=a.length);const u=new Uint8Array(n);let p=0;inq.forEach(a=>{u.set(a,p);p+=a.length});inq=[];
+      let bin='';for(let i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);const sq=++RSH_S.seq,data=btoa(bin),t0=Date.now();saveSess();
+      for(let k=0;my===gen;k++){try{await call('in',{seq:sq,data},20000);stat('');break}
+        catch(e){const m=e.message||'';if(!netErr(m)||Date.now()-t0>150000){inq=[];if(my===gen)note(/^terminal not found|ended/.test(m)?m:'keys not sent: '+m,'31');stat('');break}stat('reconnecting…');await nap(Math.min(3000,500*(k+1)))}}}}
+    finally{sending=false}};
+  const push=s=>{inq.push(new TextEncoder().encode(s));flush()};
+  /* Ctrl / Alt from the key row stay pressed for the NEXT key only (typed on the phone keyboard or tapped in the key row). Ctrl+letter = control code, Alt+key = Esc + key. */
+  const clearMods=()=>{ctrl=alt=false;if(cb)cb.classList.remove('fill');if(ab)ab.classList.remove('fill')};
+  const mod=d=>{if(d.length===1&&(ctrl||alt)){if(ctrl&&d.charCodeAt(0)<128){const c=d.toUpperCase().charCodeAt(0);if(c>=64&&c<=95)d=String.fromCharCode(c-64)}if(alt)d='\x1b'+d;clearMods()}return d};
+  const typed=d=>{push(mod(d))};
+  /* screen output <- the PC: long poll from the byte offset already shown */
+  /* Screen output from the PC: long poll from the byte offset already shown (same offset = same bytes, so nothing is lost or shown twice). Never gives up by itself for 10 min; the phone coming back wakes it. xterm's write callback is the brake: the next read waits until the screen has digested the last chunk, so `dir C:\ /s` cannot freeze the phone. */
+  const loop=async()=>{const g0=gen,my=++lg;let fails=0,okAt=Date.now(),down=false;
+    while(lg===my&&gen===g0&&w.isConnected&&RSH_S){
+      try{const r=await call('read',{o:off,wait:20},45000);if(lg!==my||gen!==g0)return;okAt=Date.now();fails=0;
+        if(down){down=false;stat('')}
+        if(r.reset){if(off>0)toast('Part of the output was too old to keep and is skipped',3500);xt.reset()}
+        if(r.data){const bin=atob(r.data),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+          await new Promise(ok=>xt.write(u,ok));if(lg!==my||gen!==g0)return}
+        off=r.o;
+        if(!r.alive){note('shell ended (exit '+r.code+') - tap the PC name above to start a new one');RSH_S=null;saveSess();return}}
+      catch(e){if(lg!==my||gen!==g0)return;const m=e.message||'';
+        if(!netErr(m)){note(m,'31');if(/wrong password|No password/i.test(m))openConn();if(/^terminal not found/.test(m)){RSH_S=null;saveSess()}stat('');return}
+        fails++;down=true;stat('reconnecting…');
+        if(Date.now()-okAt>600000){note('Lost contact with the PC ('+m+') - tap the PC name above to reconnect','31');stat('offline');return}
+        await nap(Math.min(5000,1000*fails))}}};
+  const mkTerm=()=>{
+    xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,theme:curTheme()});
+    fit=new FitAddon.FitAddon();xt.loadAddon(fit);xt.open(tw);try{fit.fit()}catch(e){}
+    xt.onData(typed);
+    xt.onResize(()=>{clearTimeout(rt);rt=setTimeout(()=>{if(RSH_S)call('resize',{cols:xt.cols,rows:xt.rows},15000).catch(()=>{})},150)});
+    ro=new ResizeObserver(()=>{try{fit.fit();xt.scrollToBottom()}catch(e){}});ro.observe(tw);
+    tw.addEventListener('click',()=>{if(!selMode&&!lpFired)xt.focus();lpFired=false});hookSel()};
+  /* open (or re-attach to) the shell on that PC. Throws the PC's message so the Connect sheet can show it. */
+  const start=async(tgt,pw)=>{
+    await loadXterm();RSH_PW=pw;const sh=cfg.sh==='ps'?'ps':'cmd',port=tgt.port||8798;
+    if(!RSH_S){try{const sv=JSON.parse(localStorage.getItem('ls_rsh_sess')||'null');if(sv&&sv.sid&&sv.ip===tgt.ip&&sv.port===port&&sv.sh===sh)RSH_S=sv}catch(e){}}   // the app was closed: ask the PC for the same shell again
+    if(!(RSH_S&&RSH_S.ip===tgt.ip&&RSH_S.port===port&&RSH_S.sh===sh))RSH_S={ip:tgt.ip,port,sid:Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join(''),sh,seq:0};
+    if(!xt)mkTerm();
+    const my=++gen;lg++;opened=false;inq=[];xt.reset();off=0;
+    let r;try{r=await call('open',{shell:sh,cols:xt.cols||80,rows:xt.rows||24},30000)}catch(e){RSH_S=null;throw e}   // the saved shell id stays: the next try asks for the same shell again
+    if(gen!==my)return;
+    if(!r.existed)RSH_S.seq=0;   // a new shell on the PC (first time, or the PC program was restarted): its key counter starts again
+    else RSH_S.seq=Math.max(RSH_S.seq||0,typeof r.seq==='number'?r.seq:Math.floor(Date.now()/1000));   // same shell: never go below the PC's last typed number (an older PC does not tell it: seconds since 1970 is always above)
+    saveSess();stat('');opened=true;loop()};   // no xt.focus(): the keyboard must not pop up by itself (owner's request); tapping the terminal opens it
   const saveCfg=()=>{try{localStorage.setItem('ls_rsh',JSON.stringify(cfg))}catch(e){}};
-  const saveHist=()=>{try{localStorage.setItem('ls_rsh_hist',JSON.stringify(hist.slice(0,30)))}catch(e){}};
+  /* ---- part 2: select / copy / paste / clear (plan: long-press = word, handles, menu) ----
+     Long-press on the terminal -> selection mode: a transparent layer `sl` (no scrolling while on) + two round handles + a menu (Copy, Paste, Select all, Clear, Done).
+     Cells come from the .xterm-screen rect / cols / rows; rows are absolute buffer rows (viewportY + row), selection = xt.select(col, absRow, len). */
+  const sl=E('div');sl.style.cssText='position:absolute;inset:0;z-index:3;display:none;touch-action:none';tw.append(sl);
+  const mn=E('div');mn.style.cssText='position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:5;display:none;gap:2px;padding:4px;background:#2b2b2b;border:1px solid #444;border-radius:12px;max-width:96%;overflow-x:auto';tw.append(mn);
+  const mkH=()=>{const h=E('div');h.style.cssText='position:absolute;z-index:4;width:24px;height:24px;margin:-2px 0 0 -12px;border-radius:50%;background:#4a9eff;border:2px solid #fff;box-sizing:border-box;touch-action:none;display:none';tw.append(h);return h};
+  const hS=mkH(),hE=mkH();
+  let selMode=false,sS=null,sE=null,dr=null,selTm=0,selDy=0,lx=0,ly=0,lpT=0,lpX=0,lpY=0,lpFired=false;
+  const geo=()=>{const sc=tw.querySelector('.xterm-screen');if(!sc||!xt)return null;const r=sc.getBoundingClientRect();return{r,cw:r.width/xt.cols,ch:r.height/xt.rows}};
+  const cellAt=(x,y)=>{const g=geo();if(!g)return null;
+    return{c:Math.max(0,Math.min(xt.cols-1,Math.floor((x-g.r.left)/g.cw))),r:xt.buffer.active.viewportY+Math.max(0,Math.min(xt.rows-1,Math.floor((y-g.r.top)/g.ch)))}};
+  const placeH=()=>{const g=geo();if(!g||!sS){hS.style.display=hE.style.display='none';return}
+    const t=tw.getBoundingClientRect(),vy=xt.buffer.active.viewportY;
+    const put=(h,c,rw)=>{if(rw<0||rw>=xt.rows){h.style.display='none';return}h.style.display='block';h.style.left=(g.r.left-t.left+c*g.cw)+'px';h.style.top=(g.r.top-t.top+(rw+1)*g.ch)+'px'};
+    put(hS,sS.c,sS.r-vy);put(hE,sE.c+1,sE.r-vy)};
+  const setRange=(a,b)=>{if(b.r<a.r||(b.r===a.r&&b.c<a.c)){const t=a;a=b;b=t}sS=a;sE=b;xt.select(a.c,a.r,(b.r-a.r)*xt.cols+b.c-a.c+1);placeH()};
+  const selWord=p=>{const ln=xt.buffer.active.getLine(p.r);if(!ln){setRange(p,p);return}const t=ln.translateToString(false);
+    if(!t[p.c]||/\s/.test(t[p.c])){setRange(p,p);return}
+    let a=p.c,b=p.c;while(a>0&&!/\s/.test(t[a-1]))a--;while(b<t.length-1&&!/\s/.test(t[b+1]))b++;setRange({c:a,r:p.r},{c:b,r:p.r})};
+  const selOff=()=>{selMode=false;sl.style.display=mn.style.display='none';hS.style.display=hE.style.display='none';sS=sE=dr=null;clearInterval(selTm);selDy=0;if(xt)xt.clearSelection()};
+  const selOn=p=>{selMode=true;lpFired=true;sl.style.display='block';mn.style.display='flex';xt.blur();selWord(p);try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}};
+  /* where the finger is, for a handle: the cell just above-left / above-right of it (the finger covers the text) */
+  const upd=()=>{if(!dr)return;let p;
+    if(dr.h){const g=geo();if(!g)return;p=cellAt(lx+(dr.h===hS?1:-1)*g.cw*.5,ly-g.ch*.8)}else p=cellAt(lx,ly);
+    if(p)setRange(dr.anchor,p)};
+  const mv=e=>{if(!dr)return;lx=e.clientX;ly=e.clientY;
+    if(!dr.h){const p=cellAt(lx,ly);if(p&&(p.c!==dr.anchor.c||p.r!==dr.anchor.r))dr.moved=true}
+    if(dr.h||dr.moved)upd();
+    const r=tw.getBoundingClientRect();selDy=ly<r.top+28?-1:ly>r.bottom-28?1:0};
+  const up=()=>{clearInterval(selTm);selDy=0;if(dr&&!dr.h&&!dr.moved)selWord(dr.anchor);dr=null};
+  const dn=(e,h)=>{e.preventDefault();e.stopPropagation();try{e.currentTarget.setPointerCapture(e.pointerId)}catch(x){}
+    lx=e.clientX;ly=e.clientY;
+    dr=h?{h,anchor:h===hS?sE:sS,moved:true}:{h:null,anchor:cellAt(lx,ly),moved:false};
+    clearInterval(selTm);selTm=setInterval(()=>{if(dr&&selDy&&xt){xt.scrollLines(selDy);upd()}},80)};
+  sl.onpointerdown=e=>{if(xt)dn(e,null)};hS.onpointerdown=e=>dn(e,hS);hE.onpointerdown=e=>dn(e,hE);
+  [sl,hS,hE].forEach(o=>{o.onpointermove=mv;o.onpointerup=up;o.onpointercancel=up});
+  /* long-press (about 0.45 s without moving) on the terminal starts selection mode */
+  tw.addEventListener('pointerdown',e=>{if(selMode||!xt||e.target.closest('button'))return;lpX=e.clientX;lpY=e.clientY;clearTimeout(lpT);
+    lpT=setTimeout(()=>{const p=cellAt(lpX,lpY);if(p&&!selMode)selOn(p)},450)},true);
+  tw.addEventListener('pointermove',e=>{if(lpT&&Math.hypot(e.clientX-lpX,e.clientY-lpY)>10){clearTimeout(lpT);lpT=0}},true);
+  ['pointerup','pointercancel'].forEach(n=>tw.addEventListener(n,()=>{clearTimeout(lpT);lpT=0},true));
+  tw.addEventListener('contextmenu',e=>e.preventDefault());
+  const copySel=()=>{const t=xt?xt.getSelection():'';if(!t){toast('Nothing selected',2500);return false}peCopy(t);xt.clearSelection();return true};
+  const askPaste=()=>{   // the WebView would not let the app read the clipboard: paste into this box by hand (long-press > Paste)
+    const ov=E('div');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:6';
+    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;background:var(--bg);border-radius:20px;padding:16px';
+    const ta=E('textarea','tf');ta.placeholder='Long-press here and choose Paste';ta.style.cssText='width:100%;height:120px;margin:8px 0;font:13px Consolas,Menlo,monospace';
+    const acts=E('div');acts.style.cssText='display:flex;gap:8px';
+    const cn=E('button','tbtn','Cancel'),ok=E('button','tbtn fill','Paste');cn.style.cssText=ok.style.cssText='flex:1;height:46px';acts.append(cn,ok);
+    cd.append(E('b','','Paste into the shell'),ta,acts);ov.append(cd);w.append(ov);setTimeout(()=>ta.focus(),50);
+    cn.onclick=()=>ov.remove();ok.onclick=()=>{const t=ta.value;ov.remove();sendPaste(t)}};
+  const sendPaste=async t=>{t=String(t||'');if(!t)return;if(!RSH_S||!xt){toast('Not connected to a shell');return}
+    if(t.length>100000){toast('Too long to paste (over 100,000 characters)',4000);return}
+    const n=t.replace(/\r\n?/g,'\n').replace(/\n$/,'').split('\n').length;
+    if(n>1&&!await dlg({title:'Paste '+n+' lines?',msg:'Every line is run on the PC as soon as it is pasted.',ok:'Paste'}))return;
+    clearMods();
+    xt.paste(t)};
+  const kb=(l,fn)=>{const b=E('button','tbtn',l);b.style.cssText='height:34px;min-width:44px;flex:none;font:13px Consolas,Menlo,monospace';b.onpointerdown=e=>e.preventDefault();b.onclick=fn;return b};
+  mn.append(kb('Copy',()=>{if(copySel())selOff()}),
+    kb('Paste',async()=>{let t='';selOff();try{t=await navigator.clipboard.readText()}catch(e){askPaste();return}if(!t){toast('The clipboard is empty');return}sendPaste(t)}),
+    kb('Select all',()=>{if(xt)setRange({c:0,r:0},{c:xt.cols-1,r:xt.buffer.active.length-1})}),
+    kb('Clear',()=>{selOff();if(xt)xt.clear()}),   // clears what the phone shows (scroll-back); the PC shell is untouched
+    kb('Done',selOff));
+  /* ---- part 3: key row (Esc Tab Ctrl Alt, arrows, Home End PgUp PgDn, | \ ~ /, ^C, Backspace, Del). Arrows, PgUp / PgDn, Backspace, Del repeat while held.
+     With Ctrl / Alt armed the cursor keys send the xterm modifier form (ESC [ 1 ; m A, ESC [ n ; m ~; m = 1 + 2 Alt + 4 Ctrl). */
+  const KEYS=[['Esc',{l:'\x1b'}],['Tab',{l:'\t'}],['Ctrl',{m:'c'}],['Alt',{m:'a'}],
+    ['↑',{c:'A',r:1}],['↓',{c:'B',r:1}],['←',{c:'D',r:1}],['→',{c:'C',r:1}],
+    ['Home',{c:'H'}],['End',{c:'F'}],['PgUp',{n:5,r:1}],['PgDn',{n:6,r:1}],
+    ['|',{l:'|'}],['\\',{l:'\\'}],['~',{l:'~'}],['/',{l:'/'}],
+    ['^C',{cc:1}],['⌫',{l:'\x7f',r:1}],['Del',{n:3,r:1}]];
+  const keySeq=k=>{const m=1+(alt?2:0)+(ctrl?4:0);let o;
+    if(k.c)o=m>1?'\x1b[1;'+m+k.c:'\x1b['+k.c;
+    else if(k.n)o=m>1?'\x1b['+k.n+';'+m+'~':'\x1b['+k.n+'~';
+    else o=mod(k.l);
+    if(k.c||k.n)clearMods();return o};
+  KEYS.forEach(([l,k])=>{const b=kb(l,null);if(l==='Home'||l==='End'||l==='PgUp'||l==='PgDn')b.style.minWidth='52px';
+    if(k.m){if(k.m==='c')cb=b;else ab=b;
+      b.onclick=()=>{if(k.m==='c')ctrl=!ctrl;else alt=!alt;b.classList.toggle('fill',k.m==='c'?ctrl:alt)};kr.append(b);return}
+    if(k.cc){b.onclick=()=>{if(xt&&xt.hasSelection()){if(copySel()&&selMode)selOff();return}clearMods();push('\x03')};kr.append(b);return}   // ^C: copy when text is selected, else stop the command
+    let t1=0,t2=0;const stop=()=>{clearTimeout(t1);clearInterval(t2)};
+    b.onpointerdown=e=>{e.preventDefault();stop();const q=keySeq(k);push(q);
+      if(k.r)t1=setTimeout(()=>{t2=setInterval(()=>{if(inq.length<20)push(q)},70)},400)};   // held = repeats (the same bytes; not while 20 are still waiting to be sent)
+    b.onpointerup=b.onpointercancel=b.onpointerleave=stop;kr.append(b)});
+  const hookSel=()=>{tw.style.background=curTheme().background;xt.onScroll(placeH);
+    xt.attachCustomKeyEventHandler(e=>{   // real keyboard: Ctrl+C copies when text is selected, otherwise it stops the command
+      if(e.type==='keydown'&&e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='c'||e.key==='C')&&xt.hasSelection()){copySel();if(selMode)selOff();return false}return true})};
+  /* ---- part 5: text size (pinch), find, colours, save / share the screen text, shell choice ---- */
+  const THEMES={};
+  THEMES['Campbell']={background:'#0c0c0c',foreground:'#cccccc',cursor:'#ffffff',black:'#0c0c0c',red:'#c50f1f',green:'#13a10e',yellow:'#c19c00',blue:'#0037da',magenta:'#881798',cyan:'#3a96dd',white:'#cccccc',brightBlack:'#767676',brightRed:'#e74856',brightGreen:'#16c60c',brightYellow:'#f9f1a5',brightBlue:'#3b78ff',brightMagenta:'#b4009e',brightCyan:'#61d6d6',brightWhite:'#f2f2f2'};
+  THEMES['Classic black']={background:'#000000',foreground:'#c0c0c0',cursor:'#c0c0c0',black:'#000000',red:'#800000',green:'#008000',yellow:'#808000',blue:'#000080',magenta:'#800080',cyan:'#008080',white:'#c0c0c0',brightBlack:'#808080',brightRed:'#ff0000',brightGreen:'#00ff00',brightYellow:'#ffff00',brightBlue:'#0000ff',brightMagenta:'#ff00ff',brightCyan:'#00ffff',brightWhite:'#ffffff'};
+  THEMES['PowerShell blue']=Object.assign({},THEMES['Classic black'],{background:'#012456',foreground:'#eeedf0',cursor:'#eeedf0'});
+  const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}},lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+  const curTheme=()=>THEMES[lsGet('ls_rsh_th')]||THEMES['Campbell'];
+  const fsv=()=>{const n=parseInt(lsGet('ls_rsh_fs'),10);return n>=8&&n<=30?n:13};
+  const setTheme=n=>{if(!THEMES[n])return;lsSet('ls_rsh_th',n);tw.style.background=THEMES[n].background;if(xt)xt.options.theme=THEMES[n]};
+  const setFs=n=>{n=Math.max(8,Math.min(30,Math.round(n)));if(n===fsv()&&xt&&xt.options.fontSize===n)return;lsSet('ls_rsh_fs',String(n));if(xt){xt.options.fontSize=n;try{fit.fit()}catch(e){}placeH()}};
+  /* pinch with two fingers = text size (touch events, so the page itself never zooms) */
+  let pd=0,pfs=13;const dist=e=>Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  tw.addEventListener('touchstart',e=>{if(e.touches.length===2){clearTimeout(lpT);lpT=0;pd=dist(e);pfs=fsv()}},{passive:true});
+  tw.addEventListener('touchmove',e=>{if(e.touches.length===2&&pd){e.preventDefault();setFs(pfs*dist(e)/pd)}},{passive:false});
+  ['touchend','touchcancel'].forEach(n=>tw.addEventListener(n,e=>{if(e.touches.length<2)pd=0},{passive:true}));
+  /* Find: searches the whole scroll-back; Turkish I / İ / ı count as the same letter as i; newest match first */
+  let fm=[],fi=-1;
+  const fold=t=>t.replace(/[İIı]/g,'i').toLowerCase();
+  const fin=E('input','tf');fin.placeholder='Find on the screen';fin.style.cssText='flex:1;min-width:0;height:36px;margin:0';fin.autocomplete='off';fin.autocapitalize='none';
+  const fcnt=E('small','');fcnt.style.cssText='color:#aaa;min-width:44px;text-align:center;font:12px Consolas,Menlo,monospace';
+  const fgo=i=>{if(!fm.length)return;fi=(i+fm.length)%fm.length;const m=fm[fi];xt.select(m.c,m.r,m.n);xt.scrollToLine(Math.max(0,m.r-(xt.rows>>1)));fcnt.textContent=(fi+1)+'/'+fm.length};
+  const fcalc=()=>{fm=[];fi=-1;if(!xt)return;const q=fold(fin.value);xt.clearSelection();if(!q){fcnt.textContent='';return}
+    const b=xt.buffer.active;for(let r=0;r<b.length&&fm.length<5000;r++){const l=b.getLine(r);if(!l)continue;const t=fold(l.translateToString(true));let k=t.indexOf(q);while(k>=0&&fm.length<5000){fm.push({c:k,r,n:q.length});k=t.indexOf(q,k+q.length)}}
+    if(!fm.length){fcnt.textContent='0';return}fgo(fm.length-1)};
+  const closeFind=()=>{fb.style.display='none';fm=[];fi=-1;fin.blur();if(xt)xt.clearSelection()};
+  const openFind=()=>{selOff();fb.style.display='flex';fin.focus();if(fin.value)fcalc()};
+  fin.oninput=fcalc;fin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();fgo(fi+(e.shiftKey?-1:1))}};
+  fb.append(fin,fcnt,kb('▲',()=>fgo(fi-1)),kb('▼',()=>fgo(fi+1)),kb('✕',closeFind));
+  /* the whole screen + scroll-back as text (wrapped lines joined, trailing empty lines cut) */
+  const screenText=()=>{if(!xt)return'';const b=xt.buffer.active,o=[];for(let r=0;r<b.length;r++){const l=b.getLine(r);if(!l)continue;const t=l.translateToString(true);if(l.isWrapped&&o.length)o[o.length-1]+=t;else o.push(t)}
+    while(o.length&&!o[o.length-1].trim())o.pop();return o.join('\n')};
+  const stamp=()=>{const d=new Date(),q=n=>String(n).padStart(2,'0');return d.getFullYear()+q(d.getMonth()+1)+q(d.getDate())+'-'+q(d.getHours())+q(d.getMinutes())};
+  const saveText=()=>{const t=screenText();if(!t){toast('The screen is empty');return}const name='shell-'+stamp()+'.txt';
+    if(window.LSAndroid&&LSAndroid.saveText){try{LSAndroid.saveText(name,t);return}catch(e){}}   // native bridge, if a later build has one
+    try{const a=E('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain;charset=utf-8'}));a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);toast('Saving '+name,3000)}
+    catch(e){peCopy(t);toast('Could not make a file: the text is copied instead',4000)}};
+  const shareText=async()=>{const t=screenText();if(!t){toast('The screen is empty');return}
+    if(navigator.share){try{await navigator.share({title:'Remote shell',text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
+    peCopy(t);toast('Sharing is not available here: the screen text is copied',4000)};
+  /* the ⋮ menu */
+  const mb=E('button','tbtn','⋮');mb.style.cssText='height:36px;min-width:40px;font-size:20px';mb.setAttribute('aria-label','More');hd.append(mb);
+  mb.onclick=()=>{const old=w.querySelector('.rshm');if(old){old.remove();return}
+    const ov=E('div','rshm');ov.style.cssText='position:absolute;inset:0;background:#0007;z-index:7;display:flex;align-items:flex-start;justify-content:flex-end;padding:52px 8px 0';
+    const cd=E('div');cd.style.cssText='width:min(320px,100%);background:var(--bg);border-radius:16px;padding:8px;box-shadow:0 6px 24px #0008';
+    const it=(t,fn,keep)=>{const b=E('button','set',t);b.style.cssText='width:100%;text-align:left;margin:2px 0';b.onclick=()=>{if(!keep)ov.remove();fn()};return b};
+    const sz=E('div');sz.style.cssText='display:flex;gap:6px;align-items:center;margin:4px 0';const sv=E('small','',fsv()+' pt');sv.style.cssText='flex:1;text-align:center';
+    const mkz=(l,d)=>{const b=E('button','tbtn',l);b.style.cssText='flex:1;height:40px';b.onclick=()=>{setFs(fsv()+d);sv.textContent=fsv()+' pt'};return b};
+    sz.append(E('small','','Text size'),mkz('A−',-1),sv,mkz('A+',1));
+    const th=E('div');th.style.cssText='display:flex;flex-direction:column;gap:2px;margin:4px 0';
+    const paintTh=()=>{th.textContent='';Object.keys(THEMES).forEach(n=>{const b=E('button','set',(curTheme()===THEMES[n]?'● ':'○ ')+n);b.style.cssText='width:100%;text-align:left;background:'+THEMES[n].background+';color:'+THEMES[n].foreground;b.onclick=()=>{setTheme(n);paintTh()};th.append(b)})};paintTh();
+    cd.append(it('Find…',openFind),sz,E('small','','Colours'),th,it('Save screen as a file',saveText),it('Share screen text',shareText));
+    ov.append(cd);ov.onclick=e=>{if(e.target===ov)ov.remove()};w.append(ov)};
   /* ---- Connect sheet: PC list (found on Wi-Fi + SMB devices incl. Tailscale), own address, password, Remember ---- */
   const openConn=()=>{
     const old=w.querySelector('.rshc');if(old)old.remove();
-    const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px';
+    const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:2';
     const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;overscroll-behavior:contain;background:var(--bg);border-radius:20px;padding:16px';
     const sm=(t)=>{const s=E('small','',t);s.style.cssText='display:block;color:var(--mut);margin:10px 0 4px 4px';return s};
     const fld=(ph,type)=>{const i=E('input','tf');i.placeholder=ph;i.type=type||'text';i.style.cssText='height:46px;margin:0;width:100%';i.autocomplete='off';i.autocapitalize='none';return i};
@@ -5604,11 +5778,13 @@ function openRemoteShell(){
     const pcl=E('div'),st=E('div','dnote','Looking for PCs…');st.style.margin='6px 0';
     const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip||'';
     const pw=fld('Password','password');pw.value=RSH_PW||'';
+    let shSel=cfg.sh==='ps'?'ps':'cmd';const shr=E('div');shr.style.cssText='display:flex;gap:8px;margin-top:4px';
+    const paintShr=()=>{shr.textContent='';[['cmd','cmd (Command Prompt)'],['ps','PowerShell']].forEach(([v,l])=>{const b=E('button','tbtn'+(shSel===v?' fill':''),l);b.style.cssText='flex:1;height:44px';b.onclick=()=>{shSel=v;paintShr()};shr.append(b)})};paintShr();
     const rl=E('label');rl.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px';const rc=E('input');rc.type='checkbox';rc.checked=!!cfg.rem;rl.append(rc,E('span','','Remember password'));
     const er=E('div');er.style.cssText='color:var(--err);margin:10px 4px 0;min-height:18px;white-space:pre-wrap';
     const acts=E('div');acts.style.cssText='display:flex;gap:8px;margin-top:12px';
     const cn=E('button','tbtn','Cancel'),go=E('button','tbtn fill','Connect');cn.style.cssText=go.style.cssText='flex:1;height:46px';acts.append(cn,go);
-    cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,rl,er,acts);ov.append(cd);w.append(ov);
+    cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,sm('Shell'),shr,rl,er,acts);ov.append(cd);w.append(ov);
     let sel=cfg.fromList?{ip:cfg.ip,name:cfg.name,port:cfg.port}:null,list=[];
     const showList=()=>{pcl.textContent='';list.forEach(p=>{const b=E('button','set'),t=E('div','t');b.style.cssText='width:100%;text-align:left'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
       t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value=p.ip;showList()};pcl.append(b)})};
@@ -5623,38 +5799,22 @@ function openRemoteShell(){
       if(!tgt){er.textContent='Tap a PC or type an address';return}
       if(!pw.value){er.textContent='Enter the password you saved on the PC';return}
       go.disabled=true;go.textContent='Connecting…';
-      try{const r=await exec(tgt,pw.value,'hostname',false,40000);
-        RSH_PW=pw.value;cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:''};saveCfg();paintChip();
-        ov.remove();add('Connected to '+((r.out||'').trim()||tgt.name)+' ('+tgt.ip+')','ok')}
+      try{if(RSH_S&&RSH_S.sh!==shSel){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}   // another shell chosen: the old one is closed on the PC
+        cfg.sh=shSel;paintSh();await start(tgt,pw.value);
+        cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:'',sh:cfg.sh};saveCfg();paintChip();
+        ov.remove()}
       catch(e){const m=e.message,hint='\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.';
         er.textContent=m==='timed out'?'No answer from the PC.'+hint:/^(PC not reachable|Lost contact)/.test(m)?m+hint:m}
       finally{go.disabled=false;go.textContent='Connect'}}};
-  /* ---- running a command ---- */
-  const doRun=async()=>{
-    if(busy&&curId){const t=inp.value.replace(/\r?\n+$/,'');if(!t)return;   // a command is running: the text is the ANSWER to its prompt (Y/N ...), not a new command
-      add(t,'p');inp.value='';
-      try{await api('POST','/api/pcexec?ip='+enc(cfg.ip)+'&hport='+(cfg.port||8798)+'&id='+curId+'&send=1',{pass:RSH_PW,in:t},30000)}
-      catch(e){add('⚠ '+e.message,'e')}
-      return}
-    const cmd=inp.value.trim();if(!cmd||busy)return;
-    if(!cfg.ip||!RSH_PW){openConn();return}
-    hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
-    const kb=document.activeElement===inp;   // keyboard was open (Enter pressed): keep it; Run button tapped: leave it closed
-    busy=true;run.textContent='Send';inp.placeholder='Answer to the running command (Y, N, Enter…)';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();lv=null;
-    try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000,(o,e)=>{live(o,'o');live(e,'e')});
-      if(!r.streamed){if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));   // old PC program: the whole output arrives at the end
-        if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e')}
-      add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}
-    catch(e){const m=e.message;add('⚠ '+(m==='timed out'?'No answer from the PC (the command may still be running there).':m),'e');if(/wrong password|No password/i.test(m))openConn()}
-    finally{lv=null;busy=false;curId='';run.disabled=false;run.textContent='Run';inp.placeholder='Command (Enter = run, Shift+Enter = new line)';if(kb)inp.focus()}};
-  run.onclick=doRun;
-  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doRun()}
-    else if(e.key==='ArrowUp'&&!inp.value.includes('\n')&&hist.length){e.preventDefault();hi=Math.min(hi+1,hist.length-1);inp.value=hist[hi]}
-    else if(e.key==='ArrowDown'&&hi>=0){e.preventDefault();hi--;inp.value=hi>=0?hist[hi]:''}};
-  pb.onclick=()=>{ps=!ps;paintPs();toast(ps?'PowerShell mode ON':'PowerShell mode OFF (cmd.exe)',1500)};
-  clr.onclick=()=>{term.textContent=''};chip.onclick=openConn;
-  paintChip();paintPs();paintHist();
-  if(cfg.ip&&RSH_PW){add('PC: '+(cfg.name||cfg.ip)+'  ·  type a command below','m')}else openConn()}
+  shb.onclick=async()=>{if(!cfg.ip||!RSH_PW){openConn();return}
+    const to=cfg.sh==='ps'?'cmd':'ps';
+    if(!await dlg({title:'Switch to '+(to==='ps'?'PowerShell':'cmd')+'?',msg:'The shell that is open now is closed and a new one starts.',ok:'Switch'}))return;
+    if(RSH_S){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}
+    cfg.sh=to;saveCfg();paintSh();
+    try{await start(cfg,RSH_PW)}catch(e){toast(e.message,4000)}};
+  chip.onclick=openConn;
+  paintChip();paintSh();
+  if(cfg.ip&&RSH_PW){start(cfg,RSH_PW).catch(e=>{toast(e.message,5000);if(/wrong password|No password|off on this PC|^PC not reachable|^timed out/i.test(e.message||''))openConn()})}else openConn()}
 
 function drawerRender(){
   $('#dtabs').textContent='';
