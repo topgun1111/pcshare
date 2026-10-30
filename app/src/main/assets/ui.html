@@ -5489,9 +5489,11 @@ function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
   let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
-  let busy=false,ps=false,hi=-1;
-  const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9000;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
-  const close=()=>{w.remove()};w._close=close;
+  let busy=false,ps=false,hi=-1,wt=0;
+  const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:7;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
+  const close=()=>{clearInterval(wt);w.remove()};w._close=close;
+  const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
+  wt=setInterval(()=>{if(!w.isConnected){clearInterval(wt);return}if(sig()!==s0)close()},300);
   const hd=E('div');hd.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 8px 8px 4px;background:var(--bar);color:var(--onbar)';
   const bk=E('button','ibtn');bk.setAttribute('aria-label','Back');bk.append(ic('back'));bk.onclick=close;bk.style.color='inherit';
   const ti=E('b','','Remote shell');ti.style.cssText='font-size:18px;flex:1';
@@ -5525,7 +5527,7 @@ function openRemoteShell(){
     const h=E('h3','','Connect to a PC');h.style.margin='0 0 4px';
     const nt=E('div','dnote','On the PC: open the Phone Explorer window, save a password and press “Remote commands: ON”. Same Wi-Fi or Tailscale.');
     const pcl=E('div'),st=E('div','dnote','Looking for PCs…');st.style.margin='6px 0';
-    const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip&&!cfg.fromList?cfg.ip:'';
+    const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip||'';
     const pw=fld('Password','password');pw.value=RSH_PW||'';
     const rl=E('label');rl.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px';const rc=E('input');rc.type='checkbox';rc.checked=!!cfg.rem;rl.append(rc,E('span','','Remember password'));
     const er=E('div');er.style.cssText='color:var(--err);margin:10px 4px 0;min-height:18px;white-space:pre-wrap';
@@ -5534,15 +5536,16 @@ function openRemoteShell(){
     cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,rl,er,acts);ov.append(cd);w.append(ov);
     let sel=cfg.fromList?{ip:cfg.ip,name:cfg.name,port:cfg.port}:null,list=[];
     const showList=()=>{pcl.textContent='';list.forEach(p=>{const b=E('button','set'),t=E('div','t');b.style.cssText='width:100%;text-align:left'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
-      t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value='';showList()};pcl.append(b)})};
+      t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value=p.ip;showList()};pcl.append(b)})};
+    ad.oninput=()=>{if(sel&&ad.value.trim()!==sel.ip){sel=null;showList()}};
     cn.onclick=()=>{ov.remove();if(!cfg.ip)close()};ov.onclick=e=>{if(e.target===ov)cn.onclick()};
     (async()=>{let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
       try{const seen=new Set(a.map(x=>x.ip)),ps2=(await api('GET','/api/peers',null,5000))||[];
         ps2.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h2=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
           if(h2&&!seen.has(h2)){seen.add(h2);a.push({ip:h2,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798})}})}catch(e){}
       if(!ov.isConnected)return;list=a;st.textContent=a.length?'Tap one, or type an address below':'No PC found. Type its address below (Tailscale IP or name)';showList()})();
-    go.onclick=async()=>{er.textContent='';const addr=ad.value.trim(),tgt=addr?{ip:addr,name:addr,port:8798,fromList:false}:(sel?{ip:sel.ip,name:sel.name,port:sel.port||8798,fromList:true}:null);
-      if(!tgt){er.textContent='Pick a PC or type an address';return}
+    go.onclick=async()=>{er.textContent='';const addr=ad.value.trim(),tgt=addr?(sel&&sel.ip===addr?{ip:sel.ip,name:sel.name,port:sel.port||8798,fromList:true}:{ip:addr,name:addr,port:8798,fromList:false}):null;
+      if(!tgt){er.textContent='Tap a PC or type an address';return}
       if(!pw.value){er.textContent='Enter the password you saved on the PC';return}
       go.disabled=true;go.textContent='Connecting…';
       try{const r=await exec(tgt,pw.value,'hostname',false,20000);
