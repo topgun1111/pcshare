@@ -129,12 +129,13 @@ object PePc {
      * Result of a remote command run on the PC through /exec. [done] is false while the command still runs on the PC
      * (the screen then asks again with the same id and poll = true).
      */
-    class ExecResult(val out: String, val err: String, val code: Int, val truncated: Boolean, val done: Boolean = true)
+    class ExecResult(val out: String, val err: String, val code: Int, val truncated: Boolean, val done: Boolean = true, val o: Long = -1, val e: Long = -1)
 
     private fun result(st: Int, o: JSONObject?): ExecResult {
         if (o == null) throw IOException("PC answered something unexpected (HTTP $st) - is another program using that port?")
         if (st != 200) throw PcError(o.optString("error", "PC answered $st"))
-        return ExecResult(o.optString("out", ""), o.optString("err", ""), o.optInt("code", -1), o.optBoolean("truncated", false), o.optBoolean("done", true))
+        return ExecResult(o.optString("out", ""), o.optString("err", ""), o.optInt("code", -1), o.optBoolean("truncated", false), o.optBoolean("done", true),
+            o.optLong("o", -1), o.optLong("e", -1))   // o / e = stdout / stderr bytes received so far (live mode); -1 = old PC program: the whole output comes with done
     }
 
     /** 2 when the PC program runs commands as jobs (this app polls them), 1 for the old one (one request that waits for the end). */
@@ -151,14 +152,15 @@ object PePc {
      * One step of a remote command. The screen calls it again until [ExecResult.done]: the first call (poll = false) starts
      * the command under [id], every later one (poll = true) only asks how it is going, so each call is a short request
      * (the PC answers within ~20 s) instead of one connection that sits idle for minutes and gets cut by Tailscale / Wi-Fi.
-     * The same id never runs the command twice. Throws "PC not reachable (...)" when no answer came (safe to call again),
+     * [offOut] / [offErr] = bytes of stdout / stderr already received: the PC answers with the NEW output only (live view) and returns
+     * as soon as a new line exists. Asking again with the same offsets repeats the same answer. The same id never runs the command twice. Throws "PC not reachable (...)" when no answer came (safe to call again),
      * and the PC's own message when it refused (wrong password, remote commands off ...).
      */
-    fun exec(ip0: String, hport0: Int, pass: String, cmd: String, id: String = "", poll: Boolean = false): ExecResult {
+    fun exec(ip0: String, hport0: Int, pass: String, cmd: String, id: String = "", poll: Boolean = false, offOut: Long = 0, offErr: Long = 0): ExecResult {
         val (ip, hport) = target(ip0, hport0)
         val v = if (id.isEmpty()) 1 else version(ip, hport)
         if (v >= 2) {
-            val form = "id=${e(id)}&wait=20&pass=${e(pass)}" + if (poll) "&poll=1" else "&cmd=${e(cmd)}"   // in the body: no URL length limit
+            val form = "id=${e(id)}&wait=20&o=$offOut&e=$offErr&pass=${e(pass)}" + if (poll) "&poll=1" else "&cmd=${e(cmd)}"   // in the body: no URL length limit
             val (st, o) = try { call(ip, hport, "/exec", form, 45_000, 8_000, 3, true) } catch (x: Exception) { throw unreachable(x) }
             return result(st, o)
         }

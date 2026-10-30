@@ -1290,7 +1290,7 @@ async function fillCounts(dev,path){if(dev!=='local')return;
     let any=false;const ch=new Set();S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;ch.add(i);if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});if(any&&window.nlPatch)nlPatch(ch);
     const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
     if(any&&S.sort==='size')render()}catch(e){}}
-async function load(){try{return await loadMain()}finally{if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
+async function load(){if(window.RSH_X)RSH_X();try{return await loadMain()}finally{if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
 async function loadMain(){
   clearTimeout(loadT);
   if(galRoot()){useLSC=false;S.items=[];S.err='';S.sel.clear();if(!S.lost)banner('');render();return}   // gallery = albums from MediaStore only, no file-manager listing
@@ -5316,7 +5316,7 @@ function hmFavMenu(anchor){
   m.style.maxHeight=room+'px';
   if(up){m.style.bottom=(vh-r.top+8)+'px';m.style.transformOrigin='bottom right'}else{m.style.top=(r.bottom+8)+'px';m.style.transformOrigin='top right'}
 }
-function homeShow(){
+function homeShow(){if(window.RSH_X)RSH_X();
   const o=$('#home');if(o.style.display==='flex')return;
   drawerClose();o.textContent='';o.style.display='flex';
   const hb=E('div','hb'),mb=E('button');mb.setAttribute('aria-label','Menu');mb.append(ic('menu'));mb.onclick=drawerOpen;
@@ -5491,9 +5491,10 @@ function openRemoteShell(){
   let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
   let busy=false,ps=false,hi=-1,wt=0;
   const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
-  const close=()=>{clearInterval(wt);w.remove()};w._close=close;
+  const close=()=>{clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;w.remove()};w._close=close;
   const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
-  wt=setInterval(()=>{if(!w.isConnected){clearInterval(wt);return}if(sig()!==s0)close()},300);
+  const chk=()=>{if(!w.isConnected){clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;return}if(sig()!==s0)close()};window.RSH_X=chk;
+  wt=setInterval(chk,150);   /* fallback; load() / homeShow() call chk at once */
   const hd=E('div');hd.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 8px 8px 4px;background:var(--bar);color:var(--onbar)';
   const bk=E('button','ibtn');bk.setAttribute('aria-label','Back');bk.append(ic('back'));bk.onclick=close;bk.style.color='inherit';
   const ti=E('b','','Remote shell');ti.style.cssText='font-size:18px;flex:1';
@@ -5502,6 +5503,11 @@ function openRemoteShell(){
   hd.append(bk,ti,chip,clr);
   const term=E('div');term.style.cssText='flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:10px 12px;background:#101418;color:#d8dee4;font:13px/1.45 Consolas,Menlo,monospace;-webkit-user-select:text;user-select:text';
   const add=(t,k)=>{const d=E('div','',t);d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='p'?';color:#7fd1ff;font-weight:bold':k==='e'?';color:#ff8a80':k==='m'?';color:#8b98a5;font-size:12px':k==='ok'?';color:#8be28b':'');term.append(d);term.scrollTop=term.scrollHeight};
+  /* live output: chunks of one stream (stdout 'o' / stderr 'e') are appended to one block while the command runs */
+  let lv=null;
+  const live=(t,k)=>{if(!t)return;const nb=term.scrollHeight-term.scrollTop-term.clientHeight<60;
+    if(!lv||lv.k!==k){const d=E('div');d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='e'?';color:#ff8a80':'');term.append(d);lv={k,d,raw:''}}
+    lv.raw+=t;lv.d.textContent=lv.raw.replace(/\n+$/,'');if(nb)term.scrollTop=term.scrollHeight};
   const hr=E('div');hr.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:6px 8px 0;background:var(--bg)';
   const bar=E('div');bar.style.cssText='display:flex;gap:8px;align-items:flex-end;padding:8px;background:var(--bg)';
   const pb=E('button','tbtn','PS');pb.title='PowerShell';pb.style.cssText='height:48px;min-width:48px';pb.setAttribute('aria-label','PowerShell mode');
@@ -5515,13 +5521,15 @@ function openRemoteShell(){
   const b64=s=>{let b='';for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);b+=String.fromCharCode(c&255,c>>8)}return btoa(b)};
   /* One command = one job on the PC (same id every step, so a resend never runs it twice). Each step is a short long-poll; a dropped connection (Tailscale / Wi-Fi change) is retried instead of losing the answer. */
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-  const exec=async(tgt,pw,cmd,usePs,budget)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
+  const exec=async(tgt,pw,cmd,usePs,budget,onChunk)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
     const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');
     const base='/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&id='+id;
-    const t0=Date.now();let st=0,okAt=t0,n=0;
+    const t0=Date.now();let st=0,okAt=t0,n=0,oo=0,oe=0,streamed=false;
     for(;;){
-      try{const r=await api('POST',base+(st?'&poll=1':''),{pass:pw,cmd:line},340000);
-        okAt=Date.now();n=0;if(r.done!==false)return r;st=1}
+      try{const r=await api('POST',base+(st?'&poll=1':'')+'&o='+oo+'&e='+oe,{pass:pw,cmd:line},340000);
+        okAt=Date.now();n=0;
+        if(r.o>=0){streamed=true;oo=r.o;oe=r.e;if(onChunk&&(r.out||r.err))onChunk(r.out,r.err)}   // live mode: r.out / r.err = only the NEW text (offsets advance only after a successful answer, so a lost answer is simply asked again)
+        if(r.done!==false){r.streamed=streamed;return r}st=1}
       catch(e){const m=e.message||'';
         if(!/^PC not reachable|^timed out|paused/i.test(m))throw e;   // wrong password, remote commands off, job not found...: no point retrying
         n++;if(Date.now()-okAt>=(st?150000:30000))throw new Error('Lost contact with the PC ('+m+'). The command may still be running there.');
@@ -5571,13 +5579,13 @@ function openRemoteShell(){
     if(!cfg.ip||!RSH_PW){openConn();return}
     hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
     const kb=document.activeElement===inp;   // keyboard was open (Enter pressed): keep it; Run button tapped: leave it closed
-    busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();
-    try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000);
-      if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));
-      if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e');
+    busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();lv=null;
+    try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000,(o,e)=>{live(o,'o');live(e,'e')});
+      if(!r.streamed){if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));   // old PC program: the whole output arrives at the end
+        if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e')}
       add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}
     catch(e){const m=e.message;add('⚠ '+(m==='timed out'?'No answer from the PC (the command may still be running there).':m),'e');if(/wrong password|No password/i.test(m))openConn()}
-    finally{busy=false;run.disabled=false;run.textContent='Run';if(kb)inp.focus()}};
+    finally{lv=null;busy=false;run.disabled=false;run.textContent='Run';if(kb)inp.focus()}};
   run.onclick=doRun;
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doRun()}
     else if(e.key==='ArrowUp'&&!inp.value.includes('\n')&&hist.length){e.preventDefault();hi=Math.min(hi+1,hist.length-1);inp.value=hist[hi]}

@@ -63,6 +63,7 @@ PC_MAGIC = b"PHONEEXPLORER_PC_DISCOVER"   # the phone's search for PCs running t
 PC_UDP_PORT = 41235
 PC_HTTP_PORT = 8798
 EXEC_MAX = 65536    # cap on stdout/stderr bytes sent back per remote command
+EXEC_MAX_LIVE = 524288   # same cap for a live (streamed) job: the phone gets it in pieces, so a bigger total is fine
 BG, CARD, FG, MUTED, ACCENT = "#0F1720", "#1B2735", "white", "#9FB0C3", "#3B82F6"
 
 
@@ -434,13 +435,15 @@ def kill_tree(proc):
 
 
 class ExecJob:
-    def __init__(self, jid, cmd, limit):
-        self.id, self.cmd, self.limit = jid, cmd, limit
-        self.buf = [bytearray(), bytearray()]     # stdout, stderr (first EXEC_MAX bytes each; the rest is read and dropped)
+    def __init__(self, jid, cmd, limit, cap=EXEC_MAX):
+        self.id, self.cmd, self.limit, self.cap = jid, cmd, limit, cap
+        self.buf = [bytearray(), bytearray()]     # stdout, stderr (first [cap] bytes each; the rest is read and dropped)
         self.n = [0, 0]
         self.done = threading.Event()
+        self.cv = threading.Condition()           # notified when output arrives or the job ends: a poll answers at once
         self.t_end = 0.0
         self.res = None
+        self.note = ""
 
     def _pump(self, stream, i):
         try:
@@ -449,11 +452,48 @@ class ExecJob:
                 if not chunk:
                     break
                 self.n[i] += len(chunk)
-                room = EXEC_MAX - len(self.buf[i])
+                room = self.cap - len(self.buf[i])
                 if room > 0:
                     self.buf[i] += chunk[:room]
+                    with self.cv:
+                        self.cv.notify_all()
         except Exception:
             pass
+
+    def _cut(self, i, off):
+        """End offset of the part of stream i (from [off]) that may be shown now: up to the last newline. Whole lines only, so no
+        character is cut in half; UTF-16 output (contains NUL bytes) is held back until the job ends."""
+        region = bytes(self.buf[i][off:])
+        if b"\x00" in region:
+            return off
+        k = region.rfind(b"\n")
+        return off + k + 1 if k >= 0 else off
+
+    def wait_new(self, o, e, wait):
+        """Blocks until the job ended, new whole lines exist past the offsets, or [wait] s passed."""
+        end = time.time() + wait
+        with self.cv:
+            while not self.done.is_set() and self._cut(0, o) <= o and self._cut(1, e) <= e:
+                left = end - time.time()
+                if left <= 0:
+                    break
+                self.cv.wait(min(left, 1.0))
+
+    def view(self, o=None, e=None):
+        """Answer for a poll. o/e = None: old style (whole result at the end). Else only what is NEW since offsets o / e (bytes
+        already received by the phone), plus the new offsets. Asking again with the same offsets gives the same answer."""
+        if o is None:
+            return self.res if self.done.is_set() else {"done": False, "id": self.id}
+        if self.done.is_set():
+            r = self.res
+            err = decode_output(bytes(self.buf[1][e:]))
+            if self.note:
+                err = (err + ("" if not err or err.endswith("\n") else "\n")) + self.note
+            return {"done": True, "id": self.id, "out": decode_output(bytes(self.buf[0][o:])), "err": err, "code": r["code"],
+                    "truncated": r["truncated"], "o": len(self.buf[0]), "e": len(self.buf[1])}
+        co, ce = self._cut(0, o), self._cut(1, e)
+        return {"done": False, "id": self.id, "out": decode_output(bytes(self.buf[0][o:co])),
+                "err": decode_output(bytes(self.buf[1][e:ce])), "o": co, "e": ce}
 
     def run(self):
         code, note, p = -1, "", None
@@ -488,13 +528,16 @@ class ExecJob:
         except Exception as e:
             note = "[could not run the command: %s]" % e
         finally:
+            self.note = note
             err = decode_output(bytes(self.buf[1]))
             if note:
                 err = (err + ("" if not err or err.endswith("\n") else "\n")) + note
             self.res = {"done": True, "id": self.id, "out": decode_output(bytes(self.buf[0])), "err": err,
-                        "code": code, "truncated": self.n[0] > EXEC_MAX or self.n[1] > EXEC_MAX}
+                        "code": code, "truncated": self.n[0] > self.cap or self.n[1] > self.cap}
             self.t_end = time.time()
             self.done.set()
+            with self.cv:
+                self.cv.notify_all()
 
 
 _jobs = {}
@@ -529,7 +572,7 @@ def _keep_awake():
     threading.Thread(target=loop, daemon=True).start()
 
 
-def exec_job(jid, cmd, limit):
+def exec_job(jid, cmd, limit, cap=EXEC_MAX):
     """Starts [cmd] as a job. The same [jid] again returns the job that already exists (never runs the command twice)."""
     with _jobs_lock:
         now = time.time()
@@ -540,7 +583,7 @@ def exec_job(jid, cmd, limit):
             return _jobs[jid]
         if sum(1 for j in _jobs.values() if not j.done.is_set()) >= EXEC_JOBS_MAX:
             raise RuntimeError("too many commands are running on the PC already")
-        j = ExecJob(jid or secrets.token_hex(8), cmd, limit)
+        j = ExecJob(jid or secrets.token_hex(8), cmd, limit, cap)
         _jobs[j.id] = j
     threading.Thread(target=j.run, daemon=True).start()
     _keep_awake()
@@ -697,7 +740,8 @@ def start_listeners(app):
                 if len(cmd) > 100000:
                     return self._reply(400, {"error": "command too long"})
                 try:
-                    job = exec_job(jid, cmd, EXEC_JOB_LIMIT if jid else EXEC_SYNC_LIMIT)
+                    job = exec_job(jid, cmd, EXEC_JOB_LIMIT if jid else EXEC_SYNC_LIMIT,
+                                   EXEC_MAX_LIVE if (jid and q.get("o")) else EXEC_MAX)
                 except RuntimeError as e:
                     return self._reply(429, {"error": str(e)})
                 try:
@@ -708,8 +752,16 @@ def start_listeners(app):
                 wait = max(0.0, min(25.0, float(q.get("wait", [EXEC_POLL_WAIT])[0]))) if jid else None
             except ValueError:
                 wait = float(EXEC_POLL_WAIT)
-            job.done.wait(wait)         # wait=None (old style): until it is over - the job has its own time limit
-            return self._reply(200, job.res if job.done.is_set() else {"done": False, "id": job.id})
+            try:      # o / e = bytes of stdout / stderr the phone already has -> live mode: answer with the new output only
+                o = max(0, int(q["o"][0])) if jid and q.get("o") else None
+                e = max(0, int(q.get("e", ["0"])[0])) if o is not None else None
+            except ValueError:
+                o = e = None
+            if o is None:
+                job.done.wait(wait)         # wait=None (old style): until it is over - the job has its own time limit
+            else:
+                job.wait_new(o, e, wait)    # returns as soon as a new whole line exists (or the job ended)
+            return self._reply(200, job.view(o, e))
 
     threading.Thread(target=udp_responder, daemon=True).start()
     try:

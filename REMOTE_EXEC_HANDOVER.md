@@ -32,3 +32,9 @@ Root cause: a command was held on ONE idle HTTP connection for minutes. Android 
 3. Rebuild PhoneExplorer.exe (CI) AND the APK; restart/update the PC program (a running tray copy keeps the old code).
 4. Device tests: `hostname`; `ping -n 40 127.0.0.1` over Tailscale while toggling Tailscale on the phone; `chkdsk`; `dir C:\ /s` (cap, 'ü'); `pause` returns; new APK + old PC program and old APK + new PC program; `netsh advfirewall firewall show rule name="Phone Explorer TCP 8798"`.
 5. Optional: Cancel for a running job (not implemented).
+
+## LIVE OUTPUT (added 2026-10-30)
+- Protocol: `/exec` with `o=<stdout bytes received>&e=<stderr bytes received>` = live mode. Answer `{done,out,err,o,e[,code,truncated]}` where out/err = ONLY new text since the offsets, o/e = new offsets. Same offsets again = same answer (idempotent; phone advances offsets only after a successful answer). No `o` = old whole-result mode.
+- PC (`ExecJob`): Condition notified by reader threads; `wait_new` returns on first new whole line (cut at last `\n`; streams containing NUL/UTF-16 held until the end); live jobs cap 512 KB per stream (`EXEC_MAX_LIVE`), old mode 64 KB. Output without newline (prompts, `\r` progress) appears at the end of the command.
+- Phone: `PePc.exec(..., offOut, offErr)`, `ExecResult.o/e` (-1 = old PC program), Routes `pcexec` passes `o`/`e`; ui.html `exec(..., onChunk)` + `live()` appender; falls back to printing the result at the end when `r.o<0`.
+- Tested: ExecJob stream on Linux (lines arrive 1 s apart, tail + stderr + done correct); ui.html JS syntax check. NOT compiled: Kotlin (no kotlinc here) - CI build is the check. Device test: `ping -n 20 127.0.0.1`.

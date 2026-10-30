@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote shell shows output live
+### Changed
+- Remote shell now shows a command's output line by line while it runs (needs the updated Phone Explorer program on the PC; an older one still shows everything at the end)
+
 ## 2026-10-30 - Remote shell keeps working on Tailscale
 ### Fixed
 - No more "connection abort" in the Remote shell over Tailscale or when Wi-Fi changes: the phone now keeps asking for the answer and reconnects by itself
