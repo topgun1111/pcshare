@@ -132,6 +132,11 @@ class MainActivity : Activity() {
         @JavascriptInterface fun rshLive(ip: String, port: String, pass: String, sid: String) {
             com.lanshare.app.pe.PePc.setLiveShell(ip, port.toIntOrNull() ?: 8798, pass, sid)
         }
+        /** Remote shell "Paste": the clipboard text, read natively (the WebView itself is not allowed to read it). "" = empty / not readable. */
+        @JavascriptInterface fun clipText(): String = try {
+            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip
+                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString() ?: ""
+        } catch (_: Throwable) { "" }
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }

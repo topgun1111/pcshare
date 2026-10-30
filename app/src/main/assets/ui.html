@@ -5703,13 +5703,17 @@ function openRemoteShell(){
     cn.onclick=()=>ov.remove();ok.onclick=()=>{const t=ta.value;ov.remove();sendPaste(t)}};
   const sendPaste=async t=>{t=String(t||'');if(!t)return;if(!RSH_S||!xt){toast('Not connected to a shell');return}
     if(t.length>100000){toast('Too long to paste (over 100,000 characters)',4000);return}
-    const n=t.replace(/\r\n?/g,'\n').replace(/\n$/,'').split('\n').length;
-    if(n>1&&!await dlg({title:'Paste '+n+' lines?',msg:'Every line is run on the PC as soon as it is pasted.',ok:'Paste'}))return;
     clearMods();
-    xt.paste(t)};
+    xt.paste(t)};   // straight in, no question (newlines become Enter; PowerShell gets it as a bracketed paste)
+  /* Paste in one tap: the clipboard is read by the app (LSAndroid.clipText); only if that is missing the old paste box opens */
+  const pasteNow=async()=>{let t=null;
+    try{if(window.LSAndroid&&LSAndroid.clipText)t=String(LSAndroid.clipText()||'')}catch(e){}
+    if(t===null){try{t=await navigator.clipboard.readText()}catch(e){askPaste();return}}
+    if(!t){toast('The clipboard is empty');return}
+    sendPaste(t)};
   const kb=(l,fn)=>{const b=E('button','tbtn',l);b.style.cssText='height:34px;min-width:44px;flex:none;font:13px Consolas,Menlo,monospace';b.onpointerdown=e=>e.preventDefault();b.onclick=fn;return b};
   mn.append(kb('Copy',()=>{if(copySel())selOff()}),
-    kb('Paste',async()=>{let t='';selOff();try{t=await navigator.clipboard.readText()}catch(e){askPaste();return}if(!t){toast('The clipboard is empty');return}sendPaste(t)}),
+    kb('Paste',()=>{selOff();pasteNow()}),
     kb('Select all',()=>{if(xt)setRange({c:0,r:0},{c:xt.cols-1,r:xt.buffer.active.length-1})}),
     kb('Clear',()=>{selOff();if(xt)xt.clear()}),   // clears what the phone shows (scroll-back); the PC shell is untouched
     kb('Done',selOff));
@@ -5733,7 +5737,8 @@ function openRemoteShell(){
     b.onpointerdown=e=>{e.preventDefault();stop();const q=keySeq(k);push(q);
       if(k.r)t1=setTimeout(()=>{t2=setInterval(()=>{if(inq.length<20)push(q)},70)},400)};   // held = repeats (the same bytes; not while 20 are still waiting to be sent)
     b.onpointerup=b.onpointercancel=b.onpointerleave=stop;kr.append(b)});
-  {const kk=kb('⌨',()=>{if(selMode)selOff();showKb()});kk.setAttribute('aria-label','Show keyboard');kr.prepend(kk)}   // always-visible way to bring the keyboard back
+  {const kk=kb('⌨',()=>{if(selMode)selOff();showKb()});kk.setAttribute('aria-label','Show keyboard');kr.prepend(kk);
+    const pb=kb('Paste',pasteNow);pb.setAttribute('aria-label','Paste clipboard into the shell');kk.after(pb)}   // one tap: the clipboard goes straight to the shell   // always-visible way to bring the keyboard back
   const hookSel=()=>{tw.style.background=curTheme().background;xt.onScroll(placeH);
     xt.attachCustomKeyEventHandler(e=>{   // real keyboard: Ctrl+C copies when text is selected, otherwise it stops the command
       if(e.type==='keydown'&&e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='c'||e.key==='C')&&xt.hasSelection()){copySel();if(selMode)selOff();return false}return true})};

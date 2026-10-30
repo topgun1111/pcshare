@@ -6,6 +6,8 @@
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
 ## 2026-10-31 - Remote shell ends when you leave
+### Added
+- Remote shell: a Paste key in the key row pastes the clipboard straight into the shell, in one tap, with no extra box or question (also for many lines of code)
 ### Changed
 - Remote shell: going back from the screen, or closing the app, now ends the shell on the PC (and anything it was running). Before, it stayed open for 30 minutes
 - Remote shell: if the phone disappears without saying goodbye, the PC closes the shell after 5 minutes (update Phone Explorer on the PC)
