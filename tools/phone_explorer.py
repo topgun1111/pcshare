@@ -640,10 +640,28 @@ def exec_job(jid, cmd, limit, cap=EXEC_MAX):
 #   act=close  sid
 TERM_BUF_MAX = 4 << 20      # bytes of output kept per session (a phone that reconnects gets the rest of it)
 TERM_SESS_MAX = 3
-TERM_IDLE = 1800            # s: a session nobody asks about for 30 min is closed
+TERM_IDLE = 300             # s: the phone normally ends its shell itself (act=close on Back / app closed). If it just vanished
+                            # (app killed, phone off, no network) nothing asks about the session for this long -> the reaper closes it
 _ID_RE_T = re.compile(r"[A-Za-z0-9_-]{8,64}")
 _terms = {}
 _terms_lock = threading.Lock()
+_term_reaper_on = False
+
+
+def _term_reaper():
+    """Closes shells that the phone stopped asking about (TERM_IDLE s), and ended shells 60 s after the last request."""
+    while True:
+        time.sleep(10)
+        now = time.time()
+        gone = []
+        with _terms_lock:
+            for k, t in list(_terms.items()):
+                idle = now - t.touch
+                if idle > TERM_IDLE or (t.dead and idle > 60):
+                    del _terms[k]
+                    gone.append(t)
+        for t in gone:
+            threading.Thread(target=t.close, daemon=True).start()
 
 
 class _ConPty:
@@ -938,7 +956,11 @@ class TermSession:
 
 
 def term_open(sid, shell, cols, rows):
+    global _term_reaper_on
     with _terms_lock:
+        if not _term_reaper_on:
+            _term_reaper_on = True
+            threading.Thread(target=_term_reaper, daemon=True).start()
         now = time.time()
         for k, t in list(_terms.items()):
             if t.dead and now - t.touch > 60 or now - t.touch > TERM_IDLE:
@@ -1146,6 +1168,8 @@ def start_listeners(app):
             with _terms_lock:
                 t = _terms.get(sid)
             if t is None:
+                if act == "close":      # already gone (reaped, or the program was restarted): closing twice is fine
+                    return self._reply(200, {"ok": True})
                 return self._reply(404, {"error": "terminal not found - it was closed or the Phone Explorer program on the PC was restarted"})
             if act == "read":
                 wait = max(0.0, min(25.0, float(num("wait", 20, 0, 25))))

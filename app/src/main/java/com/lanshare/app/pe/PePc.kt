@@ -182,6 +182,31 @@ object PePc {
         return result(st, o)
     }
 
+    /** The Remote shell that is open right now (the screen reports it through the bridge: MainActivity.Bridge.rshLive). Kept in memory only, password included. */
+    private class LiveShell(val ip: String, val port: Int, val pass: String, val sid: String)
+    @Volatile private var live: LiveShell? = null
+
+    /** The screen opened / ended a shell. An empty [sid] = none is open. */
+    fun setLiveShell(ip: String, port: Int, pass: String, sid: String) {
+        live = if (sid.isEmpty() || ip.isEmpty()) null else LiveShell(ip, port, pass, sid)
+    }
+
+    /**
+     * The app is being closed: ends the live shell on the PC (act=close; the PC kills the shell and everything it started).
+     * Fire and forget on a short-lived thread with a short timeout. If the process dies before it is sent, the PC closes the shell
+     * itself after 5 minutes without contact (phone_explorer.py TERM_IDLE).
+     */
+    fun endLiveShell() {
+        val l = live ?: return
+        live = null
+        Thread({
+            try {
+                val (ip, hport) = target(l.ip, l.port)
+                call(ip, hport, "/term", "act=close&sid=${e(l.sid)}&pass=${e(l.pass)}", 6_000, 3_000, 2, true)
+            } catch (_: Throwable) { }
+        }, "pe-term-close").start()
+    }
+
     /**
      * One step of the real terminal on the PC (phone_explorer.py /term, Remote shell screen): [act] = open | read | in | resize | close,
      * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data). Every act is safe to repeat (open = same sid -> same shell,

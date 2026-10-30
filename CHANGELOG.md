@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-31 - Remote shell ends when you leave
+### Changed
+- Remote shell: going back from the screen, or closing the app, now ends the shell on the PC (and anything it was running). Before, it stayed open for 30 minutes
+- Remote shell: if the phone disappears without saying goodbye, the PC closes the shell after 5 minutes (update Phone Explorer on the PC)
+
 ## 2026-10-30 - Remote shell: no more doubled letters
 ### Fixed
 - Remote shell: letters typed on the phone keyboard were sometimes sent twice; now once

@@ -128,6 +128,10 @@ class MainActivity : Activity() {
         }
         /** Root support: the per-run token the page keeps in a cookie so its requests count as "from the app's own screen" (see RootShell). Other apps cannot call this bridge. */
         @JavascriptInterface fun rootToken(): String = com.lanshare.app.core.RootShell.token
+        /** Remote shell screen: which shell is open on a PC right now (all empty = none). The app ends it on the PC when the app is closed (onDestroy). */
+        @JavascriptInterface fun rshLive(ip: String, port: String, pass: String, sid: String) {
+            com.lanshare.app.pe.PePc.setLiveShell(ip, port.toIntOrNull() ?: 8798, pass, sid)
+        }
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
@@ -547,6 +551,12 @@ class MainActivity : Activity() {
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) tryClipSend() }
+
+    /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
+    override fun onDestroy() {
+        if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
+        super.onDestroy()
+    }
 
     override fun onPause() { super.onPause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 

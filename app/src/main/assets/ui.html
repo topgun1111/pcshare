@@ -5537,10 +5537,18 @@ function openPhoneExplorer(){
 /* ---- Remote shell: the REAL cmd / PowerShell of a PC running phone_explorer.py, shown with xterm.js (files: assets/xterm, served as /xterm/*, loaded only when this screen opens).
    Opened from the Main menu tile "Remote shell" (and the drawer). The PC + password + Remember live in the Connect sheet inside this screen.
    App routes /api/pcfind, /api/peers (SMB devices, also over Tailscale) and /api/pcterm (pe/PePc.kt term()): the PC keeps ONE shell per session (phone_explorer.py /term, ConPTY);
-   the screen long-polls its output (act=read, offset based) and sends the typed keys (act=in, numbered). Leaving the screen keeps the shell open on the PC (30 min). ---- */
+   the screen long-polls its output (act=read, offset based) and sends the typed keys (act=in, numbered). Leaving the screen (back arrow, Android back, another screen) ENDS the shell on the PC (act=close, rshEnd); closing the app does the same from MainActivity.onDestroy (LSAndroid.rshLive tells the app which shell is live). If the phone just vanishes, the PC closes the shell itself after 5 min without contact. ---- */
 Object.assign(IC,{term:'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z'});
 let RSH_PW='';   // password typed this session (kept only in memory unless "Remember password" is ticked)
-let RSH_S=null;  // {ip,port,sid,sh,seq}: the shell that stays open on the PC while this screen is closed
+let RSH_S=null;  // {ip,port,sid,sh,seq}: the shell that is open on the PC (ended when the screen closes)
+let RSH_L='';    // what the app (native side) was last told about the live shell
+/* tells the app which shell is live (it ends it when the app itself is closed); only when it changed. The password goes to app memory only. */
+function rshSync(){const k=RSH_S?RSH_S.sid+'|'+RSH_PW:'';if(k===RSH_L)return;RSH_L=k;
+  try{if(window.LSAndroid&&LSAndroid.rshLive)LSAndroid.rshLive(RSH_S?RSH_S.ip:'',String(RSH_S?(RSH_S.port||8798):0),RSH_S?RSH_PW:'',RSH_S?RSH_S.sid:'')}catch(e){}}
+/* ends a shell on the PC (act=close; the PC kills the whole process tree). No s = the current one. Fire and forget: the PC closes it by itself after 5 min if this never arrives. */
+function rshEnd(s){s=s||RSH_S;if(!s)return;
+  if(s===RSH_S){RSH_S=null;try{localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()}
+  api('POST','/api/pcterm?ip='+enc(s.ip)+'&hport='+(s.port||8798),{pass:RSH_PW,act:'close',sid:s.sid},12000).catch(()=>{})}
 let XT_P=null;
 function loadXterm(){if(window.Terminal&&window.FitAddon)return Promise.resolve();if(XT_P)return XT_P;
   const ld=src=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=()=>no(new Error('terminal files are missing in this app'));document.head.append(e)});
@@ -5549,7 +5557,7 @@ function openPcExec(){openRemoteShell()}
 function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
-  let wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null;
+  let closed=false,wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null;
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const nap=ms=>new Promise(r=>{const t=setTimeout(()=>{wk=null;r()},ms);wk=()=>{clearTimeout(t);wk=null;r()}});   // a sleep that the phone coming back (screen on, network up) cuts short
   const wake=()=>{if(wk)wk()};
@@ -5558,7 +5566,7 @@ function openRemoteShell(){
   const onVis=()=>{if(!document.hidden)kick()};
   document.addEventListener('visibilitychange',onVis);window.addEventListener('online',kick);
   const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
-  const close=()=>{gen++;lg++;document.removeEventListener('visibilitychange',onVis);window.removeEventListener('online',kick);clearInterval(wt);clearTimeout(rt);if(ro)ro.disconnect();try{xt&&xt.dispose()}catch(e){}if(window.RSH_X===chk)window.RSH_X=null;w.remove()};w._close=close;   // the shell itself stays open on the PC
+  const close=()=>{if(closed)return;closed=true;gen++;lg++;document.removeEventListener('visibilitychange',onVis);window.removeEventListener('online',kick);clearInterval(wt);clearTimeout(rt);if(ro)ro.disconnect();try{xt&&xt.dispose()}catch(e){}if(window.RSH_X===chk)window.RSH_X=null;w.remove();rshEnd()};w._close=close;   // leaving the screen ends the shell on the PC (a connect still in flight is ended in start())
   const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
   const chk=()=>{if(!w.isConnected){clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;return}if(sig()!==s0)close()};window.RSH_X=chk;
   wt=setInterval(chk,150);   /* fallback; load() / homeShow() call chk at once */
@@ -5578,7 +5586,7 @@ function openRemoteShell(){
   const call=(act,ex,ms)=>api('POST','/api/pcterm?ip='+enc(RSH_S.ip)+'&hport='+(RSH_S.port||8798),Object.assign({pass:RSH_PW,act,sid:RSH_S.sid},ex),ms||30000);
   const netErr=m=>/^PC not reachable|^timed out|paused/i.test(m||'');
   /* typed keys -> the PC: one request at a time, numbered (the PC types a number only once, so a repeated request never doubles a key) */
-  const saveSess=()=>{try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}};
+  const saveSess=()=>{try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()};
   const stat=t=>{ti.textContent='Remote shell'+(t?' · '+t:'')};
   /* A batch keeps its number until the PC has taken it: a lost answer is asked again with the same number (typed once). Keys wait here while the network is away (up to 150 s). */
   const flush=async()=>{if(sending)return;sending=true;const my=gen;
@@ -5631,11 +5639,13 @@ function openRemoteShell(){
   const start=async(tgt,pw)=>{
     await loadXterm();RSH_PW=pw;const sh=cfg.sh==='ps'?'ps':'cmd',port=tgt.port||8798;
     if(!RSH_S){try{const sv=JSON.parse(localStorage.getItem('ls_rsh_sess')||'null');if(sv&&sv.sid&&sv.ip===tgt.ip&&sv.port===port&&sv.sh===sh)RSH_S=sv}catch(e){}}   // the app was closed: ask the PC for the same shell again
+    if(RSH_S&&!(RSH_S.ip===tgt.ip&&RSH_S.port===port&&RSH_S.sh===sh))rshEnd();   // another PC / shell: the old one is ended, not left running
     if(!(RSH_S&&RSH_S.ip===tgt.ip&&RSH_S.port===port&&RSH_S.sh===sh))RSH_S={ip:tgt.ip,port,sid:Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join(''),sh,seq:0};
     if(!xt)mkTerm();
     const my=++gen;lg++;opened=false;inq=[];xt.reset();off=0;
-    let r;try{r=await call('open',{shell:sh,cols:xt.cols||80,rows:xt.rows||24},30000)}catch(e){RSH_S=null;throw e}   // the saved shell id stays: the next try asks for the same shell again
-    if(gen!==my)return;
+    const S0=RSH_S;
+    let r;try{r=await call('open',{shell:sh,cols:xt.cols||80,rows:xt.rows||24},30000)}catch(e){RSH_S=null;rshSync();throw e}   // (a shell that failed to open is not remembered)
+    if(gen!==my){if(closed)rshEnd(S0);return}   // the screen was closed while connecting: the shell that just opened is ended at once
     if(!r.existed)RSH_S.seq=0;   // a new shell on the PC (first time, or the PC program was restarted): its key counter starts again
     else RSH_S.seq=Math.max(RSH_S.seq||0,typeof r.seq==='number'?r.seq:Math.floor(Date.now()/1000));   // same shell: never go below the PC's last typed number (an older PC does not tell it: seconds since 1970 is always above)
     saveSess();stat('');opened=true;loop()};   // no xt.focus(): the keyboard must not pop up by itself (owner's request); tapping the terminal opens it
