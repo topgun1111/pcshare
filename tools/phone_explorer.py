@@ -649,7 +649,7 @@ _terms_lock = threading.Lock()
 class _ConPty:
     """Windows 10 1809+ pseudo console through ctypes (nothing to install)."""
 
-    def __init__(self, cmdline, cols, rows, cwd):
+    def __init__(self, cmdline, cols, rows, cwd, flags=0x00080000):   # EXTENDED_STARTUPINFO_PRESENT only (as in Microsoft's sample); CREATE_NO_WINDOW (0x08000000) gave a silent console
         import ctypes.wintypes as wt
         k32 = ctypes.windll.kernel32
         self.k32, self.wt = k32, wt
@@ -711,7 +711,7 @@ class _ConPty:
         si.lpAttributeList = ctypes.cast(self._attr, ctypes.c_void_p)
         pi = PROCESS_INFORMATION()
         cmd = ctypes.create_unicode_buffer(cmdline)
-        if not k32.CreateProcessW(None, cmd, None, None, False, 0x00080000 | 0x08000000, None, cwd, ctypes.byref(si), ctypes.byref(pi)):   # EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW
+        if not k32.CreateProcessW(None, cmd, None, None, False, flags, None, cwd, ctypes.byref(si), ctypes.byref(pi)):   # EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW
             err = ctypes.GetLastError()
             raise OSError("could not start the shell (error %d)" % err)
         self.h_proc, self.pid = pi.hProcess, pi.dwProcessId

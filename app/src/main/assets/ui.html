@@ -5611,14 +5611,15 @@ function openRemoteShell(){
   /* soft keyboard: blur first, so a textarea that still has focus after the keyboard was hidden with Back gets a fresh focus (a plain focus() is a no-op then and the keyboard stays away) */
   const showKb=()=>{if(!xt)return;try{xt.blur()}catch(e){}xt.focus();const t=xt.textarea;if(t){try{t.focus({preventScroll:true})}catch(e){}}};
   /* Android keyboards (word suggestions) type through IME composition, which xterm 5.3 loses or delays. So the hidden textarea is followed here: what is new in it is sent, what the keyboard replaced / deleted becomes Backspaces. xterm still gets every real key (Enter, Backspace on an empty box, hardware keyboard). */
-  const hookIme=()=>{const t=xt.textarea;if(!t)return;let prev='';const stop=e=>e.stopImmediatePropagation();
-    ['compositionstart','compositionupdate','compositionend'].forEach(n=>t.addEventListener(n,stop,true));
-    t.addEventListener('keydown',e=>{if(e.keyCode===229)stop(e)},true);   // xterm would diff the textarea again and send the text twice
-    t.addEventListener('input',e=>{if(!/^(insertText|insertCompositionText|insertReplacementText|deleteContentBackward|deleteCompositionText)$/.test(e.inputType||''))return;stop(e);
+  const hookIme=()=>{const t=xt.textarea,h=xt.element;if(!t||!h)return;let prev='';const mine=e=>e.target===t,clr=()=>{t.value='';prev=''};
+    /* listeners sit on the parent in the capture phase: xterm's own listeners are on the textarea itself (also capture), so only a parent runs BEFORE them and can keep xterm from sending the same text a second time */
+    ['compositionstart','compositionupdate','compositionend'].forEach(n=>h.addEventListener(n,e=>{if(mine(e))e.stopPropagation()},true));
+    h.addEventListener('keydown',e=>{if(!mine(e))return;if(e.keyCode===229)e.stopPropagation();else if(e.key==='Enter')clr()},true);
+    h.addEventListener('input',e=>{if(!mine(e)||!/^(insertText|insertCompositionText|insertReplacementText|deleteContentBackward|deleteCompositionText)$/.test(e.inputType||''))return;e.stopPropagation();
       const n=t.value,m=Math.min(prev.length,n.length);let p=0;while(p<m&&prev[p]===n[p])p++;
       if(prev.length>p)typed('\x7f'.repeat(prev.length-p));if(n.length>p)typed(n.slice(p).replace(/\n/g,'\r'));
-      prev=n;if(!e.isComposing&&n.length>40){t.value='';prev=''}},true);
-    t.addEventListener('blur',()=>{t.value='';prev=''})};
+      prev=n;if(!e.isComposing&&(n.length>40||/\s$/.test(n)))clr()},true);
+    t.addEventListener('blur',clr)};
   const mkTerm=()=>{
     xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,theme:curTheme()});
     fit=new FitAddon.FitAddon();xt.loadAddon(fit);xt.open(tw);try{fit.fit()}catch(e){}

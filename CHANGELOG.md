@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote shell: no more doubled letters
+### Fixed
+- Remote shell: letters typed on the phone keyboard were sometimes sent twice; now once
+
+## 2026-10-30 - Remote shell: PC side fix
+### Fixed
+- Remote shell: the PC program now starts the shell in the way Windows expects, so the terminal screen is no longer blank (update Phone Explorer on the PC)
+
 ## 2026-10-30 - Remote shell: typing on the phone keyboard
 ### Fixed
 - Remote shell: letters typed on the phone keyboard (with word suggestions) now reach the PC; before, they could be lost
