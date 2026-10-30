@@ -5746,13 +5746,21 @@ function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
 /* Name clash at the destination: Ask for each file / Replace all / Skip existing. Resolves 'ask' | 'replace' | 'rename' | 'skip', or null when cancelled ('rename' without asking when nothing clashes). Items that already sit in [dir] on the same device are left out (copying onto itself keeps both). */
 const cdest=p=>{let b=p.split('/').filter(Boolean).pop()||'';if(b.endsWith('!')){b=b.slice(0,-1);const i=b.lastIndexOf('.');if(i>0)b=b.slice(0,i)}return b};
 async function askConflicts(dev,dir,paths,srcDev,sim){   // sim: offer "Only if not similar" (this phone to this phone: skips pictures that look the same, keeps both otherwise)
-  let have;try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(dir));have=new Set((r.items||[]).map(i=>i.name))}catch(e){return 'rename'}
+  let have,dmap;try{const r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(dir));dmap=new Map((r.items||[]).map(i=>[i.name,i]));have=new Set(dmap.keys())}catch(e){return 'rename'}
   const hit=[...new Set(paths.filter(p=>!(srcDev===dev&&pdir(p)===dir)).map(cdest).filter(n=>n&&have.has(n)))];
   if(!hit.length)return 'rename';
+  /* sizes of the old (existing) and new (incoming) file, shown under the text; folders / archive entries / a slow listing simply show no size */
+  const szl=[];
+  try{const cache={};
+    await Promise.race([Promise.all(hit.slice(0,3).map(async n=>{const p=paths.find(q=>!q.endsWith('!')&&cdest(q)===n),ex=dmap.get(n);if(!p||!ex||ex.dir)return;
+      const d=pdir(p);if(!cache[d])cache[d]=api('GET','/api/ls?dev='+enc(srcDev)+'&path='+enc(d)).then(r=>new Map((r.items||[]).map(i=>[i.name,i]))).catch(()=>new Map());
+      const sm=(await cache[d]).get(p.split('/').pop());if(!sm||sm.dir||typeof sm.size!=='number'||typeof ex.size!=='number')return;
+      szl[hit.indexOf(n)]=n+'\nExisting: '+fmt(ex.size)+'   \u2192   New: '+fmt(sm.size)})),new Promise(r=>setTimeout(r,2500))])}catch(e){}
   return new Promise(res=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
     const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 8px;color:var(--mut);word-break:break-word';card.append(t);
+    const sl=szl.filter(Boolean);if(sl.length){const z=E('p','',sl.join('\n\n'));z.style.cssText='margin:0 0 8px;font-size:13px;white-space:pre-line;word-break:break-word';card.append(z)}
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
     const gr=E('div');gr.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px';   // option boxes
     [['Ask for each file','Decide per file','ask','fill'],['Replace all','Overwrite the existing files','replace','red'],['Replace if newer','Only when the new one is newer','newer',''],['Keep both','Rename the new ones','rename',''],['Skip existing','Keep what is there','skip','']].concat(sim&&dev==='local'&&srcDev==='local'?[['Only if not similar','Skip look-alikes, keep both otherwise','unsim','']]:[]).forEach(a=>{
