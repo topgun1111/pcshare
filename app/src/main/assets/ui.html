@@ -5513,8 +5513,20 @@ function openRemoteShell(){
   const paintPs=()=>{pb.classList.toggle('fill',ps);pb.title=ps?'PowerShell is ON':'PowerShell is OFF (cmd.exe)'};
   const paintHist=()=>{hr.textContent='';hist.slice(0,8).forEach(c=>{const b=E('button','tbtn',c.length>28?c.slice(0,27)+'…':c);b.style.cssText='height:30px;flex:none;font:12px Consolas,monospace';b.onclick=()=>{inp.value=c;inp.focus()};hr.append(b)});hr.style.display=hist.length?'flex':'none'};
   const b64=s=>{let b='';for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);b+=String.fromCharCode(c&255,c>>8)}return btoa(b)};
-  const exec=(tgt,pw,cmd,usePs,ms)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
-    return api('POST','/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&pass='+enc(pw)+'&cmd='+enc(line),{},ms)};
+  /* One command = one job on the PC (same id every step, so a resend never runs it twice). Each step is a short long-poll; a dropped connection (Tailscale / Wi-Fi change) is retried instead of losing the answer. */
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const exec=async(tgt,pw,cmd,usePs,budget)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
+    const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');
+    const base='/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&id='+id;
+    const t0=Date.now();let st=0,okAt=t0,n=0;
+    for(;;){
+      try{const r=await api('POST',base+(st?'&poll=1':''),{pass:pw,cmd:line},340000);
+        okAt=Date.now();n=0;if(r.done!==false)return r;st=1}
+      catch(e){const m=e.message||'';
+        if(!/^PC not reachable|^timed out|paused/i.test(m))throw e;   // wrong password, remote commands off, job not found...: no point retrying
+        n++;if(Date.now()-okAt>=(st?150000:30000))throw new Error('Lost contact with the PC ('+m+'). The command may still be running there.');
+        await sleep(Math.min(5000,1000*n))}
+      if(Date.now()-t0>budget)throw new Error('timed out')}};
   const saveCfg=()=>{try{localStorage.setItem('ls_rsh',JSON.stringify(cfg))}catch(e){}};
   const saveHist=()=>{try{localStorage.setItem('ls_rsh_hist',JSON.stringify(hist.slice(0,30)))}catch(e){}};
   /* ---- Connect sheet: PC list (found on Wi-Fi + SMB devices incl. Tailscale), own address, password, Remember ---- */
@@ -5548,17 +5560,18 @@ function openRemoteShell(){
       if(!tgt){er.textContent='Tap a PC or type an address';return}
       if(!pw.value){er.textContent='Enter the password you saved on the PC';return}
       go.disabled=true;go.textContent='Connecting…';
-      try{const r=await exec(tgt,pw.value,'hostname',false,20000);
+      try{const r=await exec(tgt,pw.value,'hostname',false,40000);
         RSH_PW=pw.value;cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:''};saveCfg();paintChip();
         ov.remove();add('Connected to '+((r.out||'').trim()||tgt.name)+' ('+tgt.ip+')','ok');inp.focus()}
-      catch(e){er.textContent=e.message==='timed out'?'No answer from the PC.\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.':e.message}
+      catch(e){const m=e.message,hint='\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.';
+        er.textContent=m==='timed out'?'No answer from the PC.'+hint:/^(PC not reachable|Lost contact)/.test(m)?m+hint:m}
       finally{go.disabled=false;go.textContent='Connect'}}};
   /* ---- running a command ---- */
   const doRun=async()=>{const cmd=inp.value.trim();if(!cmd||busy)return;
     if(!cfg.ip||!RSH_PW){openConn();return}
     hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
     busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();
-    try{const r=await exec(cfg,RSH_PW,cmd,ps,320000);
+    try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000);
       if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));
       if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e');
       add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}

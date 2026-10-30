@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote shell keeps working on Tailscale
+### Fixed
+- No more "connection abort" in the Remote shell over Tailscale or when Wi-Fi changes: the phone now keeps asking for the answer and reconnects by itself
+- Commands can run up to 30 minutes (disk checks, long copies) and their answer is no longer lost
+- Turkish and other special characters in command output show correctly
+- Commands that wait for a key press (pause, chkdsk questions) no longer hang forever
+- The PC program opens the Windows firewall for Tailscale and the home network by itself
+
 ## 2026-10-30 - Remote command on PC
 ### Added
 - New "Remote shell" tile on the Main menu (and in the side menu): a full-screen terminal for your PC with a command box, a PowerShell switch, command history and a Clear button. Pick the PC (found on Wi-Fi or Tailscale) or type its address, enter the password you set on the PC once, and tick "Remember password" so it never asks again
