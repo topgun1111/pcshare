@@ -381,6 +381,7 @@ EXEC_SYNC_LIMIT = 300     # s: old-style request that waits for the end
 EXEC_JOB_LIMIT = 1800     # s: job started with an id (the phone polls it)
 EXEC_POLL_WAIT = 20       # s: one poll waits at most this long (phone may ask for less, never more than 25)
 EXEC_JOBS_MAX = 8         # commands running at the same time
+EXEC_IDLE_EOF = 600       # s: a command that waits for typed input and gets none (and prints nothing) gets end-of-input after this long
 _ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
@@ -444,6 +445,10 @@ class ExecJob:
         self.t_end = 0.0
         self.res = None
         self.note = ""
+        self.p = None
+        self.last = [0.0, 0.0]                    # time of the last output chunk per stream (a prompt without newline is shown once it is quiet)
+        self.t_in = time.time()                   # last time the phone sent an answer (or the start)
+        self.eof = False
 
     def _pump(self, stream, i):
         try:
@@ -452,6 +457,7 @@ class ExecJob:
                 if not chunk:
                     break
                 self.n[i] += len(chunk)
+                self.last[i] = time.time()
                 room = self.cap - len(self.buf[i])
                 if room > 0:
                     self.buf[i] += chunk[:room]
@@ -467,6 +473,12 @@ class ExecJob:
         if b"\x00" in region:
             return off
         k = region.rfind(b"\n")
+        if k + 1 < len(region) and time.time() - self.last[i] > 0.8:
+            try:
+                region.decode("utf-8")
+                return off + len(region)      # a prompt such as "(Y/N)?" has no newline: show it once the output went quiet
+            except UnicodeDecodeError:
+                pass
         return off + k + 1 if k >= 0 else off
 
     def wait_new(self, o, e, wait):
@@ -477,7 +489,7 @@ class ExecJob:
                 left = end - time.time()
                 if left <= 0:
                     break
-                self.cv.wait(min(left, 1.0))
+                self.cv.wait(min(left, 0.3))
 
     def view(self, o=None, e=None):
         """Answer for a poll. o/e = None: old style (whole result at the end). Else only what is NEW since offsets o / e (bytes
@@ -495,17 +507,44 @@ class ExecJob:
         return {"done": False, "id": self.id, "out": decode_output(bytes(self.buf[0][o:co])),
                 "err": decode_output(bytes(self.buf[1][e:ce])), "o": co, "e": ce}
 
+    def send(self, text):
+        """Types [text] + Enter into the running command (answer to a prompt). Returns False when it cannot take input."""
+        p = self.p
+        if p is None or self.done.is_set() or self.eof or p.stdin is None:
+            return False
+        try:
+            p.stdin.write((text + "\r\n").encode(_oem_encoding(), "replace") if sys.platform == "win32" else (text + "\n").encode("utf-8", "replace"))
+            p.stdin.flush()
+            self.t_in = time.time()
+            return True
+        except Exception:
+            return False
+
+    def _eof_watch(self):
+        """No answer for IDLE_EOF s: close stdin, so a command that reads it ("pause", "more") ends as before instead of waiting."""
+        while not self.done.wait(2.0):
+            if time.time() - max(self.t_in, self.last[0], self.last[1]) > EXEC_IDLE_EOF:
+                break
+        self.eof = True
+        try:
+            if self.p and self.p.stdin:
+                self.p.stdin.close()
+        except Exception:
+            pass
+
     def run(self):
         code, note, p = -1, "", None
         try:
             cwd = os.path.expanduser("~")
-            kw = {"shell": True, "stdin": subprocess.DEVNULL,   # stdin = nothing: "pause", "chkdsk /f" (Y/N) ... used to wait for ever
+            kw = {"shell": True, "stdin": subprocess.PIPE,   # stdin = pipe: the phone can answer "chkdsk /f" (Y/N) ...; it is closed after IDLE_EOF s without an answer so "pause" etc. never wait for ever
                   "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "cwd": cwd if os.path.isdir(cwd) else None}
             if sys.platform == "win32":
                 kw["creationflags"] = _NO_WIN
             else:
                 kw["start_new_session"] = True
             p = subprocess.Popen(self.cmd, **kw)
+            self.p = p
+            threading.Thread(target=self._eof_watch, daemon=True).start()
             ts = [threading.Thread(target=self._pump, args=(p.stdout, 0), daemon=True),
                   threading.Thread(target=self._pump, args=(p.stderr, 1), daemon=True)]
             for t in ts:
@@ -708,7 +747,7 @@ def start_listeners(app):
             No id = old behaviour (one request waits for the end). With id = job: the first request starts it, later
             ones (poll=1, or the same request again) wait up to `wait` s for the end and answer {"done": false} if it runs on."""
             if q.get("probe"):      # the phone asks which version this is (no command, no password)
-                return self._reply(200, {"v": 2, "exec": bool(live_cfg(app).get("exec_enabled"))})
+                return self._reply(200, {"v": 3, "exec": bool(live_cfg(app).get("exec_enabled"))})
             cfg = live_cfg(app)
             if not cfg.get("exec_enabled"):
                 return self._reply(403, {"error": "Remote commands are turned off on this PC"})
@@ -728,11 +767,15 @@ def start_listeners(app):
             jid = q.get("id", [""])[0]
             if jid and not _ID_RE.fullmatch(jid):
                 return self._reply(400, {"error": "bad job id"})
-            if jid and q.get("poll"):
+            if jid and (q.get("poll") or q.get("send")):
                 with _jobs_lock:
                     job = _jobs.get(jid)
                 if job is None:     # never start a command from a poll: after a restart of this program it would run again
                     return self._reply(404, {"error": "job not found - the Phone Explorer program on the PC was restarted"})
+                if q.get("send"):   # the phone types an answer into the running command (Y/N ...)
+                    if not job.send(q.get("in", [""])[0][:2000]):
+                        return self._reply(409, {"error": "the command has already ended"})
+                    return self._reply(200, {"ok": True})
             else:
                 cmd = (q.get("cmd", [""])[0] or "").strip()
                 if not cmd:

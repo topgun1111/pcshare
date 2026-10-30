@@ -138,6 +138,14 @@ object PePc {
             o.optLong("o", -1), o.optLong("e", -1))   // o / e = stdout / stderr bytes received so far (live mode); -1 = old PC program: the whole output comes with done
     }
 
+    /** Types [text] + Enter into the command [id] that still runs on the PC (answer to a prompt such as Y/N). Needs PC program v3. */
+    fun send(ip0: String, hport0: Int, pass: String, id: String, text: String) {
+        val (ip, hport) = target(ip0, hport0)
+        if (version(ip, hport) < 3) throw PcError("update Phone Explorer on the PC to answer a running command")
+        val (st, o) = try { call(ip, hport, "/exec", "id=${e(id)}&send=1&pass=${e(pass)}&in=${e(text)}", 20_000, 8_000, 2, false) } catch (x: Exception) { throw unreachable(x) }
+        if (st != 200) throw PcError(o?.optString("error", "")?.ifEmpty { null } ?: ("PC answered " + st))
+    }
+
     /** 2 when the PC program runs commands as jobs (this app polls them), 1 for the old one (one request that waits for the end). */
     private fun version(ip: String, port: Int): Int {
         val key = "$ip:$port"; val now = System.currentTimeMillis()

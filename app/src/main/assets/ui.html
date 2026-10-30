@@ -5544,7 +5544,7 @@ function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
   let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
-  let busy=false,ps=false,hi=-1,wt=0;
+  let busy=false,ps=false,hi=-1,wt=0,curId='';
   const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
   const close=()=>{clearInterval(wt);if(window.RSH_X===chk)window.RSH_X=null;w.remove()};w._close=close;
   const sig=()=>S.dev+'|'+S.path+'|'+homeOn(),s0=sig();   // the file manager went somewhere else (a zip / folder was opened, Main menu shown): close this screen so the two never mix
@@ -5577,7 +5577,7 @@ function openRemoteShell(){
   /* One command = one job on the PC (same id every step, so a resend never runs it twice). Each step is a short long-poll; a dropped connection (Tailscale / Wi-Fi change) is retried instead of losing the answer. */
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const exec=async(tgt,pw,cmd,usePs,budget,onChunk)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
-    const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');
+    const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');if(onChunk)curId=id;
     const base='/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&id='+id;
     const t0=Date.now();let st=0,okAt=t0,n=0,oo=0,oe=0,streamed=false;
     for(;;){
@@ -5630,17 +5630,23 @@ function openRemoteShell(){
         er.textContent=m==='timed out'?'No answer from the PC.'+hint:/^(PC not reachable|Lost contact)/.test(m)?m+hint:m}
       finally{go.disabled=false;go.textContent='Connect'}}};
   /* ---- running a command ---- */
-  const doRun=async()=>{const cmd=inp.value.trim();if(!cmd||busy)return;
+  const doRun=async()=>{
+    if(busy&&curId){const t=inp.value.replace(/\r?\n+$/,'');if(!t)return;   // a command is running: the text is the ANSWER to its prompt (Y/N ...), not a new command
+      add(t,'p');inp.value='';
+      try{await api('POST','/api/pcexec?ip='+enc(cfg.ip)+'&hport='+(cfg.port||8798)+'&id='+curId+'&send=1',{pass:RSH_PW,in:t},30000)}
+      catch(e){add('⚠ '+e.message,'e')}
+      return}
+    const cmd=inp.value.trim();if(!cmd||busy)return;
     if(!cfg.ip||!RSH_PW){openConn();return}
     hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
     const kb=document.activeElement===inp;   // keyboard was open (Enter pressed): keep it; Run button tapped: leave it closed
-    busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();lv=null;
+    busy=true;run.textContent='Send';inp.placeholder='Answer to the running command (Y, N, Enter…)';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();lv=null;
     try{const r=await exec(cfg,RSH_PW,cmd,ps,1860000,(o,e)=>{live(o,'o');live(e,'e')});
       if(!r.streamed){if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));   // old PC program: the whole output arrives at the end
         if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e')}
       add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}
     catch(e){const m=e.message;add('⚠ '+(m==='timed out'?'No answer from the PC (the command may still be running there).':m),'e');if(/wrong password|No password/i.test(m))openConn()}
-    finally{lv=null;busy=false;run.disabled=false;run.textContent='Run';if(kb)inp.focus()}};
+    finally{lv=null;busy=false;curId='';run.disabled=false;run.textContent='Run';inp.placeholder='Command (Enter = run, Shift+Enter = new line)';if(kb)inp.focus()}};
   run.onclick=doRun;
   inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doRun()}
     else if(e.key==='ArrowUp'&&!inp.value.includes('\n')&&hist.length){e.preventDefault();hi=Math.min(hi+1,hist.length-1);inp.value=hist[hi]}

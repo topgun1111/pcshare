@@ -275,6 +275,10 @@ object Routes {
             }
             "pcexec" -> {   // Remote shell: one STEP of a command on that PC's phone_explorer.py (/exec, password set on the PC, off by default). The screen repeats it until done (PePc.exec)
                 val b = try { ex.bodyJson() } catch (_: Exception) { JSONObject() }   // password + command travel in the body: no URL length limit, not in any log
+                if (q["send"] == "1") {   // answer typed into a command that is still running (Y/N ...)
+                    com.lanshare.app.pe.PePc.send(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", ""), q["id"] ?: "", b.optString("in", ""))
+                    return ex.json(JSONObject().put("ok", true))
+                }
                 val r = com.lanshare.app.pe.PePc.exec(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", q["pass"] ?: ""),
                     b.optString("cmd", q["cmd"] ?: ""), q["id"] ?: "", q["poll"] == "1", (q["o"] ?: "0").toLongOrNull() ?: 0L, (q["e"] ?: "0").toLongOrNull() ?: 0L)
                 return ex.json(JSONObject().put("out", r.out).put("err", r.err).put("code", r.code).put("truncated", r.truncated).put("done", r.done).put("o", r.o).put("e", r.e))
