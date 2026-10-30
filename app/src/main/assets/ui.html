@@ -5245,6 +5245,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 // Android back: close the top-most overlay / search / selection; returns true when it handled the press
 function lsBack(){
+  {const rs=$('#rsh');if(rs){const c=rs.querySelector('.rshc');if(c)c.onclick({target:c});else rs._close();return true}}
   if($('#hmfav')){hmFavClose();return true}
   if(document.body.classList.contains('dopen')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
@@ -5262,6 +5263,7 @@ function lsBack(){
 
 /* ---- start menu (home): tiles call the same functions as the drawer; "Favorite folders" opens a cascading menu of the Quick folders ---- */
 const HM_P={
+ sh:'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z',
  ms:'M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z',
  gal:'M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z',
  vid:'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z',
@@ -5339,7 +5341,7 @@ function homeShow(){
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',usr:'var(--hc2)',smb:'var(--hc6)',ftp:'var(--hc4)',cld:'var(--hc7)',fav:'var(--hc7)',dev:'var(--hc5)'};
+  let ti=0;const HC={gal:'var(--hc1)',vid:'var(--hc2)',dl:'var(--hc3)',prn:'var(--hc4)',sto:'var(--hc5)',usr:'var(--hc2)',smb:'var(--hc6)',ftp:'var(--hc4)',cld:'var(--hc7)',fav:'var(--hc7)',dev:'var(--hc5)',sh:'var(--hc2)'};
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
     const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
@@ -5353,7 +5355,7 @@ function homeShow(){
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   const tFtp=tile('ftp','FTP servers','',()=>srvPicker('FTP')),tCld=tile('cld','Cloud servers','',()=>srvPicker('Drive'));   // Printers and Favorite folders tiles removed 2026-10-28 (both stay in the drawer)
   tFtp.querySelector('.ts').id='hmftp';tCld.querySelector('.ts').id='hmcld';
-  g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld);
+  g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld,tile('sh','Remote shell','Run commands on a PC',()=>openRemoteShell()));
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);
@@ -5452,7 +5454,6 @@ function openPhoneExplorer(){
   const vSt=row('Status',''),vAd=row('Address',''),vPin=row('PIN','');
   card.append(det);
   const op=E('button','tbtn fill','Open on PC');op.style.cssText='display:block;width:calc(100% - 8px);margin:4px 4px 0;height:44px';op.onclick=()=>{close();peOpenOnPc()};card.append(op);
-  const rc=E('button','tbtn','Remote command (PC) \u203a');rc.style.cssText='display:block;width:calc(100% - 8px);margin:8px 4px 0;height:40px';rc.onclick=()=>{close();openPcExec()};card.append(rc);
   const act=E('div','dact'),go=E('button','tbtn fill'),cp=E('button','tbtn','Copy link'),np=E('button','tbtn','New PIN');act.append(np,cp,go);card.append(act);
   const sw=(title,sub,key)=>{const r=E('label','set'),t=E('div','t'),s=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=!!st[key];
     t.append(E('b','',title),E('small','',sub));cb.onchange=()=>{B.peSet(JSON.stringify({[key]:cb.checked}))};s.append(cb,E('i'));r.append(t,s);card.append(r)};
@@ -5478,76 +5479,97 @@ function openPhoneExplorer(){
   np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd()};
   o.append(card);upd();
   tm=setInterval(()=>{if(!card.isConnected||o.style.display==='none'){clearInterval(tm);return}try{st=JSON.parse(B.peState());if(wait>0&&!st.run)wait--;upd()}catch(e){}},1000)}
-/* ---- Remote command: sends a command line to phone_explorer.py's /exec on a PC and shows stdout/err/exit code.
-   Off by default on the PC ("Allow the phone to run commands on this PC") and needs the password you set on the PC.
-   App routes /api/pcfind (reused from Phone Explorer) + /api/pcexec (pe/PePc.kt exec()). ---- */
-function openPcExec(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card');
-  card.append(E('div','handle'),E('h3','','Remote command'),
-    E('div','dnote','Runs a command line on a PC running phone_explorer.py. Must be turned on there first (the \u201cRemote commands\u201d button) and a password saved there; it runs with whatever rights that program has (admin, if it is running elevated).'));
-  const pcRow=E('div','dnote','Looking for PCs\u2026');pcRow.style.margin='6px 8px';card.append(pcRow);
-  const pickWrap=E('div');card.append(pickWrap);
-  const pick=E('button','tbtn','Choose a different PC \u203a');pick.style.cssText='display:none;width:calc(100% - 8px);margin:4px 4px 0;height:40px';card.append(pick);
-  const adW=E('div');adW.style.cssText='margin:10px 4px 0';
-  const adL=E('small','','PC address (only if the PC is not in the list: its Tailscale IP like 100.x.x.x, or its name). Leave empty to use the list');adL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
-  const adI=E('input','tf');adI.placeholder='100.x.x.x or pc-name';adI.style.cssText='height:44px;margin:0';adI.autocomplete='off';adI.autocapitalize='off';
-  try{adI.value=localStorage.getItem('ls_pexec_addr')||''}catch(e){}
-  adW.append(adL,adI);card.append(adW);
-  const pwW=E('div');pwW.style.cssText='margin:10px 4px 0';
-  const pwL=E('small','','Password (set in the PC\u2019s Phone Explorer window)');pwL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
-  const pwI=E('input','tf');pwI.type='password';pwI.placeholder='Password';pwI.style.cssText='height:44px;margin:0';pwI.autocomplete='off';
-  const remL=E('label');remL.style.cssText='display:flex;align-items:center;gap:8px;margin:8px 0 0 12px';
-  const remC=E('input');remC.type='checkbox';remL.append(remC,E('span','','Remember password'));
-  pwW.append(pwL,pwI,remL);card.append(pwW);
-  const cmdW=E('div');cmdW.style.cssText='margin:10px 4px 0';
-  const cmdL=E('small','','Command');cmdL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
-  const cmdI=E('input','tf');cmdI.placeholder='e.g. ipconfig /all';cmdI.style.cssText='height:44px;margin:0';cmdI.autocomplete='off';
-  cmdW.append(cmdL,cmdI);card.append(cmdW);
-  const run=E('button','tbtn fill','Run');run.style.cssText='display:block;width:calc(100% - 8px);margin:10px 4px 0;height:44px';card.append(run);
-  const out=E('pre');out.style.cssText='margin:10px 8px 4px;padding:10px;background:#00000022;border-radius:10px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto';card.append(out);
-  let pc=null,list=[];
-  const loadPw=n=>{pwI.value='';remC.checked=false;try{const sv=localStorage.getItem('ls_pexec_pw_'+n);if(sv){pwI.value=sv;remC.checked=true}}catch(e){}};
-  adI.onchange=()=>{const a=adI.value.trim();try{localStorage.setItem('ls_pexec_addr',a)}catch(e){}
-    if(a){pc=null;pickWrap.textContent='';pick.style.display='none';pcRow.textContent='PC: '+a;loadPw(a)}};
-  const showList=()=>{pickWrap.textContent='';
-    list.forEach(p=>{const r=E('button','set'),t=E('div','t');r.style.cssText='width:100%;text-align:left';
-      t.append(E('b','',p.name));r.append(t);r.onclick=()=>choose(p);pickWrap.append(r)})};
-  const choose=p=>{pc=p;pickWrap.textContent='';pick.style.display='block';pcRow.textContent='PC: '+p.name;
-    try{localStorage.setItem('ls_pexec_pc',JSON.stringify({name:p.name}))}catch(e){}
+/* ---- Remote shell: full-screen terminal for a PC running phone_explorer.py (/exec: its ON button + the password saved in its window).
+   Opened from the Main menu tile "Remote shell" (and the drawer). The PC + password + Remember live in the Connect sheet inside this screen.
+   App routes /api/pcfind, /api/peers (SMB devices, also over Tailscale) and /api/pcexec (pe/PePc.kt exec()). ---- */
+Object.assign(IC,{term:'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z'});
+let RSH_PW='';   // password typed this session (kept only in memory unless "Remember password" is ticked)
+function openPcExec(){openRemoteShell()}
+function openRemoteShell(){
+  drawerClose();const old=$('#rsh');if(old)old.remove();
+  let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
+  let hist=JL('ls_rsh_hist',[]);if(!Array.isArray(hist))hist=[];
+  let busy=false,ps=false,hi=-1;
+  const w=E('div');w.id='rsh';w.style.cssText='position:fixed;inset:0;z-index:9000;background:var(--bg);color:var(--fg);display:flex;flex-direction:column';
+  const close=()=>{w.remove()};w._close=close;
+  const hd=E('div');hd.style.cssText='display:flex;align-items:center;gap:6px;padding:8px 8px 8px 4px;background:var(--bar);color:var(--onbar)';
+  const bk=E('button','ibtn');bk.setAttribute('aria-label','Back');bk.append(ic('back'));bk.onclick=close;bk.style.color='inherit';
+  const ti=E('b','','Remote shell');ti.style.cssText='font-size:18px;flex:1';
+  const chip=E('button','tbtn');chip.style.cssText='height:36px;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  const clr=E('button','tbtn','Clear');clr.style.cssText='height:36px';
+  hd.append(bk,ti,chip,clr);
+  const term=E('div');term.style.cssText='flex:1;overflow:auto;padding:10px 12px;background:#101418;color:#d8dee4;font:13px/1.45 Consolas,Menlo,monospace;-webkit-user-select:text;user-select:text';
+  const add=(t,k)=>{const d=E('div','',t);d.style.cssText='white-space:pre-wrap;word-break:break-all;margin:0 0 6px'+(k==='p'?';color:#7fd1ff;font-weight:bold':k==='e'?';color:#ff8a80':k==='m'?';color:#8b98a5;font-size:12px':k==='ok'?';color:#8be28b':'');term.append(d);term.scrollTop=term.scrollHeight};
+  const hr=E('div');hr.style.cssText='display:flex;gap:6px;overflow-x:auto;padding:6px 8px 0;background:var(--bg)';
+  const bar=E('div');bar.style.cssText='display:flex;gap:8px;align-items:flex-end;padding:8px;background:var(--bg)';
+  const pb=E('button','tbtn','PS');pb.title='PowerShell';pb.style.cssText='height:48px;min-width:48px';pb.setAttribute('aria-label','PowerShell mode');
+  const inp=E('textarea');inp.rows=2;inp.placeholder='Command (Enter = run, Shift+Enter = new line)';inp.autocomplete='off';inp.autocapitalize='none';inp.spellcheck=false;inp.setAttribute('autocorrect','off');
+  inp.style.cssText='flex:1;min-width:0;resize:none;padding:8px 10px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--fg);font:14px/1.4 Consolas,Menlo,monospace';
+  const run=E('button','tbtn fill','Run');run.style.cssText='height:48px;min-width:64px';
+  bar.append(pb,inp,run);w.append(hd,term,hr,bar);document.body.append(w);
+  const paintChip=()=>{chip.textContent=cfg.ip?(cfg.name||cfg.ip):'Choose PC ›'};
+  const paintPs=()=>{pb.classList.toggle('fill',ps);pb.title=ps?'PowerShell is ON':'PowerShell is OFF (cmd.exe)'};
+  const paintHist=()=>{hr.textContent='';hist.slice(0,8).forEach(c=>{const b=E('button','tbtn',c.length>28?c.slice(0,27)+'…':c);b.style.cssText='height:30px;flex:none;font:12px Consolas,monospace';b.onclick=()=>{inp.value=c;inp.focus()};hr.append(b)});hr.style.display=hist.length?'flex':'none'};
+  const b64=s=>{let b='';for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);b+=String.fromCharCode(c&255,c>>8)}return btoa(b)};
+  const exec=(tgt,pw,cmd,usePs,ms)=>{const line=usePs?'powershell -NoProfile -NonInteractive -EncodedCommand '+b64(cmd):cmd.replace(/\r?\n+/g,' & ');
+    return api('POST','/api/pcexec?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&pass='+enc(pw)+'&cmd='+enc(line),{},ms)};
+  const saveCfg=()=>{try{localStorage.setItem('ls_rsh',JSON.stringify(cfg))}catch(e){}};
+  const saveHist=()=>{try{localStorage.setItem('ls_rsh_hist',JSON.stringify(hist.slice(0,30)))}catch(e){}};
+  /* ---- Connect sheet: PC list (found on Wi-Fi + SMB devices incl. Tailscale), own address, password, Remember ---- */
+  const openConn=()=>{
+    const old=w.querySelector('.rshc');if(old)old.remove();
+    const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px';
+    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;background:var(--bg);border-radius:20px;padding:16px';
+    const sm=(t)=>{const s=E('small','',t);s.style.cssText='display:block;color:var(--mut);margin:10px 0 4px 4px';return s};
+    const fld=(ph,type)=>{const i=E('input','tf');i.placeholder=ph;i.type=type||'text';i.style.cssText='height:46px;margin:0;width:100%';i.autocomplete='off';i.autocapitalize='none';return i};
+    const h=E('h3','','Connect to a PC');h.style.margin='0 0 4px';
+    const nt=E('div','dnote','On the PC: open the Phone Explorer window, save a password and press “Remote commands: ON”. Same Wi-Fi or Tailscale.');
+    const pcl=E('div'),st=E('div','dnote','Looking for PCs…');st.style.margin='6px 0';
+    const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip&&!cfg.fromList?cfg.ip:'';
+    const pw=fld('Password','password');pw.value=RSH_PW||'';
+    const rl=E('label');rl.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px';const rc=E('input');rc.type='checkbox';rc.checked=!!cfg.rem;rl.append(rc,E('span','','Remember password'));
+    const er=E('div');er.style.cssText='color:var(--err);margin:10px 4px 0;min-height:18px;white-space:pre-wrap';
+    const acts=E('div');acts.style.cssText='display:flex;gap:8px;margin-top:12px';
+    const cn=E('button','tbtn','Cancel'),go=E('button','tbtn fill','Connect');cn.style.cssText=go.style.cssText='flex:1;height:46px';acts.append(cn,go);
+    cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,rl,er,acts);ov.append(cd);w.append(ov);
+    let sel=cfg.fromList?{ip:cfg.ip,name:cfg.name,port:cfg.port}:null,list=[];
+    const showList=()=>{pcl.textContent='';list.forEach(p=>{const b=E('button','set'),t=E('div','t');b.style.cssText='width:100%;text-align:left'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
+      t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value='';showList()};pcl.append(b)})};
+    cn.onclick=()=>{ov.remove();if(!cfg.ip)close()};ov.onclick=e=>{if(e.target===ov)cn.onclick()};
+    (async()=>{let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
+      try{const seen=new Set(a.map(x=>x.ip)),ps2=(await api('GET','/api/peers',null,5000))||[];
+        ps2.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h2=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
+          if(h2&&!seen.has(h2)){seen.add(h2);a.push({ip:h2,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798})}})}catch(e){}
+      if(!ov.isConnected)return;list=a;st.textContent=a.length?'Tap one, or type an address below':'No PC found. Type its address below (Tailscale IP or name)';showList()})();
+    go.onclick=async()=>{er.textContent='';const addr=ad.value.trim(),tgt=addr?{ip:addr,name:addr,port:8798,fromList:false}:(sel?{ip:sel.ip,name:sel.name,port:sel.port||8798,fromList:true}:null);
+      if(!tgt){er.textContent='Pick a PC or type an address';return}
+      if(!pw.value){er.textContent='Enter the password you saved on the PC';return}
+      go.disabled=true;go.textContent='Connecting…';
+      try{const r=await exec(tgt,pw.value,'hostname',false,20000);
+        RSH_PW=pw.value;cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:''};saveCfg();paintChip();
+        ov.remove();add('Connected to '+((r.out||'').trim()||tgt.name)+' ('+tgt.ip+')','ok');inp.focus()}
+      catch(e){er.textContent=e.message==='timed out'?'No answer from the PC.\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.':e.message}
+      finally{go.disabled=false;go.textContent='Connect'}}};
+  /* ---- running a command ---- */
+  const doRun=async()=>{const cmd=inp.value.trim();if(!cmd||busy)return;
+    if(!cfg.ip||!RSH_PW){openConn();return}
+    hist=[cmd].concat(hist.filter(x=>x!==cmd));saveHist();paintHist();hi=-1;
+    busy=true;run.disabled=true;run.textContent='…';add((ps?'PS> ':'> ')+cmd,'p');inp.value='';const t0=Date.now();
+    try{const r=await exec(cfg,RSH_PW,cmd,ps,320000);
+      if(r.out&&r.out.trim())add(r.out.replace(/\s+$/,''));
+      if(r.err&&r.err.trim())add(r.err.replace(/\s+$/,''),'e');
+      add('[exit '+r.code+' · '+((Date.now()-t0)/1000).toFixed(1)+' s]'+(r.truncated?' (output cut off)':''),'m')}
+    catch(e){const m=e.message;add('⚠ '+(m==='timed out'?'No answer from the PC (the command may still be running there).':m),'e');if(/wrong password|No password/i.test(m))openConn()}
+    finally{busy=false;run.disabled=false;run.textContent='Run';inp.focus()}};
+  run.onclick=doRun;
+  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doRun()}
+    else if(e.key==='ArrowUp'&&!inp.value.includes('\n')&&hist.length){e.preventDefault();hi=Math.min(hi+1,hist.length-1);inp.value=hist[hi]}
+    else if(e.key==='ArrowDown'&&hi>=0){e.preventDefault();hi--;inp.value=hi>=0?hist[hi]:''}};
+  pb.onclick=()=>{ps=!ps;paintPs();toast(ps?'PowerShell mode ON':'PowerShell mode OFF (cmd.exe)',1500)};
+  clr.onclick=()=>{term.textContent=''};chip.onclick=openConn;
+  paintChip();paintPs();paintHist();
+  if(cfg.ip&&RSH_PW){add('PC: '+(cfg.name||cfg.ip)+'  ·  type a command below','m');inp.focus()}else openConn()}
 
-    loadPw(p.name)};
-  pick.onclick=()=>{pick.style.display='none';pcRow.textContent='Choose a PC:';showList()};
-  (async()=>{
-    if(adI.value.trim()){pcRow.textContent='PC: '+adI.value.trim();loadPw(adI.value.trim());return}
-    let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
-    try{const seen=new Set(a.map(x=>x.ip)),ps=(await api('GET','/api/peers',null,5000))||[];   // PCs the app already found as SMB devices (Wi-Fi or Tailscale)
-      ps.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
-        if(h&&!seen.has(h)){seen.add(h);a.push({ip:h,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798})}})}catch(e){}
-    list=a;
-    if(!list.length){pcRow.textContent='\u26a0 No PC found. Start phone_explorer.py on the PC, or type its address below';return}
-    let last=null;try{last=JSON.parse(localStorage.getItem('ls_pexec_pc')||'null')}catch(e){}
-    const lp=last&&list.find(p=>p.name===last.name);
-    if(list.length===1||lp){choose(lp||list[0])}else{pcRow.textContent='Choose a PC:';showList()}
-  })();
-  run.onclick=async()=>{
-    const addr=adI.value.trim();
-    const tgt=addr?{ip:addr,port:8798,name:addr}:pc;
-    if(!tgt){toast('\u26a0 Choose a PC or type its address',2500);return}
-    const pw=pwI.value,cmd=cmdI.value.trim();
-    if(!pw){toast('\u26a0 Enter the PC password',3000);return}
-    if(!cmd){toast('\u26a0 Enter a command',2000);return}
-    try{if(remC.checked)localStorage.setItem('ls_pexec_pw_'+tgt.name,pw);else localStorage.removeItem('ls_pexec_pw_'+tgt.name)}catch(e){}
-    run.disabled=true;run.textContent='Running\u2026';out.textContent='';
-    try{
-      const r=await api('POST','/api/pcexec?ip='+enc(tgt.ip)+'&hport='+tgt.port+'&pass='+enc(pw)+'&cmd='+enc(cmd),{},65000);
-      let t=(r.out||'');if(r.err)t+=(t?'\n':'')+r.err;
-      t+='\n\n[exit code '+r.code+']'+(r.truncated?' (output truncated)':'');
-      out.textContent=t.trim()
-    }catch(e){out.textContent='\u26a0 '+e.message}
-    finally{run.disabled=false;run.textContent='Run'}};
-  o.append(card)}
 function drawerRender(){
   $('#dtabs').textContent='';
   const bd=$('#dbody'),keep=bd.scrollTop;bd.textContent='';
@@ -5586,6 +5608,7 @@ function drawerRender(){
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
     if(window.LSAndroid&&LSAndroid.peState)bd.append(dItem({lead:ic('phone','s24'),title:'Phone Explorer',sub:'Open this phone on the PC',onclick:()=>{drawerClose();peOpenOnPc()},x:{icon:'settings',label:'Phone Explorer settings',fn:()=>{drawerClose();openPhoneExplorer()}}}));
+    bd.append(dItem({lead:ic('term','s24'),title:'Remote shell',sub:'Run commands on a PC',onclick:()=>{drawerClose();openRemoteShell()}}));
     if(PS_ON())bd.append(dItem({lead:ic('print','s24'),title:'Print space',sub:'Pictures held for printing',onclick:()=>{drawerClose();openPrintSpace()}}));
     if(window.LSAndroid&&LSAndroid.openInbox)bd.append(dItem({lead:ic('share','s24'),title:'Text inbox',sub:'Send text and links between devices',onclick:()=>{drawerClose();LSAndroid.openInbox()}}));
     bd.append(dItem({lead:ic('refresh','s24'),title:'Free up space',sub:'Large files, old downloads, duplicates',onclick:()=>{drawerClose();openFreeUp()}}));

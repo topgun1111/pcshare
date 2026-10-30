@@ -7,12 +7,15 @@
 
 ## 2026-10-30 - Remote command on PC
 ### Added
-- Phone Explorer settings: new "Remote command" screen. Pick a PC, type a command, and see its output and exit code. Works over Wi-Fi and Tailscale: the PCs the app already found (SMB devices) are listed to pick from, or type an address once and it is remembered. Asks for the password you set on the PC, with a "Remember password" box so you only type it once
+- New "Remote shell" tile on the Main menu (and in the side menu): a full-screen terminal for your PC with a command box, a PowerShell switch, command history and a Clear button. Pick the PC (found on Wi-Fi or Tailscale) or type its address, enter the password you set on the PC once, and tick "Remember password" so it never asks again
 - On the PC, the Phone Explorer window has a password box and one button that turns remote commands ON or OFF (off by default). Five wrong passwords lock the PC for a minute
 - The PC program always runs as Administrator (one prompt; it closes if you decline) so commands have admin rights, and can start with Windows already elevated
 
+### Changed
+- Commands on the PC can now run up to 5 minutes (was 1 minute), so long jobs such as disk checks finish
+
 ### Removed
-- Phone Explorer settings: the FTPS and Require FTPS switches, the certificate line, the Pairing QR code and the long hint text (the PC tool finds the phone by itself)
+- Phone Explorer settings: the old Remote command button (it is now the Remote shell tile), the FTPS and Require FTPS switches, the certificate line, the Pairing QR code and the long hint text (the PC tool finds the phone by itself)
 
 
 ## 2026-10-29 - USB / OTG drives

@@ -376,12 +376,15 @@ def start_listeners(app):
 
         def _reply(self, code, obj):
             b = json.dumps(obj).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(b)))
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self.wfile.write(b)
+            try:
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(b)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(b)
+            except (ConnectionError, OSError):
+                pass        # the phone gave up waiting (its own timeout): nothing left to answer
             self.close_connection = True
 
         def do_POST(self):
@@ -433,10 +436,10 @@ def start_listeners(app):
             cmd = (q.get("cmd", [""])[0] or "").strip()
             if not cmd:
                 return self._reply(400, {"error": "empty command"})
-            if len(cmd) > 4000:
+            if len(cmd) > 16000:
                 return self._reply(400, {"error": "command too long"})
             try:
-                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60,
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300,
                                     cwd=os.path.expanduser("~"), creationflags=_NO_WIN)
                 out, err = r.stdout, r.stderr
                 truncated = len(out) > EXEC_MAX or len(err) > EXEC_MAX
@@ -444,7 +447,7 @@ def start_listeners(app):
                 return self._reply(200, {"out": out[:EXEC_MAX], "err": err[:EXEC_MAX],
                                           "code": r.returncode, "truncated": truncated})
             except subprocess.TimeoutExpired:
-                return self._reply(504, {"error": "timed out after 60s"})
+                return self._reply(504, {"error": "timed out after 300 s"})
             except Exception as e:
                 return self._reply(500, {"error": str(e)})
 
@@ -463,8 +466,8 @@ class App(tk.Tk):
     def __init__(self, args):
         super().__init__()
         self.title("Phone Explorer" + (" (Administrator)" if is_admin() else ""))
-        self.geometry("520x680")
-        self.minsize(480, 620)
+        self.geometry("520x760")
+        self.minsize(480, 720)
         self.configure(bg=BG)
         self.cfg = load_config()
         self.found = []          # last discovery results
@@ -497,7 +500,7 @@ class App(tk.Tk):
     # --- layout
     def _build(self):
         tk.Label(self, text="Phone Explorer", font=("Segoe UI", 20, "bold"), fg=FG, bg=BG).pack(pady=(14, 0))
-        tk.Label(self, text="Phone and PC must be on the same Wi-Fi", fg=MUTED, bg=BG).pack()
+        tk.Label(self, text="Phone and PC on the same Wi-Fi (or Tailscale)", fg=MUTED, bg=BG).pack()
 
         st = ttk.Style(self)
         try:
@@ -529,12 +532,6 @@ class App(tk.Tk):
         self._btn(pin_row, "Save", CARD, self.on_save_pin).pack(side="left")
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
-        pair = tk.Frame(self, bg=BG)
-        pair.pack(fill="x", padx=18, pady=(10, 0))
-        tk.Label(pair, text="Pairing link from the phone's QR screen:", fg=MUTED, bg=BG).pack(anchor="w")
-        self.link = tk.StringVar()
-        tk.Entry(pair, textvariable=self.link).pack(side="left", expand=True, fill="x")
-        self._btn(pair, "Import", CARD, lambda: self.import_link(self.link.get())).pack(side="left", padx=(6, 0))
 
         drv = tk.Frame(self, bg=BG)
         drv.pack(fill="x", padx=18, pady=(14, 0))
@@ -685,7 +682,7 @@ class App(tk.Tk):
     def on_open(self):
         d = self.selected_device()
         if not d:
-            self.set_status("Select a phone first (press Scan or import a pairing link).")
+            self.set_status("Select a phone first (press Scan).")
             return
         pin = self.pin.get().strip()
         if pin:

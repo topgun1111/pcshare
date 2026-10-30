@@ -69,7 +69,7 @@ object PePc {
      * phone_explorer.py (the PC must also have the "Remote commands" button ON). Throws when it fails, including
      * when the PC has that feature turned off or the password is wrong (the PC's error message is the exception text).
      */
-    fun exec(ip: String, hport: Int, pass: String, cmd: String, timeoutMs: Int = 65000): ExecResult {
+    fun exec(ip: String, hport: Int, pass: String, cmd: String, timeoutMs: Int = 325000): ExecResult {
         val e = { v: String -> URLEncoder.encode(v, "UTF-8") }
         val path = "/exec?pass=${e(pass)}&cmd=${e(cmd)}"
         try {
