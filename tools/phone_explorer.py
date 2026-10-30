@@ -12,7 +12,8 @@ TCP 8798 receives "open"; allow both once in the Windows firewall prompt.)
 
 REMOTE COMMANDS (optional, off by default): the "Remote commands: ON / OFF" button turns on a
 /exec endpoint on the same TCP 8798 port, guarded by a password you set in this window (the phone app can remember it). The "Remote command"
-screen in the LANShare app sends a command line and shows stdout/err/exit code. Commands run with whatever rights
+screen in the LANShare app sends a command line and shows stdout/err/exit code. Commands run as jobs (up to 30 min) that the phone
+polls, so a cut Wi-Fi / Tailscale connection does not lose the answer (see "remote commands (jobs)" below). Commands run with whatever rights
 this program itself has - see ADMIN below.
 
 ADMIN: on Windows this program ALWAYS runs as Administrator: it relaunches itself elevated (one UAC prompt) as soon
@@ -34,6 +35,7 @@ import json
 import os
 import secrets
 import shutil
+import signal
 import socket
 import string
 import subprocess
@@ -147,8 +149,10 @@ def load_config():
 
 def save_config(cfg):
     try:
-        with open(config_path(), "w", encoding="utf-8") as f:
+        tmp = config_path() + ".tmp"      # write + rename: a reader (the other copy of this program, the /exec handler) never sees half a file
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
+        os.replace(tmp, config_path())
     except Exception:
         pass
 
@@ -366,10 +370,222 @@ def udp_responder():
             time.sleep(0.5)
 
 
+# ---------------------------------------------------------------------- remote commands (jobs)
+# A command used to be held on ONE idle HTTP connection until it finished (up to 5 min). Android destroys such sockets
+# whenever Tailscale / Wi-Fi re-routes ("Software caused connection abort"), NATs and access points drop idle ones, and a
+# command that was still running had its answer thrown away. Now the command runs as a JOB: the phone starts it with an id,
+# then asks again every few seconds (long poll, <= EXEC_POLL_WAIT s). Every ask is safe to repeat (same id = same job), the
+# output is kept here, so a cut connection only costs one more ask. A phone without id still gets the old single answer.
+EXEC_SYNC_LIMIT = 300     # s: old-style request that waits for the end
+EXEC_JOB_LIMIT = 1800     # s: job started with an id (the phone polls it)
+EXEC_POLL_WAIT = 20       # s: one poll waits at most this long (phone may ask for less, never more than 25)
+EXEC_JOBS_MAX = 8         # commands running at the same time
+_ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
+
+
+def _oem_encoding():
+    if sys.platform == "win32":
+        try:
+            return "cp%d" % ctypes.windll.kernel32.GetOEMCP()
+        except Exception:
+            pass
+    return "utf-8"
+
+
+def decode_output(b):
+    """Console bytes -> text. The old text=True used the ANSI code page, but cmd.exe writes the OEM one (cp857 on a Turkish
+    PC): one 'ü' (0x81) raised UnicodeDecodeError and the whole answer became an error. UTF-8 first (PowerShell / python /
+    git), then UTF-16 (wsl, some tools), then the OEM page; never raises."""
+    if not b:
+        return ""
+    try:
+        if b[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            t = b.decode("utf-16", "replace")
+        elif b.count(b"\x00") * 3 > len(b):
+            t = b.decode("utf-16-le", "replace")
+        else:
+            try:
+                t = b.decode("utf-8")
+            except UnicodeDecodeError as e:
+                if e.reason == "unexpected end of data" and e.end >= len(b):
+                    t = b[:e.start].decode("utf-8")      # the 64 KB cap cut a character in half
+                else:
+                    t = b.decode(_oem_encoding(), "replace")
+    except Exception:
+        t = b.decode("utf-8", "replace")
+    return t.replace("\r\n", "\n")
+
+
+def kill_tree(proc):
+    """Stops the command AND everything it started. proc.kill() only ends cmd.exe; a grandchild that kept the output pipe
+    open made subprocess.run() wait for ever after its timeout, so the phone never got an answer."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, stdin=subprocess.DEVNULL,
+                           creationflags=_NO_WIN, timeout=20)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:
+        pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+
+
+class ExecJob:
+    def __init__(self, jid, cmd, limit):
+        self.id, self.cmd, self.limit = jid, cmd, limit
+        self.buf = [bytearray(), bytearray()]     # stdout, stderr (first EXEC_MAX bytes each; the rest is read and dropped)
+        self.n = [0, 0]
+        self.done = threading.Event()
+        self.t_end = 0.0
+        self.res = None
+
+    def _pump(self, stream, i):
+        try:
+            while True:
+                chunk = stream.read1(65536)
+                if not chunk:
+                    break
+                self.n[i] += len(chunk)
+                room = EXEC_MAX - len(self.buf[i])
+                if room > 0:
+                    self.buf[i] += chunk[:room]
+        except Exception:
+            pass
+
+    def run(self):
+        code, note, p = -1, "", None
+        try:
+            cwd = os.path.expanduser("~")
+            kw = {"shell": True, "stdin": subprocess.DEVNULL,   # stdin = nothing: "pause", "chkdsk /f" (Y/N) ... used to wait for ever
+                  "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "cwd": cwd if os.path.isdir(cwd) else None}
+            if sys.platform == "win32":
+                kw["creationflags"] = _NO_WIN
+            else:
+                kw["start_new_session"] = True
+            p = subprocess.Popen(self.cmd, **kw)
+            ts = [threading.Thread(target=self._pump, args=(p.stdout, 0), daemon=True),
+                  threading.Thread(target=self._pump, args=(p.stderr, 1), daemon=True)]
+            for t in ts:
+                t.start()
+            killed = False
+            try:
+                p.wait(timeout=self.limit)
+            except subprocess.TimeoutExpired:
+                killed = True
+                note = "[timed out after %d s - the command was stopped]" % self.limit
+                kill_tree(p)
+                try:
+                    p.wait(timeout=10)
+                except Exception:
+                    pass
+            end = time.time() + (3 if killed else 5)    # a background child that inherited the pipes must not hold the answer back
+            for t in ts:
+                t.join(max(0.1, end - time.time()))
+            code = p.returncode if p.returncode is not None else -1
+        except Exception as e:
+            note = "[could not run the command: %s]" % e
+        finally:
+            err = decode_output(bytes(self.buf[1]))
+            if note:
+                err = (err + ("" if not err or err.endswith("\n") else "\n")) + note
+            self.res = {"done": True, "id": self.id, "out": decode_output(bytes(self.buf[0])), "err": err,
+                        "code": code, "truncated": self.n[0] > EXEC_MAX or self.n[1] > EXEC_MAX}
+            self.t_end = time.time()
+            self.done.set()
+
+
+_jobs = {}
+_jobs_lock = threading.Lock()
+_awake_on = [False]
+
+
+def _keep_awake():
+    """The PC must not go to sleep while a command runs (a sleeping PC drops the Tailscale link: the phone sees an abort)."""
+    if sys.platform != "win32":
+        return
+    with _jobs_lock:
+        if _awake_on[0]:
+            return
+        _awake_on[0] = True
+
+    def loop():
+        try:
+            while True:
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+                time.sleep(5)
+                with _jobs_lock:
+                    if not any(not j.done.is_set() for j in _jobs.values()):
+                        _awake_on[0] = False
+                        break
+        except Exception:
+            _awake_on[0] = False
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)       # ES_CONTINUOUS: back to normal
+        except Exception:
+            pass
+    threading.Thread(target=loop, daemon=True).start()
+
+
+def exec_job(jid, cmd, limit):
+    """Starts [cmd] as a job. The same [jid] again returns the job that already exists (never runs the command twice)."""
+    with _jobs_lock:
+        now = time.time()
+        for k, j in list(_jobs.items()):                      # forget answers nobody collected for 15 min
+            if j.done.is_set() and now - j.t_end > 900:
+                del _jobs[k]
+        if jid and jid in _jobs:
+            return _jobs[jid]
+        if sum(1 for j in _jobs.values() if not j.done.is_set()) >= EXEC_JOBS_MAX:
+            raise RuntimeError("too many commands are running on the PC already")
+        j = ExecJob(jid or secrets.token_hex(8), cmd, limit)
+        _jobs[j.id] = j
+    threading.Thread(target=j.run, daemon=True).start()
+    _keep_awake()
+    return j
+
+
+# ------------------------------------------------------------------------------------ firewall
+
+def ensure_firewall():
+    """The Windows prompt opens the port only for the networks that were ticked in it, and the Tailscale adapter is a PUBLIC
+    network: when it was not ticked the phone's connect hung until its timeout. Allow the two ports on every profile, but
+    only from private / Tailscale addresses (the same range lan_ip() accepts). Needs admin; once, in the background."""
+    if sys.platform != "win32" or not is_admin():
+        return
+    remote = "LocalSubnet,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16"
+    for name, proto, port in (("Phone Explorer TCP %d" % PC_HTTP_PORT, "TCP", PC_HTTP_PORT),
+                              ("Phone Explorer UDP %d" % PC_UDP_PORT, "UDP", PC_UDP_PORT)):
+        try:
+            r = subprocess.run(["netsh", "advfirewall", "firewall", "show", "rule", "name=" + name], capture_output=True,
+                               stdin=subprocess.DEVNULL, creationflags=_NO_WIN, timeout=30)
+            if r.returncode == 0:
+                continue
+            subprocess.run(["netsh", "advfirewall", "firewall", "add", "rule", "name=" + name, "dir=in", "action=allow",
+                            "protocol=" + proto, "localport=%d" % port, "profile=any", "remoteip=" + remote],
+                           capture_output=True, stdin=subprocess.DEVNULL, creationflags=_NO_WIN, timeout=30)
+        except Exception:
+            pass
+
+
+def live_cfg(app):
+    """Settings as saved on disk right now: a second copy of this program (autostart + a manual start) holds an older
+    in-memory copy, so the ON button / password changed in one window looked 'turned off' / 'wrong password' in the other."""
+    c = dict(app.cfg)
+    try:
+        with open(config_path(), "r", encoding="utf-8") as f:
+            c.update(json.load(f))
+    except Exception:
+        pass
+    return c
+
+
 def start_listeners(app):
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        timeout = 15
+        timeout = 60        # was 15: a slow first packet over Tailscale (relay) must not cut the request in half
 
         def log_message(self, *a):
             pass
@@ -383,23 +599,49 @@ def start_listeners(app):
                 self.send_header("Connection", "close")
                 self.end_headers()
                 self.wfile.write(b)
+                self.wfile.flush()
             except (ConnectionError, OSError):
                 pass        # the phone gave up waiting (its own timeout): nothing left to answer
             self.close_connection = True
 
-        def do_POST(self):
-            u = urlparse(self.path)
-            ip = self.client_address[0].split("%")[0]
-            if not lan_ip(ip) or ":" in ip:
-                return self._reply(403, {"error": "LAN only"})
-            if u.path == "/open":
-                return self._do_open(u)
-            if u.path == "/exec":
-                return self._do_exec(u)
-            return self._reply(404, {"error": "not found"})
+        def _body(self):
+            """Request body (form-encoded, <= 256 KB used). The rest is read and dropped: closing a socket that still holds
+            unread data makes Windows send a RST and the phone reports 'connection aborted' instead of the answer."""
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if n <= 0:
+                return b""
+            keep = self.rfile.read(min(n, 262144))
+            left = n - len(keep)
+            while left > 0:
+                chunk = self.rfile.read(min(left, 65536))
+                if not chunk:
+                    break
+                left -= len(chunk)
+            return keep
 
-        def _do_open(self, u):
-            q = parse_qs(u.query)
+        def do_POST(self):
+            try:
+                u = urlparse(self.path)
+                ip = self.client_address[0].split("%")[0]
+                if not lan_ip(ip) or ":" in ip:
+                    self._body()
+                    return self._reply(403, {"error": "LAN only"})
+                q = parse_qs(u.query)
+                body = self._body()
+                if body:                    # long commands travel in the body (the URL line is limited to 16 KB on the phone)
+                    q.update(parse_qs(body.decode("utf-8", "replace")))
+                if u.path == "/open":
+                    return self._do_open(q)
+                if u.path == "/exec":
+                    return self._do_exec(q)
+                return self._reply(404, {"error": "not found"})
+            except Exception as e:      # never leave the phone with a silently closed socket
+                self._reply(500, {"error": "PC error: %s" % e})
+
+        def _do_open(self, q):
             ip = self.client_address[0].split("%")[0]
             user = q.get("user", ["phone"])[0]
             pin = q.get("pin", [""])[0]
@@ -411,54 +653,73 @@ def start_listeners(app):
                 port = 2121
             name = (q.get("name", ["Phone"])[0] or "Phone")[:40]
             dev = {"name": name, "ip": ip, "port": port, "user": user, "pin": pin}
-            app.after(0, app.open_remote, dev)
+            try:
+                app.after(0, app.open_remote, dev)
+            except Exception:
+                return self._reply(503, {"error": "the Phone Explorer window on the PC is closing"})
             self._reply(200, {"ok": True})
 
-        def _do_exec(self, u):
+        def _do_exec(self, q):
             """Runs a command line on this PC and returns its output. Off by default - the person at the PC
-            must press the "Remote commands" button to turn it ON, and the phone must send the password."""
-            if not app.cfg.get("exec_enabled"):
+            must press the "Remote commands" button to turn it ON, and the phone must send the password.
+            No id = old behaviour (one request waits for the end). With id = job: the first request starts it, later
+            ones (poll=1, or the same request again) wait up to `wait` s for the end and answer {"done": false} if it runs on."""
+            if q.get("probe"):      # the phone asks which version this is (no command, no password)
+                return self._reply(200, {"v": 2, "exec": bool(live_cfg(app).get("exec_enabled"))})
+            cfg = live_cfg(app)
+            if not cfg.get("exec_enabled"):
                 return self._reply(403, {"error": "Remote commands are turned off on this PC"})
-            q = parse_qs(u.query)
             ip = self.client_address[0].split("%")[0]
             f = _fails.setdefault(ip, [0, 0.0])
             if time.time() < f[1]:
                 return self._reply(429, {"error": "too many wrong passwords - try again in a minute"})
-            if not app.cfg.get("exec_hash"):
+            if not cfg.get("exec_hash"):
                 return self._reply(403, {"error": "No password is set on the PC (Phone Explorer window -> Remote commands)"})
-            if not check_pass(app.cfg, q.get("pass", [""])[0][:200]):
+            if not check_pass(cfg, q.get("pass", [""])[0][:200]):
                 f[0] += 1
                 if f[0] >= 5:
                     f[0] = 0
                     f[1] = time.time() + 60
                 return self._reply(403, {"error": "wrong password"})
             f[0] = 0
-            cmd = (q.get("cmd", [""])[0] or "").strip()
-            if not cmd:
-                return self._reply(400, {"error": "empty command"})
-            if len(cmd) > 16000:
-                return self._reply(400, {"error": "command too long"})
+            jid = q.get("id", [""])[0]
+            if jid and not _ID_RE.fullmatch(jid):
+                return self._reply(400, {"error": "bad job id"})
+            if jid and q.get("poll"):
+                with _jobs_lock:
+                    job = _jobs.get(jid)
+                if job is None:     # never start a command from a poll: after a restart of this program it would run again
+                    return self._reply(404, {"error": "job not found - the Phone Explorer program on the PC was restarted"})
+            else:
+                cmd = (q.get("cmd", [""])[0] or "").strip()
+                if not cmd:
+                    return self._reply(400, {"error": "empty command"})
+                if len(cmd) > 100000:
+                    return self._reply(400, {"error": "command too long"})
+                try:
+                    job = exec_job(jid, cmd, EXEC_JOB_LIMIT if jid else EXEC_SYNC_LIMIT)
+                except RuntimeError as e:
+                    return self._reply(429, {"error": str(e)})
+                try:
+                    app.after(0, app.set_status, "Ran remote command: %s" % cmd[:60])
+                except Exception:
+                    pass
             try:
-                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300,
-                                    cwd=os.path.expanduser("~"), creationflags=_NO_WIN)
-                out, err = r.stdout, r.stderr
-                truncated = len(out) > EXEC_MAX or len(err) > EXEC_MAX
-                app.after(0, app.set_status, "Ran remote command: %s" % cmd[:60])
-                return self._reply(200, {"out": out[:EXEC_MAX], "err": err[:EXEC_MAX],
-                                          "code": r.returncode, "truncated": truncated})
-            except subprocess.TimeoutExpired:
-                return self._reply(504, {"error": "timed out after 300 s"})
-            except Exception as e:
-                return self._reply(500, {"error": str(e)})
+                wait = max(0.0, min(25.0, float(q.get("wait", [EXEC_POLL_WAIT])[0]))) if jid else None
+            except ValueError:
+                wait = float(EXEC_POLL_WAIT)
+            job.done.wait(wait)         # wait=None (old style): until it is over - the job has its own time limit
+            return self._reply(200, job.res if job.done.is_set() else {"done": False, "id": job.id})
 
     threading.Thread(target=udp_responder, daemon=True).start()
     try:
         srv = ThreadingHTTPServer(("", PC_HTTP_PORT), H)
+        srv.request_queue_size = 64
         threading.Thread(target=srv.serve_forever, daemon=True).start()
+        threading.Thread(target=ensure_firewall, daemon=True).start()
         return True
     except OSError:
         return False        # another copy of this program is already running
-
 
 # -------------------------------------------------------------------------------------------- UI
 
