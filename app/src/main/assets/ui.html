@@ -5435,7 +5435,7 @@ async function peOpenOnPc(){
       if(!st.run){toast('⚠ '+(st.err||'Sharing did not start'),5000);return}}
     toast('Looking for your PC…',2000);
     const list=await api('GET','/api/pcfind',null,8000);
-    if(!list||!list.length){toast('⚠ No PC found. Start phone_explorer.py on the PC (same Wi-Fi) and allow it in the Windows firewall',7000);return}
+    if(!list||!list.length){toast('⚠ No PC found. Start phone_explorer.py on the PC (same Wi-Fi)',7000);return}
     const pc=await pePickPc(list);if(!pc)return;
     await api('POST','/api/pcphone?ip='+enc(pc.ip)+'&hport='+pc.port+'&port='+st.port+'&user='+enc(st.user)+'&pin='+enc(st.pin)+'&name='+enc(st.name||'Phone'),{},10000);
     try{localStorage.setItem('ls_pepc',JSON.stringify({name:pc.name}))}catch(e){}
@@ -5446,31 +5446,23 @@ function openPhoneExplorer(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{clearInterval(tm);o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   let tm=0,wait=0,st=JSON.parse(B.peState());
+  if(st.tls||st.tlsreq){B.peSet(JSON.stringify({tls:false,tlsreq:false}));st=JSON.parse(B.peState())}   // FTPS options were removed from this sheet: never leave them on, plain FTP is what Explorer needs
   const card=E('div','card'),det=E('div','det'),row=(k,v)=>{const r=E('div','dr'),d=E('span','dv',v);r.append(E('span','dk',k),d);det.append(r);return d};
   card.append(E('div','handle'),E('h3','','Phone Explorer'),E('div','dnote','Shows this phone’s storage in Windows Explorer (same Wi-Fi). Browse, copy, rename and delete files from the PC.'));
   const vSt=row('Status',''),vAd=row('Address',''),vPin=row('PIN','');
   card.append(det);
   const op=E('button','tbtn fill','Open on PC');op.style.cssText='display:block;width:calc(100% - 8px);margin:4px 4px 0;height:44px';op.onclick=()=>{close();peOpenOnPc()};card.append(op);
+  const rc=E('button','tbtn','Remote command (PC) \u203a');rc.style.cssText='display:block;width:calc(100% - 8px);margin:8px 4px 0;height:40px';rc.onclick=()=>{close();openPcExec()};card.append(rc);
   const act=E('div','dact'),go=E('button','tbtn fill'),cp=E('button','tbtn','Copy link'),np=E('button','tbtn','New PIN');act.append(np,cp,go);card.append(act);
-  const qr=E('canvas');qr.style.cssText='display:none;margin:8px auto;border-radius:12px;max-width:100%;image-rendering:pixelated';card.append(qr);
-  const qb=E('button','set'),qt=E('div','t');qb.style.cssText='width:100%;text-align:left';qt.append(E('b','','Pairing QR code'),E('small','','For the PC tool: scan with any QR reader, paste the link there'));qb.append(qt);card.append(qb);
-  qb.onclick=()=>{if(qr.style.display!=='none'){qr.style.display='none';return}
-    const rows=(B.peQr()||'').split('\n').filter(Boolean);if(!rows.length){toast('⚠ QR code failed');return}
-    const n=rows.length,z=6;qr.width=qr.height=n*z;const g=qr.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,n*z,n*z);g.fillStyle='#000';
-    rows.forEach((r,y)=>{for(let x=0;x<n;x++)if(r[x]==='1')g.fillRect(x*z,y*z,z,z)});qr.style.display='block';qr.style.width=Math.min(240,n*z)+'px';qr.style.height=qr.style.width}
   const sw=(title,sub,key)=>{const r=E('label','set'),t=E('div','t'),s=E('span','sw'),cb=E('input');cb.type='checkbox';cb.checked=!!st[key];
     t.append(E('b','',title),E('small','',sub));cb.onchange=()=>{B.peSet(JSON.stringify({[key]:cb.checked}))};s.append(cb,E('i'));r.append(t,s);card.append(r)};
   sw('Read-only','The PC can look and copy, not change anything','ro');
   sw('Start automatically','After the phone restarts or the app updates','auto');
-  sw('FTPS (TLS encryption)','For FileZilla and other apps (AUTH TLS). Windows Explorer cannot use it, plain FTP stays available. Stop and start sharing to apply','tls');
-  sw('Require FTPS','Refuse plain FTP: logins and transfers must be encrypted','tlsreq');
-  if(st.fp){const fp=E('div','dnote','FTPS certificate (self-signed), SHA-256: '+st.fp);fp.style.cssText='margin:6px 8px;font-size:11px;overflow-wrap:anywhere';card.append(fp)}
   const fld=(label,ph,val,type,key,fix)=>{const w=E('div'),l=E('small','',label),i=E('input','tf');w.style.cssText='margin:8px 4px 0';l.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
     i.type=type;i.placeholder=ph;i.value=val;i.style.cssText='height:48px;margin:0';i.autocomplete='off';
     i.onchange=()=>{let v=fix(i.value);i.value=v;B.peSet(JSON.stringify({[key]:v}));if(key==='port'&&st.run)toast('Stop and start sharing to use the new port',3500)};w.append(l,i);card.append(w)};
   fld('Shared folders (empty = everything)','e.g. DCIM, Download',st.wl,'text','wl',v=>v.trim());
   fld('Port','2121',st.port,'number','port',v=>String(Math.min(65535,Math.max(1024,parseInt(v)||2121))));
-  const hint=E('div','dnote','Windows: type the address into Explorer’s address bar, or run tools/phone_explorer.py (finds the phone itself, only needs the PIN). Android 11+ keeps Android/data and Android/obb closed to every app.');hint.style.marginTop='12px';card.append(hint);
   const url=()=>'ftp://'+st.user+':'+st.pin+'@'+st.ip+':'+st.port+'/';
   const upd=()=>{
     if(st.run)wait=0;
@@ -5483,10 +5475,79 @@ function openPhoneExplorer(){
     if(st.run){B.peStop();wait=0;st.run=false;upd();return}
     wait=6;if(!B.peStart())wait=0;upd()};
   cp.onclick=()=>{if(st.ip)peCopy(url())};
-  np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd();
-    if(qr.style.display!=='none'){qr.style.display='none';qb.click()}};
+  np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd()};
   o.append(card);upd();
   tm=setInterval(()=>{if(!card.isConnected||o.style.display==='none'){clearInterval(tm);return}try{st=JSON.parse(B.peState());if(wait>0&&!st.run)wait--;upd()}catch(e){}},1000)}
+/* ---- Remote command: sends a command line to phone_explorer.py's /exec on a PC and shows stdout/err/exit code.
+   Off by default on the PC ("Allow the phone to run commands on this PC") and needs the password you set on the PC.
+   App routes /api/pcfind (reused from Phone Explorer) + /api/pcexec (pe/PePc.kt exec()). ---- */
+function openPcExec(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');
+  card.append(E('div','handle'),E('h3','','Remote command'),
+    E('div','dnote','Runs a command line on a PC running phone_explorer.py. Must be turned on there first (the \u201cRemote commands\u201d button) and a password saved there; it runs with whatever rights that program has (admin, if it is running elevated).'));
+  const pcRow=E('div','dnote','Looking for PCs\u2026');pcRow.style.margin='6px 8px';card.append(pcRow);
+  const pickWrap=E('div');card.append(pickWrap);
+  const pick=E('button','tbtn','Choose a different PC \u203a');pick.style.cssText='display:none;width:calc(100% - 8px);margin:4px 4px 0;height:40px';card.append(pick);
+  const adW=E('div');adW.style.cssText='margin:10px 4px 0';
+  const adL=E('small','','PC address (only if the PC is not in the list: its Tailscale IP like 100.x.x.x, or its name). Leave empty to use the list');adL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
+  const adI=E('input','tf');adI.placeholder='100.x.x.x or pc-name';adI.style.cssText='height:44px;margin:0';adI.autocomplete='off';adI.autocapitalize='off';
+  try{adI.value=localStorage.getItem('ls_pexec_addr')||''}catch(e){}
+  adW.append(adL,adI);card.append(adW);
+  const pwW=E('div');pwW.style.cssText='margin:10px 4px 0';
+  const pwL=E('small','','Password (set in the PC\u2019s Phone Explorer window)');pwL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
+  const pwI=E('input','tf');pwI.type='password';pwI.placeholder='Password';pwI.style.cssText='height:44px;margin:0';pwI.autocomplete='off';
+  const remL=E('label');remL.style.cssText='display:flex;align-items:center;gap:8px;margin:8px 0 0 12px';
+  const remC=E('input');remC.type='checkbox';remL.append(remC,E('span','','Remember password'));
+  pwW.append(pwL,pwI,remL);card.append(pwW);
+  const cmdW=E('div');cmdW.style.cssText='margin:10px 4px 0';
+  const cmdL=E('small','','Command');cmdL.style.cssText='display:block;color:var(--mut);margin:0 0 4px 12px';
+  const cmdI=E('input','tf');cmdI.placeholder='e.g. ipconfig /all';cmdI.style.cssText='height:44px;margin:0';cmdI.autocomplete='off';
+  cmdW.append(cmdL,cmdI);card.append(cmdW);
+  const run=E('button','tbtn fill','Run');run.style.cssText='display:block;width:calc(100% - 8px);margin:10px 4px 0;height:44px';card.append(run);
+  const out=E('pre');out.style.cssText='margin:10px 8px 4px;padding:10px;background:#00000022;border-radius:10px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto';card.append(out);
+  let pc=null,list=[];
+  const loadPw=n=>{pwI.value='';remC.checked=false;try{const sv=localStorage.getItem('ls_pexec_pw_'+n);if(sv){pwI.value=sv;remC.checked=true}}catch(e){}};
+  adI.onchange=()=>{const a=adI.value.trim();try{localStorage.setItem('ls_pexec_addr',a)}catch(e){}
+    if(a){pc=null;pickWrap.textContent='';pick.style.display='none';pcRow.textContent='PC: '+a;loadPw(a)}};
+  const showList=()=>{pickWrap.textContent='';
+    list.forEach(p=>{const r=E('button','set'),t=E('div','t');r.style.cssText='width:100%;text-align:left';
+      t.append(E('b','',p.name));r.append(t);r.onclick=()=>choose(p);pickWrap.append(r)})};
+  const choose=p=>{pc=p;pickWrap.textContent='';pick.style.display='block';pcRow.textContent='PC: '+p.name;
+    try{localStorage.setItem('ls_pexec_pc',JSON.stringify({name:p.name}))}catch(e){}
+
+    loadPw(p.name)};
+  pick.onclick=()=>{pick.style.display='none';pcRow.textContent='Choose a PC:';showList()};
+  (async()=>{
+    if(adI.value.trim()){pcRow.textContent='PC: '+adI.value.trim();loadPw(adI.value.trim());return}
+    let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
+    try{const seen=new Set(a.map(x=>x.ip)),ps=(await api('GET','/api/peers',null,5000))||[];   // PCs the app already found as SMB devices (Wi-Fi or Tailscale)
+      ps.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
+        if(h&&!seen.has(h)){seen.add(h);a.push({ip:h,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798})}})}catch(e){}
+    list=a;
+    if(!list.length){pcRow.textContent='\u26a0 No PC found. Start phone_explorer.py on the PC, or type its address below';return}
+    let last=null;try{last=JSON.parse(localStorage.getItem('ls_pexec_pc')||'null')}catch(e){}
+    const lp=last&&list.find(p=>p.name===last.name);
+    if(list.length===1||lp){choose(lp||list[0])}else{pcRow.textContent='Choose a PC:';showList()}
+  })();
+  run.onclick=async()=>{
+    const addr=adI.value.trim();
+    const tgt=addr?{ip:addr,port:8798,name:addr}:pc;
+    if(!tgt){toast('\u26a0 Choose a PC or type its address',2500);return}
+    const pw=pwI.value,cmd=cmdI.value.trim();
+    if(!pw){toast('\u26a0 Enter the PC password',3000);return}
+    if(!cmd){toast('\u26a0 Enter a command',2000);return}
+    try{if(remC.checked)localStorage.setItem('ls_pexec_pw_'+tgt.name,pw);else localStorage.removeItem('ls_pexec_pw_'+tgt.name)}catch(e){}
+    run.disabled=true;run.textContent='Running\u2026';out.textContent='';
+    try{
+      const r=await api('POST','/api/pcexec?ip='+enc(tgt.ip)+'&hport='+tgt.port+'&pass='+enc(pw)+'&cmd='+enc(cmd),{},65000);
+      let t=(r.out||'');if(r.err)t+=(t?'\n':'')+r.err;
+      t+='\n\n[exit code '+r.code+']'+(r.truncated?' (output truncated)':'');
+      out.textContent=t.trim()
+    }catch(e){out.textContent='\u26a0 '+e.message}
+    finally{run.disabled=false;run.textContent='Run'}};
+  o.append(card)}
 function drawerRender(){
   $('#dtabs').textContent='';
   const bd=$('#dbody'),keep=bd.scrollTop;bd.textContent='';

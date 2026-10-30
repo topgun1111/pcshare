@@ -6,22 +6,48 @@ storage in Windows Explorer (ftp://phone:PIN@IP:PORT/) and can optionally map it
 (needs rclone + WinFsp). Optional system tray icon if `pystray` and `Pillow` are installed
 (the packaged .exe includes them).
 
-Run:   python phone_explorer.py [--pair "phoneexplorer://..."] [--auto] [--tray]
-       --pair  import a pairing link from the phone's QR screen and save the device
-       --auto  open the default device right after start (also: tick "Auto-open on start")
-       --tray  start hidden in the system tray
+ONE TAP: keep this program running (tray). In the LANShare app press "Phone Explorer" in the side menu: the phone starts
+sharing, finds this PC and Explorer opens the phone's storage - no IP, no PIN. (UDP 41235 answers the phone's search,
+TCP 8798 receives "open"; allow both once in the Windows firewall prompt.)
+
+REMOTE COMMANDS (optional, off by default): the "Remote commands: ON / OFF" button turns on a
+/exec endpoint on the same TCP 8798 port, guarded by a password you set in this window (the phone app can remember it). The "Remote command"
+screen in the LANShare app sends a command line and shows stdout/err/exit code. Commands run with whatever rights
+this program itself has - see ADMIN below.
+
+ADMIN: on Windows this program ALWAYS runs as Administrator: it relaunches itself elevated (one UAC prompt) as soon
+as it starts, and quits if the prompt is declined. (--no-admin is still accepted but ignored.) "Start with Windows" then installs a Task Scheduler entry that starts already
+elevated with no further prompt, when this program is currently running elevated; otherwise it falls back to the
+ordinary (non-elevated) Run-key autostart, which will prompt again at every login.
+
+Run:   python phone_explorer.py [--pair "phoneexplorer://..."] [--auto] [--tray] [--no-admin]
+       --pair       import a pairing link from the phone's QR screen and save the device
+       --auto       open the default device right after start (also: tick "Auto-open on start")
+       --tray       start hidden in the system tray
+       --no-admin   ignored (always runs as Administrator)
+       --install-startup / --uninstall-startup   add / remove the Windows autostart entry
 """
+import hashlib
+import hmac
+import ipaddress
 import json
 import os
+import secrets
 import shutil
 import socket
+import string
 import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from tkinter import messagebox, ttk
+import re
 from urllib.parse import parse_qs, unquote, urlparse
+
+if sys.platform == "win32":
+    import ctypes
 
 try:  # optional
     import pystray
@@ -31,7 +57,61 @@ except Exception:  # pragma: no cover
 
 DISCOVERY_PORT = 41234
 MAGIC = b"PHONEEXPLORER_DISCOVER"
+PC_MAGIC = b"PHONEEXPLORER_PC_DISCOVER"   # the phone's search for PCs running this program
+PC_UDP_PORT = 41235
+PC_HTTP_PORT = 8798
+EXEC_MAX = 65536    # cap on stdout/stderr bytes sent back per remote command
 BG, CARD, FG, MUTED, ACCENT = "#0F1720", "#1B2735", "white", "#9FB0C3", "#3B82F6"
+
+
+# ------------------------------------------------------------------------------------- admin
+
+def is_admin():
+    """True on Windows if this process already has administrator rights (always True elsewhere)."""
+    if sys.platform != "win32":
+        return True
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def relaunch_elevated():
+    """Re-starts this program elevated (one UAC prompt) and returns True if that new process was launched
+    (the caller should then exit this one). The relaunched copy gets the same arguments, minus --no-admin."""
+    if sys.platform != "win32":
+        return False
+    try:
+        args = [a for a in sys.argv[1:] if a != "--no-admin"]
+        if getattr(sys, "frozen", False):          # packaged .exe
+            exe = sys.executable
+            params = " ".join('"%s"' % a for a in args)
+        else:
+            exe = sys.executable
+            params = '"%s" %s' % (os.path.abspath(__file__), " ".join('"%s"' % a for a in args))
+        rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, params, None, 1)
+        return rc > 32   # ShellExecute: a value greater than 32 means success
+    except Exception:
+        return False
+
+
+def hash_pass(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 200000).hex()
+
+
+def check_pass(cfg, password):
+    """True when [password] matches the one saved in this window. No password set = always False."""
+    if not cfg.get("exec_hash") or not cfg.get("exec_salt"):
+        return False
+    return hmac.compare_digest(hash_pass(password, cfg["exec_salt"]), cfg["exec_hash"])
+
+
+_fails = {}   # ip -> [count, locked_until]
+
+
+def gen_pin(n=6):
+    """A short random numeric PIN, for the remote-command screen in the phone app."""
+    return "".join(secrets.choice(string.digits) for _ in range(n))
 
 
 # ---------------------------------------------------------------------------------------- config
@@ -44,7 +124,8 @@ def config_path():
 
 
 def load_config():
-    cfg = {"devices": [], "default": "", "auto_open": False, "drive": "P"}
+    cfg = {"devices": [], "default": "", "auto_open": False, "drive": "P", "startup_init": False,
+           "exec_enabled": False, "exec_salt": "", "exec_hash": ""}
     try:
         with open(config_path(), "r", encoding="utf-8") as f:
             cfg.update(json.load(f))
@@ -91,6 +172,90 @@ def upsert_device(cfg, dev):
             return d
     cfg["devices"].append(dev)
     return dev
+
+
+# ------------------------------------------------------------------------------------ autostart
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_NAME = "PhoneExplorer"
+TASK_NAME = "PhoneExplorer"
+_NO_WIN = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def startup_command(elevated_task=False):
+    """Command line used to start this program at logon: no console window, hidden in the tray.
+    elevated_task=True adds --no-admin, since a Task Scheduler entry already running elevated must not
+    try to relaunch itself again."""
+    if getattr(sys, "frozen", False):                       # packaged .exe
+        exe, extra = sys.executable, ""
+    else:
+        exe = sys.executable
+        pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")  # pythonw = no console window
+        if os.path.exists(pyw):
+            exe = pyw
+        extra = ' "%s"' % os.path.abspath(__file__)
+    tail = " --tray --no-admin" if elevated_task else " --tray"
+    return '"%s"%s%s' % (exe, extra, tail)
+
+
+def _task_exists():
+    try:
+        r = subprocess.run(["schtasks", "/Query", "/TN", TASK_NAME], capture_output=True, creationflags=_NO_WIN)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def startup_enabled():
+    if sys.platform != "win32":
+        return False
+    if _task_exists():
+        return True
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            return winreg.QueryValueEx(k, RUN_NAME)[0] == startup_command()
+    except Exception:
+        return False
+
+
+def set_startup(enable):
+    """Add / remove autostart. Prefers a Task Scheduler entry (/RL HIGHEST) so the program starts already
+    elevated at logon with no UAC prompt each time; creating that entry needs this process to already be
+    elevated. Otherwise falls back to the ordinary (non-elevated) 'Run' key, which re-elevates itself with
+    one UAC prompt at every login (see relaunch_elevated)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        subprocess.run(["schtasks", "/Delete", "/TN", TASK_NAME, "/F"], capture_output=True, creationflags=_NO_WIN)
+    except Exception:
+        pass
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            try:
+                winreg.DeleteValue(k, RUN_NAME)
+            except FileNotFoundError:
+                pass
+    except Exception:
+        pass
+    if not enable:
+        return True
+    if is_admin():
+        try:
+            cmd = ["schtasks", "/Create", "/TN", TASK_NAME, "/SC", "ONLOGON", "/RL", "HIGHEST",
+                   "/TR", startup_command(elevated_task=True), "/F"]
+            if subprocess.run(cmd, capture_output=True, creationflags=_NO_WIN).returncode == 0:
+                return True
+        except Exception:
+            pass
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, RUN_NAME, 0, winreg.REG_SZ, startup_command())
+        return True
+    except Exception:
+        return False
 
 
 # ------------------------------------------------------------------------------------- discovery
@@ -172,14 +337,134 @@ def start_drive_mount(d, letter):
     return subprocess.Popen(cmd, creationflags=flags)
 
 
+# ------------------------------------------------------------------------- one-tap listener (phone -> PC)
+
+def lan_ip(s):
+    try:
+        ip = ipaddress.ip_address(s.split("%")[0])
+        return ip.version == 4 and (ip.is_private or ip.is_link_local or ip.is_loopback
+                                    or ip in ipaddress.ip_network("100.64.0.0/10"))
+    except ValueError:
+        return False
+
+
+def udp_responder():
+    """Answers the phone's broadcast so it can find this PC."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("", PC_UDP_PORT))
+    except OSError:
+        return
+    reply = json.dumps({"app": "PhoneExplorerPC", "name": socket.gethostname(), "port": PC_HTTP_PORT}).encode()
+    while True:
+        try:
+            data, addr = s.recvfrom(512)
+            if data.strip() == PC_MAGIC and lan_ip(addr[0]):
+                s.sendto(reply, addr)
+        except OSError:
+            time.sleep(0.5)
+
+
+def start_listeners(app):
+    class H(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        timeout = 15
+
+        def log_message(self, *a):
+            pass
+
+        def _reply(self, code, obj):
+            b = json.dumps(obj).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(b)
+            self.close_connection = True
+
+        def do_POST(self):
+            u = urlparse(self.path)
+            ip = self.client_address[0].split("%")[0]
+            if not lan_ip(ip) or ":" in ip:
+                return self._reply(403, {"error": "LAN only"})
+            if u.path == "/open":
+                return self._do_open(u)
+            if u.path == "/exec":
+                return self._do_exec(u)
+            return self._reply(404, {"error": "not found"})
+
+        def _do_open(self, u):
+            q = parse_qs(u.query)
+            ip = self.client_address[0].split("%")[0]
+            user = q.get("user", ["phone"])[0]
+            pin = q.get("pin", [""])[0]
+            if not (re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", user) and re.fullmatch(r"[A-Za-z0-9]{1,32}", pin)):
+                return self._reply(400, {"error": "bad user / pin"})
+            try:
+                port = max(1, min(65535, int(q.get("port", ["2121"])[0])))
+            except ValueError:
+                port = 2121
+            name = (q.get("name", ["Phone"])[0] or "Phone")[:40]
+            dev = {"name": name, "ip": ip, "port": port, "user": user, "pin": pin}
+            app.after(0, app.open_remote, dev)
+            self._reply(200, {"ok": True})
+
+        def _do_exec(self, u):
+            """Runs a command line on this PC and returns its output. Off by default - the person at the PC
+            must press the "Remote commands" button to turn it ON, and the phone must send the password."""
+            if not app.cfg.get("exec_enabled"):
+                return self._reply(403, {"error": "Remote commands are turned off on this PC"})
+            q = parse_qs(u.query)
+            ip = self.client_address[0].split("%")[0]
+            f = _fails.setdefault(ip, [0, 0.0])
+            if time.time() < f[1]:
+                return self._reply(429, {"error": "too many wrong passwords - try again in a minute"})
+            if not app.cfg.get("exec_hash"):
+                return self._reply(403, {"error": "No password is set on the PC (Phone Explorer window -> Remote commands)"})
+            if not check_pass(app.cfg, q.get("pass", [""])[0][:200]):
+                f[0] += 1
+                if f[0] >= 5:
+                    f[0] = 0
+                    f[1] = time.time() + 60
+                return self._reply(403, {"error": "wrong password"})
+            f[0] = 0
+            cmd = (q.get("cmd", [""])[0] or "").strip()
+            if not cmd:
+                return self._reply(400, {"error": "empty command"})
+            if len(cmd) > 4000:
+                return self._reply(400, {"error": "command too long"})
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60,
+                                    cwd=os.path.expanduser("~"), creationflags=_NO_WIN)
+                out, err = r.stdout, r.stderr
+                truncated = len(out) > EXEC_MAX or len(err) > EXEC_MAX
+                app.after(0, app.set_status, "Ran remote command: %s" % cmd[:60])
+                return self._reply(200, {"out": out[:EXEC_MAX], "err": err[:EXEC_MAX],
+                                          "code": r.returncode, "truncated": truncated})
+            except subprocess.TimeoutExpired:
+                return self._reply(504, {"error": "timed out after 60s"})
+            except Exception as e:
+                return self._reply(500, {"error": str(e)})
+
+    threading.Thread(target=udp_responder, daemon=True).start()
+    try:
+        srv = ThreadingHTTPServer(("", PC_HTTP_PORT), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return True
+    except OSError:
+        return False        # another copy of this program is already running
+
+
 # -------------------------------------------------------------------------------------------- UI
 
 class App(tk.Tk):
     def __init__(self, args):
         super().__init__()
-        self.title("Phone Explorer")
-        self.geometry("520x580")
-        self.minsize(480, 540)
+        self.title("Phone Explorer" + (" (Administrator)" if is_admin() else ""))
+        self.geometry("520x680")
+        self.minsize(480, 620)
         self.configure(bg=BG)
         self.cfg = load_config()
         self.found = []          # last discovery results
@@ -194,6 +479,17 @@ class App(tk.Tk):
             if i + 1 < len(args):
                 self.import_link(args[i + 1], silent=True)
         self.refresh_list()
+        listening = start_listeners(self)
+        if not listening and "--tray" in args:
+            self.destroy()          # another copy is already running in the background
+            sys.exit(0)
+        if sys.platform == "win32" and not self.cfg.get("startup_init"):
+            set_startup(True)       # first run: start with Windows (can be switched off in the window)
+            self.cfg["startup_init"] = True
+            save_config(self.cfg)
+        self.startup.set(startup_enabled())
+        if listening:
+            self.set_status("Ready: press \"Phone Explorer\" in the LANShare app menu on the phone.")
         self.scan(auto_open=("--auto" in args) or bool(self.cfg.get("auto_open")))
         if "--tray" in args and pystray:
             self.after(200, self.to_tray)
@@ -253,7 +549,32 @@ class App(tk.Tk):
         tk.Checkbutton(self, text="Auto-open default phone when this app starts", variable=self.auto,
                        command=self.on_auto, fg=FG, bg=BG, selectcolor=BG, activebackground=BG,
                        activeforeground=FG).pack(anchor="w", padx=18, pady=(12, 0))
+        self.startup = tk.BooleanVar(value=False)
+        tk.Checkbutton(self, text="Start with Windows (runs in the background / tray)", variable=self.startup,
+                       command=self.on_startup, fg=FG, bg=BG, selectcolor=BG, activebackground=BG,
+                       activeforeground=FG).pack(anchor="w", padx=18, pady=(4, 0))
         self._btn(self, "Set selected phone as default", CARD, self.on_default).pack(anchor="w", padx=18, pady=(6, 0))
+
+        tk.Label(self, text="Remote commands (for the \"Remote command\" screen in the app)",
+                fg=FG, bg=BG, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=18, pady=(16, 0))
+        self.exec_enabled = tk.BooleanVar(value=bool(self.cfg.get("exec_enabled")))
+        self.exec_btn = tk.Button(self, command=self.on_exec_toggle, fg=FG, activeforeground=FG,
+                                  font=("Segoe UI", 11, "bold"), relief="flat", bd=0, padx=14, pady=8, cursor="hand2")
+        self.exec_btn.pack(anchor="w", padx=18, pady=(6, 0))
+        self._exec_paint()
+        pw_row = tk.Frame(self, bg=BG)
+        pw_row.pack(fill="x", padx=18, pady=(6, 0))
+        tk.Label(pw_row, text="Password:", fg=MUTED, bg=BG).pack(side="left")
+        self.exec_pass_var = tk.StringVar()
+        tk.Entry(pw_row, textvariable=self.exec_pass_var, show="*", width=18).pack(side="left", padx=8)
+        self._btn(pw_row, "Save password", CARD, self.on_save_exec_pass).pack(side="left")
+        self.exec_pass_label = tk.Label(self, fg=MUTED, bg=BG)
+        self.exec_pass_label.pack(anchor="w", padx=18, pady=(2, 0))
+        self._exec_pass_paint()
+        self.admin_label = tk.Label(self, fg=MUTED, bg=BG,
+                                    text="Running as: " + ("Administrator - commands have admin rights" if is_admin()
+                                                            else "standard user - commands do NOT have admin rights"))
+        self.admin_label.pack(anchor="w", padx=18, pady=(2, 0))
 
         self.status = tk.Label(self, text="Start sharing in the phone app first.", fg=MUTED, bg=BG,
                                wraplength=470, justify="left")
@@ -307,6 +628,20 @@ class App(tk.Tk):
     def on_select(self, _e=None):
         d = self.selected_device()
         self.pin.set(d["pin"] if d else "")
+
+    # --- one tap from the phone
+    def open_remote(self, dev):
+        """The phone (LANShare app) asked this PC to open its storage."""
+        upsert_device(self.cfg, dev)
+        if not self.cfg.get("default"):
+            self.cfg["default"] = dev["name"]
+        save_config(self.cfg)
+        self.refresh_list()
+        self.set_status("Opened %s (%s) in Explorer." % (dev["name"], dev["ip"]))
+        try:
+            open_in_explorer(dev)
+        except Exception as e:
+            self.set_status("Cannot start Explorer: %s" % e)
 
     # --- actions
     def scan(self, auto_open=False):
@@ -387,6 +722,43 @@ class App(tk.Tk):
     def on_auto(self):
         self.cfg["auto_open"] = bool(self.auto.get())
         save_config(self.cfg)
+
+    def _exec_pass_paint(self):
+        self.exec_pass_label.config(text="Password is set." if self.cfg.get("exec_hash")
+                                    else "No password set - the phone cannot run commands until you save one.")
+
+    def on_save_exec_pass(self):
+        pw = self.exec_pass_var.get()
+        if len(pw) < 4:
+            messagebox.showinfo("Phone Explorer", "Use at least 4 characters.")
+            return
+        salt = secrets.token_hex(16)
+        self.cfg["exec_salt"], self.cfg["exec_hash"] = salt, hash_pass(pw, salt)
+        save_config(self.cfg)
+        self.exec_pass_var.set("")
+        _fails.clear()
+        self._exec_pass_paint()
+        self.set_status("Remote-command password saved. Phones must use the new one now.")
+
+    def _exec_paint(self):
+        on = bool(self.cfg.get("exec_enabled"))
+        self.exec_btn.config(text="Remote commands: ON  (click to turn off)" if on else "Remote commands: OFF  (click to turn on)",
+                             bg="#2e7d32" if on else "#555555", activebackground="#2e7d32" if on else "#555555")
+
+    def on_exec_toggle(self):
+        self.cfg["exec_enabled"] = not self.cfg.get("exec_enabled")
+        save_config(self.cfg)
+        self._exec_paint()
+        self.set_status("Remote commands from the phone are now " +
+                        ("ON." if self.cfg["exec_enabled"] else "OFF."))
+
+    def on_startup(self):
+        ok = set_startup(bool(self.startup.get()))
+        if not ok:
+            self.startup.set(startup_enabled())
+            self.set_status("Could not change the Windows startup entry (Windows only).")
+        else:
+            self.set_status("Will start with Windows." if self.startup.get() else "Will not start with Windows.")
 
     def import_link(self, link, silent=False):
         d = parse_pairing(link)
@@ -469,9 +841,9 @@ class App(tk.Tk):
 
     def on_close(self):
         if pystray:
-            self.to_tray()
+            self.to_tray()              # keeps running in the background; quit via the tray menu
         else:
-            self.quit_app()
+            self.iconify()              # no tray library: minimise instead of stopping the listener
 
     def quit_app(self):
         if self.mount and self.mount[0].poll() is None:
@@ -485,6 +857,20 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    if "--install-startup" in sys.argv or "--uninstall-startup" in sys.argv:
+        on = "--install-startup" in sys.argv
+        sys.exit(0 if set_startup(on) else 1)
+    if sys.platform == "win32" and not is_admin():
+        # Always runs as Administrator: ask for elevation (UAC); if it is declined or fails, ask again, then quit.
+        for _ in range(2):
+            if relaunch_elevated():
+                sys.exit(0)
+        try:
+            ctypes.windll.user32.MessageBoxW(None, "Phone Explorer must run as Administrator. Please accept the Windows prompt.",
+                                             "Phone Explorer", 0x10)
+        except Exception:
+            pass
+        sys.exit(1)
     if sys.platform != "win32":
         print("Note: Explorer launch and drive mapping only work on Windows; discovery still runs.")
     App(sys.argv[1:]).mainloop()

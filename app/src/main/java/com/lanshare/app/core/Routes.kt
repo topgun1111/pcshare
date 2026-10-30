@@ -273,6 +273,10 @@ object Routes {
                 com.lanshare.app.pe.PePc.open(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: "", q["name"] ?: "Phone")
                 return ex.json(JSONObject().put("ok", true))
             }
+            "pcexec" -> {   // Remote command screen: runs a command line on that PC's phone_explorer.py (/exec, password set on the PC, off by default)
+                val r = com.lanshare.app.pe.PePc.exec(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, q["pass"] ?: "", ex.q("cmd"))
+                return ex.json(JSONObject().put("out", r.out).put("err", r.err).put("code", r.code).put("truncated", r.truncated))
+            }
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)

@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-30 - Remote command on PC
+### Added
+- Phone Explorer settings: new "Remote command" screen. Pick a PC, type a command, and see its output and exit code. Works over Wi-Fi and Tailscale: the PCs the app already found (SMB devices) are listed to pick from, or type an address once and it is remembered. Asks for the password you set on the PC, with a "Remember password" box so you only type it once
+- On the PC, the Phone Explorer window has a password box and one button that turns remote commands ON or OFF (off by default). Five wrong passwords lock the PC for a minute
+- The PC program always runs as Administrator (one prompt; it closes if you decline) so commands have admin rights, and can start with Windows already elevated
+
+### Removed
+- Phone Explorer settings: the FTPS and Require FTPS switches, the certificate line, the Pairing QR code and the long hint text (the PC tool finds the phone by itself)
+
+
 ## 2026-10-29 - USB / OTG drives
 ### Added
 - Memory sticks and disks on an OTG cable now show up in the device list like any other place: browse, copy, move, search, preview and open files on them
@@ -187,6 +197,13 @@
 - Your Google Drive accounts now appear in the device list. Open one to browse My Drive, search by name, open files and copy files or folders from Drive to the phone or other places. Google Docs, Sheets and Slides come as Word, Excel and PowerPoint files. Putting files into Drive follows in the next versions.
 
 ## 2026-10-28 - Google Drive sign-in (first step)
+
+## 2026-10-30 - Remote command for the PC tool
+
+### Added
+- The Phone Explorer PC tool can now run as Administrator and asks for that once when it starts.
+- The PC tool has a new "Remote commands" PIN and an on/off switch to let the phone run commands on it.
+- Phone Explorer settings now have a "Remote command" button to run a command on the PC and see the result (needs the PC switch above turned on, and the PC's own app update).
 
 ### Added
 - Main menu > Google Drive: sign in with your Google account. You can add, reconnect and remove accounts. Browsing your Drive files follows in the next versions.
