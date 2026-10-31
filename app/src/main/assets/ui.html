@@ -1078,7 +1078,10 @@ function dlg(o){return new Promise(res=>{
   c.onclick=()=>done(null);k.onclick=()=>done(inp?inp.value:true);
   d.onclick=e=>{if(e.target===d)done(null)};
   if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
-  row.append(c);if(al)row.append(al);row.append(k);card.append(row);d.append(card);
+  if(o.boxOk){k.className='tbtn';k.style.color='var(--err)'}   // boxOk: the OK button is a normal outlined button (red text) instead of the flat danger style
+  if(o.altFirst&&al){row.append(al,c,k)}else{row.append(c);if(al)row.append(al);row.append(k)}   // altFirst: alt button on the far left
+  if(o.altFirst){row.style.flexWrap='nowrap';row.style.gap='6px';[...row.children].forEach(x=>{x.style.padding='0 12px';x.style.whiteSpace='nowrap'})}
+  card.append(row);d.append(card);
   if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
 
 function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
@@ -5920,7 +5923,7 @@ async function doZip(){   // pack the selected files / folders into a new .zip n
   const paths=selPaths(),zdir=it[0].disp?(paths[0].replace(/\/[^\/]*$/,'')||'/'):S.path;S.sel.clear();GALT=0;render();
   let rep=false;   // same name already in the folder: ask instead of silently making "name (1).zip"
   try{const zn=/\.zip$/i.test(n.trim())?n.trim():n.trim()+'.zip',ls=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(zdir));
-    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({title:'"'+zn+'" already exists',msg:'Replace it with the new ZIP? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',danger:true});
+    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({title:'"'+zn+'" already exists',msg:'Replace it with the new ZIP? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',altFirst:true,boxOk:true});
       if(!a){S.sel.clear();render();return}rep=a===true}}catch(e){}
   try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim(),replace:rep,exclude:zo.ex});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
