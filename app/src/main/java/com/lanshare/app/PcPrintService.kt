@@ -19,6 +19,7 @@ import android.print.PrinterInfo
 import android.printservice.PrintJob
 import android.printservice.PrintService
 import android.printservice.PrinterDiscoverySession
+import com.lanshare.app.core.PrintLog
 import java.io.File
 import java.io.IOException
 
@@ -41,8 +42,10 @@ class PcPrintService : PrintService() {
         const val DIR_PDF = "LANShare PDF"
     }
 
-    override fun onCreatePrinterDiscoverySession(): PrinterDiscoverySession = object : PrinterDiscoverySession() {
-        override fun onStartPrinterDiscovery(priorityList: List<PrinterId>) { addPrinters(printers()) }
+    override fun onCreatePrinterDiscoverySession(): PrinterDiscoverySession { PrintLog.init(this); PrintLog.ev("svc-discovery-session", null); return discovery() }
+
+    private fun discovery(): PrinterDiscoverySession = object : PrinterDiscoverySession() {
+        override fun onStartPrinterDiscovery(priorityList: List<PrinterId>) { PrintLog.ev("svc-discovery-start", null, "printers" to printers().map { it.name }); addPrinters(printers()) }
         override fun onStopPrinterDiscovery() {}
         override fun onValidatePrinters(printerIds: List<PrinterId>) {}
         override fun onStartPrinterStateTracking(printerId: PrinterId) { addPrinters(printers()) }
@@ -92,13 +95,20 @@ class PcPrintService : PrintService() {
             .build()
     }
 
-    override fun onRequestCancelPrintJob(job: PrintJob) { job.cancel() }
+    override fun onRequestCancelPrintJob(job: PrintJob) { PrintLog.ev("svc-job-cancel", null, "label" to job.info.label); job.cancel() }
 
     override fun onPrintJobQueued(job: PrintJob) {
+        PrintLog.init(this)
+        val jid = PrintLog.jid()
         Thread {
+            PrintLog.bind(jid)
+            val t0 = System.currentTimeMillis()
             try {
                 job.start()
-                if (job.info.printerId?.localId == ID_PDF) { savePdf(job); return@Thread }
+                val a = job.info.attributes
+                PrintLog.ev("svc-job-queued", jid, "label" to job.info.label, "printer" to job.info.printerId?.localId, "copies" to job.info.copies,
+                    "media" to a.mediaSize?.id, "color" to a.colorMode, "duplex" to a.duplexMode, "pages" to job.document.info?.pageCount, "storage_ok" to com.lanshare.app.core.Core.storageOk)
+                if (job.info.printerId?.localId == ID_PDF) { savePdf(job); PrintLog.ev("svc-pdf-saved", jid, "ms" to System.currentTimeMillis() - t0); return@Thread }
                 val dir = File(Environment.getExternalStorageDirectory(), "LANShare Shared")
                 if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No storage access - allow \"All files access\" for LANShare")
                 var base = (job.info.label ?: "document").replace(Regex("[^\\p{L}\\p{N}._ -]"), "_").trim().take(80).ifEmpty { "document" }
@@ -108,8 +118,10 @@ class PcPrintService : PrintService() {
                 val pfd: ParcelFileDescriptor = job.document.data ?: throw IOException("No document data")
                 ParcelFileDescriptor.AutoCloseInputStream(pfd).use { ins -> f.outputStream().use { ins.copyTo(it) } }
                 job.complete()
+                PrintLog.ev("svc-job-done", jid, "file" to f.absolutePath, "bytes" to f.length(), "ms" to System.currentTimeMillis() - t0)
                 openInApp(f.name)
             } catch (e: Exception) {
+                PrintLog.err("svc-job-failed", jid, e, "label" to (try { job.info.label } catch (_: Exception) { null }))
                 try { job.fail(e.message ?: "LANShare could not read the document") } catch (_: Exception) {}
             }
         }.start()
@@ -182,7 +194,7 @@ class PcPrintService : PrintService() {
             } else @Suppress("DEPRECATION") Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
             nm.notify(nid, b.setSmallIcon(R.drawable.ic_notification).setColor(NoteTint.lite(this)).setContentTitle("Print with " + NoteTint.appName)
                 .setContentText(name).setContentIntent(pi).setAutoCancel(true).build())
-        } catch (_: Exception) {}
-        try { startActivity(i) } catch (_: Exception) {}
+        } catch (e: Exception) { PrintLog.warn("svc-notify-failed", null, "why" to (e.message ?: e.javaClass.simpleName)) }
+        try { startActivity(i); PrintLog.ev("svc-open-app", null, "name" to name) } catch (e: Exception) { PrintLog.warn("svc-open-app-blocked", null, "name" to name, "why" to (e.message ?: e.javaClass.simpleName)) }
     }
 }

@@ -45,11 +45,17 @@ object WifiPrint {
         warns.set(ArrayList())
         tray.set(null)
         curJob.set(job)
+        val jid = PrintLog.jid(); PrintLog.bind(jid)
+        val t00 = System.currentTimeMillis()
+        PrintLog.ev("wifi-print-start", jid, "printer" to p.name, "uri" to p.uri, "via" to p.viaPeer, "formats" to p.formats, "paths" to paths, "opts" to opts?.toString())
         try {
             val st = WifiPrinters.status(p.id)
+            if (!st.optBoolean("ok")) { PrintLog.warn("wifi-print-unreachable", jid, "printer" to p.name, "why" to st.optString("why")) }
             if (!st.optBoolean("ok")) throw IOException("${p.name} is not reachable - is it switched on and on this Wi-Fi? (${st.optString("why")})")
             val problem = if (st.isNull("problem")) "" else st.optString("problem")
             val jo = jobOpts(p, opts)
+            PrintLog.ev("wifi-print-opts", jid, "problem" to problem, "copies" to jo.copies, "sides" to jo.sides, "color" to jo.color, "media" to jo.media, "scaling" to jo.scaling,
+                "source" to jo.source, "quality" to jo.quality, "ranges" to jo.ranges.map { it.joinToString("-") }, "sides_supported" to p.sides, "colors_supported" to p.colorModes, "media_supported" to p.mediaSupported.take(30))
 
             val files = ArrayList<Pair<String, Long>>()
             for (p0 in paths) {
@@ -57,6 +63,7 @@ object WifiPrint {
                 for (w in src.walk(v)) if (!w.dir) files.add((if (w.rel.isEmpty()) v else v + "/" + w.rel) to w.size)
             }
             if (files.isEmpty()) throw BadReq("nothing to print")
+            PrintLog.ev("wifi-print-files", jid, "files" to files.map { it.first + " (" + it.second + " B)" })
             job.total = maxOf(files.sumOf { it.second }, 1L)
             val failed = ArrayList<String>()
 
@@ -76,6 +83,7 @@ object WifiPrint {
                 try {
                     val ext = name.substringAfterLast('.', "").lowercase()
                     val kind = PrintPrep.kind(ext)
+                    PrintLog.ev("wifi-print-file", jid, "i" to i, "name" to name, "bytes" to size, "kind" to kind.name)
                     if (kind == PrintPrep.Kind.NO || (kind == PrintPrep.Kind.SNIFF && size > PrintPrep.SNIFF_MAX))
                         throw PrintFail(if (ext.isEmpty()) "this file type cannot be printed" else "$ext files cannot be printed")
 
@@ -95,9 +103,9 @@ object WifiPrint {
                     var cur: File = t
                     var cext = ext
                     if (ext in OFFICE) {   // no converter on the phone: a PC running pcprint.py turns it into a PDF, the phone sends that to the printer
-                        val ip = try { Jobs.converterIp() } catch (x: IOException) { throw PrintFail(errText(x)) }
+                        val ip = try { Jobs.converterIp() } catch (x: IOException) { PrintLog.err("wifi-print-no-converter", jid, x, "name" to name); throw PrintFail(errText(x)) }
                         val pdf = File(dir, "w-" + System.nanoTime().toString(36) + ".pdf").also { temps.add(it) }
-                        try { Jobs.officeToPdf(ip, t, "x.$ext", pdf) } catch (x: IOException) { throw PrintFail("conversion on the PC failed (" + errText(x) + ")") }
+                        try { Jobs.officeToPdf(ip, t, "x.$ext", pdf) } catch (x: IOException) { PrintLog.err("wifi-print-office-convert-failed", jid, x, "name" to name, "pc" to ip); throw PrintFail("conversion on the PC failed (" + errText(x) + ")") }
                         cur = pdf; cext = "pdf"
                     }
                     val k2 = if (ext in IMG) PrintPrep.Kind.PIC else kind
@@ -108,7 +116,7 @@ object WifiPrint {
                             cur = out.file; temps.add(out.file)
                             cext = out.name.substringAfterLast('.', "").lowercase()
                         } catch (x: Cancelled) { throw x
-                        } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
+                        } catch (x: Throwable) { PrintLog.err("wifi-print-convert-failed", jid, x, "name" to name, "kind" to k2.name); throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     }
                     if (kind == PrintPrep.Kind.TEXT || cext in TXT) {
                         cur = textToPdf(cur).also { temps.add(it) }; cext = "pdf"
@@ -121,17 +129,22 @@ object WifiPrint {
                         cur = nupPdf(job, cur, nup, (opts?.optInt("border", 0) ?: 0) == 1, jo.ranges, pk).also { temps.add(it) }
                         joUse = Ipp.JobOpts(jo.copies, jo.sides, jo.color, jo.media, jo.scaling)   // page range was applied while laying out
                     }
+                    PrintLog.ev("wifi-print-send", jid, "name" to name, "as" to cext, "bytes" to cur.length(), "nup" to nup)
+                    val tS = System.currentTimeMillis()
                     when (cext) {
                         "pdf" -> sendPdf(p, job, cur, name, joUse, temps)
                         "jpg", "jpeg" -> sendJpeg(p, job, cur, name, joUse, temps)
                         else -> throw PrintFail("$cext files cannot be printed on a Wi-Fi printer")
                     }
+                    PrintLog.ev("wifi-print-file-ok", jid, "name" to name, "ms" to System.currentTimeMillis() - tS)
                 } catch (e: PrintFail) {
+                    PrintLog.warn("wifi-print-file-failed", jid, "name" to name, "why" to errText(e))
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - got, 0L)
                 } catch (e: Cancelled) { throw e
                 } catch (e: IOException) {
                     if (job.cancel) throw Cancelled()
+                    PrintLog.err("wifi-print-file-error", jid, e, "name" to name)
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - got, 0L)
                 } finally { temps.forEach { try { it.delete() } catch (_: Exception) {} } }
@@ -142,8 +155,10 @@ object WifiPrint {
                 val after = WifiPrinters.status(p.id)
                 // "not accepting jobs" is normal right after sending: Epson inkjets report it while they are busy printing this very job
                 val w = if (after.optBoolean("ok") && !after.isNull("problem")) after.optString("problem").split(", ").filter { it != "not accepting jobs" }.joinToString(", ") else ""
+                PrintLog.ev("wifi-print-after", jid, "ok" to after.optBoolean("ok"), "problem" to (if (after.isNull("problem")) "none" else after.optString("problem")), "reported" to w)
                 if (w.isNotEmpty()) failed.add("sent, but the printer reports $w")
             }
+            PrintLog.ev("wifi-print-end", jid, "failed" to failed, "warnings" to (warns.get()?.distinct() ?: emptyList<String>()), "ms" to System.currentTimeMillis() - t00)
             if (failed.isEmpty()) {
                 job.label = "Sent ${files.size} file${if (files.size > 1) "s" else ""} to ${p.name} (Wi-Fi)"
                 job.note = job.label + (warns.get()?.distinct()?.takeIf { it.isNotEmpty() }?.let { " - " + it.joinToString("; ") } ?: "")
@@ -154,10 +169,11 @@ object WifiPrint {
                 job.state = "error"
             }
         } catch (e: Cancelled) {
+            PrintLog.ev("wifi-print-cancelled", jid)
             job.state = "cancel"
         } catch (e: Throwable) {
-            if (job.cancel) job.state = "cancel"   // Cancel closed the socket that waited for the printer
-            else { job.error = errText(e); job.state = "error" }
+            if (job.cancel) { PrintLog.ev("wifi-print-cancelled", jid); job.state = "cancel" }   // Cancel closed the socket that waited for the printer
+            else { PrintLog.err("wifi-print-failed", jid, e); job.error = errText(e); job.state = "error" }
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()
@@ -228,13 +244,16 @@ object WifiPrint {
         if (tp != null) {   // paper tray chosen: first try with it (media-col); if the printer refuses that, print from its own choice of tray and say so
             val rt = sendRetry(p, name, mime, Ipp.JobOpts(jo.copies, jo.sides, jo.color, null, jo.scaling, jo.ranges, tp.first, tp.second, jo.quality), f)
             if (!rejected(rt)) { if (!rt.ok) throw PrintFail(Ipp.statusText(rt.status)); waitIdle(p); return }
+            PrintLog.warn("wifi-print-tray-refused", null, "status" to "0x" + Integer.toHexString(rt.status), "tray" to tp.first)
             warns.get()?.add("the printer does not accept a tray choice, it picked the tray itself")
         }
         for (t in tries) {
             val key = "${t.sides}|${t.color}|${t.media}|${t.scaling}|${t.ranges.size}|${t.quality}"
             if (last != null && key == "${last.sides}|${last.color}|${last.media}|${last.scaling}|${last.ranges.size}|${last.quality}") continue   // nothing new to try
             last = t
+            PrintLog.ev("wifi-print-try", null, "name" to name, "mime" to mime, "sides" to t.sides, "color" to t.color, "media" to t.media, "scaling" to t.scaling, "quality" to t.quality)
             r = sendRetry(p, name, mime, t, f)
+            if (rejected(r)) PrintLog.warn("wifi-print-option-rejected", null, "status" to "0x" + Integer.toHexString(r.status), "sides" to t.sides, "color" to t.color, "media" to t.media, "scaling" to t.scaling, "quality" to t.quality)
             if (!rejected(r)) {
                 if (r.ok && jo.quality != null && t.quality == null) warns.get()?.add("the printer ignored the quiet-mode request (IPP has no standard quiet setting)")
                 if (r.ok && jo.sides != null && t.sides == null) warns.get()?.add("two-sided printing was refused by the printer, printed one-sided")
@@ -280,6 +299,7 @@ object WifiPrint {
                 else throw e
             }
             if (!busy && r != null) return r
+            PrintLog.warn("wifi-print-busy-retry", null, "n" to n + 1, "status" to (r?.status?.let { "0x" + Integer.toHexString(it) } ?: "no answer"))
             if (++n > 24) { if (r != null) return r; throw PrintFail("the printer stayed busy (try again in a minute)") }
             val j = curJob.get()
             if (j != null) j.label = "Waiting for the printer (busy) - retry $n"
@@ -304,6 +324,7 @@ object WifiPrint {
 
     private fun sendPdf(p: WifiPrinters.P, job: Job, pdf: File, name: String, jo: Ipp.JobOpts, temps: MutableList<File>) {
         val fm = p.formats
+        PrintLog.ev("wifi-print-format", null, "name" to name, "formats" to fm, "chosen" to (if (fm.isEmpty() || "application/pdf" in fm) "pdf" else if ("image/pwg-raster" in fm) "pwg-raster" else if ("image/jpeg" in fm) "jpeg-per-page" else "none"))
         if (fm.isEmpty() || "application/pdf" in fm) { submit(p, pdf, "application/pdf", name, jo); return }
         if ("image/pwg-raster" in fm) {   // no PDF, but PWG raster: ALL pages go in ONE job, so two-sided printing works (one JPEG per job cannot)
             val ras = pwgRaster(job, pdf, jo, p).also { temps.add(it) }

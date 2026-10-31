@@ -107,7 +107,7 @@ object WifiPrinters {
             val m = ctx.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
             nsd = m
             val l = object : NsdManager.DiscoveryListener {
-                override fun onStartDiscoveryFailed(type: String?, code: Int) { started = false }
+                override fun onStartDiscoveryFailed(type: String?, code: Int) { started = false; PrintLog.warn("wifi-discovery-failed", null, "type" to type, "code" to code) }
                 override fun onStopDiscoveryFailed(type: String?, code: Int) {}
                 override fun onDiscoveryStarted(type: String?) {}
                 override fun onDiscoveryStopped(type: String?) { started = false }
@@ -118,7 +118,7 @@ object WifiPrinters {
             }
             listener = l
             m.discoverServices("_ipp._tcp", NsdManager.PROTOCOL_DNS_SD, l)
-        } catch (_: Throwable) { started = false }
+        } catch (e: Throwable) { started = false; PrintLog.err("wifi-discovery-error", null, e) }
     }
 
     /** Stops and starts the mDNS search again (it silently dies / goes deaf when the phone sleeps or the network changes). */
@@ -181,11 +181,13 @@ object WifiPrinters {
                     val nm = r.strs("printer-name").firstOrNull().orEmpty().ifEmpty { h }
                     val md = r.strs("printer-make-and-model").firstOrNull().orEmpty()
                     map[id] = P(id, nm, h, 631, path, md, r.strs("document-format-supported").map { it.lowercase() }, null, null)
+                    PrintLog.ev("wifi-printer-found", null, "id" to id, "name" to nm, "model" to md, "how" to "port-631-scan")
                     added = true
                     break
                 } catch (_: Exception) {}
             }
         }
+        PrintLog.ev("wifi-scan", null, "port631_hits" to hits.toList(), "added" to added, "known" to map.size)
         if (added) saveCache()
     }
 
@@ -228,7 +230,7 @@ object WifiPrinters {
             var okRes = false
             try {
                 m.resolveService(i, object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(info: NsdServiceInfo?, code: Int) { latch.countDown() }
+                    override fun onResolveFailed(info: NsdServiceInfo?, code: Int) { PrintLog.warn("wifi-resolve-failed", null, "service" to info?.serviceName, "code" to code, "attempt" to attempt); latch.countDown() }
                     override fun onServiceResolved(info: NsdServiceInfo?) { try { if (info != null) { add(info); okRes = true } } finally { latch.countDown() } }
                 })
                 latch.await(6, TimeUnit.SECONDS)
@@ -236,6 +238,7 @@ object WifiPrinters {
             if (okRes) return
             try { Thread.sleep(600) } catch (_: InterruptedException) { return }
         }
+        PrintLog.warn("wifi-resolve-gave-up", null, "service" to i.serviceName)
     }
 
     private fun add(s: NsdServiceInfo) {
@@ -248,6 +251,7 @@ object WifiPrinters {
         val flag = { k: String -> txt(k).takeIf { it.isNotEmpty() }?.equals("T", true) }
         val id = "wifi:$ip:${s.port}/$rp"
         map.values.filter { it.host == ip && it.port == s.port && it.id != id }.forEach { map.remove(it.id) }   // aynı yazıcının tarama kaydı
+        if (map[id] == null) PrintLog.ev("wifi-printer-found", null, "id" to id, "name" to s.serviceName, "model" to model, "formats" to pdl, "how" to "mdns")
         map[id] = P(id, s.serviceName ?: model.ifEmpty { ip }, ip, s.port, rp, model, pdl, flag("Color"), flag("Duplex"))
         saveCache()
     }
@@ -300,6 +304,9 @@ object WifiPrinters {
     }
 
     /** Şimdi ara: mDNS'i yeniden başlatır ve ağı (port 631) senkron tarar, sonra listeyi döner (en çok ~15 sn). "Yazıcıları ara" düğmesi bunu çağırır. */
+    @Volatile private var lastDown = ""
+    private val lastProblem = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     fun searchNow(): JSONArray {
         Core.appCtx?.let { start(it) }
         restart()
@@ -328,6 +335,8 @@ object WifiPrinters {
         all.map { p -> Thread { if (reachable(p)) up.add(p.id) }.also { it.isDaemon = true; it.start() } }
             .forEach { try { it.join(1500) } catch (_: InterruptedException) {} }
         if (up.size < all.size) scanAsync(false)
+        val down = all.filter { it.id !in up }.map { it.name + " " + it.host + ":" + it.port }.sorted().joinToString("; ")
+        if (down != lastDown) { lastDown = down; PrintLog.ev("wifi-unreachable", null, "printers" to down.ifEmpty { "none (all answer again)" }, "known" to all.size) }
         all.filter { it.id in up }.sortedBy { it.name.lowercase() }.forEach {
             a.put(JSONObject().put("id", it.id).put("name", it.name).put("model", it.model)
                 .put("color", it.color ?: JSONObject.NULL).put("duplex", it.duplex ?: JSONObject.NULL))
@@ -372,6 +381,8 @@ object WifiPrinters {
             if (r.bool("printer-is-accepting-jobs") == false) problems.add("not accepting jobs")
             reasons.filter { it.endsWith("-error") }.forEach { problems.add(it.removeSuffix("-error").replace('-', ' ')) }
             val mg = p.margins
+            val pb = problems.distinct().joinToString(", ")
+            if (lastProblem.put(p.id, pb) != pb) PrintLog.ev("wifi-status", null, "printer" to p.name, "problem" to pb.ifEmpty { "none" }, "state" to r.int("printer-state"), "reasons" to reasons, "accepting" to r.bool("printer-is-accepting-jobs"))
             JSONObject().put("ok", true).put("wifi", true)
                 .put("printer", p.name)
                 .put("hard", if (mg == null) 0.0 else Math.min(36.0, Math.ceil(mg.max() * 2) / 2.0))   // same key / unit (pt) as the PC's /ping answer
@@ -383,6 +394,6 @@ object WifiPrinters {
                 .put("trayinfo", r.dump(listOf("media-source-supported", "media-col-ready", "printer-input-tray", "media-ready", "media-default", "media-type-supported")))
                 .put("color", if (p.colorModes.isNotEmpty()) p.colorModes.contains("color") else (p.color ?: JSONObject.NULL))
                 .put("duplex", if (p.sides.isNotEmpty()) p.sides.any { it.startsWith("two-sided") } else (p.duplex ?: JSONObject.NULL))
-        } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }
+        } catch (e: Exception) { PrintLog.warn("wifi-status-failed", null, "printer" to p.name, "why" to errText(e)); JSONObject().put("ok", false).put("why", errText(e)) }
     }
 }

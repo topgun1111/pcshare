@@ -221,6 +221,14 @@ object Jobs {
     }
 
     /** What the print service on that PC reports right now: {ok, printer?, problem?}. ok=false = nothing answered on the print port. */
+    /** Last state logged per PC (the app polls the PC often: only a change goes to the print log). */
+    private val pcSeen = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun pcState(ip: String, state: String, kv: Array<Pair<String, Any?>> = emptyArray()) {
+        if (pcSeen.put(ip, state) == state) return
+        if (state == "up") PrintLog.ev("pc-reachable", null, "ip" to ip, "port" to PRINT_PORT, *kv)
+        else PrintLog.warn("pc-unreachable", null, "ip" to ip, "port" to PRINT_PORT, "state" to state, *kv)
+    }
+
     fun printerStatus(dev: String, printer: String? = null): JSONObject {
         if (WifiPrinters.isWifi(dev)) return WifiPrinters.status(dev)
         val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
@@ -228,8 +236,9 @@ object Jobs {
             val pq = if (printer.isNullOrEmpty()) "" else "?printer=" + URLEncoder.encode(printer, "UTF-8")
             val r = Http.request(ip, PRINT_PORT, "GET", "/ping$pq", emptyMap(), if (pq.isEmpty()) 3000 else 9000)
             try {
-                if (r.status != 200) return JSONObject().put("ok", false)
+                if (r.status != 200) { pcState(ip, "HTTP " + r.status); return JSONObject().put("ok", false) }
                 val o = JSONObject(String(r.readUpTo(32768), Charsets.UTF_8))
+                pcState(ip, "up", arrayOf("printer" to (if (o.isNull("printer")) null else o.optString("printer"))))
                 JSONObject().put("ok", true)
                     .put("printer", if (o.isNull("printer")) JSONObject.NULL else o.optString("printer"))
                     .put("problem", if (o.isNull("problem")) JSONObject.NULL else o.optString("problem"))
@@ -242,7 +251,7 @@ object Jobs {
                     .put("engine", if (o.isNull("engine")) JSONObject.NULL else o.optString("engine"))
                     .put("office", if (o.isNull("office")) JSONObject.NULL else o.optString("office"))   // what turns Word/Excel/PowerPoint files into PDF on the PC (null = nothing, or an older pcprint.py)
             } finally { r.close() }
-        } catch (_: Exception) { JSONObject().put("ok", false) }
+        } catch (e: Exception) { pcState(ip, "no answer: " + errText(e)); JSONObject().put("ok", false) }
     }
 
     /** pcprint.py 22+: what prints right now, what still waits (with ids) and the last finished jobs. old=true: pcprint.py is older than 22 (no waiting list). */
@@ -448,6 +457,9 @@ object Jobs {
     }
 
     private fun printWork(job: Job, src: Endpoint, ip: String, pcName: String, paths: List<String>, opts: JSONObject?) {
+        val jid = PrintLog.jid(); PrintLog.bind(jid)
+        val t00 = System.currentTimeMillis()
+        PrintLog.ev("pc-print-start", jid, "pc" to pcName, "ip" to ip, "port" to PRINT_PORT, "paths" to paths, "opts" to opts?.toString())
         try {
             val chosen = opts?.optString("printer").orEmpty()
             val notes = LinkedHashSet<String>()   // things the PC could not honour (e.g. layout options on a .docx)
@@ -462,8 +474,10 @@ object Jobs {
                         if (!o.isNull("printer")) printer = o.optString("printer")
                         if (!o.isNull("problem")) problem = o.optString("problem")
                     } catch (_: Exception) {}
+                    PrintLog.ev("pc-print-ping", jid, "status" to r.status, "printer" to printer, "problem" to problem, "asked" to chosen)
                 } finally { r.close() }
             } catch (e: IOException) {
+                PrintLog.err("pc-print-unreachable", jid, e, "ip" to ip, "port" to PRINT_PORT, "pc" to pcName)
                 throw IOException("$pcName ($ip) is not reachable on port $PRINT_PORT - is pcprint.py running there? (${errText(e)})")
             }
             val dest = if (printer.isNotEmpty()) "$pcName ($printer)" else pcName
@@ -473,6 +487,7 @@ object Jobs {
                 for (w in src.walk(p)) if (!w.dir) files.add((if (w.rel.isEmpty()) p else p + "/" + w.rel) to w.size)
             }
             if (files.isEmpty()) throw BadReq("nothing to print")
+            PrintLog.ev("pc-print-files", jid, "dest" to dest, "files" to files.map { it.first + " (" + it.second + " B)" })
             job.total = maxOf(files.sumOf { it.second }, 1L)
             job.filesTotal = files.size
             job.dest = dest
@@ -520,16 +535,22 @@ object Jobs {
                             val ins = out.file.inputStream(); opened = ins; body = ins; bodyLen = out.file.length()
                             sendName = out.name
                         } catch (x: Cancelled) { throw x
-                        } catch (x: Throwable) { throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
+                        } catch (x: Throwable) { PrintLog.err("pc-print-convert-failed", jid, x, "name" to name, "kind" to kind.name, "bytes" to size); throw PrintFail("this file could not be converted for printing (" + errText(x) + ")") }
                     } else if (kind == PrintPrep.Kind.TEXT) sendName = name.substringBeforeLast('.') + ".txt"
                     val counted = body === f   // converted pictures were already counted while they were read
                     // key: a repeated request (retry, reconnect) must not print twice - pcprint.py ignores a key it has already seen
                     val extra = (if (sheet || join) "&batch=$bid&idx=$i&n=${files.size}&rot=${rots?.optInt(i, 0) ?: 0}" + (if (join) "&join=1" else "") else "") + "&key=k$bid-$i"
-                    val r = Http.request(ip, PRINT_PORT, "POST", printQuery(sendName, opts, extra), emptyMap(),
+                    val q = printQuery(sendName, opts, extra)
+                    PrintLog.ev("pc-print-send", jid, "i" to i, "name" to name, "sent_as" to sendName, "kind" to kind.name, "bytes" to bodyLen, "query" to q, "batch" to (sheet || join))
+                    val tSend = System.currentTimeMillis()
+                    val r = try { Http.request(ip, PRINT_PORT, "POST", q, emptyMap(),
                         120_000, body, bodyLen) { n -> if (job.cancel) throw Cancelled(); if (counted) { sent += n; job.done += n } }
+                    } catch (x: Cancelled) { throw x } catch (x: Throwable) { PrintLog.err("pc-print-send-failed", jid, x, "name" to name, "ip" to ip, "sent_bytes" to sent, "of" to bodyLen, "ms" to System.currentTimeMillis() - tSend); throw x }
                     try {
                         registered = r.status == 200 || r.status == 500
                         val t = String(r.readUpTo(2000), Charsets.UTF_8)
+                        if (r.status == 200) PrintLog.ev("pc-print-reply", jid, "name" to name, "status" to r.status, "body" to t, "ms" to System.currentTimeMillis() - tSend)
+                        else PrintLog.warn("pc-print-reply", jid, "name" to name, "status" to r.status, "body" to t, "ms" to System.currentTimeMillis() - tSend)
                         if (r.status != 200) throw PrintFail(try { JSONObject(t).optString("error", t) } catch (_: Exception) { t })
                         // printed, but the printer reported trouble right after (jam, out of paper, offline, ...)
                         val w = try { JSONObject(t).let { o -> if (o.isNull("warning")) "" else o.optString("warning") } } catch (_: Exception) { "" }
@@ -538,6 +559,7 @@ object Jobs {
                         if (w.isNotEmpty()) { failed.add("$name: sent, but the printer reports $w"); job.done += maxOf(size - sent, 0L) }
                     } finally { r.close() }
                 } catch (e: PrintFail) {
+                    PrintLog.warn("pc-print-file-failed", jid, "name" to name, "why" to errText(e))
                     failed.add("$name: ${errText(e)}")
                     job.done += maxOf(size - sent, 0L)   // keep the progress bar moving
                     if (sheet) break   // an incomplete set of sheets must not be printed
@@ -546,6 +568,7 @@ object Jobs {
             }
             job.done = job.total
             val ok = files.size - failed.size
+            PrintLog.ev("pc-print-end", jid, "ok" to ok, "of" to files.size, "failed" to failed, "notes" to notes.toList(), "ms" to System.currentTimeMillis() - t00)
             if (failed.isEmpty()) {
                 job.label = "Printed ${files.size} file${if (files.size > 1) "s" else ""} on $dest"
                 job.note = job.label + (if (notes.isNotEmpty()) " (" + notes.joinToString("; ") + ")" else "")
@@ -556,10 +579,11 @@ object Jobs {
                 job.state = "error"
             }
         } catch (e: Cancelled) {
+            PrintLog.ev("pc-print-cancelled", jid)
             job.state = "cancel"
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
-            if (job.cancel) job.state = "cancel"   // the socket was closed by Cancel: that is the cancel, not an error
-            else { job.error = errText(e); job.state = "error" }
+            if (job.cancel) { PrintLog.ev("pc-print-cancelled", jid); job.state = "cancel" }   // the socket was closed by Cancel: that is the cancel, not an error
+            else { PrintLog.err("pc-print-failed", jid, e); job.error = errText(e); job.state = "error" }
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
             job.end = System.currentTimeMillis()

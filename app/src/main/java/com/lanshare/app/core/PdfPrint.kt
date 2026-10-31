@@ -77,6 +77,9 @@ object PdfPrint {
         try { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() } } catch (_: Exception) {}
         val temps = ArrayList<File>()
         val srcs = ArrayList<Src>()
+        val jid = PrintLog.jid(); PrintLog.bind(jid)
+        val t00 = System.currentTimeMillis()
+        PrintLog.ev("pdf-start", jid, "paths" to paths, "opts" to opts?.toString())
         try {
             val files = ArrayList<Pair<String, Long>>()
             for (p0 in paths) {
@@ -104,7 +107,7 @@ object PdfPrint {
                     if (joined) groups[0].pages.addAll(pages)
                     else groups.add(Group(name.substringBeforeLast('.', name)).also { it.pages.addAll(pages) })
                 } catch (e: Cancelled) { throw e
-                } catch (e: IOException) { failed.add("$name: ${errText(e)}") }
+                } catch (e: IOException) { PrintLog.err("pdf-load-failed", jid, e, "name" to name, "bytes" to size); failed.add("$name: ${errText(e)}") }
             }
 
             // 2. lay out and save each result
@@ -118,10 +121,12 @@ object PdfPrint {
                     val out = File(dir, "o-" + System.nanoTime().toString(36) + ".pdf").also { temps.add(it) }
                     make(job, g.pages, opts, out, g.name)
                     saved.add(save(g.name, out))
+                    PrintLog.ev("pdf-made", jid, "name" to g.name, "pages" to g.pages.size, "bytes" to out.length(), "saved" to saved.last())
                 } catch (e: Cancelled) { throw e
-                } catch (e: IOException) { failed.add("${g.name}: ${errText(e)}") }
+                } catch (e: IOException) { PrintLog.err("pdf-make-failed", jid, e, "name" to g.name, "pages" to g.pages.size); failed.add("${g.name}: ${errText(e)}") }
             }
             job.done = job.total
+            PrintLog.ev("pdf-end", jid, "saved" to saved, "failed" to failed, "ms" to System.currentTimeMillis() - t00)
             if (saved.isNotEmpty() && failed.isEmpty()) {
                 job.label = "Saved ${saved.size} PDF${if (saved.size > 1) "s" else ""}"
                 job.note = job.label + " in " + saved.joinToString(", ").take(300)
@@ -132,8 +137,10 @@ object PdfPrint {
                 job.state = "error"
             }
         } catch (e: Cancelled) {
+            PrintLog.ev("pdf-cancelled", jid)
             job.state = "cancel"
         } catch (e: Throwable) {
+            PrintLog.err("pdf-failed", jid, e)
             job.error = errText(e)
             job.state = "error"
         } finally {

@@ -112,6 +112,9 @@ object Ipp {
             }
         }
         val head = rq.finish()
+        PrintLog.ev("ipp-job-start", null, "printer" to p.uri, "via" to p.viaPeer, "job" to jobName.take(100), "mime" to mime, "bytes" to file.length(),
+            "copies" to jo.copies, "sides" to jo.sides, "color" to jo.color, "media" to jo.media, "scaling" to jo.scaling, "source" to jo.source,
+            "quality" to jo.quality, "ranges" to jo.ranges.map { it.joinToString("-") })
         return file.inputStream().use { call(p, head, it, file.length(), 180_000, onSent) }
     }
 
@@ -123,13 +126,35 @@ object Ipp {
         try { printerAttrs(p) } catch (_: Exception) { probed.remove("${p.host}:${p.port}") }
     }
 
+    /** Logged wrapper: every print job (success or not) and every failed / refused attribute query goes to the print log. */
     private fun call(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
+        val job = data != null
+        val t0 = System.currentTimeMillis()
+        val tgt = arrayOf<Pair<String, Any?>>("printer" to p.uri, "via" to p.viaPeer)
+        try {
+            val r = call0(p, req, data, dataLen, timeoutMs, onSent)
+            val ms = System.currentTimeMillis() - t0
+            if (job || !r.ok) {
+                val kv = arrayOf<Pair<String, Any?>>("status" to "0x" + Integer.toHexString(r.status), "ok" to r.ok, "ms" to ms, "job_id" to r.int("job-id"),
+                    "job_state" to r.strs("job-state-reasons"), "printer_state" to r.strs("printer-state-reasons"), "message" to r.strs("status-message"), "bytes_sent" to dataLen)
+                if (r.ok) PrintLog.ev(if (job) "ipp-job-ok" else "ipp-attrs-refused", null, *tgt, *kv)
+                else PrintLog.warn(if (job) "ipp-job-refused" else "ipp-attrs-refused", null, *tgt, *kv, "text" to statusText(r.status))
+            }
+            return r
+        } catch (e: Exception) {
+            PrintLog.err(if (job) "ipp-job-failed" else "ipp-attrs-failed", null, e, *tgt, "ms" to System.currentTimeMillis() - t0, "timeout_ms" to timeoutMs, "bytes" to dataLen)
+            throw e
+        }
+    }
+
+    private fun call0(p: WifiPrinters.P, req: ByteArray, data: InputStream?, dataLen: Long, timeoutMs: Int, onSent: ((Int) -> Unit)?): Resp {
         // a header-only request (attributes query) that gets 426 is repeated once over TLS; the printer is remembered
         if (p.viaPeer == null && data == null && !Http.tlsHosts.contains("${p.host}:${p.port}")) {
             val r0 = Http.request(p.host, p.port, "POST", "/" + p.path, mapOf("Content-Type" to "application/ipp", "Accept" to "application/ipp"), timeoutMs, ByteArrayInputStream(req), req.size.toLong())
             val st = r0.status
             if (st != 426) try { if (st != 200) throw IOException("the printer answered HTTP $st"); return parse(readBody(r0)) } finally { r0.close() }
             r0.close()
+            PrintLog.ev("ipp-tls-switch", null, "printer" to p.uri, "why" to "HTTP 426: IPP over TLS from now on")
             Http.tlsHosts.add("${p.host}:${p.port}")
             probed.add("${p.host}:${p.port}")
         }

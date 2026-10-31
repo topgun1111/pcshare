@@ -27,6 +27,7 @@ import android.text.TextPaint
 import android.widget.Toast
 import androidx.exifinterface.media.ExifInterface
 import org.json.JSONObject
+import com.lanshare.app.core.PrintLog
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -49,6 +50,7 @@ class PhonePrint(private val act: Activity) {
     private val io = Executors.newSingleThreadExecutor()     // layout + page rendering (PdfRenderer is not thread-safe)
 
     private fun toast(t: String) = act.runOnUiThread { Toast.makeText(act, t, Toast.LENGTH_LONG).show() }
+    @Volatile private var jid: String? = null   // print log id of the job being set up (A000n)
 
     private class In(val name: String, val file: File, val kind: String)
 
@@ -71,8 +73,10 @@ class PhonePrint(private val act: Activity) {
 
     /** json = {items:[{name, url}]}; urls must point at the app's own local server. */
     fun start(json: String) {
+        val j = PrintLog.jid(); jid = j
         pool.execute {
-            try { prepare(json) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+            PrintLog.bind(j)
+            try { prepare(json) } catch (e: Exception) { PrintLog.err("phone-print-failed", j, e, "step" to "prepare"); toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
         }
     }
 
@@ -86,6 +90,7 @@ class PhonePrint(private val act: Activity) {
         dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000 }?.forEach { it.delete() }
         val ins = ArrayList<In>()
         val skipped = ArrayList<String>()
+        PrintLog.ev("phone-print-start", jid, "items" to arr.length(), "opts" to optsJ?.toString(), "duplex" to duplex, "trim" to trimOn)
         for (i in 0 until minOf(arr.length(), 60)) {
             val o = arr.getJSONObject(i)
             val url = com.lanshare.app.core.RootShell.sign(o.getString("url"))
@@ -100,22 +105,27 @@ class PhonePrint(private val act: Activity) {
                 else -> { skipped.add(".$ext"); continue }
             }
             val f = File(dir, "${System.nanoTime()}_${i}_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-            URL(url).openStream().use { s -> f.outputStream().use { out -> s.copyTo(out) } }
+            val t0 = System.currentTimeMillis()
+            try { URL(url).openStream().use { s -> f.outputStream().use { out -> s.copyTo(out) } } }
+            catch (e: Exception) { PrintLog.err("phone-print-fetch-failed", jid, e, "name" to name, "i" to i); throw e }
+            PrintLog.ev("phone-print-item", jid, "i" to i, "name" to name, "kind" to kind, "bytes" to f.length(), "ms" to System.currentTimeMillis() - t0)
             var use = f
             if (kind == "img") com.lanshare.app.core.PrintPrep.cropBox(optsJ, i)?.let { box ->
-                try { use = com.lanshare.app.core.PrintPrep.trim(f, name, box).file } catch (_: Exception) {}
+                try { use = com.lanshare.app.core.PrintPrep.trim(f, name, box).file } catch (e: Exception) { PrintLog.warn("phone-print-trim-failed", jid, "name" to name, "why" to (e.message ?: e.javaClass.simpleName)) }
             }
             ins.add(In(name, use, kind))
         }
+        if (skipped.isNotEmpty()) PrintLog.warn("phone-print-skipped", jid, "types" to skipped.distinct())
         if (skipped.isNotEmpty())
             toast("Can't print " + skipped.distinct().joinToString(", ") + " on the phone. Use a PC with pcprint.py for Office files.")
-        if (ins.isEmpty()) return
+        if (ins.isEmpty()) { PrintLog.warn("phone-print-nothing", jid, "why" to "no printable file"); return }
         val imgs = ins.count { it.kind == "img" }
         if (imgs == 0) build(ins, 0, duplex)
         else act.runOnUiThread {
             askLayout(imgs) { layout ->
                 pool.execute {
-                    try { build(ins, if (trimOn && layout == 1) 0 else layout, duplex) } catch (e: Exception) { toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+                    PrintLog.bind(jid)
+                    try { build(ins, if (trimOn && layout == 1) 0 else layout, duplex) } catch (e: Exception) { PrintLog.err("phone-print-failed", jid, e, "step" to "build"); toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
                 }
             }
         }
@@ -148,6 +158,7 @@ class PhonePrint(private val act: Activity) {
         flush()
         val title = ins[0].name + if (ins.size > 1) " +" + (ins.size - 1) else ""
         val adapter = Adapter(parts, layout, ins.map { it.file }, title)
+        PrintLog.ev("phone-print-build", jid, "title" to title, "layout" to layout, "parts" to parts.map { it.javaClass.simpleName }, "duplex" to duplex)
         val base = PrintAttributes.MediaSize.ISO_A4
         val ab = PrintAttributes.Builder()
             .setMediaSize(if (adapter.firstIsLandscape()) base.asLandscape() else base.asPortrait())
@@ -158,7 +169,9 @@ class PhonePrint(private val act: Activity) {
         act.runOnUiThread {
             try {
                 (act.getSystemService(Context.PRINT_SERVICE) as PrintManager).print(title, adapter, attrs)
+                PrintLog.ev("phone-print-dialog", jid, "media" to attrs.mediaSize?.id, "landscape" to (attrs.mediaSize?.isPortrait == false))
             } catch (e: Exception) {
+                PrintLog.err("phone-print-failed", jid, e, "step" to "print-manager")
                 toast("Print failed: " + (e.message ?: e.javaClass.simpleName))
                 io.execute { adapter.release() }
             }
@@ -186,8 +199,10 @@ class PhonePrint(private val act: Activity) {
             files.forEach { it.delete() }
         }
 
+        private val ajid = jid   // this adapter's job (a later print must not change it)
+
         override fun onLayout(old: PrintAttributes?, now: PrintAttributes, cancel: CancellationSignal?, cb: LayoutResultCallback, extras: Bundle?) {
-            if (cancel?.isCanceled == true) { cb.onLayoutCancelled(); return }
+            if (cancel?.isCanceled == true) { PrintLog.ev("phone-print-layout-cancelled", ajid); cb.onLayoutCancelled(); return }
             attrs = now
             io.execute {
                 try {
@@ -204,11 +219,13 @@ class PhonePrint(private val act: Activity) {
                         }
                     }
                     pages = list
-                    if (list.isEmpty()) { act.runOnUiThread { cb.onLayoutFailed("Nothing to print") }; return@execute }
+                    if (list.isEmpty()) { PrintLog.warn("phone-print-layout-empty", ajid); act.runOnUiThread { cb.onLayoutFailed("Nothing to print") }; return@execute }
+                    PrintLog.ev("phone-print-layout", ajid, "pages" to list.size, "media" to ms.id, "w_mils" to ms.widthMils, "h_mils" to ms.heightMils, "margins" to (mm?.let { "${it.leftMils},${it.topMils},${it.rightMils},${it.bottomMils}" }), "duplex" to now.duplexMode, "color" to now.colorMode)
                     val info = PrintDocumentInfo.Builder("$title.pdf").setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
                         .setPageCount(list.size).build()
                     act.runOnUiThread { cb.onLayoutFinished(info, true) }
                 } catch (e: Exception) {
+                    PrintLog.err("phone-print-layout-failed", ajid, e)
                     act.runOnUiThread { cb.onLayoutFailed(e.message ?: "layout failed") }
                 }
             }
@@ -216,10 +233,12 @@ class PhonePrint(private val act: Activity) {
 
         override fun onWrite(range: Array<out PageRange>, out: ParcelFileDescriptor, cancel: CancellationSignal?, cb: WriteResultCallback) {
             io.execute {
+                val t0 = System.currentTimeMillis()
                 try {
                     val list = pages
                     val a = attrs ?: throw IOException("no layout")
                     val sel = selected(range, list.size)
+                    PrintLog.ev("phone-print-write-start", ajid, "pages" to sel.size, "of" to list.size)
                     val only = if (parts.size == 1) parts[0] as? PdfPart else null
                     if (only != null && sel.size == list.size) {
                         FileOutputStream(out.fileDescriptor).use { o -> only.src.file.inputStream().use { it.copyTo(o) } }
@@ -227,7 +246,7 @@ class PhonePrint(private val act: Activity) {
                         val doc = PrintedPdfDocument(act, a)
                         try {
                             for (k in sel) {
-                                if (cancel?.isCanceled == true) { act.runOnUiThread { cb.onWriteCancelled() }; return@execute }
+                                if (cancel?.isCanceled == true) { PrintLog.ev("phone-print-write-cancelled", ajid, "at_page" to k); act.runOnUiThread { cb.onWriteCancelled() }; return@execute }
                                 val page = doc.startPage(k)
                                 drawPage(page.canvas, page.info.contentRect, list[k])
                                 doc.finishPage(page)
@@ -236,14 +255,16 @@ class PhonePrint(private val act: Activity) {
                         } finally { doc.close() }
                     }
                     val done = range.toList().toTypedArray()
+                    PrintLog.ev("phone-print-write-ok", ajid, "ms" to System.currentTimeMillis() - t0)
                     act.runOnUiThread { cb.onWriteFinished(done) }
                 } catch (e: Throwable) {
+                    PrintLog.err("phone-print-write-failed", ajid, e, "ms" to System.currentTimeMillis() - t0)
                     act.runOnUiThread { cb.onWriteFailed(e.message ?: e.javaClass.simpleName) }
                 }
             }
         }
 
-        override fun onFinish() { io.execute { release() } }
+        override fun onFinish() { PrintLog.ev("phone-print-finish", ajid); io.execute { release() } }
 
         private fun selected(r: Array<out PageRange>, n: Int): List<Int> {
             val s = java.util.TreeSet<Int>()
