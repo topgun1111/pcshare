@@ -177,7 +177,9 @@ class PrintLogActivity : Activity() {
         val sb = SpannableStringBuilder()
         if (simple) renderSimple(lines, sb) else renderTechnical(lines, f, kb, sb)
         body.text = sb
-        scroll.post { scroll.fullScroll(if (pc.isNotEmpty()) View.FOCUS_UP else View.FOCUS_DOWN) }   // PC log is the first section: start at its top
+        // always end at the newest entry (PC log first, phone log last; the last line is the newest)
+        val toEnd = { val c = scroll.getChildAt(0); if (c != null) scroll.scrollTo(0, maxOf(0, c.height - scroll.height)) }
+        scroll.post { toEnd(); scroll.post { toEnd() } }
     }
 
     private fun renderTechnical(lines: List<Ln>, f: File, kb: Long, sb: SpannableStringBuilder) {
