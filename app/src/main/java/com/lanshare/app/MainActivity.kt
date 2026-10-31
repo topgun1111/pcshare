@@ -137,6 +137,7 @@ class MainActivity : Activity() {
             (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip
                 ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString() ?: ""
         } catch (_: Throwable) { "" }
+        @JavascriptInterface fun appVersion(): String = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (_: Throwable) { "" }
         @JavascriptInterface fun checkUpdate() = UpdateCheck.run(this@MainActivity, true) { m -> runOnUiThread { web.evaluateJavascript("toast(" + JSONObject.quote(m) + ")", null) } }
         /** Copy/paste/send job started in the UI: mirror its progress in the notification shade. */
         @JavascriptInterface fun watch(origin: String, job: String) { watchJob(origin, job) }
