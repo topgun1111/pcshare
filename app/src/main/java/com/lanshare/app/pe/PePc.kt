@@ -12,7 +12,6 @@ import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.net.URLEncoder
-import java.util.concurrent.ConcurrentHashMap
 
 /** Phone -> PC for "Phone Explorer, one tap": finds PCs running phone_explorer.py (UDP 41235) and asks one of them (HTTP 8798) to open Explorer on this phone's FTP share. */
 object PePc {
@@ -57,7 +56,6 @@ object PePc {
     /** The PC itself answered with an error (wrong password, remote commands off, job lost ...): shown as is, never retried. */
     class PcError(msg: String) : IOException(msg)
 
-    private val vers = ConcurrentHashMap<String, Pair<Int, Long>>()   // "ip:port" -> (PC program version, when asked)
 
     private fun e(v: String) = URLEncoder.encode(v, "UTF-8")
 
@@ -125,63 +123,6 @@ object PePc {
         if (st != 200) throw IOException(o?.optString("error", "")?.ifEmpty { null } ?: ("PC answered " + st))
     }
 
-    /**
-     * Result of a remote command run on the PC through /exec. [done] is false while the command still runs on the PC
-     * (the screen then asks again with the same id and poll = true).
-     */
-    class ExecResult(val out: String, val err: String, val code: Int, val truncated: Boolean, val done: Boolean = true, val o: Long = -1, val e: Long = -1)
-
-    private fun result(st: Int, o: JSONObject?): ExecResult {
-        if (o == null) throw IOException("PC answered something unexpected (HTTP $st) - is another program using that port?")
-        if (st != 200) throw PcError(o.optString("error", "PC answered $st"))
-        return ExecResult(o.optString("out", ""), o.optString("err", ""), o.optInt("code", -1), o.optBoolean("truncated", false), o.optBoolean("done", true),
-            o.optLong("o", -1), o.optLong("e", -1))   // o / e = stdout / stderr bytes received so far (live mode); -1 = old PC program: the whole output comes with done
-    }
-
-    /** Types [text] + Enter into the command [id] that still runs on the PC (answer to a prompt such as Y/N). Needs PC program v3. */
-    fun send(ip0: String, hport0: Int, pass: String, id: String, text: String) {
-        val (ip, hport) = target(ip0, hport0)
-        if (version(ip, hport) < 3) throw PcError("update Phone Explorer on the PC to answer a running command")
-        val (st, o) = try { call(ip, hport, "/exec", "id=${e(id)}&send=1&pass=${e(pass)}&in=${e(text)}", 20_000, 8_000, 2, false) } catch (x: Exception) { throw unreachable(x) }
-        if (st != 200) throw PcError(o?.optString("error", "")?.ifEmpty { null } ?: ("PC answered " + st))
-    }
-
-    /** 2 when the PC program runs commands as jobs (this app polls them), 1 for the old one (one request that waits for the end). */
-    private fun version(ip: String, port: Int): Int {
-        val key = "$ip:$port"; val now = System.currentTimeMillis()
-        vers[key]?.let { (v, t) -> if (now - t < (if (v >= 2) 600_000L else 60_000L)) return v }
-        val (_, o) = try { call(ip, port, "/exec?probe=1", null, 10_000, 8_000, 3, true) } catch (x: Exception) { throw unreachable(x) }
-        val v = o?.optInt("v", 1) ?: 1
-        vers[key] = Pair(v, now)
-        return v
-    }
-
-    /**
-     * One step of a remote command. The screen calls it again until [ExecResult.done]: the first call (poll = false) starts
-     * the command under [id], every later one (poll = true) only asks how it is going, so each call is a short request
-     * (the PC answers within ~20 s) instead of one connection that sits idle for minutes and gets cut by Tailscale / Wi-Fi.
-     * [offOut] / [offErr] = bytes of stdout / stderr already received: the PC answers with the NEW output only (live view) and returns
-     * as soon as a new line exists. Asking again with the same offsets repeats the same answer. The same id never runs the command twice. Throws "PC not reachable (...)" when no answer came (safe to call again),
-     * and the PC's own message when it refused (wrong password, remote commands off ...).
-     */
-    fun exec(ip0: String, hport0: Int, pass: String, cmd: String, id: String = "", poll: Boolean = false, offOut: Long = 0, offErr: Long = 0): ExecResult {
-        val (ip, hport) = target(ip0, hport0)
-        val v = if (id.isEmpty()) 1 else version(ip, hport)
-        if (v >= 2) {
-            val form = "id=${e(id)}&wait=20&o=$offOut&e=$offErr&pass=${e(pass)}" + if (poll) "&poll=1" else "&cmd=${e(cmd)}"   // in the body: no URL length limit
-            val (st, o) = try { call(ip, hport, "/exec", form, 45_000, 8_000, 3, true) } catch (x: Exception) { throw unreachable(x) }
-            return result(st, o)
-        }
-        if (poll) throw PcError("job not found - the Phone Explorer program on the PC was restarted")
-        // old PC program: one request that waits for the end. It cannot be repeated after it was sent (it would run twice).
-        val path = "/exec?pass=${e(pass)}&cmd=${e(cmd)}"
-        if (path.length > 15000) throw PcError("command too long for this PC program - update Phone Explorer on the PC")
-        val (st, o) = try { call(ip, hport, path, null, 325_000, 8_000, 3, false) } catch (x: Exception) {
-            throw if (connectFailure(x)) unreachable(x) else IOException("the connection to the PC broke while the command was running (${errText(x)}) - it may have run there")
-        }
-        return result(st, o)
-    }
-
     /** The Remote shell that is open right now (the screen reports it through the bridge: MainActivity.Bridge.rshLive). Kept in memory only, password included. */
     private class LiveShell(val ip: String, val port: Int, val pass: String, val sid: String)
     @Volatile private var live: LiveShell? = null
@@ -209,7 +150,7 @@ object PePc {
 
     /**
      * One step of the real terminal on the PC (phone_explorer.py /term, Remote shell screen): [act] = open | read | in | resize | close,
-     * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data). Every act is safe to repeat (open = same sid -> same shell,
+     * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data, rs = resize counter). Every act is safe to repeat (open = same sid -> same shell,
      * read = same offset -> same bytes, in = same seq -> typed once), so a cut connection is simply tried again with a new socket.
      */
     fun term(ip0: String, hport0: Int, pass: String, act: String, sid: String, extra: Map<String, String>): JSONObject {

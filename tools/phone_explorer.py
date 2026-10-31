@@ -43,9 +43,12 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from tkinter import messagebox, ttk
+try:
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+except ImportError:   # no tkinter (headless Linux, tests): only the window is missing, the server / terminal code still imports
+    tk = messagebox = ttk = None
 import re
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -110,7 +113,27 @@ def check_pass(cfg, password):
     return hmac.compare_digest(hash_pass(password, cfg["exec_salt"]), cfg["exec_hash"])
 
 
-_fails = {}   # ip -> [count, locked_until]
+_fails = {}   # ip -> [wrong passwords in a row, locked until, last seen]
+_fails_lock = threading.Lock()
+FAILS_MAX = 512
+
+
+def fail_entry(ip):
+    """The wrong-password counter of one address. Addresses that are not locked and were not seen for 10 minutes are dropped
+    (many addresses guessing once each would otherwise make the list grow for ever); if it is still full, the least recently seen one goes."""
+    now = time.time()
+    with _fails_lock:
+        if ip not in _fails and len(_fails) >= FAILS_MAX:
+            for k in [k for k, v in _fails.items() if v[1] < now and now - v[2] > 600]:
+                del _fails[k]
+            if len(_fails) >= FAILS_MAX:
+                free = [k for k, v in _fails.items() if v[1] < now] or list(_fails)
+                del _fails[min(free, key=lambda k: _fails[k][2])]
+        f = _fails.get(ip)
+        if f is None:
+            f = _fails[ip] = [0, 0.0, now]
+        f[2] = now
+        return f
 
 
 def gen_pin(n=6):
@@ -636,7 +659,7 @@ def exec_job(jid, cmd, limit, cap=EXEC_MAX):
 #   act=open   sid shell(cmd|ps) cols rows   -> starts the session (same sid again = the same session, never a second shell)
 #   act=read   sid o wait                    -> long-poll: raw terminal bytes (base64) after offset o; {data,o,alive,code,reset}
 #   act=in     sid seq data(base64)          -> keys typed on the phone (seq counts up: a repeated request is not typed twice)
-#   act=resize sid cols rows
+#   act=resize sid cols rows [rs]            -> rs = the phone's resize counter: a late copy of an OLDER resize (a retry that arrived after a newer one) is ignored
 #   act=close  sid
 TERM_BUF_MAX = 4 << 20      # bytes of output kept per session (a phone that reconnects gets the rest of it)
 TERM_SESS_MAX = 3
@@ -754,7 +777,8 @@ class _ConPty:
         return True
 
     def resize(self, cols, rows):
-        self.k32.ResizePseudoConsole(self.hpc, self.COORD(cols, rows))
+        """False when Windows refused (HRESULT other than S_OK): the caller must not believe the size was changed."""
+        return self.k32.ResizePseudoConsole(self.hpc, self.COORD(cols, rows)) == 0
 
     def alive(self):
         return self.k32.WaitForSingleObject(self.h_proc, 0) == 258        # WAIT_TIMEOUT
@@ -823,8 +847,9 @@ class _PosixPty:
     def resize(self, cols, rows):
         try:
             self._fcntl.ioctl(self.fd, self._termios.TIOCSWINSZ, self._struct.pack("HHHH", rows, cols, 0, 0))
+            return True
         except Exception:
-            pass
+            return False
 
     def alive(self):
         if self._code is not None:
@@ -886,6 +911,8 @@ class TermSession:
         self.cv = threading.Condition()
         self.seq = 0                       # last typed-input batch applied
         self.in_lock = threading.Lock()
+        self.rs = 0                        # number of the last resize applied (see act=resize)
+        self.rs_lock = threading.Lock()
         self.touch = time.time()
         self.dead = False
         self.code = None
@@ -946,10 +973,20 @@ class TermSession:
                 self.seq = seq
             return ok
 
-    def resize(self, cols, rows):
+    def resize(self, cols, rows, rs=0):
+        """rs = 0: always apply (old phone, or the phone re-attaching in act=open; the counter starts again).
+        rs > 0: apply only if it is not older than the last one - two requests for different sizes can cross on
+        the way (retry on a new socket), and an old size winning leaves ConPTY with another size than the phone's
+        screen (garbled output). Returns True when applied."""
         self.touch = time.time()
-        self.cols, self.rows = cols, rows
-        self.pty.resize(cols, rows)
+        with self.rs_lock:
+            if rs and rs < self.rs:
+                return False
+            if self.pty.resize(cols, rows) is False:
+                raise OSError("the console refused the new size")      # the phone asks again later; the counters stay as they were
+            self.rs = rs
+            self.cols, self.rows = cols, rows
+            return True
 
     def close(self):
         self.pty.close()
@@ -1120,7 +1157,7 @@ def start_listeners(app):
                 self._reply(403, {"error": "Remote commands are turned off on this PC"})
                 return False
             ip = self.client_address[0].split("%")[0]
-            f = _fails.setdefault(ip, [0, 0.0])
+            f = fail_entry(ip)
             if time.time() < f[1]:
                 self._reply(429, {"error": "too many wrong passwords - try again in a minute"})
                 return False
@@ -1158,7 +1195,10 @@ def start_listeners(app):
                 except (RuntimeError, OSError) as e:
                     return self._reply(500 if isinstance(e, OSError) else 429, {"error": str(e)})
                 if existed:
-                    t.resize(cols, rows)
+                    try:
+                        t.resize(cols, rows)
+                    except OSError:
+                        pass            # the phone's resize check repeats it
                 else:
                     try:
                         app.after(0, app.set_status, "Remote shell opened")
@@ -1183,8 +1223,11 @@ def start_listeners(app):
                     return self._reply(409, {"error": "the shell has ended"})
                 return self._reply(200, {"ok": bool(t.write(num("seq", 0, 0, 1 << 62), data))})
             if act == "resize":
-                t.resize(cols, rows)
-                return self._reply(200, {"ok": True})
+                try:
+                    applied = t.resize(cols, rows, num("rs", 0, 0, 1 << 62))
+                except OSError as e:
+                    return self._reply(500, {"error": "terminal resize failed: %s" % e})
+                return self._reply(200, {"ok": True, "applied": applied})
             if act == "close":
                 with _terms_lock:
                     _terms.pop(sid, None)
@@ -1203,7 +1246,7 @@ def start_listeners(app):
             if not cfg.get("exec_enabled"):
                 return self._reply(403, {"error": "Remote commands are turned off on this PC"})
             ip = self.client_address[0].split("%")[0]
-            f = _fails.setdefault(ip, [0, 0.0])
+            f = fail_entry(ip)
             if time.time() < f[1]:
                 return self._reply(429, {"error": "too many wrong passwords - try again in a minute"})
             if not cfg.get("exec_hash"):
@@ -1269,7 +1312,7 @@ def start_listeners(app):
 
 # -------------------------------------------------------------------------------------------- UI
 
-class App(tk.Tk):
+class App(tk.Tk if tk else object):
     def __init__(self, args):
         super().__init__()
         self.title("Phone Explorer" + (" (Administrator)" if is_admin() else ""))
@@ -1674,6 +1717,9 @@ if __name__ == "__main__":
                                              "Phone Explorer", 0x10)
         except Exception:
             pass
+        sys.exit(1)
+    if tk is None:
+        print("tkinter is not installed: the Phone Explorer window cannot open (Windows: reinstall Python with the 'tcl/tk' option).")
         sys.exit(1)
     if sys.platform != "win32":
         print("Note: Explorer launch and drive mapping only work on Windows; discovery still runs.")

@@ -281,20 +281,10 @@ object Routes {
                 com.lanshare.app.pe.PePc.open(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, (q["port"] ?: "2121").toIntOrNull() ?: 2121, q["user"] ?: "phone", q["pin"] ?: "", q["name"] ?: "Phone")
                 return ex.json(JSONObject().put("ok", true))
             }
-            "pcexec" -> {   // Remote shell: one STEP of a command on that PC's phone_explorer.py (/exec, password set on the PC, off by default). The screen repeats it until done (PePc.exec)
-                val b = try { ex.bodyJson() } catch (_: Exception) { JSONObject() }   // password + command travel in the body: no URL length limit, not in any log
-                if (q["send"] == "1") {   // answer typed into a command that is still running (Y/N ...)
-                    com.lanshare.app.pe.PePc.send(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", ""), q["id"] ?: "", b.optString("in", ""))
-                    return ex.json(JSONObject().put("ok", true))
-                }
-                val r = com.lanshare.app.pe.PePc.exec(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", q["pass"] ?: ""),
-                    b.optString("cmd", q["cmd"] ?: ""), q["id"] ?: "", q["poll"] == "1", (q["o"] ?: "0").toLongOrNull() ?: 0L, (q["e"] ?: "0").toLongOrNull() ?: 0L)
-                return ex.json(JSONObject().put("out", r.out).put("err", r.err).put("code", r.code).put("truncated", r.truncated).put("done", r.done).put("o", r.o).put("e", r.e))
-            }
             "pcterm" -> {   // Remote shell: one step of the real terminal on that PC (PePc.term); the screen (xterm.js) repeats read steps
                 val b = try { ex.bodyJson() } catch (_: Exception) { JSONObject() }
                 val extra = LinkedHashMap<String, String>()
-                for (k in listOf("shell", "cols", "rows", "o", "wait", "seq", "data")) if (b.has(k)) extra[k] = b.get(k).toString()
+                for (k in listOf("shell", "cols", "rows", "o", "wait", "seq", "data", "rs")) if (b.has(k)) extra[k] = b.get(k).toString()
                 return ex.json(com.lanshare.app.pe.PePc.term(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", ""), b.optString("act", ""), b.optString("sid", ""), extra))
             }
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))

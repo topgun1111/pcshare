@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-31 - Remote shell: screen no longer garbled
+### Fixed
+- Remote shell: long output (for example a pasted block of code) could be drawn over itself, with pieces of other lines mixed in, after the keyboard opened or closed. The PC now always gets the real screen size, and keeps asking while the network is away (update Phone Explorer on the PC)
+- Remote shell: if Windows refuses a screen-size change, the phone now notices and tries again later instead of staying out of step (update Phone Explorer on the PC)
+- Phone Explorer on the PC: the list of wrong-password attempts no longer grows without limit, and the program can be loaded without the window part (for tests)
+### Removed
+- An old, unused command route inside the app (nothing changes on screen)
+
 ## 2026-10-31 - Remote shell ends when you leave
 ### Added
 - Remote shell: tapping the tile now first asks cmd or PowerShell, then shows the PCs found and the password (filled in from last time). It no longer connects by itself

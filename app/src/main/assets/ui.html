@@ -5557,7 +5557,7 @@ function openPcExec(){openRemoteShell()}
 function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
-  let closed=false,wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null;
+  let closed=false,wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null,ackC=0,ackR=0,rzBusy=false,rsN=Date.now();
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const nap=ms=>new Promise(r=>{const t=setTimeout(()=>{wk=null;r()},ms);wk=()=>{clearTimeout(t);wk=null;r()}});   // a sleep that the phone coming back (screen on, network up) cuts short
   const wake=()=>{if(wk)wk()};
@@ -5585,6 +5585,12 @@ function openRemoteShell(){
   const note=(t,c)=>{if(xt)xt.write('\r\n\x1b['+(c||'33')+'m['+t+']\x1b[0m\r\n')};
   const call=(act,ex,ms)=>api('POST','/api/pcterm?ip='+enc(RSH_S.ip)+'&hport='+(RSH_S.port||8798),Object.assign({pass:RSH_PW,act,sid:RSH_S.sid},ex),ms||30000);
   const netErr=m=>/^PC not reachable|^timed out|paused/i.test(m||'');
+   /* Terminal size -> the PC. The PC's ConPTY must have EXACTLY the size xterm has, else its cursor-positioned output lands on the wrong rows/columns and the screen is garbled (seen when the keyboard opened/closed during a long paste). One request at a time, numbered (rs: the PC ignores an older copy that arrives late), repeated while the network is away; ackC/ackR = the size the PC has confirmed. */
+   const syncSize=async()=>{if(rzBusy)return;rzBusy=true;const my=gen;
+     try{for(let k=0;my===gen&&RSH_S&&xt&&(xt.cols!==ackC||xt.rows!==ackR);){const c=xt.cols,r=xt.rows;
+       try{await call('resize',{cols:c,rows:r,rs:++rsN},15000);ackC=c;ackR=r;k=0}
+       catch(e){if(!netErr(e.message||'')||++k>8)break;await nap(Math.min(3000,500*k))}}}
+     finally{rzBusy=false}};
   /* typed keys -> the PC: one request at a time, numbered (the PC types a number only once, so a repeated request never doubles a key) */
   const saveSess=()=>{try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()};
   const stat=t=>{ti.textContent='Remote shell'+(t?' · '+t:'')};
@@ -5605,7 +5611,7 @@ function openRemoteShell(){
   const loop=async()=>{const g0=gen,my=++lg;let fails=0,okAt=Date.now(),down=false;
     while(lg===my&&gen===g0&&w.isConnected&&RSH_S){
       try{const r=await call('read',{o:off,wait:20},45000);if(lg!==my||gen!==g0)return;okAt=Date.now();fails=0;
-        if(down){down=false;stat('')}
+        if(down){down=false;stat('')}if(xt.cols!==ackC||xt.rows!==ackR)syncSize();
         if(r.reset){if(off>0)toast('Part of the output was too old to keep and is skipped',3500);xt.reset()}
         if(r.data){const bin=atob(r.data),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
           await new Promise(ok=>xt.write(u,ok));if(lg!==my||gen!==g0)return}
@@ -5632,7 +5638,7 @@ function openRemoteShell(){
     xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,theme:curTheme()});
     fit=new FitAddon.FitAddon();xt.loadAddon(fit);xt.open(tw);try{fit.fit()}catch(e){}
     xt.onData(typed);
-    xt.onResize(()=>{clearTimeout(rt);rt=setTimeout(()=>{if(RSH_S)call('resize',{cols:xt.cols,rows:xt.rows},15000).catch(()=>{})},150)});
+    xt.onResize(()=>{clearTimeout(rt);rt=setTimeout(syncSize,150)});
     ro=new ResizeObserver(()=>{try{fit.fit();xt.scrollToBottom()}catch(e){}});ro.observe(tw);
     tw.addEventListener('click',()=>{if(!selMode&&!lpFired)showKb();lpFired=false});hookSel();hookIme()};
   /* open (or re-attach to) the shell on that PC. Throws the PC's message so the Connect sheet can show it. */
@@ -5644,11 +5650,11 @@ function openRemoteShell(){
     if(!xt)mkTerm();
     const my=++gen;lg++;opened=false;inq=[];xt.reset();off=0;
     const S0=RSH_S;
-    let r;try{r=await call('open',{shell:sh,cols:xt.cols||80,rows:xt.rows||24},30000)}catch(e){RSH_S=null;rshSync();throw e}   // (a shell that failed to open is not remembered)
+    const c0=xt.cols||80,r0=xt.rows||24;let r;try{r=await call('open',{shell:sh,cols:c0,rows:r0},30000)}catch(e){RSH_S=null;rshSync();throw e}   // (a shell that failed to open is not remembered)
     if(gen!==my){if(closed)rshEnd(S0);return}   // the screen was closed while connecting: the shell that just opened is ended at once
     if(!r.existed)RSH_S.seq=0;   // a new shell on the PC (first time, or the PC program was restarted): its key counter starts again
     else RSH_S.seq=Math.max(RSH_S.seq||0,typeof r.seq==='number'?r.seq:Math.floor(Date.now()/1000));   // same shell: never go below the PC's last typed number (an older PC does not tell it: seconds since 1970 is always above)
-    saveSess();stat('');opened=true;loop()};   // no xt.focus(): the keyboard must not pop up by itself (owner's request); tapping the terminal opens it
+    saveSess();stat('');opened=true;ackC=c0;ackR=r0;loop();syncSize()};   // no xt.focus(): the keyboard must not pop up by itself (owner's request); tapping the terminal opens it
   const saveCfg=()=>{try{localStorage.setItem('ls_rsh',JSON.stringify(cfg))}catch(e){}};
   /* ---- part 2: select / copy / paste / clear (plan: long-press = word, handles, menu) ----
      Long-press on the terminal -> selection mode: a transparent layer `sl` (no scrolling while on) + two round handles + a menu (Copy, Paste, Select all, Clear, Done).
