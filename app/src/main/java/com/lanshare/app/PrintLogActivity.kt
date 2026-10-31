@@ -33,10 +33,11 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * "Logs" screen (was "Print log"; HANDOVER 9.8, part 4). Two views: SIMPLE (default, PlainLog.kt: plain sentences, a problem count and a "what to try" tip) and TECHNICAL (the old detailed lines). Shows the phone's print log (core/PrintLog.kt) as readable lines, newest at the bottom;
- * "Fetch PC log" adds the PC's diag.jsonl (pcprint.py 31+, GET /api/pcdiag) merged by time; Share / Copy hand the RAW json lines to another app
- * (that is what the developer reads); Clear empties the phone's file; Open folder shows <storage>/LANShare Logs in the file manager;
- * "Full detail" is the verbose switch (Cfg.printVerbose). Intent extras: [X_JIDS] job ids to show (comma list, empty = everything), [X_DEV] the PC for "Fetch PC log".
+ * "Logs" screen. Two tabs: Phone log (core/PrintLog.kt) and PC log (the PC's diag.jsonl, pcprint.py 31+, GET /api/pcdiag, fetched with Refresh).
+ * Toolbar: Refresh (the open tab), Export (asks PC / Phone / Both, hands the RAW json lines to another app as a file) and the Advanced tick box.
+ * Advanced off (default) = plain sentences (PlainLog.kt: problem count, "what to try" tips); on = the detailed technical lines plus
+ * Copy, Open folder, Clear phone log and the "Full detail" switch (Cfg.printVerbose).
+ * Intent extras: [X_JIDS] job ids to show (comma list, empty = everything; an "Only this job" tick box appears), [X_DEV] the PC for the PC tab.
  * Never throws out of a button; all file / network work runs on one background thread.
  */
 class PrintLogActivity : Activity() {
@@ -46,9 +47,10 @@ class PrintLogActivity : Activity() {
     private lateinit var info: TextView
     private lateinit var body: TextView
     private lateinit var scroll: ScrollView
-    private lateinit var scopeBtn: TextView
-    private lateinit var viewBtn: TextView
-    private lateinit var verbose: Switch
+    private lateinit var extra: LinearLayout      // Advanced-only tools (Full detail, Copy, Open folder, Clear)
+    private val tabTxt = arrayOfNulls<TextView>(2)
+    private val tabInd = arrayOfNulls<View>(2)
+    private var tab = 0                           // 0 = Phone log, 1 = PC log
     private var simple = true
     private var jids: List<String> = emptyList()
     private var dev = ""
@@ -56,6 +58,7 @@ class PrintLogActivity : Activity() {
     private var phone: List<Ln> = emptyList()
     private var pc: List<Ln> = emptyList()
     private var pcNote = ""
+    private var pcTried = false
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
@@ -78,26 +81,63 @@ class PrintLogActivity : Activity() {
         info = TextView(this).apply { typeface = Fnt.med(); textSize = 12f; setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
         root.addView(info)
 
-        val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
-        viewBtn = chip("") { simple = !simple; try { getSharedPreferences("logs_ui", MODE_PRIVATE).edit().putBoolean("simple", simple).apply() } catch (_: Throwable) {}; render() }
-        chips.addView(viewBtn)
-        scopeBtn = chip("") { onlyJobs = !onlyJobs; render() }
-        if (jids.isNotEmpty()) chips.addView(scopeBtn)
-        chips.addView(chip("Refresh") { load(); if (dev.isNotEmpty()) fetchPc() })
-        chips.addView(chip("Fetch PC log") { fetchPc() })
-        chips.addView(chip("Share") { share() })
-        chips.addView(chip("Copy") { copy() })
-        chips.addView(chip("Open folder") { openFolder() })
-        chips.addView(chip("Clear") { clear() })
-        root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(chips) })
+        // --- tabs: Phone log | PC log
+        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(8), 0, dp(8), 0) }
+        fun tabBtn(i: Int, label: String): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            val t = TextView(this@PrintLogActivity).apply { text = label; textSize = 15f; gravity = Gravity.CENTER; typeface = Fnt.semi(); setPadding(0, dp(10), 0, dp(10)) }
+            val ind = View(this@PrintLogActivity)
+            tabTxt[i] = t; tabInd[i] = ind
+            addView(t, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(ind, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
+            setOnClickListener { selectTab(i) }
+        }
+        tabs.addView(tabBtn(0, "Phone log")); tabs.addView(tabBtn(1, "PC log"))
+        root.addView(tabs)
+        root.addView(View(this).apply { setBackgroundColor(pal.bd) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
 
-        verbose = Switch(this).apply {
+        info = TextView(this).apply { typeface = Fnt.med(); textSize = 12f; setTextColor(pal.mut); setPadding(dp(16), dp(8), dp(16), dp(4)) }
+        root.addView(info)
+
+        // --- one row: Refresh, Export, [x] Advanced
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
+        bar.addView(chip("Refresh") { refresh() })
+        bar.addView(chip("Export") { export() })
+        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        val adv = android.widget.CheckBox(this).apply {
+            text = "Advanced"; typeface = Fnt.med(); textSize = 13f; setTextColor(pal.fg)
+            isChecked = !simple
+            setOnCheckedChangeListener { _, v ->
+                simple = !v
+                try { getSharedPreferences("logs_ui", MODE_PRIVATE).edit().putBoolean("simple", simple).apply() } catch (_: Throwable) {}
+                render()
+            }
+        }
+        bar.addView(adv)
+        root.addView(bar)
+
+        if (jids.isNotEmpty()) root.addView(android.widget.CheckBox(this).apply {
+            text = "Only this job (" + jids.joinToString(" ") + ")"; typeface = Fnt.med(); textSize = 13f; setTextColor(pal.fg)
+            isChecked = onlyJobs; setPadding(dp(12), 0, dp(12), dp(6))
+            setOnCheckedChangeListener { _, v -> onlyJobs = v; render() }
+        })
+
+        // --- Advanced only: the less used tools
+        extra = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val ex = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), dp(6)) }
+        ex.addView(chip("Copy") { copy() })
+        ex.addView(chip("Open folder") { openFolder() })
+        ex.addView(chip("Clear phone log") { clear() })
+        extra.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(ex) })
+        extra.addView(Switch(this).apply {
             text = "Full detail (long texts and stack traces are kept in full)"; typeface = Fnt.med(); textSize = 13f; setTextColor(pal.fg)
             isChecked = try { Cfg.printVerbose() } catch (_: Throwable) { true }
             setPadding(dp(16), dp(4), dp(16), dp(8))
             setOnCheckedChangeListener { _, v -> try { Cfg.setPrintVerbose(v) } catch (_: Throwable) {} }
-        }
-        root.addView(verbose)
+        })
+        root.addView(extra)
+        paintTabs()
 
         body = TextView(this).apply {
             typeface = Fnt.med(); textSize = 11f; setTextColor(pal.fg); setTextIsSelectable(true)
@@ -110,7 +150,7 @@ class PrintLogActivity : Activity() {
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         load()
-        if (dev.isNotEmpty()) fetchPc()   // the PC log is the first thing shown
+        if (dev.isNotEmpty()) fetchPc()   // the PC tab is ready when it is opened
     }
 
     override fun onDestroy() { super.onDestroy(); exec.shutdownNow() }
@@ -122,6 +162,22 @@ class PrintLogActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
         setOnClickListener { try { f() } catch (e: Throwable) { toast("Failed: " + (e.message ?: e.javaClass.simpleName)) } }
     }
+
+    private fun paintTabs() {
+        for (i in 0..1) {
+            tabTxt[i]?.setTextColor(if (i == tab) pal.fg else pal.mut)
+            tabInd[i]?.setBackgroundColor(if (i == tab) pal.ac else Color.TRANSPARENT)
+        }
+    }
+
+    private fun selectTab(i: Int) {
+        if (tab == i) return
+        tab = i; paintTabs(); render()
+        if (i == 1 && pc.isEmpty() && dev.isNotEmpty() && !pcTried) fetchPc()
+    }
+
+    /** Refresh = reload the list that is on screen. */
+    private fun refresh() { if (tab == 0) load() else fetchPc() }
 
     private fun toast(t: String) = ui.post { try { Toast.makeText(this, t, Toast.LENGTH_LONG).show() } catch (_: Throwable) {} }
     private fun bg(f: () -> Unit) { try { exec.execute { try { f() } catch (e: Throwable) { toast("Failed: " + (e.message ?: e.javaClass.simpleName)) } } } catch (_: Throwable) {} }
@@ -136,6 +192,7 @@ class PrintLogActivity : Activity() {
     }
 
     private fun fetchPc() {
+        pcTried = true
         if (dev.isEmpty()) { toast("No PC known yet: print once to a PC or open \"PC screen\" first, then open this screen again."); return }
         toast("Fetching the PC log...")
         bg {
@@ -152,10 +209,10 @@ class PrintLogActivity : Activity() {
         }
     }
 
-    /** PC log first, then the phone's own log (each in time order); the job filter applies to both. */
+    /** The lines of the open tab (each in time order); the job filter applies to both tabs. */
     private fun shown(): List<Ln> {
         fun f(l: List<Ln>) = if (onlyJobs && jids.isNotEmpty()) l.filter { it.jid != null && it.jid in jids } else l
-        return f(pc) + f(phone)
+        return if (tab == 1) f(pc) else f(phone)
     }
 
     /** Section title when the source changes (only if both logs have lines). */
@@ -170,9 +227,7 @@ class PrintLogActivity : Activity() {
     private fun render() {
         val f = File(try { PrintLog.file().absolutePath } catch (_: Throwable) { "" })
         val kb = try { PrintLog.size() / 1024 } catch (_: Throwable) { 0L }
-        scopeBtn.text = if (onlyJobs) "Job " + jids.joinToString(" ") + " (tap: all)" else "All jobs (tap: this job)"
-        viewBtn.text = if (simple) "Simple view (tap: technical)" else "Technical view (tap: simple)"
-        verbose.visibility = if (simple) View.GONE else View.VISIBLE
+        extra.visibility = if (simple) View.GONE else View.VISIBLE
         val lines = shown()
         val sb = SpannableStringBuilder()
         if (simple) renderSimple(lines, sb) else renderTechnical(lines, f, kb, sb)
@@ -182,12 +237,20 @@ class PrintLogActivity : Activity() {
         scroll.post { toEnd(); scroll.post { toEnd() } }
     }
 
+    /** What an empty tab says (the PC tab also says why: no PC known / not loaded yet). */
+    private fun emptyText(): String = when {
+        tab == 1 && dev.isEmpty() -> "No PC known yet: print once to a PC, then open this screen again."
+        tab == 1 && pc.isEmpty() -> "The PC log is not loaded. Tap Refresh to fetch it."
+        onlyJobs -> "Nothing for this job in this log" + (if (tab == 0) " (the PC part is in the PC log tab)." else ".")
+        else -> "Nothing to report yet. Print something and come back."
+    }
+
     private fun renderTechnical(lines: List<Ln>, f: File, kb: Long, sb: SpannableStringBuilder) {
         body.typeface = Fnt.med(); body.textSize = 11f
-        info.text = (if (f.path.isEmpty()) "" else f.name + " - " + kb + " KB - " + f.parent) + (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nTimes of the PC lines are the PC's clock."
+        info.text = if (tab == 0) (if (f.path.isEmpty()) "" else f.name + " - " + kb + " KB - " + f.parent) else (pcNote + (if (pcNote.isEmpty()) "" else "\n") + "Times are the PC's clock.")
         val last = if (lines.size > MAXV) lines.subList(lines.size - MAXV, lines.size) else lines
         if (lines.size > last.size) sb.append("... ").append((lines.size - last.size).toString()).append(" older lines not shown (Share / Copy give everything)\n\n")
-        if (last.isEmpty()) sb.append(if (onlyJobs) "No lines for this job (it may be in the PC log: tap \"Fetch PC log\")." else "The log is empty. Print something and come back.")
+        if (last.isEmpty()) sb.append(emptyText())
         var prev: String? = null
         val both = last.any { it.src == "pc" } && last.any { it.src != "pc" }
         for (l in last) {
@@ -212,10 +275,10 @@ class PrintLogActivity : Activity() {
             items.isEmpty() -> "Nothing to report yet."
             else -> "No problems found."
         }
-        info.text = head + (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nPC times are the PC's clock. Tap \"Technical view\" for all the details."
+        info.text = head + (if (tab == 1) (if (pcNote.isEmpty()) "" else "\n" + pcNote) + "\nTimes are the PC's clock." else "") + "\nTick Advanced for all the details."
         val last = if (items.size > MAXS) items.subList(items.size - MAXS, items.size) else items
         if (items.size > last.size) sb.append("... ").append((items.size - last.size).toString()).append(" older entries not shown\n\n")
-        if (last.isEmpty()) sb.append(if (onlyJobs) "Nothing to report for this job (the PC part may be missing: tap \"Fetch PC log\")." else "Nothing to report yet. Print something and come back.")
+        if (last.isEmpty()) sb.append(emptyText())
         var prev: String? = null
         val both = last.any { it.first.src == "pc" } && last.any { it.first.src != "pc" }
         for ((l, it) in last) {
@@ -238,34 +301,57 @@ class PrintLogActivity : Activity() {
 
     // ------------------------------------------------------------ buttons
 
-    private fun rawText(): String = merge(phone, pc).let { all -> (if (onlyJobs && jids.isNotEmpty()) all.filter { it.jid != null && it.jid in jids } else all).joinToString("\n") { it.raw } }
+    private fun sel(l: List<Ln>): List<Ln> = if (onlyJobs && jids.isNotEmpty()) l.filter { it.jid != null && it.jid in jids } else l
+
+    /** Raw json lines: kind 0 = PC log, 1 = phone log, 2 = both merged by time. */
+    private fun rawOf(kind: Int, pcL: List<Ln> = pc): String =
+        (when (kind) { 0 -> sel(pcL); 1 -> sel(phone); else -> sel(merge(phone, pcL)) }).joinToString("\n") { it.raw }
 
     private fun copy() = bg {
-        val t = rawText().takeLast(COPY_MAX)
+        val t = rawOf(if (tab == 1) 0 else 1).takeLast(COPY_MAX)
         ui.post {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("LANShare print log", t))
             toast(if (t.isEmpty()) "Nothing to copy" else "Copied " + (t.length / 1024) + " KB")
         }
     }
 
-    private fun share() = bg {
-        val t = rawText()
-        if (t.isEmpty()) { toast("Nothing to share"); return@bg }
-        val f = File(File(cacheDir, "open").apply { mkdirs() }, "print-log.jsonl")
+    /** Export: ask which log (PC / phone / both), then hand the raw lines as a file to another app. */
+    private fun export() {
+        AppPal.dlg(this).setTitle("Export which log?").setItems(arrayOf("PC log", "Phone log", "Both")) { _, w -> exportKind(w) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun exportKind(kind: Int) = bg {
+        var pcL = pc
+        if (kind != 1 && pcL.isEmpty()) {   // PC part wanted but not loaded yet: fetch it now
+            if (dev.isEmpty()) { if (kind == 0) { toast("No PC known yet: print once to a PC first."); return@bg } }
+            else {
+                val r = pcText(dev)
+                if (r.first != null) { pcL = parse(r.first!!, "pc"); val got = pcL; ui.post { pc = got; pcNote = "PC log: " + got.size + " lines"; render() } }
+                else { toast(r.second); if (kind == 0) return@bg }
+            }
+        }
+        val t = rawOf(kind, pcL)
+        if (t.isEmpty()) { toast("Nothing to export"); return@bg }
+        shareText(t, when (kind) { 0 -> "lanshare-pc-log.jsonl"; 1 -> "lanshare-phone-log.jsonl"; else -> "lanshare-print-log.jsonl" })
+    }
+
+    private fun shareText(t: String, fileName: String) {
+        val f = File(File(cacheDir, "open").apply { mkdirs() }, fileName)
         f.writeText(t + "\n", Charsets.UTF_8)
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
         ui.post {
             try {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
-                    .putExtra(Intent.EXTRA_SUBJECT, "LANShare print log").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share print log"))
-            } catch (e: Throwable) { toast("Cannot share: " + (e.message ?: e.javaClass.simpleName)) }
+                    .putExtra(Intent.EXTRA_SUBJECT, "LANShare print log").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export log"))
+            } catch (e: Throwable) { toast("Cannot export: " + (e.message ?: e.javaClass.simpleName)) }
         }
     }
 
     private fun openFolder() {
         val dir = try { PrintLog.file().parentFile } catch (_: Throwable) { null }
         val shared = dir != null && dir.name == "LANShare Logs"
-        if (!shared) { toast("The log is in the app's private folder (no storage access): " + (dir?.path ?: "") + ". Use Share instead."); return }
+        if (!shared) { toast("The log is in the app's private folder (no storage access): " + (dir?.path ?: "") + ". Use Export instead."); return }
         StorageActions.revealDev(this, "", dir!!.absolutePath, null)   // dev "" = this phone (MainActivity.runShowPath -> lsGoLocal)
     }
 
