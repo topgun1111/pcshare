@@ -5,6 +5,15 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-10-31 - Remote shell: Upload & run, no time limits
+### Added
+- Remote shell: a third choice, Upload & run. Pick a .py, .bat or .exe file (or several) on the phone: it is sent to the PC and started there in its own window, exactly as if you had double-clicked it. Its text shows on the phone live and you can type into it (update Phone Explorer on the PC)
+- Upload & run: a list of the programs started from the phone, with Open (come back to one that still runs) and Stop
+- Upload & run: optional arguments for the program
+### Changed
+- No more time limits: a shell or a program stays on the PC until you close or stop it (before, the PC closed a shell after 5 minutes without contact, and the phone gave up after 10 minutes without a network or 150 seconds for typed keys). A 4th shell closes the one that was used least recently
+- Leaving the Upload & run screen, or closing the app, does not stop the program any more; use Stop
+
 ## 2026-10-31 - Remote shell: screen no longer garbled
 ### Fixed
 - Remote shell: long output (for example a pasted block of code) could be drawn over itself, with pieces of other lines mixed in, after the keyboard opened or closed. The PC now always gets the real screen size, and keeps asking while the network is away (update Phone Explorer on the PC)

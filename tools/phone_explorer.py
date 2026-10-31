@@ -21,6 +21,10 @@ as it starts, and quits if the prompt is declined. (--no-admin is still accepted
 elevated with no further prompt, when this program is currently running elevated; otherwise it falls back to the
 ordinary (non-elevated) Run-key autostart, which will prompt again at every login.
 
+UPLOAD & RUN (same switch + password): the phone sends .py / .bat / .exe ... files (POST /put, 1 MB pieces) and starts one (POST /term act=run).
+It starts in its own window on the PC desktop, exactly like a double-click; the phone shows the window's text live and can type into it.
+No time limits anywhere: a program, a shell and its output stay until the phone stops / closes them (see "terminal" below).
+
 Run:   python phone_explorer.py [--pair "phoneexplorer://..."] [--auto] [--tray] [--no-admin]
        --pair       import a pairing link from the phone's QR screen and save the device
        --auto       open the default device right after start (also: tick "Auto-open on start")
@@ -50,7 +54,7 @@ try:
 except ImportError:   # no tkinter (headless Linux, tests): only the window is missing, the server / terminal code still imports
     tk = messagebox = ttk = None
 import re
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, unquote_plus, urlparse
 
 if sys.platform == "win32":
     import ctypes
@@ -662,29 +666,11 @@ def exec_job(jid, cmd, limit, cap=EXEC_MAX):
 #   act=resize sid cols rows [rs]            -> rs = the phone's resize counter: a late copy of an OLDER resize (a retry that arrived after a newer one) is ignored
 #   act=close  sid
 TERM_BUF_MAX = 4 << 20      # bytes of output kept per session (a phone that reconnects gets the rest of it)
-TERM_SESS_MAX = 3
-TERM_IDLE = 300             # s: the phone normally ends its shell itself (act=close on Back / app closed). If it just vanished
-                            # (app killed, phone off, no network) nothing asks about the session for this long -> the reaper closes it
+TERM_SESS_MAX = 3           # shells. NO time limit: a shell lives until the phone closes it. A 4th shell closes the one nobody asked about for longest
+RUN_SESS_MAX = 12           # programs started by "Upload & run" (alive or ended). When full, the oldest ENDED one makes room; a running one is never touched
 _ID_RE_T = re.compile(r"[A-Za-z0-9_-]{8,64}")
-_terms = {}
+_terms = {}                 # sid -> TermSession | RunSession
 _terms_lock = threading.Lock()
-_term_reaper_on = False
-
-
-def _term_reaper():
-    """Closes shells that the phone stopped asking about (TERM_IDLE s), and ended shells 60 s after the last request."""
-    while True:
-        time.sleep(10)
-        now = time.time()
-        gone = []
-        with _terms_lock:
-            for k, t in list(_terms.items()):
-                idle = now - t.touch
-                if idle > TERM_IDLE or (t.dead and idle > 60):
-                    del _terms[k]
-                    gone.append(t)
-        for t in gone:
-            threading.Thread(target=t.close, daemon=True).start()
 
 
 class _ConPty:
@@ -993,21 +979,15 @@ class TermSession:
 
 
 def term_open(sid, shell, cols, rows):
-    global _term_reaper_on
     with _terms_lock:
-        if not _term_reaper_on:
-            _term_reaper_on = True
-            threading.Thread(target=_term_reaper, daemon=True).start()
-        now = time.time()
-        for k, t in list(_terms.items()):
-            if t.dead and now - t.touch > 60 or now - t.touch > TERM_IDLE:
-                del _terms[k]
-                threading.Thread(target=t.close, daemon=True).start()
         t = _terms.get(sid)
         if t is not None:
             return t, True
-        if len(_terms) >= TERM_SESS_MAX:
-            raise RuntimeError("too many terminals are open on the PC already")
+        shells = [x for x in _terms.values() if not isinstance(x, RunSession)]
+        if len(shells) >= TERM_SESS_MAX:       # no timer closes shells any more: make room by capacity only (an ended one first, then the least recently used)
+            v = min(shells, key=lambda x: (not x.dead, x.touch))
+            _terms.pop(v.id, None)
+            threading.Thread(target=v.close, daemon=True).start()
         t = TermSession(sid, shell, cols, rows)
         _terms[sid] = t
     _keep_awake_term()
@@ -1034,6 +1014,462 @@ def _keep_awake_term():
         except Exception:
             pass
     threading.Thread(target=loop, daemon=True).start()
+
+
+# ------------------------------------------------------------------------------------ Upload & run
+# The phone uploads a file (POST /put) into  <home>\PhoneExplorer\runs\<sid>\  and starts it (POST /term act=run sid name args).
+# The program starts in its OWN console window on the PC desktop (CREATE_NEW_CONSOLE; GUI programs open their own window anyway) - the same
+# as double-clicking it. The phone's terminal shows that window's text live: a small helper process (this file with --conmirror <pid>)
+# attaches to the program's console, sends its screen text whenever it changes and types the keys that come from the phone.
+# The session uses the same read / in / resize / close acts as a shell (see TermSession), plus act=list (what runs) and act=attach (never starts anything).
+# No time limit: the program runs until it ends or the phone presses Stop (act=close = the whole process tree is killed).
+RUN_EXT_WIN = (".py", ".pyw", ".bat", ".cmd", ".exe", ".com", ".ps1")
+RUN_EXT_POSIX = (".py", ".sh")          # only so the protocol can be tested away from Windows
+RUN_ROOT = os.path.join(os.path.expanduser("~"), "PhoneExplorer", "runs")
+PUT_MAX = 8 << 20                       # bytes in one /put request (the phone sends 1 MB)
+_BAD_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
+
+
+def run_dir(sid):
+    return os.path.join(RUN_ROOT, sid)
+
+
+def safe_name(n):
+    """File name only (no folders, no characters Windows refuses). '' when nothing is left."""
+    n = _BAD_NAME.sub("_", (n or "").replace("\\", "/").split("/")[-1]).strip(" .")[:150]
+    if n.split(".")[0].upper() in _RESERVED:
+        n = "_" + n
+    return n
+
+
+def _py_exe(windowless):
+    """python.exe (console) / pythonw.exe next to the Python that runs this program, else the one on PATH. '' when there is none."""
+    if sys.platform != "win32":
+        return sys.executable
+    want = "pythonw.exe" if windowless else "python.exe"
+    if not getattr(sys, "frozen", False):
+        p = os.path.join(os.path.dirname(sys.executable), want)
+        if os.path.isfile(p):
+            return p
+    return shutil.which(want[:-4]) or shutil.which("py") or ""
+
+
+def run_cmdline(path, args):
+    """Command line that starts [path] like a double-click would. None = this kind of file cannot be run. OSError = Python missing."""
+    ext = os.path.splitext(path)[1].lower()
+    a = (" " + args) if args else ""
+    if sys.platform == "win32":
+        if ext in (".py", ".pyw"):
+            py = _py_exe(ext == ".pyw")
+            if not py:
+                raise OSError("Python was not found on this PC (install it from python.org, tick 'Add to PATH')")
+            return ('"%s" -u "%s"%s' if ext == ".py" else '"%s" "%s"%s') % (py, path, a)
+        if ext in (".bat", ".cmd"):
+            return '"%s" /d /c ""%s"%s"' % (os.environ.get("COMSPEC", "cmd.exe"), path, a)
+        if ext in (".exe", ".com"):
+            return '"%s"%s' % (path, a)
+        if ext == ".ps1":
+            return '"%s\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%s"%s' % (os.environ.get("SystemRoot", r"C:\Windows"), path, a)
+        return None
+    if ext == ".py":
+        return '"%s" -u "%s"%s' % (sys.executable, path, a)
+    if ext == ".sh":
+        return 'sh "%s"%s' % (path, a)
+    return None
+
+
+class RunSession:
+    """One program started by Upload & run. Same interface as TermSession (read / write / resize / close, id, base, buf, seq, dead, code, touch)."""
+
+    def __init__(self, sid, path, args, cols, rows):
+        self.id, self.shell = sid, "run"
+        self.path, self.name, self.args = path, os.path.basename(path), args
+        self.cols, self.rows = cols, rows
+        self.buf = bytearray()
+        self.base = 0
+        self.cv = threading.Condition()
+        self.seq = 0
+        self.in_lock = threading.Lock()
+        self.rs = 0
+        self.rs_lock = threading.Lock()
+        self.touch = self.started = time.time()
+        self.dead = False
+        self.code = None
+        self.closed = False
+        self.shown = ""                 # the screen text the phone's terminal shows right now (Windows mirror)
+        self._full = False              # the phone fell behind the buffer: the next screen text is sent in full
+        self.proc = self.helper = self.pty = None
+        self._pump_done = threading.Event()
+        cmd = run_cmdline(path, args)
+        if cmd is None:
+            raise OSError("this kind of file cannot be run (%s)" % " ".join(RUN_EXT_WIN))
+        cwd = os.path.dirname(path)
+        if sys.platform == "win32":
+            self.proc = subprocess.Popen(cmd, cwd=cwd, creationflags=0x00000010, close_fds=True)   # CREATE_NEW_CONSOLE: its own window, like a double-click
+            self._start_mirror()
+            threading.Thread(target=self._watch, daemon=True).start()
+        else:
+            self.pty = _PosixPty(cmd, cols, rows, cwd)
+            threading.Thread(target=self._pump_pty, daemon=True).start()
+
+    # ---- output
+    def _append(self, d):
+        with self.cv:
+            self.buf += d
+            if len(self.buf) > TERM_BUF_MAX:
+                cut = len(self.buf) - TERM_BUF_MAX
+                del self.buf[:cut]
+                self.base += cut
+            self.cv.notify_all()
+
+    def _show(self, text):
+        """The program's window now shows [text]: send the phone's terminal what changes. Only the last line is rewritten when the lines above are
+        unchanged (typing, a progress line, new lines); anything else redraws the whole screen."""
+        old, full = self.shown, self._full
+        if text == old and not full:
+            return
+        self._full = False
+        ol = old.rfind("\n") + 1
+        if not full and text.startswith(old[:ol]) and len(old) - ol < max(20, self.cols - 1):     # (a last line longer than the phone's screen wraps: redraw instead)
+            out = "\r\x1b[2K" + text[ol:].replace("\n", "\r\n")
+        else:
+            out = "\x1b[3J\x1b[2J\x1b[H" + text.replace("\n", "\r\n")
+        self.shown = text
+        self._append(out.encode("utf-8", "replace"))
+
+    def _start_mirror(self):
+        cmd = ([sys.executable] if getattr(sys, "frozen", False) else [_py_exe(False) or sys.executable, os.path.abspath(__file__)]) + ["--conmirror", str(self.proc.pid)]
+        try:
+            self.helper = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=_NO_WIN)
+            threading.Thread(target=self._pump_mirror, daemon=True).start()
+        except Exception as e:
+            self._append(("\r\n\x1b[33m[live text is not available: %s - the program runs in its window on the PC]\x1b[0m\r\n" % e).encode("utf-8", "replace"))
+            self._pump_done.set()
+
+    def _pump_mirror(self):
+        try:
+            for line in self.helper.stdout:
+                line = line.rstrip(b"\r\n")
+                c, rest = line[:1], line[1:]
+                if c == b"T":
+                    try:
+                        self._show(base64.b64decode(rest).decode("utf-8", "replace"))
+                    except Exception:
+                        pass
+                elif c == b"G":
+                    self._append(b"\r\n\x1b[33m[this program has no text window - it shows its own window on the PC]\x1b[0m\r\n")
+                elif c == b"E":
+                    self._append(("\r\n\x1b[31m[live text is not available: %s]\x1b[0m\r\n" % rest.decode("utf-8", "replace")).encode("utf-8", "replace"))
+                elif c == b"X":
+                    break
+        except Exception:
+            pass
+        finally:
+            self._pump_done.set()
+
+    def _watch(self):
+        """Windows: waits for the program to end, takes the last screen text from the helper, then ends the helper (its console window closes)."""
+        try:
+            self.code = self.proc.wait()
+        except Exception:
+            self.code = -1
+        try:
+            if self.helper is not None and self.helper.poll() is None:
+                self.helper.stdin.write(b"Q\n")
+                self.helper.stdin.flush()
+        except Exception:
+            pass
+        self._pump_done.wait(8)
+        try:
+            if self.helper is not None and self.helper.poll() is None:
+                self.helper.kill()
+        except Exception:
+            pass
+        with self.cv:
+            self.dead = True
+            self.cv.notify_all()
+
+    def _pump_pty(self):
+        try:
+            while True:
+                d = self.pty.read()
+                if not d:
+                    break
+                self._append(d)
+        except Exception:
+            pass
+        finally:
+            time.sleep(0.2)
+            try:
+                self.code = self.pty.exit_code()
+            except Exception:
+                self.code = -1
+            with self.cv:
+                self.dead = True
+                self.cv.notify_all()
+
+    # ---- the TermSession interface
+    def read(self, o, wait):
+        r = TermSession.read(self, o, wait)
+        if r.get("reset"):
+            self._full = True
+        return r
+
+    def write(self, seq, data):
+        self.touch = time.time()
+        with self.in_lock:
+            if seq and seq <= self.seq:
+                return True
+            ok = True
+            if self.pty is not None:
+                ok = self.pty.write(data)
+            elif self.helper is not None and self.helper.poll() is None and not self.dead:
+                try:
+                    self.helper.stdin.write(b"K" + base64.b64encode(data) + b"\n")
+                    self.helper.stdin.flush()
+                except Exception:
+                    ok = False
+            if ok and seq:
+                self.seq = seq
+            return ok
+
+    def resize(self, cols, rows, rs=0):
+        self.touch = time.time()
+        with self.rs_lock:
+            if rs and rs < self.rs:
+                return False
+            if self.pty is not None and self.pty.resize(cols, rows) is False:
+                raise OSError("the console refused the new size")
+            self.rs = rs
+            self.cols, self.rows = cols, rows
+            return True
+
+    def close(self):
+        """Stop: the program and everything it started are killed."""
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.pty is not None:
+                self.pty.close()
+            if self.proc is not None and self.proc.poll() is None:
+                kill_pid_tree(self.proc.pid)
+            if self.helper is not None and self.helper.poll() is None:
+                self.helper.kill()
+        except Exception:
+            pass
+        with self.cv:
+            self.dead = True
+            self.cv.notify_all()
+
+
+def run_open(sid, path, args, cols, rows):
+    """Starts the program (or returns the one that already runs under this sid: a repeated request never starts it twice)."""
+    with _terms_lock:
+        t = _terms.get(sid)
+        if t is not None:
+            return t, True
+        runs = [x for x in _terms.values() if isinstance(x, RunSession)]
+        if len(runs) >= RUN_SESS_MAX:
+            gone = sorted((x for x in runs if x.dead), key=lambda x: x.touch)
+            if not gone:
+                raise RuntimeError("%d programs are running on the PC already - stop one first" % len(runs))
+            _terms.pop(gone[0].id, None)
+            threading.Thread(target=gone[0].close, daemon=True).start()
+        t = RunSession(sid, path, args, cols, rows)
+        _terms[sid] = t
+    _keep_awake_term()
+    return t, False
+
+
+_ESC_RE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z~]|O[A-Za-z])")
+
+
+def _conmirror_main(pid):
+    """Helper process (Windows only), started with --conmirror <pid>. Attaches to the console of process [pid] and talks over stdin / stdout:
+       out:  T<base64 utf-8 screen text> whenever it changes | G (the program has no console) | E<why> (cannot attach) | X (end)
+       in:   K<base64 utf-8 keys as the phone's xterm sends them> | Q (take the last screen text, then end)
+    The screen text = every line of the console buffer up to the cursor / bottom of the window, trailing spaces removed (the cursor line keeps
+    the spaces before the cursor)."""
+    import ctypes.wintypes as wt
+    if sys.stdout is None or sys.stdin is None:
+        return
+    out, inp = sys.stdout.buffer, sys.stdin.buffer
+    k, u = ctypes.windll.kernel32, ctypes.windll.user32
+
+    def emit(b):
+        out.write(b + b"\n")
+        out.flush()
+
+    def wait_quit():
+        for line in inp:
+            if line[:1] == b"Q":
+                break
+        emit(b"X")
+
+    class COORD(ctypes.Structure):
+        _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
+
+    class SMALL_RECT(ctypes.Structure):
+        _fields_ = [("Left", ctypes.c_short), ("Top", ctypes.c_short), ("Right", ctypes.c_short), ("Bottom", ctypes.c_short)]
+
+    class CSBI(ctypes.Structure):
+        _fields_ = [("dwSize", COORD), ("dwCursorPosition", COORD), ("wAttributes", wt.WORD), ("srWindow", SMALL_RECT), ("dwMaximumWindowSize", COORD)]
+
+    class KEY_EVENT(ctypes.Structure):
+        _fields_ = [("bKeyDown", wt.BOOL), ("wRepeatCount", wt.WORD), ("wVirtualKeyCode", wt.WORD), ("wVirtualScanCode", wt.WORD),
+                    ("uChar", wt.WCHAR), ("dwControlKeyState", wt.DWORD)]
+
+    class _EV(ctypes.Union):
+        _fields_ = [("KeyEvent", KEY_EVENT), ("pad", ctypes.c_byte * 16)]
+
+    class INPUT_RECORD(ctypes.Structure):
+        _fields_ = [("EventType", wt.WORD), ("Event", _EV)]
+
+    k.AttachConsole.argtypes, k.AttachConsole.restype = [wt.DWORD], wt.BOOL
+    k.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, ctypes.c_void_p]
+    k.CreateFileW.restype = ctypes.c_void_p
+    k.GetConsoleScreenBufferInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    k.ReadConsoleOutputCharacterW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, COORD, ctypes.POINTER(wt.DWORD)]
+    k.WriteConsoleInputW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD)]
+    k.GenerateConsoleCtrlEvent.argtypes = [wt.DWORD, wt.DWORD]
+    k.SetConsoleCtrlHandler.argtypes = [ctypes.c_void_p, wt.BOOL]
+    u.VkKeyScanW.argtypes, u.VkKeyScanW.restype = [wt.WCHAR], ctypes.c_short
+    u.MapVirtualKeyW.argtypes, u.MapVirtualKeyW.restype = [wt.UINT, wt.UINT], wt.UINT
+
+    k.FreeConsole()
+    ok, err = False, 0
+    for _ in range(40):                      # the console of a program that has just started may need a moment
+        if k.AttachConsole(pid):
+            ok = True
+            break
+        err = ctypes.GetLastError()
+        time.sleep(0.1)
+    if not ok:
+        emit(b"G" if err == 6 else b"E" + ("cannot attach to the program's window (Windows error %d)" % err).encode())
+        return wait_quit()
+    k.SetConsoleCtrlHandler(None, True)      # Ctrl+C sent to the program's console must not end this helper
+    bad = ctypes.c_void_p(-1).value
+    hout = k.CreateFileW("CONOUT$", 0xC0000000, 3, None, 3, 0, None)
+    hin = k.CreateFileW("CONIN$", 0xC0000000, 3, None, 3, 0, None)
+    if not hout or hout == bad or not hin or hin == bad:
+        emit(b"E" + b"cannot open the program's window text")
+        return wait_quit()
+
+    def snap():
+        ci = CSBI()
+        if not k.GetConsoleScreenBufferInfo(hout, ctypes.byref(ci)):
+            return None
+        w, cy, cx = max(1, ci.dwSize.X), ci.dwCursorPosition.Y, ci.dwCursorPosition.X
+        bottom = min(ci.dwSize.Y - 1, max(cy, ci.srWindow.Bottom))
+        top = max(0, bottom - 3000)
+        rows, y = [], top
+        while y <= bottom:
+            n = min(100, bottom - y + 1)
+            buf = ctypes.create_unicode_buffer(w * n)
+            got = wt.DWORD(0)
+            if not k.ReadConsoleOutputCharacterW(hout, buf, w * n, COORD(0, y), ctypes.byref(got)):
+                return None
+            txt = buf[:got.value].ljust(w * n)
+            for i in range(n):
+                line = txt[i * w:(i + 1) * w]
+                rows.append(line[:max(len(line.rstrip(" \x00")), cx)] if y + i == cy else line.rstrip(" \x00"))
+            y += n
+        last = max([i for i, r in enumerate(rows) if r] + [cy - top, 0])
+        return "\n".join(rows[:last + 1])
+
+    ESC_FINAL = {"A": 0x26, "B": 0x28, "C": 0x27, "D": 0x25, "H": 0x24, "F": 0x23, "P": 0x70, "Q": 0x71, "R": 0x72, "S": 0x73}
+    ESC_TILDE = {"1": 0x24, "2": 0x2D, "3": 0x2E, "4": 0x23, "5": 0x21, "6": 0x22, "7": 0x24, "8": 0x23}
+    recs = []
+
+    def key(vk, ch="\0", st=0):
+        sc = u.MapVirtualKeyW(vk, 0) if vk else 0
+        for down in (1, 0):
+            r = INPUT_RECORD()
+            r.EventType = 1
+            e = r.Event.KeyEvent
+            e.bKeyDown, e.wRepeatCount, e.wVirtualKeyCode, e.wVirtualScanCode, e.uChar, e.dwControlKeyState = down, 1, vk, sc, ch, st
+            recs.append(r)
+
+    def flush():
+        while recs:
+            part = recs[:256]
+            del recs[:256]
+            arr = (INPUT_RECORD * len(part))(*part)
+            k.WriteConsoleInputW(hin, arr, len(part), ctypes.byref(wt.DWORD(0)))
+
+    def type_text(t):
+        i, n = 0, len(t)
+        while i < n:
+            c = t[i]
+            if c == "\x1b":
+                m = _ESC_RE.match(t, i)
+                if m:
+                    seq = m.group(0)
+                    fin = seq[-1]
+                    params = seq[2:-1] if seq[1] == "[" else ""
+                    vk = ESC_TILDE.get(params.split(";")[0]) if fin == "~" else ESC_FINAL.get(fin)
+                    if vk:
+                        key(vk, "\0", 0x100 if vk < 0x70 else 0)
+                    i = m.end()
+                else:
+                    key(0x1B, "\x1b")
+                    i += 1
+            elif c == "\x03":
+                flush()
+                k.GenerateConsoleCtrlEvent(0, 0)       # Ctrl+C for the program (key events cannot do that)
+                i += 1
+            elif c in "\r\n":
+                key(0x0D, "\r")
+                i += 2 if t[i:i + 2] == "\r\n" else 1
+            elif c in "\x7f\x08":
+                key(0x08, "\x08")
+                i += 1
+            elif c == "\t":
+                key(0x09, "\t")
+                i += 1
+            elif ord(c) < 32:
+                key(0x40 + ord(c), c, 0x08)             # Ctrl+letter
+                i += 1
+            elif ord(c) > 0xFFFF:
+                cp = ord(c) - 0x10000
+                key(0, chr(0xD800 + (cp >> 10)))
+                key(0, chr(0xDC00 + (cp & 0x3FF)))
+                i += 1
+            else:
+                v = u.VkKeyScanW(c)
+                key(v & 0xFF if v != -1 else 0, c, 0x10 if v != -1 and (v >> 8) & 1 else 0)
+                i += 1
+        flush()
+
+    stop = threading.Event()
+
+    def reader():
+        try:
+            for line in inp:
+                if line[:1] == b"K":
+                    type_text(base64.b64decode(line[1:].strip()).decode("utf-8", "replace"))
+                elif line[:1] == b"Q":
+                    break
+        except Exception:
+            pass
+        stop.set()
+
+    threading.Thread(target=reader, daemon=True).start()
+    last = None
+    while True:
+        done = stop.is_set()
+        t = snap()
+        if t is None:
+            break
+        if t != last:
+            emit(b"T" + base64.b64encode(t.encode("utf-8", "replace")))
+            last = t
+        if done:
+            break
+        time.sleep(0.08)
+    emit(b"X")
 
 
 # ------------------------------------------------------------------------------------ firewall
@@ -1114,6 +1550,8 @@ def start_listeners(app):
         def do_POST(self):
             try:
                 u = urlparse(self.path)
+                if u.path == "/put":            # Upload & run: raw file pieces, streamed (the form body reader below keeps 256 KB only)
+                    return self._do_put()
                 ip = self.client_address[0].split("%")[0]
                 if not lan_ip(ip) or ":" in ip:
                     self._body()
@@ -1174,12 +1612,79 @@ def start_listeners(app):
             f[0] = 0
             return True
 
+        def _do_put(self):
+            """Upload & run: ONE piece of a file (raw body, <= PUT_MAX bytes). Parameters are headers: X-PE-Pass, X-PE-Sid, X-PE-Name (percent-encoded),
+            X-PE-Off (where this piece starts), X-PE-Total (file size). Every piece is safe to send again: it is written at its own offset into <name>.part,
+            and the last one renames the file. Answer {ok, have, done, path}."""
+            ip = self.client_address[0].split("%")[0]
+            hd = self.headers
+            try:
+                n = int(hd.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            self.close_connection = True
+
+            def drain():
+                left = n
+                while left > 0:
+                    b = self.rfile.read(min(left, 65536))
+                    if not b:
+                        break
+                    left -= len(b)
+            if n < 0 or n > PUT_MAX:
+                return self._reply(413, {"error": "upload piece too large"})
+            if not lan_ip(ip) or ":" in ip:
+                drain()
+                return self._reply(403, {"error": "LAN only"})
+            if not self._auth({"pass": [unquote_plus(hd.get("X-PE-Pass", ""))[:200]]}):
+                drain()
+                return
+            sid = hd.get("X-PE-Sid", "")
+            name = safe_name(unquote_plus(hd.get("X-PE-Name", "")))
+            try:
+                off, total = int(hd.get("X-PE-Off", "0")), int(hd.get("X-PE-Total", "0"))
+            except ValueError:
+                off = total = -1
+            if not _ID_RE_T.fullmatch(sid) or not name or off < 0 or total < 0 or off + n > total:
+                drain()
+                return self._reply(400, {"error": "bad upload parameters"})
+            final = os.path.join(run_dir(sid), name)
+            part = final + ".part"
+            try:
+                os.makedirs(run_dir(sid), exist_ok=True)
+                if not os.path.exists(part) and os.path.isfile(final) and off + n >= total and os.path.getsize(final) == total:
+                    drain()          # the last piece arrived twice (its answer was lost): nothing to do
+                    return self._reply(200, {"ok": True, "have": total, "done": True, "path": final})
+                with open(part, "r+b" if os.path.exists(part) else "wb") as f:
+                    f.seek(off)
+                    left = n
+                    while left > 0:
+                        b = self.rfile.read(min(left, 65536))
+                        if not b:
+                            raise ConnectionError("upload cut")
+                        f.write(b)
+                        left -= len(b)
+                    done = off + n >= total
+                    if done:
+                        f.truncate(total)
+                if done:
+                    os.replace(part, final)
+            except ConnectionError:
+                return               # the phone gave up on this socket and sends the piece again on a new one
+            except OSError as e:
+                return self._reply(500, {"error": "the PC could not save the file (%s)" % e})
+            return self._reply(200, {"ok": True, "have": off + n, "done": done, "path": final})
+
         def _do_term(self, q):
             """Real terminal session (see the protocol at TermSession). Every request is safe to repeat."""
             if not self._auth(q):
                 return
             g = lambda k, d="": q.get(k, [d])[0]
             act, sid = g("act"), g("sid")
+            if act == "list":       # the programs started by Upload & run (running or ended), newest first
+                with _terms_lock:
+                    runs = sorted((t for t in _terms.values() if isinstance(t, RunSession)), key=lambda t: -t.started)
+                return self._reply(200, {"runs": [{"sid": t.id, "name": t.name, "args": t.args, "alive": not t.dead, "code": t.code, "started": int(t.started)} for t in runs]})
             if not _ID_RE_T.fullmatch(sid):
                 return self._reply(400, {"error": "bad session id"})
 
@@ -1189,6 +1694,24 @@ def start_listeners(app):
                 except ValueError:
                     return d
             cols, rows = num("cols", 80, 20, 500), num("rows", 24, 5, 200)
+            if act == "run":        # start an uploaded file (the same sid again = the same program, never a second one)
+                name = safe_name(g("name"))
+                args = re.sub(r"[\x00-\x1f]", " ", g("args"))[:1000].strip()
+                path = os.path.join(run_dir(sid), name) if name else ""
+                if not name or not os.path.isfile(path):
+                    return self._reply(400, {"error": "the file is not on the PC (upload it first)"})
+                if run_cmdline(path, "") is None:
+                    return self._reply(400, {"error": "this kind of file cannot be run (%s)" % " ".join(RUN_EXT_WIN)})
+                try:
+                    t, existed = run_open(sid, path, args, cols, rows)
+                except (RuntimeError, OSError) as e:
+                    return self._reply(500 if isinstance(e, OSError) else 429, {"error": str(e)})
+                if not existed:
+                    try:
+                        app.after(0, app.set_status, "Running %s (started from the phone)" % name)
+                    except Exception:
+                        pass
+                return self._reply(200, {"ok": True, "existed": existed, "base": t.base, "end": t.base + len(t.buf), "alive": not t.dead, "seq": t.seq, "name": t.name, "path": path})
             if act == "open":
                 try:
                     t, existed = term_open(sid, "ps" if g("shell") == "ps" else "cmd", cols, rows)
@@ -1208,9 +1731,12 @@ def start_listeners(app):
             with _terms_lock:
                 t = _terms.get(sid)
             if t is None:
-                if act == "close":      # already gone (reaped, or the program was restarted): closing twice is fine
+                if act == "close":      # already gone (closed before, or the Phone Explorer program was restarted): closing twice is fine
                     return self._reply(200, {"ok": True})
                 return self._reply(404, {"error": "terminal not found - it was closed or the Phone Explorer program on the PC was restarted"})
+            if act == "attach":     # the phone comes back to a program that runs (never starts anything)
+                t.touch = time.time()
+                return self._reply(200, {"ok": True, "existed": True, "base": t.base, "end": t.base + len(t.buf), "alive": not t.dead, "seq": t.seq, "name": getattr(t, "name", "")})
             if act == "read":
                 wait = max(0.0, min(25.0, float(num("wait", 20, 0, 25))))
                 return self._reply(200, t.read(num("o", 0, 0, 1 << 62), wait))
@@ -1220,7 +1746,7 @@ def start_listeners(app):
                 except Exception:
                     return self._reply(400, {"error": "bad data"})
                 if t.dead:
-                    return self._reply(409, {"error": "the shell has ended"})
+                    return self._reply(409, {"error": "the program has ended" if isinstance(t, RunSession) else "the shell has ended"})
                 return self._reply(200, {"ok": bool(t.write(num("seq", 0, 0, 1 << 62), data))})
             if act == "resize":
                 try:
@@ -1704,6 +2230,10 @@ class App(tk.Tk if tk else object):
 
 
 if __name__ == "__main__":
+    if "--conmirror" in sys.argv:       # helper of Upload & run (see _conmirror_main): no window, no elevation step
+        if sys.platform == "win32":
+            _conmirror_main(int(sys.argv[sys.argv.index("--conmirror") + 1]))
+        sys.exit(0)
     if "--install-startup" in sys.argv or "--uninstall-startup" in sys.argv:
         on = "--install-startup" in sys.argv
         sys.exit(0 if set_startup(on) else 1)

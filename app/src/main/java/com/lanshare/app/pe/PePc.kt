@@ -134,8 +134,9 @@ object PePc {
 
     /**
      * The app is being closed: ends the live shell on the PC (act=close; the PC kills the shell and everything it started).
-     * Fire and forget on a short-lived thread with a short timeout. If the process dies before it is sent, the PC closes the shell
-     * itself after 5 minutes without contact (phone_explorer.py TERM_IDLE).
+     * Fire and forget on a short-lived thread with a short timeout. If the process dies before it is sent the shell stays on the PC
+     * (no time limit; the screen asks for the same shell again, and a 4th shell closes the least recently used one).
+     * Programs started with Upload & run are never ended here: the screen does not report them as a live shell.
      */
     fun endLiveShell() {
         val l = live ?: return
@@ -150,7 +151,7 @@ object PePc {
 
     /**
      * One step of the real terminal on the PC (phone_explorer.py /term, Remote shell screen): [act] = open | read | in | resize | close,
-     * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data, rs = resize counter). Every act is safe to repeat (open = same sid -> same shell,
+     * [extra] = the other form fields (shell, cols, rows, o, wait, seq, data, rs = resize counter; name, args for act=run). Every act is safe to repeat (open = same sid -> same shell,
      * read = same offset -> same bytes, in = same seq -> typed once), so a cut connection is simply tried again with a new socket.
      */
     fun term(ip0: String, hport0: Int, pass: String, act: String, sid: String, extra: Map<String, String>): JSONObject {
@@ -162,5 +163,25 @@ object PePc {
         if (o == null) throw IOException("PC answered something unexpected (HTTP $st) - is another program using that port?")
         if (st != 200) throw PcError(o.optString("error", "PC answered $st"))
         return o
+    }
+
+    /**
+     * Upload & run: ONE piece of a file for the PC (phone_explorer.py POST /put). The screen sends a file in 1 MB pieces and sends a failed piece again,
+     * so nothing is retried here (the body can be read once). [pass] arrives percent-encoded from the screen and is passed on unchanged.
+     * Answer {ok, have, done, path}. A PC without the new program answers 404 "not found".
+     */
+    fun put(ip0: String, hport0: Int, pass: String, sid: String, name: String, off: Long, total: Long, data: ByteArray): JSONObject {
+        val (ip, hport) = target(ip0, hport0)
+        val hdr = mapOf("X-PE-Pass" to pass, "X-PE-Sid" to sid, "X-PE-Name" to e(name), "X-PE-Off" to off.toString(), "X-PE-Total" to total.toString(),
+            "Content-Type" to "application/octet-stream")
+        val r = try { Http.request(ip, hport, "POST", "/put", hdr, 60_000, ByteArrayInputStream(data), data.size.toLong(), 8_000) } catch (x: Exception) { throw unreachable(x) }
+        try {
+            val txt = String(r.readUpTo(1 shl 20), Charsets.UTF_8)
+            val o = try { JSONObject(txt) } catch (_: Exception) { null }
+            if (r.status == 404 && o?.optString("error") == "not found") throw PcError("update Phone Explorer on the PC (Upload & run needs the new program)")
+            if (o == null) throw IOException("PC answered something unexpected (HTTP ${r.status}) - is another program using that port?")
+            if (r.status != 200) throw PcError(o.optString("error", "PC answered ${r.status}"))
+            return o
+        } finally { r.close() }
     }
 }

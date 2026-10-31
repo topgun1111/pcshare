@@ -5469,16 +5469,17 @@ function openPhoneExplorer(){
 /* ---- Remote shell: the REAL cmd / PowerShell of a PC running phone_explorer.py, shown with xterm.js (files: assets/xterm, served as /xterm/*, loaded only when this screen opens).
    Opened from the Main menu tile "Remote shell" (and the drawer). The PC + password + Remember live in the Connect sheet inside this screen.
    App routes /api/pcfind, /api/peers (SMB devices, also over Tailscale) and /api/pcterm (pe/PePc.kt term()): the PC keeps ONE shell per session (phone_explorer.py /term, ConPTY);
-   the screen long-polls its output (act=read, offset based) and sends the typed keys (act=in, numbered). Leaving the screen (back arrow, Android back, another screen) ENDS the shell on the PC (act=close, rshEnd); closing the app does the same from MainActivity.onDestroy (LSAndroid.rshLive tells the app which shell is live). If the phone just vanishes, the PC closes the shell itself after 5 min without contact. ---- */
+   the screen long-polls its output (act=read, offset based) and sends the typed keys (act=in, numbered). Leaving the screen (back arrow, Android back, another screen) ENDS the shell on the PC (act=close, rshEnd); closing the app does the same from MainActivity.onDestroy (LSAndroid.rshLive tells the app which shell is live). NO time limits: if the phone just vanishes the shell stays on the PC and the screen asks for the same one again (a 4th shell closes the least recently used one). "Upload & run" (3rd choice in openPick): files are sent to the PC and started there in their own window; the same terminal shows the program's text and types into it; leaving the screen does NOT stop it (rshEnd detaches, Stop button / list in the Upload & run sheet stops it). ---- */
 Object.assign(IC,{term:'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z'});
 let RSH_PW='';   // password typed this session (kept only in memory unless "Remember password" is ticked)
 let RSH_S=null;  // {ip,port,sid,sh,seq}: the shell that is open on the PC (ended when the screen closes)
 let RSH_L='';    // what the app (native side) was last told about the live shell
 /* tells the app which shell is live (it ends it when the app itself is closed); only when it changed. The password goes to app memory only. */
-function rshSync(){const k=RSH_S?RSH_S.sid+'|'+RSH_PW:'';if(k===RSH_L)return;RSH_L=k;
-  try{if(window.LSAndroid&&LSAndroid.rshLive)LSAndroid.rshLive(RSH_S?RSH_S.ip:'',String(RSH_S?(RSH_S.port||8798):0),RSH_S?RSH_PW:'',RSH_S?RSH_S.sid:'')}catch(e){}}
-/* ends a shell on the PC (act=close; the PC kills the whole process tree). No s = the current one. Fire and forget: the PC closes it by itself after 5 min if this never arrives. */
+function rshSync(){const S=RSH_S&&!RSH_S.run?RSH_S:null;const k=S?S.sid+'|'+RSH_PW:'';if(k===RSH_L)return;RSH_L=k;   // a program started by Upload & run is not a live shell: closing the app must not stop it
+  try{if(window.LSAndroid&&LSAndroid.rshLive)LSAndroid.rshLive(S?S.ip:'',String(S?(S.port||8798):0),S?RSH_PW:'',S?S.sid:'')}catch(e){}}
+/* ends a shell on the PC (act=close; the PC kills the whole process tree). No s = the current one. Fire and forget. A program started by Upload & run is only DETACHED here (it keeps running on the PC). */
 function rshEnd(s){s=s||RSH_S;if(!s)return;
+  if(s.run){if(s===RSH_S){RSH_S=null;rshSync()}return}
   if(s===RSH_S){RSH_S=null;try{localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()}
   api('POST','/api/pcterm?ip='+enc(s.ip)+'&hport='+(s.port||8798),{pass:RSH_PW,act:'close',sid:s.sid},12000).catch(()=>{})}
 let XT_P=null;
@@ -5489,7 +5490,7 @@ function openPcExec(){openRemoteShell()}
 function openRemoteShell(){
   drawerClose();const old=$('#rsh');if(old)old.remove();
   let cfg=JL('ls_rsh',null)||{};if(cfg.rem&&cfg.pw)RSH_PW=cfg.pw;
-  let closed=false,wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null,ackC=0,ackR=0,rzBusy=false,rsN=Date.now();
+  let runMode=false,ttl='Remote shell',closed=false,wt=0,xt=null,fit=null,gen=0,lg=0,wk=null,opened=false,ctrl=false,alt=false,ab=null,inq=[],sending=false,off=0,ro=null,rt=0,cb=null,ackC=0,ackR=0,rzBusy=false,rsN=Date.now();
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const nap=ms=>new Promise(r=>{const t=setTimeout(()=>{wk=null;r()},ms);wk=()=>{clearTimeout(t);wk=null;r()}});   // a sleep that the phone coming back (screen on, network up) cuts short
   const wake=()=>{if(wk)wk()};
@@ -5513,7 +5514,7 @@ function openRemoteShell(){
   const fb=E('div','rshf');fb.style.cssText='display:none;gap:6px;align-items:center;padding:6px 8px;background:#161616';
   w.append(hd,fb,tw,kr);document.body.append(w);
   const paintChip=()=>{chip.textContent=cfg.ip?(cfg.name||cfg.ip):'Choose PC ›'};
-  const paintSh=()=>{shb.textContent=cfg.sh==='ps'?'PS':'cmd';shb.title=cfg.sh==='ps'?'PowerShell':'cmd.exe'};
+  const paintSh=()=>{shb.textContent=runMode?'Stop':cfg.sh==='ps'?'PS':'cmd';shb.title=runMode?'Stop the program':cfg.sh==='ps'?'PowerShell':'cmd.exe'};
   const note=(t,c)=>{if(xt)xt.write('\r\n\x1b['+(c||'33')+'m['+t+']\x1b[0m\r\n')};
   const call=(act,ex,ms)=>api('POST','/api/pcterm?ip='+enc(RSH_S.ip)+'&hport='+(RSH_S.port||8798),Object.assign({pass:RSH_PW,act,sid:RSH_S.sid},ex),ms||30000);
   const netErr=m=>/^PC not reachable|^timed out|paused/i.test(m||'');
@@ -5524,14 +5525,14 @@ function openRemoteShell(){
        catch(e){if(!netErr(e.message||'')||++k>8)break;await nap(Math.min(3000,500*k))}}}
      finally{rzBusy=false}};
   /* typed keys -> the PC: one request at a time, numbered (the PC types a number only once, so a repeated request never doubles a key) */
-  const saveSess=()=>{try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()};
-  const stat=t=>{ti.textContent='Remote shell'+(t?' · '+t:'')};
-  /* A batch keeps its number until the PC has taken it: a lost answer is asked again with the same number (typed once). Keys wait here while the network is away (up to 150 s). */
+  const saveSess=()=>{if(RSH_S&&RSH_S.run){rshSync();return}try{if(RSH_S)localStorage.setItem('ls_rsh_sess',JSON.stringify(RSH_S));else localStorage.removeItem('ls_rsh_sess')}catch(e){}rshSync()};
+  const stat=t=>{ti.textContent=ttl+(t?' · '+t:'')};
+  /* A batch keeps its number until the PC has taken it: a lost answer is asked again with the same number (typed once). Keys wait here while the network is away (no time limit). */
   const flush=async()=>{if(sending)return;sending=true;const my=gen;
     try{while(inq.length&&my===gen&&RSH_S){let n=0;inq.forEach(a=>n+=a.length);const u=new Uint8Array(n);let p=0;inq.forEach(a=>{u.set(a,p);p+=a.length});inq=[];
-      let bin='';for(let i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);const sq=++RSH_S.seq,data=btoa(bin),t0=Date.now();saveSess();
+      let bin='';for(let i=0;i<u.length;i++)bin+=String.fromCharCode(u[i]);const sq=++RSH_S.seq,data=btoa(bin);saveSess();
       for(let k=0;my===gen;k++){try{await call('in',{seq:sq,data},20000);stat('');break}
-        catch(e){const m=e.message||'';if(!netErr(m)||Date.now()-t0>150000){inq=[];if(my===gen)note(/^terminal not found|ended/.test(m)?m:'keys not sent: '+m,'31');stat('');break}stat('reconnecting…');await nap(Math.min(3000,500*(k+1)))}}}}
+        catch(e){const m=e.message||'';if(!netErr(m)){inq=[];if(my===gen)note(/^terminal not found|ended/.test(m)?m:'keys not sent: '+m,'31');stat('');break}stat('reconnecting…');await nap(Math.min(3000,500*(k+1)))}}}}
     finally{sending=false}};
   const push=s=>{if(!RSH_S){note('not connected to a shell - tap the PC name above','31');return}inq.push(new TextEncoder().encode(s));flush()};
   /* Ctrl / Alt from the key row stay pressed for the NEXT key only (typed on the phone keyboard or tapped in the key row). Ctrl+letter = control code, Alt+key = Esc + key. */
@@ -5539,20 +5540,19 @@ function openRemoteShell(){
   const mod=d=>{if(d.length===1&&(ctrl||alt)){if(ctrl&&d.charCodeAt(0)<128){const c=d.toUpperCase().charCodeAt(0);if(c>=64&&c<=95)d=String.fromCharCode(c-64)}if(alt)d='\x1b'+d;clearMods()}return d};
   const typed=d=>{push(mod(d))};
   /* screen output <- the PC: long poll from the byte offset already shown */
-  /* Screen output from the PC: long poll from the byte offset already shown (same offset = same bytes, so nothing is lost or shown twice). Never gives up by itself for 10 min; the phone coming back wakes it. xterm's write callback is the brake: the next read waits until the screen has digested the last chunk, so `dir C:\ /s` cannot freeze the phone. */
-  const loop=async()=>{const g0=gen,my=++lg;let fails=0,okAt=Date.now(),down=false;
+  /* Screen output from the PC: long poll from the byte offset already shown (same offset = same bytes, so nothing is lost or shown twice). Never gives up by itself (no time limit); the phone coming back wakes it. xterm's write callback is the brake: the next read waits until the screen has digested the last chunk, so `dir C:\ /s` cannot freeze the phone. */
+  const loop=async()=>{const g0=gen,my=++lg;let fails=0,down=false;
     while(lg===my&&gen===g0&&w.isConnected&&RSH_S){
-      try{const r=await call('read',{o:off,wait:20},45000);if(lg!==my||gen!==g0)return;okAt=Date.now();fails=0;
+      try{const r=await call('read',{o:off,wait:20},45000);if(lg!==my||gen!==g0)return;fails=0;
         if(down){down=false;stat('')}if(xt.cols!==ackC||xt.rows!==ackR)syncSize();
         if(r.reset){if(off>0)toast('Part of the output was too old to keep and is skipped',3500);xt.reset()}
         if(r.data){const bin=atob(r.data),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
           await new Promise(ok=>xt.write(u,ok));if(lg!==my||gen!==g0)return}
         off=r.o;
-        if(!r.alive){note('shell ended (exit '+r.code+') - tap the PC name above to start a new one');RSH_S=null;saveSess();return}}
+        if(!r.alive){note(RSH_S.run?'program ended (exit '+r.code+') - tap the PC name above for Upload & run':'shell ended (exit '+r.code+') - tap the PC name above to start a new one');RSH_S=null;saveSess();return}}
       catch(e){if(lg!==my||gen!==g0)return;const m=e.message||'';
         if(!netErr(m)){note(m,'31');if(/wrong password|No password/i.test(m))openConn();if(/^terminal not found/.test(m)){RSH_S=null;saveSess()}stat('');return}
         fails++;down=true;stat('reconnecting…');
-        if(Date.now()-okAt>600000){note('Lost contact with the PC ('+m+') - tap the PC name above to reconnect','31');stat('offline');return}
         await nap(Math.min(5000,1000*fails))}}};
   /* soft keyboard: blur first, so a textarea that still has focus after the keyboard was hidden with Back gets a fresh focus (a plain focus() is a no-op then and the keyboard stays away) */
   const showKb=()=>{if(!xt)return;try{xt.blur()}catch(e){}xt.focus();const t=xt.textarea;if(t){try{t.focus({preventScroll:true})}catch(e){}}};
@@ -5739,7 +5739,7 @@ function openRemoteShell(){
     const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;overscroll-behavior:contain;background:var(--bg);border-radius:20px;padding:16px';
     const sm=(t)=>{const s=E('small','',t);s.style.cssText='display:block;color:var(--mut);margin:10px 0 4px 4px';return s};
     const fld=(ph,type)=>{const i=E('input','tf');i.placeholder=ph;i.type=type||'text';i.style.cssText='height:46px;margin:0;width:100%';i.autocomplete='off';i.autocapitalize='none';return i};
-    const h=E('h3','','Connect to a PC · '+(cfg.sh==='ps'?'PowerShell':'cmd'));h.style.margin='0 0 4px';
+    const h=E('h3','','Connect to a PC · '+(runMode?'Upload & run':cfg.sh==='ps'?'PowerShell':'cmd'));h.style.margin='0 0 4px';
     const nt=E('div','dnote','On the PC: open the Phone Explorer window, save a password and press “Remote commands: ON”. Same Wi-Fi or Tailscale.');
     const pcl=E('div'),st=E('div','dnote','Looking for PCs…');st.style.margin='6px 0';
     const ad=fld('Or type an address: 100.x.x.x or PC name');ad.value=cfg.ip||'';
@@ -5763,6 +5763,11 @@ function openRemoteShell(){
     go.onclick=async()=>{er.textContent='';const addr=ad.value.trim(),tgt=addr?(sel&&sel.ip===addr?{ip:sel.ip,name:sel.name,port:sel.port||8798,fromList:true}:{ip:addr,name:addr,port:8798,fromList:false}):null;
       if(!tgt){er.textContent='Tap a PC or type an address';return}
       if(!pw.value){er.textContent='Enter the password you saved on the PC';return}
+      if(runMode){go.disabled=true;go.textContent='Connecting…';
+        try{RSH_PW=pw.value;const j=await api('POST','/api/pcterm?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798),{pass:pw.value,act:'list',sid:'listlist'},20000);   // also checks the password
+          cfg={name:tgt.name,ip:tgt.ip,port:tgt.port,fromList:tgt.fromList,rem:rc.checked,pw:rc.checked?pw.value:'',sh:cfg.sh};saveCfg();paintChip();ov.remove();openRunSheet(cfg,j.runs||[])}
+        catch(e){const m=e.message;er.textContent=/^terminal not found|unknown act/.test(m)?'Update Phone Explorer on the PC (Upload & run needs the new program).':m==='timed out'?'No answer from the PC.':/^PC not reachable/.test(m)?m+'\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.':m}
+        finally{go.disabled=false;go.textContent='Connect'}return}
       go.disabled=true;go.textContent='Connecting…';
       try{if(RSH_S&&RSH_S.sh!==shSel){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}   // another shell chosen: the old one is closed on the PC
         cfg.sh=shSel;paintSh();await start(tgt,pw.value);
@@ -5771,26 +5776,90 @@ function openRemoteShell(){
       catch(e){const m=e.message,hint='\nIs it on, is phone_explorer.py running, and is “Remote commands” ON? On Tailscale, allow TCP 8798 in the Windows firewall.';
         er.textContent=m==='timed out'?'No answer from the PC.'+hint:/^(PC not reachable|Lost contact)/.test(m)?m+hint:m}
       finally{go.disabled=false;go.textContent='Connect'}}};
-  shb.onclick=async()=>{if(!cfg.ip||!RSH_PW){openConn();return}
+  shb.onclick=async()=>{if(runMode){stopRun();return}if(!cfg.ip||!RSH_PW){openConn();return}
     const to=cfg.sh==='ps'?'cmd':'ps';
     if(!await dlg({title:'Switch to '+(to==='ps'?'PowerShell':'cmd')+'?',msg:'The shell that is open now is closed and a new one starts.',ok:'Switch'}))return;
     if(RSH_S){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}
     cfg.sh=to;saveCfg();paintSh();
     try{await start(cfg,RSH_PW)}catch(e){toast(e.message,4000)}};
+  /* ---- Upload & run. The files go to the PC in 1 MB pieces (POST /api/pcput -> PC /put; a piece that fails is sent again, with no time limit), then the PC starts one of them in its own window like a double-click (act=run). Output + keys use the same read / in loop as a shell. ---- */
+  const newSid=()=>Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');
+  const pcx=(tgt,act,sid,ex,ms)=>api('POST','/api/pcterm?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798),Object.assign({pass:RSH_PW,act,sid},ex||{}),ms||20000);
+  const sendFile=async(tgt,sid,f,ctl,onP)=>{const CH=1<<20,tot=f.size;let off=0;
+    do{const end=Math.min(tot,off+CH),blob=f.slice(off,end);
+      for(let k=0;;k++){if(ctl.stop)throw new Error('cancelled');
+        try{const r=await fetch('/api/pcput?ip='+enc(tgt.ip)+'&hport='+(tgt.port||8798)+'&sid='+sid+'&name='+enc(f.name)+'&off='+off+'&total='+tot,{method:'POST',headers:{'X-LS':'1','X-PE-Pass':enc(RSH_PW),'Content-Type':'application/octet-stream'},body:blob});
+          const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
+          if(r.ok)break;const m=(j&&j.error)||('HTTP '+r.status);if(!/^PC not reachable/.test(m))throw new Error(m);ctl.say(m)}
+        catch(e){if(!(e instanceof TypeError))throw e;ctl.say('LANShare on this phone is paused')}
+        await sleep(Math.min(3000,500*(k+1)))}
+      off=end;onP(off,tot)}while(off<tot)};
+  /* shows a program in the terminal: args===null = it already runs (act=attach, starts nothing); else act=run starts [name] with [args] */
+  const attachRun=async(tgt,sid,name,args)=>{
+    await loadXterm();
+    if(RSH_S&&!RSH_S.run)rshEnd();
+    RSH_S={ip:tgt.ip,port:tgt.port||8798,sid,sh:'run',run:true,name,seq:0};runMode=true;ttl=name;paintSh();
+    if(!xt)mkTerm();
+    const my=++gen;lg++;opened=false;inq=[];xt.reset();off=0;
+    const c0=xt.cols||80,r0=xt.rows||24;let r;
+    try{r=args===null?await call('attach',{},30000):await call('run',{name,args,cols:c0,rows:r0},60000)}catch(e){RSH_S=null;rshSync();throw e}
+    if(gen!==my)return;
+    if(!r.existed)RSH_S.seq=0;else RSH_S.seq=Math.max(RSH_S.seq||0,typeof r.seq==='number'?r.seq:Math.floor(Date.now()/1000));
+    stat('');opened=true;ackC=c0;ackR=r0;loop();syncSize()};
+  const openRunHome=async()=>{if(!cfg.ip||!RSH_PW){openConn();return}
+    try{const j=await pcx(cfg,'list','listlist',{},15000);openRunSheet(cfg,j.runs||[])}catch(e){toast(e.message,4000)}};
+  const stopRun=async()=>{if(!RSH_S||!RSH_S.run){openRunHome();return}
+    if(!await dlg({title:'Stop this program?',msg:'It, and everything it started, is closed on the PC.',ok:'Stop'}))return;
+    try{await call('close',{},15000)}catch(e){toast(e.message,3500);return}
+    note('stopped');RSH_S=null;rshSync();lg++;stat('')};
+  const openRunSheet=(tgt,runs0)=>{
+    const old=w.querySelector('.rshc');if(old)old.remove();
+    const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:2';
+    const cd=E('div');cd.style.cssText='width:100%;max-width:520px;max-height:100%;overflow:auto;overscroll-behavior:contain;background:var(--bg);border-radius:20px;padding:16px';
+    const h=E('h3','','Upload & run · '+(tgt.name||tgt.ip));h.style.margin='0 0 4px';
+    const nt=E('div','dnote','Choose a .py, .bat or .exe file (also .cmd .ps1 .pyw .com) on this phone. It is sent to the PC and started there like a double-click: its window opens on the PC screen and its text shows here live. Choose several files if the program needs them (the first one that can run is started).');
+    const lt=E('small','','Started from this phone');lt.style.cssText='display:block;color:var(--mut);margin:12px 0 4px 4px';
+    const lst=E('div'),st=E('div','dnote');st.style.cssText='margin:8px 0;white-space:pre-wrap';
+    const ar=E('input','tf');ar.placeholder='Arguments (optional)';ar.autocomplete='off';ar.autocapitalize='none';ar.style.cssText='height:46px;margin:0;width:100%';
+    const pick=E('button','tbtn fill','Choose file(s) and run');pick.style.cssText='width:100%;height:50px;margin-top:10px';
+    const fi=E('input');fi.type='file';fi.multiple=true;fi.style.display='none';
+    const cn=E('button','tbtn','Back');cn.style.cssText='width:100%;height:46px;margin-top:8px';
+    const back=()=>{ov.remove();if(!opened)close()};cn.onclick=back;ov.onclick=e=>{if(e.target===ov&&!pick.disabled)back()};
+    const paint=runs=>{lst.textContent='';if(!runs.length){lst.append(E('div','dnote','Nothing yet.'));return}
+      runs.forEach(r=>{const row=E('div');row.style.cssText='display:flex;gap:6px;align-items:center;margin:4px 0';
+        const t=E('div');t.style.cssText='flex:1;min-width:0;overflow:hidden';t.append(E('b','',r.name),E('br'),E('small','',r.alive?'running':'ended (exit '+r.code+')'));
+        const o=E('button','tbtn','Open'),x=E('button','tbtn',r.alive?'Stop':'Remove');o.style.height=x.style.height='40px';
+        o.onclick=async()=>{ov.remove();try{await attachRun(tgt,r.sid,r.name,null)}catch(e){toast(e.message,4500);openRunHome()}};
+        x.onclick=async()=>{x.disabled=true;try{await pcx(tgt,'close',r.sid)}catch(e){toast(e.message,3500)}refresh()};
+        row.append(t,o,x);lst.append(row)})};
+    const refresh=async()=>{try{const j=await pcx(tgt,'list','listlist',{},15000);if(ov.isConnected)paint(j.runs||[])}catch(e){if(ov.isConnected)st.textContent=e.message}};
+    pick.onclick=()=>fi.click();
+    fi.onchange=async()=>{const fs=Array.from(fi.files||[]);fi.value='';if(!fs.length)return;
+      const sid=newSid(),ctl={stop:false,say:m=>{st.textContent='Waiting for the PC… '+m}};let tot=0,done=0;fs.forEach(f=>tot+=f.size);
+      pick.disabled=true;cn.textContent='Cancel upload';cn.onclick=()=>{ctl.stop=true};
+      try{for(const f of fs){await sendFile(tgt,sid,f,ctl,o=>{st.textContent=f.name+'\n'+Math.floor((done+o)*100/Math.max(1,tot))+'%  ·  '+fmt(done+o)+' of '+fmt(tot)});done+=f.size}}
+      catch(e){if(ov.isConnected){st.textContent=e.message==='cancelled'?'Upload cancelled':e.message;pick.disabled=false;cn.textContent='Back';cn.onclick=back}return}
+      const main=(fs.find(f=>/\.(py|pyw|bat|cmd|exe|com|ps1)$/i.test(f.name))||fs[0]).name;
+      st.textContent='Starting '+main+' on the PC…';ov.remove();
+      try{await attachRun(tgt,sid,main,ar.value.trim())}catch(e){toast(e.message,5000);openRunHome()}};
+    cd.append(h,nt,ar,pick,fi,st,lt,lst,cn);ov.append(cd);w.append(ov);paint(runs0||[]);
+  };
   /* Step 1 when the screen opens: which shell? (the one used last is marked). Then step 2 = the Connect sheet (PCs found + password, filled in from last time). Nothing connects by itself. Back / Cancel leaves the screen. */
   const openPick=()=>{
     const old=w.querySelector('.rshc');if(old)old.remove();
     const ov=E('div','rshc');ov.style.cssText='position:absolute;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:2';
     const cd=E('div');cd.style.cssText='width:100%;max-width:520px;background:var(--bg);border-radius:20px;padding:16px';
     const h=E('h3','','Remote shell');h.style.margin='0 0 4px';
-    const nt=E('div','dnote','Which shell do you want on the PC?');nt.style.marginBottom='10px';
+    const nt=E('div','dnote','What do you want to do on the PC?');nt.style.marginBottom='10px';
     const mk=(v,title,sub)=>{const b=E('button','tbtn'+(cfg.sh===v?' fill':''));b.style.cssText='width:100%;height:auto;min-height:64px;margin:6px 0;text-align:left;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:10px 16px';
       b.append(E('b','',title+(cfg.sh===v?'  · last used':'')),E('small','',sub));
       b.onclick=()=>{cfg.sh=v;saveCfg();paintSh();ov.remove();openConn()};return b};
     const cn=E('button','tbtn','Cancel');cn.style.cssText='width:100%;height:46px;margin-top:6px';cn.onclick=()=>{ov.remove();close()};
-    cd.append(h,nt,mk('cmd','cmd','Command Prompt: dir, ping, for /L, batch style'),mk('ps','PowerShell','Get-Process, pipelines, objects'),cn);ov.append(cd);w.append(ov);
+    const up=E('button','tbtn');up.style.cssText='width:100%;height:auto;min-height:64px;margin:6px 0;text-align:left;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:10px 16px';
+    up.append(E('b','','Upload & run'),E('small','','Send .py .bat .exe from this phone and run it on the PC (its window opens there)'));up.onclick=()=>{runMode=true;ttl='Upload & run';ti.textContent=ttl;paintSh();ov.remove();openConn()};
+    cd.append(h,nt,mk('cmd','cmd','Command Prompt: dir, ping, for /L, batch style'),mk('ps','PowerShell','Get-Process, pipelines, objects'),up,cn);ov.append(cd);w.append(ov);
     ov.onclick=e=>{if(e.target===ov)cn.onclick()}};
-  chip.onclick=openConn;
+  chip.onclick=()=>runMode?openRunHome():openConn();
   paintChip();paintSh();openPick()}
 
 function drawerRender(){

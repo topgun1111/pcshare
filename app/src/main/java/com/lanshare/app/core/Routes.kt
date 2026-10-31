@@ -284,8 +284,13 @@ object Routes {
             "pcterm" -> {   // Remote shell: one step of the real terminal on that PC (PePc.term); the screen (xterm.js) repeats read steps
                 val b = try { ex.bodyJson() } catch (_: Exception) { JSONObject() }
                 val extra = LinkedHashMap<String, String>()
-                for (k in listOf("shell", "cols", "rows", "o", "wait", "seq", "data", "rs")) if (b.has(k)) extra[k] = b.get(k).toString()
+                for (k in listOf("shell", "cols", "rows", "o", "wait", "seq", "data", "rs", "name", "args")) if (b.has(k)) extra[k] = b.get(k).toString()
                 return ex.json(com.lanshare.app.pe.PePc.term(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, b.optString("pass", ""), b.optString("act", ""), b.optString("sid", ""), extra))
+            }
+            "pcput" -> {   // Upload & run: one piece (<= 4 MB, already read into bodyBytes) of a file for that PC (PePc.put); the screen repeats a piece that failed
+                ex.readBody()
+                return ex.json(com.lanshare.app.pe.PePc.put(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, ex.header("x-pe-pass") ?: "", ex.q("sid"), ex.q("name"),
+                    (q["off"] ?: "0").toLongOrNull() ?: 0L, (q["total"] ?: "0").toLongOrNull() ?: 0L, ex.bodyBytes ?: ByteArray(0)))
             }
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
