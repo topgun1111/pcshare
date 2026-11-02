@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-02 - Update downloads the right edition
+### Fixed
+- Check for updates in the normal LANShare app can no longer hand you the Lite APK: a new version is offered only when its own APK is ready, and the app never opens the release page instead
+- A new release now appears only after both the normal and the Lite APK are attached
+
 ## 2026-10-31 - Remote shell: Upload & run, no time limits
 ### Added
 - Remote shell: a third choice, Upload & run. Pick a .py, .bat or .exe file (or several) on the phone: it is sent to the PC and started there in its own window, exactly as if you had double-clicked it. Its text shows on the phone live and you can type into it (update Phone Explorer on the PC)

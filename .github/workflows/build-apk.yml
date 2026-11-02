@@ -150,11 +150,21 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
+          draft: true   # invisible to the app until BOTH APKs are attached (published by the next step)
           tag_name: ${{ needs.prep.outputs.tag }}
           name: LANShare ${{ needs.prep.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          make_latest: true
           fail_on_unmatched_files: true
           files: |
             apks/LANShare-v${{ needs.prep.outputs.ver }}.apk
             apks/LANShare-v${{ needs.prep.outputs.ver }}-lite.apk
+
+      - name: Publish release (both APKs attached)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prep.outputs.tag }}
+          VER: ${{ needs.prep.outputs.ver }}
+        run: |
+          N=$(gh release view "$TAG" --json assets -q '[.assets[].name | select(. == "LANShare-v'"$VER"'.apk" or . == "LANShare-v'"$VER"'-lite.apk")] | length')
+          if [ "$N" != "2" ]; then echo "::error::release $TAG has $N of 2 APKs - not publishing"; exit 1; fi
+          gh release edit "$TAG" --draft=false --latest

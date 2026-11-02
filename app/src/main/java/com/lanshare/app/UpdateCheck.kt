@@ -44,14 +44,11 @@ object UpdateCheck {
                 c.connectTimeout = 8000; c.readTimeout = 8000
                 val txt = try { c.inputStream.bufferedReader().readText() } finally { c.disconnect() }
                 val arr = JSONArray(txt)
+                val lite = isLite(a)   // this install's edition; a release only counts when it carries THIS edition's APK (never the other one)
                 var best: JSONObject? = null
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft")) continue
-                    val oa = o.optJSONArray("assets") ?: continue
-                    var hasApk = false
-                    for (k in 0 until oa.length()) if (oa.getJSONObject(k).optString("name").endsWith(".apk")) { hasApk = true; break }
-                    if (!hasApk) continue
+                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
                     val bt = best?.getString("tag_name")
                     if (bt == null || isNewer(o.getString("tag_name"), bt)) best = o
                 }
@@ -62,15 +59,12 @@ object UpdateCheck {
                 if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // same or older release: no dialog, no download (manual check just says so)
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
-                var url = j.getString("html_url")
-                var size = 0L
-                var isApk = false
-                pickApk(assets)?.let { url = it.getString("browser_download_url"); size = it.optLong("size", 0L); isApk = true }   // no file of this edition = the release page opens instead
-                val dl = url; val dlSize = size; val dlApk = isApk
+                val apk = pickApk(assets, lite) ?: throw IOException("APK yok")   // never falls back to the release page (its first listed file is the lite APK)
+                val dl = apk.getString("browser_download_url"); val dlSize = apk.optLong("size", 0L)
                 val newer = ArrayList<JSONObject>()   // every release newer than the installed one (a skipped version's notes must not be lost)
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft") || !hasApk(o)) continue
+                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
                     if (isNewer(o.optString("tag_name"), cur)) newer.add(o)
                 }
                 newer.sortWith { x, y -> if (isNewer(x.optString("tag_name"), y.optString("tag_name"))) -1 else if (isNewer(y.optString("tag_name"), x.optString("tag_name"))) 1 else 0 }
@@ -80,7 +74,7 @@ object UpdateCheck {
                         .setTitle("Yeni sürüm: $tag")
                         .setView(changeView(a, cur, newer))
                         .setPositiveButton("İndir") { _, _ ->
-                            if (dlApk) download(a, dl, dlSize, tag) else openInBrowser(a, dl)
+                            download(a, dl, dlSize, tag)
                         }
                         .setNegativeButton("Sonra", null)
                         .setNeutralButton("Bu sürümü atla") { _, _ ->
@@ -94,20 +88,18 @@ object UpdateCheck {
     }
 
     /** Every release carries two APKs: "...-lite.apk" and the full one. Each edition only ever downloads its own file. */
-    private fun pickApk(oa: JSONArray?): JSONObject? {
+    private fun isLite(c: Context) = BuildConfig.LITE || c.packageName.endsWith(".lite")
+
+    private fun pickApk(oa: JSONArray?, lite: Boolean): JSONObject? {
         if (oa == null) return null
         for (k in 0 until oa.length()) {
             val o = oa.getJSONObject(k); val n = o.optString("name")
-            if (n.endsWith(".apk") && n.endsWith("-lite.apk") == BuildConfig.LITE) return o
+            if (n.endsWith(".apk") && n.endsWith("-lite.apk") == lite && o.optString("browser_download_url").isNotEmpty()) return o
         }
         return null
     }
 
-    private fun hasApk(o: JSONObject): Boolean {
-        val oa = o.optJSONArray("assets") ?: return false
-        for (k in 0 until oa.length()) if (oa.getJSONObject(k).optString("name").endsWith(".apk")) return true
-        return false
-    }
+    private fun hasApk(o: JSONObject, lite: Boolean) = pickApk(o.optJSONArray("assets"), lite) != null
 
     /** Scrollable "what changed" panel shown BEFORE the download: current version, then the notes of every newer release. */
     private fun changeView(a: Activity, cur: String, rels: List<JSONObject>): android.view.View {
