@@ -19,6 +19,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.print.PageRange
 import android.print.PrintAttributes
@@ -75,12 +76,12 @@ import java.util.concurrent.Executors
 /**
  * Dedicated PDF reader. The file browser hands it ONE pdf as a URL of the app's own local HTTP server (/api/dl), so local files,
  * other devices, SMB shares and files inside archives all work. The document is fetched to the cache (with progress), opened with
- * the bundled PDFium engine ([PdfEngine]; the framework PdfRenderer is the fallback for a file or page PDFium cannot handle) and shown as a continuous vertical list of pages. Pinch / double-tap to zoom
+ * the framework [PdfRenderer] (no extra library) and shown as a continuous vertical list of pages. Pinch / double-tap to zoom
  * (pages are re-rendered sharply at the new zoom), drag to pan, "go to page", night mode (inverted colours), share / open with,
  * resume at the last page read. Password-protected or unsupported files offer "Open with..." instead.
  * Fast scroller with page bubble ([PdfScrollBar]), page overview grid (thumbnails, tap to jump), "T" = read the text of the current page
  * with the on-device OCR (ML Kit, same engine as the picture viewer) into a selectable dialog with Copy / Share.
- * Limits: no real text layer (so no in-page selection or document search) and no clickable links.
+ * Limits of PdfRenderer: no real text layer (so no in-page selection or document search) and no clickable links.
  */
 class PdfViewerActivity : Activity() {
     companion object {
@@ -98,8 +99,9 @@ class PdfViewerActivity : Activity() {
 
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "pdf-render").also { it.isDaemon = true } }
-    private val rlock = Any()                          // the engines are not thread-safe per document -> every use is serialised
-    @Volatile private var doc: PdfDoc? = null
+    private val rlock = Any()                          // PdfRenderer allows ONE open page at a time -> every use is serialised
+    @Volatile private var renderer: PdfRenderer? = null
+    @Volatile private var pfd: ParcelFileDescriptor? = null
 
     private var pw = FloatArray(0)
     private var ph = FloatArray(0)
@@ -374,21 +376,16 @@ class PdfViewerActivity : Activity() {
         val my = gen
         val dir = File(cacheDir, "pdf").apply { deleteRecursively(); mkdirs() }
         // files from another device / SMB share are kept for a while (reopening is instant, a broken download resumes); local files are always read fresh
-        // a PDF on this phone's own storage is opened IN PLACE (PDFium reads it by random access): no copy of a 200 MB book into the cache before page 1 shows
-        val direct: File? = if (localOk || !key.startsWith("local|")) null else try {
-            val f = com.lanshare.app.core.Core.local.real(key.removePrefix("local|").substringBeforeLast('|'))
-            if (f.isFile && f.canRead() && f.length() > 0) f else null
-        } catch (_: Exception) { null }
-        val cacheable = !localOk && direct == null && key.isNotEmpty() && !key.startsWith("local|")
+        val cacheable = !localOk && key.isNotEmpty() && !key.startsWith("local|")
         val cdir = File(cacheDir, "pdfc").apply { mkdirs() }
         val cname = "d" + java.lang.Long.toHexString(key.hashCode().toLong() and 0xffffffffL) + "_" + srcSize
-        val out = if (localOk) File(lf) else if (direct != null) direct else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
+        val out = if (localOk) File(lf) else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
         val tmp = if (cacheable) File(cdir, "$cname.part") else File(dir, "doc.part")
         Thread {
             var err: String? = null
             try {
                 if (cacheable) trimCache(cdir, out)
-                val hit = localOk || direct != null || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
+                val hit = localOk || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
                 if (!hit) {
                     var attempt = 0
                     while (true) {
@@ -463,31 +460,36 @@ class PdfViewerActivity : Activity() {
         for (f in pdfs) { if (sum <= CACHE_CAP) break; if (f != keep) { sum -= f.length(); f.delete() } }
     }
 
-    /** Background thread: open with [PdfEngine] (PDFium, framework fallback) and read every page size (so the list can be laid out without jumping). */
+    /** Background thread: open with PdfRenderer and read every page size (so the list can be laid out without jumping). */
     private fun openDoc(my: Int, f: File) {
-        var d: PdfDoc? = null
+        var p: ParcelFileDescriptor? = null
+        var r: PdfRenderer? = null
         try {
-            d = PdfEngine.open(this, f)
-            val n = d.pageCount
+            p = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY)
+            r = PdfRenderer(p)
+            val n = r.pageCount
             if (n <= 0) throw IOException("This PDF has no pages")
             val w = FloatArray(n)
             val h = FloatArray(n)
             for (i in 0 until n) {
                 if (my != gen) throw IOException("cancelled")
                 try {
-                    val sz = d.pageSize(i)
-                    if (sz != null) { w[i] = sz[0]; h[i] = sz[1] }
+                    val pg = r.openPage(i)
+                    try { w[i] = pg.width.toFloat(); h[i] = pg.height.toFloat() } finally { pg.close() }
                 } catch (e: Exception) { Log.w(TAG, "page " + (i + 1) + ": size unreadable: " + e) }
                 if (w[i] <= 0f || h[i] <= 0f || w[i].isNaN() || h[i].isNaN()) { w[i] = 595f; h[i] = 842f }
             }
-            val dd: PdfDoc = d
+            val rr = r
+            val pp = p
             ui.post {
                 if (my != gen || isDestroyed) {
-                    try { dd.close() } catch (_: Exception) {}
-                } else onDocReady(dd, w, h, n)
+                    try { rr.close() } catch (_: Exception) {}
+                    try { pp.close() } catch (_: Exception) {}
+                } else onDocReady(rr, pp, w, h, n)
             }
         } catch (e: Exception) {
-            try { d?.close() } catch (_: Exception) {}
+            try { r?.close() } catch (_: Exception) {}
+            try { p?.close() } catch (_: Exception) {}
             if (my != gen) return
             val msg = when (e) {
                 is SecurityException -> "This PDF is password-protected. Use \u201cOpen with\u2026\u201d to read it in another app."
@@ -498,8 +500,8 @@ class PdfViewerActivity : Activity() {
         }
     }
 
-    private fun onDocReady(d: PdfDoc, w: FloatArray, h: FloatArray, n: Int) {
-        doc = d; pw = w; ph = h; pageCount = n
+    private fun onDocReady(r: PdfRenderer, p: ParcelFileDescriptor, w: FloatArray, h: FloatArray, n: Int) {
+        renderer = r; pfd = p; pw = w; ph = h; pageCount = n
         ready = true
         stateBox.visibility = View.GONE
         val start = resumePage().coerceIn(0, n - 1)
@@ -526,12 +528,14 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun closeDoc() {
-        val d = doc
-        doc = null
-        if (d == null) return
+        val r = renderer
+        val p = pfd
+        renderer = null; pfd = null
+        if (r == null && p == null) return
         Thread {     // waits for a running render, never blocks the UI
             synchronized(rlock) {
-                try { d.close() } catch (_: Exception) {}
+                try { r?.close() } catch (_: Exception) {}
+                try { p?.close() } catch (_: Exception) {}
             }
         }.start()
     }
@@ -683,7 +687,7 @@ class PdfViewerActivity : Activity() {
                     if (bm == null && err != null) Log.w(TAG, "page " + (pos + 1) + " (" + w + "x" + h + ") failed: " + err)
                 }
                 val rb = bm
-                val fe = if (tried && rb == null) err else null   // a closed document (no doc) is not a failed page
+                val fe = if (tried && rb == null) err else null   // a closed document (no renderer) is not a failed page
                 ui.post {
                     if (my != rgen || isDestroyed) return@post
                     inflight.remove(pos)
@@ -711,11 +715,14 @@ class PdfViewerActivity : Activity() {
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
         synchronized(rlock) {
-            val d = doc ?: return null
-            val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            bm.eraseColor(Color.WHITE)
-            try { d.render(pos, bm) } catch (t: Throwable) { bm.recycle(); throw t }
-            return bm
+            val r = renderer ?: return null
+            val pg = r.openPage(pos)
+            try {
+                val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                bm.eraseColor(Color.WHITE)
+                pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                return bm
+            } finally { pg.close() }
         }
     }
 
