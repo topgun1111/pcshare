@@ -27,6 +27,9 @@ v31: reinstall-proof. After a Windows reinstall run LANSharePrint-Setup.bat (wri
 starts this file; setup then downloads everything else (winget, SumatraPDF, pypdf, Pillow, LibreOffice if no Office). The running service also
 re-checks all of that in the background (retrying with growing pauses, e.g. while the network is not up yet right after logon) and re-creates its
 autostart entry if it was lost. Set LANSHARE_NO_LIBREOFFICE=1 to skip the LibreOffice download.
+v37: live print popup - when the PC receives a print job a small always-on-top window (separate process, `--popup`) follows it step by step: received -> preparing pages ->
+sending -> printer printing (pages printed, Windows queue state, printer problems) -> finished / warning / FAILED with the reason and the live log lines. Success closes itself
+after a few seconds, a warning or failure stays until closed. `GET /live` feeds it. Turn off with the window's "Popup on/off" button (or LANSHARE_NO_POPUP=1).
 v36: the logs go into a sub-folder named "Pcprint logs" beside the original pcprint.py (made when missing).
 v35: log.txt, log.old, diag.jsonl (+ diag.1 / diag.2) are written in the folder of the ORIGINAL pcprint.py (the file you run); setup remembers that folder in logdir.txt next to the installed copy; unwritable / missing folder = back to the installed copy folder.
 v34: PowerPoint is no longer kept warm - only Word and Excel stay open (hidden); .ppt / .pptx / .odp convert with a one-off start that closes PowerPoint afterwards.
@@ -59,7 +62,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "36"
+VERSION = "37"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -247,6 +250,11 @@ def log(msg):
                 os.replace(LOG, LOG + ".old")
         except OSError:
             pass
+    try:
+        if getattr(_CTX, "jid", None):
+            live_line(msg)
+    except Exception:
+        pass
     if sys.stdout:
         try: print(line)
         except Exception: pass
@@ -1740,6 +1748,10 @@ def fallback_print(pdf, pr, o, notes, why):
 def send_pdf(pdf, o, pr, sm, notes):
     o = swap_duplex(pdf, o, pr)
     _CTX.sent = True   # from here on a failure is not repaired by printing the plain file again (it may already be on its way)
+    live_stage("send", os.path.basename(pdf))
+    _np = pdf_pages(pdf)
+    if _np:
+        live_set(pages_total=_np * max(1, o["copies"]))
     try: dlog("send-pdf", pdf=pdf, size=os.path.getsize(pdf), printer=pr, sumatra=sm, copies=o["copies"], duplex=o["duplex"], color=o["color"], fit=o["fit"], paper=o["paper"], tray=o.get("tray"))
     except OSError as e: dlog_exc("send-pdf-missing", e, pdf=pdf)
     if not WIN:
@@ -1759,6 +1771,7 @@ def send_pdf(pdf, o, pr, sm, notes):
         try:
             run_retry(cmd, printer=pr or DEFAULT_PRINTER[0], timeout=300, creationflags=0x08000000)
             log(f"SumatraPDF finished in {time.time() - t0:.1f}s")
+            live_stage("print", "handed to the Windows print queue")
         except (subprocess.CalledProcessError, OSError) as e:
             if getattr(e, "maybe_printed", False):
                 raise
@@ -2020,6 +2033,165 @@ HISTORY = collections.deque(maxlen=40)    # finished jobs, newest last: {t, name
 SEQ = itertools.count(1)                  # makes every received file name unique, even within the same second
 DEFAULT_PRINTER = [None]   # refreshed regularly; shown in the window and reported to the app
 PRINTER_PROBLEM = [None]   # e.g. "paper jam" (None = nothing reported)
+
+
+# ------------------------------------------------------------------ live job state + popup (v37)
+# LIVE describes the job the PC is handling right now (or the last one): GET /live returns it, the popup window (`--popup`, own process) draws it.
+LIVE_STEPS = (("recv", "Received"), ("prep", "Preparing pages"), ("send", "Sending to printer"), ("print", "Printer is printing"), ("fin", "Finished"))
+LIVE_LOCK = threading.Lock()
+LIVE_REV = itertools.count(1)
+LIVE = {}
+POPUP_OFF = os.path.join(APP, "nopopup.txt")
+POPUP_PORT = 48556   # single-instance lock of the popup (bound on 127.0.0.1)
+_POPUP_PROC_AT = [0.0]
+
+
+def _live_blank():
+    return dict(rev=next(LIVE_REV), state="idle", jid=None, name="", printer="", opts="", files=[], copies=1, t0=0.0, t1=0.0, stage="",
+                steps={k: ["pending", ""] for k, _ in LIVE_STEPS}, pages_done=None, pages_total=None, pstatus="", wjobs=[], issue="",
+                note="", warning="", error="", lines=[])
+
+
+LIVE.update(_live_blank())
+
+
+def _live_touch():
+    LIVE["rev"] = next(LIVE_REV)
+
+
+def live_line(msg, lvl=None):
+    with LIVE_LOCK:
+        if LIVE["state"] in ("queued", "running"):
+            LIVE["lines"].append([time.strftime("%H:%M:%S"), lvl or _lvl_of(msg), str(msg)[:300]])
+            del LIVE["lines"][:-40]
+            _live_touch()
+
+
+def live_set(**kw):
+    with LIVE_LOCK:
+        LIVE.update(kw)
+        _live_touch()
+
+
+def live_stage(key, detail=""):
+    """Moves the step list forward to `key` (never backwards): earlier steps become done, `key` is active."""
+    with LIVE_LOCK:
+        if LIVE["state"] not in ("queued", "running"):
+            return
+        keys = [k for k, _ in LIVE_STEPS]
+        i = keys.index(key)
+        if LIVE["stage"] and keys.index(LIVE["stage"]) > i:
+            return
+        for k in keys[:i]:
+            LIVE["steps"][k][0] = "done"
+        LIVE["steps"][key] = ["active", detail or (LIVE["steps"][key][1] if LIVE["stage"] == key else "")]
+        LIVE["stage"] = key
+        _live_touch()
+
+
+def live_received(name, jid, detail="", count=1):
+    """A file arrived from a phone: show the popup (a running job keeps the display, the newcomer shows up as 'waiting')."""
+    with LIVE_LOCK:
+        st = LIVE["state"]
+        if st == "queued":
+            LIVE.update(jid=jid, name=name if count == 1 else f"{count} files")
+            LIVE["steps"]["recv"][1] = detail
+            _live_touch()
+        elif st != "running":
+            LIVE.clear()
+            LIVE.update(_live_blank())
+            LIVE.update(state="queued", jid=jid, name=name if count == 1 else f"{count} files", t0=time.time(), stage="recv")
+            LIVE["steps"]["recv"] = ["active", detail]
+            LIVE["lines"].append([time.strftime("%H:%M:%S"), "i", f"received {name}" + (f" ({detail})" if detail else "")])
+    open_print_popup()
+
+
+def live_begin(name, jid, printer, opts, files, copies):
+    with LIVE_LOCK:
+        keep = LIVE["lines"] if LIVE["state"] == "queued" else []
+        t0 = LIVE["t0"] if LIVE["state"] == "queued" and LIVE["t0"] else time.time()
+        LIVE.clear()
+        LIVE.update(_live_blank())
+        LIVE.update(state="running", jid=jid, name=name, printer=printer, opts=opts, files=files, copies=copies, t0=t0, stage="prep", lines=keep)
+        LIVE["steps"]["recv"] = ["done", ""]
+        LIVE["steps"]["prep"] = ["active", ""]
+    open_print_popup()   # also covers jobs that were queued before the popup existed (e.g. test page, restart)
+
+
+def live_progress(pages, jobs, pstatus, issue):
+    with LIVE_LOCK:
+        if LIVE["state"] != "running":
+            return
+        LIVE.update(pages_done=pages, wjobs=list(jobs or []), pstatus=pstatus or "", issue=issue or "")
+        if LIVE["stage"] == "print":
+            tot = LIVE["pages_total"]
+            LIVE["steps"]["print"][1] = (f"{pages} of {tot} pages" if tot and pages is not None else f"{pages} pages printed" if pages else "in the Windows print queue")
+        _live_touch()
+
+
+def live_end(state, error="", note="", warning=""):
+    """state: done | warning | failed"""
+    with LIVE_LOCK:
+        if LIVE["state"] not in ("queued", "running"):
+            return
+        keys = [k for k, _ in LIVE_STEPS]
+        cur = LIVE["stage"] or "prep"
+        i = keys.index(cur)
+        for k in keys[:i]:
+            LIVE["steps"][k][0] = "done"
+        if state == "failed":
+            LIVE["steps"][cur] = ["fail", (error or "")[:160]]
+        else:
+            for k in keys:
+                LIVE["steps"][k][0] = "done"
+            if state == "warning":
+                LIVE["steps"]["print"] = ["warn", (warning or "")[:160]]
+            if LIVE["pages_total"]:
+                LIVE["pages_done"] = LIVE["pages_total"]
+            LIVE["steps"]["fin"][1] = "with a warning" if state == "warning" else ""
+        LIVE.update(state=state, t1=time.time(), error=error, note=note, warning=warning)
+        _live_touch()
+
+
+def live_snapshot():
+    with LIVE_LOCK:
+        s = json.loads(json.dumps(LIVE, default=str))
+    s["steps"] = [{"k": k, "label": lb, "st": s["steps"][k][0], "detail": s["steps"][k][1]} for k, lb in LIVE_STEPS]
+    s.update(ok=True, now=time.time(), queued=PRINTQ.qsize(), default_printer=DEFAULT_PRINTER[0], problem=PRINTER_PROBLEM[0], version=VERSION)
+    try:
+        s["waiting"] = waiting_jobs()
+    except Exception:
+        s["waiting"] = []
+    return s
+
+
+def pdf_pages(pdf):
+    try:
+        if have_pypdf():
+            from pypdf import PdfReader
+            return len(PdfReader(pdf).pages)
+    except Exception:
+        pass
+    return None
+
+
+def open_print_popup():
+    """Starts the popup window process (it keeps itself single-instance). At most every 4 s; never raises."""
+    try:
+        if os.path.exists(POPUP_OFF) or os.environ.get("LANSHARE_NO_POPUP"):
+            return
+        if not WIN and not (os.environ.get("DISPLAY") or sys.platform == "darwin"):
+            return
+        if time.time() - _POPUP_PROC_AT[0] < 4:
+            return
+        _POPUP_PROC_AT[0] = time.time()
+        script = TARGET if os.path.isfile(TARGET) else os.path.abspath(__file__)
+        if WIN:
+            subprocess.Popen([pyw(), script, "--popup"], creationflags=0x00000008 | 0x08000000, close_fds=True)
+        else:
+            subprocess.Popen([sys.executable, script, "--popup"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        log(f"cannot open the print popup: {e}")
 
 # One PowerShell call: default printer + its status + the states of the jobs waiting in its Windows queue.
 PS_STATE = r"""
@@ -2300,6 +2472,7 @@ def watch_printer(seconds=30, printer=None, stall=150, cap=900):
         if not info:
             return None
         act = active_jobs(info)
+        live_progress(info.get("pages"), act, info.get("status"), job_problem(info) or describe_problem(info))
         if not act:
             dlog("watch-done", sec=round(time.time() - t0, 1), jobs_left=len(info.get("jobs", [])))
             return None   # the job left the Windows queue (or is only kept there as finished): the printer took it
@@ -2402,6 +2575,7 @@ def print_one(path, evt, res, o):
     try:
         pr = o["printer"] or DEFAULT_PRINTER[0]
         d = describe_opts(o)
+        live_begin(name, jid, pr or "", d, _job_files(path), o.get("copies", 1))
         dlog("job-start", name=name, files=_job_files(path), opts={k: v for k, v in o.items() if k != "jid"}, printer=pr, default=DEFAULT_PRINTER[0],
              printers=PRINTERS, waiting=PRINTQ.qsize(), version=VERSION)
         log(f"printing {name}" + (f" on {pr}" if pr else "") + (f" [{d}]" if d else "") + f" ({jid})")
@@ -2413,6 +2587,7 @@ def print_one(path, evt, res, o):
         if notes:
             res["note"] = "; ".join(notes)
             log(f"NOTE {name}: {res['note']}")
+        live_stage("print", "waiting for the printer to take the job")
         try:
             warn = watch_printer(30, o["printer"] or None)
         except Exception as e:   # the document is already with the printer: a failing watcher must not turn this into an error (the phone would print it again)
@@ -2425,6 +2600,7 @@ def print_one(path, evt, res, o):
         else:
             log("printed " + name)
         res.update(ok=True, printer=pr)
+        live_end("warning" if warn else "done", note=res.get("note") or "", warning=warn or "")
         dlog("job-end", ok=True, sec=round(time.time() - t_job, 1), notes=notes, warning=warn)
         record(name, res)
         evt.set()   # tell the phone
@@ -2435,6 +2611,7 @@ def print_one(path, evt, res, o):
         dlog_exc("job-failed", e, name=name, sec=round(time.time() - t_job, 1), shown=msg)
         printer_diag(o.get("printer") or None, "job failed: " + msg[:120])
         res["error"] = f"{msg} [log {jid}]"
+        live_end("failed", error=res["error"])
         record(name, res)
         evt.set()
     finally:
@@ -2848,7 +3025,7 @@ class H(BaseHTTPRequestHandler):
                 try: self.reply(500, {"error": "internal error: " + (str(e) or type(e).__name__)[:150]})
                 except Exception: pass
         finally:
-            quiet = u.path in ("/ping", "/screen", "/jobs", "/diag") and self._code == 200
+            quiet = u.path in ("/ping", "/screen", "/jobs", "/diag", "/live") and self._code == 200
             if not quiet:
                 dlog("http", "i" if (self._code or 0) < 400 else "w", m=self.command, p=u.path, q=u.query[:1500], ip=self.client_address[0], code=self._code,
                      ms=int((time.time() - t0) * 1000), len=self.headers.get("Content-Length"), ua=self.headers.get("User-Agent"), err=self._err, jid=self._jid)
@@ -3036,6 +3213,8 @@ class H(BaseHTTPRequestHandler):
             except ValueError:
                 pos = None
             return self.reply(200, diag_read(pos))
+        if u.path == "/live":   # the current / last job step by step (feeds the popup window)
+            return self.reply(200, live_snapshot())
         if u.path == "/jobs":   # what is printing, how many wait, and the last finished jobs (for the window / future app screens)
             return self.reply(200, {"ok": True, "current": CURRENT[0], "current_id": CURRENT_ID[0], "queued": PRINTQ.qsize(), "waiting": waiting_jobs(),
                                     "history": list(HISTORY), "version": VERSION})
@@ -3180,6 +3359,12 @@ class H(BaseHTTPRequestHandler):
                 if old["evt"] is not None:
                     return answer(old["evt"], old["res"])   # same answer as the first one gets
                 return self.reply(200, {"ok": True, "duplicate": True, "batched": bool(bid)})
+        try:
+            _n = _int((qs.get("n") or [""])[0], 1, 1, 1000)
+            _i = _int((qs.get("idx") or [""])[0], 0, 0, 999)
+            live_received(name, jid, f"file {_i + 1} of {_n}" if _n > 1 else f"{n} bytes", _n)
+        except Exception as e:
+            dlog_exc("live-received", e, lvl="w")
         join = (qs.get("join") or [""])[0] == "1"       # mixed files for ONE job (any type)
         skip = (qs.get("skip") or [""])[0] == "1"       # the app could not convert this one: it only keeps the count right
         if bid and (ext in IMAGES or join):   # several files for one job / set of sheets: wait for the last one
@@ -4115,7 +4300,19 @@ def ui():
         except Exception as e:
             log(f"cannot open the text window: {e}")
 
-    for label, cmd in (("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
+    def toggle_popup():
+        try:
+            if os.path.exists(POPUP_OFF):
+                os.remove(POPUP_OFF)
+                messagebox.showinfo("Popup", "Print popup is ON: a window shows every new print job.")
+            else:
+                with open(POPUP_OFF, "w") as f:
+                    f.write("off")
+                messagebox.showinfo("Popup", "Print popup is OFF.")
+        except OSError as e:
+            log(f"cannot change the popup setting: {e}")
+
+    for label, cmd in (("Popup on/off", toggle_popup), ("Clear queue", clear_queue), ("Queue folder", lambda: open_path(INBOX)),
                        ("Open log", lambda: open_path(LOG)), ("Diag log", lambda: open_path(DIAG)), ("Test page", test_page), ("Text", open_text)):
         tk.Button(bot, text=label, command=cmd, relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=(0, 6))
 
@@ -4191,6 +4388,271 @@ def ui():
     root.mainloop()   # closing the window only ends this viewer; the service keeps running
 
 
+def print_popup():
+    """Always-on-top window that follows the current print job live (polls GET /live). Own process, single instance; closing it never affects printing.
+    Success closes itself after a few seconds; a warning / failure stays open until closed."""
+    lock = socket.socket()
+    try:
+        lock.bind(("127.0.0.1", POPUP_PORT))   # held for the life of the process
+    except OSError:
+        return
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+        root = tk.Tk()
+    except Exception:
+        return
+    BG, CARD, FG, DIM = "#10151f", "#1b2433", "#d7dde8", "#8b97ab"
+    COL = {"queued": "#fbbf24", "running": "#60a5fa", "done": "#4ade80", "warning": "#fbbf24", "failed": "#f87171", "idle": "#8b97ab"}
+    ICON = {"queued": "\u23f3", "running": "\u25b6", "done": "\u2714", "warning": "\u26a0", "failed": "\u2716", "idle": "\u25cf"}
+    TITLE = {"queued": "Print job received", "running": "Printing...", "done": "Printed successfully", "warning": "Sent - printer needs attention",
+             "failed": "Print FAILED", "idle": "Waiting for a print job"}
+    STEP = {"pending": ("\u25cb", DIM), "active": ("\u25cf", COL["running"]), "done": ("\u2714", COL["done"]), "fail": ("\u2716", COL["failed"]), "warn": ("\u26a0", COL["warning"])}
+    root.title("LANShare Print - job")
+    root.configure(bg=BG)
+    root.attributes("-topmost", True)
+    W, H = 470, 560
+    root.geometry(f"{W}x{H}+{max(0, root.winfo_screenwidth() - W - 16)}+{max(0, root.winfo_screenheight() - H - 64)}")
+    root.minsize(380, 420)
+    f = lambda sz, b=False: ("Segoe UI", sz, "bold") if b else ("Segoe UI", sz)
+
+    head = tk.Frame(root, bg=BG)
+    head.pack(fill="x", padx=14, pady=(12, 2))
+    icon = tk.Label(head, text=ICON["idle"], fg=DIM, bg=BG, font=("Segoe UI Symbol", 26))
+    icon.pack(side="left")
+    hb = tk.Frame(head, bg=BG)
+    hb.pack(side="left", padx=10, fill="x", expand=True)
+    title = tk.Label(hb, text="...", fg=FG, bg=BG, font=f(15, True), anchor="w")
+    title.pack(fill="x")
+    sub = tk.Label(hb, text="", fg=DIM, bg=BG, font=f(9), anchor="w")
+    sub.pack(fill="x")
+
+    name_l = tk.Label(root, text="", fg=FG, bg=BG, font=f(11, True), anchor="w", justify="left", wraplength=W - 30)
+    name_l.pack(fill="x", padx=14, pady=(8, 0))
+    meta = tk.Label(root, text="", fg=DIM, bg=BG, font=f(9), anchor="w", justify="left", wraplength=W - 30)
+    meta.pack(fill="x", padx=14)
+
+    style = ttk.Style(root)
+    try: style.theme_use("clam")
+    except tk.TclError: pass
+    bar = ttk.Progressbar(root, style="P.Horizontal.TProgressbar", mode="indeterminate", maximum=100)
+    bar.pack(fill="x", padx=14, pady=(10, 2))
+    prog = tk.Label(root, text="", fg=FG, bg=BG, font=f(9), anchor="w")
+    prog.pack(fill="x", padx=14)
+
+    steps_f = tk.Frame(root, bg=CARD)
+    steps_f.pack(fill="x", padx=14, pady=8)
+    srows = []
+    for _k, label in LIVE_STEPS:
+        r = tk.Frame(steps_f, bg=CARD)
+        r.pack(fill="x", padx=8, pady=1)
+        sym = tk.Label(r, text="\u25cb", fg=DIM, bg=CARD, font=("Segoe UI Symbol", 10), width=2)
+        sym.pack(side="left")
+        lab = tk.Label(r, text=label, fg=FG, bg=CARD, font=f(10), anchor="w")
+        lab.pack(side="left")
+        det = tk.Label(r, text="", fg=DIM, bg=CARD, font=f(9), anchor="w", justify="left")
+        det.pack(side="left", padx=8, fill="x", expand=True)
+        srows.append((sym, lab, det))
+
+    pline = tk.Label(root, text="", fg=DIM, bg=BG, font=f(9), anchor="w", justify="left", wraplength=W - 30)
+    pline.pack(fill="x", padx=14)
+    wait_l = tk.Label(root, text="", fg=DIM, bg=BG, font=f(9), anchor="w", justify="left", wraplength=W - 30)
+    wait_l.pack(fill="x", padx=14)
+    result = tk.Label(root, text="", fg=FG, bg=BG, font=f(10, True), anchor="w", justify="left", wraplength=W - 30)
+    result.pack(fill="x", padx=14, pady=(4, 0))
+
+    logf = tk.Frame(root, bg=BG)
+    logf.pack(fill="both", expand=True, padx=14, pady=(6, 4))
+    txt = tk.Text(logf, height=6, bg="#0b0f17", fg=FG, relief="flat", font=("Consolas", 9), wrap="word", state="disabled", borderwidth=0)
+    txt.pack(fill="both", expand=True)
+    txt.tag_configure("e", foreground="#f87171")
+    txt.tag_configure("w", foreground="#fbbf24")
+    txt.tag_configure("i", foreground=FG)
+
+    bot = tk.Frame(root, bg=BG)
+    bot.pack(fill="x", padx=14, pady=(0, 10))
+    keep = tk.BooleanVar(value=False)
+    nopop = tk.BooleanVar(value=os.path.exists(POPUP_OFF))
+
+    def set_nopop():
+        try:
+            if nopop.get():
+                with open(POPUP_OFF, "w") as fh:
+                    fh.write("off")
+            elif os.path.exists(POPUP_OFF):
+                os.remove(POPUP_OFF)
+        except OSError:
+            pass
+
+    cb = dict(fg=FG, bg=BG, selectcolor=BG, activebackground=BG, activeforeground=FG, font=f(9))
+    tk.Checkbutton(bot, text="Keep open", variable=keep, **cb).pack(side="left")
+    tk.Checkbutton(bot, text="Don't pop up", variable=nopop, command=set_nopop, **cb).pack(side="left", padx=6)
+    box = [None]          # latest /live answer (None = service not reachable)
+    state = {"rev": None, "st": None, "bar": None, "hover": False, "done_seen": None, "idle_since": time.time(), "down_since": None, "last": ""}
+
+    def copy_details():
+        s = box[0] or {}
+        out = [f"{TITLE.get(s.get('state'), '')}  {s.get('name', '')}  ({s.get('jid') or '-'})", f"printer: {s.get('printer') or s.get('default_printer') or ''}",
+               f"options: {s.get('opts') or '-'}"] + [f"{x['label']}: {x['st']} {x['detail']}" for x in s.get("steps", [])]
+        out += [x for x in (s.get("error"), s.get("warning"), s.get("note")) if x] + ["", *[f"{a} {c}" for a, _b, c in s.get("lines", [])]]
+        root.clipboard_clear()
+        root.clipboard_append("\n".join(out))
+
+    tk.Button(bot, text="Close", command=root.destroy, relief="flat", bg="#1b2433", fg=FG).pack(side="right")
+    tk.Button(bot, text="Open log", command=lambda: open_path(LOG), relief="flat", bg="#1b2433", fg=FG).pack(side="right", padx=6)
+    tk.Button(bot, text="Copy details", command=copy_details, relief="flat", bg="#1b2433", fg=FG).pack(side="right")
+    root.bind("<Enter>", lambda e: state.update(hover=True))
+    root.bind("<Leave>", lambda e: state.update(hover=False))
+
+    def fetch():   # background thread: never blocks the window
+        while True:
+            try:
+                box[0] = json.loads(get_local("/live", 2).decode("utf-8", "replace"))
+            except Exception:
+                box[0] = None
+            time.sleep(0.5)
+
+    threading.Thread(target=fetch, daemon=True).start()
+
+    def size(n):
+        n = float(n or 0)
+        for u in ("B", "KB", "MB", "GB"):
+            if n < 1024 or u == "GB":
+                return f"{n:.0f} {u}" if u == "B" else f"{n:.1f} {u}"
+            n /= 1024
+
+    def bar_mode(mode, color, val=None):
+        key = (mode, color)
+        if state["bar"] != key:
+            bar.stop()
+            style.configure("P.Horizontal.TProgressbar", troughcolor=CARD, background=color, bordercolor=CARD, lightcolor=color, darkcolor=color)
+            bar.configure(mode=mode)
+            if mode == "indeterminate":
+                bar.start(14)
+            state["bar"] = key
+        if mode == "determinate":
+            bar["value"] = val or 0
+
+    def render():
+        s = box[0]
+        now = time.time()
+        if s is None:
+            state["down_since"] = state["down_since"] or now
+            title.configure(text="Print service not reachable", fg=COL["failed"])
+            icon.configure(text=ICON["failed"], fg=COL["failed"])
+            sub.configure(text="waiting for it to come back...")
+            if now - state["down_since"] > 20:
+                root.destroy()
+                return
+            return
+        state["down_since"] = None
+        st = s["state"]
+        if st != state["st"]:
+            if st in ("queued", "running") and state["st"] in ("done", "warning", "failed", "idle", None):
+                root.lift()
+                root.attributes("-topmost", True)
+            state["st"] = st
+            state["done_seen"] = None
+        col = COL.get(st, DIM)
+        icon.configure(text=ICON.get(st, "\u25cf"), fg=col)
+        title.configure(text=TITLE.get(st, st), fg=col)
+        t0 = s.get("t0") or 0
+        el = ((s.get("t1") or now) - t0) if t0 else 0
+        sub.configure(text=(f"{el:.0f} s" if t0 else "") + (f"  \u00b7  job {s['jid']}" if s.get("jid") else ""))
+        if st == "idle":
+            name_l.configure(text="No job yet")
+            meta.configure(text="")
+        else:
+            nf = s.get("files") or []
+            extra = (f"  \u00b7  {len(nf)} file{'s' if len(nf) != 1 else ''}, {size(sum(x.get('bytes') or 0 for x in nf))}" if nf else "")
+            name_l.configure(text=s.get("name") or "")
+            meta.configure(text=("Printer: " + (s.get("printer") or s.get("default_printer") or "default printer") + (f"  \u00b7  {s['opts']}" if s.get("opts") else "")
+                                 + (f"  \u00b7  {s['copies']} copies" if (s.get("copies") or 1) > 1 and "copies" not in (s.get("opts") or "") else "") + extra))
+        pd, pt = s.get("pages_done"), s.get("pages_total")
+        if st == "done":
+            bar_mode("determinate", COL["done"], 100)
+            prog.configure(text=(f"{pt} of {pt} pages  \u00b7  " if pt else "") + f"finished in {el:.0f} s")
+        elif st == "failed":
+            bar_mode("determinate", COL["failed"], 100)
+            prog.configure(text=f"stopped after {el:.0f} s")
+        elif st == "warning":
+            bar_mode("determinate", COL["warning"], 100)
+            prog.configure(text=f"handed over after {el:.0f} s - check the printer")
+        elif st == "running" and pt and pd is not None:
+            bar_mode("determinate", col, min(99.0, 100.0 * pd / pt))
+            prog.configure(text=f"{pd} of {pt} pages  \u00b7  {el:.0f} s")
+        elif st in ("queued", "running"):
+            bar_mode("indeterminate", col)
+            prog.configure(text=(f"{pd} pages printed  \u00b7  " if pd else "") + f"{el:.0f} s")
+        else:
+            bar_mode("determinate", DIM, 0)
+            prog.configure(text="")
+        for (sym, lab, det), stp in zip(srows, s.get("steps", [])):
+            ch, c = STEP.get(stp["st"], STEP["pending"])
+            sym.configure(text=ch, fg=c)
+            lab.configure(fg=FG if stp["st"] != "pending" else DIM)
+            det.configure(text=stp.get("detail") or "", fg=COL["failed"] if stp["st"] == "fail" else COL["warning"] if stp["st"] == "warn" else DIM)
+        bits = []
+        if s.get("pstatus") and st == "running":
+            bits.append(f"Printer status: {s['pstatus']}")
+        if s.get("wjobs") and st == "running":
+            bits.append("Windows queue: " + ", ".join(s["wjobs"][:3]))
+        pr_issue = s.get("issue") or (s.get("problem") if st in ("running", "warning") else "")
+        pline.configure(text="  \u00b7  ".join(bits) + (("\n" if bits else "") + "\u26a0 printer: " + pr_issue if pr_issue else ""), fg=COL["warning"] if pr_issue else DIM)
+        w = s.get("waiting") or []
+        wait_l.configure(text=(f"Waiting in queue ({len(w)}): " + ", ".join((x.get("name") or "job") for x in w[:3]) + (" ..." if len(w) > 3 else "")) if w else "")
+        msg, mc = "", FG
+        if st == "failed":
+            msg, mc = s.get("error") or "unknown error", COL["failed"]
+        elif st == "warning":
+            msg, mc = s.get("warning") or "", COL["warning"]
+        elif st == "done" and s.get("note"):
+            msg, mc = "Note: " + s["note"], COL["warning"]
+        result.configure(text=msg, fg=mc)
+        if s["rev"] != state["rev"]:
+            state["rev"] = s["rev"]
+            txt.configure(state="normal")
+            txt.delete("1.0", "end")
+            for a, lv, c in s.get("lines", []):
+                txt.insert("end", f"{a} {c}\n", lv if lv in ("e", "w") else "i")
+            txt.configure(state="disabled")
+            txt.see("end")
+        if st == "idle":
+            if now - state["idle_since"] > 8 and not keep.get():
+                root.destroy()
+                return
+        else:
+            state["idle_since"] = now
+        if st == "done" and not keep.get():
+            state["done_seen"] = state["done_seen"] or now
+            left = 7 - (now - state["done_seen"])
+            if state["hover"]:
+                state["done_seen"] = now - 0   # mouse over the window: keep it
+                left = 7
+            sub.configure(text=sub.cget("text") + f"  \u00b7  closing in {max(0, int(left) + 1)} s")
+            if left <= 0:
+                root.destroy()
+                return
+        elif st == "done":
+            state["done_seen"] = None
+
+    def tick():
+        try:
+            render()
+        except tk.TclError:
+            return
+        except Exception as e:
+            dlog_exc("popup-render", e, lvl="w")
+        try:
+            root.after(300, tick)
+        except tk.TclError:
+            pass
+
+    tick()
+    root.mainloop()
+    lock.close()
+
+
 def tail_console(lines=0):
     pos = 0
     try:
@@ -4222,6 +4684,8 @@ def main():
         ui()
     elif "--text" in a:
         text_window()
+    elif "--popup" in a:
+        print_popup()
     elif "--serve" in a or not WIN:
         if is_running():
             return
