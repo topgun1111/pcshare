@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - PDF pages that would not open
+### Fixed
+- PDFs that showed blank pages or "can't be shown" now open: the PDF reader uses the PDFium engine (the one in Chrome), with the old Android reader kept as a backup
+### Changed
+- The app is about 3-4 MB larger because the PDF engine is built in
+
 ## 2026-11-02 - Update downloads the right edition
 ### Fixed
 - Check for updates in the normal LANShare app can no longer hand you the Lite APK: a new version is offered only when its own APK is ready, and the app never opens the release page instead

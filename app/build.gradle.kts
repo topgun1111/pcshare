@@ -69,6 +69,8 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+    // PDFium binding ships its own libc++_shared.so; if another library brings one too, take the first instead of failing the build.
+    packaging { jniLibs { pickFirsts += "**/libc++_shared.so" } }
     packaging { resources { excludes += setOf("META-INF/versions/*/OSGI-INF/MANIFEST.MF", "META-INF/OSGI-INF/MANIFEST.MF", "META-INF/versions/9/module-info.class", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     lint { checkReleaseBuilds = false; abortOnError = false }  // lintVital must never block the APK
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -99,6 +101,9 @@ dependencies {
     implementation("androidx.viewpager2:viewpager2:1.0.0")             // swipe gallery of the image viewer (ImageViewerActivity)
     // image search + PaddleOCR (core/ClipEngine.kt, PaddleOcr.kt). Lite: compile-only, the runtime (~6-8 MB) is NOT in the APK; every use is behind BuildConfig.LITE.
     if (lite) compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.18.0") else implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+    // PDF viewer engine: PDFium (Chrome's PDF engine), Apache-2.0, ~3 MB per CPU type (only arm64-v8a is packed, see abiFilters). Used by PdfEngine.kt; the framework PdfRenderer stays as fallback.
+    // Its POM pulls the old com.android.support:support-v4, which duplicates AndroidX classes: excluded; the one class it needs is stood in for by src/main/java/android/support/v4/util/ArrayMap.java.
+    implementation("com.github.barteksc:pdfium-android:1.9.0") { exclude(group = "com.android.support") }
     implementation("com.google.zxing:core:3.5.3")                       // Phone Explorer: QR pairing code (pe/PePrefs.pairingLink)
     implementation("com.google.android.gms:play-services-base:18.5.0")   // ModuleInstall: check / request the OCR model
     implementation("com.google.android.gms:play-services-auth:21.2.0")    // Google Drive sign-in: Authorization API, no client secret (core/GAuth.kt, HANDOVER chapter 17)
