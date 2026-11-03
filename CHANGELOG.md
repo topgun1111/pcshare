@@ -8,6 +8,7 @@
 ## 2026-11-04 - PDF pages that would not open
 ### Fixed
 - PDFs that showed blank pages or "can't be shown" now open: the PDF reader uses the PDFium engine (the one in Chrome), with the old Android reader kept as a backup
+- Big PDFs stored on the phone (like a 200 MB course book) open at once: they are no longer copied into the app first
 ### Changed
 - The app is about 3-4 MB larger because the PDF engine is built in
 

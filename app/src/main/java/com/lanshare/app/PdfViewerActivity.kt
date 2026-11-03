@@ -374,16 +374,21 @@ class PdfViewerActivity : Activity() {
         val my = gen
         val dir = File(cacheDir, "pdf").apply { deleteRecursively(); mkdirs() }
         // files from another device / SMB share are kept for a while (reopening is instant, a broken download resumes); local files are always read fresh
-        val cacheable = !localOk && key.isNotEmpty() && !key.startsWith("local|")
+        // a PDF on this phone's own storage is opened IN PLACE (PDFium reads it by random access): no copy of a 200 MB book into the cache before page 1 shows
+        val direct: File? = if (localOk || !key.startsWith("local|")) null else try {
+            val f = com.lanshare.app.core.Core.local.real(key.removePrefix("local|").substringBeforeLast('|'))
+            if (f.isFile && f.canRead() && f.length() > 0) f else null
+        } catch (_: Exception) { null }
+        val cacheable = !localOk && direct == null && key.isNotEmpty() && !key.startsWith("local|")
         val cdir = File(cacheDir, "pdfc").apply { mkdirs() }
         val cname = "d" + java.lang.Long.toHexString(key.hashCode().toLong() and 0xffffffffL) + "_" + srcSize
-        val out = if (localOk) File(lf) else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
+        val out = if (localOk) File(lf) else if (direct != null) direct else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
         val tmp = if (cacheable) File(cdir, "$cname.part") else File(dir, "doc.part")
         Thread {
             var err: String? = null
             try {
                 if (cacheable) trimCache(cdir, out)
-                val hit = localOk || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
+                val hit = localOk || direct != null || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
                 if (!hit) {
                     var attempt = 0
                     while (true) {
