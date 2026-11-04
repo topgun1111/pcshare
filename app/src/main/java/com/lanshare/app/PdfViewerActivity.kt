@@ -133,6 +133,8 @@ class PdfViewerActivity : Activity() {
     private var key = ""
     private var srcSize = 0L
     private var file: File? = null
+    @Volatile private var pcDir: File? = null          // permanent page cache folder of this PDF (null = none); see PdfPageCache
+    private var realSrc: File? = null                  // the PDF itself when it lives on this phone (opened in place, no copy)
     private var officeSrc: org.json.JSONObject? = null     // set when this PDF is the PC conversion of an Office file: {path, dev, rpath} of the original
     private lateinit var simpleBtn: TextView
     private var gen = 0                                // document generation (fetch)
@@ -201,6 +203,7 @@ class PdfViewerActivity : Activity() {
         night = getSharedPreferences(SET_PREFS, MODE_PRIVATE).getBoolean("night", false)
         File(cacheDir, "pdf").deleteRecursively()
         worker.start()
+        com.lanshare.app.core.PdfPageCache.viewers.incrementAndGet()
         buildUi()
         begin()
     }
@@ -394,6 +397,13 @@ class PdfViewerActivity : Activity() {
         srcSize = o.optLong("size", 0L)
         key = o.optString("key")
         file = null
+        pcDir = null
+        // a PDF on this phone is opened in place (no copy through the loopback server): key = "local|<virtual path>|<size>"
+        realSrc = if (!localOk && key.startsWith("local|")) try {
+            val vp = key.substring(6, key.lastIndexOf('|').let { if (it < 6) key.length else it })
+            val rf = com.lanshare.app.core.Core.local.real(vp)
+            if (rf.isFile && rf.canRead() && rf.length() > 0) rf else null
+        } catch (_: Throwable) { null } else null
         updateTitle()
         setState("Loading\u2026", null, false)
         val my = gen
@@ -402,13 +412,14 @@ class PdfViewerActivity : Activity() {
         val cacheable = !localOk && key.isNotEmpty() && !key.startsWith("local|")
         val cdir = File(cacheDir, "pdfc").apply { mkdirs() }
         val cname = "d" + java.lang.Long.toHexString(key.hashCode().toLong() and 0xffffffffL) + "_" + srcSize
-        val out = if (localOk) File(lf) else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
+        val rs = realSrc
+        val out = if (localOk) File(lf) else if (rs != null) rs else if (cacheable) File(cdir, "$cname.pdf") else File(dir, "doc.pdf")
         val tmp = if (cacheable) File(cdir, "$cname.part") else File(dir, "doc.part")
         Thread {
             var err: String? = null
             try {
                 if (cacheable) trimCache(cdir, out)
-                val hit = localOk || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
+                val hit = localOk || rs != null || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
                 if (!hit) {
                     var attempt = 0
                     while (true) {
@@ -505,6 +516,10 @@ class PdfViewerActivity : Activity() {
             java.util.Arrays.fill(w, w0); java.util.Arrays.fill(h, h0)
             val rr = r
             val pp = p
+            if (my == gen && f.length() >= com.lanshare.app.core.PdfPageCache.MIN_BYTES && officeSrc == null) {   // big PDF: permanent page cache (built in the background, survives closing the viewer)
+                val cw = minOf(maxOf(resources.displayMetrics.widthPixels, 720), maxW)
+                pcDir = com.lanshare.app.core.PdfPageCache.attach(applicationContext, f, realSrc, name, key, cw, maxW, maxPx)
+            }
             ui.post {
                 if (my != gen || isDestroyed) {
                     try { rr.close() } catch (_: Exception) {}
@@ -796,6 +811,7 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
+        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h)?.let { return it } }     // cached page: no rendering needed
         synchronized(rlock) {
             val r = renderer ?: return null
             val pg = r.openPage(pos)
@@ -1171,6 +1187,7 @@ class PdfViewerActivity : Activity() {
         ui.removeCallbacksAndMessages(null)
         savePos()
         alive = false
+        com.lanshare.app.core.PdfPageCache.viewers.decrementAndGet()
         synchronized(plock) { jobs.clear(); plock.notifyAll() }
         pool.shutdownNow()
         thumbDlg?.dismiss()
