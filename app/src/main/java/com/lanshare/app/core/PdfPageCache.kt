@@ -34,12 +34,16 @@ import java.util.concurrent.atomic.AtomicInteger
 object PdfPageCache {
     const val MIN_BYTES = 10L * 1024 * 1024
     private const val TAG = "PdfPageCache"
+    private const val VER = 2                                // v2: older caches may contain blank / empty pages -> rebuilt once
     private const val JPEG_Q = 90
     private const val PRIVATE_CAP = 2L * 1024 * 1024 * 1024
     private const val PER_PAGE_EST = 450L * 1024            // free-space guard only
 
     /** Number of open PDF viewers: while > 0 the builder pauses briefly between pages so scrolling stays smooth. */
     val viewers = AtomicInteger(0)
+
+    /** Uptime (ms) of the viewer's last live render: the builder waits while the reader is waiting for pages. */
+    @Volatile var lastUse = 0L
 
     private val queued = ConcurrentHashMap.newKeySet<String>()
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "pdf-cache").also { it.isDaemon = true } }
@@ -61,10 +65,10 @@ object PdfPageCache {
             val dir = chooseDir(app, local, name, key) ?: return null
             val old = readMeta(dir)
             val meta: JSONObject
-            if (old == null || old.optString("sig") != sig) {        // new or changed PDF: start clean
+            if (old == null || old.optString("sig") != sig || old.optInt("v", 0) != VER) {        // new or changed PDF: start clean
                 dir.listFiles()?.forEach { if (it.name.startsWith("p") || it.name == "meta.json") it.delete() }
                 meta = JSONObject()
-                meta.put("v", 1); meta.put("sig", sig); meta.put("cw", cw); meta.put("n", 0); meta.put("complete", false)
+                meta.put("v", VER); meta.put("sig", sig); meta.put("cw", cw); meta.put("n", 0); meta.put("complete", false)
                 writeMeta(dir, meta)
             } else meta = old
             if (!(meta.optBoolean("complete", false) && meta.has("pw"))) enqueue(app, pdf, dir, name, meta.optInt("cw", cw), maxW, maxPx)
@@ -87,27 +91,27 @@ object PdfPageCache {
             val sig = if (local != null) "${local.length()}:${local.lastModified()}" else key
             val dir = chooseDir(app, local, name, key) ?: return null
             val m = readMeta(dir) ?: return null
-            if (m.optString("sig") != sig || !m.optBoolean("complete", false)) return null
+            if (m.optString("sig") != sig || m.optInt("v", 0) != VER || !m.optBoolean("complete", false)) return null
             val n = m.optInt("n", 0)
             val a = m.optJSONArray("pw") ?: return null
             val b = m.optJSONArray("ph") ?: return null
             if (n <= 0 || a.length() != n || b.length() != n) return null
             val pw = FloatArray(n) { a.optDouble(it, 595.0).toFloat() }
             val ph = FloatArray(n) { b.optDouble(it, 842.0).toFloat() }
-            for (i in 0 until n) if (!pageFile(dir, i).isFile) return null      // a page was deleted: not finished
+            for (i in 0 until n) if (!pageFile(dir, i).let { it.isFile && it.length() > 0 }) return null      // a page was deleted: not finished
             Hit(dir, n, pw, ph)
         } catch (_: Throwable) { null }
     }
 
     /** Reads a cached page scaled to [w] x [h]; null when it is not cached or the viewer needs more pixels than were cached (zoom). */
-    fun read(dir: File, pos: Int, w: Int, h: Int): Bitmap? {
+    fun read(dir: File, pos: Int, w: Int, h: Int, upscale: Boolean = false): Bitmap? {
         val f = pageFile(dir, pos)
         if (!f.isFile) return null
         return try {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(f.path, o)
             val cw0 = o.outWidth
-            if (cw0 <= 0 || cw0 < w - 2) return null
+            if (cw0 <= 0 || (cw0 < w - 2 && !upscale)) return null      // upscale = normal reading size: a narrower cached page (cached on another screen width) is still better than a blank page
             var ss = 1
             while (cw0 / (ss * 2) >= w) ss *= 2
             val o2 = BitmapFactory.Options().apply { inSampleSize = ss; inPreferredConfig = Bitmap.Config.ARGB_8888 }
@@ -197,6 +201,24 @@ object PdfPageCache {
         return maxOf(w.toInt(), 1) to maxOf(h.toInt(), 1)
     }
 
+    private fun renderTo(r: PdfRenderer, i: Int, w: Int, h: Int): Bitmap {
+        val pg = r.openPage(i)
+        try {
+            val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            bm.eraseColor(Color.WHITE)
+            pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            return bm
+        } finally { pg.close() }
+    }
+
+    /** True when (a 200x200 sample of) the bitmap is pure white. */
+    private fun isBlank(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        for (yy in 0 until 200) { val y = (yy * (h - 1)) / 199
+            for (xx in 0 until 200) if (b.getPixel((xx * (w - 1)) / 199, y) != Color.WHITE) return false }
+        return true
+    }
+
     private fun build(app: Context, pdf: File, dir: File, name: String, cw: Int, maxW: Int, maxPx: Int, job: Job) {
         try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) } catch (_: Throwable) { }
         val wl = try {
@@ -230,9 +252,16 @@ object PdfPageCache {
                         bm.eraseColor(Color.WHITE)
                         pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     } finally { pg.close() }
-                    val b = bm ?: throw java.io.IOException("no bitmap")
+                    var b = bm ?: throw java.io.IOException("no bitmap")
+                    if (isBlank(b)) {                                    // PdfRenderer can silently return a white page for heavy pages: retry smaller
+                        try {
+                            val s = renderTo(r, i, maxOf(b.width / 2, 1), maxOf(b.height / 2, 1))
+                            if (!isBlank(s)) { b.recycle(); b = s; bm = s } else s.recycle()
+                        } catch (_: Throwable) { }
+                    }
                     val tmp = File(dir, String.format(java.util.Locale.ROOT, "p%04d.tmp", i + 1))
-                    FileOutputStream(tmp).use { b.compress(Bitmap.CompressFormat.JPEG, JPEG_Q, it) }
+                    val okJ = FileOutputStream(tmp).use { b.compress(Bitmap.CompressFormat.JPEG, JPEG_Q, it) }
+                    if (!okJ) { tmp.delete(); throw java.io.IOException("jpeg failed") }
                     if (!tmp.renameTo(dst)) { tmp.delete(); failed++ }
                 } catch (e: Throwable) {                                                                 // one bad page must not stop the rest
                     failed++
@@ -240,7 +269,9 @@ object PdfPageCache {
                 } finally { try { bm?.recycle() } catch (_: Throwable) { } }
                 job.done = (i + 1).toLong()
                 job.label = "Caching PDF: $name  ${i + 1}/$n"
-                if (viewers.get() > 0) try { Thread.sleep(300) } catch (_: InterruptedException) { }     // leave room for the page the reader is looking at
+                var wait = 0                                                                                       // PDFium is process-wide locked: stay out of the way while the reader waits for a live render
+                while (viewers.get() > 0 && wait < 25 && !job.cancel && android.os.SystemClock.uptimeMillis() - lastUse < 1500) { try { Thread.sleep(200) } catch (_: InterruptedException) { break }; wait++ }
+                if (viewers.get() > 0) try { Thread.sleep(150) } catch (_: InterruptedException) { }
             }
             if (failed == 0) readMeta(dir)?.let {
                 val ja = org.json.JSONArray(); val jb = org.json.JSONArray()

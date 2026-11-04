@@ -840,16 +840,17 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
-        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h)?.let { return it } }     // cached page: no rendering needed
+        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, w <= viewW + 2)?.let { return it } }     // cached page: no rendering needed
         synchronized(rlock) {
             val r = renderer ?: return null
+            com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis()
             val pg = r.openPage(pos)
             try {
                 val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 bm.eraseColor(Color.WHITE)
                 pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 return bm
-            } finally { pg.close() }
+            } finally { pg.close(); com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis() }
         }
     }
 
