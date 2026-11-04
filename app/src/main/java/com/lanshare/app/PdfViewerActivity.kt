@@ -160,6 +160,12 @@ class PdfViewerActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private lateinit var zf: PdfZoomFrame
+    private lateinit var pv: PdfPagesView                 // image viewer (cache pages); used whenever this PDF has a page cache folder
+    @Volatile private var pvMode = false
+    private val pcl = object : com.lanshare.app.core.PdfPageCache.Listener {
+        override fun onPage(dir: File, pos: Int) { if (dir == pcDir) ui.post { if (pvMode && !isDestroyed) pv.pageReady(pos) } }
+        override fun onFinished(dir: File, complete: Boolean) { if (dir == pcDir) ui.post { if (pvMode && !isDestroyed) { pv.refreshInfo(); syncInfo(); updateTitle() } } }
+    }
     private lateinit var rv: RecyclerView
     private lateinit var lm: LinearLayoutManager
     private lateinit var top: LinearLayout
@@ -248,6 +254,15 @@ class PdfViewerActivity : Activity() {
         }
         zf.addView(rv)
         root.addView(zf)
+        pv = PdfPagesView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            visibility = View.GONE
+            topPad = dp(56).toFloat()
+            onTap = { _, _, p -> if (!retryBlocked(p)) toggleUi() }
+            onPageChanged = { p, _ -> if (p != curPage) { curPage = p; updateTitle() } }
+            onScrolled = { if (!sb.dragging && pageCount > 1) { sb.fraction = pv.scrollFraction; sb.flash() } }
+        }
+        root.addView(pv)
         sb = PdfScrollBar(this).apply {
             layoutParams = FrameLayout.LayoutParams(dp(40), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END)
             padT = dp(64); padB = dp(24)
@@ -327,6 +342,7 @@ class PdfViewerActivity : Activity() {
                 val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
                 top.setPadding(dp(8) + b.left, dp(8) + b.top, dp(8) + b.right, dp(16))
                 rv.setPadding(0, dp(56) + b.top, 0, dp(16) + b.bottom)
+                pv.topPad = (dp(56) + b.top).toFloat()
                 sb.padT = dp(64) + b.top; sb.padB = dp(24) + b.bottom
                 (pill.layoutParams as FrameLayout.LayoutParams).bottomMargin = dp(24) + b.bottom
                 pill.requestLayout()
@@ -395,6 +411,7 @@ class PdfViewerActivity : Activity() {
         ready = false; pageCount = 0; curPage = 0; pendingStart = null; zoomLevel = 1f
         cache.evictAll(); inflight.clear(); failedPages.clear(); failCount.clear(); bound.clear()
         zf.reset()
+        leavePv()
         pageAd.notifyDataSetChanged()
         name = o.optString("name").ifEmpty { "document.pdf" }
         url = if (localOk) "" else com.lanshare.app.core.RootShell.sign(u)
@@ -422,7 +439,7 @@ class PdfViewerActivity : Activity() {
         val tmp = if (cacheable) File(cdir, "$cname.part") else File(dir, "doc.part")
         Thread {
             var err: String? = null
-            if (!localOk && srcSize >= com.lanshare.app.core.PdfPageCache.MIN_BYTES || rs != null) {
+            if (!localOk && srcSize >= com.lanshare.app.core.PdfPageCache.minBytes() || rs != null) {
                 // finished page cache: show every page at once, before the PDF is even opened (PdfRenderer needs seconds for a big file)
                 val len = rs?.length() ?: srcSize
                 val hit = com.lanshare.app.core.PdfPageCache.lookup(applicationContext, rs, name, key, len)
@@ -527,7 +544,7 @@ class PdfViewerActivity : Activity() {
             java.util.Arrays.fill(w, w0); java.util.Arrays.fill(h, h0)
             val rr = r
             val pp = p
-            if (my == gen && f.length() >= com.lanshare.app.core.PdfPageCache.MIN_BYTES && officeSrc == null) {   // big PDF: permanent page cache (built in the background, survives closing the viewer)
+            if (my == gen && f.length() >= com.lanshare.app.core.PdfPageCache.minBytes() && officeSrc == null) {   // big PDF: permanent page cache (built in the background, survives closing the viewer)
                 val cw = minOf(maxOf(resources.displayMetrics.widthPixels, 720), maxW)
                 pcDir = com.lanshare.app.core.PdfPageCache.attach(applicationContext, f, realSrc, name, key, cw, maxW, maxPx)
             }
@@ -560,14 +577,14 @@ class PdfViewerActivity : Activity() {
         val start = resumePage().coerceIn(0, h.n - 1)
         curPage = start
         updateTitle()
-        if (viewW > 0) showPages(start) else pendingStart = start
+        enterPv(h.dir, start)
     }
 
     private fun onDocReady(r: PdfRenderer, p: ParcelFileDescriptor, w: FloatArray, h: FloatArray, n: Int) {
         if (cachedShown && n == pageCount) {        // the pages are already shown from the cache: only hand the opened PDF over (zoom sharpness, text, thumbnails)
             renderer = r; pfd = p
             cachedShown = false
-            refreshVisible()
+            if (!pvMode) refreshVisible()
             return
         }
         if (cachedShown) cachedShown = false        // page count differs from the cache: show the real document instead
@@ -577,6 +594,8 @@ class PdfViewerActivity : Activity() {
         val start = resumePage().coerceIn(0, n - 1)
         curPage = start
         updateTitle()
+        val d = pcDir
+        if (d != null && officeSrc == null) { enterPv(d, start); return }       // big PDF: image viewer (cache pages, placeholders until the builder is there)
         if (viewW > 0) showPages(start) else pendingStart = start
         if (n > 1) scanSizes(gen, n)
     }
@@ -685,7 +704,7 @@ class PdfViewerActivity : Activity() {
 
     // ---------------------------------------------------------------- scrolling / page indicator
     private fun onScrolledUi(moved: Boolean) {
-        if (!ready) return
+        if (!ready || pvMode) return
         val f = lm.findFirstVisibleItemPosition()
         val l = lm.findLastVisibleItemPosition()
         if (f < 0) return
@@ -716,9 +735,52 @@ class PdfViewerActivity : Activity() {
         }
     }
 
+    /** UI thread: show the cached pages in the image viewer instead of the RecyclerView (PdfRenderer is not used for display). */
+    private fun enterPv(d: File, start: Int) {
+        pvMode = true
+        pendingStart = null
+        zf.visibility = View.GONE
+        pv.visibility = View.VISIBLE
+        pv.textPreparing = "Preparing pages\u2026"
+        pv.textFailed = "Page could not be drawn - tap to retry"
+        com.lanshare.app.core.PdfPageCache.removeListener(pcl)
+        com.lanshare.app.core.PdfPageCache.addListener(pcl)
+        pv.open(d)
+        pv.scrollToPage(start, false)
+        syncInfo()
+        updateTitle()
+    }
+
+    private fun leavePv() {
+        com.lanshare.app.core.PdfPageCache.removeListener(pcl)
+        if (pvMode) { pv.close(); pv.visibility = View.GONE; zf.visibility = View.VISIBLE }
+        pvMode = false
+    }
+
+    /** Page sizes and the list of pages the builder gave up on, from meta.json (UI thread). */
+    private fun syncInfo() {
+        val d = pcDir ?: return
+        val i = com.lanshare.app.core.PdfPageCache.info(d) ?: return
+        if (i.pw != null && i.ph != null && i.n == pageCount) { pw = i.pw; ph = i.ph }
+        pv.setBlocked(i.bl)
+    }
+
+    /** Tap on a page the builder gave up on: forget the failure and queue the build again. True = the tap was used. */
+    private fun retryBlocked(p: Int): Boolean {
+        val d = pcDir ?: return false
+        val i = com.lanshare.app.core.PdfPageCache.info(d) ?: return false
+        if (!i.bl.contains(p)) return false
+        com.lanshare.app.core.PdfPageCache.clearBlocked(d, setOf(p))
+        pv.setBlocked(i.bl - p)
+        val f = file
+        if (f != null) Thread { com.lanshare.app.core.PdfPageCache.attach(applicationContext, f, realSrc, name, key, minOf(maxOf(resources.displayMetrics.widthPixels, 720), maxW), maxW, maxPx) }.start()
+        return true
+    }
+
     private fun goTo(i: Int) {
         if (!ready) return
         val p = i.coerceIn(0, pageCount - 1)
+        if (pvMode) { pv.scrollToPage(p, false); curPage = p; updateTitle(); return }
         lm.scrollToPositionWithOffset(p, 0)
         curPage = p
         updateTitle()
@@ -752,7 +814,7 @@ class PdfViewerActivity : Activity() {
 
     /** Tap on the viewer: give every visible page that gave up another try. */
     private fun retryFailedVisible() {
-        if (!ready) return
+        if (!ready || pvMode) return
         for (i in 0 until rv.childCount) (rv.getChildViewHolder(rv.getChildAt(i)) as? Pg)?.let {
             val pos = it.pos
             if (pos >= 0 && failedPages.containsKey(pos)) { failedPages.remove(pos); failCount.remove(pos); it.v.failMsg = null; request(pos) }
@@ -762,6 +824,7 @@ class PdfViewerActivity : Activity() {
     private fun holder(pos: Int): Pg? = rv.findViewHolderForAdapterPosition(pos) as? Pg
 
     private fun refreshVisible() {
+        if (pvMode) return
         if (!ready) return
         for (i in 0 until rv.childCount) (rv.getChildViewHolder(rv.getChildAt(i)) as? Pg)?.let { if (it.pos >= 0) request(it.pos) }
         prefetch()
@@ -908,6 +971,7 @@ class PdfViewerActivity : Activity() {
     // ---------------------------------------------------------------- fast scroller
     private fun dragTo(frac: Float) {
         if (!ready || pageCount < 1) return
+        if (pvMode) { pv.scrollFraction = frac.coerceIn(0f, 1f); val c = pv.currentPage; sb.label = "${c + 1} / $pageCount"; if (c != curPage) { curPage = c; updateTitle() }; return }
         val pos = frac.coerceIn(0f, 1f) * (pageCount - 1)
         val page = pos.toInt().coerceIn(0, pageCount - 1)
         val within = pos - page
@@ -1131,7 +1195,8 @@ class PdfViewerActivity : Activity() {
                 val tw = 260
                 val th = maxOf(1, (tw * ph[pos] / pw[pos]).toInt())
                 var bm: Bitmap? = null
-                for (attempt in 0 until 2) {                              // a thumbnail that fails at 260 px is tried once at half size
+                pcDir?.let { d -> try { bm = com.lanshare.app.core.PdfPageCache.readThumb(d, pos) } catch (_: Throwable) { } }
+                for (attempt in 0 until (if (bm != null) 0 else 2)) {      // a thumbnail that fails at 260 px is tried once at half size
                     try { bm = renderPage(pos, maxOf(tw shr attempt, 1), maxOf(th shr attempt, 1)); if (bm != null) break }
                     catch (e: Throwable) { Log.w(TAG, "thumbnail of page " + (pos + 1) + " failed: " + e) }
                 }
@@ -1267,6 +1332,7 @@ class PdfViewerActivity : Activity() {
         gen++; rgen++
         ui.removeCallbacksAndMessages(null)
         savePos()
+        leavePv()
         alive = false
         com.lanshare.app.core.PdfPageCache.viewers.decrementAndGet()
         synchronized(plock) { jobs.clear(); plock.notifyAll() }

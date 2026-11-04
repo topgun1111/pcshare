@@ -2482,6 +2482,8 @@ function openSettings(){
 
   /* ---- Search ---- */
   sec('Search','#e65100');
+  {const r=row('pdf','PDF page cache','Checking\u2026',()=>{close();openPdfCache()});
+    api('GET','/api/pdfcache').then(x=>{r.set(pcText(x))}).catch(()=>{r.set('Fast opening of big PDFs')})}
   {const r=row('search','Search index','Checking\u2026',()=>{close();openUsSettings()});
     api('GET','/api/uindex').then(x=>{r.set(usText(x))}).catch(()=>{r.set('Names of all files for Universal search')})}
   {const r=row('folders','Image search folders','Limit or skip folders in Image search',()=>{close();openExcluded()});
@@ -2594,6 +2596,29 @@ function usText(r){if(!r||r.enabled===false)return 'Off';const n=r.entries!=null
     return r.phase==='load'?'Loading\u2026':r.phase==='delta'?'Checking for changes\u2026'+n:'Updating\u2026'+n}
   if(r.state==='paused')return 'Paused'+(r.wait?': '+r.wait:'')+n;
   return (r.complete?'Up to date':'Not finished')+n}
+function pcMb(b){return b>=1073741824?(b/1073741824).toFixed(1)+' GB':Math.round(b/1048576)+' MB'}
+function pcText(x){return (x.count||0)+' cached \u00b7 '+pcMb((x.privBytes||0)+(x.localBytes||0))+' \u00b7 from '+(x.minMb?x.minMb+' MB':'every PDF')}
+function openPdfCache(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';
+  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
+  const card=E('div','card');card.append(E('div','handle'),E('h3','','PDF page cache'));
+  const info=E('p','','Big PDFs are turned into compressed page pictures once, so they open at once the next time. The pictures are kept in a cache folder next to the PDF (or inside the app for PDFs from other devices). Deleting or renaming the PDF in LANShare also removes or renames its cache.');
+  info.style.cssText='font-size:13px;color:var(--mut);margin:0 8px 8px';card.append(info);
+  const btn=(title,sub)=>{const b=E('button','set'),t=E('div','t'),sm=E('small','',sub||'');b.style.width='100%';b.style.textAlign='left';t.append(E('b','',title),sm);b.append(t);card.append(b);return [b,sm]};
+  const [bS,sS]=btn('Used space','Checking\u2026'),[bM,sM]=btn('Cache PDFs from'),[bQ,sQ]=btn('Picture quality'),[bC,sC]=btn('Size limit'),[bX,sX]=btn('Clear all caches','Delete every page cache (they are built again when needed)');
+  let R=null;
+  const draw=r=>{R=r;sS.textContent=pcMb(r.localBytes||0)+' next to PDFs \u00b7 '+pcMb(r.privBytes||0)+' inside the app \u00b7 '+(r.count||0)+' PDFs'+(r.building?' \u00b7 '+r.building+' building':'');
+    sM.textContent=(r.minMb?r.minMb+' MB or bigger':'Every PDF')+' (tap to change)';
+    sQ.textContent=r.quality+' - higher = sharper and bigger (applies to pages made from now on)';
+    sC.textContent=(r.capMb?pcMb(r.capMb*1048576)+' per place - the oldest caches go first':'No limit')+' (tap to change)'};
+  const post=async(body)=>{try{draw(await api('POST','/api/pdfcache',body))}catch(e){toast('\u26a0 '+e.message,4000)}};
+  const nxt=(l,v)=>l[(l.indexOf(v)+1)%l.length]||l[0];
+  bM.onclick=()=>R&&post({op:'min',mb:nxt([5,10,20,50,0],R.minMb)});
+  bQ.onclick=()=>R&&post({op:'quality',q:nxt([60,70,78,85,92],R.quality)});
+  bC.onclick=()=>R&&post({op:'cap',mb:nxt([512,1024,2048,4096,0],R.capMb)});
+  bX.onclick=async()=>{if(!await dlg({title:'Clear all PDF caches?',msg:'The page pictures are deleted. Each PDF is prepared again the next time it is opened.',ok:'Clear'}))return;post({op:'clear'})};
+  api('GET','/api/pdfcache').then(draw).catch(()=>{});
+  const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:8px';d.onclick=close;card.append(d);o.append(card)}
 function openUsSettings(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};

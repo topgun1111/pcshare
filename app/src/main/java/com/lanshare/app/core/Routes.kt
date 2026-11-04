@@ -364,6 +364,7 @@ object Routes {
                 return ok(ex)
             }
             "clip" -> if (ex.method == "GET") return ex.json(Clip.toJson())
+            "pdfcache" -> if (ex.method == "GET") return ex.json(PdfPageCache.stats(Core.appCtx ?: throw IOException("not ready")))   // PDF page cache: sizes + settings (POST = settings / clear)
             "imgs" -> if (ex.method == "GET") return ex.json(ImgSearch.status())   // image search: index progress (POST = start / cancel / clear / visual / text)
             "uindex" -> if (ex.method == "GET") return ex.json(IndexManager.status())   // Universal Search name index: state / progress / settings (POST = rescan / pause / settings)
             // Universal Search names: ?q=&kind=&sort=name|path|size|date|best&rev=1&ff=1&limit=&offset=&case=1&word=1&pathm=1&diac=1&re=1
@@ -456,6 +457,16 @@ object Routes {
                     else -> throw BadReq("unknown op")
                 }
                 IndexManager.status()
+            })
+            "pdfcache" -> ex.json(run {
+                val app = Core.appCtx ?: throw IOException("not ready")
+                when (b.optString("op")) {
+                    "min" -> Cfg.setPdfMinMb(b.optInt("mb", 10))
+                    "quality" -> Cfg.setPdfQuality(b.optInt("q", 78))
+                    "cap" -> Cfg.setPdfCapMb(b.optInt("mb", 2048))
+                    "clear" -> PdfPageCache.clearAll(app)
+                }
+                PdfPageCache.stats(app)
             })
             "imgs" -> ex.json(when (b.getString("op")) {
                 "install" -> { ClipEngine.install(); ImgSearch.status() }     // downloads the CLIP model files once (~150 MB), poll GET /api/imgs -> model

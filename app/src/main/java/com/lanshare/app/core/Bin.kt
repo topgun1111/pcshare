@@ -44,6 +44,7 @@ object Bin {
             File(box, META).writeText(meta)
             try { File(root(), ".nomedia").createNewFile() } catch (_: Exception) {}   // keep the gallery from indexing deleted pictures
             if (!src.renameTo(dst)) throw IOException("could not move ${src.name} to the recycle bin")
+            PdfPageCache.onPdfRemoved(src)
         } catch (e: Exception) {
             try { box.deleteRecursively() } catch (_: Exception) {}
             // Android did not let the app move it (files of other apps, no "All files access"): with Settings > Root access on, do the same move through su

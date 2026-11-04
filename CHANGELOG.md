@@ -5,6 +5,34 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - PDF page cache settings and care
+### Added
+- New Settings page "PDF page cache": choose from which size PDFs are prepared (or all PDFs), the picture quality and a size limit, see the used space and clear all caches
+- A PDF page preparation that was running when the app was closed by the system continues by itself the next time the app starts
+### Changed
+- Renaming or moving a PDF now keeps its prepared pages; deleting a PDF also deletes its prepared pages
+- When the size limit is reached the oldest prepared PDFs are removed first, also those stored next to the PDF
+
+## 2026-11-04 - Safer PDF page preparation
+### Changed
+- Preparing the pages of a big PDF now runs in a separate background process: if the PDF engine runs out of memory or crashes, the app stays open and the preparation continues by itself
+- A page that keeps crashing the engine is skipped and shown as "could not be drawn" instead of stopping the whole PDF
+
+## 2026-11-04 - New fast viewer for big PDFs
+### Changed
+- Big PDFs (10 MB or more) now open in a new viewer that shows the prepared page pictures straight away: smooth scrolling, pinch and double-tap zoom, no white pages
+- Pages still being prepared show a grey tile with the page number instead of a blank page
+- A page that could not be drawn says so; tap it to try again
+- The page overview uses the saved small previews, so it fills at once
+
+## 2026-11-04 - Smaller, faster PDF page pictures
+### Changed
+- Prepared pictures of big PDF pages are now smaller (WebP) and sharper up to 1.5x zoom, so they load faster and take less space
+- Page sizes are saved first and pages next to the one you are reading are prepared first
+- Big PDFs prepared before this update are prepared again once
+### Added
+- Small page previews are prepared together with the pages
+
 ## 2026-11-04 - PDF pages no longer turn white
 ### Fixed
 - Pages of big PDFs no longer stay white: when a page cannot be drawn sharp (zooming, heavy pages) the prepared picture is shown instead of a white page, and a good page is never replaced by a white one

@@ -361,7 +361,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         if (p == root) throw Denied("cannot delete the shared root")
         if (!p.exists() && !isLink(p)) throw NotFound("No such file or directory")
         val fails = ArrayList<String>()
-        try { delRec(p, fails, progress) } finally { ix(p) }   // also after a cancel / partial failure: whatever went is dropped from the name index
+        try { delRec(p, fails, progress) } finally { ix(p); if (!p.exists()) PdfPageCache.onPdfRemoved(p) }   // also after a cancel / partial failure: whatever went is dropped from the name index
         if (fails.isNotEmpty())
             throw IOException("Could not delete " + (if (fails.size == 1) fails[0] else fails.size.toString() + " items (" + fails.take(3).joinToString("; ") + (if (fails.size > 3) "; ..." else "") + ")"))
     }
@@ -392,7 +392,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
             if (!same) throw Exists("name already exists")
         }
         if (!p.renameTo(dst)) throw IOException("could not rename")
-        ix(p); ix(dst)
+        ix(p); ix(dst); PdfPageCache.onPdfMoved(p, dst)
     }
 
     override fun move(v: String, toV: String) {
@@ -414,6 +414,6 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
             delRec(s, fails)   // only reached when the copy above worked completely
             if (fails.isNotEmpty()) throw IOException("copied, but the original could not be removed: " + fails.take(3).joinToString("; "))
         }
-        } finally { ix(s); ix(d) }   // also after a half-done cross-volume move
+        } finally { ix(s); ix(d); if (!s.exists() && d.exists()) PdfPageCache.onPdfMoved(s, d) }   // also after a half-done cross-volume move
     }
 }

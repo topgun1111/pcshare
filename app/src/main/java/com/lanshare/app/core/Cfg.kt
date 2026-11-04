@@ -84,6 +84,14 @@ object Cfg {
     @Synchronized fun usExcluded(): List<String> { val a = obj.optJSONArray("us_excl") ?: return emptyList(); return (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
     @Synchronized fun setUsExcluded(l: List<String>) { obj.put("us_excl", JSONArray(l)); save() }
 
+    /** PDF page cache (Part 4b): size from which a PDF is cached (MB, 0 = every PDF), WebP quality of the pages, cap of the cache folders (MB, 0 = unlimited). */
+    @Synchronized fun pdfMinMb(): Int = obj.optInt("pdf_min_mb", 10).coerceIn(0, 500)
+    @Synchronized fun setPdfMinMb(v: Int) { obj.put("pdf_min_mb", v.coerceIn(0, 500)); save() }
+    @Synchronized fun pdfQuality(): Int = obj.optInt("pdf_q", 78).coerceIn(40, 95)
+    @Synchronized fun setPdfQuality(v: Int) { obj.put("pdf_q", v.coerceIn(40, 95)); save() }
+    @Synchronized fun pdfCapMb(): Int = obj.optInt("pdf_cap_mb", 2048).coerceIn(0, 102400)
+    @Synchronized fun setPdfCapMb(v: Int) { obj.put("pdf_cap_mb", v.coerceIn(0, 102400)); save() }
+
     /** Root support (su, see RootShell / RootFs): off until the user switches it on in Settings > Root access. */
     @Synchronized fun rootEnabled(): Boolean = obj.optBoolean("root_on", false)
     @Synchronized fun setRootEnabled(v: Boolean) { obj.put("root_on", v); save() }
