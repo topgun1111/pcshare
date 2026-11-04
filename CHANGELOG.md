@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - Big PDFs open instantly
+### Added
+- Big PDFs (10 MB or more) are now prepared once: every page is saved as a picture in a "cache" folder next to the PDF, named after it, so the next time all pages show at once
+- The preparing goes on in the background with progress in the notification, even after you close the app or the screen turns off, and carries on from where it stopped the next time you open the PDF
+### Changed
+- PDFs on this phone are opened directly from their folder instead of being copied first
+- PDFs from other devices or SMB keep their prepared pages inside the app, up to 2 GB in total
+
 ## 2026-11-04 - Live print screen
 ### Added
 - A new screen in the app shows the same live print window as the PC: received, preparing pages, sending, printing, finished, with page count, printer problems and the live log
