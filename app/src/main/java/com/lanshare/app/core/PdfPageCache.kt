@@ -67,9 +67,36 @@ object PdfPageCache {
                 meta.put("v", 1); meta.put("sig", sig); meta.put("cw", cw); meta.put("n", 0); meta.put("complete", false)
                 writeMeta(dir, meta)
             } else meta = old
-            if (!meta.optBoolean("complete", false)) enqueue(app, pdf, dir, name, meta.optInt("cw", cw), maxW, maxPx)
+            if (!(meta.optBoolean("complete", false) && meta.has("pw"))) enqueue(app, pdf, dir, name, meta.optInt("cw", cw), maxW, maxPx)
             dir
         } catch (e: Throwable) { Log.w(TAG, "attach failed: $e"); null }
+    }
+
+    /** A finished cache: folder + page count + real page sizes (points), enough to show the document without opening the PDF. */
+    class Hit(val dir: File, val n: Int, val pw: FloatArray, val ph: FloatArray)
+
+    /**
+     * Cache-first open: when every page of this PDF is already cached (and the PDF is unchanged) returns the data the viewer needs to
+     * show all pages at once WITHOUT opening the PDF with PdfRenderer (opening a big PDF is the slow part). Null = no finished cache.
+     * [srcLen] = size of the PDF (local: real length, remote: size from the list).
+     */
+    fun lookup(ctx: Context, local: File?, name: String, key: String, srcLen: Long): Hit? {
+        return try {
+            if (srcLen < MIN_BYTES) return null
+            val app = ctx.applicationContext
+            val sig = if (local != null) "${local.length()}:${local.lastModified()}" else key
+            val dir = chooseDir(app, local, name, key) ?: return null
+            val m = readMeta(dir) ?: return null
+            if (m.optString("sig") != sig || !m.optBoolean("complete", false)) return null
+            val n = m.optInt("n", 0)
+            val a = m.optJSONArray("pw") ?: return null
+            val b = m.optJSONArray("ph") ?: return null
+            if (n <= 0 || a.length() != n || b.length() != n) return null
+            val pw = FloatArray(n) { a.optDouble(it, 595.0).toFloat() }
+            val ph = FloatArray(n) { b.optDouble(it, 842.0).toFloat() }
+            for (i in 0 until n) if (!pageFile(dir, i).isFile) return null      // a page was deleted: not finished
+            Hit(dir, n, pw, ph)
+        } catch (_: Throwable) { null }
     }
 
     /** Reads a cached page scaled to [w] x [h]; null when it is not cached or the viewer needs more pixels than were cached (zoom). */
@@ -187,14 +214,17 @@ object PdfPageCache {
             job.total = n.toLong()
             readMeta(dir)?.let { writeMeta(dir, it.put("n", n)) }
             var failed = 0
+            val sw = FloatArray(n)
+            val sh = FloatArray(n)
             for (i in 0 until n) {
                 if (job.cancel) { job.state = "cancel"; return }
                 val dst = pageFile(dir, i)
-                if (dst.isFile && dst.length() > 0) { job.done = (i + 1).toLong(); continue }          // resume: page already there
                 var bm: Bitmap? = null
                 try {
                     val pg = r.openPage(i)
                     try {
+                        sw[i] = pg.width.toFloat(); sh[i] = pg.height.toFloat()                              // real page size (kept in meta.json for the instant open)
+                        if (dst.isFile && dst.length() > 0) { job.done = (i + 1).toLong(); continue }        // resume: page already there
                         val (w, h) = sizeFor(pg.width, pg.height, cw, maxW, maxPx)
                         bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                         bm.eraseColor(Color.WHITE)
@@ -210,9 +240,14 @@ object PdfPageCache {
                 } finally { try { bm?.recycle() } catch (_: Throwable) { } }
                 job.done = (i + 1).toLong()
                 job.label = "Caching PDF: $name  ${i + 1}/$n"
-                if (viewers.get() > 0) try { Thread.sleep(40) } catch (_: InterruptedException) { }     // leave room for the page the reader is looking at
+                if (viewers.get() > 0) try { Thread.sleep(300) } catch (_: InterruptedException) { }     // leave room for the page the reader is looking at
             }
-            if (failed == 0) readMeta(dir)?.let { writeMeta(dir, it.put("complete", true)) }
+            if (failed == 0) readMeta(dir)?.let {
+                val ja = org.json.JSONArray(); val jb = org.json.JSONArray()
+                for (i in 0 until n) { ja.put(sw[i].toDouble()); jb.put(sh[i].toDouble()) }
+                it.put("pw", ja); it.put("ph", jb); it.put("complete", true)
+                writeMeta(dir, it)
+            }
             job.label = "PDF ready: $name"
             job.state = "done"
         } catch (e: Throwable) {

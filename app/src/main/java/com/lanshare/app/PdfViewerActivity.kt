@@ -134,6 +134,7 @@ class PdfViewerActivity : Activity() {
     private var srcSize = 0L
     private var file: File? = null
     @Volatile private var pcDir: File? = null          // permanent page cache folder of this PDF (null = none); see PdfPageCache
+    @Volatile private var cachedShown = false      // pages are on screen from the finished page cache while the PDF itself is still being opened in the background
     private var realSrc: File? = null                  // the PDF itself when it lives on this phone (opened in place, no copy)
     private var officeSrc: org.json.JSONObject? = null     // set when this PDF is the PC conversion of an Office file: {path, dev, rpath} of the original
     private lateinit var simpleBtn: TextView
@@ -348,6 +349,7 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun setState(msg: String, pct: Int?, err: Boolean) {
+        if (cachedShown) return                    // pages are already readable from the cache: no loading / error cover for the background open
         stateBox.visibility = View.VISIBLE
         stateTv.text = msg
         bar.visibility = if (err) View.GONE else View.VISIBLE
@@ -398,6 +400,7 @@ class PdfViewerActivity : Activity() {
         key = o.optString("key")
         file = null
         pcDir = null
+        cachedShown = false
         // a PDF on this phone is opened in place (no copy through the loopback server): key = "local|<virtual path>|<size>"
         realSrc = if (!localOk && key.startsWith("local|")) try {
             val vp = key.substring(6, key.lastIndexOf('|').let { if (it < 6) key.length else it })
@@ -417,6 +420,12 @@ class PdfViewerActivity : Activity() {
         val tmp = if (cacheable) File(cdir, "$cname.part") else File(dir, "doc.part")
         Thread {
             var err: String? = null
+            if (!localOk && srcSize >= com.lanshare.app.core.PdfPageCache.MIN_BYTES || rs != null) {
+                // finished page cache: show every page at once, before the PDF is even opened (PdfRenderer needs seconds for a big file)
+                val len = rs?.length() ?: srcSize
+                val hit = com.lanshare.app.core.PdfPageCache.lookup(applicationContext, rs, name, key, len)
+                if (hit != null && my == gen) ui.post { if (my == gen && !isDestroyed) showFromCache(hit) }
+            }
             try {
                 if (cacheable) trimCache(cdir, out)
                 val hit = localOk || rs != null || cacheable && out.isFile && out.length() > 0 && (srcSize <= 0 || out.length() == srcSize) && System.currentTimeMillis() - out.lastModified() < CACHE_MS
@@ -539,7 +548,27 @@ class PdfViewerActivity : Activity() {
         }
     }
 
+    /** UI thread: the page cache of this PDF is complete -> lay out and show all pages from the stored images (no PdfRenderer yet). */
+    private fun showFromCache(h: com.lanshare.app.core.PdfPageCache.Hit) {
+        if (ready) return
+        pcDir = h.dir; pw = h.pw; ph = h.ph; pageCount = h.n
+        cachedShown = true
+        ready = true
+        stateBox.visibility = View.GONE
+        val start = resumePage().coerceIn(0, h.n - 1)
+        curPage = start
+        updateTitle()
+        if (viewW > 0) showPages(start) else pendingStart = start
+    }
+
     private fun onDocReady(r: PdfRenderer, p: ParcelFileDescriptor, w: FloatArray, h: FloatArray, n: Int) {
+        if (cachedShown && n == pageCount) {        // the pages are already shown from the cache: only hand the opened PDF over (zoom sharpness, text, thumbnails)
+            renderer = r; pfd = p
+            cachedShown = false
+            refreshVisible()
+            return
+        }
+        if (cachedShown) cachedShown = false        // page count differs from the cache: show the real document instead
         renderer = r; pfd = p; pw = w; ph = h; pageCount = n
         ready = true
         stateBox.visibility = View.GONE

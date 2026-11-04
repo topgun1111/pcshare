@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - Cached PDFs show before they load
+### Changed
+- A big PDF whose pages are already prepared now shows all its pages at once, without waiting for the file to be opened (the file opens quietly in the background for zooming and printing)
+- While you read, preparing the pages of another big PDF is slower so it does not get in your way
+
 ## 2026-11-04 - Big PDFs open instantly
 ### Added
 - Big PDFs (10 MB or more) are now prepared once: every page is saved as a picture in a "cache" folder next to the PDF, named after it, so the next time all pages show at once
