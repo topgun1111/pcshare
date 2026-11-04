@@ -269,6 +269,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openPrintLog(jids: String, dev: String) {
             runOnUiThread { try { PrintLogActivity.open(this@MainActivity, jids, dev) } catch (_: Throwable) { } }
         }
+        /** PC screen -> "Job" tab: the native live job screen (twin of the PC popup) for the PC [dev]. */
+        @JavascriptInterface fun openPrintLive(dev: String) {
+            runOnUiThread { try { PrintLiveActivity.open(this@MainActivity, dev) } catch (_: Throwable) { } }
+        }
         /** Storage pill: opens the Storage Analyzer for this phone's folder [vpath] ("/" = whole main storage). */
         @JavascriptInterface fun openStorage(vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }

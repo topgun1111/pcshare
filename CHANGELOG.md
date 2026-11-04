@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - Live print screen
+### Added
+- A new screen in the app shows the same live print window as the PC: received, preparing pages, sending, printing, finished, with page count, printer problems and the live log
+- It opens by itself when you print to a PC (can be turned off on the screen) and from the new Job tab in the PC screen
+
 ## 2026-11-02 - Update downloads the right edition
 ### Fixed
 - Check for updates in the normal LANShare app can no longer hand you the Lite APK: a new version is offered only when its own APK is ready, and the app never opens the release page instead

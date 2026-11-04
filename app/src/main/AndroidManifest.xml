@@ -193,6 +193,10 @@
         <activity android:name=".PrintLogActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="standard"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
+        <!-- Live print job screen: phone twin of the pcprint.py popup -->
+        <activity android:name=".PrintLiveActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>
         <activity android:name=".OfficeShortcutActivity" android:exported="false" android:theme="@style/Theme.LANShare.Clear"
             android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true"/>
         <activity android:name=".ClipSendActivity" android:exported="true" android:theme="@style/Theme.LANShare.Clear"

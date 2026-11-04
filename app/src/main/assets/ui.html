@@ -2393,6 +2393,7 @@ function openPcScreen(pc){
   /* tabs under the title: Live (this screen) | Logs (opens the Logs screen, plain-words view, with this PC ready for Fetch PC log). The old Switch button is gone: the side menu's PC screen lists the PCs. */
   const tabs=E('div','pct'),tLive=E('button','tbtn on','Live');tabs.append(tLive);
   if(window.LSAndroid&&LSAndroid.openPrintLog){const tLogs=E('button','tbtn','Logs');tLogs.onclick=()=>{try{LSAndroid.openPrintLog('',pc.id)}catch(e){}};tabs.append(tLogs)}
+  if(window.LSAndroid&&LSAndroid.openPrintLive){const tJob=E('button','tbtn','Job');tJob.onclick=()=>{try{LSAndroid.openPrintLive(pc.id)}catch(e){}};tabs.append(tJob)}
   const hb=E('div');hb.style.cssText='display:flex;gap:6px';hb.append(cb);
   hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,tabs,bar,log);o.append(card);
   const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};

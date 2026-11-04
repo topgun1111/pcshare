@@ -281,6 +281,19 @@ object Jobs {
         } catch (_: Exception) { JSONObject().put("ok", false) }
     }
 
+    /** pcprint.py 37+: the job the PC window shows right now (GET /live). {ok, old?, why?, state, steps, lines, ...}. 404 = old pcprint.py. */
+    fun pcLive(dev: String): JSONObject {
+        val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "GET", "/live", emptyMap(), 3000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", true).put("old", true)
+                if (r.status != 200) return JSONObject().put("ok", false).put("why", "HTTP ${r.status}")
+                JSONObject(String(r.readUpTo(1 shl 20), Charsets.UTF_8)).put("ok", true)
+            } finally { r.close() }
+        } catch (e: Exception) { JSONObject().put("ok", false).put("why", errText(e)) }
+    }
+
     /** pcprint.py 31+: the PC's diag text (GET /diag?pos=N on the PC). {ok, old?, text, why?}. An older PC answers 404 = old. */
     fun pcDiag(dev: String, pos: Long): JSONObject {
         val (ip, _) = try { printTarget(dev) } catch (e: BadReq) { throw e } catch (e: IOException) { return JSONObject().put("ok", false).put("why", errText(e)) }
@@ -376,6 +389,7 @@ object Jobs {
         val job = Job("Printing on $pcName")
         all[jid] = job
         Thread({ Http.abortable(job) { printWork(job, src, ip, pcName, paths, opts) } }, "print-$jid").also { it.isDaemon = true }.start()
+        com.lanshare.app.PrintLiveActivity.auto(Core.appCtx, dstId)   // the phone twin of the PC popup (PrintLiveActivity)
         return jid
     }
 
