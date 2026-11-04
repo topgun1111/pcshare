@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-04 - PDF pages no longer turn white
+### Fixed
+- Pages of big PDFs no longer stay white: when a page cannot be drawn sharp (zooming, heavy pages) the prepared picture is shown instead of a white page, and a good page is never replaced by a white one
+- Preparing the pages in the background no longer draws at the same time as the reader, which was a cause of white pages and missing pictures
+- A page that comes out white while preparing is retried several times before it is given up
+### Changed
+- The PDF viewer now always shows the prepared picture first, also when zoomed (enlarged at once, then redrawn sharp in the background)
+
 ## 2026-11-04 - Cached PDFs show before they load
 ### Changed
 - A big PDF whose pages are already prepared now shows all its pages at once, without waiting for the file to be opened (the file opens quietly in the background for zooming and printing)

@@ -42,6 +42,9 @@ object PdfPageCache {
     /** Number of open PDF viewers: while > 0 the builder pauses briefly between pages so scrolling stays smooth. */
     val viewers = AtomicInteger(0)
 
+    /** One render at a time in the whole process (viewer live renders + background build): two big PDFs / pages rendering at once exhaust native memory and PdfRenderer then returns WHITE pages. */
+    val pdfLock = Any()
+
     /** Uptime (ms) of the viewer's last live render: the builder waits while the reader is waiting for pages. */
     @Volatile var lastUse = 0L
 
@@ -211,18 +214,18 @@ object PdfPageCache {
         return maxOf(w.toInt(), 1) to maxOf(h.toInt(), 1)
     }
 
-    private fun renderTo(r: PdfRenderer, i: Int, w: Int, h: Int): Bitmap {
+    private fun renderTo(r: PdfRenderer, i: Int, w: Int, h: Int): Bitmap = synchronized(pdfLock) {
         val pg = r.openPage(i)
         try {
             val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             bm.eraseColor(Color.WHITE)
             pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            return bm
+            bm
         } finally { pg.close() }
     }
 
     /** True when (a 200x200 sample of) the bitmap is pure white. */
-    private fun isBlank(b: Bitmap): Boolean {
+    fun isBlank(b: Bitmap): Boolean {
         val w = b.width; val h = b.height
         for (yy in 0 until 200) { val y = (yy * (h - 1)) / 199
             for (xx in 0 until 200) if (b.getPixel((xx * (w - 1)) / 199, y) != Color.WHITE) return false }
@@ -254,21 +257,33 @@ object PdfPageCache {
                 val dst = pageFile(dir, i)
                 var bm: Bitmap? = null
                 try {
-                    val pg = r.openPage(i)
-                    try {
-                        sw[i] = pg.width.toFloat(); sh[i] = pg.height.toFloat()                              // real page size (kept in meta.json for the instant open)
-                        if (dst.isFile && dst.length() > 0) { job.done = (i + 1).toLong(); continue }        // resume: page already there
-                        val (w, h) = sizeFor(pg.width, pg.height, cw, maxW, maxPx)
-                        bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                        bm.eraseColor(Color.WHITE)
-                        pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    } finally { pg.close() }
+                    var skip = false
+                    synchronized(pdfLock) {
+                        val pg = r.openPage(i)
+                        try {
+                            sw[i] = pg.width.toFloat(); sh[i] = pg.height.toFloat()                          // real page size (kept in meta.json for the instant open)
+                            if (dst.isFile && dst.length() > 0) skip = true                                  // resume: page already there
+                            else {
+                                val (w, h) = sizeFor(pg.width, pg.height, cw, maxW, maxPx)
+                                val nb = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                                bm = nb
+                                nb.eraseColor(Color.WHITE)
+                                pg.render(nb, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            }
+                        } finally { pg.close() }
+                    }
+                    if (skip) { job.done = (i + 1).toLong(); continue }
                     var b = bm ?: throw java.io.IOException("no bitmap")
                     if (isBlank(b)) {                                    // PdfRenderer can silently return a white page for heavy pages: retry smaller
-                        try {
-                            val s = renderTo(r, i, maxOf(b.width / 2, 1), maxOf(b.height / 2, 1))
-                            if (!isBlank(s)) { b.recycle(); b = s; bm = s } else s.recycle()
-                        } catch (_: Throwable) { }
+                        for (k in 0 until 3) {                           // pause (frees native memory), then full / half / third size
+                            if (!isBlank(b)) break
+                            try {
+                                Thread.sleep(250L)
+                                val d = if (k == 0) 1 else if (k == 1) 2 else 3
+                                val s = renderTo(r, i, maxOf(b.width / d, 1), maxOf(b.height / d, 1))
+                                if (!isBlank(s)) { b.recycle(); b = s; bm = s } else s.recycle()
+                            } catch (_: Throwable) { }
+                        }
                         if (isBlank(b)) { blanks.put(i); job.done = (i + 1).toLong(); continue }      // still white: not stored, the viewer renders it live
                     }
                     val tmp = File(dir, String.format(java.util.Locale.ROOT, "p%04d.tmp", i + 1))

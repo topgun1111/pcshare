@@ -794,11 +794,18 @@ class PdfViewerActivity : Activity() {
             val up = w <= viewW + 2
             try {
                 imgPool.execute {
-                    val bm = try { com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, up) } catch (_: Throwable) { null }
+                    val pc = com.lanshare.app.core.PdfPageCache
+                    var sharp = true                                                      // false = cached image is narrower than wanted (zoom): shown enlarged now, live render refines it after
+                    var bm = try { pc.read(d, pos, w, h, up) } catch (_: Throwable) { null }
+                    if (bm == null) { bm = try { pc.read(d, pos, w, h, true) } catch (_: Throwable) { null }; sharp = false }
+                    val img = bm
                     ui.post {
                         if (my != rgen || isDestroyed) return@post
                         inflight.remove(pos)
-                        if (bm != null) { lastSrc = "img"; failedPages.remove(pos); failCount.remove(pos); cache.put(pos, bm); holder(pos)?.v?.let { it.failMsg = null; it.bmp = bm }; updateTitle() }
+                        if (img != null) {
+                            lastSrc = "img"; failedPages.remove(pos); failCount.remove(pos); cache.put(pos, img); holder(pos)?.v?.let { it.failMsg = null; it.bmp = img }; updateTitle()
+                            if (!sharp && holder(pos) != null) { inflight[pos] = w; queueLive(pos, w, h, img) }      // refine only; a white / failed result keeps the cached image
+                        }
                         else if (holder(pos) != null) queueLive(pos, w, h, have)      // unreadable image: render the page from the PDF instead
                     }
                 }
@@ -864,18 +871,37 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
-        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, w <= viewW + 2)?.let { lastSrc = "img"; return it } }     // cached page: no rendering needed
+        val d = pcDir
+        d?.let { com.lanshare.app.core.PdfPageCache.read(it, pos, w, h, w <= viewW + 2)?.let { bm -> lastSrc = "img"; return bm } }     // cached page: no rendering needed
+        // A cached image is never worse than a white page: when the live render (zoom: more pixels than were cached) throws or comes back white, show the cached image enlarged
+        fun cached(): Bitmap? = d?.let { com.lanshare.app.core.PdfPageCache.read(it, pos, w, h, true) }?.also { lastSrc = "img" }
+        val first = try { renderLive(pos, w, h) } catch (e: Exception) { return cached() ?: throw e }
+        if (first == null || !com.lanshare.app.core.PdfPageCache.isBlank(first)) return first
+        // PdfRenderer silently returns white for heavy pages: try smaller, then the cached image
+        val s = try { renderLive(pos, maxOf(w / 2, 1), maxOf(h / 2, 1)) } catch (_: Exception) { null }
+        if (s != null && !com.lanshare.app.core.PdfPageCache.isBlank(s)) { first.recycle(); return s }
+        s?.recycle()
+        val c = cached()
+        if (c != null) { first.recycle(); return c }
+        return first
+    }
+
+    private fun renderLive(pos: Int, w: Int, h: Int): Bitmap? {
         synchronized(rlock) {
             val r = renderer ?: return null
             lastSrc = "live"
             com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis()
-            val pg = r.openPage(pos)
             try {
-                val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                bm.eraseColor(Color.WHITE)
-                pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                return bm
-            } finally { pg.close(); com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis() }
+                synchronized(com.lanshare.app.core.PdfPageCache.pdfLock) {           // never render at the same time as the background cache build
+                    val pg = r.openPage(pos)
+                    try {
+                        val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        bm.eraseColor(Color.WHITE)
+                        pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        return bm
+                    } finally { pg.close() }
+                }
+            } finally { com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis() }
         }
     }
 
