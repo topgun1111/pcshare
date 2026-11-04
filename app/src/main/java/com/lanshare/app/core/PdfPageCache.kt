@@ -45,6 +45,14 @@ object PdfPageCache {
     /** Uptime (ms) of the viewer's last live render: the builder waits while the reader is waiting for pages. */
     @Volatile var lastUse = 0L
 
+    /** Short status for the viewer subtitle: cached images / pages that stayed white after a retry. */
+    fun status(dir: File?, n: Int): String {
+        if (dir == null) return "no cache"
+        val c = dir.listFiles { f -> f.name.startsWith("p") && f.name.endsWith(".jpg") }?.size ?: 0
+        val bl = readMeta(dir)?.optJSONArray("bl")?.length() ?: 0
+        return "img $c/$n" + (if (bl > 0) " white $bl" else "")
+    }
+
     private val queued = ConcurrentHashMap.newKeySet<String>()
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "pdf-cache").also { it.isDaemon = true } }
 
@@ -98,7 +106,9 @@ object PdfPageCache {
             if (n <= 0 || a.length() != n || b.length() != n) return null
             val pw = FloatArray(n) { a.optDouble(it, 595.0).toFloat() }
             val ph = FloatArray(n) { b.optDouble(it, 842.0).toFloat() }
-            for (i in 0 until n) if (!pageFile(dir, i).let { it.isFile && it.length() > 0 }) return null      // a page was deleted: not finished
+            val bl = m.optJSONArray("bl")
+            val blank = HashSet<Int>(); if (bl != null) for (k in 0 until bl.length()) blank.add(bl.optInt(k))
+            for (i in 0 until n) if (i !in blank && !pageFile(dir, i).let { it.isFile && it.length() > 0 }) return null      // a page was deleted: not finished
             Hit(dir, n, pw, ph)
         } catch (_: Throwable) { null }
     }
@@ -236,6 +246,7 @@ object PdfPageCache {
             job.total = n.toLong()
             readMeta(dir)?.let { writeMeta(dir, it.put("n", n)) }
             var failed = 0
+            val blanks = org.json.JSONArray()
             val sw = FloatArray(n)
             val sh = FloatArray(n)
             for (i in 0 until n) {
@@ -258,6 +269,7 @@ object PdfPageCache {
                             val s = renderTo(r, i, maxOf(b.width / 2, 1), maxOf(b.height / 2, 1))
                             if (!isBlank(s)) { b.recycle(); b = s; bm = s } else s.recycle()
                         } catch (_: Throwable) { }
+                        if (isBlank(b)) { blanks.put(i); job.done = (i + 1).toLong(); continue }      // still white: not stored, the viewer renders it live
                     }
                     val tmp = File(dir, String.format(java.util.Locale.ROOT, "p%04d.tmp", i + 1))
                     val okJ = FileOutputStream(tmp).use { b.compress(Bitmap.CompressFormat.JPEG, JPEG_Q, it) }
@@ -276,7 +288,7 @@ object PdfPageCache {
             if (failed == 0) readMeta(dir)?.let {
                 val ja = org.json.JSONArray(); val jb = org.json.JSONArray()
                 for (i in 0 until n) { ja.put(sw[i].toDouble()); jb.put(sh[i].toDouble()) }
-                it.put("pw", ja); it.put("ph", jb); it.put("complete", true)
+                it.put("pw", ja); it.put("ph", jb); it.put("bl", blanks); it.put("complete", true)
                 writeMeta(dir, it)
             }
             job.label = "PDF ready: $name"

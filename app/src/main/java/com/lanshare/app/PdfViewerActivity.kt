@@ -100,6 +100,7 @@ class PdfViewerActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "pdf-render").also { it.isDaemon = true } }
     private val rlock = Any()
+    private val imgPool = Executors.newFixedThreadPool(2) { r -> Thread(r, "pdf-img").also { it.isDaemon = true } }   // cached page images: never wait behind live PdfRenderer work
     private class RJob(val pos: Int, val w: Int, val h: Int, val have: Bitmap?, val my: Int)
     private val plock = java.lang.Object()    // PdfRenderer allows ONE open page at a time -> every use of it is serialised by rlock
     private val jobs = LinkedHashMap<Int, RJob>()    // guarded by plock: page -> newest request (newer replaces older)
@@ -118,12 +119,13 @@ class PdfViewerActivity : Activity() {
                 }
                 job?.let { jobs.remove(it.pos) }
             }
-            job?.let { try { runRender(it) } catch (_: Throwable) { } }
+            job?.let { j -> try { runRender(j) } catch (_: Throwable) { ui.post { inflight.remove(j.pos) } } }      // a crashed job must not leave the page marked "in flight" forever
         }
     }, "pdf-page").also { it.isDaemon = true }
     @Volatile private var renderer: PdfRenderer? = null
     @Volatile private var pfd: ParcelFileDescriptor? = null
 
+    @Volatile private var lastSrc = ""
     private var pw = FloatArray(0)
     private var ph = FloatArray(0)
     private var pageCount = 0
@@ -363,7 +365,7 @@ class PdfViewerActivity : Activity() {
     private fun updateTitle() {
         titleTv.text = name
         val size = if (srcSize > 0) android.text.format.Formatter.formatShortFileSize(this, srcSize) else ""
-        subTv.text = if (ready) "${curPage + 1} / $pageCount" + (if (size.isNotEmpty()) " \u00b7 $size" else "") else size
+        subTv.text = if (ready) "${curPage + 1} / $pageCount" + (if (size.isNotEmpty()) " \u00b7 $size" else "") + " \u00b7 " + com.lanshare.app.core.PdfPageCache.status(pcDir, pageCount) + " \u00b7 " + lastSrc else size
     }
 
     private fun paintNightBtn() { nightBtn.setTextColor(if (night) 0xFFFFD54F.toInt() else Color.WHITE) }
@@ -786,6 +788,28 @@ class PdfViewerActivity : Activity() {
         val flying = inflight[pos]
         if (flying != null && flying >= w - 1) return
         inflight[pos] = w
+        val d = pcDir
+        if (d != null && com.lanshare.app.core.PdfPageCache.pageFile(d, pos).isFile) {       // image on disk: decode it on its own threads
+            val my = rgen
+            val up = w <= viewW + 2
+            try {
+                imgPool.execute {
+                    val bm = try { com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, up) } catch (_: Throwable) { null }
+                    ui.post {
+                        if (my != rgen || isDestroyed) return@post
+                        inflight.remove(pos)
+                        if (bm != null) { lastSrc = "img"; failedPages.remove(pos); failCount.remove(pos); cache.put(pos, bm); holder(pos)?.v?.let { it.failMsg = null; it.bmp = bm }; updateTitle() }
+                        else if (holder(pos) != null) queueLive(pos, w, h, have)      // unreadable image: render the page from the PDF instead
+                    }
+                }
+                return
+            } catch (_: java.util.concurrent.RejectedExecutionException) { inflight.remove(pos); return }
+        }
+        queueLive(pos, w, h, have)
+    }
+
+    private fun queueLive(pos: Int, w: Int, h: Int, have: Bitmap?) {
+        inflight[pos] = w
         synchronized(plock) { jobs[pos] = RJob(pos, w, h, have, rgen); plock.notifyAll() }
     }
 
@@ -840,9 +864,10 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
-        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, w <= viewW + 2)?.let { return it } }     // cached page: no rendering needed
+        pcDir?.let { d -> com.lanshare.app.core.PdfPageCache.read(d, pos, w, h, w <= viewW + 2)?.let { lastSrc = "img"; return it } }     // cached page: no rendering needed
         synchronized(rlock) {
             val r = renderer ?: return null
+            lastSrc = "live"
             com.lanshare.app.core.PdfPageCache.lastUse = SystemClock.uptimeMillis()
             val pg = r.openPage(pos)
             try {
@@ -1219,7 +1244,7 @@ class PdfViewerActivity : Activity() {
         alive = false
         com.lanshare.app.core.PdfPageCache.viewers.decrementAndGet()
         synchronized(plock) { jobs.clear(); plock.notifyAll() }
-        pool.shutdownNow()
+        pool.shutdownNow(); imgPool.shutdownNow()
         thumbDlg?.dismiss()
         try { ocrEng?.close() } catch (_: Throwable) {}
         closeDoc()
