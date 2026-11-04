@@ -102,21 +102,21 @@ class PdfViewerActivity : Activity() {
     private val rlock = Any()
     private class RJob(val pos: Int, val w: Int, val h: Int, val have: Bitmap?, val my: Int)
     private val plock = java.lang.Object()    // PdfRenderer allows ONE open page at a time -> every use of it is serialised by rlock
-    private val pending = LinkedHashMap<Int, RJob>()    // guarded by plock: page -> newest request (newer replaces older)
+    private val jobs = LinkedHashMap<Int, RJob>()    // guarded by plock: page -> newest request (newer replaces older)
     @Volatile private var alive = true
     private val worker = Thread({
         while (alive) {
             var job: RJob? = null
             synchronized(plock) {
-                while (alive && pending.isEmpty()) { try { plock.wait() } catch (_: InterruptedException) { return@Thread } }
+                while (alive && jobs.isEmpty()) { try { plock.wait() } catch (_: InterruptedException) { return@Thread } }
                 if (!alive) return@Thread
                 val c = curPage
                 var best = Long.MAX_VALUE
-                for (j in pending.values) {       // pages on screen first, nearest to the reading position first, then the pre-rendered neighbours
+                for (j in jobs.values) {       // pages on screen first, nearest to the reading position first, then the pre-rendered neighbours
                     val sc = Math.abs(j.pos - c).toLong() + (if (bound.contains(j.pos)) 0L else 100000L)
                     if (sc < best) { best = sc; job = j }
                 }
-                job?.let { pending.remove(it.pos) }
+                job?.let { jobs.remove(it.pos) }
             }
             job?.let { try { runRender(it) } catch (_: Throwable) { } }
         }
@@ -742,7 +742,7 @@ class PdfViewerActivity : Activity() {
         val flying = inflight[pos]
         if (flying != null && flying >= w - 1) return
         inflight[pos] = w
-        synchronized(plock) { pending[pos] = RJob(pos, w, h, have, rgen); plock.notifyAll() }
+        synchronized(plock) { jobs[pos] = RJob(pos, w, h, have, rgen); plock.notifyAll() }
     }
 
     /** Runs on the "pdf-page" thread. */
@@ -1171,7 +1171,7 @@ class PdfViewerActivity : Activity() {
         ui.removeCallbacksAndMessages(null)
         savePos()
         alive = false
-        synchronized(plock) { pending.clear(); plock.notifyAll() }
+        synchronized(plock) { jobs.clear(); plock.notifyAll() }
         pool.shutdownNow()
         thumbDlg?.dismiss()
         try { ocrEng?.close() } catch (_: Throwable) {}
