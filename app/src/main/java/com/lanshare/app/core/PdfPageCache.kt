@@ -200,7 +200,10 @@ object PdfPageCache {
         return d
     }
 
-    private fun trimPrivate(root: File, keep: File) = trimGroup(root.listFiles()?.filter { it.isDirectory } ?: return, keep)
+    private fun trimPrivate(root: File, keep: File) {
+        val dirs = root.listFiles()?.filter { it.isDirectory } ?: return
+        trimGroup(dirs, keep)
+    }
 
     private fun size(d: File) = d.listFiles()?.sumOf { it.length() } ?: 0L
 
