@@ -59,12 +59,14 @@ object PdfPageCache {
             val app = ctx.applicationContext
             val sig = if (local != null) "${local.length()}:${local.lastModified()}" else key
             val dir = chooseDir(app, local, name, key) ?: return null
-            var meta = readMeta(dir)
-            if (meta == null || meta.optString("sig") != sig) {        // new or changed PDF: start clean
+            val old = readMeta(dir)
+            val meta: JSONObject
+            if (old == null || old.optString("sig") != sig) {        // new or changed PDF: start clean
                 dir.listFiles()?.forEach { if (it.name.startsWith("p") || it.name == "meta.json") it.delete() }
-                meta = JSONObject().put("v", 1).put("sig", sig).put("cw", cw).put("n", 0).put("complete", false)
+                meta = JSONObject()
+                meta.put("v", 1); meta.put("sig", sig); meta.put("cw", cw); meta.put("n", 0); meta.put("complete", false)
                 writeMeta(dir, meta)
-            }
+            } else meta = old
             if (!meta.optBoolean("complete", false)) enqueue(app, pdf, dir, name, meta.optInt("cw", cw), maxW, maxPx)
             dir
         } catch (e: Throwable) { Log.w(TAG, "attach failed: $e"); null }
