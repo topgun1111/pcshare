@@ -99,7 +99,28 @@ class PdfViewerActivity : Activity() {
 
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newSingleThreadExecutor { r -> Thread(r, "pdf-render").also { it.isDaemon = true } }
-    private val rlock = Any()                          // PdfRenderer allows ONE open page at a time -> every use is serialised
+    private val rlock = Any()
+    private class RJob(val pos: Int, val w: Int, val h: Int, val have: Bitmap?, val my: Int)
+    private val plock = java.lang.Object()    // PdfRenderer allows ONE open page at a time -> every use of it is serialised by rlock
+    private val pending = LinkedHashMap<Int, RJob>()    // guarded by plock: page -> newest request (newer replaces older)
+    @Volatile private var alive = true
+    private val worker = Thread({
+        while (alive) {
+            var job: RJob? = null
+            synchronized(plock) {
+                while (alive && pending.isEmpty()) { try { plock.wait() } catch (_: InterruptedException) { return@Thread } }
+                if (!alive) return@Thread
+                val c = curPage
+                var best = Long.MAX_VALUE
+                for (j in pending.values) {       // pages on screen first, nearest to the reading position first, then the pre-rendered neighbours
+                    val sc = Math.abs(j.pos - c).toLong() + (if (bound.contains(j.pos)) 0L else 100000L)
+                    if (sc < best) { best = sc; job = j }
+                }
+                job?.let { pending.remove(it.pos) }
+            }
+            job?.let { try { runRender(it) } catch (_: Throwable) { } }
+        }
+    }, "pdf-page").also { it.isDaemon = true }
     @Volatile private var renderer: PdfRenderer? = null
     @Volatile private var pfd: ParcelFileDescriptor? = null
 
@@ -179,6 +200,7 @@ class PdfViewerActivity : Activity() {
         }
         night = getSharedPreferences(SET_PREFS, MODE_PRIVATE).getBoolean("night", false)
         File(cacheDir, "pdf").deleteRecursively()
+        worker.start()
         buildUi()
         begin()
     }
@@ -205,7 +227,8 @@ class PdfViewerActivity : Activity() {
             layoutManager = lm
             itemAnimator = null
             clipToPadding = false
-            setItemViewCacheSize(2)
+            setItemViewCacheSize(4)
+            recycledViewPool.setMaxRecycledViews(0, 12)
             setPadding(0, dp(56), 0, dp(16))
             adapter = pageAd
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -469,16 +492,17 @@ class PdfViewerActivity : Activity() {
             r = PdfRenderer(p)
             val n = r.pageCount
             if (n <= 0) throw IOException("This PDF has no pages")
+            // Only page 1 is read here (opening every page of a big PDF took many seconds); the rest start with the same size
+            // and are corrected by scanSizes() in the background, so the document shows at once.
             val w = FloatArray(n)
             val h = FloatArray(n)
-            for (i in 0 until n) {
-                if (my != gen) throw IOException("cancelled")
-                try {
-                    val pg = r.openPage(i)
-                    try { w[i] = pg.width.toFloat(); h[i] = pg.height.toFloat() } finally { pg.close() }
-                } catch (e: Exception) { Log.w(TAG, "page " + (i + 1) + ": size unreadable: " + e) }
-                if (w[i] <= 0f || h[i] <= 0f || w[i].isNaN() || h[i].isNaN()) { w[i] = 595f; h[i] = 842f }
-            }
+            var w0 = 595f; var h0 = 842f
+            try {
+                val pg = r.openPage(0)
+                try { w0 = pg.width.toFloat(); h0 = pg.height.toFloat() } finally { pg.close() }
+            } catch (e: Exception) { Log.w(TAG, "page 1: size unreadable: " + e) }
+            if (w0 <= 0f || h0 <= 0f || w0.isNaN() || h0.isNaN()) { w0 = 595f; h0 = 842f }
+            java.util.Arrays.fill(w, w0); java.util.Arrays.fill(h, h0)
             val rr = r
             val pp = p
             ui.post {
@@ -508,6 +532,59 @@ class PdfViewerActivity : Activity() {
         curPage = start
         updateTitle()
         if (viewW > 0) showPages(start) else pendingStart = start
+        if (n > 1) scanSizes(gen, n)
+    }
+
+    /** Background: reads the real size of pages 2..n (one short lock per page, so rendering is never held up) and applies differences in batches. */
+    private fun scanSizes(my: Int, n: Int) {
+        Thread {
+            val ci = IntArray(64); val cw = FloatArray(64); val ch = FloatArray(64)
+            var k = 0
+            var lastFlush = SystemClock.uptimeMillis()
+            fun flush() {
+                if (k == 0) return
+                val m = k; k = 0
+                val ii = ci.copyOf(m); val ww = cw.copyOf(m); val hh = ch.copyOf(m)
+                ui.post { if (my == gen && !isDestroyed) applySizes(ii, ww, hh) }
+            }
+            for (i in 1 until n) {
+                if (my != gen) return@Thread
+                var w = 0f; var h = 0f
+                synchronized(rlock) {
+                    val r = renderer ?: return@Thread
+                    try {
+                        val pg = r.openPage(i)
+                        try { w = pg.width.toFloat(); h = pg.height.toFloat() } finally { pg.close() }
+                    } catch (_: Exception) { }
+                }
+                if (w > 0f && h > 0f && !w.isNaN() && !h.isNaN() && (Math.abs(w - pw[i]) > 0.5f || Math.abs(h - ph[i]) > 0.5f)) {
+                    ci[k] = i; cw[k] = w; ch[k] = h; k++
+                    if (k == ci.size) flush()
+                }
+                val now = SystemClock.uptimeMillis()
+                if (now - lastFlush > 300) { flush(); lastFlush = now }
+                Thread.yield()
+            }
+            flush()
+        }.also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    /** UI thread: pages whose real size differs from the guess get the new size; the page on top of the screen stays where it is. */
+    private fun applySizes(ii: IntArray, ww: FloatArray, hh: FloatArray) {
+        if (!ready) return
+        val f = lm.findFirstVisibleItemPosition()
+        val fv = if (f >= 0) lm.findViewByPosition(f) else null
+        val keepTop = fv?.top ?: 0
+        var above = false
+        for (j in ii.indices) {
+            val i = ii[j]
+            if (i !in 0 until pageCount) continue
+            pw[i] = ww[j]; ph[i] = hh[j]
+            cache.remove(i); inflight.remove(i); thumbCache.remove(i)
+            if (f >= 0 && i < f) above = true
+            pageAd.notifyItemChanged(i)
+        }
+        if (above && f >= 0) rv.post { lm.scrollToPositionWithOffset(f, keepTop - rv.paddingTop) }
     }
 
     private fun showPages(at: Int) {
@@ -647,7 +724,7 @@ class PdfViewerActivity : Activity() {
     /** Once scrolling stops: render the next two pages and the previous one at normal size, so turning a page shows it at once. */
     private fun prefetch() {
         ahead.clear()
-        for (dlt in intArrayOf(1, 2, -1)) {
+        for (dlt in intArrayOf(1, 2, 3, -1)) {
             val q = curPage + dlt
             if (q in 0 until pageCount && !bound.contains(q)) { ahead.add(q); request(q, true) }
         }
@@ -665,15 +742,20 @@ class PdfViewerActivity : Activity() {
         val flying = inflight[pos]
         if (flying != null && flying >= w - 1) return
         inflight[pos] = w
-        val my = rgen
-        try {
-            pool.execute {
+        synchronized(plock) { pending[pos] = RJob(pos, w, h, have, rgen); plock.notifyAll() }
+    }
+
+    /** Runs on the "pdf-page" thread. */
+    private fun runRender(j: RJob) {
+        val pos = j.pos; val w = j.w; val h = j.h; val have = j.have; val my = j.my
+        run {
+            run {
                 var bm: Bitmap? = null
                 var tried = false
                 var err: Throwable? = null
                 if (my == rgen && (bound.contains(pos) || ahead.contains(pos))) {          // skipped when the page already scrolled away
                     tried = true
-                    if (have == null && w >= 900) {              // quick small version first, so a page is never blank while the sharp one is made
+                    if (have == null && w >= 600) {              // quick small version first, so a page is never blank while the sharp one is made
                         val sm = try { renderPage(pos, maxOf(w / 3, 1), maxOf(h / 3, 1)) } catch (_: Throwable) { null }
                         if (sm != null) ui.post { if (my == rgen && !isDestroyed) holder(pos)?.v?.let { if (it.bmp == null) it.bmp = sm } }
                     }
@@ -710,7 +792,7 @@ class PdfViewerActivity : Activity() {
                     }
                 }
             }
-        } catch (_: java.util.concurrent.RejectedExecutionException) { inflight.remove(pos) }
+        }
     }
 
     private fun renderPage(pos: Int, w: Int, h: Int): Bitmap? {
@@ -1088,6 +1170,8 @@ class PdfViewerActivity : Activity() {
         gen++; rgen++
         ui.removeCallbacksAndMessages(null)
         savePos()
+        alive = false
+        synchronized(plock) { pending.clear(); plock.notifyAll() }
         pool.shutdownNow()
         thumbDlg?.dismiss()
         try { ocrEng?.close() } catch (_: Throwable) {}
