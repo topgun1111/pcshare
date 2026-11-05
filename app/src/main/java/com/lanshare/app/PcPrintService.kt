@@ -122,6 +122,7 @@ class PcPrintService : PrintService() {
                 openInApp(f.name)
             } catch (e: Exception) {
                 PrintLog.err("svc-job-failed", jid, e, "label" to (try { job.info.label } catch (_: Exception) { null }))
+                Haptics.play("fail")
                 try { job.fail(e.message ?: "LANShare could not read the document") } catch (_: Exception) {}
             }
         }.start()

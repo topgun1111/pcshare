@@ -48,16 +48,17 @@ object Haptics {
             "success" -> wave(v, longArrayOf(0, 12, 55, 22), intArrayOf(0, 140, 0, 230))
             "error" -> wave(v, longArrayOf(0, 40, 50, 40, 50, 40), intArrayOf(0, 255, 0, 255, 0, 255))
             "warn" -> wave(v, longArrayOf(0, 30, 70, 30), intArrayOf(0, 220, 0, 220))
+            "fail" -> wave(v, longArrayOf(0, 700), intArrayOf(0, 255))   // print failure: one long, full-strength buzz
             "select" -> if (pre) VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK) else VibrationEffect.createOneShot(10, 110)
             else -> null
         }
     } catch (_: Throwable) { null }
 
-    /** [kind]: tick | click | heavy | long | double | success | error | warn | select, or a number of ms. */
+    /** [kind]: tick | click | heavy | long | double | success | error | warn | fail (long) | select, or a number of ms. */
     fun play(kind: String) {
         if (!enabled) return
         val v = vib ?: return
-        if (Build.VERSION.SDK_INT < 26) { try { @Suppress("DEPRECATION") v.vibrate(kind.toLongOrNull() ?: if (kind == "tick" || kind == "select") 8L else if (kind == "heavy" || kind == "long") 25L else 14L) } catch (_: Throwable) {}; return }
+        if (Build.VERSION.SDK_INT < 26) { try { @Suppress("DEPRECATION") v.vibrate(kind.toLongOrNull() ?: if (kind == "fail") 700L else if (kind == "tick" || kind == "select") 8L else if (kind == "heavy" || kind == "long") 25L else 14L) } catch (_: Throwable) {}; return }
         try {
             if (!v.hasVibrator()) return
             val ms = kind.toLongOrNull()

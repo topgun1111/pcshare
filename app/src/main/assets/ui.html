@@ -870,11 +870,17 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 <div id=dedge></div><div id=dscrim></div><aside id=dwr aria-label="Navigation"><div id=dtabs></div><div id=dbody></div><div id=dfoot></div></aside>
 <div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=gal></div><div id=home></div><div id=dlg></div>
 <script>
-/* Haptics: every navigator.vibrate() in the page goes through the native bridge (alarm usage, so Battery saver does not mute it) and
-   buttons / chips / list rows / switches give a short tick on touch. hp('success'|'error'|'warn'|'click'|'heavy'|'double'|'select') for events. */
+/* Haptics: every navigator.vibrate() in the page goes through the native bridge (alarm usage, so Battery saver does not mute it).
+   hp('success'|'error'|'warn'|'click'|'heavy'|'double'|'select'|'tick') for events. */
 const hp=k=>{try{window.LSAndroid&&LSAndroid.haptic&&LSAndroid.haptic(k)}catch(_){}};
 try{navigator.vibrate=function(p){try{if(window.LSAndroid&&LSAndroid.hapticPattern){LSAndroid.hapticPattern(Array.isArray(p)?p.join(','):String(p));return true}}catch(_){}return false}}catch(_){}
-{let lastHp=0;document.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;const t=e.target&&e.target.closest&&e.target.closest('button,.chip,.li,.tbtn,.sw,.tile,[role=button],[role=switch],input[type=checkbox],input[type=radio],select');if(!t||t.disabled)return;const n=Date.now();if(n-lastHp<40)return;lastHp=n;hp('tick')},{passive:true,capture:true})}
+/* Haptics are used only where they mean something: long-press (select / drag), a switch flipping, pull-to-refresh reaching its threshold,
+   and a toast that reports an outcome (failure = double buzz, success = short double, copied = click). Plain taps give no vibration. */
+{let lastT=0;window.toastHp=m=>{const n=Date.now();if(n-lastT<600)return;m=String(m==null?'':m);
+  const k=/^\s*\u26a0/.test(m)?'warn':/^\s*(\u2705|Found it|Signed in|Settings (restored|imported)|Restored|Freed|Bin emptied)/.test(m)?'success':/^Copied/.test(m)?'click':'';
+  if(k){lastT=n;hp(k)}};
+  window.hpFail=()=>{lastT=Date.now();hp('fail')};   // print failure: one long buzz (and the \u26a0 toast right after stays silent)
+  document.addEventListener('change',e=>{const t=e.target;if(t&&t.type==='checkbox'&&t.closest&&t.closest('.sw'))hp('select')},true)}
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const IC={
@@ -990,7 +996,7 @@ async function api(m,u,b,ms){
   let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
   if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
 let tt;
-function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');$('#tx').textContent=msg;
+function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');if(pct==null)try{toastHp(msg)}catch(_){}$('#tx').textContent=msg;
   b.style.display=pct==null?'none':'block';$('#tc').style.display=pct==null?'none':'inline-block';if(pct!=null)b.firstChild.style.width=pct+'%';
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
@@ -5121,7 +5127,7 @@ async function track(id){
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
     if(j.state!=='run'&&j.bin&&j.bin.length)ubShow(j.bin);   // delete job that put things into the Recycle bin: round Undo button for 5 s
-    if(j.state==='error'){const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
+    if(j.state==='error'){if(/^(Printing on|Saving PDF)/.test(j.label||''))try{hpFail()}catch(_){}const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
     if(j.state==='cancel'){const c=lvEnd(id,j);if(!c)toast('Cancelled',2500);break}
     if(j.state==='done'){const c=lvEnd(id,j);if(!c)toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}
     const card=lvFeed(id,j);
@@ -5221,7 +5227,7 @@ jbKick();   // jobs outlive the page: show the ones already running after a relo
     if(dy<=0||!atTop()){if(dy<=0){on=false;setH(0)}return}
     if(e.cancelable)e.preventDefault();
     if(dy<16)return;
-    const h=Math.min(dy*0.5,TH+20);setH(h);const ready=h>=TH;box.classList.toggle('go',ready);
+    const h=Math.min(dy*0.5,TH+20);setH(h);const ready=h>=TH;if(ready&&!box.classList.contains('go'))hp('tick');box.classList.toggle('go',ready);
     lab.textContent=ready?'↻ Release to refresh':'↓ Pull to refresh'},{passive:false});
   const end=async()=>{if(!on)return;on=false;
     if(dy>=16&&dy*0.5>=TH&&!busy){busy=true;box.classList.add('go');lab.textContent='Refreshing…';setH(46);

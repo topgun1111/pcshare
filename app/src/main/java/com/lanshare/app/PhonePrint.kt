@@ -50,6 +50,7 @@ class PhonePrint(private val act: Activity) {
     private val io = Executors.newSingleThreadExecutor()     // layout + page rendering (PdfRenderer is not thread-safe)
 
     private fun toast(t: String) = act.runOnUiThread { Toast.makeText(act, t, Toast.LENGTH_LONG).show() }
+    private fun failToast(t: String) { Haptics.play("fail"); toast(t) }
     @Volatile private var jid: String? = null   // print log id of the job being set up (A000n)
 
     private class In(val name: String, val file: File, val kind: String)
@@ -76,7 +77,7 @@ class PhonePrint(private val act: Activity) {
         val j = PrintLog.jid(); jid = j
         pool.execute {
             PrintLog.bind(j)
-            try { prepare(json) } catch (e: Exception) { PrintLog.err("phone-print-failed", j, e, "step" to "prepare"); toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+            try { prepare(json) } catch (e: Exception) { PrintLog.err("phone-print-failed", j, e, "step" to "prepare"); failToast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
         }
     }
 
@@ -125,7 +126,7 @@ class PhonePrint(private val act: Activity) {
             askLayout(imgs) { layout ->
                 pool.execute {
                     PrintLog.bind(jid)
-                    try { build(ins, if (trimOn && layout == 1) 0 else layout, duplex) } catch (e: Exception) { PrintLog.err("phone-print-failed", jid, e, "step" to "build"); toast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
+                    try { build(ins, if (trimOn && layout == 1) 0 else layout, duplex) } catch (e: Exception) { PrintLog.err("phone-print-failed", jid, e, "step" to "build"); failToast("Print failed: " + (e.message ?: e.javaClass.simpleName)) }
                 }
             }
         }
@@ -172,7 +173,7 @@ class PhonePrint(private val act: Activity) {
                 PrintLog.ev("phone-print-dialog", jid, "media" to attrs.mediaSize?.id, "landscape" to (attrs.mediaSize?.isPortrait == false))
             } catch (e: Exception) {
                 PrintLog.err("phone-print-failed", jid, e, "step" to "print-manager")
-                toast("Print failed: " + (e.message ?: e.javaClass.simpleName))
+                failToast("Print failed: " + (e.message ?: e.javaClass.simpleName))
                 io.execute { adapter.release() }
             }
         }

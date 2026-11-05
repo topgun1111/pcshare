@@ -182,12 +182,14 @@ class PrintLiveActivity : Activity() {
             return
         }
         val st = s.optString("state", "idle")
-        if (st != lastState) lastState = st
+        val stChanged = st != lastState
+        if (stChanged) lastState = st
         val col = COL[st] ?: DIM
         icon.text = ICON[st] ?: "\u25cf"; icon.setTextColor(col)
         title.text = TITLE[st] ?: st; title.setTextColor(col)
         val t0 = s.optDouble("t0", 0.0); val t1 = s.optDouble("t1", 0.0); val now = s.optDouble("now", 0.0)
         val el = if (t0 > 0) (if (t1 > 0) t1 else now) - t0 else 0.0
+        if (stChanged && st == "failed" && (t1 <= 0 || now - t1 < 20)) Haptics.play("fail")   // a fresh failure only, not an old one when the screen is opened
         val jid = if (s.isNull("jid")) "" else s.optString("jid")
         sub.text = (if (t0 > 0) "${el.toInt()} s" else "") + (if (jid.isNotEmpty()) "  \u00b7  job $jid" else "")
         val files = s.optJSONArray("files")
