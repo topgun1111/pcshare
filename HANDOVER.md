@@ -1,5 +1,7 @@
 # LANShare - Project Handover
 
+> **WARNING (owner, 2026-11-05) - TOKEN ECONOMY: always watch token use, never waste tokens (short replies, read only what is needed, no recaps). Obey this ALWAYS, unless there is a serious danger of a code error.**
+
 > **READ FIRST - CHANGE LOG RULE (owner, 2026-10-26) - do this in EVERY session that changes the app, before you zip**
 > - The app's **update dialog shows a change log BEFORE the download button** (what was added / removed / changed, for every version the user skipped). It comes from **`CHANGELOG.md`** in the repo root: CI (`build-apk.yml`, step *Release notes*) publishes the **TOP `## ` section** of that file as the GitHub release body, and `UpdateCheck.kt` (`changeView` / `notesText`) renders it (green **Added**, red **Removed**, accent for Changed / Fixed).
 > - **Session checklist (never skip):** (1) add a NEW section at the TOP of `CHANGELOG.md` (below the note lines): `## YYYY-MM-DD - short title`, then `### Added` / `### Removed` / `### Changed` / `### Fixed` with `- ` bullets, plain words for the owner, one line per visible change, no file names; (2) add the developer-level line to section 14 of this file as before; (3) only then zip. A session that changed the app but did not touch `CHANGELOG.md` is **not finished**.
