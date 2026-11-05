@@ -1341,6 +1341,7 @@ function nlHeadPush(V){
     s:[n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):''),fo&&fi?fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files'):''],
     n:S.newest?1:0,t:(SORTS[S.sort]||{t:''}).t,d:S.sort==='none'?0:S.asc?1:2}))}
 function nlLay(force){if(!NL||!NLL)return;
+  if((window.scrollY||0)>0)window.scrollTo(0,0);   // the hidden HTML list under the native one must never scroll: it shifted #list's rect (native list top) and the head geometry
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   const r=$('#list').getBoundingClientRect(),dh=parseFloat(getComputedStyle(document.body).getPropertyValue('--dockh'))||0;
   const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
