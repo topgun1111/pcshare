@@ -121,7 +121,7 @@ internal class PdfBuildClient(
             override fun onBindingDied(n: ComponentName) = died()
         }
         conn = c
-        return try { app.bindService(Intent(app, PdfBuildService::class.java), c, Context.BIND_AUTO_CREATE) } catch (_: Throwable) { false }
+        return try { app.bindService(Intent(app, PdfBuildService::class.java), c, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_ABOVE_CLIENT) } catch (_: Throwable) { false }
     }
 
     private fun unbind() { out = null; conn?.let { try { app.unbindService(it) } catch (_: Throwable) { } }; conn = null }

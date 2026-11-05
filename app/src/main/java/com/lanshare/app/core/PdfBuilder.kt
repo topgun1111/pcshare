@@ -30,7 +30,8 @@ object PdfBuilder {
     private val lock = Any()                                  // one render at a time in the process
 
     fun run(app: Context, pdf: File, dir: File, cw: Int, maxW: Int, maxPx: Int, q: Int, s: Sink, cancel: () -> Boolean, focus: () -> Int) {
-        try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) } catch (_: Throwable) { }
+        // DEFAULT, not BACKGROUND: the background cgroup gets only a few % of CPU once the app is minimized, which made the build crawl
+        try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT) } catch (_: Throwable) { }
         val wl = try {
             app.getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "lanshare:pdfcache")
                 .apply { setReferenceCounted(false); acquire(3L * 3600 * 1000) }
