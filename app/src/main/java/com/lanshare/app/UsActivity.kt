@@ -315,6 +315,15 @@ class UsActivity : Activity() {
     private fun opts() = UsSearch.optsOf(oCase, oWord, oPath, oDiac, oRe)
 
     /** [reset] = new query (rows replaced); otherwise the next page is appended. [keep] = refresh: reload at least that many rows. */
+    /** Paths just moved to the recycle bin. The name index only learns about it after its debounce (~1.5 s+), so a re-query would still return them: hide them until then. */
+    private val gone = HashMap<String, Long>()
+    private fun isGone(r: UsSearch.Row): Boolean {
+        if (gone.isEmpty()) return false
+        val now = System.currentTimeMillis()
+        val it = gone.entries.iterator(); while (it.hasNext()) if (now - it.next().value > 30_000L) it.remove()
+        return gone.containsKey(r.path)
+    }
+
     private fun runQuery(reset: Boolean, keep: Int) {
         val text = et.text.toString()
         lastText = text
@@ -336,18 +345,24 @@ class UsActivity : Activity() {
                 loading = false
                 if (every) {
                     rows.clear(); list.setSelection(0)
-                    val g = groups?.filter { it.out.rows.isNotEmpty() } ?: emptyList()
+                    val g = groups?.filter { it.out.rows.any { r -> !isGone(r) } } ?: emptyList()
                     secs = g
-                    var n = 0; var t = 0L
-                    for (x in g) { rows.add(pseudoRow(-1000 - n, UsSections.title(UsSections.Sec(x.id, x.title, x.query), x.out.total, x.out.approx), "#h:" + x.id)); rows.addAll(x.out.rows); n++; t += x.out.ms }
-                    total = g.sumOf { it.out.rows.size }; approx = false; ms = t; more = false
+                    var n = 0; var t = 0L; var shown = 0
+                    for (x in g) {
+                        val keepRows = x.out.rows.filter { r -> !isGone(r) }
+                        val dropped = x.out.rows.size - keepRows.size
+                        rows.add(pseudoRow(-1000 - n, UsSections.title(UsSections.Sec(x.id, x.title, x.query), (x.out.total - dropped).coerceAtLeast(keepRows.size), x.out.approx), "#h:" + x.id))
+                        rows.addAll(keepRows); shown += keepRows.size; n++; t += x.out.ms
+                    }
+                    total = shown; approx = false; ms = t; more = false
                     lastNote = groups?.flatMap { it.out.notes }?.firstOrNull() ?: ""
                 } else {
                     secs = emptyList()
                     if (out == null) { rows.clear(); total = 0; more = false; ad.notifyDataSetChanged(); setInfo(); refreshBanner(true); return@post }
                     if (reset) { rows.clear(); list.setSelection(0) }
-                    rows.addAll(out.rows)
-                    total = out.total; approx = out.approx; ms = out.ms
+                    val keepRows = out.rows.filter { r -> !isGone(r) }
+                    rows.addAll(keepRows)
+                    total = (out.total - (out.rows.size - keepRows.size)).coerceAtLeast(rows.size); approx = out.approx; ms = out.ms
                     more = out.complete && rows.size < total && out.rows.isNotEmpty() && rows.size < 20000
                     lastNote = out.notes.firstOrNull() ?: ""
                 }
@@ -961,6 +976,7 @@ class UsActivity : Activity() {
         Thread {
             var done = 0; var bytes = 0L; var moved = 0
             val fails = ArrayList<String>()
+            val movedRows = ArrayList<UsSearch.Row>()
             for ((r, v) in jobs) {
                 if (cancel.get()) break
                 val i = done + 1; val where = r.path.substringBeforeLast('/', "/").ifEmpty { "/" }
@@ -970,7 +986,7 @@ class UsActivity : Activity() {
                     whereTv.text = "In: " + where
                     sizeTv.text = (if (r.dir) "Folder" else NlModel.fmt(r.size)) + (if (r.mtime > 0) "  \u00b7  " + dateF.format(Date(r.mtime * 1000L)) else "")
                 }
-                try { Bin.trash(v); moved++ } catch (e: Throwable) { fails.add(r.name + " \u2013 " + (e.message ?: e.javaClass.simpleName).take(80)) }
+                try { Bin.trash(v); moved++; movedRows.add(r) } catch (e: Throwable) { fails.add(r.name + " \u2013 " + (e.message ?: e.javaClass.simpleName).take(80)) }
                 done++; if (!r.dir) bytes += r.size
                 val el = System.currentTimeMillis() - t0
                 val left = if (done in 1 until n && el > 1500) el * (n - done) / done else 0L
@@ -986,7 +1002,13 @@ class UsActivity : Activity() {
                 else AppPal.dlg(this).setTitle(fails.size.toString() + " could not be moved")
                     .setMessage(moved.toString() + " moved, " + fails.size + " failed:\n\n" + fails.take(8).joinToString("\n") + (if (fails.size > 8) "\n+ " + (fails.size - 8) + " more" else ""))
                     .setPositiveButton("OK", null).show()
-                endSel(false); runQuery(true, keep)
+                // the moved items vanish from the list at once; the index catches up a moment later and the banner tick re-runs the query
+                val now = System.currentTimeMillis()
+                for (r in movedRows) gone[r.path] = now
+                val ids = movedRows.map { it.id }.toSet()
+                rows.removeAll { !pseudo(it) && ids.contains(it.id) }
+                endSel(false); ad.notifyDataSetChanged(); setInfo()
+                runQuery(true, keep)
             }
         }.also { it.isDaemon = true }.start()
     }
