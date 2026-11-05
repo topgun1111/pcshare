@@ -21,6 +21,9 @@ object Bin {
         fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("shown", shown).put("dir", dir).put("size", size).put("from", from).put("at", at)
     }
 
+    /** Whole days left before the automatic purge of an item deleted at [atSec] (epoch seconds); never below 0. */
+    fun leftDays(atSec: Long): Long = maxOf(0L, KEEP_DAYS - (System.currentTimeMillis() / 1000 - atSec) / 86400)
+
     private fun root(): File = File(Core.local.root, NAME)
 
     /** Paths inside the bin (or the bin itself) are never re-trashed: deleting there is permanent. */
@@ -107,11 +110,19 @@ object Bin {
     fun physical(v: String): String {
         val n = vnorm(v).trimStart('/')
         if (!n.startsWith("$NAME/")) return v
+        val seg = n.substring(NAME.length + 1).substringBefore('/')
+        return resolve(v, view(), seg.startsWith(".") || File(root(), seg).isDirectory)
+    }
+
+    /** Pure part of [physical] (JVM-testable): [physicalSeg] = the second segment is a dot name or an existing id folder, so the path is already physical. */
+    internal fun resolve(v: String, entries: List<Entry>, physicalSeg: Boolean): String {
+        val n = vnorm(v).trimStart('/')
+        if (!n.startsWith("$NAME/") || physicalSeg) return v
         val rest = n.substring(NAME.length + 1)
         val seg = rest.substringBefore('/')
-        if (seg.startsWith(".") || File(root(), seg).isDirectory) return v
-        val e = view().firstOrNull { it.shown == seg } ?: return v
+        val e = entries.firstOrNull { it.shown == seg } ?: return v
         val sub = rest.substring(seg.length)   // "" or "/deeper/path"
+        if (sub.split('/').any { it == ".." }) return v   // never climb out of the deleted item
         return "/$NAME/${e.id}/${e.name}$sub"
     }
 

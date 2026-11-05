@@ -128,7 +128,13 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         val out = ArrayList<Item>()
         val end = System.currentTimeMillis() + secs * 1000L
         val stack = ArrayDeque<Pair<File, String>>()
-        stack.addLast(real(v) to vnorm(v))
+        if (Bin.isRoot(v)) {   // recycle bin root: search the shown names of the deleted items and everything below the deleted folders (never the id folders / .meta files)
+            for (r in Bin.rootItems(false)) {
+                val rv = vjoin(vnorm(v), r.name)
+                if (r.name.lowercase().contains(ql)) out.add(Item(r.name, r.dir, r.size, r.mtime, null, rv, false, r.bid))
+                if (r.dir) stack.addLast(real(rv) to rv)
+            }
+        } else stack.addLast(real(v) to vnorm(v))
         while (stack.isNotEmpty()) {
             val (dir, vdir) = stack.removeLast()
             val kids = dir.listFiles() ?: emptyArray()

@@ -158,7 +158,7 @@ object NlModel {
             val dt = if (cp) dateOnly(i) else ""
             val sz = if (i.dir) (if (i.n == null) "Folder" else i.n.toString() + (if (i.n == 1) " item" else " items")) else fmt(i.size)
             val a = if (cp) (if (cfg.sort == "date" && dt.isNotEmpty()) dt else sz) else sz
-            val b = if (cp || i.mtime == 0L) "" else df.format(Date(i.mtime * 1000)) + ", " + tf.format(Date(i.mtime * 1000))
+            val b = if (cp || i.mtime == 0L) "" else df.format(Date(i.mtime * 1000)) + ", " + tf.format(Date(i.mtime * 1000)) + (if (i.bid != null && i.mtime != 0L) " \u00b7 " + com.lanshare.app.core.Bin.leftDays(i.mtime) + "d left" else "")   // recycle bin root rows: days until the automatic purge (twin of ui.html)
             var badge: String? = null; var badgeCol = 0; var dup = false
             var path: String? = null; var size = 0L; var mt = 0L
             var fcol = 0

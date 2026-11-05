@@ -52,7 +52,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 16. Universal Search (multipart plan, in progress)
 17. Google Drive (multipart plan, 11 parts, Parts 1-6 coded)
 19. PDF image viewer (multipart plan, 4 parts, Parts 1-2 coded)
-20. Recycle bin folder view (multipart plan, 4 parts, Parts 1-3 coded)
+20. Recycle bin folder view (multipart plan, 4 parts, ALL coded)
 
 ---
 
@@ -1765,4 +1765,10 @@ A memory stick or disk on an OTG cable is mounted by Android as a storage volume
 
 **Next-session prompt (Part 4):** "Read HANDOVER.md chapter 20 (20.3, Parts list). Do Part 4 (polish and checks). Short replies, patch scripts, full app zip + handover updated."
 
-
+### 20.4 Part 4 as built (2026-11-05; not compiled, `node --check` of ui.html scripts OK; `tools/bin_selftest/BinSelfTest.kt` written, not run)
+- Sort: bin root defaults to Date, newest first (`applyPrefs`, only while the user has no saved view for the bin). View modes / sort menu are the normal ones (already worked on the virtual paths).
+- Row subtitle in the bin root: "date, time - Nd left" (`Bin.leftDays`, KEEP_DAYS 30); `ui.html` row renderer + `NlModel.kt` (rows with `bid`). Compact view unchanged.
+- Search: `LocalFs.search` at the bin root searches the SHOWN names and goes into deleted folders (virtual paths); it no longer walks the id folders / `.meta`. Inside a deleted folder search worked already (`real` maps the path).
+- `Bin.physical` split: pure `Bin.resolve(v, entries, physicalSeg)` (+ rejects `..` in the sub path). `tools/bin_selftest/BinSelfTest.kt` covers duplicate names, plain ambiguous name, folder sub paths, `..`, physical ids, paths outside the bin.
+- Old `openBinSheet()` and its CSS (`.bn .bh .bs .bt .bpg .bl .br`) removed; `binProgress()` / `BINTOK` stay (used by `binDo`).
+- Device checklist: bin root sorted newest first; "Nd left" shown; search a word -> deleted names + files inside deleted folders; two same-named deletes show `name (xxxx)`; Restore / Delete forever / Empty bin still work; switch to grid / compact.

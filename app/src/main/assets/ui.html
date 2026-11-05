@@ -475,16 +475,7 @@ body.kid #list .row.sel{touch-action:none}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:.4}}
 #sheet .card{background:var(--cont);width:100%;max-height:85vh;overflow:auto;overscroll-behavior:contain;padding:8px 16px calc(16px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:4px;animation:up .22s ease-out}
 #sheet .card>*{flex-shrink:0}
-#sheet .card.bn{height:85vh;height:85dvh;overflow:hidden;padding-bottom:0}
-.bn .bh{display:flex;align-items:center;gap:4px}.bn .bh h3{flex:1;margin:0}.bn .bh .tbtn:disabled{opacity:.4}
-.bn .bs{color:var(--mut);font-size:13px;margin:0 4px 2px;min-height:0}.bn .bs:empty{display:none}
-.bn .bt{display:flex;align-items:center;gap:4px;padding:4px 0 8px;border-bottom:1px solid var(--bd);overflow-x:auto}.bn .bt:empty{display:none}.bn .bn1{flex:1;min-width:84px;font-size:14px;font-weight:600;padding-left:4px}
 .bpr{display:none;flex-direction:column;gap:6px;min-width:0;flex:1}.bpr .bpt{font-size:14px;font-weight:600}.bpr .bpb{height:8px;border-radius:4px;background:var(--bd);overflow:hidden}.bpr .bpb i{display:block;height:100%;width:0;background:var(--ac);transition:width .3s}.bpr .bpd{color:var(--mut);font-size:13px;white-space:pre-line;overflow:hidden;text-overflow:ellipsis;word-break:break-word}.bpr .tbtn{align-self:flex-start}.bpc{background:#2e3133;color:#f0f0f0;border-radius:12px;padding:14px 16px;box-shadow:var(--sh)}.bpc .bpd{color:#b8bcc0}.bpc .bpb{background:#ffffff26}.bpc .tbtn{color:#f0f0f0}
-.bn .bpg{display:none;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bd)}.bn .bw{flex:1;min-width:0;font-size:13px}.bn .bp{height:4px;border-radius:2px;background:var(--hov);overflow:hidden;margin-top:6px}.bn .bp i{display:block;height:100%;background:var(--ac);transition:width .25s}
-#sheet .card.bn>.bl{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
-.bn .br{display:flex;align-items:center;gap:14px;padding:10px 6px;min-height:56px;border-bottom:1px solid var(--bd);cursor:pointer;-webkit-tap-highlight-color:transparent}.bn .br.sel{background:color-mix(in srgb,var(--ac) 12%,transparent)}
-.bn .br .t{flex:1;min-width:0}.bn .br .t b{display:block;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bn .br .t small{display:block;color:var(--mut);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bn .bk{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--mut);box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:transparent}.bn .bk svg{width:16px;height:16px;fill:currentColor}.bn .br.sel .bk{background:var(--ac);border-color:var(--ac);color:var(--onac)}
 .pj .pjh{display:flex;align-items:baseline;gap:8px}.pj .pjh h3{flex:1;margin:0}.pj .pjp{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ac)}
 .pj .pjs{color:var(--mut);font-size:13px;margin:2px 0 8px;overflow-wrap:anywhere}.pj .pjb{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:0 0 10px}.pj .pjb i{display:block;height:100%;width:0;background:var(--ac);border-radius:4px;transition:width .3s}
 .pj .pjn{background:var(--bg);border-radius:12px;padding:10px 12px;margin-bottom:10px}.pj .pjnn{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pj .pjnb{height:3px;border-radius:2px;background:var(--bd);overflow:hidden;margin:6px 0 4px}.pj .pjnb i{display:block;height:100%;width:0;background:var(--ac);transition:width .3s}.pj .pjn small{color:var(--mut);font-size:12px}
@@ -955,7 +946,7 @@ let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('r
 try{nlLay(true);nlChPush()}catch(e){}},300)});
 function applyPrefs(){const o0=Object.assign({},G,PF[pfKey()]||{}),o=wideScr()?Object.assign({},o0,PF[pfKey()]?PF[pfKey()].W||{}:G.W||{}):o0;   // unfolded / tablet screen keeps its own view, sort and thumbnail size (stored under W); until chosen there it follows the folded one
  
-  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
+  S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;if(binRoot()&&!PF[pfKey()]){S.sort='date';S.asc=false}   /* recycle bin: newest deletion first until the user picks another order */S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
   S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
   try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
@@ -2057,7 +2048,7 @@ function render(){
     if(isNew(i))lead.append(E('span','nw'));
     const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(S.view==='compact'?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
-    if(S.view==='compact'){const sp=E('span','',S.sort==='date'&&dt?dt:sz);if(i.dir&&!(S.sort==='date'&&dt))i._sz=sp;sub.append(sp)}else{const sp=E('span','',sz);if(i.dir)i._sz=sp;sub.append(sp,E('span','',dt))}
+    if(S.view==='compact'){const sp=E('span','',S.sort==='date'&&dt?dt:sz);if(i.dir&&!(S.sort==='date'&&dt))i._sz=sp;sub.append(sp)}else{const sp=E('span','',sz);if(i.dir)i._sz=sp;sub.append(sp,E('span','',dt+(binRoot()&&i.bid&&i.mtime?' \u00b7 '+Math.max(0,30-Math.floor((Date.now()/1000-i.mtime)/86400))+'d left':'')))}
     const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
@@ -4791,66 +4782,6 @@ function binBar(btn,it){
   btn('copy','Copy',()=>setClip('copy'));
   if(it.length===1)btn('info','Details',()=>doDetails());
   btn('del','Delete forever',async()=>{if(await dlg({title:'Delete '+n+' item'+(n===1?'':'s')+' forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))binDo('purge',ids)},'dng')}
-async function openBinSheet(){
-  const o=$('#sheet');o.textContent='';o.style.display='flex';
-  const tok=BINTOK={};const live=()=>BINTOK===tok;
-  const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
-  const card=E('div','card bn'),hd=E('div','bh'),sub=E('div','bs'),bar=E('div','bt'),pg=E('div','bpg'),BP=binProgress(),list=E('div','bl');pg.append(BP.el);
-  const ttl=E('h3','','Recycle bin'),eb=E('button','tbtn dng','Empty bin'),xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Close');xb.onclick=close;
-  hd.append(ttl,eb,xb);card.append(E('div','handle'),hd,sub,bar,pg,list);o.append(card);
-  let items=[],days=30,sel=new Set(),shown=0,busy=null;const rows=new Map(),CH=80;
-  const plural=n=>n+' item'+(n===1?'':'s');
-  const dateTxt=t=>new Date(t).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  function rowFor(i){
-    const row=E('div','br'+(sel.has(i.id)?' sel':'')),k=E('span','bk'),t=E('div','t'),left=Math.max(0,days-Math.floor((Date.now()-i.at)/86400000));
-    const dir=i.from.slice(0,i.from.lastIndexOf('/'))||'/';
-    k.append(ic('done'));t.append(E('b','',i.name),E('small','',(i.dir?'Folder':fmt(i.size))+' · from '+dir+' · '+dateTxt(i.at)+' · '+left+'d left'));
-    row.append(k,t);row.onclick=()=>{if(busy)return;if(sel.has(i.id)){sel.delete(i.id);row.classList.remove('sel')}else{sel.add(i.id);row.classList.add('sel')}bars()};
-    rows.set(i.id,row);return row}
-  function more(){if(shown>=items.length)return;const f=document.createDocumentFragment();
-    items.slice(shown,shown+CH).forEach(i=>f.append(rowFor(i)));shown=Math.min(items.length,shown+CH);list.append(f)}
-  list.onscroll=()=>{if(list.scrollTop+list.clientHeight>list.scrollHeight-600)more()};
-  function bars(){
-    bar.textContent='';sub.textContent=items.length?plural(items.length)+' · kept '+days+' days · tap to select':'';
-    eb.style.display=items.length?'':'none';eb.disabled=!!busy;
-    if(busy||!items.length)return;
-    const n=sel.size;
-    if(n){const c=E('b','bn1',n+' selected'),rs=E('button','tbtn fill','Restore'),dl=E('button','tbtn dng','Delete'),cl=E('button','tbtn','Clear');
-      rs.onclick=()=>go('restore',[...sel]);dl.onclick=async()=>{if(await dlg({title:'Delete '+plural(n)+' forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))go('purge',[...sel])};
-      cl.onclick=()=>{sel.clear();rows.forEach(r=>r.classList.remove('sel'));bars()};bar.append(c,rs,dl,cl)}
-    else{const all=E('button','tbtn','Select all');all.onclick=()=>{items.forEach(i=>sel.add(i.id));rows.forEach(r=>r.classList.add('sel'));bars()};bar.append(all)}}
-  eb.onclick=async()=>{if(busy||!items.length)return;
-    if(await dlg({title:'Empty the Recycle bin?',msg:plural(items.length)+' will be deleted forever.',ok:'Empty',danger:true}))go('empty',[])};
-  function prog(t){BP.show(t);pg.style.display=t&&t.running?'block':'none'}
-  async function follow(t){   // poll the background task until it ends, then reconcile with the real list
-    if(!t||typeof t!=='object'){toast('\u26a0 Unexpected answer from the phone',5000);return draw()}
-    busy=t;bars();prog(t);
-    try{while(t.running&&live()){await new Promise(r=>setTimeout(r,350));
-        const r=await api('GET','/api/bin?items=0',null,8000);t=r.task||{running:false,done:0,total:0,errors:[],paths:[],op:t.op};if(live()){busy=t.running?t:busy;prog(t)}}}
-    catch(e){if(live())toast('⚠ '+e.message,5000)}
-    busy=null;if(!live())return;prog(null);
-    if(t.errors&&t.errors.length)toast('⚠ '+t.errors.length+' failed: '+t.errors[0],7000);
-    else if(t.op==='restore')toast('Restored '+plural(t.done)+(t.paths&&t.paths.length===1?' to '+(t.paths[0].slice(0,t.paths[0].lastIndexOf('/'))||'/'):''),3500);
-    else toast('Deleted '+plural(t.done),2500);
-    if(t.op==='restore'&&S.dev==='local')load();
-    await draw()}
-  async function go(op,ids){
-    try{const r=await api('POST','/api/bin',{op:op,ids:ids},15000);
-      const gone=op==='empty'?new Set(items.map(i=>i.id)):new Set(ids);   // rows disappear at once, the real result is checked when the task ends
-      items=items.filter(i=>!gone.has(i.id));gone.forEach(id=>{const r=rows.get(id);if(r){r.remove();rows.delete(id)}sel.delete(id)});
-      if(!items.length)list.textContent='';
-      await follow(r.task)}
-    catch(e){toast('⚠ '+e.message,6000);draw()}}
-  async function draw(){
-    let r;try{r=await api('GET','/api/bin',null,30000)}catch(e){if(!live())return;list.textContent='';list.append(E('div','dnote w','⚠ '+e.message));return}
-    if(!live()||o.style.display!=='flex')return;
-    items=r.items||[];days=r.days||30;rows.clear();shown=0;list.textContent='';list.scrollTop=0;
-    const ids=new Set(items.map(i=>i.id));[...sel].forEach(id=>{if(!ids.has(id))sel.delete(id)});
-    if(!items.length)list.append(E('div','dnote','Empty. Deleted items are kept '+days+' days, then removed.'));else more();
-    bars();
-    if(r.task&&r.task.running&&!busy)follow(r.task)}
-  await draw()}
-/* ---- archive details (core/ArcInfo.kt, /api/arcinfo): strip of chips under the tool row while an archive is open + a full sheet on tap ---- */
 const ARCI={};
 const ARCW={};   /* archives already warned about in this session (key -> problem text), so the warning shows once per archive */
 function arcWarn(r,key,root){
