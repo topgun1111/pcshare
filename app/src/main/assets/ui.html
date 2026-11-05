@@ -533,15 +533,16 @@ body.kid #list .row.sel{touch-action:none}
 #jb b{position:relative;font-size:18px;font-weight:700;color:var(--fg)}
 #jb.ind{animation:jbpulse 1.2s ease-in-out infinite}#jb.ok{background:var(--ok)}#jb.bad{background:var(--err)}
 @media (max-width:420px),(max-height:420px){#jb{width:42px;height:42px}#jb b{font-size:15px}}
-#ubn{display:none;position:fixed;left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(var(--dockh,0px) + 84px + env(safe-area-inset-bottom));z-index:22;box-sizing:border-box;width:44px;height:44px;border-radius:50%;padding:0;align-items:center;justify-content:center;background:var(--card);color:var(--fg);border:1px solid var(--bd);box-shadow:var(--sh);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#ubn{display:none;position:fixed;left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(var(--dockh,0px) + 84px + env(safe-area-inset-bottom));z-index:22;box-sizing:border-box;min-width:44px;height:46px;border-radius:23px;padding:0 18px 0 0;gap:4px;align-items:center;justify-content:flex-start;background:var(--card);color:var(--fg);border:1px solid var(--bd);box-shadow:var(--sh);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#ubn .ubc{position:relative;flex:none;width:44px;height:44px;display:grid;place-items:center}
 #ubn:active{transform:scale(.94)}
-#ubn svg{position:absolute;inset:-1px;width:44px;height:44px;transform:rotate(-90deg);pointer-events:none}
+#ubn svg{position:absolute;inset:0;width:44px;height:44px;transform:rotate(-90deg);pointer-events:none}
 #ubn circle{fill:none;stroke-width:3}#ubn .rb{stroke:var(--bd)}
 #ubn .rf{stroke:var(--ac);stroke-linecap:round;stroke-dasharray:119.4;stroke-dashoffset:0}
 #ubn.go .rf{animation:ubn 5s linear forwards}
 @keyframes ubn{to{stroke-dashoffset:119.4}}
 #ubn b{position:relative;font-size:16px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-#ubn small{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;font-size:10px;font-weight:600;color:var(--mut);white-space:nowrap;pointer-events:none}
+#ubn small{font-size:15px;font-weight:600;color:var(--fg);white-space:nowrap;pointer-events:none}
 #jp{display:none;position:fixed;z-index:22;box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:calc(var(--lvh,100vh)*.6);flex-direction:column;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh);padding:8px 12px}
 #jp .jh{display:flex;align-items:center;gap:4px;flex:0 0 auto}#jp .jh b{flex:1;font-size:15px}
 #jp .jh button{background:none;border:0;color:var(--ac);font-size:13px;padding:8px 10px;min-height:40px}#jp .jh .jm{color:var(--fg);font-size:22px;width:40px;padding:0}
@@ -2973,7 +2974,7 @@ function holdMenu(r,i,cb){  // press and hold (or right-click) selects the item;
   const pick=()=>{r._lp=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}
     if(cb)return cb();S.sel.add(i.name);r.classList.add('sel');renderBar()};  // no re-render, so the release tap is still swallowed by _lp
   r.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;r._lp=false;x0=e.touches[0].clientX;y0=e.touches[0].clientY;
-    stop();t=setTimeout(()=>{t=0;pick()},450)},{passive:true});
+    stop();t=setTimeout(()=>{t=0;pick()},280)},{passive:true});
   r.addEventListener('touchmove',e=>{if(t&&(Math.abs(e.touches[0].clientX-x0)>10||Math.abs(e.touches[0].clientY-y0)>10))stop()},{passive:true});
   r.addEventListener('touchend',stop);r.addEventListener('touchcancel',stop);
   r.addEventListener('contextmenu',e=>{e.preventDefault();stop();pick()})}
@@ -5101,7 +5102,7 @@ let trk=0;
 const UB={ids:[],end:0,t:0,busy:false};
 function ubEl(){let e=$('#ubn');if(e)return e;
   e=E('button');e.id='ubn';e.type='button';e.setAttribute('aria-label','Undo delete (restore from the Recycle bin)');
-  e.innerHTML='<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="rb" cx="22" cy="22" r="19"/><circle class="rf" cx="22" cy="22" r="19"/></svg><b></b><small>Undo</small>';
+  e.innerHTML='<span class="ubc"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="rb" cx="22" cy="22" r="19"/><circle class="rf" cx="22" cy="22" r="19"/></svg><b></b></span><small>Restore</small>';
   e.onclick=()=>ubRestore();document.body.append(e);return e}
 function ubHide(){clearInterval(UB.t);UB.t=0;UB.ids=[];const e=$('#ubn');if(e){e.style.display='none';e.classList.remove('go')}
   try{nlLay(true)}catch(_){}try{jbPos()}catch(_){}}
