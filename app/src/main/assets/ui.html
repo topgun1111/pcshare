@@ -4767,10 +4767,15 @@ function openBin(){openLoc('local',BINP)}
 const binLbl=(segs)=>inBin()&&segs.length?['Recycle bin'].concat(segs.slice(1)):segs;
 async function binDo(op,ids){   // restore / purge / empty: start the task, show the progress card (like other jobs), then reload the folder
   const BP=binProgress(),card=E('div','bpc');card.style.display='none';card.append(BP.el);$('#dlw').append(card);
-  let open=null;
-  try{const r=await api('POST','/api/bin',{op:op,ids:ids},15000);let t=r&&r.task;
-    if(t&&t.running){card.style.display='block';BP.show(t)}
-    while(t&&t.running){await new Promise(x=>setTimeout(x,300));const q=await api('GET','/api/bin?items=0',null,8000);t=q.task||{running:false,done:ids.length,errors:[]};BP.show(t)}
+  let open=null,seen=0;
+  const live=t=>{const g=t&&t.gone;if(!g||g.length<=seen||!binRoot())return;seen=g.length;const gs=new Set(g);   // rows leave the list while the bin is being emptied
+    S.items=S.items.filter(i=>!i.bid||!gs.has(i.bid));S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();hp('tick')};
+  try{const n0=op==='empty'?S.items.length:ids.length;   // the progress card is up before the phone has answered
+    card.style.display='block';BP.show({running:true,op:op,total:n0,done:0,bytes:0,totalBytes:0,started:Date.now(),now:Date.now()});hp('click');
+    const r=await api('POST','/api/bin',{op:op,ids:ids},15000);let t=r&&r.task;
+    if(t&&t.running)BP.show(t);live(t);
+    while(t&&t.running){await new Promise(x=>setTimeout(x,150));const q=await api('GET','/api/bin?items=0',null,8000);t=q.task||{running:false,done:ids.length,errors:[]};BP.show(t);live(t)}
+    live(t);hp(t&&t.errors&&t.errors.length?'error':'success');
     const n=(t&&t.done)||ids.length;
     if(t&&t.errors&&t.errors.length)toast('\u26a0 '+t.errors.length+' failed: '+t.errors[0],7000);
     else if(op==='restore'){const p=t&&t.paths&&t.paths.length?(t.paths[0].slice(0,t.paths[0].lastIndexOf('/'))||'/'):'';

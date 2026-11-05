@@ -179,7 +179,7 @@ object Bin {
     fun sweepDeleted() { try { root().listFiles()?.forEach { if (it.name.startsWith(".del-")) deleteTree(it) } } catch (_: Exception) {} }
 
     // ---- background task: restore / delete / empty run on their own thread, the UI polls [status] and shows the progress
-    class Task(val op: String, val total: Int, val totalBytes: Long = 0L) {
+    class Task(val op: String, @Volatile var total: Int, @Volatile var totalBytes: Long = 0L) {
         @Volatile var done = 0
         @Volatile var bytes = 0L          // size of the entries finished so far (of [totalBytes])
         @Volatile var cur = ""            // name of the entry being handled right now
@@ -188,9 +188,10 @@ object Bin {
         @Volatile var cancel = false
         val errors = java.util.Collections.synchronizedList(ArrayList<String>())
         val paths = java.util.Collections.synchronizedList(ArrayList<String>())
+        val gone = java.util.Collections.synchronizedList(ArrayList<String>())   // ids already out of the bin (the page removes those rows live)
         fun toJson(): JSONObject = JSONObject().put("op", op).put("total", total).put("done", done).put("running", running)
             .put("bytes", bytes).put("totalBytes", totalBytes).put("cur", cur).put("started", started).put("now", System.currentTimeMillis())
-            .put("errors", org.json.JSONArray(errors.toList())).put("paths", org.json.JSONArray(paths.toList()))
+            .put("errors", org.json.JSONArray(errors.toList())).put("paths", org.json.JSONArray(paths.toList())).put("gone", org.json.JSONArray(gone.toList()))
     }
     @Volatile private var task: Task? = null
 
@@ -202,17 +203,22 @@ object Bin {
     @Synchronized fun start(op: String, ids0: List<String>): Task {
         if (task?.running == true) throw BadReq("the recycle bin is busy - wait for the current action to finish")
         if (op != "restore" && op != "purge" && op != "empty") throw BadReq("unknown bin op")
-        val ids = if (op == "empty") (root().listFiles()?.filter { it.isDirectory && !it.name.startsWith(".del-") }?.map { it.name } ?: emptyList()) else ids0
-        val info = try { list().associateBy { it.id } } catch (_: Exception) { emptyMap() }
-        val t = Task(op, ids.size, ids.sumOf { info[it]?.size ?: 0L })
+        // reply at once: the entry list and the sizes are gathered on the task thread (a big bin made the progress card appear late)
+        val quick = if (op == "empty") (root().listFiles()?.count { it.isDirectory && !it.name.startsWith(".del-") } ?: 0) else ids0.size
+        val t = Task(op, quick, 0L)
         task = t
         Thread({
             try {
+                val ids = if (op == "empty") (root().listFiles()?.filter { it.isDirectory && !it.name.startsWith(".del-") }?.map { it.name } ?: emptyList()) else ids0
+                t.total = ids.size
+                val info = try { list().associateBy { it.id } } catch (_: Exception) { emptyMap() }
+                t.totalBytes = ids.sumOf { info[it]?.size ?: 0L }
                 for (id in ids) {
                     if (t.cancel) break
                     t.cur = info[id]?.name ?: ""
                     try {
-                        if (op == "restore") t.paths.add(restore(id)) else purge(id)
+                        if (op == "restore") { t.paths.add(restore(id)); t.gone.add(id) }
+                        else { val d = detach(id); t.gone.add(id); wipe(d) }   // out of the list as soon as it is detached; the files are wiped after
                     } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
                     t.done++
                     t.bytes += info[id]?.size ?: 0L
