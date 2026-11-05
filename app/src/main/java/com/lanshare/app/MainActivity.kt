@@ -722,6 +722,13 @@ class MainActivity : Activity() {
     private fun cleanShared() { Thread { Core.cleanShared() }.start() }
 
     /** "Open with LANShare" on a zip / rar: browse it in the app's own file browser (path + "!"). Files already on the shared storage are opened in place, anything else is copied to "LANShare Shared" first. */
+    /** Real path behind a content:// Uri via its _data column (null when the provider does not give one) - lets a big zip open in place instead of being copied first. */
+    private fun resolveDataPath(u: Uri): File? = try {
+        contentResolver.query(u, arrayOf("_data"), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0)?.takeIf { it.isNotEmpty() }?.let { File(it) } else null
+        }
+    } catch (_: Throwable) { null }
+
     private fun handleView(i: Intent) {
         val u = i.data ?: return
         i.action = null   // consume once
@@ -734,7 +741,11 @@ class MainActivity : Activity() {
                 else if (u.authority == "com.android.externalstorage.documents") {   // file managers: primary:Download/a.zip -> /storage/emulated/0/Download/a.zip
                     val id = android.provider.DocumentsContract.getDocumentId(u)
                     if (id.startsWith("primary:")) real = File(root, id.substring(8))
-                }
+                } else if (u.authority == "com.android.providers.downloads.documents") {   // phone's Download manager: raw:/storage/.../a.zip, or a numeric / msf: id
+                    val id = try { android.provider.DocumentsContract.getDocumentId(u) } catch (_: Exception) { "" }
+                    if (id.startsWith("raw:")) real = File(id.substring(4))
+                    else real = resolveDataPath(u)
+                } else if (u.scheme == "content") real = resolveDataPath(u)   // MediaStore / other providers that expose _data
                 if (real != null && real.isFile && real.absolutePath.startsWith("$root/")) rel = real.absolutePath.substring(root.length)
                 if (rel == null) {
                     var name = "opened_" + System.currentTimeMillis() + ".zip"; var size = -1L
@@ -780,7 +791,7 @@ class MainActivity : Activity() {
         val p = pendingOpen ?: return
         if (!pageReady) return
         pendingOpen = null
-        web.postDelayed({ web.evaluateJavascript("window.lsOpenArc&&lsOpenArc(" + JSONObject.quote(p) + ")", null) }, 800)
+        web.post { web.evaluateJavascript("window.lsOpenArc&&lsOpenArc(" + JSONObject.quote(p) + ")", null) }   // page is already loaded here (runOpen waits for pageReady): no extra delay
     }
 
     /** Open LANShare's print dialog (PC picker + layout options + preview) for files printed from another app (waits until the page is loaded). */
