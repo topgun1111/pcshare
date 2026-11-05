@@ -240,7 +240,10 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 .alb .acv svg{width:38%;height:auto;opacity:.55}
 .alb:active .acv{filter:brightness(.9)}
 .alb .asb{position:absolute;right:8px;top:8px;width:44px;height:44px;border-radius:50%;border:0;background:var(--ac);color:var(--onac);display:grid;place-items:center;box-shadow:0 2px 8px #0005;z-index:3}.alb .asb svg{width:24px;height:24px;opacity:1}
-.alb.sel .acv{outline:3px solid currentColor;outline-offset:-3px}
+.alb .acv::before,.alb .acv::after{content:'';position:absolute;pointer-events:none;opacity:0;transition:opacity .12s ease}
+.alb.sel .acv::after{inset:0;border-radius:12px;opacity:1;z-index:2;background:#00000047;background:color-mix(in srgb,var(--ac) 32%,transparent);box-shadow:inset 0 0 0 4px var(--ac)}
+.alb.sel .acv::before{content:'\2713';opacity:1;z-index:3;left:8px;top:8px;width:26px;height:26px;border-radius:50%;background:var(--ac);color:var(--onac);box-shadow:0 0 0 2px #fff,0 1px 5px #0007;display:grid;place-items:center;font:700 16px/1 sans-serif}
+.alb.sel b{color:var(--ac)}
 .alb b{font-size:15px;font-weight:600;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .alb small{font-size:12.5px;color:var(--mut);padding:0 4px;min-height:16px}
 #gal{display:none;position:fixed;inset:0;z-index:9;background:var(--bg);flex-direction:column}
@@ -1690,7 +1693,7 @@ function galView(a){
     btn('del','Delete',async()=>{const n=GS.size;
       const ch=await dlg({title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin',alt:'Delete permanently',altDanger:true});
       if(!ch)return;
-      try{const r=await api('POST','/api/rm',{dev:'local',paths:gp(),perm:ch==='alt'});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);if(o._for===tok)reload()}
+      try{const r=await api('POST','/api/rm',{dev:'local',paths:gp(),perm:ch==='alt'});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);GALT=0;if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
     gb.style.setProperty('--cols',gb.children.length<=5?gb.children.length:Math.ceil(gb.children.length/2))};
   // copied / cut something and opened this album: a "Paste here" bar (the file browser's own paste bar sits behind this screen); hidden while selecting
@@ -1921,12 +1924,12 @@ function risView(D,dn,sdir,sname){
   R('status').then(r=>{if(!live())return;ST=r;draw()}).catch(e=>{if(live()){ST={error:e.message};draw()}});
   draw()}
 /* ---- gallery: every folder with pictures on the phone (/api/albums) ---- */
-let GALA=null,GALT=0,GALP=null,GALPK=null,GALE='',GALFR=0;   /* GALFR: next PC album read ignores the server's 90 s cache */
+let GALA=null,GALT=0,GALP=null,GALPK=null,GALE='',GALFR=0,GALX=[];   /* GALX: albums just deleted, left out of every album read until the delete job has ended */   /* GALFR: next PC album read ignores the server's 90 s cache */
 const isPc=d=>String(d||'').startsWith('smb:');   // a PC (SMB share): its Pictures folder is shown as a gallery (photos only, core/PcPictures.kt)
 // GALA.k = 'vid' | 'img': which kind of albums it holds
 function galFetch(){const gk=galVid()?'vid':'img',dev=S.dev,key=gk+'|'+dev;if(GALP&&GALPK===key)return;GALPK=key;GALE='';   // cache is per device AND kind
   const url=dev==='local'?'/api/albums'+(gk==='vid'?'?kind=vid':''):'/api/ralbums?dev='+enc(dev)+(gk==='vid'?'&kind=vid':'')+(isPc(dev)&&GALFR?'&fresh=1':'');GALFR=0;   // other phone: its own albums, asked through this phone
-  GALP=api('GET',url,null,dev==='local'?undefined:isPc(dev)?120000:15000).then(r=>{const a=((r&&r.albums)||[]).map(x=>{x.v=gk==='vid';return x}),sig=key+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===key){GALA={a:a,sig:sig,k:gk,dev:dev};GALT=Date.now()}return ch&&GALPK===key}).catch(e=>{if(GALPK===key)GALE=String(e&&e.message||e);try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return GALPK===key&&dev!=='local'}).then(ch=>{if(GALPK===key)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
+  GALP=api('GET',url,null,dev==='local'?undefined:isPc(dev)?120000:15000).then(r=>{const a=((r&&r.albums)||[]).filter(x=>dev!=='local'||GALX.indexOf(x.path)<0).map(x=>{x.v=gk==='vid';return x}),sig=key+'|'+a.map(x=>x.path+'|'+x.n+'|'+x.cover).join(';'),ch=!GALA||GALA.sig!==sig;if(GALPK===key){GALA={a:a,sig:sig,k:gk,dev:dev};GALT=Date.now()}return ch&&GALPK===key}).catch(e=>{if(GALPK===key)GALE=String(e&&e.message||e);try{toast('Albums: '+(e&&e.message||e),4000)}catch(_){}return GALPK===key&&dev!=='local'}).then(ch=>{if(GALPK===key)GALP=null;if(ch&&galRoot()&&!inArc())render()})}
 /* pull to refresh / refresh button at the Gallery or Videos album home: drop the 15 s album cache and re-read the albums now */
 function galForce(){GALT=0;GALFR=1;if(galRoot()){GALP=null;GALPK=null;galFetch()}}
 function mkAlbumX(a,P0,V){
@@ -1963,6 +1966,11 @@ function mkAlbumR(a){
     c.addEventListener('touchmove',cl,{passive:true});c.addEventListener('touchend',cl);c.addEventListener('touchcancel',cl);
     c.addEventListener('contextmenu',e=>e.preventDefault())}
   return c}
+function galDrop(ps){   // albums being deleted vanish from the album home at once (no waiting for the next album read)
+  if(!GALA||S.dev!=='local')return;
+  const gone=a=>ps.some(p=>p===a.path||p.endsWith(a.path)||(p.indexOf('/@')===0&&p.split('/').pop()===a.name));
+  GALA.a.filter(gone).forEach(a=>GALX.push(a.path));
+  GALA.a=GALA.a.filter(a=>!gone(a));GALA.sig+='|d'+Date.now();GALT=Date.now()}   // GALT=now: no read while the job is still running (it would still list the album)
 function galForceLocal(){GALA=null;GALT=0}   // this phone got new files: its album list is read again next time
 /* "Other phones" bar at the top of the Gallery / Videos album home: switch phone, and Photos <-> Videos of the open phone */
 function galPhones(){
@@ -3845,8 +3853,8 @@ async function doDelete(){
   const L=S.dev==='local'&&!inArc();
   const a=await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L,alt:L?'Delete permanently':null,altDanger:true});
   if(!a)return;
-  try{const r=await api('POST','/api/rm',{dev:S.dev,paths:selPaths(),perm:a==='alt'});S.sel.clear();GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job)}  // progress + Cancel like copy; the list reloads when it ends
-  catch(e){toast('\u26a0 '+e.message,9000);load()}}
+  try{const ps=selPaths(),gal=galRoot(),r=await api('POST','/api/rm',{dev:S.dev,paths:ps,perm:a==='alt'});S.sel.clear();if(gal)galDrop(ps);else GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job).then(()=>{GALX=[];galForce()},()=>{GALX=[];galForce()})}  // progress + Cancel like copy; the list reloads when it ends
+  catch(e){GALX=[];galForce();toast('\u26a0 '+e.message,9000);load()}}
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 /* ---- Print space (HANDOVER 9.7, part 2): pictures held for printing. Store = core/PrintSpace.kt (/api/ps). Screen reuses the #gal overlay (like image search) so Back, hiding the native list / chrome / search and swipe lock keep working. Kill switch: localStorage ls_ps='0' hides the drawer entry. */
 /* selection order badge: the n-th tapped picture shows n (CSS #gal .gc.sel::after reads data-n); it is also the order they print / are added */
