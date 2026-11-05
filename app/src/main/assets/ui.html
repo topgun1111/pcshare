@@ -157,7 +157,15 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #peers .chip.on{flex:0 1 auto;min-width:0}#peers .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:480px){#peers{gap:6px;padding:6px 8px}#peers .chip{padding:0 10px 0 8px;gap:6px;font-size:13px}#peers .chip.add{padding:0 8px}#peers .chip.add span{display:none}}
 
-.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:var(--warn)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 3px}.dot.wn{background:#ef8a8a}
+/* device online / offline state: online = blinking green glow, offline = steady light red */
+@keyframes devblink{0%,100%{background-color:rgba(46,160,67,.16);box-shadow:0 0 0 0 rgba(46,160,67,0)}50%{background-color:rgba(46,160,67,.42);box-shadow:0 0 14px 5px rgba(46,160,67,.6)}}
+@keyframes dotblink{0%,100%{opacity:.55;box-shadow:0 0 0 0 rgba(46,160,67,0)}50%{opacity:1;box-shadow:0 0 8px 3px rgba(46,160,67,.85)}}
+.dot:not(.wn){background:#2ea043;animation:dotblink 1.4s ease-in-out infinite}
+.li .lead.ol{animation:devblink 1.4s ease-in-out infinite}
+.li .lead.of{background:rgba(255,120,120,.22);animation:none;box-shadow:none}
+.li .lead.of .dot{box-shadow:none;animation:none}
+@media (prefers-reduced-motion:reduce){.dot:not(.wn),.li .lead.ol{animation:none}.li .lead.ol{background-color:rgba(46,160,67,.3);box-shadow:0 0 10px 3px rgba(46,160,67,.5)}}
 #hint{padding:3px 14px;color:var(--mut);font-size:12px;background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
 /* breadcrumbs */
 #crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;color:var(--mut)}#crumbs::-webkit-scrollbar{display:none}
@@ -862,6 +870,11 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 <div id=dedge></div><div id=dscrim></div><aside id=dwr aria-label="Navigation"><div id=dtabs></div><div id=dbody></div><div id=dfoot></div></aside>
 <div id=ptr><div></div></div><div id=toast><button id=tc>Cancel</button><span id=tx></span><div id=tp><i></i></div></div><div id=dlw></div><div id=dual></div><div id=pv></div><div id=sheet></div><div id=gal></div><div id=home></div><div id=dlg></div>
 <script>
+/* Haptics: every navigator.vibrate() in the page goes through the native bridge (alarm usage, so Battery saver does not mute it) and
+   buttons / chips / list rows / switches give a short tick on touch. hp('success'|'error'|'warn'|'click'|'heavy'|'double'|'select') for events. */
+const hp=k=>{try{window.LSAndroid&&LSAndroid.haptic&&LSAndroid.haptic(k)}catch(_){}};
+try{navigator.vibrate=function(p){try{if(window.LSAndroid&&LSAndroid.hapticPattern){LSAndroid.hapticPattern(Array.isArray(p)?p.join(','):String(p));return true}}catch(_){}return false}}catch(_){}
+{let lastHp=0;document.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;const t=e.target&&e.target.closest&&e.target.closest('button,.chip,.li,.tbtn,.sw,.tile,[role=button],[role=switch],input[type=checkbox],input[type=radio],select');if(!t||t.disabled)return;const n=Date.now();if(n-lastHp<40)return;lastHp=n;hp('tick')},{passive:true,capture:true})}
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const IC={
@@ -1110,6 +1123,7 @@ function devPicker(all){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Devices'));
   const fin=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)fin()};
   const row=(label,id,p)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(id==='local'?ic('phone'):(p&&p.kind==='Drive')?ic('ftp'):(p&&p.kind==='USB')?ic('usb'):E('i','dot'+(p&&p.ok===false?' wn':'')));
+    if(p&&id!=='local'&&p.kind!=='Drive'&&p.kind!=='USB')ld.classList.add(p.ok===false?'of':'ol');
     const nr=E('div','');nr.append(E('span','dn',label));
     if(p&&p.via){const tb=E('em','',connTxt(p));tb.style.cssText='margin-left:8px;font-size:11px;font-style:normal;padding:1px 7px;border-radius:9px;white-space:nowrap;background:'+(p.via==='Tailscale'?'rgba(106,27,154,.15);color:#6A1B9A':'rgba(46,125,50,.15);color:#2E7D32');nr.append(tb)}
     lt.append(nr);if(batTxt(p))lt.append(E('small','',batTxt(p)));if(p&&p.ok===false){const sm=E('small','',(p.why||'offline')+(p.seen&&!p.smb&&agoTxt(p.seen)?' \u00b7 seen '+agoTxt(p.seen):''));lt.append(sm)}

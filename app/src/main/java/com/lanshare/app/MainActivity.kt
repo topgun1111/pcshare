@@ -65,6 +65,9 @@ class MainActivity : Activity() {
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     inner class Bridge {
+        /** Haptics from the page: kind = tick | click | heavy | long | double | success | error | warn | select | <ms>. Alarm-usage, so Battery saver does not mute it. */
+        @JavascriptInterface fun haptic(kind: String) { Haptics.play(kind) }
+        @JavascriptInterface fun hapticPattern(csv: String) { Haptics.pattern(csv.split(',').mapNotNull { it.trim().toLongOrNull() }.toLongArray()) }
         /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
         @JavascriptInterface fun homeStart(): Boolean = showHome
         /** PERF-DEBUG (temporary): startup marks, ms since this process started. */
@@ -424,6 +427,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        Haptics.init(this)
         mark("onCreate")   // PERF-DEBUG
         // Start the local server right away on a background thread (it used to wait for the foreground service to come up). Core.start is idempotent: the service's later call returns at once.
         Thread { mark("core.threadStart"); Core.start(applicationContext, android.os.Environment.getExternalStorageDirectory().absolutePath) }.apply { isDaemon = true; start() }

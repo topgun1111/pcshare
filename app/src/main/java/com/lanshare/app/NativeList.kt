@@ -572,7 +572,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
         override fun onSingleTapUp(e: MotionEvent): Boolean { val i = hit(e.x, e.y); if (i >= 0) onTap?.invoke(first + i); return true }
         override fun onLongPress(e: MotionEvent) {
             val i = hit(e.x, e.y)
-            if (i >= 0) { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onLong?.invoke(first + i) }
+            if (i >= 0) { Haptics.view(this, "long"); onLong?.invoke(first + i) }
         }
     })
 
@@ -1348,7 +1348,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) tapRow(i) }
             v.setOnLongClickListener {
                 val i = h.bindingAdapterPosition
-                if (i >= 0) { it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); emit("long", i); true } else false
+                if (i >= 0) { Haptics.view(it, "long"); emit("long", i); true } else false
             }
             v.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = h.bindingAdapterPosition; if (i >= 0) { warmFor(i); emit("down", i) } }; false }
             return h
