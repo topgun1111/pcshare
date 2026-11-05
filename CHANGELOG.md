@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-05 - Recycle bin opens as a folder
+
+### Changed
+- The Recycle bin now opens like a normal folder: enter deleted folders, see icons and thumbnails, open files.
+- Select items in the bin to Restore, Copy or Delete forever; the Empty bin button is at the bottom right.
+
 ## 2026-11-04 - PDF page cache settings and care
 ### Added
 - New Settings page "PDF page cache": choose from which size PDFs are prepared (or all PDFs), the picture quality and a size limit, see the used space and clear all caches

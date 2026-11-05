@@ -1331,7 +1331,7 @@ function nlHeadPush(V){
   if(!NL||!NL.nlHead||!NLHEAD)return;
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
   const n=V.length,segs=S.path.split('/').filter(Boolean);
-  NL.nlHead(JSON.stringify({c:segs.map(s=>s.replace(/!$/,'')),dn:S.dev!=='local'?devName(S.dev):'',
+  NL.nlHead(JSON.stringify({c:binLbl(segs.map(s=>s.replace(/!$/,''))),dn:S.dev!=='local'?devName(S.dev):'',
     u:(()=>{const up=usedPct();return up!=null?up:-1})(),
     s:[n+(n===1?' item':' items')+(fi?' \u00b7 '+fmt(sz):''),fo&&fi?fo+(fo===1?' folder':' folders')+' \u00b7 '+fi+(fi===1?' file':' files'):''],
     n:S.newest?1:0,t:(SORTS[S.sort]||{t:''}).t,d:S.sort==='none'?0:S.asc?1:2}))}
@@ -2017,12 +2017,12 @@ function galPhoneBar(){
 function render(){
   applyPrefs();
   const AR=inArc();
-  {const fb=$('#fab');fb.textContent='';fb.append(ic(AR&&!zipEd()?'extract':'newfolder'),document.createTextNode(zipEd()?'Edit archive':AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')))}
+  {const fb=$('#fab');fb.textContent='';fb.append(ic(binRoot()?'del':AR&&!zipEd()?'extract':'newfolder'),document.createTextNode(binRoot()?'Empty bin':zipEd()?'Edit archive':AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')));fb.style.display=inBin()&&!binRoot()?'none':''}
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
   const dr=E('button','crumb'+(segs.length?'':' cur'));dr.append(raw(DRIVE));if(S.dev!=='local')dr.append(E('span','',devName(S.dev)));dr.onclick=()=>go('/');cr.append(dr);
-  let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),seg.replace(/!$/,''));b.onclick=()=>go(p);cr.append(b)});
+  let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),binLbl(segs.map(x=>x.replace(/!$/,'')))[n]);b.onclick=()=>go(p);cr.append(b)});
   const gm=!AR&&!S.q&&!S.newest&&galRoot();   // Gallery / Videos: albums come from the whole phone, so no folder path, device chips or storage line
   document.body.classList.toggle('galm',!!gm);
   $('#ht').textContent=gm?(galVid()?'Videos':'Gallery'):S.dev==='local'?'Main storage':devName(S.dev);
@@ -2031,7 +2031,7 @@ function render(){
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   showFree();
   const V=shown();renderTools(V);
-  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':galRoot()?'No albums':'This folder is empty')));l.append(e)}
+  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':galRoot()?'No albums':binRoot()?'The recycle bin is empty':'This folder is empty')));l.append(e)}
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
@@ -3048,7 +3048,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
   document.body.classList.toggle('selm',S.sel.size>0);
   const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
   $('#selcount').textContent=S.sel.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
-  if(S.sel.size){
+  if(S.sel.size&&binRoot()){binBar(btn,selItems())}
+  else if(S.sel.size){
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
     if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
     const A=inArc();
@@ -4750,7 +4751,30 @@ async function openFreeUp(){
       busy='';R=st.result;draw();return}}
   draw();start()}
 let FUTOK=null;
-async function openBin(){
+/* ---- Recycle bin as a folder (chapter 20, Part 2): /.LANShare Bin is an ordinary local folder; bin root rows carry `bid` ---- */
+const BINP='/.LANShare Bin';
+const inBin=()=>S.dev==='local'&&(S.path===BINP||S.path.indexOf(BINP+'/')===0);
+const binRoot=()=>S.dev==='local'&&S.path===BINP;
+function openBin(){openLoc('local',BINP)}
+const binLbl=(segs)=>inBin()&&segs.length?['Recycle bin'].concat(segs.slice(1)):segs;
+async function binDo(op,ids){   // restore / purge / empty: start the task, poll it, then reload the folder
+  try{const r=await api('POST','/api/bin',{op:op,ids:ids},15000);let t=r&&r.task;
+    while(t&&t.running){await new Promise(x=>setTimeout(x,300));const q=await api('GET','/api/bin?items=0',null,8000);t=q.task||{running:false,done:ids.length,errors:[]}}
+    const n=(t&&t.done)||ids.length;
+    if(t&&t.errors&&t.errors.length)toast('\u26a0 '+t.errors.length+' failed: '+t.errors[0],7000);
+    else toast(op==='restore'?'Restored '+n+' item'+(n===1?'':'s')+(t&&t.paths&&t.paths.length===1?' to '+(t.paths[0].slice(0,t.paths[0].lastIndexOf('/'))||'/'):''):op==='empty'?'Recycle bin emptied':'Deleted '+n+' item'+(n===1?'':'s')+' forever',3500)}
+  catch(e){toast('\u26a0 '+e.message,6000)}
+  S.sel.clear();if(inBin())load();else renderBar()}
+async function binEmpty(){
+  const n=S.items.length;if(!n)return toast('The recycle bin is empty',2000);
+  if(await dlg({title:'Empty the Recycle bin?',msg:n+' item'+(n===1?'':'s')+' will be deleted forever.',ok:'Empty',danger:true}))binDo('empty',[])}
+function binBar(btn,it){
+  const ids=it.map(i=>i.bid).filter(Boolean),n=ids.length;
+  btn('refresh','Restore',()=>binDo('restore',ids),'pri');
+  btn('copy','Copy',()=>setClip('copy'));
+  if(it.length===1)btn('info','Details',()=>doDetails());
+  btn('del','Delete forever',async()=>{if(await dlg({title:'Delete '+n+' item'+(n===1?'':'s')+' forever?',msg:'This can\'t be undone.',ok:'Delete',danger:true}))binDo('purge',ids)},'dng')}
+async function openBinSheet(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
   const tok=BINTOK={};const live=()=>BINTOK===tok;
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
@@ -6121,7 +6145,7 @@ async function doAddToZip(){
   if(!zipEd())return;const ps=await pickAddFiles();if(!ps||!ps.length)return;
   const cf=await askConflicts(S.dev,S.path,ps,'local');if(!cf)return;
   try{const r=await api('POST','/api/addzip',{paths:ps,dir:S.path,conflict:cf});watchJob(r.job);toast('Adding to archive\u2026',0,0);if(await track(r.job))load()}catch(e){toast('\u26a0 '+e.message,5000)}}
-$('#fab').onclick=()=>inArc()?(zipEd()?doZipMenu():doExtract(2)):doNew();
+$('#fab').onclick=()=>binRoot()?binEmpty():inArc()?(zipEd()?doZipMenu():doExtract(2)):doNew();
 $('#arcrow').onclick=()=>{if(inArc())doArcInfo()};
 $('#xsel').onclick=()=>{S.sel.clear();render()};
 $('#allsel').onclick=()=>{const a=shown().map(i=>i.name);S.sel=(a.length&&S.sel.size>=a.length&&a.every(n=>S.sel.has(n)))?new Set():new Set(a);render()};   // second tap with everything selected = unselect all

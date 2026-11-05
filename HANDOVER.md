@@ -23,8 +23,8 @@
 > - **State:** Parts 1-3 coded, not compiled (cache engine v3, `PdfPagesView.kt`, and Part 3: `PdfPagesView` is now the display of every cached PDF in `PdfViewerActivity`). **Parts 4a (isolated build process) and 4b (settings, cache management, cleanup, auto-resume) are coded. Plan finished in code; next: build the APK (CI), fix compile errors, run the device checklists 19.3d + 19.3e.**
 
 > **NEW - Recycle bin folder view (chapter 20) - read this before touching `Bin.kt` / `openBin()`** (entry added 2026-11-05)
-> - Goal (owner): the Recycle bin opens like a normal file browser (folders you can enter, same icons / thumbnails / viewers / Copy / sort / view modes), not a flat list. Three parts, one per session; plan + decisions + next prompt in **chapter 20**.
-> - **State:** Part 1 (Kotlin: virtual paths + listing) coded 2026-11-05, not compiled; no visible change yet. Next: Part 2 (page + native list wiring).
+> - Goal (owner): the Recycle bin opens like a normal file browser (folders you can enter, same icons / thumbnails / viewers / Copy / sort / view modes), not a flat list. Four parts, one per session; plan + decisions + next prompt in **chapter 20**.
+> - **State:** Part 1 (Kotlin core) and Part 2 (`ui.html`: bin opens as a folder, Restore / Delete forever / Empty bin) coded 2026-11-05, not compiled. Next: Part 3 (inside deleted folders + progress card).
 
 One handover for the whole project (Android app + PC helper tools). It replaces the ten separate `HANDOVER*.md` files, which were merged on 2026-10-21; their full text stays in git history (last commit that still has them: `ce433bc`).
 
@@ -52,7 +52,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 16. Universal Search (multipart plan, in progress)
 17. Google Drive (multipart plan, 11 parts, Parts 1-6 coded)
 19. PDF image viewer (multipart plan, 4 parts, Parts 1-2 coded)
-20. Recycle bin folder view (multipart plan, 3 parts, Part 1 coded)
+20. Recycle bin folder view (multipart plan, 4 parts, Parts 1-2 coded)
 
 ---
 
@@ -908,6 +908,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-11-05: **Recycle bin folder view Part 2 - browse + restore / purge** (remaining Parts 2-3 re-split into Parts 2-4, see chapter 20): `ui.html` only - `openBin()` = `openLoc('local','/.LANShare Bin')`, old sheet renamed `openBinSheet`, helpers `BINP / inBin / binRoot / binLbl / binDo / binEmpty / binBar`, `renderBar` bin-root bar (Restore, Copy, Details, Delete forever via `bid`), FAB "Empty bin", crumb "Recycle bin" (page + `nlHeadPush`), empty text. Not compiled / device-tested (`node --check` OK). Details in 20.2.
 - 2026-11-05: **Recycle bin folder view Part 1 - core** (owner: bin as a full file browser). `core/Bin.kt` (`Entry.shown`, `view()` 3 s cache dropped by `touch()` on trash / restore / detach, `isRoot`, `physical`, `rootItems`), `core/LocalFs.kt` (`real` / `lreal` run the path through `Bin.physical` for `id == "local"`; `ls` of the bin folder returns `Bin.rootItems`), `core/Endpoint.kt` (`Item.bid`). `/api/bin` items now carry `shown`. No ui change, so no CHANGELOG.md entry. Not compiled, not device-tested. See chapter 20.
 - 2026-11-04: **PDF image viewer Part 4b - management**: `Cfg` (`pdf_min_mb`, `pdf_q`, `pdf_cap_mb`), `core/PdfPageCache.kt` (`minBytes()`, `quality()`, registry `filesDir/pdfcache_dirs.json`, `stats`, `clearAll`, LRU `trimGroup`, `onPdfRemoved` / `onPdfMoved`, pending list `filesDir/pdfpending.json` + `resumePending`), `PdfBuilder.run` + `PdfBuildService` (quality `q` passed in the START bundle), `LocalFs` / `Bin` hooks, `App.kt` (resume 4 s after start), `Routes` (`/api/pdfcache`), `ui.html` (Settings > Search > PDF page cache), `PdfViewerActivity` (threshold from setting). Not compiled, not device-tested. See 19.3e.
 - 2026-11-04: **PDF image viewer Part 4a - isolated build process** (Part 4 split into 4a / 4b): new `core/PdfBuilder.kt`, `PdfBuildService.kt` (service in `:pdfbuild` + `PdfBuildClient`), `PdfPageCache` (build moved out, `addBlocked`), manifest, `App.kt` guard. Crash of the render process = restart, page that crashes twice goes to `bl`. Not compiled, not device-tested. See 19.3d.
@@ -1740,12 +1741,20 @@ A memory stick or disk on an OTG cable is mounted by Android as a storage volume
 
 **Parts**
 1. **Part 1 - core (DONE 2026-11-05, not compiled):** `Bin.kt`, `LocalFs.kt`, `Endpoint.kt` as in section 14. Result: `GET /api/ls?dev=local&path=/.LANShare%20Bin` returns the deleted items; `...path=/.LANShare%20Bin/<shown>/sub` lists inside a deleted folder.
-2. **Part 2 - page + native list:** open the bin as a folder (`S.path = '/.LANShare Bin'`) instead of the sheet; path bar shows crumb "Recycle bin" (hide the raw name and ids; check `NlHead` layout JSON `hd` and the page crumb code); rows keep icons (`NlFileIcons`, `FOLD`), thumbnails and opening; selection bar in the bin root: **Restore** (uses `bid` -> `POST /api/bin {op:restore}`) and **Delete forever** (`purge`), **Empty bin** button, progress card (`binProgress()`); inside a deleted folder: normal Copy / Download / Info, no Cut / Rename / New folder / Paste, Delete = permanent with a clear dialog. Keep `openBin()` entry points (drawer row, Free up space, Undo) but make them navigate. Check `NlModel.kt` (Kotlin-built rows) shows `shown` rows and passes `bid`.
-3. **Part 3 - polish and checks:** sort (add "Deleted date" in the bin root, default newest first), view modes (list / grid / large), search inside the bin (`Core.local.search` works on virtual paths? verify), "left: Nd" text in the row subtitle, empty state, Back button / edge swipe return, restore toast with "Open folder", long-name / duplicate-name test, JVM test of `Bin.physical` (dup names, `..`, physical ids), device checklist, remove the old sheet code (`openBin` body, CSS `.bn .bh .bs .bt .bpg .bl .br`) once the new view is confirmed.
+2. **Part 2 - browse + restore / purge (DONE 2026-11-05, not compiled, `ui.html` only):** bin opens as a folder, crumb "Recycle bin", Restore / Copy / Details / Delete forever on root rows, "Empty bin" FAB. See 20.2.
+3. **Part 3 - inside deleted folders + progress (NEXT):** inside a deleted folder hide Cut / Rename / Paste / New folder / Zip / Hide in `renderBar` (`inBin() && !binRoot()`), Delete = permanent with a clear dialog ("This can't be undone", from `doDelete` / `Jobs`); progress card (`binProgress()`) shown for `binDo` instead of toast polling; `NlModel.kt` check that Kotlin-built rows pass `bid` and show `shown` names; Back / edge swipe from bin root; restore toast with "Open folder" (`openLoc` to the restored parent).
+4. **Part 4 - polish and checks:** sort "Deleted date" in the bin root (default newest first), view modes (list / grid / large), search inside the bin (`Core.local.search` on virtual paths? verify), "left: Nd" in the row subtitle (`days` from `GET /api/bin`), long-name / duplicate-name test, JVM test of `Bin.physical` (dup names, `..`, physical ids), device checklist, remove the old sheet (`openBinSheet` body, CSS `.bn .bh .bs .bt .bpg .bl .br`) once confirmed.
 
 **Limits / not done (Part 1).** Not compiled; `Bin.physical` runs on every local path (a `startsWith` check, then a 3 s cached `list()` only for bin paths). `Cfg` root-delete flow (`RootShell`) untouched. `IndexManager` never indexes the bin (unchanged).
 
 **Test checklist (Part 1, needs a build):** delete a folder with pictures; `GET /api/ls?dev=local&path=/.LANShare%20Bin` shows it by its name; `path=/.LANShare%20Bin/<name>` lists the pictures; `GET /api/thumb` with that path returns a picture; delete two files with the same name: both show `name (xxxx).ext`; the plain name alone gives 404; Restore from the old sheet still works.
 
-**Next-session prompt (Part 2):** "Read HANDOVER.md chapter 20. Do Part 2 (page + native list wiring of the Recycle bin folder view). Core is done. Short replies, patch scripts, full app zip + handover updated."
+### 20.2 Part 2 as built (`assets/ui.html` only; never compiled / device-tested - `node --check` of all scripts OK)
+- Helpers before `openBinSheet`: `BINP`, `inBin()`, `binRoot()`, `openBin()` (= `openLoc('local', BINP)`, so drawer row, Free up space and Undo now navigate), `binLbl(segs)` (first crumb text "Recycle bin"; used by `render()` crumbs and `nlHeadPush` `c`), `binDo(op, ids)` (`POST /api/bin` restore / purge / empty, polls `GET /api/bin?items=0`, toast, `load()`), `binEmpty()` (confirm), `binBar(btn, it)`.
+- `renderBar`: in the bin root (`binRoot()`) the selection bar is Restore (pri) / Copy / Details (1 item) / Delete forever (ids from `i.bid`); the old action list is skipped there. `render()`: FAB = "Empty bin" in the root (`binRoot()`), hidden inside deleted folders; empty text "The recycle bin is empty".
+- The old sheet is kept as `openBinSheet()` (unused; removed in Part 4). Still not done: restrictions inside deleted folders (Part 3), progress card, sort by deletion date, row subtitle with days left.
+- Check on the phone: Drawer > Recycle bin opens the folder view; crumb shows "Recycle bin"; enter a deleted folder, thumbnails / viewers work; long-press > Restore; Delete forever; Empty bin; native list head crumb text.
+
+**Next-session prompt (Part 3):** "Read HANDOVER.md chapter 20 (20.2, Parts list). Do Part 3 (inside deleted folders + progress card). Short replies, patch scripts, full app zip + handover updated."
+
 
