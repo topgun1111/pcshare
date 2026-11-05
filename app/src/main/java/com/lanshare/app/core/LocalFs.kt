@@ -32,14 +32,14 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     private fun ix(f: File) { if (id == "local") IndexManager.changed(f) }
 
     fun real(v: String): File {
-        val p = File(root, vnorm(v).trimStart('/')).canonicalFile
+        val p = File(root, vnorm(if (id == "local") Bin.physical(v) else v).trimStart('/')).canonicalFile   // Bin.physical: "/.LANShare Bin/<shown name>/..." -> "/.LANShare Bin/<id>/<name>/..." (folder view of the Recycle bin)
         if (p != root && !p.path.startsWith(root.path.trimEnd('/') + "/")) throw Denied("outside the shared folder")
         return p
     }
 
     /** Like [real], but the LAST component is not resolved: a symlink stays the link itself (delete / rename / move act on the link, not its target). */
     fun lreal(v: String): File {
-        val n = vnorm(v)
+        val n = vnorm(if (id == "local") Bin.physical(v) else v)
         if (n == "/") return real(v)
         return File(real(vdir(n)), vbase(n))
     }
@@ -61,6 +61,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
 
     /** [counts]=false skips the "N items" count of sub-folders (one extra directory read each - slow on Android's FUSE storage); see [counts]. */
     fun ls(v: String, counts: Boolean): List<Item> {
+        if (id == "local" && Bin.isRoot(v)) return Bin.rootItems(counts)   // the bin folder shows the deleted items by their own names, not the id folders
         val d = real(v)
         if (!d.exists()) throw NotFound("No such file or directory")
         val files = d.listFiles() ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))

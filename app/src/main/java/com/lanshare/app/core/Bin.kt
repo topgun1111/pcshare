@@ -16,7 +16,9 @@ object Bin {
     private const val META = ".meta"
 
     class Entry(val id: String, val name: String, val dir: Boolean, val size: Long, val from: String, val at: Long) {
-        fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("dir", dir).put("size", size).put("from", from).put("at", at)
+        /** Name in the bin folder view: [name], or "name (xxxx).ext" (xxxx = end of the id) when several deleted items share the name. */
+        @Volatile var shown: String = name
+        fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("shown", shown).put("dir", dir).put("size", size).put("from", from).put("at", at)
     }
 
     private fun root(): File = File(Core.local.root, NAME)
@@ -57,6 +59,7 @@ object Bin {
                 throw IOException(e.message + " (root move failed too: " + (r.err.trim().lines().lastOrNull { it.isNotBlank() } ?: "exit " + r.code).take(120) + ")")
             }
         }
+        touch()
         IndexManager.changed(src)   // name index: the item left its folder (the bin folder itself is never indexed)
         progress?.invoke(src.name)
         return id
@@ -74,7 +77,52 @@ object Bin {
                 out.add(Entry(box.name, name, m.optBoolean("dir"), m.optLong("size"), m.optString("from", "/$name"), m.optLong("at")))
             } catch (_: Exception) {}
         }
-        return out.sortedByDescending { it.at }
+        val sorted = out.sortedByDescending { it.at }
+        sorted.groupBy { it.name.lowercase() }.values.filter { it.size > 1 }.forEach { g ->
+            g.forEach { e -> val (b, x) = splitExt(e.name); e.shown = if (e.dir) e.name + " (" + e.id.takeLast(4) + ")" else b + " (" + e.id.takeLast(4) + ")" + x }
+        }
+        return sorted
+    }
+
+    // ---- folder view: "/.LANShare Bin/<shown name>/<sub path>" is a virtual path that LocalFs maps to "/.LANShare Bin/<id>/<name>/<sub path>"
+    // (LocalFs.real / lreal call [physical]), so listing, thumbnails, viewers, copy-out and info work on the deleted items like anywhere else.
+    @Volatile private var viewAt = 0L
+    @Volatile private var viewList: List<Entry> = emptyList()
+
+    /** [list] cached for 3 s (path resolution runs on every request); every change of the bin drops it. */
+    private fun view(): List<Entry> {
+        val now = System.currentTimeMillis()
+        if (now - viewAt > 3000) { viewList = list(); viewAt = now }
+        return viewList
+    }
+    private fun touch() { viewAt = 0L }
+
+    /** True for the bin folder itself ("/.LANShare Bin"). */
+    fun isRoot(v: String): Boolean = vnorm(v).trimStart('/') == NAME
+
+    /**
+     * Rewrites a virtual bin path to the real one; every other path (and the physical "/.LANShare Bin/<id>/..." form, and ".del-..." leftovers) comes back unchanged.
+     * A shown name that no entry has stays unchanged too (the caller then gets the normal "No such file").
+     */
+    fun physical(v: String): String {
+        val n = vnorm(v).trimStart('/')
+        if (!n.startsWith("$NAME/")) return v
+        val rest = n.substring(NAME.length + 1)
+        val seg = rest.substringBefore('/')
+        if (seg.startsWith(".") || File(root(), seg).isDirectory) return v
+        val e = view().firstOrNull { it.shown == seg } ?: return v
+        val sub = rest.substring(seg.length)   // "" or "/deeper/path"
+        return "/$NAME/${e.id}/${e.name}$sub"
+    }
+
+    /** Rows of the bin folder in the normal listing format: shown name, folder flag, size, DELETION time as the date, item count for folders, [Item.bid] for Restore. */
+    fun rootItems(counts: Boolean): List<Item> {
+        touch()
+        return view().map { e ->
+            val f = File(File(root(), e.id), e.name)
+            val n = if (e.dir && counts) try { f.list()?.size } catch (_: Exception) { null } else null
+            Item(e.shown, e.dir, e.size, e.at / 1000, n, null, false, e.id)
+        }
     }
 
     private val restoreLock = Any()
@@ -96,6 +144,7 @@ object Bin {
         while (target.exists() || Core.local.isLink(target)) { target = File(parent, name.substring(0, dot) + " ($n)" + name.substring(dot)); n++ }
         if (!item.renameTo(target)) throw IOException("could not restore $name")
         box.deleteRecursively()
+        touch()
         IndexManager.changed(target)   // name index: the item is back in its folder
         vjoin(parentV, target.name)
     }
@@ -107,6 +156,7 @@ object Bin {
     private fun detach(id: String): File {
         val box = entryDir(id)
         val gone = File(root(), ".del-$id")
+        touch()
         return if (box.renameTo(gone)) gone else box
     }
 

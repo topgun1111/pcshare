@@ -5,16 +5,19 @@ import java.io.InputStream
 
 data class Item(val name: String, val dir: Boolean, val size: Long, val mtime: Long,
                 val n: Int? = null, val path: String? = null,
-                val hid: Boolean = false) {   // hidden like a dot-folder: cache folders ("thumbnails", or holding a .nomedia file)
+                val hid: Boolean = false,   // hidden like a dot-folder: cache folders ("thumbnails", or holding a .nomedia file)
+                val bid: String? = null) {   // Recycle bin id: only on the top level rows of the bin folder view (Bin.rootItems)
     fun toJson(): JSONObject = JSONObject().put("name", name).put("dir", dir).put("size", size).put("mtime", mtime).also {
         if (n != null) it.put("n", n)
         if (path != null) it.put("path", path)
         if (hid) it.put("hid", true)
+        if (bid != null) it.put("bid", bid)
     }
 
     companion object {
         fun fromJson(o: JSONObject) = Item(o.getString("name"), o.optBoolean("dir"), o.optLong("size"), o.optLong("mtime"),
-            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null, o.optBoolean("hid"))
+            if (o.has("n")) o.optInt("n") else null, if (o.has("path")) o.optString("path") else null, o.optBoolean("hid"),
+            if (o.has("bid")) o.optString("bid") else null)
     }
 }
 
