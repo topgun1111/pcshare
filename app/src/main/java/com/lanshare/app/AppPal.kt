@@ -1,7 +1,12 @@
 package com.lanshare.app
 
 import android.content.Context
+import android.content.ComponentCallbacks
+import android.content.ContextWrapper
+import android.app.Activity
 import android.app.AlertDialog
+import android.os.Build
+import android.view.View
 import android.content.res.Configuration
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
@@ -69,7 +74,10 @@ object AppPal {
             val sf = surf(c)
             d.window?.setBackgroundDrawable(if (sf != null) NlTex.card(sf[0], sf[1], r, p.bd, Math.max(1, Math.round(c.resources.displayMetrics.density)))
                 else android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
+            val act = actOf(c)
+            if (act != null) fit(d, act)   // right width for the CURRENT screen before the first frame (folded / unfolded)
             d.setOnShowListener {
+                if (act != null) trackFold(d, act)
                 try {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)
                     d.findViewById<android.widget.TextView>(android.R.id.message)?.setTextColor(p.fg)
@@ -79,5 +87,49 @@ object AppPal {
             }
             return d
         }
+    }
+
+    private fun actOf(c: Context): Activity? {
+        var x: Context? = c
+        while (x is ContextWrapper) { if (x is Activity) return x; x = x.baseContext }
+        return null
+    }
+
+    /** Size (px) of the window the dialog lives in right now. Foldables: the value changes when the phone is folded / unfolded. */
+    private fun winSize(a: Activity): Pair<Int, Int> = try {
+        if (Build.VERSION.SDK_INT >= 30) a.windowManager.currentWindowMetrics.bounds.let { it.width() to it.height() }
+        else a.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+    } catch (_: Throwable) { a.resources.displayMetrics.let { it.widthPixels to it.heightPixels } }
+
+    /**
+     * Sizes the dialog window from the CURRENT screen, the app's uniform rule: 90 % of the width in portrait, 400 dp otherwise (never wider
+     * than 90 %). Without this a dialog that was measured in the other fold state stayed too wide on the cover screen (cut off at the right
+     * edge) or too narrow on the inner one.
+     */
+    private fun fit(d: AlertDialog, a: Activity) {
+        val w = d.window ?: return
+        val (sw, sh) = winSize(a)
+        if (sw <= 0) return
+        val dp = a.resources.displayMetrics.density
+        val target = if (sh > sw) (sw * 0.9f).toInt() else minOf((400 * dp).toInt(), (sw * 0.9f).toInt())
+        val lp = w.attributes
+        if (lp.width != target) w.setLayout(target, lp.height)
+    }
+
+    /** The activity handles fold / unfold itself (configChanges), so a showing dialog is told to re-fit; the fold animation takes a moment, hence the repeats. */
+    private fun trackFold(d: AlertDialog, a: Activity) {
+        val h = d.window?.decorView ?: return
+        val cb = object : ComponentCallbacks {
+            override fun onConfigurationChanged(n: Configuration) {
+                for (t in longArrayOf(0, 120, 350, 800)) h.postDelayed({ if (d.isShowing) fit(d, a) }, t)
+            }
+            override fun onLowMemory() {}
+        }
+        try { a.registerComponentCallbacks(cb) } catch (_: Throwable) { return }
+        h.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) { try { a.unregisterComponentCallbacks(cb) } catch (_: Throwable) {} }
+        })
+        fit(d, a)
     }
 }
