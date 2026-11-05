@@ -211,6 +211,9 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         }
     }
 
+    /** Width the pill needs for [text] with the natively scaled label font (icon + paddings = 72 dp). */
+    fun needWidth(text: String): Float = (16f + 24f + 12f + 20f) * d + lbP.measureText(text)
+
     fun setData(lb: String, ik: String, w: Float, h: Float) {
         this.lb = lb; this.ik = ik; bw = w; bh = h
         hits.clear(); hits.add(Hit("fab", RectF(0f, 0f, bw, bh)))
@@ -554,8 +557,13 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
                 bar.layoutParams.width.toFloat(), bar.layoutParams.height.toFloat())
 
         val f = j.optJSONObject("fab")
-        if (place(fab, f?.optJSONArray("r")) && f != null)
+        if (place(fab, f?.optJSONArray("r")) && f != null) {
+            // the label is painted natively with UiScale.tf, the page measured it unscaled: grow the pill to the left (right edge stays) so the text is never ellipsized
+            val flp = fab.layoutParams as FrameLayout.LayoutParams
+            val nw = Math.ceil(fab.needWidth(f.optString("l")).toDouble()).toInt()
+            if (nw > flp.width) { flp.leftMargin = Math.max(0, flp.leftMargin - (nw - flp.width)); flp.width = nw; fab.layoutParams = flp }
             fab.setData(f.optString("l"), f.optString("k", "newfolder"), fab.layoutParams.width.toFloat(), fab.layoutParams.height.toFloat())
+        }
 
         val k = j.optJSONObject("dock")
         if (place(dock, k?.optJSONArray("r"), Math.round(dock.inset)) && k != null) {
