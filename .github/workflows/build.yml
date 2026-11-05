@@ -1,0 +1,61 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to publish the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # The runner image already ships the Android SDK. Best-effort install of the
+      # exact packages the project needs (never fails the build).
+      - name: Android SDK packages
+        run: |
+          (yes | sdkmanager --licenses >/dev/null 2>&1; sdkmanager "platforms;android-34" "build-tools;34.0.0") || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      # Version = versionBase from gradle.properties + this run's number, e.g. 1.0.12.
+      # The run number goes up on every workflow run, so every build gets a new version automatically.
+      - name: Work out version
+        run: |
+          BASE=$(grep '^versionBase=' gradle.properties | cut -d= -f2)
+          echo "VERSION=$BASE.${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon -PbuildNumber=${{ github.run_number }}
+
+      - name: Name the APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "circle-search-$VERSION.apk"
+          # Fixed name, so releases/latest/download/circle-search.apk always points at the newest build.
+          cp app/build/outputs/apk/debug/app-debug.apk circle-search.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: circle-search-${{ env.VERSION }}
+          path: circle-search-${{ env.VERSION }}.apk
+
+      # The in-app update buttons open this release / its fixed-name APK link in the browser.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v$VERSION" "circle-search-$VERSION.apk" circle-search.apk \
+            --target "${{ github.sha }}" \
+            --title "Circle to Search $VERSION" \
+            --generate-notes
