@@ -1,6 +1,6 @@
 # LANShare - Project Handover
 
-> **ARCHIVE RULE (owner, 2026-11-06): always use the `.tar.xz` format (`tar -cJf name.tar.xz ...`) when archiving files to share with the user. Never zip.**
+> **ARCHIVE RULE (owner, 2026-11-06) - ALWAYS: (1) send back ONLY the files you changed or added, never the whole project; (2) keep the full folder structure (paths relative to the project root, e.g. `app/src/main/java/...`, `.github/workflows/...`); (3) always archive in `.tar.xz` format (`tar -cJf name.tar.xz <changed files>`). Never zip.**
 
 > **WARNING (owner, 2026-11-05) - TOKEN ECONOMY: always watch token use, never waste tokens (short replies, read only what is needed, no recaps). Obey this ALWAYS, unless there is a serious danger of a code error.**
 

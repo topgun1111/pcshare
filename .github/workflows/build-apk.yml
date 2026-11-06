@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # needed by the cleanup job (delete old run logs)
 
 concurrency:
   group: build-${{ github.ref }}
@@ -113,6 +114,7 @@ jobs:
           name: LANShare-apk-${{ matrix.edition }}
           path: ${{ env.OUT }}
           if-no-files-found: error
+          retention-days: 7   # build artifacts are deleted after 7 days
 
   # Job 4: publishes ONE release carrying both APKs, only when both builds succeeded
   release:
@@ -146,7 +148,7 @@ jobs:
           cat release-notes.md
           ls -l apks
 
-      # Release kalıcıdır (artifact 90 günde silinir)
+      # Release kalıcıdır (artifact 7 günde silinir)
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
@@ -168,3 +170,27 @@ jobs:
           N=$(gh release view "$TAG" --json assets -q '[.assets[].name | select(. == "LANShare-v'"$VER"'.apk" or . == "LANShare-v'"$VER"'-lite.apk")] | length')
           if [ "$N" != "2" ]; then echo "::error::release $TAG has $N of 2 APKs - not publishing"; exit 1; fi
           gh release edit "$TAG" --draft=false --latest
+
+  # Job 5: deletes run logs and any leftover artifacts older than 7 days
+  cleanup:
+    needs: [release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete logs and artifacts older than 7 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Cutoff: $CUTOFF"
+          # run logs (the runs themselves stay in the history, only their logs are removed)
+          gh api --paginate "repos/$REPO/actions/runs?per_page=100&created=<$CUTOFF" -q '.workflow_runs[].id' \
+            | while read -r id; do
+                gh api -X DELETE "repos/$REPO/actions/runs/$id/logs" >/dev/null 2>&1 && echo "logs deleted: run $id" || true
+              done
+          # artifacts that are still around (e.g. from before retention-days was set)
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" -q ".artifacts[] | select(.created_at < \"$CUTOFF\") | .id" \
+            | while read -r id; do
+                gh api -X DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null 2>&1 && echo "artifact deleted: $id" || true
+              done
