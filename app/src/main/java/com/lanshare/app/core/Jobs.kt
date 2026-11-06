@@ -57,6 +57,7 @@ class Job(@Volatile var label: String) {
     private val problems = ArrayList<String>()
     @Synchronized fun addProblem(s: String) { if (problems.size < 30) problems.add(s) }
     private val binIds = ArrayList<String>()   // delete jobs: recycle-bin ids of what was moved there (the UI's "Undo" button restores them)
+    @Volatile var grace = false   // "Delete permanently" on this phone: the items sit in the bin only for the UI's 5 s Undo countdown, then the UI purges them
     @Synchronized fun addBin(id: String) { binIds.add(id) }
     @Synchronized private fun binJson() = org.json.JSONArray(binIds.toList())
     @Synchronized private fun hasBin() = binIds.isNotEmpty()
@@ -134,7 +135,7 @@ class Job(@Volatile var label: String) {
             if (cur.isNotEmpty()) it.put("cur", cur).put("curDone", curDone).put("curTotal", curTotal)
             if (files > 0 || filesTotal > 0) it.put("files", files).put("filesTotal", filesTotal)
             if (failed > 0) it.put("failed", failed).put("problems", problemsJson())
-            if (hasBin()) it.put("bin", binJson())
+            if (hasBin()) { it.put("bin", binJson()); if (grace) it.put("grace", true) }
             dest?.let { d -> it.put("dest", d) }
             if (state == "error") resumeId?.let { r -> it.put("resume", r) }
             note?.let { n -> it.put("note", n) }
@@ -414,13 +415,20 @@ object Jobs {
     /** A delete the user asked for: this phone's own files go to the recycle bin, everything else is deleted for good. */
     fun removeUser(e: Endpoint, p: String, progress: ((String) -> Unit)? = null, perm: Boolean = false, onTrash: ((String) -> Unit)? = null) {
         // perm = the user chose "Delete permanently": skip the bin. === Core.local: the recycle bin lives on the phone's own storage; a USB drive's files are deleted for good (the bin would act on the SAME virtual path of the phone!)
-        if (!perm && ((e as? ArcEp)?.base ?: e) === Core.local && Bin.canTrash(p)) { val id = Bin.trash(p, progress); onTrash?.invoke(id) } else e.remove(p, progress)
+        val local = ((e as? ArcEp)?.base ?: e) === Core.local && Bin.canTrash(p)
+        if (local && !perm) { val id = Bin.trash(p, progress); onTrash?.invoke(id); return }
+        // perm on this phone: park it in the bin first so the 5 s Undo countdown can bring it back (the UI purges it when the countdown ends); when the move is refused, delete in place as before
+        if (local && onTrash != null) {
+            try { val id = Bin.trash(p, progress); onTrash(id); return } catch (x: Cancelled) { throw x } catch (_: Exception) { /* fall through */ }
+        }
+        e.remove(p, progress)
     }
 
     private fun deleteWork(job: Job, e: Endpoint, paths: List<String>, perm: Boolean) {
         val fails = ArrayList<String>()
         var failCount = 0
         var removed = 0
+        job.grace = perm
         val handled = HashSet<String>()   // several entries of one ZIP: removed in a single rewrite of the archive
         try {
             if (e is ArcEp) {

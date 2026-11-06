@@ -5112,19 +5112,21 @@ let curJob='';
 $('#tc').onclick=()=>{$('#tc').style.display='none';api('POST','/api/jobcancel?id='+curJob).catch(()=>{})};
 $('#toast').addEventListener('click',e=>{if(e.target.closest&&e.target.closest('#tc'))return;if(LVS&&LVS.id===curJob)lvShow()});
 let trk=0;
-/* ---- Undo after a delete: round mini button (bottom left, above the toast), countdown 5..1 in the middle, ring runs down; tap = restore what that delete moved to the Recycle bin.
-   The ids come from the delete job (j.bin). A second delete while it is showing adds to it and restarts the 5 s. ---- */
+/* ---- Undo after a PERMANENT delete only (job.grace): round mini button (bottom left, above the toast), countdown 5..1 in the middle, ring runs down; tap = restore the items to where they were.
+   The phone parks them in the Recycle bin meanwhile (ids = j.bin); when the countdown ends they are purged for good (ubPurge). A second delete while it is showing adds to it and restarts the 5 s.
+   A normal "Move to bin" delete shows no countdown (it stays restorable from the Recycle bin for 30 days). If the app closes during the 5 s the items just stay in the bin. ---- */
 const UB={ids:[],end:0,t:0,busy:false};
 function ubEl(){let e=$('#ubn');if(e)return e;
-  e=E('button');e.id='ubn';e.type='button';e.setAttribute('aria-label','Undo delete (restore from the Recycle bin)');
+  e=E('button');e.id='ubn';e.type='button';e.setAttribute('aria-label','Undo permanent delete (5 s)');
   e.innerHTML='<span class="ubc"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="rb" cx="22" cy="22" r="19"/><circle class="rf" cx="22" cy="22" r="19"/></svg><b></b></span><small>Restore</small>';
   e.onclick=()=>ubRestore();document.body.append(e);return e}
-function ubHide(){clearInterval(UB.t);UB.t=0;UB.ids=[];const e=$('#ubn');if(e){e.style.display='none';e.classList.remove('go')}
+async function ubPurge(ids){for(let k=0;k<4;k++){try{await api('POST','/api/bin',{op:'purge',ids:ids},15000);return}catch(e){if(!/busy/i.test(e.message))return;await new Promise(x=>setTimeout(x,1500))}}}
+function ubHide(end){const gone=end?UB.ids.slice():[];clearInterval(UB.t);UB.t=0;UB.ids=[];if(gone.length)ubPurge(gone);const e=$('#ubn');if(e){e.style.display='none';e.classList.remove('go')}
   try{nlLay(true)}catch(_){}try{jbPos()}catch(_){}}
 function ubShow(ids){
   const e=ubEl(),b=e.querySelector('b');
   UB.ids=UB.ids.concat(ids.filter(x=>!UB.ids.includes(x)));UB.end=Date.now()+5000;
-  const tick=()=>{const left=UB.end-Date.now();if(left<=0)return ubHide();b.textContent=Math.ceil(left/1000)};
+  const tick=()=>{const left=UB.end-Date.now();if(left<=0)return ubHide(true);b.textContent=Math.ceil(left/1000)};
   clearInterval(UB.t);tick();UB.t=setInterval(tick,200);
   e.style.display='flex';e.classList.remove('go');void e.offsetWidth;e.classList.add('go');
   try{nlLay(true)}catch(_){}try{jbPos()}catch(_){}}
@@ -5143,7 +5145,7 @@ async function track(id){
   let ok=false,jf=0;curJob=id;trk++;jbKick();
   for(;;){
     let j;try{j=await api('GET','/api/job?id='+id+'&since='+(LVS&&LVS.id===id?LVS.n:0),null,10000)}catch(e){if(++jf<4&&!/unknown job/i.test(e.message)){await new Promise(r=>setTimeout(r,1500));continue}toast('⚠ '+e.message,5000);break}jf=0;
-    if(j.state!=='run'&&j.bin&&j.bin.length)ubShow(j.bin);   // delete job that put things into the Recycle bin: round Undo button for 5 s
+    if(j.state!=='run'&&j.grace&&j.bin&&j.bin.length)ubShow(j.bin);   // permanent delete: round Undo countdown for 5 s, then the parked items are purged
     if(j.state==='error'){if(/^(Printing on|Saving PDF)/.test(j.label||''))try{hpFail()}catch(_){}const c=lvEnd(id,j);if(!c)toast('⚠ '+j.error,Math.max(7000,Math.min(14000,(j.error||'').length*70)));break}
     if(j.state==='cancel'){const c=lvEnd(id,j);if(!c)toast('Cancelled',2500);break}
     if(j.state==='done'){const c=lvEnd(id,j);if(!c)toast('✅ '+(j.note||'Done'),j.note?5000:2500);ok=true;break}

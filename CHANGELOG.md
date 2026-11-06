@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-06 - Undo countdown only for permanent delete
+### Changed
+- After "Delete permanently" a 5 second Restore countdown appears; tap it to bring the files back to where they were, otherwise they are deleted for good when it ends.
+- "Move to bin" no longer shows the countdown (the files stay in the Recycle bin for 30 days).
+
 ## 2026-11-06 - Change log always visible
 ### Changed
 - Settings > Check for updates now shows the change log even when no update is available (with only a Close button).
