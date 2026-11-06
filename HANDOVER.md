@@ -1,5 +1,7 @@
 # LANShare - Project Handover
 
+> **ARCHIVE RULE (owner, 2026-11-06): always use the `.tar.xz` format (`tar -cJf name.tar.xz ...`) when archiving files to share with the user. Never zip.**
+
 > **WARNING (owner, 2026-11-05) - TOKEN ECONOMY: always watch token use, never waste tokens (short replies, read only what is needed, no recaps). Obey this ALWAYS, unless there is a serious danger of a code error.**
 
 > **READ FIRST - CHANGE LOG RULE (owner, 2026-10-26) - do this in EVERY session that changes the app, before you zip**
@@ -1777,6 +1779,14 @@ A memory stick or disk on an OTG cable is mounted by Android as a storage volume
 - `Bin.physical` split: pure `Bin.resolve(v, entries, physicalSeg)` (+ rejects `..` in the sub path). `tools/bin_selftest/BinSelfTest.kt` covers duplicate names, plain ambiguous name, folder sub paths, `..`, physical ids, paths outside the bin.
 - Old `openBinSheet()` and its CSS (`.bn .bh .bs .bt .bpg .bl .br`) removed; `binProgress()` / `BINTOK` stay (used by `binDo`).
 - Device checklist: bin root sorted newest first; "Nd left" shown; search a word -> deleted names + files inside deleted folders; two same-named deletes show `name (xxxx)`; Restore / Delete forever / Empty bin still work; switch to grid / compact.
+
+### 20.5 Undo countdown only after "Delete permanently" (2026-11-06; not compiled, `node --check` of ui.html scripts OK, never device-tested)
+- **Behaviour**: "Move to bin" = no countdown (restore from the Recycle bin, 30 days). "Delete permanently" on this phone = the round Restore countdown (5..1, `#ubn`); tap = restore to the original place, end = purge for good. Other devices (SMB, USB, archives, Drive) and deletes inside the bin stay immediate, no countdown.
+- **Core** (`core/Jobs.kt`): `Job.grace` (set from `perm` in `deleteWork`) -> job JSON `grace:true` next to `bin`. `removeUser`: local + perm + `onTrash != null` -> `Bin.trash` first (ids reported through `onTrash`); if the move throws (not Cancelled) it falls back to `e.remove`, so a refused move behaves as before. Callers without `onTrash` (viewers, `/api/file` rm, `AlbumMerge`) are unchanged.
+- **UI** (`ui.html`): `track()` calls `ubShow(j.bin)` only when `j.grace`; `ubHide(true)` (countdown ran out) -> `ubPurge(ids)` = `POST /api/bin {op:'purge', ids}`, retried 4x while the bin says "busy"; `ubRestore` calls `ubHide()` without purge. A second permanent delete adds ids and restarts the 5 s.
+- **Known edge**: app or page closed during the 5 s = nothing purges, the items stay in the bin (visible there, 30 days). Not done: purge on next start for items flagged grace.
+
+---
 
 ## 21. Remote shell transport + Upload & run (merged 2026-11-05 from chapter 21, state of 2026-10-31)
 
