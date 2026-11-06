@@ -90,7 +90,7 @@ object UpdateCheck {
                         .setNegativeButton("Sonra", null)
                         .setNeutralButton("Bu sürümü atla") { _, _ ->
                             sp.edit().putString("skip", tag).apply()
-                            Toast.makeText(a, "$tag atlandı (Ayarlar > Check for updates ile yine de indirilebilir)", Toast.LENGTH_LONG).show()
+                            Lm.snack(a, "$tag atlandı (Ayarlar > Check for updates ile yine de indirilebilir)", Toast.LENGTH_LONG)
                         }
                         .show()
                 }
@@ -261,7 +261,7 @@ object UpdateCheck {
     private fun install(a: Activity, f: File, tag: String) {
         try {
             if (Build.VERSION.SDK_INT >= 26 && !a.packageManager.canRequestPackageInstalls()) {
-                Toast.makeText(a, "Bu uygulamaya 'bilinmeyen kaynaklardan yükleme' izni ver, sonra geri dönüp Kur'a bas", Toast.LENGTH_LONG).show()
+                Lm.snack(a, "Bu uygulamaya 'bilinmeyen kaynaklardan yükleme' izni ver, sonra geri dönüp Kur'a bas", Toast.LENGTH_LONG)
                 a.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${a.packageName}")))
                 offerInstall(a, f, tag)   // still on screen when the user comes back
                 return
@@ -269,7 +269,7 @@ object UpdateCheck {
             val uri = FileProvider.getUriForFile(a, "${a.packageName}.fileprovider", f)
             a.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Throwable) {
-            Toast.makeText(a, "Kurulum başlatılamadı: ${e.message}", Toast.LENGTH_LONG).show()
+            Lm.snack(a, "Kurulum başlatılamadı: ${e.message}", Toast.LENGTH_LONG)
         }
     }
 

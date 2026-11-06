@@ -186,7 +186,7 @@ class MainActivity : Activity() {
                     c.connectTimeout = 15000; c.readTimeout = 60000
                     c.inputStream.use { i -> f.outputStream().use { out -> var t = 0L; val b = ByteArray(65536); while (true) { val n = i.read(b); if (n < 0) break; t += n; if (t > 60L shl 20) throw java.io.IOException("too big"); out.write(b, 0, n) } } }
                     runOnUiThread { startActivity(Intent(this@MainActivity, OfficeViewerActivity::class.java).putExtra("path", f.absolutePath).putExtra("dev", o.optString("dev")).putExtra("rpath", o.optString("path"))) }
-                } catch (e: Throwable) { runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Cannot open: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG).show() } }
+                } catch (e: Throwable) { runOnUiThread { Lm.snack(this@MainActivity, "Cannot open: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG) } }
             }.start()
         }
         /** + menu -> "Word document" / "Excel workbook": [json] = {dev, dir, kind:"docx"|"xlsx"}. Creates an empty file with a free name in that folder. */
@@ -203,8 +203,8 @@ class MainActivity : Activity() {
                     val tmp = java.io.File(cacheDir, "new-$nm")
                     if (kind == "xlsx") com.lanshare.app.core.office.XlsxWriter.createEmpty(tmp) else com.lanshare.app.core.office.DocxWriter.createEmpty(tmp)
                     try { tmp.inputStream().use { ep.write(com.lanshare.app.core.vjoin(dir, nm), it, tmp.length()) } } finally { tmp.delete() }
-                    runOnUiThread { try { web.evaluateJavascript("window.lsRefresh&&window.lsRefresh()", null) } catch (_: Throwable) {}; android.widget.Toast.makeText(this@MainActivity, "Created $nm", android.widget.Toast.LENGTH_SHORT).show() }
-                } catch (e: Throwable) { runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Cannot create: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG).show() } }
+                    runOnUiThread { try { web.evaluateJavascript("window.lsRefresh&&window.lsRefresh()", null) } catch (_: Throwable) {}; Lm.snack(this@MainActivity, "Created $nm", android.widget.Toast.LENGTH_SHORT) }
+                } catch (e: Throwable) { runOnUiThread { Lm.snack(this@MainActivity, "Cannot create: " + (e.message ?: "error"), android.widget.Toast.LENGTH_LONG) } }
             }.start()
         }
         /** Text / code file tapped, or "New note": open the Keep-style editor. [json] = {dev, path} or {dev, dir, isNew:true} */
@@ -658,7 +658,7 @@ class MainActivity : Activity() {
         when {
             text != null -> { pendingClipText = text; runClipShare() }
             r.uris.isNotEmpty() -> copySharedIn(r.uris, false)
-            else -> Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_LONG).show()
+            else -> Lm.snack(this, "Clipboard is empty", Toast.LENGTH_LONG)
         }
     }
 
@@ -676,7 +676,7 @@ class MainActivity : Activity() {
 
     /** Share sheet > "LANShare Print space": every picture is streamed into the Print space (core/PrintSpace.kt); nothing is printed or sent. */
     private fun shareToPrintSpace(uris: List<Uri>) {
-        Toast.makeText(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT)
         Thread {
             var ok = 0
             var why: String? = null
@@ -692,12 +692,12 @@ class MainActivity : Activity() {
                 ok > 0 -> "$ok added, others skipped: $why"
                 else -> "Not added: " + (why ?: "nothing to add")
             }
-            runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+            runOnUiThread { Lm.snack(this, msg, Toast.LENGTH_LONG) }
         }.start()
     }
 
     private fun copySharedIn(uris: List<Uri>, toPrint: Boolean) {
-        if (toPrint && !pageReady) Toast.makeText(this, "Preparing print\u2026", Toast.LENGTH_SHORT).show()   // cold start: something on screen while the page loads
+        if (toPrint && !pageReady) Lm.snack(this, "Preparing print\u2026", Toast.LENGTH_SHORT)   // cold start: something on screen while the page loads
         Thread {
             var n = 0
             val names = ArrayList<String>()
@@ -715,7 +715,7 @@ class MainActivity : Activity() {
             } catch (_: Exception) {}
             runOnUiThread {
                 if (n > 0) { if (toPrint) { pendingPrint = names; runPrint() } else { pendingShare = names; runShare() } }
-                else Toast.makeText(this, "Could not read the shared file(s)", Toast.LENGTH_LONG).show()
+                else Lm.snack(this, "Could not read the shared file(s)", Toast.LENGTH_LONG)
             }
         }.start()
     }
@@ -771,7 +771,7 @@ class MainActivity : Activity() {
             } catch (_: Exception) {}
             runOnUiThread {
                 if (rel != null) { pendingOpen = rel; runOpen() }
-                else Toast.makeText(this, "Could not open the archive", Toast.LENGTH_LONG).show()
+                else Lm.snack(this, "Could not open the archive", Toast.LENGTH_LONG)
             }
         }.start()
     }
@@ -1109,7 +1109,7 @@ class MainActivity : Activity() {
             val cd = android.content.ClipData.newRawUri("", uris[0]); for (k in 1 until uris.size) cd.addItem(android.content.ClipData.Item(uris[k]))
             send.clipData = cd
             startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (e: Exception) { Toast.makeText(this, "Cannot share: ${e.message}", Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) { Lm.snack(this, "Cannot share: ${e.message}", Toast.LENGTH_LONG) }
     }
 
     private val TEXT_EXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",
@@ -1129,8 +1129,8 @@ class MainActivity : Activity() {
         try { go(mime) }
         catch (e: ActivityNotFoundException) {
             try { if (mime != "*/*") go("*/*") else throw e }
-            catch (e2: Exception) { Toast.makeText(this, "No app can open .${ext}. Long-press the file to download it instead.", Toast.LENGTH_LONG).show() }
-        } catch (e: Exception) { Toast.makeText(this, "Cannot open: ${e.message}", Toast.LENGTH_LONG).show() }
+            catch (e2: Exception) { Lm.snack(this, "No app can open .${ext}. Long-press the file to download it instead.", Toast.LENGTH_LONG) }
+        } catch (e: Exception) { Lm.snack(this, "Cannot open: ${e.message}", Toast.LENGTH_LONG) }
     }
 
     // ---- print on this phone (Android print framework: Wi-Fi/Mopria/vendor plugins/Save as PDF) ----

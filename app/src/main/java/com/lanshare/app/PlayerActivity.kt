@@ -775,7 +775,7 @@ class PlayerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26) { labels += "Picture-in-picture"; acts += { enterPip() } }
         if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { rotTarget = 0; applyVideoTransform(true); subtitlePadding() } }
         labels += "Details"; acts += { showDetails() }
-        dlg(AlertDialog.Builder(this).setItems(labels.toTypedArray()) { _, i -> acts[i]() })
+        dlg(AppPal.dlg(this).setItems(labels.toTypedArray()) { _, i -> acts[i]() })
     }
 
     private fun speedText(s: Float) = (if (s == Math.floor(s.toDouble()).toFloat()) s.toInt().toString() else s.toString()) + "x"
@@ -786,7 +786,7 @@ class PlayerActivity : Activity() {
         val cur = p.playbackParameters.speed
         var at = 3; var best = Float.MAX_VALUE
         for (i in v.indices) if (Math.abs(v[i] - cur) < best) { best = Math.abs(v[i] - cur); at = i }
-        dlg(AlertDialog.Builder(this).setTitle("Playback speed")
+        dlg(AppPal.dlg(this).setTitle("Playback speed")
             .setSingleChoiceItems(Array(v.size) { speedText(v[it]) }, at) { d, i -> p.setPlaybackSpeed(v[i]); d.dismiss() })
     }
 
@@ -827,9 +827,9 @@ class PlayerActivity : Activity() {
                 gs += g; ix += i; names += trackLabel(g.getTrackFormat(i), real, audio); real++
             }
         }
-        if (real == 0) { Toast.makeText(this, if (audio) "No audio tracks" else "No subtitles for this video", Toast.LENGTH_SHORT).show(); return }
+        if (real == 0) { Lm.snack(this, if (audio) "No audio tracks" else "No subtitles for this video", Toast.LENGTH_SHORT); return }
         if (!audio && (checked < 0 || p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))) checked = 0
-        dlg(AlertDialog.Builder(this).setTitle(if (audio) "Audio track" else "Subtitles")
+        dlg(AppPal.dlg(this).setTitle(if (audio) "Audio track" else "Subtitles")
             .setSingleChoiceItems(names.toTypedArray(), checked) { d, k ->
                 val g = gs[k]
                 val tp = p.trackSelectionParameters.buildUpon()
@@ -852,7 +852,7 @@ class PlayerActivity : Activity() {
         val mt = if (it.mtime > 0) it.mtime else mtimes[it.url] ?: 0L
         if (mt > 0) sb.append("\nModified: ").append(dateText(mt))
         val base = sb.toString()
-        val detDlg = dlg(AlertDialog.Builder(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
+        val detDlg = dlg(AppPal.dlg(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
         Thread({   // container / codec / track / tag details from the app's own /api/stat (same as the file list's Details sheet)
             val extra = MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
@@ -872,7 +872,7 @@ class PlayerActivity : Activity() {
             } catch (_: Exception) { }
         }
         val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
-        val box = dlg(AlertDialog.Builder(this).setMessage("Preparing\u2026").setCancelable(false)
+        val box = dlg(AppPal.dlg(this).setMessage("Preparing\u2026").setCancelable(false)
             .setNegativeButton("Cancel") { _, _ -> cancel.set(true) })
         Thread({
             try {
@@ -895,7 +895,7 @@ class PlayerActivity : Activity() {
             } catch (e: InterruptedException) {
                 ui.post { box.dismiss() }
             } catch (e: Exception) {
-                ui.post { box.dismiss(); Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                ui.post { box.dismiss(); Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }, "player-share").also { it.isDaemon = true }.start()
     }
@@ -905,13 +905,13 @@ class PlayerActivity : Activity() {
             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
             val send = Intent(Intent.ACTION_SEND).setType(mimeFor(name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (e: Exception) { Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
 
     /** Asks, then moves the video to the Recycle bin (this phone) / deletes it (other devices) and plays the next one. */
     private fun deleteCurrent() {
         val i = curIndex(); val it = items.getOrNull(i) ?: return
-        dlg(AlertDialog.Builder(this).setTitle("Delete this video?")
+        dlg(AppPal.dlg(this).setTitle("Delete this video?")
             .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->
@@ -923,7 +923,7 @@ class PlayerActivity : Activity() {
                         com.lanshare.app.core.Jobs.removeUser(com.lanshare.app.core.Jobs.ep(dev), com.lanshare.app.core.vnorm(path))
                         ui.post { if (!isFinishing) afterDelete(it) }
                     } catch (e: Exception) {
-                        ui.post { Toast.makeText(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                        ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
                 }, "player-delete").also { t -> t.isDaemon = true }.start()
             })

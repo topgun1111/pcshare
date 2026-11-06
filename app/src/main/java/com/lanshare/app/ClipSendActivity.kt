@@ -47,7 +47,7 @@ class ClipSendActivity : Activity() {
             ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.takeIf { it.isNotBlank() }
     } catch (_: Throwable) { null }
 
-    private fun say(m: String) { Toast.makeText(applicationContext, m, Toast.LENGTH_SHORT).show() }
+    private fun say(m: String) { Lm.snack(applicationContext, m, Toast.LENGTH_SHORT) }
 
     /** Waits up to ~8 s for discovery (cold start), then sends / asks. */
     private fun go(t: String, tries: Int) {

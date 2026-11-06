@@ -121,7 +121,7 @@ object ClipPush {
             setTextColor(0xFFFFB77C.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         })
         card.setOnClickListener {
-            if (link != null) open(a, link) else { copy(a, text); Toast.makeText(a, "Copied", Toast.LENGTH_SHORT).show() }
+            if (link != null) open(a, link) else { copy(a, text); Lm.snack(a, "Copied", Toast.LENGTH_SHORT) }
             dismiss()
         }
         val maxW = minOf(a.resources.displayMetrics.widthPixels - dp(a, 32f), dp(a, 340f))
@@ -167,6 +167,6 @@ class ClipCopyReceiver : BroadcastReceiver() {
         ClipPush.copy(c, t)
         c.getSystemService(NotificationManager::class.java)?.cancel(id)
         ClipPush.drop(id)
-        Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show()
+        Lm.snack(c, "Copied", Toast.LENGTH_SHORT)
     }
 }

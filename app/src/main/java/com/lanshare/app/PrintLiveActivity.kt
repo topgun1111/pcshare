@@ -269,7 +269,7 @@ class PrintLiveActivity : Activity() {
         val ls = s.optJSONArray("lines")
         for (i in 0 until (ls?.length() ?: 0)) { val a = ls!!.optJSONArray(i) ?: continue; out.add("${a.optString(0)} ${a.optString(2)}") }
         (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("print job", out.joinToString("\n")))
-        android.widget.Toast.makeText(this, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Copied", android.widget.Toast.LENGTH_SHORT)
     }
 
     companion object {

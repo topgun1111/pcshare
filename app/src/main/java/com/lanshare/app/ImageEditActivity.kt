@@ -100,7 +100,7 @@ class ImageEditActivity : Activity() {
                     refreshInfo()
                 }
             } catch (t: Throwable) {
-                runOnUiThread { Toast.makeText(this, "Cannot open this picture: " + (t.message ?: "error"), Toast.LENGTH_LONG).show(); finish() }
+                runOnUiThread { Lm.snack(this, "Cannot open this picture: " + (t.message ?: "error"), Toast.LENGTH_LONG); finish() }
             }
         }.start()
     }
@@ -252,7 +252,7 @@ class ImageEditActivity : Activity() {
             orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0)
             addView(row); addView(chips)
         }
-        AlertDialog.Builder(this)
+        AppPal.dlg(this)
             .setTitle("Resize (px)")
             .setView(box)
             .setNegativeButton("Cancel", null)
@@ -269,9 +269,9 @@ class ImageEditActivity : Activity() {
 
     private fun askSave() {
         if (base == null || saving) return
-        if (!changed()) { Toast.makeText(this, "No changes to save", Toast.LENGTH_SHORT).show(); return }
+        if (!changed()) { Lm.snack(this, "No changes to save", Toast.LENGTH_SHORT); return }
         if (canReplace()) {
-            AlertDialog.Builder(this).setTitle("Save")
+            AppPal.dlg(this).setTitle("Save")
                 .setItems(arrayOf("Save as copy", "Replace original")) { _, i -> doSave(i == 1) }
                 .setNegativeButton("Cancel", null).show()
         } else doSave(false)
@@ -284,7 +284,7 @@ class ImageEditActivity : Activity() {
         val r = rot
         val (w, h) = outDims()
         saving = true
-        val dlg = AlertDialog.Builder(this).setMessage("Saving…").setCancelable(false).show()
+        val dlg = AppPal.dlg(this).setMessage("Saving…").setCancelable(false).show()
         Thread {
             var err: String? = null
             var res: File? = null
@@ -320,10 +320,10 @@ class ImageEditActivity : Activity() {
                 if (!isDestroyed) dlg.dismiss()
                 if (rf != null) {
                     MediaScannerConnection.scanFile(applicationContext, arrayOf(rf.path), null, null)
-                    Toast.makeText(this, if (replace) "Saved" else "Saved: " + rf.name, Toast.LENGTH_SHORT).show()
+                    Lm.snack(this, if (replace) "Saved" else "Saved: " + rf.name, Toast.LENGTH_SHORT)
                     setResult(RESULT_OK, Intent().putExtra(R_REPLACED, replace).putExtra(R_SIZE, rf.length()))
                     finish()
-                } else Toast.makeText(this, "Cannot save: " + (re ?: "error"), Toast.LENGTH_LONG).show()
+                } else Lm.snack(this, "Cannot save: " + (re ?: "error"), Toast.LENGTH_LONG)
             }
         }.start()
     }

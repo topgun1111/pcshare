@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - New look for messages and dialogs
+### Changed
+- Short messages (Copied, Saved, errors) now appear as a rounded pill that matches the theme; failures get a red cross and stay longer.
+- All dialogs share one look: rounder corners, filled OK button, red Delete button with a bin icon, long button labels stacked full width.
+
 ## 2026-11-07 - Day view in the Gallery
 ### Added
 - Gallery albums now group pictures by day like Google Photos (Today, Yesterday, weekday, then date). Tap a day heading to select that whole day.

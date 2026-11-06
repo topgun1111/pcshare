@@ -365,7 +365,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     }
 }
 
-/** #toast: message, optional Cancel and progress bar. Fixed dark snackbar colours from the CSS. */
+/** #toast: message, optional Cancel and progress bar. Lumen snackbar (Part 8): surfaceHi pill with an edge hairline, ink text, primary action, same as the page. */
 class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
     private var tx = ""
     private var pct = -1f
@@ -381,7 +381,7 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, 12f * d); o.setAlpha(1f) }
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, Math.min(24f * d, v.height / 2f)); o.setAlpha(1f) }
         }
     }
 
@@ -389,7 +389,8 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
         this.tx = tx; this.pct = pct; this.cancel = cancel; bw = w; bh = h
         hits.clear()
         val cw = if (cancel) cxP.measureText("Cancel") + 24f * d else 0f
-        cancelR.set(bw - 16f * d + 6f * d - cw, 10f * d, bw - 16f * d + 6f * d, 10f * d + 31.6f * d)
+        val cTop = if (pct < 0f) (bh - 31.6f * d) / 2f else 10f * d
+        cancelR.set(bw - 16f * d + 6f * d - cw, cTop, bw - 16f * d + 6f * d, cTop + 31.6f * d)
         if (cancel) hits.add(Hit("tc", cancelR))
         val avail = Math.max(1, (bw - 32f * d - (if (cancel) cw + 6f * d else 0f)).toInt())
         val fm = txP.fontMetrics
@@ -397,26 +398,32 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
         val lh = 19.6f * d                                   // CSS line-height 1.4 x 14
         lay = StaticLayout.Builder.obtain(tx, 0, tx.length, txP, avail)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(Math.max(0f, lh - fh), 1f).build()
-        layY = 14f * d + (lh - fh) / 2f
+        layY = if (pct < 0f) Math.max(0f, (bh - (lay?.height ?: 0)) / 2f) else 12f * d + (lh - fh) / 2f
         invalidate()
     }
 
     override fun onDraw(cv: Canvas) {
         if (pal == null || bw <= 0f) return
-        fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = 0xFF2E3133.toInt()
-        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
-        txP.color = 0xFFF0F0F0.toInt()
+        val lm = Lumen.of(context)
+        val rad = Math.min(24f * d, bh / 2f)
+        fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = lm.surfaceHi
+        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
+        val sw = Math.max(1f, d)
+        fillP.style = Paint.Style.STROKE; fillP.strokeWidth = sw; fillP.color = lm.edge
+        rf.set(sw / 2f, sw / 2f, bw - sw / 2f, bh - sw / 2f); cv.drawRoundRect(rf, rad, rad, fillP)
+        fillP.style = Paint.Style.FILL
+        txP.color = lm.ink
         lay?.let { cv.save(); cv.translate(16f * d, layY); it.draw(cv); cv.restore() }
         if (cancel) {
-            if (pressed == "tc") { fillP.color = 0x22FFFFFF; cv.drawRoundRect(cancelR, 12f * d, 12f * d, fillP) }
-            cxP.color = 0xFFFFB77C.toInt()
+            if (pressed == "tc") { fillP.color = (lm.primary and 0x00FFFFFF) or 0x24000000; cv.drawRoundRect(cancelR, 12f * d, 12f * d, fillP) }
+            cxP.color = lm.primary
             cv.drawText("Cancel", cancelR.left + 12f * d, ty(cancelR.centerY(), cxP), cxP)
         }
         if (pct >= 0f) {
             val top = bh - 14f * d - 4f * d; val l = 16f * d; val r = bw - 16f * d
-            fillP.color = 0x33FFFFFF; rf.set(l, top, r, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
+            fillP.color = lm.edge; rf.set(l, top, r, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
             val w = (r - l) * Math.min(100f, pct) / 100f
-            if (w > 0f) { fillP.color = 0xFFFFB77C.toInt(); rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP) }
+            if (w > 0f) { fillP.color = lm.primary; rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP) }
         }
     }
 }

@@ -156,7 +156,7 @@ object StorageActions {
         } catch (e: Exception) { toast(a, "Cannot open the file manager: " + errText(e)) }
     }
 
-    private fun toast(a: Activity, m: String) = Toast.makeText(a, m, Toast.LENGTH_LONG).show()
+    private fun toast(a: Activity, m: String) = Lm.snack(a, m, Toast.LENGTH_LONG)
 
     // same list as MainActivity.TEXT_EXT (kept separate: that one is private to the file manager)
     private val TEXT_EXT = setOf("php", "phtml", "js", "mjs", "ts", "tsx", "jsx", "css", "scss", "json", "xml", "yml", "yaml", "toml",

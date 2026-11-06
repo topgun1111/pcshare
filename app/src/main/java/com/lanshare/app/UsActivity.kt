@@ -1013,7 +1013,7 @@ class UsActivity : Activity() {
         }.also { it.isDaemon = true }.start()
     }
 
-    private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
+    private fun toast(m: String) = Lm.snack(this, m, Toast.LENGTH_LONG)
 
     companion object {
         /** Part 5 strips markup before storing, so line numbers of these files do not match the editor text. */

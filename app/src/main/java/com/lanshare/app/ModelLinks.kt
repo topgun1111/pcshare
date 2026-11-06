@@ -88,7 +88,7 @@ object ModelLinks {
             .setMessage("A model the app downloads (it is not in the APK) can no longer be fetched. Phones that already have the model keep working; new installs and reinstalls will not get it. Update the link in the code:\n\n$text")
             .setPositiveButton("Copy details") { _, _ ->
                 (a.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("dead model links", text))
-                Toast.makeText(a, "Copied", Toast.LENGTH_SHORT).show()
+                Lm.snack(a, "Copied", Toast.LENGTH_SHORT)
             }
             .setNegativeButton("Dismiss") { _, _ -> dead.forEach { ok(a, it.optString("url")) } }   // comes back at the next daily check if still dead
             .setCancelable(true).show()

@@ -49,7 +49,7 @@ class PhonePrint(private val act: Activity) {
     private val pool = Executors.newSingleThreadExecutor()   // downloads / job set-up
     private val io = Executors.newSingleThreadExecutor()     // layout + page rendering (PdfRenderer is not thread-safe)
 
-    private fun toast(t: String) = act.runOnUiThread { Toast.makeText(act, t, Toast.LENGTH_LONG).show() }
+    private fun toast(t: String) = act.runOnUiThread { Lm.snack(act, t, Toast.LENGTH_LONG) }
     private fun failToast(t: String) { Haptics.play("fail"); toast(t) }
     @Volatile private var jid: String? = null   // print log id of the job being set up (A000n)
 

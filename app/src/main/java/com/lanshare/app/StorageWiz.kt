@@ -981,7 +981,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         expandPath(n)
         rebuildRows()
         paintStatus()
-        Toast.makeText(act, n.path(), Toast.LENGTH_SHORT).show()
+        Lm.snack(act, n.path(), Toast.LENGTH_SHORT)
     }
 
     private fun toggleHl(key: String) {
@@ -1025,7 +1025,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         if (i >= 0) treeList.post { treeList.setSelectionFromTop(i, dp(60)) }
         paintStatus()
         treeAdapter.notifyDataSetChanged()
-        Toast.makeText(act, if (f === root) host.label else f.path(), Toast.LENGTH_SHORT).show()
+        Lm.snack(act, if (f === root) host.label else f.path(), Toast.LENGTH_SHORT)
     }
 
     /** Where the user is (tab, opened folders, selection, scroll): kept when the screen is created again (e.g. after a video player was closed and Android had dropped the activity). */
@@ -1433,9 +1433,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                         val uri = FileProvider.getUriForFile(act, act.packageName + ".fileprovider", f)
                         val i = Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         act.startActivity(Intent.createChooser(i, "Export CSV"))
-                    } catch (e: Exception) { Toast.makeText(act, "Cannot share the CSV: " + (e.message ?: ""), Toast.LENGTH_LONG).show() }
+                    } catch (e: Exception) { Lm.snack(act, "Cannot share the CSV: " + (e.message ?: ""), Toast.LENGTH_LONG) }
                 }
-            } catch (e: Throwable) { ui.post { Toast.makeText(act, "Export failed: " + (e.message ?: ""), Toast.LENGTH_LONG).show() } }
+            } catch (e: Throwable) { ui.post { Lm.snack(act, "Export failed: " + (e.message ?: ""), Toast.LENGTH_LONG) } }
         }, "wiz-export").also { it.isDaemon = true }.start()
     }
 

@@ -689,7 +689,7 @@ class TextEditorActivity : Activity() {
         if (previewOn) refreshPreview()
     }
 
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+    private fun toast(s: String) = Lm.snack(this, s, Toast.LENGTH_SHORT)
     private fun busy(on: Boolean) { spin.visibility = if (on) View.VISIBLE else View.GONE }
 
     private fun updateButtons() {

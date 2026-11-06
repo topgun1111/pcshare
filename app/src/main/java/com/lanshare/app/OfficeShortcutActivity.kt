@@ -57,7 +57,7 @@ class OfficeShortcutActivity : Activity() {
                     finish()
                 }
             } catch (e: Throwable) {
-                runOnUiThread { Toast.makeText(this, "Cannot open: " + (e.message ?: "error"), Toast.LENGTH_LONG).show(); finish() }
+                runOnUiThread { Lm.snack(this, "Cannot open: " + (e.message ?: "error"), Toast.LENGTH_LONG); finish() }
             }
         }.also { it.isDaemon = true }.start()
     }

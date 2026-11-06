@@ -116,7 +116,7 @@ class OfficeViewerActivity : Activity() {
                     startActivity(android.content.Intent(this, PdfViewerActivity::class.java))
                     finish()
                 } else {
-                    Toast.makeText(this, (if (auto) "Simple view - " else "Exact pages not available - ") + (why ?: "unknown error"), Toast.LENGTH_LONG).show()
+                    Lm.snack(this, (if (auto) "Simple view - " else "Exact pages not available - ") + (why ?: "unknown error"), Toast.LENGTH_LONG)
                     load(f)
                 }
             }
@@ -358,7 +358,7 @@ class OfficeViewerActivity : Activity() {
                         .putExtra("names", arrayOf(t.name)).putExtra("nid", 0)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP))
                 }
-            } catch (e: Throwable) { runOnUiThread { Toast.makeText(this, "Print on PC failed: " + e.message, Toast.LENGTH_LONG).show() } }
+            } catch (e: Throwable) { runOnUiThread { Lm.snack(this, "Print on PC failed: " + e.message, Toast.LENGTH_LONG) } }
         }.start()
     }
 
@@ -367,7 +367,7 @@ class OfficeViewerActivity : Activity() {
         try {
             val nm = file?.name ?: "document"
             (getSystemService(PRINT_SERVICE) as android.print.PrintManager).print(nm, web.createPrintDocumentAdapter(nm), android.print.PrintAttributes.Builder().build())
-        } catch (e: Throwable) { Toast.makeText(this, "Print failed: " + e.message, Toast.LENGTH_LONG).show() }
+        } catch (e: Throwable) { Lm.snack(this, "Print failed: " + e.message, Toast.LENGTH_LONG) }
     }
 
     // ---- Part 7: editing (docx via DocxEditor, xlsx via XlsxEditor on the cache copy; every edit is uploaded back to the source right away) ----
@@ -393,7 +393,7 @@ class OfficeViewerActivity : Activity() {
                 val d = dev; val rp = rpath
                 if (d != null && rp != null) f.inputStream().use { com.lanshare.app.core.Jobs.ep(d).write(rp, it, f.length()) }
             } catch (e: Throwable) { msg = "Edit failed: " + (e.message ?: "error") }
-            runOnUiThread { if (!isDestroyed) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); load(f) } }
+            runOnUiThread { if (!isDestroyed) { Lm.snack(this, msg, Toast.LENGTH_SHORT); load(f) } }
         }.start()
     }
 
@@ -410,18 +410,18 @@ class OfficeViewerActivity : Activity() {
                 if (d != null && rp != null) f.inputStream().use { com.lanshare.app.core.Jobs.ep(d).write(rp, it, f.length()) }
                 msg = "Edit undone"
             } catch (e: Throwable) { msg = "Undo failed: " + (e.message ?: "error") }
-            runOnUiThread { if (!isDestroyed) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); load(f) } }
+            runOnUiThread { if (!isDestroyed) { Lm.snack(this, msg, Toast.LENGTH_SHORT); load(f) } }
         }.start()
     }
 
     private fun askCell() = dlg("Edit cell", listOf("Cell (e.g. B3)", "Value or =formula")) { v ->
-        val rc = XRef.parse(v[0].trim()); if (rc == null) { Toast.makeText(this, "Bad cell reference", Toast.LENGTH_SHORT).show(); return@dlg }
+        val rc = XRef.parse(v[0].trim()); if (rc == null) { Lm.snack(this, "Bad cell reference", Toast.LENGTH_SHORT); return@dlg }
         val sh = curSheet
         mutate { f -> XlsxEditor.setCell(f, sh, rc[1], rc[0], v[1]); "Saved " + v[0].trim().uppercase() }
     }
 
     private fun askRow() = dlg("Insert row", listOf("Insert before row number")) { v ->
-        val at = (v[0].trim().toIntOrNull() ?: 0) - 1; if (at < 0) { Toast.makeText(this, "Bad row number", Toast.LENGTH_SHORT).show(); return@dlg }
+        val at = (v[0].trim().toIntOrNull() ?: 0) - 1; if (at < 0) { Lm.snack(this, "Bad row number", Toast.LENGTH_SHORT); return@dlg }
         val sh = curSheet
         mutate { f -> XlsxEditor.insertRows(f, sh, at, 1); "Row inserted" }
     }
@@ -527,7 +527,7 @@ class OfficeViewerActivity : Activity() {
                     if (isDestroyed) return@runOnUiThread
                     startActivityForResult(android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("text/csv").putExtra(android.content.Intent.EXTRA_TITLE, nm), 77)
                 }
-            } catch (e: Throwable) { runOnUiThread { Toast.makeText(this, "Export failed: " + e.message, Toast.LENGTH_LONG).show() } }
+            } catch (e: Throwable) { runOnUiThread { Lm.snack(this, "Export failed: " + e.message, Toast.LENGTH_LONG) } }
         }.start()
     }
 
@@ -537,8 +537,8 @@ class OfficeViewerActivity : Activity() {
         val csv = pendingCsv; pendingCsv = null
         val u = data?.data
         if (res != RESULT_OK || u == null || csv == null) return
-        try { contentResolver.openOutputStream(u)?.use { it.write(csv.toByteArray(Charsets.UTF_8)) }; Toast.makeText(this, "CSV saved", Toast.LENGTH_SHORT).show() }
-        catch (e: Throwable) { Toast.makeText(this, "Save failed: " + e.message, Toast.LENGTH_LONG).show() }
+        try { contentResolver.openOutputStream(u)?.use { it.write(csv.toByteArray(Charsets.UTF_8)) }; Lm.snack(this, "CSV saved", Toast.LENGTH_SHORT) }
+        catch (e: Throwable) { Lm.snack(this, "Save failed: " + e.message, Toast.LENGTH_LONG) }
     }
 
     override fun onDestroy() {

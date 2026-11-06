@@ -61,15 +61,16 @@ object AppPal {
 
     /** Palette as ARGB ints, with the built-in light / dark defaults when the page sent none. */
     fun pal(c: Context): P = load(c) ?: Lumen.of(c).let { P(it.canvas, it.surfaceHi, it.ink, it.inkMut, it.edge, it.primary, it.onPrimary) }
+        else P(Color.WHITE, 0xFFF3F3F3.toInt(), 0xFF161616.toInt(), 0xFF5F5F5F.toInt(), 0xFFDDDDDD.toInt(), 0xFFC25100.toInt(), Color.WHITE)
 
-    /** AlertDialog.Builder that follows the app theme: palette window colour, 28 dp corners, palette text / button colours. */
+    /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours. */
     fun dlg(c: Context): AlertDialog.Builder = Dlg(c)
 
     private class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
-            val r = 28f * c.resources.displayMetrics.density
+            val r = 32f * c.resources.displayMetrics.density
             val sf = surf(c)
             d.window?.setBackgroundDrawable(if (sf != null) NlTex.card(sf[0], sf[1], r, p.bd, Math.max(1, Math.round(c.resources.displayMetrics.density)))
                 else android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
@@ -83,6 +84,7 @@ object AppPal {
                     val t = c.resources.getIdentifier("alertTitle", "id", "android")
                     if (t != 0) d.findViewById<android.widget.TextView>(t)?.setTextColor(p.fg)
                 } catch (_: Throwable) { }
+                Lm.restyle(d, c)   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
             }
             return d
         }

@@ -334,7 +334,7 @@ class UsIndexActivity : Activity() {
         }
     }
 
-    private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
+    private fun toast(m: String) = Lm.snack(this, m, Toast.LENGTH_LONG)
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)

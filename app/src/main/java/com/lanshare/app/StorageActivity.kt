@@ -953,7 +953,7 @@ class StorageActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- delete (part 8b)
-    private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
+    private fun toast(m: String) = Lm.snack(this, m, Toast.LENGTH_LONG)
     /** A failed delete: the full message in a dialog (a toast cuts it off). */
     private fun errBox(title: String, m: String) { try { AppPal.dlg(this).setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
 

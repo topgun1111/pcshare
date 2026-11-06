@@ -203,7 +203,7 @@ class InboxActivity : Activity() {
     }
 
     // ---- list
-    private fun toast(m: String) { Toast.makeText(this, m, Toast.LENGTH_SHORT).show() }
+    private fun toast(m: String) { Lm.snack(this, m, Toast.LENGTH_SHORT) }
 
     private fun copy(t: String) {
         ClipSync.mark(t)   // not an echo for clipboard sync

@@ -923,7 +923,7 @@ class PdfViewerActivity : Activity() {
                         if (n >= MAX_FAILS) holder(pos)?.v?.failMsg = "Page " + (pos + 1) + " can't be shown ($why)\nTap to retry"
                         else ui.postDelayed({ if (my == rgen && !isDestroyed) holder(pos)?.let { request(pos) } }, FAIL_RETRY_MS + 100)
                         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
-                            Toast.makeText(this, "PDF page " + (pos + 1) + " failed: " + why, Toast.LENGTH_SHORT).show()
+                            Lm.snack(this, "PDF page " + (pos + 1) + " failed: " + why, Toast.LENGTH_SHORT)
                     } else if (!tried) {
                         // skipped because the page looked unbound when the task ran: if it is on screen now, repair the set and ask again
                         holder(pos)?.let { bound.add(pos); request(pos) }
@@ -984,7 +984,7 @@ class PdfViewerActivity : Activity() {
     private fun showThumbs() {
         if (!ready || thumbDlg != null) return
         val cols = if (resources.configuration.screenWidthDp >= 600) 5 else 3
-        val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen); Lm.track(d)
         val cellW = (resources.displayMetrics.widthPixels - dp(8) * 2) / cols
         val boxH = (cellW * 1.35f).toInt()
         val acc = 0xFFFFB77C.toInt()
@@ -1097,7 +1097,7 @@ class PdfViewerActivity : Activity() {
     private fun savePages(pages: List<Int>) {
         if (pages.isEmpty()) return
         val fn = "${baseName()} (p. ${rangeText(pages)}).pdf"
-        Toast.makeText(this, "Saving ${pages.size} page${if (pages.size > 1) "s" else ""}\u2026", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Saving ${pages.size} page${if (pages.size > 1) "s" else ""}\u2026", Toast.LENGTH_SHORT)
         Thread {
             try {
                 val shown: String
@@ -1119,16 +1119,16 @@ class PdfViewerActivity : Activity() {
                     try { f.outputStream().buffered(1 shl 16).use { writeJpegPdf(pages, it) { isDestroyed } } } catch (e: Throwable) { f.delete(); throw e }
                     shown = "Downloads/${f.name}"
                 }
-                runOnUiThread { Toast.makeText(this, "Saved to $shown", Toast.LENGTH_LONG).show() }
+                runOnUiThread { Lm.snack(this, "Saved to $shown", Toast.LENGTH_LONG) }
             } catch (e: Throwable) {
-                runOnUiThread { Toast.makeText(this, "Could not save: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                runOnUiThread { Lm.snack(this, "Could not save: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
     }
 
     private fun sharePages(pages: List<Int>) {
         if (pages.isEmpty()) return
-        Toast.makeText(this, "Preparing\u2026", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Preparing\u2026", Toast.LENGTH_SHORT)
         Thread {
             try {
                 val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }       // the FileProvider path the app already exposes
@@ -1138,9 +1138,9 @@ class PdfViewerActivity : Activity() {
                 val intent = Intent.createChooser(
                     Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"
                 ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                runOnUiThread { try { startActivity(intent) } catch (_: Exception) { Toast.makeText(this, "No app can open this", Toast.LENGTH_LONG).show() } }
+                runOnUiThread { try { startActivity(intent) } catch (_: Exception) { Lm.snack(this, "No app can open this", Toast.LENGTH_LONG) } }
             } catch (e: Throwable) {
-                runOnUiThread { Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                runOnUiThread { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
     }
@@ -1148,7 +1148,7 @@ class PdfViewerActivity : Activity() {
     /** System print dialog (it has its own printer / "Save as PDF" / page-range choices). Whole document: the original file goes out untouched; selected pages / a range: rebuilt from page pictures. */
     private fun printPages(pages: List<Int>?) {
         val src = file
-        if (!ready || src == null || !src.isFile) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (!ready || src == null || !src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         val total = pages?.size ?: pageCount
         val job = baseName()
         val pm = getSystemService(Context.PRINT_SERVICE) as PrintManager
@@ -1209,27 +1209,27 @@ class PdfViewerActivity : Activity() {
     // ---------------------------------------------------------------- text of the current page (OCR)
     private fun pageText() {
         if (!ready) return
-        if (ocrBusy) { Toast.makeText(this, "Still reading the text...", Toast.LENGTH_SHORT).show(); return }
+        if (ocrBusy) { Lm.snack(this, "Still reading the text...", Toast.LENGTH_SHORT); return }
         val pos = curPage
         ocrBusy = true
-        Toast.makeText(this, "Reading the text on page ${pos + 1}...", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Reading the text on page ${pos + 1}...", Toast.LENGTH_SHORT)
         try {
             pool.execute {
                 val (w, h) = renderSize(pos, 2400)
                 val bm = try { renderPage(pos, w, h) } catch (_: Throwable) { null }
                 ui.post {
                     if (isDestroyed) return@post
-                    if (bm == null) { ocrBusy = false; Toast.makeText(this, "Could not read this page", Toast.LENGTH_LONG).show(); return@post }
-                    val eng = ocrEng ?: AutoOcr(applicationContext).also { e -> e.onStatus = { m -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show() }; ocrEng = e }
+                    if (bm == null) { ocrBusy = false; Lm.snack(this, "Could not read this page", Toast.LENGTH_LONG); return@post }
+                    val eng = ocrEng ?: AutoOcr(applicationContext).also { e -> e.onStatus = { m -> Lm.snack(this, m, Toast.LENGTH_SHORT) }; ocrEng = e }
                     try {
                         eng.recognize(bm) { r ->
                             ocrBusy = false
                             bm.recycle()
                             if (isDestroyed) return@recognize
                             r.onSuccess { lines -> showText(pos, lines.joinToString("\n") { it.text }.trim()) }
-                             .onFailure { Toast.makeText(this, "Text recognition failed: " + (it.message ?: "error"), Toast.LENGTH_LONG).show() }
+                             .onFailure { Lm.snack(this, "Text recognition failed: " + (it.message ?: "error"), Toast.LENGTH_LONG) }
                         }
-                    } catch (t: Throwable) { ocrBusy = false; Toast.makeText(this, "Text recognition is not available", Toast.LENGTH_LONG).show() }
+                    } catch (t: Throwable) { ocrBusy = false; Lm.snack(this, "Text recognition is not available", Toast.LENGTH_LONG) }
                 }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) { ocrBusy = false }
@@ -1243,7 +1243,7 @@ class PdfViewerActivity : Activity() {
         if (txt.isNotEmpty()) {
             b.setPositiveButton("Copy") { _, _ ->
                 (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("PDF text", txt))
-                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+                Lm.snack(this, "Copied", Toast.LENGTH_SHORT)
             }
             b.setNeutralButton("Share") { _, _ ->
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, txt), "Share text"))
@@ -1255,7 +1255,7 @@ class PdfViewerActivity : Activity() {
     // ---------------------------------------------------------------- share / open with
     private fun exported(make: (Uri) -> Intent) {
         val src = file
-        if (src == null || !src.isFile) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (src == null || !src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         Thread {
             try {
                 val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }   // the FileProvider path the app already exposes
@@ -1266,10 +1266,10 @@ class PdfViewerActivity : Activity() {
                 val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", dst)
                 val intent = make(uri)
                 runOnUiThread {
-                    try { startActivity(intent) } catch (e: Exception) { Toast.makeText(this, "No app can open this", Toast.LENGTH_LONG).show() }
+                    try { startActivity(intent) } catch (e: Exception) { Lm.snack(this, "No app can open this", Toast.LENGTH_LONG) }
                 }
             } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Cannot open: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                runOnUiThread { Lm.snack(this, "Cannot open: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
     }

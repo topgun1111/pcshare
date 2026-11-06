@@ -24,7 +24,7 @@
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowShowWallpaper">false</item>
     </style>
-    <!-- uniform AlertDialog: 28 dp corners, same width everywhere (90 % of a portrait screen, 400 dp otherwise) -->
+    <!-- uniform AlertDialog: 32 dp corners, same width everywhere (90 % of a portrait screen, 400 dp otherwise) -->
     <style name="Theme.LANShare.Dialog" parent="android:Theme.Material.Light.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dlg_bg</item>
         <item name="android:colorAccent">@color/accent</item>

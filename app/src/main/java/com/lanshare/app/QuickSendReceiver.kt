@@ -16,9 +16,9 @@ class QuickSendReceiver : BroadcastReceiver() {
         LanShareService.refresh()   // re-post the notification right away: that clears the "sending" state of the input box
         if (t.isNullOrEmpty()) return
         val peer = TextSend.target()
-        if (peer == null) { Toast.makeText(app, "Tap \"To:\" in the notification to pick a device", Toast.LENGTH_LONG).show(); return }
+        if (peer == null) { Lm.snack(app, "Tap \"To:\" in the notification to pick a device", Toast.LENGTH_LONG); return }
         TextSend.send(t, peer.id) { err, name ->   // the foreground service keeps the process alive while this runs
-            Toast.makeText(app, err ?: "Sent to $name", Toast.LENGTH_SHORT).show()
+            Lm.snack(app, err ?: "Sent to $name", Toast.LENGTH_SHORT)
             LanShareService.refresh()
         }
     }
@@ -27,11 +27,11 @@ class QuickSendReceiver : BroadcastReceiver() {
     private fun cycle(app: Context) {
         val ids = ArrayList<String>(); val names = ArrayList<String>()
         TextSend.online().forEach { ids.add(it.id); names.add(it.name) }
-        if (ids.isEmpty()) { Toast.makeText(app, "No device found yet", Toast.LENGTH_SHORT).show(); return }
+        if (ids.isEmpty()) { Lm.snack(app, "No device found yet", Toast.LENGTH_SHORT); return }
         ids.add(""); names.add("ask each time")
         val next = (ids.indexOf(Cfg.defTarget()) + 1) % ids.size   // unknown / offline default -> index -1 -> first device
         Cfg.setDefTarget(ids[next])
-        Toast.makeText(app, "Text goes to: " + names[next], Toast.LENGTH_SHORT).show()
+        Lm.snack(app, "Text goes to: " + names[next], Toast.LENGTH_SHORT)
         LanShareService.refresh()
         Thread { Shortcuts.sync(app) }.also { it.isDaemon = true }.start()
     }

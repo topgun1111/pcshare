@@ -180,7 +180,7 @@ class PrintLogActivity : Activity() {
     /** Refresh = reload the list that is on screen. */
     private fun refresh() { if (tab == 0) load() else fetchPc() }
 
-    private fun toast(t: String) = ui.post { try { Toast.makeText(this, t, Toast.LENGTH_LONG).show() } catch (_: Throwable) {} }
+    private fun toast(t: String) = ui.post { try { Lm.snack(this, t, Toast.LENGTH_LONG) } catch (_: Throwable) {} }
     private fun bg(f: () -> Unit) { try { exec.execute { try { f() } catch (e: Throwable) { toast("Failed: " + (e.message ?: e.javaClass.simpleName)) } } } catch (_: Throwable) {} }
 
     // ------------------------------------------------------------ data
@@ -438,7 +438,7 @@ class PrintLogActivity : Activity() {
         fun copyJobs(c: Context, idsCsv: String, dev: String) {
             val ids = idsCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }
             val main = Handler(Looper.getMainLooper())
-            fun say(t: String) = main.post { try { Toast.makeText(c, t, Toast.LENGTH_LONG).show() } catch (_: Throwable) {} }
+            fun say(t: String) = main.post { try { Lm.snack(c, t, Toast.LENGTH_LONG) } catch (_: Throwable) {} }
             if (ids.isEmpty()) { say("No log id for this job"); return }
             Thread({
                 try {

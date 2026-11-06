@@ -96,7 +96,7 @@ class ImageViewerActivity : Activity() {
     private var gen = 0
 
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
-    private val ocr by lazy { AutoOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Toast.makeText(this, m, Toast.LENGTH_SHORT).show() } } }   // toasts only while the user waits for T
+    private val ocr by lazy { AutoOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Lm.snack(this, m, Toast.LENGTH_SHORT) } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
@@ -313,7 +313,7 @@ class ImageViewerActivity : Activity() {
         if (it.size > 0) rows.add("Size\n" + android.text.format.Formatter.formatShortFileSize(this, it.size))
         rows.add("Position\n" + (pos + 1) + " of " + items.size)
         val base = rows.joinToString("\n\n")
-        val detDlg = android.app.AlertDialog.Builder(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
+        val detDlg = AppPal.dlg(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
         Thread({   // same media details as the file list's Details sheet (date taken etc.), via the app's own /api/stat
             val extra = MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
@@ -478,7 +478,7 @@ class ImageViewerActivity : Activity() {
                 .putExtra(MainActivity.X_PATHS, arrayOf(path))
                 .putExtra(MainActivity.X_NAMES, arrayOf(it.name))
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        } catch (e: Exception) { Toast.makeText(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) { Lm.snack(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
 
     /** More > To Print space (HANDOVER 9.7 part 3b): stores a copy of the picture on screen in the Print space (this phone, other devices and shares alike). */
@@ -488,14 +488,14 @@ class ImageViewerActivity : Activity() {
         val u = android.net.Uri.parse(it.url)
         val dev = u.getQueryParameter("dev") ?: "local"
         val path = u.getQueryParameter("path") ?: ""
-        Toast.makeText(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Adding to Print space\u2026", Toast.LENGTH_SHORT)
         Thread {
             val msg = try {
                 val r = com.lanshare.app.core.PrintSpace.add(listOf(path), dev)
                 val sk = r.getJSONArray("skipped")
                 if (sk.length() > 0) "Not added: " + sk.getJSONObject(0).optString("why") else "Added to Print space"
             } catch (e: Exception) { "Cannot add: " + (e.message ?: "error") }
-            runOnUiThread { if (!isFinishing) Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+            runOnUiThread { if (!isFinishing) Lm.snack(this, msg, Toast.LENGTH_LONG) }
         }.start()
     }
 
@@ -504,7 +504,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         if (slide) setSlide(false)
-        android.app.AlertDialog.Builder(this).setTitle("Delete this picture?")
+        AppPal.dlg(this).setTitle("Delete this picture?")
             .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->
@@ -516,7 +516,7 @@ class ImageViewerActivity : Activity() {
                         com.lanshare.app.core.Jobs.removeUser(com.lanshare.app.core.Jobs.ep(dev), com.lanshare.app.core.vnorm(path))
                         runOnUiThread { afterDelete(it) }
                     } catch (e: Exception) {
-                        runOnUiThread { Toast.makeText(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                        runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
                 }.start()
             }.show()
@@ -535,7 +535,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         val src = File(File(cacheDir, "img"), "$pos.bin")
-        if (!src.isFile) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (!src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         Thread {
             try {
                 val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }   // the FileProvider path the app already exposes
@@ -545,7 +545,7 @@ class ImageViewerActivity : Activity() {
                 val send = Intent(Intent.ACTION_SEND).setType(mimeFor(dst.name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 runOnUiThread { startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
             } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG).show() }
+                runOnUiThread { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
     }
@@ -558,11 +558,11 @@ class ImageViewerActivity : Activity() {
         if (slide) setSlide(false)
         val have = ocrRes[pos]
         if (have != null) {
-            if (have.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show() else showOcr(pos, have)
+            if (have.isEmpty()) Lm.snack(this, "No text found", Toast.LENGTH_SHORT) else showOcr(pos, have)
             return
         }
         val bm = cache.get(pos)
-        if (bm == null) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (bm == null) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         ocrBad.remove(pos); ocrFails = 0
         ocrWant = pos                                  // shown as soon as it is read
         if (ocrWork < 0) startOcr(pos, bm)             // else it is busy: with this page (just wait) or a neighbour (this page goes first next)
@@ -597,7 +597,7 @@ class ImageViewerActivity : Activity() {
             res.onSuccess { lines -> ocrFails = 0; ocrSave(p, bm, lines); ocrDone(p, lines) }
                 .onFailure { e ->
                     ocrBad.add(p); ocrFails++
-                    if (ocrWant == p) { ocrWant = -1; Toast.makeText(this, e.message ?: "Cannot read the text", Toast.LENGTH_LONG).show() }
+                    if (ocrWant == p) { ocrWant = -1; Lm.snack(this, e.message ?: "Cannot read the text", Toast.LENGTH_LONG) }
                     updateOcrBar()
                 }
             scheduleAutoOcr()
@@ -609,7 +609,7 @@ class ImageViewerActivity : Activity() {
         if (lines.isEmpty()) ocrNone.add(p)
         if (ocrWant == p) {
             ocrWant = -1
-            if (lines.isEmpty()) Toast.makeText(this, "No text found", Toast.LENGTH_SHORT).show() else showOcr(p, lines)
+            if (lines.isEmpty()) Lm.snack(this, "No text found", Toast.LENGTH_SHORT) else showOcr(p, lines)
         }
         updateOcrBar()
         scheduleAutoOcr()
@@ -703,7 +703,7 @@ class ImageViewerActivity : Activity() {
     private fun copyOcr() {
         val t = ocrText() ?: return
         (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("text", t))
-        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+        Lm.snack(this, "Copied", Toast.LENGTH_SHORT)
     }
 
     /** Opens the selected text (else all text, cut to 200 chars) as a web search in the browser. */
@@ -711,7 +711,7 @@ class ImageViewerActivity : Activity() {
         val t = (ocrText() ?: return).replace(Regex("\\s+"), " ").trim().take(200)
         if (t.isEmpty()) return
         try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(t)))) }
-        catch (e: Exception) { Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show() }
+        catch (e: Exception) { Lm.snack(this, "No browser found", Toast.LENGTH_SHORT) }
     }
 
     private fun shareOcr() {
@@ -724,7 +724,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         val src = File(File(cacheDir, "img"), "$pos.bin")
-        if (!src.isFile) { Toast.makeText(this, "Still loading...", Toast.LENGTH_SHORT).show(); return }
+        if (!src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         if (slide) setSlide(false)
         val u = android.net.Uri.parse(it.url)
         startActivityForResult(
@@ -784,7 +784,7 @@ class ImageViewerActivity : Activity() {
                 if (!ov.hasLines() && holder(p)?.ov === ov) {
                     val have = ocrRes[p]
                     if (have != null && have.isNotEmpty()) { showOcr(p, have); opened = true }
-                    else if (have == null) Toast.makeText(this@ImageViewerActivity, "Reading text...", Toast.LENGTH_SHORT).show()
+                    else if (have == null) Lm.snack(this@ImageViewerActivity, "Reading text...", Toast.LENGTH_SHORT)
                 }
                 val hit = ov.hasLines() && ov.selectWordAt(x, y)
                 if (!hit && opened) closeOcr()   // nothing under the finger: do not leave the boxes on
