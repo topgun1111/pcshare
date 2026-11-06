@@ -61,7 +61,6 @@ object AppPal {
 
     /** Palette as ARGB ints, with the built-in light / dark defaults when the page sent none. */
     fun pal(c: Context): P = load(c) ?: Lumen.of(c).let { P(it.canvas, it.surfaceHi, it.ink, it.inkMut, it.edge, it.primary, it.onPrimary) }
-        else P(Color.WHITE, 0xFFF3F3F3.toInt(), 0xFF161616.toInt(), 0xFF5F5F5F.toInt(), 0xFFDDDDDD.toInt(), 0xFFC25100.toInt(), Color.WHITE)
 
     /** AlertDialog.Builder that follows the app theme: palette window colour, 28 dp corners, palette text / button colours. */
     fun dlg(c: Context): AlertDialog.Builder = Dlg(c)
