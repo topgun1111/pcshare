@@ -846,6 +846,11 @@ body.dual #dedge,body.selm #dedge{display:none}
 #home .ht,#home .hero{animation:none!important}#home .ht{transition:none}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
 #gal .gmh:first-child{padding-top:8px}
+#gal .gmh{position:relative;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#gal.selm .gmh{padding-right:52px}
+#gal.selm .gmh::after{content:'';position:absolute;right:14px;bottom:8px;width:24px;height:24px;box-sizing:border-box;border-radius:50%;border:2px solid var(--mut);font:700 14px/20px system-ui,sans-serif;text-align:center;color:var(--onac)}
+#gal.selm .gmh.part::after{border-color:var(--ac);background:linear-gradient(var(--ac),var(--ac)) center/10px 2px no-repeat}
+#gal.selm .gmh.sel::after{content:'\2713';border-color:var(--ac);background:var(--ac)}
 body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm,body.galm #hint,body.galm #newb,body.galm #sortb{display:none}
 /* ---- uniform dialogs (one shape for every dialog): bottom sheets = 28px top corners, max 560px, centred; centred dialogs = 28px corners, max 400px ---- */
 :root{--dr:28px}
@@ -1665,7 +1670,7 @@ function galView(a){
     LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
   const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
   pullBind(sc,pb,reload,()=>!GS.size);   // pull down = rescan the album (also video albums)
-  const upd=()=>{gNum(GS,els);
+  const upd=()=>{if(o._hu)o._hu();gNum(GS,els);
     o.classList.toggle('selm',GS.size>0);gb.textContent='';
     const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
     if(!GS.size)return;
@@ -1746,11 +1751,19 @@ function galView(a){
     const mlab=t=>{const d=new Date((t||0)*1000),now=new Date(),k=d.getFullYear()*12+d.getMonth();
       if(!t)return['0','Older'];if(k===now.getFullYear()*12+now.getMonth())return[k,'This month'];
       const nm=d.toLocaleString(undefined,{month:'long'});return[k,d.getFullYear()===now.getFullYear()?nm:nm+' '+d.getFullYear()]};
+    const mem=new Map(),hds=new Map();   // month key -> names of its pictures / its heading element (tap a month heading = select or unselect the whole month)
+    const hdUpd=()=>hds.forEach((h,k)=>{const a=mem.get(k)||[];let c=0;for(const nm of a)if(GS.has(nm))c++;h.classList.toggle('sel',c>0&&c===a.length);h.classList.toggle('part',c>0&&c<a.length)});
+    o._hu=hdUpd;
+    const mkH=(k,lb)=>{const h=E('div','gmh',lb);hds.set(k,h);
+      h.onclick=()=>{const a=mem.get(k)||[];if(!a.length)return;const all=a.every(nm=>GS.has(nm));
+        for(const nm of a){if(all)GS.delete(nm);else GS.add(nm);const e=els.get(nm);if(e)e.classList.toggle('sel',!all)}upd()};
+      return h};
     const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment(),ds=galSort()==='new'||galSort()==='old';
-      for(;n<end;n++){if(ds){const ml=mlab(it[n].mtime);if(ml[0]!==mk0){mk0=ml[0];fr.append(E('div','gmh',ml[1]))}}fr.append(mk(it[n]))}   // month headings only while sorted by date
-      gg.insertBefore(fr,sent);if(n>=it.length&&sent){sent.remove();sent=null}};
+      for(;n<end;n++){if(ds){const ml=mlab(it[n].mtime);if(ml[0]!==mk0){mk0=ml[0];fr.append(mkH(ml[0],ml[1]))}}fr.append(mk(it[n]))}   // month headings only while sorted by date
+      gg.insertBefore(fr,sent);if(n>=it.length&&sent){sent.remove();sent=null}hdUpd()};
     const draw=()=>{if(io){io.disconnect();io=null}
-      gg.textContent='';els.clear();n=0;mk0='';galSortList(it);
+      gg.textContent='';els.clear();hds.clear();mem.clear();n=0;mk0='';galSortList(it);
+      if(galSort()==='new'||galSort()==='old')for(const m of it){const k=mlab(m.mtime)[0];(mem.get(k)||mem.set(k,[]).get(k)).push(m.name)}
       sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';gg.append(sent);more();
       if(n<it.length){if(window.IntersectionObserver){io=new IntersectionObserver(es=>{if(!sent||!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}};
     o._redraw=draw;draw();
