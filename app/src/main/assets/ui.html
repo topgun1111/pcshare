@@ -267,6 +267,7 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 #gal .gc img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;display:block}
 #gal .gc:active{filter:brightness(.88)}
 #gal .gn{position:absolute;left:4px;right:4px;bottom:4px;font-size:10px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gal .gf{position:absolute;left:5px;bottom:5px;padding:2px 7px;border-radius:10px;background:#e6e6e6e6;color:#222;font:700 11px/14px system-ui,sans-serif;letter-spacing:.3px;pointer-events:none;z-index:1}
 #gal .gd{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:9px;background:#0009;color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 #gal .ge{grid-column:1/-1;padding:48px 16px;text-align:center;color:var(--mut)}
 #gal .gh.sl{display:none;background:var(--sel);color:var(--onsel);border-radius:0 0 22px 22px;padding-bottom:10px;box-shadow:0 3px 10px #0003;position:relative;z-index:2}#gal.selm .gh{display:none}#gal.selm .gh.sl{display:flex;animation:gbdn .18s ease-out}
@@ -1734,7 +1735,7 @@ function galView(a){
     sb.textContent=it.length+(it.length===1?' item':' items');
     if(!it.length){gg.append(E('div','ge','Nothing here'));return}
     const mk=m=>{const k=kind(m),c=E('div','gc'+(GS.has(m.name)?' sel':''));els.set(m.name,c);c.append(ic('check','ck'));
-      if(k==='vid')c.append(E('span','gd','\u25B6'));
+      if(k==='vid')c.append(E('span','gd','\u25B6'));else gFmt(c,m.name);
       if(!NOTH.test(m.name)&&(k==='vid'||m.size<30e6)){
         const vt=k==='vid'?vidTier(gg):k==='img'?vidTier(gg,1):0,
           key='v3|'+D+'|'+jn(a.path,m.name)+'|'+m.size+'|'+(m.mtime||0)+(vt?'|t'+vt:''),
@@ -1849,7 +1850,7 @@ function isView(sdir,sname,m0){
     if(!LIST.length){gg.append(E('div','ge',pick?'No scanned pictures here yet. Scan first.':'Nothing found for \u201c'+q+'\u201d'));return}
     sb.textContent=pick?'Pick the right pictures':LIST.length+(LIST.length===1?' result':' results');
     LIST.forEach(m=>{const c=E('div','gc'),im=E('img');els.set(key(m),c);c.append(ic('check','ck'));
-      im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p)+'&q=95';c.append(im);
+      im.alt='';im.loading='lazy';im.src='/api/thumb?dev=local&path='+enc(m.p)+'&q=95';c.append(im);gFmt(c,m.name);
       if(mode==='v'||badge)c.append(E('span','gp',Math.round((m.score||0)*100)+'%'));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
@@ -1935,7 +1936,7 @@ function risView(D,dn,sdir,sname){
     if(!LIST.length){gg.append(E('div','ge','Nothing found for \u201c'+q+'\u201d'));return}
     sb.textContent=dn+' \u00b7 '+LIST.length+(LIST.length===1?' result':' results');
     LIST.forEach(m=>{const c=E('div','gc'),im=E('img');els.set(key(m),c);c.append(ic('check','ck'));
-      im.alt='';im.loading='lazy';im.src='/api/rthumb?dev='+enc(D)+'&path='+enc(m.p);c.append(im);
+      im.alt='';im.loading='lazy';im.src='/api/rthumb?dev='+enc(D)+'&path='+enc(m.p);c.append(im);gFmt(c,m.name);
       if(mode==='v')c.append(E('span','gp',Math.round((m.score||0)*100)+'%'));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(GS.size){const k=key(m);GS.has(k)?GS.delete(k):GS.add(k);c.classList.toggle('sel',GS.has(k));upd()}else viewImg(m)};
@@ -3888,6 +3889,7 @@ async function doDelete(){
 const fmtDT=t=>new Date(t*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 /* ---- Print space (HANDOVER 9.7, part 2): pictures held for printing. Store = core/PrintSpace.kt (/api/ps). Screen reuses the #gal overlay (like image search) so Back, hiding the native list / chrome / search and swipe lock keep working. Kill switch: localStorage ls_ps='0' hides the drawer entry. */
 /* selection order badge: the n-th tapped picture shows n (CSS #gal .gc.sel::after reads data-n); it is also the order they print / are added */
+function gFmt(c,name){const m=/\.([A-Za-z0-9]{2,5})$/.exec(name||'');if(!m)return;let x=m[1].toUpperCase();if(x==='JPEG'||x==='JPE')x='JPG';else if(x==='TIF')x='TIFF';c.append(E('span','gf',x))}
 function gNum(GS,els){let i=0;for(const k of GS){i++;const e=els.get(k);if(e)e.dataset.n=i}}
 const PS_ON=()=>LD('ls_ps','1')!=='0';
 /* Part 3 intake: any screen can add pictures to Print space with psAdd(dev, paths). Only pictures go in (PV_IMG); the phone copies them (core/PrintSpace.kt). */
