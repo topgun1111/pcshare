@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-06 - Change log always visible
+### Changed
+- Settings > Check for updates now shows the change log even when no update is available (with only a Close button).
+- The update window lists the change log of every version, newest on top; the newest version is shown in a green tinted card and the installed version is marked.
+
 ## 2026-11-05 - Recycle bin: order, days left, search
 ### Changed
 - The Recycle bin lists the newest deleted items first and shows how many days each one has left before it is removed automatically.

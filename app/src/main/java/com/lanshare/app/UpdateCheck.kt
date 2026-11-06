@@ -26,9 +26,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Checks GitHub releases on app start and offers the new APK ONLY if it is newer than the installed version (same or older = nothing is shown). A manual check (force=true) skips the 6 h limit and the "skipped version" memory, but also only offers newer versions; otherwise it reports "up to date". */
+/** Checks GitHub releases on app start and offers the new APK ONLY if it is newer than the installed version (same or older = nothing is shown). A manual check (force=true) skips the 6 h limit and the "skipped version" memory, only offers newer versions, and when up to date still shows the full change log (no download button). The dialog always lists every release newest first, the newest in a green tinted card. */
 object UpdateCheck {
-    private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases?per_page=15"   // list, not /latest: we pick the highest version ourselves
+    private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases?per_page=30"   // list, not /latest: we pick the highest version ourselves
     private const val PREFS = "update_check"
     private const val MIN_INTERVAL_MS = 6L * 60 * 60 * 1000
 
@@ -56,23 +56,34 @@ object UpdateCheck {
                 sp.edit().putLong("last", now).apply()
                 val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                if (!isNewer(tag, cur)) { onMsg?.invoke("Güncel: $cur"); return@Thread }   // same or older release: no dialog, no download (manual check just says so)
+                val all = ArrayList<JSONObject>()   // EVERY release of this edition, newest first: the dialog always shows the full change log
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
+                    all.add(o)
+                }
+                all.sortWith { x, y -> if (isNewer(x.optString("tag_name"), y.optString("tag_name"))) -1 else if (isNewer(y.optString("tag_name"), x.optString("tag_name"))) 1 else 0 }
+                if (!isNewer(tag, cur)) {   // same or older release: automatic check stays silent; a manual check shows the change log with no download button
+                    if (!force) return@Thread
+                    a.runOnUiThread {
+                        if (a.isFinishing || a.isDestroyed) return@runOnUiThread
+                        AppPal.dlg(a)
+                            .setTitle("Güncel: $cur")
+                            .setView(changeView(a, cur, all))
+                            .setPositiveButton("Kapat", null)
+                            .show()
+                    }
+                    return@Thread
+                }
                 if (!force && sp.getString("skip", null) == tag) return@Thread
                 val assets = j.optJSONArray("assets")
                 val apk = pickApk(assets, lite) ?: throw IOException("APK yok")   // never falls back to the release page (its first listed file is the lite APK)
                 val dl = apk.getString("browser_download_url"); val dlSize = apk.optLong("size", 0L)
-                val newer = ArrayList<JSONObject>()   // every release newer than the installed one (a skipped version's notes must not be lost)
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
-                    if (isNewer(o.optString("tag_name"), cur)) newer.add(o)
-                }
-                newer.sortWith { x, y -> if (isNewer(x.optString("tag_name"), y.optString("tag_name"))) -1 else if (isNewer(y.optString("tag_name"), x.optString("tag_name"))) 1 else 0 }
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                     AppPal.dlg(a)
                         .setTitle("Yeni sürüm: $tag")
-                        .setView(changeView(a, cur, newer))
+                        .setView(changeView(a, cur, all))
                         .setPositiveButton("İndir") { _, _ ->
                             download(a, dl, dlSize, tag)
                         }
@@ -101,25 +112,49 @@ object UpdateCheck {
 
     private fun hasApk(o: JSONObject, lite: Boolean) = pickApk(o.optJSONArray("assets"), lite) != null
 
-    /** Scrollable "what changed" panel shown BEFORE the download: current version, then the notes of every newer release. */
+    /** Scrollable change log: current version, then EVERY release newest first. The newest one (the last update) sits in a green tinted card; the installed one is marked. */
     private fun changeView(a: Activity, cur: String, rels: List<JSONObject>): android.view.View {
-        val p = AppPal.pal(a)
-        val pad = (20 * a.resources.displayMetrics.density).toInt()
-        val tv = TextView(a).apply {
-            setTextColor(p.fg); textSize = 14f
-            text = SpannableStringBuilder().also { sb ->
-                val s0 = sb.length; sb.append("Mevcut sürüm: $cur\n\n")
-                sb.setSpan(ForegroundColorSpan(p.mut), s0, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                val s1 = sb.length; sb.append("Neler değişti\n")
-                sb.setSpan(StyleSpan(Typeface.BOLD), s1, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                sb.append(notesText(a, rels))
+        val p = AppPal.pal(a); val night = AppPal.night(a)
+        val d = a.resources.displayMetrics.density
+        val pad = (20 * d).toInt()
+        val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(TextView(a).apply {
+            setTextColor(p.mut); textSize = 14f
+            text = "Mevcut sürüm: $cur"
+            setPadding(0, 0, 0, (10 * d).toInt())
+        })
+        val greenFill = if (night) 0x3381C784 else 0x262E7D32
+        val greenLine = if (night) 0xFF81C784.toInt() else 0xFF2E7D32.toInt()
+        for ((i, o) in rels.withIndex()) {
+            val tag = o.optString("tag_name")
+            val latest = i == 0
+            val installed = !isNewer(tag, cur) && !isNewer(cur, tag)
+            val card = LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL
+                val q = (12 * d).toInt(); setPadding(q, q, q, q)
+                if (latest) background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(greenFill); setStroke((1.5f * d).toInt(), greenLine); cornerRadius = 10 * d
+                }
             }
+            card.addView(TextView(a).apply {
+                setTextColor(if (latest) greenLine else p.fg); textSize = 15f; setTypeface(typeface, Typeface.BOLD)
+                val date = o.optString("published_at").take(10)
+                text = buildString {
+                    append(tag)
+                    if (latest) append("  ·  Son güncelleme")
+                    if (installed) append("  ·  Kurulu")
+                    if (date.isNotEmpty()) append("\n").append(date)
+                }
+            })
+            card.addView(TextView(a).apply { setTextColor(p.fg); textSize = 14f; text = notesText(a, o) })
+            box.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (10 * d).toInt() })
         }
-        return ScrollView(a).apply { setPadding(pad, pad / 2, pad, 0); addView(tv) }
+        if (rels.isEmpty()) box.addView(TextView(a).apply { setTextColor(p.mut); text = "(not listed)" })
+        return ScrollView(a).apply { setPadding(pad, pad / 2, pad, 0); addView(box) }
     }
 
-    /** Release body (CHANGELOG.md "### Added / Removed / Changed / Fixed" lists) as plain styled text: green Added, red Removed, accent for the rest, "•" bullets. */
-    private fun notesText(a: Activity, rels: List<JSONObject>): CharSequence {
+    /** One release body (CHANGELOG.md "### Added / Removed / Changed / Fixed" lists) as plain styled text: green Added, red Removed, accent for the rest, "•" bullets. */
+    private fun notesText(a: Activity, o: JSONObject): CharSequence {
         val p = AppPal.pal(a); val night = AppPal.night(a)
         val ok = if (night) 0xFF81C784.toInt() else 0xFF2E7D32.toInt()
         val bad = if (night) 0xFFE57373.toInt() else 0xFFC62828.toInt()
@@ -129,24 +164,20 @@ object UpdateCheck {
             if (bold) sb.setSpan(StyleSpan(Typeface.BOLD), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (color != null) sb.setSpan(ForegroundColorSpan(color), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        for (o in rels) {
-            val body = (if (o.isNull("body")) "" else o.optString("body", "")).replace("\r", "").take(4000)
-            if (rels.size > 1) add("\n" + o.optString("tag_name") + "\n", p.fg, true)
-            var any = false
-            for (raw in body.lines()) {
-                val l = raw.trim().replace("**", "").replace("`", "")
-                if (l.isEmpty() || l.startsWith("# ") || l.startsWith("## ")) continue
-                if (l.startsWith("###")) {
-                    val h = l.trimStart('#').trim()
-                    add("\n" + h + "\n", when { h.startsWith("Added", true) -> ok; h.startsWith("Removed", true) -> bad; else -> p.ac }, true)
-                } else if (l.startsWith("- ") || l.startsWith("* ")) add("\u2022 " + l.drop(2).trim() + "\n", null, false)
-                else add(l + "\n", null, false)
-                any = true
-            }
-            if (!any) add("(not listed)\n", p.mut, false)
+        val body = (if (o.isNull("body")) "" else o.optString("body", "")).replace("\r", "").take(4000)
+        var any = false
+        for (raw in body.lines()) {
+            val l = raw.trim().replace("**", "").replace("`", "")
+            if (l.isEmpty() || l.startsWith("# ") || l.startsWith("## ")) continue
+            if (l.startsWith("###")) {
+                val h = l.trimStart('#').trim()
+                add((if (any) "\n" else "") + h + "\n", when { h.startsWith("Added", true) -> ok; h.startsWith("Removed", true) -> bad; else -> p.ac }, true)
+            } else if (l.startsWith("- ") || l.startsWith("* ")) add("\u2022 " + l.drop(2).trim() + "\n", null, false)
+            else add(l + "\n", null, false)
+            any = true
         }
-        if (rels.isEmpty()) add("\n(not listed)\n", p.mut, false)
-        return sb
+        if (!any) add("(not listed)\n", p.mut, false)
+        return sb.trimEnd()
     }
 
     private fun openInBrowser(a: Activity, url: String) {
