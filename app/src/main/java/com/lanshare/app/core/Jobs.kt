@@ -5,7 +5,11 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.Date
 import java.util.UUID
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 /** Shared copy/cut clipboard (one per device, same as the Python CLIP dict). */
@@ -641,22 +645,26 @@ object Jobs {
         "mp3", "m4a", "aac", "ogg", "opus", "flac", "zip", "rar", "7z", "gz", "bz2", "xz", "cbz", "cbr", "apk", "jar",
         "docx", "xlsx", "pptx", "odt", "ods", "odp", "epub", "pdf")
 
-    /** Packs files and folders of one device into a new .zip in a folder of the same device. */
-    fun startZip(devId: String, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList()): String {   // replace: reuse the exact name when it exists (the old file goes only after the new ZIP is complete)
+    private val ARC_OUT_EXT = listOf(".tar.xz", ".txz", ".zip")
+
+    /** Packs files and folders of one device into a new .zip (or .tar.xz) in a folder of the same device. */
+    fun startZip(devId: String, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList(), format: String = "zip"): String {   // replace: reuse the exact name when it exists (the old file goes only after the new ZIP is complete)
         val e = ep(devId)
         val ps = paths.map { vnorm(it) }
         if (ps.isEmpty()) throw BadReq("nothing selected")
         if (ps.any { it == "/" }) throw Denied("cannot zip the root")
         val d = vnorm(dir)
         if (arcSplit(d) != null) throw Denied("Archives are read-only - choose a normal folder for the ZIP")
+        val xz = format.equals("xz", true)   // "xz" = a .tar.xz (TAR stream compressed with XZ / LZMA2); anything else = ZIP
         var n = name.trim().replace('\\', '/').substringAfterLast('/').trim()   // a file name, never a path
-        if (n.isEmpty() || n == "." || n == ".." || n.lowercase() == ".zip") throw BadReq("enter a name for the ZIP")
-        if (!n.lowercase().endsWith(".zip")) n += ".zip"
+        for (x in ARC_OUT_EXT) if (n.lowercase().endsWith(x)) { n = n.dropLast(x.length).trim(); break }   // the chosen format decides the extension, whatever was typed
+        if (n.isEmpty() || n == "." || n == "..") throw BadReq("enter a name for the archive")
+        n += if (xz) ".tar.xz" else ".zip"
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
         prune()
-        val job = Job("Zipping")
+        val job = Job(if (xz) "Compressing" else "Zipping")
         all[jid] = job
-        Thread({ zipWork(job, e, ps, d, n, replace, exclude.map { vnorm(it) }) }, "zip-$jid").also { it.isDaemon = true }.start()
+        Thread({ zipWork(job, e, ps, d, n, replace, exclude.map { vnorm(it) }, xz) }, "zip-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -674,6 +682,13 @@ object Jobs {
         return (maxOf(size, 0L) * r).toLong() + 120L
     }
 
+    /** Same for a .tar.xz: LZMA2 squeezes text / binaries harder than deflate; already-compressed files stay as they are; 512-byte TAR header per file (compresses away, so ~50). */
+    private fun zipEstX(name: String, size: Long): Long {
+        val x = name.substringAfterLast('.', "").lowercase()
+        val r = when { x in STORE_EXT -> 1.0; x in TEXT_EXT -> 0.15; x == "bmp" -> 0.08; x == "wav" -> 0.6; else -> 0.4 }
+        return (maxOf(size, 0L) * r).toLong() + 50L
+    }
+
     /**
      * What the ZIP dialog shows before zipping: {size, files, est} = original size / file count / estimated ZIP size of everything selected, and
      * "items" = what it offers to leave out: inside the selected items, the topmost hidden entry (name starts with ".") or build / dependency folder of every branch
@@ -685,13 +700,14 @@ object Jobs {
         var tSize = 0L
         var tFiles = 0L
         var tEst = 0L
+        var tEstX = 0L
         for (p0 in paths) {
             val p = vnorm(p0)
             if (p == "/") continue
             for (w in e.walk(p)) {
                 if (w.skip) continue
                 val fname = if (w.rel.isEmpty()) vbase(p) else w.rel.substringAfterLast('/')
-                if (!w.dir) { tSize += w.size; tFiles++; tEst += zipEst(fname, w.size) }
+                if (!w.dir) { tSize += w.size; tFiles++; tEst += zipEst(fname, w.size); tEstX += zipEstX(fname, w.size) }
                 if (w.rel.isEmpty()) continue
                 val segs = w.rel.split('/')
                 val at = segs.indexOfFirst { it.startsWith(".") || isBuildPart(it) }
@@ -699,15 +715,15 @@ object Jobs {
                 val relTop = segs.subList(0, at + 1).joinToString("/")
                 val key = p + "/" + relTop
                 val o: JSONObject = res[key] ?: (if (res.size >= 400) null else JSONObject().put("path", key).put("rel", vbase(p) + "/" + relTop).put("dir", at < segs.size - 1 || w.dir)
-                    .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L).put("est", 0L)) ?: continue
+                    .put("kind", if (segs[at].startsWith(".")) "hidden" else "build").put("size", 0L).put("files", 0L).put("est", 0L).put("estx", 0L)) ?: continue
                 res[key] = o
-                if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1); o.put("est", o.getLong("est") + zipEst(fname, w.size)) }
+                if (!w.dir) { o.put("size", o.getLong("size") + w.size); o.put("files", o.getLong("files") + 1); o.put("est", o.getLong("est") + zipEst(fname, w.size)); o.put("estx", o.getLong("estx") + zipEstX(fname, w.size)) }
             }
         }
-        return JSONObject().put("items", JSONArray(res.values.toList())).put("size", tSize).put("files", tFiles).put("est", tEst)
+        return JSONObject().put("items", JSONArray(res.values.toList())).put("size", tSize).put("files", tFiles).put("est", tEst).put("estx", tEstX)
     }
 
-    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList()) {
+    private fun zipWork(job: Job, e: Endpoint, paths: List<String>, dir: String, name: String, replace: Boolean = false, exclude: List<String> = emptyList(), xz: Boolean = false) {
         val dst: Endpoint = (e as? ArcEp)?.base ?: e
         var tmp: File? = null
         var uploading = false
@@ -729,7 +745,7 @@ object Jobs {
                     items.add(ZItem(if (w.rel.isEmpty()) p else p + "/" + w.rel, if (w.rel.isEmpty()) top else top + "/" + w.rel, w.dir, w.size))
                 }
             }
-            if (items.isEmpty()) throw BadReq("nothing to zip")
+            if (items.isEmpty()) throw BadReq("nothing to pack")
             val total = items.sumOf { if (it.dir) 0L else it.size }
 
             // 2. where it goes: next to the originals, under a name that is free
@@ -757,10 +773,54 @@ object Jobs {
             job.bytes = true
             job.total = maxOf(total, 1L)
             job.done = 0
-            job.label = "Zipping $finalName"
+            job.label = (if (xz) "Compressing " else "Zipping ") + finalName
             job.filesTotal = items.count { !it.dir }
             val buf = ByteArray(1 shl 16)
-            Zip64Writer(out.outputStream().buffered(1 shl 16)).use { zw ->   // no 4 GB / 65,535-entry limit (ZIP64 where needed)
+            if (xz) {   // .tar.xz: TAR stream through the XZ encoder (preset 4, like ArcEdit: moderate memory on a phone); a TAR header needs the size up front
+                val now = Date()
+                TarArchiveOutputStream(XZCompressorOutputStream(out.outputStream().buffered(1 shl 16), 4), "UTF-8").use { tw ->
+                    tw.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+                    tw.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
+                    tw.setAddPaxHeadersForNonAsciiNames(true)
+                    for (item in items) {
+                        if (job.cancel) throw Cancelled()
+                        if (item.dir) {
+                            val te = TarArchiveEntry(item.entry.trimEnd('/') + "/")
+                            te.modTime = now; te.mode = 493
+                            tw.putArchiveEntry(te); tw.closeArchiveEntry()
+                            continue
+                        }
+                        var spool: File? = null
+                        try {
+                            job.begin(item.entry, item.size)
+                            var size = item.size
+                            if (size < 0L) {   // size unknown (some remote places): copy to the cache first to learn it
+                                Core.cacheDir.mkdirs()
+                                val sp = File(Core.cacheDir, "x_" + UUID.randomUUID().toString().take(8) + ".part").also { spool = it }
+                                e.open(item.src).use { s -> sp.outputStream().buffered(1 shl 16).use { o -> s.copyTo(o, 1 shl 16) } }
+                                size = sp.length()
+                            }
+                            val te = TarArchiveEntry(item.entry)
+                            te.size = size; te.modTime = now; te.mode = 420
+                            tw.putArchiveEntry(te)
+                            val ins: java.io.InputStream = spool?.inputStream()?.buffered(1 shl 16) ?: e.open(item.src)
+                            ins.use { s ->
+                                while (true) {
+                                    if (job.cancel) throw Cancelled()
+                                    val n = s.read(buf)
+                                    if (n < 0) break
+                                    tw.write(buf, 0, n)
+                                    job.done += n; job.curDone += n
+                                }
+                            }
+                            tw.closeArchiveEntry(); job.files++
+                        } catch (x: Cancelled) { throw x
+                        } catch (x: Exception) { throw IOException(item.entry + ": " + errText(x))
+                        } finally { spool?.delete() }
+                    }
+                    tw.finish()
+                }
+            } else Zip64Writer(out.outputStream().buffered(1 shl 16)).use { zw ->   // no 4 GB / 65,535-entry limit (ZIP64 where needed)
                 for (item in items) {
                     if (job.cancel) throw Cancelled()
                     if (item.dir) { zw.putDir(item.entry); continue }
@@ -786,7 +846,7 @@ object Jobs {
             // 4. put it in place
             if (local != null) {
                 val real = local.real(target)
-                if (!out.renameTo(real)) { real.delete(); if (!out.renameTo(real)) throw IOException("could not move the ZIP into place") }
+                if (!out.renameTo(real)) { real.delete(); if (!out.renameTo(real)) throw IOException("could not move the ${if (xz) "archive" else "ZIP"} into place") }
                 IndexManager.changed(real)   // name index: the new ZIP
             } else {
                 val sz = out.length()

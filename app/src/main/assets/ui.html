@@ -462,6 +462,8 @@ body.kid #list .row.sel{touch-action:none}
 #clip{display:none;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 6px 6px 16px;border-radius:16px;background:var(--sel);color:var(--onsel);font-size:14px}#clip span{flex:1;min-width:0}
 .tbtn{height:36px;padding:0 16px;border-radius:18px;font-weight:600;font-size:14px;color:var(--ac)}.tbtn:active{background:var(--hov)}
 .tbtn.fill{background:var(--ac);color:var(--onac)}.tbtn.dng{color:var(--err)}
+.ztabs{display:flex;border-bottom:1px solid var(--bd);margin:12px 0 8px}.ztabs button{flex:1;height:44px;font-weight:600;font-size:14px;color:var(--mut);border-bottom:3px solid transparent;margin-bottom:-1px}.ztabs button.on{color:var(--ac);border-bottom-color:var(--ac)}
+.zfmt{display:flex;flex-direction:column;gap:8px;margin:2px 0 4px}.zfmt label{display:flex;align-items:center;gap:12px;padding:12px;border:1.5px solid var(--bd);border-radius:14px}.zfmt label.on{border-color:var(--ac);background:var(--hov)}.zfmt input{accent-color:var(--ac);width:20px;height:20px;margin:0;flex:none}.zfmt .t{min-width:0}.zfmt .t b{display:block;font-size:15px;font-weight:600}.zfmt .t small{display:block;color:var(--mut);font-size:12.5px;line-height:1.35}
 #clip .ibtn{width:36px;height:36px}
 /* snackbar */
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(var(--dockh,0px) + 16px + env(safe-area-inset-bottom));background:#2e3133;color:#f0f0f0;border-radius:12px;padding:14px 16px;z-index:12;font-size:14px;box-shadow:var(--sh)}
@@ -5998,51 +6000,70 @@ setInterval(async()=>{
     else if(arcShown){arcShown=false;$('#toast').style.display='none'}
   }catch(e){}
   arcBusy=false},600);
-/* Create ZIP dialog: file name + (when folders are selected) a list of the hidden entries (name starts with ".") and build / dependency folders found inside them, each with a tick box: ticked ones are left out of the ZIP. Resolves {name,ex:[paths]} or null. */
+/* Create archive dialog: file name + two tabs. "Leave out": the hidden entries (name starts with ".") and build / dependency folders found inside the selected folders, each with a tick box (ticked ones are left out). "Format": ZIP or XZ (.tar.xz). Resolves {name,ex:[paths],fmt:'zip'|'xz'} or null. */
+const zext=f=>f==='xz'?'.tar.xz':'.zip',zbase=n=>n.trim().replace(/\.(tar\.xz|txz|zip)$/i,'');
 function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   const d=$('#dlg');d.textContent='';d.style.display='flex';
-  const card=E('div','dcard');card.append(E('h3','','Create ZIP'),E('p','',msg));
+  const card=E('div','dcard');card.append(E('h3','','Create archive'),E('p','',msg));
   const sum=E('p','','Calculating size\u2026');sum.style.cssText='font-size:13.5px;font-weight:600;margin:2px 2px 8px';card.append(sum);
   const inp=E('input','tf');inp.value=base;inp.placeholder='File name';inp.autocomplete='off';card.append(inp);
-  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn','Zip');
-  let alive=true,tot=null;const by={};
-  const upd=()=>{if(!tot)return;let s=tot.size,e=tot.est,f=tot.files;chk.forEach(p=>{const i=by[p];if(i){s-=i.size;e-=i.est;f-=i.files}});s=Math.max(s,0);e=Math.max(e,0);
-    sum.textContent='Original '+fmt(s)+' \u2192 zipped \u2248 '+fmt(e)+(s>0&&e<s?' (\u2248'+Math.round((1-e/s)*100)+'% smaller)':'')+' \u00b7 '+f.toLocaleString()+(f===1?' file':' files')};
+  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn','Create');
+  let alive=true,tot=null,fmt_=LD('ls_zipfmt','zip')==='xz'?'xz':'zip';const by={};
+  const est=o=>fmt_==='xz'?(o.estx!=null?o.estx:o.est||0):(o.est||0);
+  const upd=()=>{if(!tot)return;let s=tot.size,e=est(tot),f=tot.files;chk.forEach(p=>{const i=by[p];if(i){s-=i.size;e-=est(i);f-=i.files}});s=Math.max(s,0);e=Math.max(e,0);
+    sum.textContent='Original '+fmt(s)+' \u2192 '+(fmt_==='xz'?'XZ':'zipped')+' \u2248 '+fmt(e)+(s>0&&e<s?' (\u2248'+Math.round((1-e/s)*100)+'% smaller)':'')+' \u00b7 '+f.toLocaleString()+(f===1?' file':' files')};
   const done=v=>{alive=false;d.style.display='none';d.onclick=null;res(v)};
-  c.onclick=()=>done(null);k.onclick=()=>done({name:inp.value,ex:[...chk]});
+  c.onclick=()=>done(null);k.onclick=()=>{SV('ls_zipfmt',fmt_);done({name:inp.value,ex:[...chk],fmt:fmt_})};
   d.onclick=e=>{if(e.target===d)done(null)};inp.onkeydown=e=>{if(e.key==='Enter'&&!k.disabled)k.click()};
+  /* tabs */
+  const tabs=E('div','ztabs'),tb1=E('button','','Leave out'),tb2=E('button','','Format');tabs.append(tb1,tb2);
+  const p1=E('div','zpan'),p2=E('div','zpan');
+  const pick=n=>{tb1.classList.toggle('on',n===1);tb2.classList.toggle('on',n===2);p1.style.display=n===1?'':'none';p2.style.display=n===2?'':'none'};
+  tb1.onclick=()=>pick(1);tb2.onclick=()=>pick(2);
+  const badge=()=>{tb1.textContent=chk.size?'Leave out ('+chk.size+')':'Leave out'};
+  /* tab 1: hidden / build folders */
   let box=null,st=null,all=null;
   if(hasDir){
-    const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:10px 0 2px';
-    const lb=E('b','','Leave out (tick):');all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
-    box=E('div');box.style.cssText='max-height:38vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain';
+    const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:2px 0 2px';
+    const lb=E('b','','Hidden and build folders (tick):');lb.style.fontSize='13.5px';all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
+    box=E('div');box.style.cssText='max-height:34vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain';
     st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:13px;color:var(--mut);margin:6px 2px';box.append(st);
-    card.append(hd,box);k.disabled=true}
+    p1.append(hd,box);k.disabled=true
+  }else{const n=E('p','','Only folders can contain hidden entries \u2013 nothing to leave out for the selected files.');n.style.cssText='font-size:13px;color:var(--mut);margin:6px 2px';p1.append(n)}
+  /* tab 2: format */
+  const fmts=[['zip','ZIP','.zip \u00b7 opens everywhere (Windows, macOS, Android). Fast.'],['xz','XZ','.tar.xz \u00b7 smaller files, but slower to create. Opens with 7-Zip, tar, most Linux / macOS tools.']];
+  const fl=E('div','zfmt'),rb=[];
+  fmts.forEach(f=>{const lab=E('label',''),r=E('input');r.type='radio';r.name='zfmt';r.checked=fmt_===f[0];
+    const t=E('div','t');t.append(E('b','',f[1]),E('small','',f[2]));lab.append(r,t);rb.push([r,lab,f[0]]);
+    r.onchange=()=>{if(!r.checked)return;fmt_=f[0];rb.forEach(x=>x[1].classList.toggle('on',x[2]===fmt_));upd()};fl.append(lab)});
+  rb.forEach(x=>x[1].classList.toggle('on',x[2]===fmt_));p2.append(fl);
+  card.append(tabs,p1,p2);pick(hasDir?1:2);badge();
   api('POST','/api/zipscan',{dev:S.dev,paths:paths},60000).then(r=>{
-    if(!alive)return;tot={size:r.size||0,est:r.est||0,files:r.files||0};upd();
+    if(!alive)return;tot={size:r.size||0,est:r.est||0,estx:r.estx,files:r.files||0};upd();
     if(!hasDir)return;
     const it=(r&&r.items)||[];st.remove();k.disabled=false;
     if(!it.length){box.append(E('p','','No hidden or build folders found inside.'));return}
     const cbs=[];all.style.display='';
     it.forEach(i=>{by[i.path]=i;const lab=E('label','set'),t=E('div','t'),sw=E('span','sw'),cb=E('input');cb.type='checkbox';
-      cb.onchange=()=>{cb.checked?chk.add(i.path):chk.delete(i.path);upd()};cbs.push([cb,i.path]);
-      t.append(E('b','',i.rel+(i.dir?'/':'')),E('small','',(i.kind==='hidden'?'Hidden':'Build output')+' \u00b7 '+fmt(i.size)+' \u2192 \u2248 '+fmt(i.est||0)+(i.dir?' \u00b7 '+i.files+' file'+(i.files===1?'':'s'):'')));
+      cb.onchange=()=>{cb.checked?chk.add(i.path):chk.delete(i.path);upd();badge()};cbs.push([cb,i.path]);
+      const sm=E('small','',(i.kind==='hidden'?'Hidden':'Build output')+' \u00b7 '+fmt(i.size)+(i.dir?' \u00b7 '+i.files+' file'+(i.files===1?'':'s'):''));
+      t.append(E('b','',i.rel+(i.dir?'/':'')),sm);
       sw.append(cb,E('i'));lab.append(t,sw);box.append(lab)});
-    all.onclick=()=>{const on=cbs.some(x=>!x[0].checked);cbs.forEach(x=>{x[0].checked=on;on?chk.add(x[1]):chk.delete(x[1])});all.textContent=on?'Untick all':'Tick all';upd()}
+    all.onclick=()=>{const on=cbs.some(x=>!x[0].checked);cbs.forEach(x=>{x[0].checked=on;on?chk.add(x[1]):chk.delete(x[1])});all.textContent=on?'Untick all':'Tick all';upd();badge()}
   }).catch(e=>{if(!alive)return;sum.textContent='';if(hasDir){st.textContent='\u26a0 Could not list hidden folders: '+e.message;k.disabled=false}});
   row.append(c,k);card.append(row);d.append(card);setTimeout(()=>{inp.focus();inp.select()},60)})}
-async function doZip(){   // pack the selected files / folders into a new .zip next to them (on whichever device is open)
+async function doZip(){   // pack the selected files / folders into a new .zip / .tar.xz next to them (on whichever device is open)
   const it=selItems();if(!it.length||inArc())return;
   const base=it.length===1?(it[0].dir?(it[0].disp||it[0].name):it[0].name.replace(/\.[^.\/]+$/,'')):(S.path.split('/').filter(Boolean).pop()||'Archive');
-  const zo=await zipDlg(it.length+' item'+(it.length>1?'s':'')+' will be packed into a new .zip in this folder',base,it.some(i=>i.dir),selPaths());
+  const zo=await zipDlg(it.length+' item'+(it.length>1?'s':'')+' will be packed into a new archive in this folder',base,it.some(i=>i.dir),selPaths());
   if(!zo)return;const n=zo.name;
   if(!n||!n.trim())return;
   const paths=selPaths(),zdir=it[0].disp?(paths[0].replace(/\/[^\/]*$/,'')||'/'):S.path;S.sel.clear();GALT=0;render();
   let rep=false;   // same name already in the folder: ask instead of silently making "name (1).zip"
-  try{const zn=/\.zip$/i.test(n.trim())?n.trim():n.trim()+'.zip',ls=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(zdir));
-    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({title:'"'+zn+'" already exists',msg:'Replace it with the new ZIP? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',altFirst:true,boxOk:true});
+  try{const zn=zbase(n)+zext(zo.fmt),ls=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(zdir));
+    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({title:'"'+zn+'" already exists',msg:'Replace it with the new archive? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',altFirst:true,boxOk:true});
       if(!a){S.sel.clear();render();return}rep=a===true}}catch(e){}
-  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim(),replace:rep,exclude:zo.ex});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
+  try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim(),replace:rep,exclude:zo.ex,format:zo.fmt});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
 function pickExtractDir(start,title,okLbl,dev){return new Promise(res=>{
   const o=$('#sheet');o.style.display='flex';let cur=start||'/',tk=0;dev=dev||S.dev;
