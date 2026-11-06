@@ -123,8 +123,9 @@ object UpdateCheck {
             text = "Mevcut sürüm: $cur"
             setPadding(0, 0, 0, (10 * d).toInt())
         })
-        val greenFill = if (night) 0x3381C784 else 0x262E7D32
-        val greenLine = if (night) 0xFF81C784.toInt() else 0xFF2E7D32.toInt()
+        val lmA = Lumen.of(a)
+        val greenFill = androidx.core.graphics.ColorUtils.setAlphaComponent(lmA.success, if (night) 0x33 else 0x26)
+        val greenLine = lmA.success
         for ((i, o) in rels.withIndex()) {
             val tag = o.optString("tag_name")
             val latest = i == 0
@@ -156,8 +157,9 @@ object UpdateCheck {
     /** One release body (CHANGELOG.md "### Added / Removed / Changed / Fixed" lists) as plain styled text: green Added, red Removed, accent for the rest, "•" bullets. */
     private fun notesText(a: Activity, o: JSONObject): CharSequence {
         val p = AppPal.pal(a); val night = AppPal.night(a)
-        val ok = if (night) 0xFF81C784.toInt() else 0xFF2E7D32.toInt()
-        val bad = if (night) 0xFFE57373.toInt() else 0xFFC62828.toInt()
+        val lmN = Lumen.of(a)
+        val ok = lmN.success
+        val bad = lmN.error
         val sb = SpannableStringBuilder()
         fun add(t: String, color: Int?, bold: Boolean) {
             val st = sb.length; sb.append(t)

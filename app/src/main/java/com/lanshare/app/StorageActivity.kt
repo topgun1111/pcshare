@@ -137,11 +137,12 @@ class StorageActivity : Activity() {
         val p = AppPal.load(this)
         if (p != null) {
             cBg = p.bg; cFg = p.fg; cDim = p.mut; cLine = p.bd; cCard = p.cont; cAcc = p.ac; cOnAcc = p.onac
-        } else if (sysNight) {
-            cBg = 0xFF1E1E1E.toInt(); cFg = 0xFFF2F2F2.toInt(); cDim = 0xFFB0B0B0.toInt(); cLine = 0xFF444444.toInt(); cCard = 0xFF2B2B2B.toInt(); cAcc = 0xFFFF8A3D.toInt(); cOnAcc = Color.WHITE
+        } else {
+            val l = Lumen.of(this)
+            cBg = l.canvas; cFg = l.ink; cDim = l.inkMut; cLine = l.edge; cCard = l.surfaceHi; cAcc = l.primary; cOnAcc = l.onPrimary
         }
         night = lumOf(cBg) < 0.5
-        cErr = if (night) 0xFFEF5350.toInt() else 0xFFC62828.toInt()
+        cErr = Lumen.of(this).error
     }
 
     override fun onConfigurationChanged(c: Configuration) {

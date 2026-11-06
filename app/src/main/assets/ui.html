@@ -908,6 +908,30 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 #sheet .card.pj{overflow:hidden}
 #dlg .dcard,#dlg .dcard.sd{border-radius:var(--dr);max-width:400px;width:100%;box-sizing:border-box}
 @media (max-width:360px){#sheet .card.pj{border-radius:var(--dr) var(--dr) 0 0}}
+/*LUMEN-UI:BEGIN*/
+/* Lumen Part 7: dialog, sheet, snackbar (hand-written; tokens only) */
+@keyframes lmpop{from{transform:scale(.92);opacity:0}}
+#sheet,#dlg{background:var(--scrim)}
+#dlg .dcard,#dlg .dcard.sd{border-radius:var(--r-xxl)}
+#dlg .dcard:not(.sd){padding:var(--sp-6);animation:lmpop .22s cubic-bezier(.2,0,0,1)}
+.dcard h3{font-size:var(--t-titleL-size);line-height:var(--t-titleL-lh);font-weight:600;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.dcard p{font-size:var(--t-bodyL-size);line-height:var(--t-bodyL-lh);max-height:9em;overflow:auto}
+.dhero{width:56px;height:56px;border-radius:var(--r-l);display:grid;place-items:center;margin:0 0 var(--sp-4);background:var(--sel);color:var(--onsel)}
+.dhero.dng{background:var(--errc);color:var(--onerr)}.dhero svg{width:28px;height:28px;fill:currentColor}
+.dact{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-6)}
+.dact.stk{flex-direction:column;align-items:stretch}.dact.stk .tbtn{width:100%;height:48px}
+.dact .tbtn.lmp{background:var(--ac);color:var(--onac)}
+.dact .tbtn.dng{background:var(--errc);color:var(--onerr)}
+#sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs)::before{content:'';flex:none;align-self:center;width:32px;height:4px;border-radius:var(--r-full);background:var(--inkDim);margin:0 0 var(--sp-2)}
+#sheet .card.sz-peek{max-height:40vh}#sheet .card.sz-half{max-height:60vh}#sheet .card.sz-tall{max-height:90vh}
+@media(min-width:600px){#sheet{align-items:center;justify-content:center}#sheet .card:not(.fu):not(.pfull):not(.pfx){max-width:640px;max-height:80vh;border-radius:var(--r-xxl);animation:lmpop .22s cubic-bezier(.2,0,0,1)}}
+#toast{left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:min(560px,calc(100% - 32px));box-sizing:border-box;background:var(--cont);color:var(--fg);border:1px solid var(--bd);border-radius:var(--r-xl);padding:var(--sp-3) var(--sp-4);font-size:var(--t-bodyM-size);line-height:var(--t-bodyM-lh)}
+#tc,#toast .ta{color:var(--ac)}#tp{background:var(--bd)}#tp i{background:var(--ac)}
+#toast .ta{float:right;margin:-4px -6px 0 var(--sp-3);padding:var(--sp-1) var(--sp-3);border-radius:var(--r-m);background:transparent;font:inherit;font-weight:600}
+#toast .tk{width:20px;height:20px;fill:currentColor;vertical-align:-5px;margin-right:var(--sp-2)}
+#toast.ok .tk{color:var(--ok)}#toast.warn .tk{color:var(--warn)}#toast.err .tk{color:var(--err)}
+@media(prefers-reduced-motion:reduce){#dlg .dcard,#sheet .card{animation:none!important}}
+/*LUMEN-UI:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -1051,7 +1075,11 @@ async function api(m,u,b,ms){
   let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
   if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
 let tt;
-function toast(msg,ms=2800,pct){const t=$('#toast'),b=$('#tp');if(pct==null)try{toastHp(msg)}catch(_){}$('#tx').textContent=msg;
+function lmToastX(t,o,ms){o=o||{};t.className=o.kind||'';t.querySelectorAll('.tk,.ta').forEach(x=>x.remove());   /* snackbar extras: o.kind ok|warn|err (glyph), o.action {label,fn} (Text action); 5 s with action, 8 s for errors */
+  const g={ok:'check',warn:'info',err:'close'}[o.kind];if(g)t.insertBefore(ic(g,'tk'),t.firstChild);
+  if(o.action){const a=E('button','ta',o.action.label);a.onclick=e=>{e.stopPropagation();t.style.display='none';o.action.fn()};t.append(a);if(ms===2800)ms=5000}
+  else if(o.kind==='err'&&ms===2800)ms=8000;return ms}
+function toast(msg,ms=2800,pct,o){const t=$('#toast'),b=$('#tp');if(pct==null)try{toastHp(msg)}catch(_){}$('#tx').textContent=msg;ms=lmToastX(t,o,ms);
   b.style.display=pct==null?'none':'block';$('#tc').style.display=pct==null?'none':'inline-block';if(pct!=null)b.firstChild.style.width=pct+'%';
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
@@ -1137,21 +1165,25 @@ const pdir=p=>p.slice(0,p.lastIndexOf('/'))||'/';
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
 // themed dialog: returns true / the typed text, or null when cancelled
-function dlg(o){return new Promise(res=>{
+function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o.input, o.ok, o.alt, o.danger, o.hero (icon name; auto trash for delete-like danger) */
   const d=$('#dlg');d.textContent='';d.style.display='flex';
-  const card=E('div','dcard');card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
+  const card=E('div','dcard'),dng=!!(o.danger||o.altDanger);
+  const hero=o.hero||(o.danger&&/delete|remove|erase/i.test((o.ok||'')+' '+(o.title||''))?'del':'');
+  if(hero){const h=E('div','dhero'+(dng?' dng':''));h.append(ic(hero));card.append(h)}
+  card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=o.input.label||'';inp.autocomplete='off';card.append(inp)}
-  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':''),o.ok||'OK');
+  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':' lmp'),o.ok||'OK');
   let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>done(inp?inp.value:true);
   d.onclick=e=>{if(e.target===d)done(null)};
   if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
   if(o.boxOk){k.className='tbtn';k.style.color='var(--err)'}   // boxOk: the OK button is a normal outlined button (red text) instead of the flat danger style
-  if(o.altFirst&&al){row.append(al,c,k)}else{row.append(c);if(al)row.append(al);row.append(k)}   // altFirst: alt button on the far left
+  const stk=!o.altFirst&&innerWidth<600&&([c,k,al].filter(Boolean).length>=3||[c,k,al].some(x=>x&&x.textContent.length>16));   // phones: stacked full-width, primary on top
+  if(o.altFirst&&al){row.append(al,c,k)}else if(stk){row.classList.add('stk');row.append(k);if(al)row.append(al);row.append(c)}else{row.append(c);if(al)row.append(al);row.append(k)}   // altFirst: alt button on the far left
   if(o.altFirst){row.style.flexWrap='nowrap';row.style.gap='6px';[...row.children].forEach(x=>{x.style.padding='0 12px';x.style.whiteSpace='nowrap'})}
   card.append(row);d.append(card);
-  if(inp)setTimeout(()=>{inp.focus();inp.select()},60)})}
+  if(inp)setTimeout(()=>{inp.focus();inp.select()},60);else if(dng)setTimeout(()=>c.focus(),60)})}
 
 function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
   if(d<3600)return Math.max(1,Math.round(d/60))+' min ago';if(d<86400)return Math.round(d/3600)+' h ago';return Math.round(d/86400)+' d ago'}
@@ -1343,9 +1375,10 @@ const nlCol=v=>{v=(v||'').trim();let m;
   if(m=/^#([0-9a-f]{6})$/i.exec(v))return 0xFF000000+parseInt(m[1],16);
   if(m=/^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(v))return parseInt(m[2],16)*16777216+parseInt(m[1],16);
   return 0xFF000000};
+/*LUMEN-JS:BEGIN*/const LUMEN_SLOTS=["canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus"];/*LUMEN-JS:END*/
 function nlPal(){const cs=getComputedStyle(document.documentElement),g=n=>nlCol(cs.getPropertyValue('--'+n)),o=n=>{const v=cs.getPropertyValue('--'+n).trim();return v?nlCol(v):0},k={};
   ['folder','img','vid','aud','pdf','zip','apk','doc','file'].forEach(n=>k[n]=[g('k-'+n+'-c'),g('k-'+n+'-b')]);
-  return JSON.stringify({card:g('card'),bg:g('bg'),fg:g('fg'),mut:g('mut'),bd:g('bd'),sel:g('sel'),onsel:g('onsel'),hov:g('hov'),ac:g('ac'),onac:g('onac'),warn:g('warn'),cont:g('cont'),tl:g('tl'),k,gt:o('gt'),gb:o('gb'),ct:o('ct'),cb:o('cb'),st:o('st'),sb:o('sb'),ht:o('ht'),hb:o('hb'),hl:o('hl'),dv:o('dv')})}
+  return JSON.stringify({lm:Object.fromEntries(LUMEN_SLOTS.map(n=>[n,g(n)])),card:g('card'),bg:g('bg'),fg:g('fg'),mut:g('mut'),bd:g('bd'),sel:g('sel'),onsel:g('onsel'),hov:g('hov'),ac:g('ac'),onac:g('onac'),warn:g('warn'),cont:g('cont'),tl:g('tl'),k,gt:o('gt'),gb:o('gb'),ct:o('ct'),cb:o('cb'),st:o('st'),sb:o('sb'),ht:o('ht'),hb:o('hb'),hl:o('hl'),dv:o('dv')})}
 /* theme changed (picker or system dark/light): system bars + re-push every native palette at once; the native list / path bar only got it with the next nlRender, so they stayed in the old theme until a refresh */
 function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;NL.nlPalette(p)}NLSRJ='0';nlChPush();nlSrPush();if(NLL)nlLay(true)}catch(e){}}
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)

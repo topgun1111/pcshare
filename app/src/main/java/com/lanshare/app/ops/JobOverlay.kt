@@ -300,8 +300,9 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
             fun of(c: Context): Palette {
                 val night = com.lanshare.app.AppPal.night(c)
                 val p = com.lanshare.app.AppPal.pal(c)
-                return if (night) Palette(p.cont, p.fg, p.mut, p.ac, 0xFF66BB6A.toInt(), 0xFFEF5350.toInt(), p.bd)
-                else Palette(p.bg, p.fg, p.mut, p.ac, 0xFF2E7D32.toInt(), 0xFFC62828.toInt(), p.bd)
+                val l = com.lanshare.app.Lumen.of(c)
+                return if (night) Palette(p.cont, p.fg, p.mut, p.ac, l.success, l.error, p.bd)
+                else Palette(p.bg, p.fg, p.mut, p.ac, l.success, l.error, p.bd)
             }
         }
     }

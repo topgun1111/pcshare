@@ -911,9 +911,9 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 2 | Radius scale applied: all page `border-radius` values moved to `--r-*` | Consistent corners (DONE 2026-11-07) |
 | 3 | Spacing and type scale applied: padding / gap / margin and font-size moved to `--sp-*` / `--t-*` | Consistent spacing and text (DONE 2026-11-07) |
 | 4 | Flip: existing 15 themes defined in slots (old names become aliases), Ember adopts spec 4.2 values; contrast table T1 script | Warmer, consistent Ember (DONE 2026-11-07) |
-| 5 | Palette hand-off to native expanded to all slots (`LumenTokens.kt` generated) | Native has every slot |
-| 6 | Native screens recolour from tokens | Native and page match |
-| 7 | Page dialog, sheet (5 sizes) and snackbar components | One dialog, one message style (page) |
+| 5 | Palette hand-off to native expanded to all slots (`LumenTokens.kt` generated) | Native has every slot (DONE 2026-11-07) |
+| 6 | Native screens recolour from tokens | Native and page match (DONE 2026-11-07) |
+| 7 | Page dialog, sheet (5 sizes) and snackbar components | One dialog, one message style (page) (DONE 2026-11-07) |
 | 8 | Native dialog / sheet / snackbar helper; replace all `AlertDialog` and `Toast.makeText` | One dialog, one message style (native) |
 | 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family |
 | 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete |
@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-4.** Next: Part 5 (palette hand-off to native, generated `LumenTokens.kt`).
+**Done: Parts 1-7.** Next: Part 8 (native dialog, sheet, snackbar helper).
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -940,12 +940,16 @@ Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh 
 | 2 | All page `border-radius` use `--r-*`. Off-scale values fold to the nearest token (2-5 to xs, 6-10 to s, 12-13 to m, 14-19 to l, 20-26 to xl, 28 to xxl, 50% to full). `0` stays. |
 | 3 | `padding / margin / gap` of 3px and up use `--sp-*` (halves round down: 6 to 4, 10 to 8, 14 to 12, 18 to 16). 1-2px nudges, `calc / env / var` spacing and `font:` shorthands stay raw. Every `font-size` uses `--fs-11/12/14/16/20/24/28/36` (13 to 12, 15 to 14, 18 to 16, 22 to 20). The Section 7 style tokens `--t-*` exist but are not applied yet (a size alone does not say which style a text is); they are applied per component in Parts 11-12. |
 | 4 | All 42 themes live in `tokens.json` as slots; old names (`--bg --card --cont --bd --fg --mut --ac --onac --sel --onsel --err --errc --onerr --ok --warn`) are aliases. Ember light and dark use the 4.2 / 4.3 values. Other themes keep their exact old hex until Part 17. Semantic slots keep today's values (spec 4.4 adopted when components need `onWarning` etc.). Dark themes are detected by canvas luminance and get the dark values of the 8 fresh slots (placeholders). |
+| 5 | The page sends every slot to native in the palette JSON as `lm` (ARGB, alpha kept). `gen.py` also writes `LumenTokens.kt` (`class Lumen`, one `Int` per slot, `Lumen.of(ctx)`, Ember light / dark defaults). Old palette keys and `AppPal` stay until Part 6 moves the screens over. |
+| 6 | Native screens use `Lumen.of(ctx)` for fallback palette, Storage Analyzer, job overlay, update dialog, print log (semantic success / error). The page palette already reached native via `AppPal` (old keys alias the slots). Not migrated yet: category colours, chrome action-button colours, code highlight, dark viewer chrome, editor highlight palette; they move with Parts 9-10 (icons) and 13 (gradients). Print-log warning keeps its darker amber (slot `warning` is too light as text; revisit in Part 17 with `onWarning`). |
+| 7 | The existing page `dlg()` and `toast()` became the Lumen dialog / snackbar (call sites untouched): hero tile, stacked phone buttons, filled primary, tonal danger, 32 px corners (fixes the undefined `--dr` square corners), toast `kind` + `action`, pill look. Sheets: drag handle, scrim slot, `sz-peek/half/tall`, centred modal from 600 px. Hand-written CSS block `/*LUMEN-UI:BEGIN*/` at the end of the page style. |
 
 Known gaps carried forward:
 - T1 fails 4 pairs: `ubuntu`, `peach`, `garuda` (onPrimary on primary) and `solar` (inkMut on surfaceHi). Fixed in Part 17.
 - Native screens still hardcode the old Ember colours, so page and native differ slightly until Parts 5-6.
 - Fresh slots (`secondary`, `tertiary`, `glassTint`, `focus`, `scrim`, `inkDim`, `edgeHi`, `surfaceLo`) hold Ember values for every theme until Part 17 derives them per theme.
-- `var(--dr)` (undefined, so square corners) is left in two cards; decide in Part 7 (dialog / sheet).
+- Native-drawn toast (`NlChrome`) and native `AlertDialog` / `Toast.makeText` still use the old look until Part 8.
+- Sheet swipe-to-dismiss, identical-message merging and the Undo countdown bar wait for Part 16 (motion); glass surfaces for Parts 14-15.
 
 ### 19.2 Old to new quick map
 
