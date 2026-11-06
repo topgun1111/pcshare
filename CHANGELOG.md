@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Day view in the Gallery
+### Added
+- Gallery albums now group pictures by day like Google Photos (Today, Yesterday, weekday, then date). Tap a day heading to select that whole day.
+- Size and sort sheet has a new Group by date choice: Day or Month.
+
 ## 2026-11-06 - Undo countdown only for permanent delete
 ### Changed
 - After "Delete permanently" a 5 second Restore countdown appears; tap it to bring the files back to where they were, otherwise they are deleted for good when it ends.

@@ -848,6 +848,7 @@ body.dual #dedge,body.selm #dedge{display:none}
 @media(prefers-reduced-motion:reduce){#home .ht,#home .hero{animation:none}}
 #home .ht,#home .hero{animation:none!important}#home .ht{transition:none}
 #gal .gmh{grid-column:1/-1;padding:18px 14px 8px;font-size:20px;font-weight:500;color:var(--fg)}
+#gal .gmh.gdh{padding:14px 14px 6px;font-size:16px}
 #gal .gmh:first-child{padding-top:8px}
 #gal .gmh{position:relative;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #gal.selm .gmh{padding-right:52px}
@@ -1620,6 +1621,8 @@ function galPick(a,ttl){return new Promise(async res=>{
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card)})}
 /* photos inside an album: sort order and photos per row (both saved), opened from the button in the album header */
 const galSort=()=>{const v=LD('ls_galsort','new');return['new','old','az','za','big'].includes(v)?v:'new'};
+const galGrp=()=>LD('ls_galgrp','day')==='mon'?'mon':'day';   // heading groups while sorted by date: one per day (Google Photos style) or per month
+
 function galSortList(it){const m=galSort(),nc=(x,y)=>x.name.localeCompare(y.name,undefined,{numeric:true});
   it.sort(m==='old'?(x,y)=>(x.mtime||0)-(y.mtime||0):m==='az'?nc:m==='za'?(x,y)=>nc(y,x):m==='big'?(x,y)=>(y.size||0)-(x.size||0):(x,y)=>(y.mtime||0)-(x.mtime||0))}
 function galOpts(gg,redraw){
@@ -1629,12 +1632,15 @@ function galOpts(gg,redraw){
   const dflt=window.innerWidth>=900?7:window.innerWidth>=600?5:3;
   const r1=E('div','');r1.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
   const r2=E('div','');r2.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
-  const draw=()=>{r1.textContent='';r2.textContent='';const cur=+LD('ls_galpc','')||dflt;
+  const r3=E('div','');r3.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px';
+  const draw=()=>{r1.textContent='';r2.textContent='';r3.textContent='';
+    [['day','Day'],['mon','Month']].forEach(a=>{const b=E('button','tbtn'+(galGrp()===a[0]?' fill':''),a[1]);b.style.minWidth='72px';
+      b.onclick=()=>{try{localStorage.setItem('ls_galgrp',a[0])}catch(e){}draw();redraw()};r3.append(b)});const cur=+LD('ls_galpc','')||dflt;
     [2,3,4,5,6,7,8].forEach(n=>{const b=E('button','tbtn'+(n===cur?' fill':''),String(n));b.style.minWidth='48px';
       b.onclick=()=>{try{localStorage.setItem('ls_galpc',String(n))}catch(e){}gg.style.setProperty('--pc',n);draw()};r1.append(b)});
     [['new','Newest first'],['old','Oldest first'],['az','Name A-Z'],['za','Name Z-A'],['big','Largest first']].forEach(a=>{const b=E('button','tbtn'+(galSort()===a[0]?' fill':''),a[1]);
       b.onclick=()=>{try{localStorage.setItem('ls_galsort',a[0])}catch(e){}draw();redraw()};r2.append(b)})};
-  draw();card.append(r1,E('p','','Sort by'),r2);
+  draw();card.append(r1,E('p','','Sort by'),r2,E('p','','Group by date (when sorted by date)'),r3);
   const c=E('button','tbtn','Done');c.style.alignSelf='flex-end';c.onclick=close;card.append(c);o.append(card)}
 /* pull down to refresh inside a scrolling panel of the #gal overlay (album / video album): `sc` scrolls, `box` is the indicator above it, `go` reloads, `ok` = may start (not while selecting) */
 function pullBind(sc,box,go,ok){
@@ -1752,12 +1758,18 @@ function galView(a){
       return c};
     let n=0,sent=null,io=null,mk0='';const CH=300;
     const mlab=t=>{const d=new Date((t||0)*1000),now=new Date(),k=d.getFullYear()*12+d.getMonth();
-      if(!t)return['0','Older'];if(k===now.getFullYear()*12+now.getMonth())return[k,'This month'];
+      if(!t)return['0','Older'];
+      if(galGrp()==='day'){const dk=d.getFullYear()*10000+d.getMonth()*100+d.getDate(),dd=Math.round((new Date(now.getFullYear(),now.getMonth(),now.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);
+        if(dd===0)return[dk,'Today'];if(dd===1)return[dk,'Yesterday'];
+        if(dd>1&&dd<7)return[dk,d.toLocaleString(undefined,{weekday:'long'})];
+        const o={weekday:'short',month:'short',day:'numeric'};if(d.getFullYear()!==now.getFullYear())o.year='numeric';
+        return[dk,d.toLocaleString(undefined,o)]}
+      if(k===now.getFullYear()*12+now.getMonth())return[k,'This month'];
       const nm=d.toLocaleString(undefined,{month:'long'});return[k,d.getFullYear()===now.getFullYear()?nm:nm+' '+d.getFullYear()]};
     const mem=new Map(),hds=new Map();   // month key -> names of its pictures / its heading element (tap a month heading = select or unselect the whole month)
     const hdUpd=()=>hds.forEach((h,k)=>{const a=mem.get(k)||[];let c=0;for(const nm of a)if(GS.has(nm))c++;h.classList.toggle('sel',c>0&&c===a.length);h.classList.toggle('part',c>0&&c<a.length)});
     o._hu=hdUpd;
-    const mkH=(k,lb)=>{const h=E('div','gmh',lb);hds.set(k,h);
+    const mkH=(k,lb)=>{const h=E('div','gmh'+(galGrp()==='day'?' gdh':''),lb);hds.set(k,h);
       h.onclick=()=>{const a=mem.get(k)||[];if(!a.length)return;const all=a.every(nm=>GS.has(nm));
         for(const nm of a){if(all)GS.delete(nm);else GS.add(nm);const e=els.get(nm);if(e)e.classList.toggle('sel',!all)}upd()};
       return h};
