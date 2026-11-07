@@ -7,8 +7,11 @@
 
 ## 2026-11-07 - New folder and main menu icons
 ### Changed
+- New app icon mark: a white L with signal arcs on an orange background (Lite: light purple). The notification icon matches.
 - Folders: new two-layer folder (darker back with a tab, lighter front with a soft shine) in lists, grids and the folder style preview. Folders now use the theme colour unless you gave them a style colour.
 - Main menu: tiles are now soft two-tone colour tiles with a white or dark icon (whichever reads better), a light rim and a glow while pressed; the storage and devices cards use the theme gradient.
+- Main menu: bigger menu and settings buttons.
+- The "already exists" dialog (extract, copy, move) now shows only the file names and the choices, without the long explanation and question.
 
 ## 2026-11-07 - PC screen: Jobs tab and Delete logs
 ### Added

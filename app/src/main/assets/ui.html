@@ -1177,6 +1177,12 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 #home .ht .tb{background-color:var(--c);color:var(--tg,#fff)}
 #home .ht .tb svg{filter:drop-shadow(0 1px 1px #00000040)}
 #home .hero .ic{box-shadow:inset 0 1px 0 #ffffff59}
+/* main menu header buttons: bigger hit area and glyphs (menu 44, settings 48) */
+#home .hb{height:calc(68px + env(safe-area-inset-top));padding-right:var(--sp-2)}
+#home .hb button{width:64px;height:64px}
+#home .hb svg,#home .hb button:first-child svg{width:44px;height:44px}
+#home .hb button:last-child svg{width:48px;height:48px}
+#home .hb h1{font-size:var(--fs-24);line-height:32px}
 @supports(background:color-mix(in srgb,red 50%,blue)){
 #home .ht .tb{background-image:linear-gradient(135deg,color-mix(in srgb,var(--c) 78%,#fff),color-mix(in srgb,var(--c) 85%,#000));box-shadow:inset 0 1px 0 #ffffff59,0 1px 3px color-mix(in srgb,var(--c) 38%,transparent);transition:box-shadow var(--d-fast) var(--ease-standard)}
 #home .ht:active .tb{box-shadow:inset 0 1px 0 #ffffff59,0 0 0 6px color-mix(in srgb,var(--c) 22%,transparent),0 8px 20px -6px color-mix(in srgb,var(--c) 60%,transparent)}
@@ -6613,7 +6619,7 @@ async function askConflicts(dev,dir,paths,srcDev,sim){   // sim: offer "Only if 
   return new Promise(res=>{
     const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');
     card.append(E('div','handle'),E('h3','',hit.length===1?'Already exists':hit.length+' items already exist'));
-    const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+' already in this folder. Folders are merged - nothing that is already there gets deleted. What should happen to files with the same name?');t.style.cssText='margin:0 0 var(--sp-2);color:var(--mut);word-break:break-word';card.append(t);
+    const t=E('p','',hit.slice(0,3).join(', ')+(hit.length>3?' and '+(hit.length-3)+' more':'')+'');t.style.cssText='margin:0 0 var(--sp-2);color:var(--mut);word-break:break-word';card.append(t);
     const sl=szl.filter(Boolean);if(sl.length){const z=E('p','',sl.join('\n\n'));z.style.cssText='margin:0 0 var(--sp-2);font-size:var(--fs-12);white-space:pre-line;word-break:break-word';card.append(z)}
     const fin=v=>{o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
     const gr=E('div');gr.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);margin-bottom:var(--sp-2)';   // option boxes

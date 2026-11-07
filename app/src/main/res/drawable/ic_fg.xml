@@ -1,7 +1,9 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Lumen mark: file + glass (two stacked rounded squares) with an L, inside the 66dp adaptive safe zone -->
-    <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M38 28h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
-    <path android:fillColor="#FFFFFF" android:fillAlpha="0.24" android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M50 40h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M53,51V67H66"/>
+    <!-- Lumen mark: L with two signal arcs, white, inside the 66dp adaptive safe zone (same for full and Lite) -->
+    <group android:scaleX="1.15" android:scaleY="1.15" android:translateX="-4" android:translateY="4.5">
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M30,22V62H58"/>
+        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.75" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,34Q62,34 62,44"/>
+        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.75" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,24Q72,24 72,44"/>
+    </group>
 </vector>
