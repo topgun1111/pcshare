@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.Build
 import android.graphics.Typeface
 import android.os.SystemClock
 import android.text.Layout
@@ -56,6 +57,37 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     private var downY = 0f
     private val slop = ViewConfiguration.get(c).scaledTouchSlop
 
+    // Lumen 12 press ripple, drawn natively: from the touch point to the farthest corner in 280 ms (decelerate), 14 % ink, fades 160 ms after release.
+    private var rpId: String? = null
+    private var rpX = 0f
+    private var rpY = 0f
+    private var rpT0 = 0L
+    private var rpEnd = 0L
+    private val rpClip = Path()
+    private val rpReduce = LumenPrefs.reduceMotion(c)
+
+    private fun rpStart(id: String, x: Float, y: Float) { rpId = id; rpX = x; rpY = y; rpT0 = SystemClock.uptimeMillis(); rpEnd = 0L }
+    private fun rpRelease() { if (rpId != null && rpEnd == 0L) rpEnd = SystemClock.uptimeMillis() }
+
+    /** Paint the ripple of target [id] clipped to [shape] (corner radius [rad]) in [color] (alpha is applied here). Call it after the target's fill, before its glyph. */
+    protected fun ripple(cv: Canvas, id: String, shape: RectF, rad: Float, color: Int) {
+        if (rpId != id) return
+        val now = SystemClock.uptimeMillis()
+        val grow = if (rpReduce) 1f else Math.min(1f, (now - rpT0) / 280f)
+        val e = 1f - (1f - grow) * (1f - grow)
+        var a = 1f
+        if (rpEnd != 0L) { a = 1f - (now - rpEnd) / 160f; if (a <= 0f) { rpId = null; return } }
+        else if (rpReduce) a = 0.6f
+        val far = Math.hypot(Math.max(rpX - shape.left, shape.right - rpX).toDouble(), Math.max(rpY - shape.top, shape.bottom - rpY).toDouble()).toFloat()
+        cv.save()
+        rpClip.reset(); rpClip.addRoundRect(shape, rad, rad, Path.Direction.CW); cv.clipPath(rpClip)
+        fillP.shader = null; fillP.style = Paint.Style.FILL
+        fillP.color = (color and 0x00FFFFFF) or (Math.round(255f * 0.14f * a) shl 24)
+        cv.drawCircle(rpX, rpY, far * e, fillP)
+        cv.restore()
+        postInvalidateOnAnimation()
+    }
+
     protected val med: Typeface = Fnt.med()
     protected val semi: Typeface = Fnt.semi()
 
@@ -91,19 +123,19 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val h = hitAt(e.x, e.y) ?: return false      // not on a button: let the page have it
-                pressed = h; downX = e.x; downY = e.y; invalidate()
+                pressed = h; downX = e.x; downY = e.y; rpStart(h, e.x, e.y); invalidate()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (pressed != null && (Math.abs(e.x - downX) > slop || Math.abs(e.y - downY) > slop)) { pressed = null; invalidate() }
+                if (pressed != null && (Math.abs(e.x - downX) > slop || Math.abs(e.y - downY) > slop)) { pressed = null; rpRelease(); invalidate() }
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                val p = pressed; pressed = null; invalidate()
+                val p = pressed; pressed = null; rpRelease(); invalidate()
                 if (p != null) onTap?.invoke(p)
                 return true
             }
-            MotionEvent.ACTION_CANCEL -> { pressed = null; invalidate(); return true }
+            MotionEvent.ACTION_CANCEL -> { pressed = null; rpRelease(); invalidate(); return true }
         }
         return true
     }
@@ -119,6 +151,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     private var bw = 0f
     private var bh = 0f
     private var spinAt = 0L
+    private var selAt = 0L
     private val btn = LinkedHashMap<String, RectF>()
     private var tX = 0f; private var tW = 0f; private var nX = 0f; private var nW = 0f
     private val ttlP = tp(18f, semi)
@@ -126,6 +159,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     private val cntP = tp(20f, semi)
 
     fun setData(sel: Boolean, ttl: String, nm: String, dual: Boolean, cnt: String, w: Float, h: Float) {
+        if (sel && !this.sel && !LumenPrefs.reduceMotion(context)) selAt = SystemClock.uptimeMillis()   // selection bar slides over the bar (200 ms)
         this.sel = sel; this.ttl = ttl; this.nm = nm; this.dual = dual; this.cnt = cnt; bw = w; bh = h
         rebuild(); invalidate()
     }
@@ -165,14 +199,22 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         if (bw <= 0f) return
         fillP.shader = null
         fillP.style = Paint.Style.FILL
-        fillP.color = if (sel) p.sel else p.bar
+        val sliding = sel && selAt != 0L && SystemClock.uptimeMillis() - selAt < 200L
+        fillP.color = if (sel && !sliding) p.sel else p.bar
         cv.drawRect(0f, 0f, bw, bh, fillP)
-        // press feedback: round 48 dp highlight like .ibtn:active
-        val pr = pressed
-        if (pr != null) {
-            val r = btn[pr]
-            if (r != null) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; cv.drawCircle(r.centerX(), r.centerY(), 24f * d, fillP) }
+        // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge)
+        val dark = AppPal.night(context)
+        fillP.shader = LinearGradient(0f, 0f, 0f, bh, if (dark) 0x0DFFFFFF else 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, bw, bh, fillP)
+        fillP.shader = null
+        var slid = false
+        if (sel && selAt != 0L) {
+            val t = Math.min(1f, (SystemClock.uptimeMillis() - selAt) / 200f)
+            if (t < 1f) { val e = 1f - (1f - t) * (1f - t); cv.save(); cv.translate(0f, -bh * (1f - e)); cv.drawRect(0f, 0f, bw, bh, fillP.apply { color = p.sel }); slid = true; postInvalidateOnAnimation() } else selAt = 0L
         }
+        // press feedback: ripple inside the round 48 dp target
+        val rpS = RectF()
+        for ((k, r) in btn) { rpS.set(r); ripple(cv, k, rpS, 24f * d, if (sel) p.onsel else p.onbar) }
         if (sel) {
             btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 24f, p.onsel) }
             btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 24f, p.onsel) }
@@ -180,6 +222,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             val right = (btn["allsel"]?.left ?: bw) - 4f * d
             cntP.color = p.onsel
             cv.drawText(fit(cnt, cntP, right - x), x, ty(bh / 2f, cntP), cntP)
+            if (slid) cv.restore()
             return
         }
         btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, p.onbar) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
@@ -244,18 +287,33 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
  */
 class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     class Act(val k: String, val lb: String, val c: String)
-    val inset: Float = Math.round(10f * d).toFloat()
+    /** Lumen 12.8: the dock floats (12 dp from the edges, r.xl, 72 dp row); the page reports the card's own rect, so no extra room is needed for a shadow (the system elevation shadow is drawn). */
+    val inset: Float = 0f
     private var acts: List<Act> = emptyList()
     private var clipTx: String? = null
     private var clipPaste = false
     private var bw = 0f
     private var bh = 0f
+    private var rx = 24f
+    private var bg = 0
     private val cells = ArrayList<RectF>()
-    private var cols = 5
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
-    private val lbP = tp(11f, semi)
+    private val lbP = tp(12f, semi)
+    private var shownAt = 0L
+
+    init {
+        elevation = 8f * d
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, rx * d); o.setAlpha(1f) }
+        }
+        if (Build.VERSION.SDK_INT >= 28) {   // E3: shadow tinted by the primary slot (spec 5.4)
+            val pr = Lumen.of(c).primary
+            outlineSpotShadowColor = (pr and 0x00FFFFFF) or 0x80000000.toInt()
+            outlineAmbientShadowColor = 0x33000000
+        }
+    }
 
     /** Icon colour per action key (mid-tones that read on both the light and the dark theme). Unknown keys fall back to the theme text colour. */
     private fun iconColor(k: String, fallback: Int): Int = when (k) {
@@ -281,16 +339,26 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     private val clipP = tp(14f, med)
     private val pasteP = tp(14f, semi)
 
-    fun setData(acts: List<Act>, clipTx: String?, clipPaste: Boolean, w: Float, h: Float) {
-        this.acts = acts; this.clipTx = clipTx; this.clipPaste = clipPaste; bw = w; bh = h
+    /** [bg] = the page dock's computed background (ARGB, 0 = unknown), [rx] = its corner radius in CSS px. */
+    fun setData(acts: List<Act>, clipTx: String?, clipPaste: Boolean, w: Float, h: Float, bg: Int, rx: Float) {
+        this.acts = acts; this.clipTx = clipTx; this.clipPaste = clipPaste; bw = w; bh = h; this.bg = bg
+        if (rx > 0f && rx != this.rx) { this.rx = rx; invalidateOutline() }
         rebuild(); invalidate()
+    }
+
+    /** Slide-up + fade when the bar appears (220 ms, decelerate); skipped with Reduce motion (spec 13.4: 120 ms fade only). */
+    fun enter() {
+        animate().cancel()
+        if (LumenPrefs.reduceMotion(context)) { translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(120).start(); return }
+        translationY = 24f * d; alpha = 0f
+        animate().translationY(0f).alpha(1f).setDuration(220).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun rebuild() {
         hits.clear(); cells.clear()
-        var y = inset + 8f * d
+        var y = 0f
         if (clipTx != null) {
-            strip.set(4f * d, y, bw - 4f * d, y + 48f * d)
+            strip.set(8f * d, 8f * d, bw - 8f * d, 8f * d + 48f * d)
             closeR.set(strip.right - 6f * d - 36f * d, strip.centerY() - 18f * d, strip.right - 6f * d, strip.centerY() + 18f * d)
             hits.add(Hit("clipx", closeR))
             if (clipPaste) {
@@ -298,17 +366,14 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
                 pasteR.set(closeR.left - 8f * d - pw, strip.centerY() - 18f * d, closeR.left - 8f * d, strip.centerY() + 18f * d)
                 hits.add(Hit("paste", pasteR))
             }
-            y += 48f * d + 8f * d
+            y = strip.bottom
         }
-        val n = acts.size
+        val n = Math.min(acts.size, 5)   // the page already collapses everything past 5 into "More"
         if (n > 0) {
-            cols = if (n <= 5) Math.max(n, 1) else (n + 1) / 2
-            val cw = (bw - 8f * d) / cols
-            val rh = 63.4f * d
+            val cw = (bw - 8f * d) / n
+            val rh = Math.max(0f, bh - y)
             for (i in 0 until n) {
-                val row = i / cols; val col = i % cols
-                val top = y + row * (rh + 2f * d)
-                val r = RectF(4f * d + col * cw, top, 4f * d + (col + 1) * cw, top + rh)
+                val r = RectF(4f * d + i * cw, y, 4f * d + (i + 1) * cw, y + rh)
                 cells.add(r); hits.add(Hit("a$i", r))
             }
         }
@@ -317,13 +382,21 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     override fun onDraw(cv: Canvas) {
         val p = pal ?: return
         if (bw <= 0f) return
-        // shadow above the top edge
+        val lm = Lumen.of(context)
+        val rad = rx * d
+        // G2 stand-in: no backdrop blur is possible under a native view, so the fill is the page's own G2 / F2 tint raised to at least 92 % (opaque for F3 and when unknown)
+        val base = if (bg != 0) bg else ((lm.glassTint and 0x00FFFFFF) or 0xF0000000.toInt())
+        val a = Math.max(0xEB, base ushr 24)
+        fillP.shader = null; fillP.style = Paint.Style.FILL
+        fillP.color = (base and 0x00FFFFFF) or (a shl 24)
+        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
+        // gChrome light from the top + edge hairline
+        fillP.shader = LinearGradient(0f, 0f, 0f, bh, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+        cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null
+        val sw = Math.max(1f, d)
+        fillP.style = Paint.Style.STROKE; fillP.strokeWidth = sw; fillP.color = lm.edge
+        rf.set(sw / 2f, sw / 2f, bw - sw / 2f, bh - sw / 2f); cv.drawRoundRect(rf, rad, rad, fillP)
         fillP.style = Paint.Style.FILL
-        fillP.shader = LinearGradient(0f, 0f, 0f, inset, 0x00000000, 0x22000000, Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, bw, inset, fillP)
-        fillP.shader = null
-        fillP.color = p.cont; cv.drawRect(0f, inset, bw, bh, fillP)
-        fillP.color = p.bd; cv.drawRect(0f, inset, bw, inset + d, fillP)
         // clipboard strip
         val ct = clipTx
         if (ct != null) {
@@ -334,37 +407,33 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             cv.drawText(fit(ct, clipP, right - x), x, ty(strip.centerY(), clipP), clipP)
             if (clipPaste) {
                 fillP.color = p.ac; cv.drawRoundRect(pasteR, 18f * d, 18f * d, fillP)
-                if (pressed == "paste") { fillP.color = p.hov; cv.drawRoundRect(pasteR, 18f * d, 18f * d, fillP) }
+                ripple(cv, "paste", pasteR, 18f * d, p.onac)
                 pasteP.color = p.onac
                 val tw = pasteP.measureText("Paste here")
                 cv.drawText("Paste here", pasteR.centerX() - tw / 2f, ty(pasteR.centerY(), pasteP), pasteP)
             }
-            if (pressed == "clipx") { fillP.color = p.hov; cv.drawCircle(closeR.centerX(), closeR.centerY(), 18f * d, fillP) }
+            ripple(cv, "clipx", closeR, 18f * d, p.onsel)
             glyph(cv, "close", closeR.centerX(), closeR.centerY(), 24f, p.onsel)
         }
-        // divider lines between the menu items: vertical between neighbours in a row, horizontal between the two rows
-        fillP.color = p.bd
-        val lw = Math.max(1f, d)
-        for (i in cells.indices) {
-            val r = cells[i]
-            val col = i % cols; val row = i / cols
-            if (col < cols - 1 && i + 1 < cells.size) cv.drawRect(r.right - lw / 2f, r.top + 6f * d, r.right + lw / 2f, r.bottom - 6f * d, fillP)
-            if (row == 0 && i + cols < cells.size) cv.drawRect(r.left, r.bottom + d - lw / 2f, r.right, r.bottom + d + lw / 2f, fillP)
-        }
-        // action buttons
-        for ((i, a) in acts.withIndex()) {
+        // action cells: 24 dp icon in a 56 x 32 pill over a Label M caption; stagger-free (the whole bar slides in)
+        for ((i, a2) in acts.withIndex()) {
             if (i >= cells.size) break
             val r = cells[i]
-            val pri = a.c.contains("pri"); val dng = a.c.contains("dng")
-            val col = if (dng) p.err else p.fg
-            val icol = if (dng) p.err else iconColor(a.k, p.fg)   // colourful icon; label keeps the theme colour
-            val pill = RectF(r.centerX() - 28f * d, r.top + 4f * d, r.centerX() + 28f * d, r.top + 4f * d + 36f * d)
-            if (pri) { fillP.color = p.ac; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
-            if (pressed == "a$i") { fillP.color = p.hov; cv.drawRoundRect(pill, 18f * d, 18f * d, fillP) }
-            glyph(cv, a.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else icol)
+            val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
+            val col = if (dng) lm.error else p.fg
+            val icol = if (dng) lm.error else iconColor(a2.k, p.fg)   // colourful icon; label keeps the theme colour
+            val top = r.top + Math.max(0f, (r.height() - (32f + 4f + 14f) * d) / 2f)
+            val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
+            if (pri) {
+                // gPrimary: 135 degrees, 6 % white start to 12 % black end (same as Lm.styleButton)
+                fillP.shader = LinearGradient(pill.left, pill.top, pill.right, pill.bottom, Lumen.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), Lumen.mix(p.ac, 0xFF000000.toInt(), 0.12f), Shader.TileMode.CLAMP)
+                cv.drawRoundRect(pill, 16f * d, 16f * d, fillP); fillP.shader = null
+            }
+            ripple(cv, "a$i", pill, 16f * d, if (pri) p.onac else col)
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 24f, if (pri) p.onac else icol)
             lbP.color = col
-            val t = fit(a.lb, lbP, r.width() - 2f * d)
-            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7.7f * d, lbP), lbP)
+            val t = fit(a2.lb, lbP, r.width() - 2f * d)
+            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7f * d, lbP), lbP)
         }
     }
 }
@@ -577,11 +646,14 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
         }
 
         val k = j.optJSONObject("dock")
+        val dockWas = dock.visibility == View.VISIBLE
         if (place(dock, k?.optJSONArray("r"), Math.round(dock.inset)) && k != null) {
+            if (!dockWas) dock.enter()
             val a = k.optJSONArray("a"); val acts = ArrayList<NlDockView.Act>()
             if (a != null) for (i in 0 until a.length()) { val o = a.getJSONObject(i); acts.add(NlDockView.Act(o.optString("k"), o.optString("l"), o.optString("c"))) }
             val cl = k.optJSONObject("cl")
-            dock.setData(acts, cl?.optString("t"), cl != null && cl.optInt("p") == 1, dock.layoutParams.width.toFloat(), dock.layoutParams.height.toFloat())
+            dock.setData(acts, cl?.optString("t"), cl != null && cl.optInt("p") == 1, dock.layoutParams.width.toFloat(), dock.layoutParams.height.toFloat(),
+                k.optLong("bg").toInt(), k.optDouble("rx", 0.0).toFloat())
         }
 
         val t = j.optJSONObject("t")

@@ -307,7 +307,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                     cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
                 }
             } else {
-                NlFileIcons.draw(cv, r.nm, r.k, lcx - tile, cy - tile, tile * 2f)   // realistic coloured type icon (Word / Excel / PowerPoint / PDF ...)
+                NlFileIcons.draw(cv, r.nm, r.k, lcx - tile, cy - tile, tile * 2f, LumenCategory.of(context), d)   // Lumen 11.6: category gradient tile + glyph (+ extension from 64 dp)
             }
         }
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
@@ -472,7 +472,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         rf.set(-20.3f, 28.8f, 59.6f, 107.9f)
         p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 6.6f, 6.6f, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFA8A8A8.toInt(); cv.drawRoundRect(rf, 6.6f, 6.6f, p)
-        NlFileIcons.draw(cv, name, kind, 19.65f - 30f, 68.35f - 30f, 60f)   // coloured type icon inside the white badge
+        NlFileIcons.drawLegacy(cv, name, kind, 19.65f - 30f, 68.35f - 30f, 60f)   // coloured type icon inside the white badge (grid fallback page keeps the realistic icon until the grid tiles are redone)
         cv.restore()
     }
 

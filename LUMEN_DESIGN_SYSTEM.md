@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Part 18 done on the page (see the handover note). Next: device verification (T5 / T7 / T8 / T10, TalkBack); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
+**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left). Round 2 (19.1b): Part A done.** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Part 18 done on the page (see the handover note). Next: device verification (T5 / T7 / T8 / T10, TalkBack); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -969,6 +969,39 @@ Known gaps carried forward:
 - Fresh slots (`secondary`, `tertiary`, `glassTint`, `focus`, `scrim`, `inkDim`, `edgeHi`, `surfaceLo`) are derived per preset since Part 17 (`derive.fresh`); `ember` and `dark` keep the spec values.
 - Part 8 built `Lm.kt` (snackbar + dialog restyle through `AppPal.dlg`) and converted all `Toast.makeText`; `NlSheets` bottom sheets, snackbar bottom lift above bars, and hero tiles for non-destructive dialog types are still open.
 - Sheet swipe-to-dismiss, identical-message merging and the Undo countdown bar wait for Part 16 (motion); glass surfaces for Parts 14-15.
+
+### 19.1b Round 2: eleven follow-up items, in three parts (added 2026-11-07)
+
+After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11 are named in the plan chat; **items 4-8 are only partly recorded** (the plan text for them was not in the session that built Round 2 Part A) and are written here from the leftovers of Parts 12-16, so check them against the owner's list before starting Part B / C. Whole round is roughly 2,800-4,700 lines; items 1-3 are about 370-580 lines; items 4-6 are the biggest and riskiest because they change native drawing code that has never been compiled or tested on a device.
+
+| # | Item | Part |
+|---|---|---|
+| 1 | Named brand colours in `tokens.json` and generated code (`--cat-<key>`, `-t`, `-d`; `LumenCategory`) | **A (DONE 2026-11-07)** |
+| 2 | Main menu tiles on the 11-category colour table (4.5) | **A (DONE 2026-11-07)** |
+| 3 | File list icons as category gradient tiles (`NlFileIcons`) | **A (DONE 2026-11-07, list rows + Universal Search; grid fallback page still uses the realistic icon)** |
+| 4 | Floating 72 dp bottom action bar (12.8), top bar variants (12.7), drawer rows (12.9): native `NlChrome` / `NlDrawer` | **B (DONE 2026-11-07 except scroll-driven / large top bars, see Part B notes)** |
+| 5 | Native chrome and tiles on gradients / glass (gSurface, gChrome, G0-G3 in native), from Part 13-14 leftovers (to confirm) | **B (PARTLY: gChrome top light on top bar and dock, gPrimary on the primary dock pill, glass stand-in on the dock; tiles, sheets, dialogs left)** |
+| 6 | Native drawing leftovers of Parts 12-13 (check-circle flip, native ripple, press states) (to confirm) | **B (PARTLY: native ripple in NlChrome views; check-circle flip, ripple in list / drawer rows left)** |
+| 7 | Page leftovers of Parts 12-16: scrubber, swipe actions, hold-menu lift, exits, list insert / remove (to confirm) | C |
+| 8 | Page leftovers of Parts 14-17: Light / Dark pairing, OS fonts, High contrast rings, per-theme contrast floor (to confirm) | C |
+| 9 | TalkBack labels in native screens, 48 px chip tap area | C |
+| 10 | Splash screen | C |
+| 11 | Remaining form controls (floating label, clear button, search pill, sliding segment, slider bubble) | C |
+
+**Part B as built (2026-11-07).**
+- Page, block `/*LUMEN-UI11*/` (after UI8; the file already had two `UI9` / `UI10` blocks from Parts 18 / owner feedback): `#dock` floats (12 px from the sides, `12px + safe inset` from the bottom, `r-xl`, glass G2 with the same F0-F3 tiers as `.g2`), icon 24 over Label M 12 px, 72 px row, no dividers, `.lm-in` slide-up 220 ms (Reduce motion: 120 ms fade). `--dockh` is now `offsetHeight + 12`. `renderBar()`: more than 5 actions keep the first 3 (4 without a Delete) + **More** (`lmDockMore()`, a `.dsc`/`.dmn` popup above the bar) + Delete (rightmost, error tint). New Lumen glyph `more`. Drawer: panel `min(88vw,320px)` with `r-xxl` on the right corners, 56 px pill rows with 8 px side margin, Title S section labels, hairline separators (native mirrors these computed values).
+- Native `NlChrome.kt`: `NlHitView.ripple()` (280 ms decelerate from the touch point, 14 % ink, 160 ms fade, clipped to the target, Reduce motion = instant) used by the top bar buttons and every dock cell / Paste / close; `NlBarView` gChrome light gradient + selection bar slides over the bar (200 ms); `NlDockView` rewritten as the floating card (page sends `bg` + `rx`; fill = page glass tint raised to >= 92 % because a native view cannot blur what is behind it; edge hairline; elevation shadow tinted by `primary` on API 28+; primary pill = gPrimary gradient; delete uses `Lumen.error`; `enter()` slide-up). `.dsc` popups hide the native chrome like a dialog.
+- Native `NlDrawer.kt`: `DrPanel.rx` (page `rx`) rounds the right corners via outline + `clipToOutline`, elevation 16 dp.
+- **Not done in B:** Large (collapsing) top bar and scroll-driven transparent small bar (needs a page twin that is transparent at scroll 0 and a scroll event to native), Search / Viewer bar variants, drawer storage-card header with ring chart, ripple inside drawer / list rows, check-circle flip, G0-G3 in native dialogs / sheets, 20 ms action stagger. Kotlin NOT compiled, nothing seen on a device (page dock checked in Chromium: 72 px high, 12 px margins, 24 px radius, 5 cells, More popup opens).
+
+**Part A as built.**
+- Source: `tokens.json` `category` (11 keys `pic vid aud doc xls ppt pdf zip code apk other`, light and dark base from 4.5, `mono` theme list, tile gradient ends 10 % lighter / 15 % darker). `gen.py` derives per key a **tint** (light: base 85 % to white; dark: base 78 % to black) and a **deep** tone (light: base 45 % to black; dark: base 80 % to black = glyph on a light dark-mode tile).
+- Page: `--cat-<key>`, `--cat-<key>-t`, `--cat-<key>-d` in the `LUMEN` block. Light values on `:root`; dark values on every dark theme, `auto` in dark mode and `:root[data-cdark]` (Custom theme in Dark / AMOLED). Graphite and True black are in `mono`: their categories are steps of the theme's own ink towards its canvas (colourless, still distinguishable).
+- Main menu: `HC` map of tile to category: Gallery pic, Videos vid, Downloads zip, SMB doc, FTP xls, Cloud aud, Remote shell code, Favorites ppt, Printers pdf, Storage / Devices other. The old per-theme `--hc1..7` are no longer read (rules left in place, safe to delete later). Glyph colour still chosen by `hmInk` (contrast).
+- Native: palette JSON key `cat` (`nlPal()`: `[base, tint, deep]` per key) is read by generated `LumenCategory.of(ctx)` (cached per palette string; Ember light / dark defaults when none). `NlFileIcons.draw(cv, name, kind, x, y, size, cat, d)` draws a rounded tile (radius 30 %, gradient base top-left to bottom-right, 1 px rim), the category glyph from `LumenIcons` (white on light tiles, deep tone on dark tiles) and, for tiles of 64 dp and up (`d` > 0), the extension under a smaller glyph. `NlFileIcons.catOf(name, kind)` is the one extension to category table (text and code = `code`, Word / e-books = `doc`, sheets / csv / databases = `xls`, executables = `apk`, disc images = `zip`, playlists = `aud`, the rest `other`). The realistic Word / Excel / PowerPoint icons stay as `drawLegacy` (used inside the white badge of the grid "no thumbnail" page).
+- New Lumen glyphs `sheet` and `slides` in `icons.json` (the file category glyphs `file doc img vid aud pdf zip apk code` already existed).
+- Tests: `contrast.py` now also runs **T1b**: glyph against both tile gradient ends >= 3:1 for the 11 categories in light and dark and the two mono themes (0 failing). `gen.py --check` in sync; `parity.py` 0 differences; page JS `node --check` OK. Kotlin NOT compiled, nothing seen on a device.
+- Left for later (Part B / C): grid and gallery file tiles (`NlGridView`, 11.6 "Grid file" 64-96 dp), page list `.kd` tiles still use the older `--k-*-c/-b` vars (not the `--cat-*` family), Storage Analyzer treemap / pie, search chips and Drive / FTP / SMB badges still use their own colours (4.5 says one table feeds all).
 
 ### 19.2 Old to new quick map
 

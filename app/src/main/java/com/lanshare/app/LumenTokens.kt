@@ -112,3 +112,72 @@ object LumenMotion {
     val EMPH: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.05f, 0.7f, 0.1f, 1f) }
     val SPRING: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.34f, 1.45f, 0.64f, 1f) }
 }
+
+/** Named category colours (spec 4.5). Tone = base (tile colour), tint (container), deep (glyph on a dark-mode tile). */
+object LumenCategory {
+    class Tone(val base: Int, val tint: Int, val deep: Int) {
+        /** Tile gradient, top-left end (a little lighter) and bottom-right end (a little darker): spec 5.3. */
+        val top: Int get() = mix(base, 0xFFFFFFFF.toInt(), 0.1f)
+        val bottom: Int get() = mix(base, 0xFF000000.toInt(), 0.15f)
+    }
+    class Cats(private val m: Map<String, Tone>, val night: Boolean) {
+        operator fun get(k: String): Tone = m[k] ?: m.getValue("other")
+        /** Glyph colour on the tile: white on light-mode tiles, the deep tone on dark-mode (light) tiles. */
+        fun glyph(k: String): Int = if (night) get(k).deep else 0xFFFFFFFF.toInt()
+    }
+    val KEYS = listOf("pic", "vid", "aud", "doc", "xls", "ppt", "pdf", "zip", "code", "apk", "other")
+    const val TILE_TOP = 0.1f
+    const val TILE_BOTTOM = 0.15f
+    private val LIGHT = mapOf(
+            "pic" to Tone(0xFFC2185B.toInt(), 0xFFF6DCE6.toInt(), 0xFF6B0D32.toInt()),
+            "vid" to Tone(0xFF6A4BC4.toInt(), 0xFFE9E4F6.toInt(), 0xFF3A296C.toInt()),
+            "aud" to Tone(0xFF0B6BCB.toInt(), 0xFFDAE9F7.toInt(), 0xFF063B70.toInt()),
+            "doc" to Tone(0xFF1E5FB0.toInt(), 0xFFDDE7F3.toInt(), 0xFF113461.toInt()),
+            "xls" to Tone(0xFF1E8E3E.toInt(), 0xFFDDEEE2.toInt(), 0xFF114E22.toInt()),
+            "ppt" to Tone(0xFFC4431A.toInt(), 0xFFF6E3DD.toInt(), 0xFF6C250E.toInt()),
+            "pdf" to Tone(0xFFB3261E.toInt(), 0xFFF4DEDD.toInt(), 0xFF621511.toInt()),
+            "zip" to Tone(0xFFA66300.toInt(), 0xFFF2E8D9.toInt(), 0xFF5B3600.toInt()),
+            "code" to Tone(0xFF00796B.toInt(), 0xFFD9EBE9.toInt(), 0xFF00433B.toInt()),
+            "apk" to Tone(0xFF5D7A00.toInt(), 0xFFE7EBD9.toInt(), 0xFF334300.toInt()),
+            "other" to Tone(0xFF6B625A.toInt(), 0xFFE9E7E6.toInt(), 0xFF3B3632.toInt())
+    )
+    private val DARK = mapOf(
+            "pic" to Tone(0xFFFF8FB8.toInt(), 0xFF381F28.toInt(), 0xFF331D25.toInt()),
+            "vid" to Tone(0xFFC6B3FF.toInt(), 0xFF2C2738.toInt(), 0xFF282433.toInt()),
+            "aud" to Tone(0xFF9CC8FF.toInt(), 0xFF222C38.toInt(), 0xFF1F2833.toInt()),
+            "doc" to Tone(0xFFA8C7FA.toInt(), 0xFF252C37.toInt(), 0xFF222832.toInt()),
+            "xls" to Tone(0xFF7FD99A.toInt(), 0xFF1C3022.toInt(), 0xFF192B1F.toInt()),
+            "ppt" to Tone(0xFFFFB59E.toInt(), 0xFF382823.toInt(), 0xFF332420.toInt()),
+            "pdf" to Tone(0xFFF2B8B5.toInt(), 0xFF352828.toInt(), 0xFF302524.toInt()),
+            "zip" to Tone(0xFFFFC15E.toInt(), 0xFF382A15.toInt(), 0xFF332713.toInt()),
+            "code" to Tone(0xFF8AE0D0.toInt(), 0xFF1E312E.toInt(), 0xFF1C2D2A.toInt()),
+            "apk" to Tone(0xFFC5E27F.toInt(), 0xFF2B321C.toInt(), 0xFF272D19.toInt()),
+            "other" to Tone(0xFFB8AFA6.toInt(), 0xFF282725.toInt(), 0xFF252321.toInt())
+    )
+    val DEFAULT_LIGHT = Cats(LIGHT, false)
+    val DEFAULT_DARK = Cats(DARK, true)
+
+    fun mix(a: Int, b: Int, t: Float): Int {
+        fun ch(s: Int) = (((a shr s) and 255) + ((((b shr s) and 255) - ((a shr s) and 255)) * t)).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
+    private var cj: String? = null
+    private var cs: Cats? = null
+    /** The page theme's categories (palette JSON key "cat", sent by ui.html nlPal()), or the Ember light / dark defaults. Cached per palette string. */
+    fun of(c: android.content.Context): Cats {
+        val night = AppPal.night(c)
+        val j = AppPal.json(c) ?: return if (night) DEFAULT_DARK else DEFAULT_LIGHT
+        if (j === cj) cs?.let { return it }
+        val r = try {
+            val ct = org.json.JSONObject(j).optJSONObject("cat")
+            if (ct == null) (if (night) DEFAULT_DARK else DEFAULT_LIGHT) else {
+                val m = HashMap<String, Tone>()
+                for (k in KEYS) { val a = ct.optJSONArray(k) ?: continue; m[k] = Tone(a.getLong(0).toInt(), a.getLong(1).toInt(), a.getLong(2).toInt()) }
+                if (m.isEmpty()) (if (night) DEFAULT_DARK else DEFAULT_LIGHT) else Cats(m, night)
+            }
+        } catch (_: Throwable) { if (night) DEFAULT_DARK else DEFAULT_LIGHT }
+        cj = j; cs = r
+        return r
+    }
+}

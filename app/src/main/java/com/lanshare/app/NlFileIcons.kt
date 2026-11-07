@@ -98,7 +98,74 @@ object NlFileIcons {
 
     fun extOf(name: String): String { val p = name.lastIndexOf('.'); return if (p >= 0) name.substring(p + 1).lowercase() else "" }
 
-    fun draw(cv: Canvas, name: String, kind: String, x: Float, y: Float, size: Float) {
+    // ---- Lumen 5.3 / 11.6: file type = category gradient tile with a Lumen glyph (the realistic icons below stay as drawLegacy) ----
+    private val gradCache = HashMap<Long, LinearGradient>()
+    private val gm = Matrix()
+    private val labelP = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = bold; textAlign = Paint.Align.CENTER }
+
+    /** Category key (LumenCategory.KEYS) of a file: [kind] is the list kind (img / vid / aud / zip / pdf / apk or \"\"), then the extension. */
+    fun catOf(name: String, kind: String): String {
+        val e = extOf(name)
+        return when {
+            kind == "pdf" || e == "pdf" -> "pdf"
+            kind == "img" || e in PIC_X -> "pic"
+            kind == "vid" || e in VID_X -> "vid"
+            kind == "aud" || e in AUD_X || e in LIST_X -> "aud"
+            kind == "zip" || e in ZIP_X || e == "iso" || e == "dmg" || e == "mdf" || e == "nrg" -> "zip"
+            kind == "apk" || e in EXE_X -> "apk"
+            e in WORD_X || e in BOOK_X -> "doc"
+            e in XLS_X || e in TSV_X || e in DB_X -> "xls"
+            e in PPT_X -> "ppt"
+            e == "py" || e == "pyw" || e == "json" || e == "jsonl" || e == "log" || e in TXT_X || e in TEXT2_X || e in TERM_X || e in SUB_X ||
+                TAGS.containsKey(e) || TAGS.containsKey(name.lowercase()) -> "code"
+            else -> "other"
+        }
+    }
+
+    /** Lumen Icons glyph (icons.json) that stands for a category. */
+    fun glyphOf(cat: String): String = when (cat) {
+        "pic" -> "img"; "vid" -> "vid"; "aud" -> "aud"; "doc" -> "doc"; "xls" -> "sheet"; "ppt" -> "slides"
+        "pdf" -> "pdf"; "zip" -> "zip"; "code" -> "code"; "apk" -> "apk"; else -> "file"
+    }
+
+    private fun gradient(top: Int, bottom: Int): LinearGradient {
+        val k = (top.toLong() shl 32) xor (bottom.toLong() and 0xFFFFFFFFL)
+        return gradCache.getOrPut(k) { LinearGradient(0f, 0f, 1f, 1f, top, bottom, Shader.TileMode.CLAMP) }
+    }
+
+    /**
+     * File without a thumbnail: rounded category tile (gradient top-left light to bottom-right 15 % darker, 1 px light rim) with the category
+     * glyph in white (light mode) or the deep tone (dark mode). Radius 30 % of the tile (12 dp at 40 dp). With [d] (screen density) > 0 and a tile of
+     * 64 dp or more the extension is written under a smaller glyph (spec 11.5). Main-thread only.
+     */
+    fun draw(cv: Canvas, name: String, kind: String, x: Float, y: Float, size: Float, cat: LumenCategory.Cats = LumenCategory.DEFAULT_LIGHT, d: Float = 0f) {
+        val key = catOf(name, kind)
+        val t = cat[key]
+        val rad = size * 0.3f
+        gm.setScale(size, size); gm.postTranslate(x, y)
+        val g = gradient(t.top, t.bottom); g.setLocalMatrix(gm)
+        q.reset(); q.isAntiAlias = true
+        q.style = Paint.Style.FILL; q.shader = g
+        rf.set(x, y, x + size, y + size); cv.drawRoundRect(rf, rad, rad, q)
+        q.shader = null
+        val rim = Math.max(1f, size / 48f)
+        q.style = Paint.Style.STROKE; q.strokeWidth = rim; q.color = if (cat.night) 0x22FFFFFF else 0x33FFFFFF
+        rf.set(x + rim / 2f, y + rim / 2f, x + size - rim / 2f, y + size - rim / 2f); cv.drawRoundRect(rf, rad, rad, q)
+        q.style = Paint.Style.FILL
+        val fg = cat.glyph(key)
+        val withLabel = d > 0f && size >= 64f * d
+        val gs = if (withLabel) size * 0.42f else size * 0.58f
+        val gy = if (withLabel) y + size * 0.14f else y + (size - gs) / 2f
+        NlIcons.draw(cv, q, glyphOf(key), x + (size - gs) / 2f, gy, gs, fg)
+        if (withLabel) {
+            val ext = extOf(name).uppercase().take(4)
+            if (ext.isNotEmpty()) { labelP.color = fg; labelP.textSize = size * 0.16f; cv.drawText(ext, x + size / 2f, y + size * 0.84f, labelP) }
+        }
+        q.style = Paint.Style.FILL; q.strokeCap = Paint.Cap.BUTT
+    }
+
+    /** The realistic Word / Excel / PowerPoint / PDF page icons (before Lumen tiles). Still used inside the white badge of the grid "no thumbnail" page. */
+    fun drawLegacy(cv: Canvas, name: String, kind: String, x: Float, y: Float, size: Float) {
         val e = extOf(name)
         cv.save(); cv.translate(x, y); val s = size / 48f; cv.scale(s, s)
         q.style = Paint.Style.FILL; q.shader = null; q.pathEffect = null; q.strokeWidth = 1f; q.strokeCap = Paint.Cap.BUTT; q.alpha = 255

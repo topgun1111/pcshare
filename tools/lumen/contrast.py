@@ -28,4 +28,20 @@ for mode in ("light", "dark", "amoled"):
             f = check(d); n += 1; snapped += sn; cbad += len(f)
             if f: print(f"custom {mode} h{hue} t{tint}: " + "; ".join(f))
 print(f"custom grid {n}, snapped {snapped}, failing pairs {cbad}")
-sys.exit(1 if (bad or cbad) and "--strict" in sys.argv else 0)
+# T1b: category tiles (spec 4.5 / 5.3). Glyph (white on light tiles, deep tone on dark tiles) against both gradient ends must reach 3:1 (graphic object).
+C = T["category"]; kbad = 0
+def tile_ends(b): return derive.mix(b, "#ffffff", C["tileTop"]), derive.mix(b, "#000000", C["tileBottom"])
+def cat_pairs(label, mode, mono=None):
+    n = 0
+    for i, k in enumerate(C["list"]):
+        b = derive.mix(mono["ink"][:7], mono["canvas"][:7], i * 0.045) if mono else C["list"][k][mode]
+        g = "#ffffff" if mode == "light" else derive.mix(b, "#000000", .80)
+        for e in tile_ends(b):
+            r = cr(g, e)
+            if r < 3.0: print(f"category {label} {k} glyph/tile {r:.2f}<3.0"); n += 1
+    return n
+kbad += cat_pairs("light", "light") + cat_pairs("dark", "dark")
+for name in C["mono"]:
+    d = T["themes"][name]; kbad += cat_pairs(name, "dark" if derive.is_dark(d["canvas"]) else "light", d)
+print(f"category tiles {len(C['list'])} x 2 modes + {len(C['mono'])} mono themes, failing pairs {kbad}")
+sys.exit(1 if (bad or cbad or kbad) and "--strict" in sys.argv else 0)

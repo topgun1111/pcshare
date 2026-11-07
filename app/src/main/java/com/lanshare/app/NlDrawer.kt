@@ -207,9 +207,20 @@ private class DrPanel(c: Context, private val d: Float) : LinearLayout(c) {
     private var y0 = 0f
     private var done = false
 
+    /** Corner radius (px) of the two free (right-hand) corners, Lumen 12.9 r.xxl; the left edge is pushed off-screen in the outline so only the right corners round. */
+    var rx = 0f
+        set(v) { if (v != field) { field = v; invalidateOutline() } }
+
     init {
         orientation = VERTICAL
         isClickable = true
+        elevation = 16f * d
+        clipToOutline = true
+        outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, o: android.graphics.Outline) {
+                if (rx <= 0f) o.setRect(0, 0, v.width, v.height) else o.setRoundRect(-Math.round(rx), 0, v.width, v.height, rx)
+            }
+        }
     }
 
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
@@ -376,6 +387,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (card == 0) card = AppPal.pal(act).bg
         if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(card)
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
+        dp.rx = j.optDouble("rx", 0.0).toFloat() * d
         dp.setPadding(0, Math.round(j.optDouble("pt", 0.0).toFloat() * d), 0, Math.round(j.optDouble("pb", 0.0).toFloat() * d))
         val lp = dp.layoutParams
         if (lp != null && lp.width != wpx) { lp.width = wpx; dp.layoutParams = lp }

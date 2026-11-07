@@ -586,7 +586,7 @@ class UsActivity : Activity() {
             }
             if (dir) {
                 NlIcons.draw(cv, pt, "folder", a.dp(2f).toFloat(), a.dp(2f).toFloat(), s - a.dp(4f), a.p.ac)
-            } else NlFileIcons.draw(cv, name, kindOfName(name), a.dp(3f).toFloat(), a.dp(3f).toFloat(), s - a.dp(6f))
+            } else NlFileIcons.draw(cv, name, kindOfName(name), a.dp(3f).toFloat(), a.dp(3f).toFloat(), s - a.dp(6f), LumenCategory.of(context))
         }
     }
 

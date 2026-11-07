@@ -5,6 +5,20 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Floating action bar and drawer
+### Added
+- The bar with Copy, Cut, Delete and the other file actions now floats above the list as a rounded glass card and slides up when you select something.
+- When more than 5 actions apply, the middle ones move into a "More" menu; Delete always stays on the bar.
+- Buttons in the top bar and the action bar show a ripple when you touch them.
+### Changed
+- The side menu is rounder: wider panel, rounded corners, pill-shaped selected row, lighter section titles.
+- The "N selected" bar slides in over the top bar.
+
+## 2026-11-07 - File type colours
+### Changed
+- Files in the list now show a coloured tile with a simple icon: pink for pictures, violet for videos, blue for music and documents, green for sheets, orange-red for slides, red for PDF, amber for archives, teal for code and text, lime for apps, grey for everything else. In big lists the file type is written under the icon.
+- Main menu: tile colours follow the same file type colours in every theme (Graphite and True black stay grey).
+
 ## 2026-11-07 - New folder and main menu icons
 ### Changed
 - New app icon mark: a white L with signal arcs on an orange background (Lite: light purple). The notification icon matches.
