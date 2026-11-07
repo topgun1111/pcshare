@@ -5,6 +5,29 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-09 - Top bar no longer garbled while scrolling
+### Fixed
+- While you scroll a folder, the title and icons on the top bar no longer look doubled or smeared.
+
+## 2026-11-09 - Dialog types: info, warning, permission, success
+### Added
+- Dialogs can now show a coloured icon tile for information (blue), warning (amber), permission (theme colour) and success (green), with a small details list and an "Apply to all" switch.
+- The "already exists" and "Replace layout" questions use the warning look and show the name and folder; the root access question uses the lock icon.
+### Fixed
+- The icon at the top of the Delete question was squeezed to a tiny size; it is full size again.
+
+## 2026-11-09 - Folder badges in dark themes
+### Fixed
+- The small type badge on folders in the grid now uses the theme's card colour, so its icon is visible in dark themes (it sat on a fixed white plate).
+
+## 2026-11-09 - Readable "duplicate?" label
+### Fixed
+- The "duplicate?" label on files now uses the theme's warning text colour, so it stays readable on every theme.
+
+## 2026-11-09 - Selected thumbnails shrink
+### Changed
+- In the grid, a selected picture thumbnail now shrinks a little so the selection colour shows around it.
+
 ## 2026-11-09 - Dock icons and thumbnail corners
 ### Changed
 - The coloured icons in the bottom action bar now follow the theme and look right in dark themes too.

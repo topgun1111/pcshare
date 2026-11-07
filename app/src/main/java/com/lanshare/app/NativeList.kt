@@ -94,14 +94,15 @@ object NlIcons {
 const val NL_NEW_SEC = 60L
 fun nlIsNew(mtimeSec: Long): Boolean = mtimeSec > 0 && (System.currentTimeMillis() / 1000 - mtimeSec) < NL_NEW_SEC
 
-private var nlErrJ: String? = null
-private var nlErrC = 0
-/** Lumen `error` slot for the "new" dot; `Lumen.of` parses JSON, so it is cached per palette string (onDraw calls this). */
-private fun nlErr(c: android.content.Context): Int {
-    val j = AppPal.json(c)
-    if (j == null || j !== nlErrJ || nlErrC == 0) { nlErrC = Lumen.of(c).error; nlErrJ = j }
-    return nlErrC
+private var nlLmJ: String? = null
+private var nlLmC: Lumen? = null
+/** Cached `Lumen.of` (it parses JSON; onDraw calls this): one parse per palette string. */
+private fun nlLm(c: android.content.Context): Lumen {
+    val j = AppPal.json(c); val n = nlLmC
+    if (n != null && j != null && j === nlLmJ) return n
+    return Lumen.of(c).also { nlLmC = it; nlLmJ = j }
 }
+private fun nlErr(c: android.content.Context): Int = nlLm(c).error
 
 private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: Int, d: Float, col: Int) {
     p.style = Paint.Style.FILL; p.shader = null
@@ -338,7 +339,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         nameP.color = if (isSel) pl.onsel else pl.fg
         smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var dupW = 0f
-        if (r.dup) { dupP.color = 0xFF3B2A00.toInt(); dupW = dupP.measureText("duplicate?") + 12f * d }
+        if (r.dup) { dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown); dupW = dupP.measureText("duplicate?") + 12f * d }
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
         if (c) {
             // compact: one line  [name .......... small]   (name flex 1, small flex none, gap 10)
@@ -482,8 +483,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
         if (badge != null) {
             rf.set(23f, 43f, 73.7f, 93.7f)
-            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
-            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFD0D0D0.toInt(); cv.drawRoundRect(rf, 5.5f, 5.5f, p)
+            val lm = nlLm(context)   // badge plate = theme surfaceHi + edge (was fixed white / grey, pastel glyphs of dark themes vanished on white)
+            p.style = Paint.Style.FILL; p.color = lm.surfaceHi; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = lm.edge; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
             icon(badge, 48.35f - 16.9f, 68.35f - 16.9f, 33.8f, badgeCol, cv)
         }
         cv.restore()
@@ -521,7 +523,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 val sc = Math.max(s / bm.width, sh / bm.height)
                 val sw = (s / sc).toInt(); val shh = (sh / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - shh) / 2, (bm.width - sw) / 2 + sw, (bm.height - shh) / 2 + shh)
-                rf.set(lx, ly, lx + s, ly + sh); thumbR.set(rf); thumbRad = thumbCorner() * d
+                rf.set(lx, ly, lx + s, ly + sh)
+                if (isSel && !bare) rf.inset(s * 0.06f, sh * 0.06f)   // Lumen 8.2: a selected thumbnail shrinks to 88 % (the selection tint shows around it)
+                thumbR.set(rf); thumbRad = thumbCorner() * d
                 clip.reset(); clip.addRoundRect(rf, thumbCorner() * d, thumbCorner() * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
@@ -561,7 +565,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val dw = dupP.measureText("duplicate?") + 12f * d
         fun pill(x: Float, mid: Float) {
             p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - 7.7f * d, x + dw, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
-            dupP.color = 0xFF3B2A00.toInt(); val fd = dupP.fontMetrics
+            dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown); val fd = dupP.fontMetrics
             cv.drawText("duplicate?", x + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
         for ((i, ln) in lines.withIndex()) {
