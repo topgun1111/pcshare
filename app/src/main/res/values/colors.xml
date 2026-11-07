@@ -2,5 +2,6 @@
     <color name="brand">#E65100</color>
     <color name="accent">#C25100</color>
     <color name="bar">#FFFFFF</color>
+    <color name="canvas">#FFF8F2</color>   <!-- Lumen Ember canvas: window background before the first frame (spec 15.3) -->
     <color name="white">#FFFFFF</color>
 </resources>

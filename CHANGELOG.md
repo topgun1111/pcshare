@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Icons: files, folders and app icon
+### Changed
+- File type icons, folder symbols (heart, home, work, lock ...) and the remaining menu icons now use the same rounded outline style.
+- New app icon: two stacked rounded squares with an L on an orange gradient, with a one-colour version for themed icons and a matching notification icon.
+- The Lite app icon is now a brown sibling of the main icon.
+
 ## 2026-11-07 - New icon style
 ### Changed
 - Toolbar, menu and action icons (back, close, search, copy, share, delete, print, settings, view modes and more) are redrawn as one rounded outline set.

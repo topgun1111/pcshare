@@ -581,13 +581,11 @@ class UsActivity : Activity() {
             val s = s0().toFloat()
             if (ticked) {
                 pt.color = a.p.ac; cv.drawCircle(s / 2, s / 2, s / 2 - a.dp(2f), pt)
-                val ck = NlIcons.path("check")
-                if (ck != null) { pt.color = a.p.onac; cv.save(); cv.translate(s / 2 - a.dp(12f), s / 2 - a.dp(12f)); val k = a.dp(24f) / 24f; cv.scale(k, k); cv.drawPath(ck, pt); cv.restore() }
+                NlIcons.draw(cv, pt, "check", s / 2 - a.dp(12f), s / 2 - a.dp(12f), a.dp(24f).toFloat(), a.p.onac)
                 return
             }
             if (dir) {
-                val fp = NlIcons.path("folder") ?: return
-                pt.color = a.p.ac; cv.save(); cv.translate(a.dp(2f).toFloat(), a.dp(2f).toFloat()); val k = (s - a.dp(4f)) / 24f; cv.scale(k, k); cv.drawPath(fp, pt); cv.restore()
+                NlIcons.draw(cv, pt, "folder", a.dp(2f).toFloat(), a.dp(2f).toFloat(), s - a.dp(4f), a.p.ac)
             } else NlFileIcons.draw(cv, name, kindOfName(name), a.dp(3f).toFloat(), a.dp(3f).toFloat(), s - a.dp(6f))
         }
     }

@@ -68,15 +68,25 @@ object NlIcons {
         "close" to "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
     )
     private val cache = HashMap<String, Path>()
-    /** Keys drawn as Lumen Icons (outline, stroke) instead of the filled Material path; the rest follow in Part 10 (file / category glyphs). */
-    private val lumen = setOf("back", "close")
-    fun stroke(k: String): Boolean = k in lumen
+    /** Every key that has a Lumen drawing (LumenIcons, outline + stroke) is drawn as such; `raw` = old filled Material paths, only a fallback now. */
+    private fun key(k: String) = if (k == "office") "doc" else k   // office files use the document icon
+    fun stroke(k: String): Boolean = LumenIcons.D.containsKey(key(k))
     fun path(k: String): Path? {
         cache[k]?.let { return it }
-        val s = (if (k in lumen) LumenIcons.D[k] else null) ?: raw[k] ?: (if (k == "office") raw["doc"] else null) ?: return null   // office files use the document icon
+        val s = LumenIcons.D[key(k)] ?: raw[k] ?: return null   // office files use the document icon
         val p = PathParser.createPathFromPathData(s) ?: return null
         cache[k] = p
         return p
+    }
+
+    /** Draws icon [k] in a [size] box at (x, y): Lumen outline (round stroke) or the old filled path. Leaves [p] as a plain FILL paint. */
+    fun draw(cv: Canvas, p: Paint, k: String, x: Float, y: Float, size: Float, color: Int) {
+        val path = path(k) ?: return
+        val st = stroke(k)
+        if (st) { p.style = Paint.Style.STROKE; p.strokeWidth = LumenIcons.SW; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND } else p.style = Paint.Style.FILL
+        p.color = color
+        cv.save(); cv.translate(x, y); val s = size / 24f; cv.scale(s, s); cv.drawPath(path, p); cv.restore()
+        if (st) { p.style = Paint.Style.FILL; p.strokeCap = Paint.Cap.BUTT; p.strokeJoin = Paint.Join.MITER }
     }
 }
 
@@ -217,9 +227,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f) * d)) }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
-        val path = NlIcons.path(k) ?: NlIcons.path("file") ?: return
-        p.style = Paint.Style.FILL; p.color = color
-        cv.save(); cv.translate(x, y); val s = size / 24f; cv.scale(s, s); cv.drawPath(path, p); cv.restore()
+        NlIcons.draw(cv, p, if (NlIcons.path(k) != null) k else "file", x, y, size, color)
     }
 
     override fun onDraw(cv: Canvas) {
@@ -431,9 +439,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
-        val path = NlIcons.path(k) ?: NlIcons.path("file") ?: return
-        p.style = Paint.Style.FILL; p.color = color
-        cv.save(); cv.translate(x, y); val sc = size / 24f; cv.scale(sc, sc); cv.drawPath(path, p); cv.restore()
+        NlIcons.draw(cv, p, if (NlIcons.path(k) != null) k else "file", x, y, size, color)
     }
 
     /** Folder with paper sheets behind a tan front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
@@ -611,9 +617,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
-        val path = NlIcons.path(k) ?: return
-        p.style = Paint.Style.FILL; p.color = color
-        cv.save(); cv.translate(x, y); val sc = size / 24f; cv.scale(sc, sc); cv.drawPath(path, p); cv.restore()
+        NlIcons.draw(cv, p, k, x, y, size, color)
     }
 
     override fun onDraw(cv: Canvas) {

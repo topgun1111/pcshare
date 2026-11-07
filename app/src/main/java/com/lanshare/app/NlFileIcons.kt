@@ -240,7 +240,7 @@ object NlFileIcons {
 
     private fun apk(cv: Canvas) {
         fillRound(cv, 4f, 4f, 44f, 44f, 9f, 0xFF263238.toInt())
-        NlIcons.path("apk")?.let { cv.save(); cv.translate(9f, 8f); cv.scale(1.25f, 1.25f); q.style = Paint.Style.FILL; q.color = 0xFF3DDC84.toInt(); cv.drawPath(it, q); cv.restore() }
+        NlIcons.draw(cv, q, "apk", 9f, 8f, 30f, 0xFF3DDC84.toInt())
     }
 
     private fun img(cv: Canvas) {
@@ -267,7 +267,7 @@ object NlFileIcons {
 
     private fun aud(cv: Canvas) {
         fillRound(cv, 5f, 5f, 43f, 43f, 11f, 0xFFEC407A.toInt())
-        NlIcons.path("aud")?.let { cv.save(); cv.translate(10f, 10f); cv.scale(28f / 24f, 28f / 24f); q.style = Paint.Style.FILL; q.color = Color.WHITE; cv.drawPath(it, q); cv.restore() }
+        NlIcons.draw(cv, q, "aud", 10f, 10f, 28f, Color.WHITE)
     }
 
     // ======================= additional icons =======================

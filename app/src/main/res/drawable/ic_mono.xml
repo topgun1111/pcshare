@@ -1,0 +1,7 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- themed (monochrome) launcher layer: same mark, one colour -->
+    <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.6" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M38 28h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M50 40h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M53,51V67H66"/>
+</vector>

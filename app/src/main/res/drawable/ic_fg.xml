@@ -1,8 +1,7 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- share-network glyph, kept inside the 66dp adaptive safe zone -->
-    <path android:fillColor="#FFFFFF" android:pathData="M54,34m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M38,66m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M70,66m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="3.5" android:pathData="M54,34L38,66M54,34L70,66M38,66L70,66"/>
+    <!-- Lumen mark: file + glass (two stacked rounded squares) with an L, inside the 66dp adaptive safe zone -->
+    <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M38 28h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.24" android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M50 40h18a10 10 0 0 1 10 10v18a10 10 0 0 1 -10 10h-18a10 10 0 0 1 -10 -10v-18a10 10 0 0 1 10 -10z"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M53,51V67H66"/>
 </vector>
