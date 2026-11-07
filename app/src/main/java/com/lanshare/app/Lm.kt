@@ -268,9 +268,15 @@ object Lm {
     private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context) {
         b.setAllCaps(false)
         b.setTextColor(text)
-        b.minHeight = dp(c, 44f)
-        b.minimumHeight = dp(c, 44f)
-        b.setPadding(dp(c, 20f), 0, dp(c, 20f), 0)
+        // spec 12.1: filled 48 / 24 padding, text 40 / 16 padding, min width 64, Label L 14 sp
+        val h = if (fill != 0) 48f else 40f
+        val padH = if (fill != 0) 24f else 16f
+        b.minHeight = dp(c, h)
+        b.minimumHeight = dp(c, h)
+        b.minWidth = dp(c, 64f)
+        b.minimumWidth = dp(c, 64f)
+        b.textSize = 14f
+        b.setPadding(dp(c, padH), 0, dp(c, padH), 0)
         val rad = dp(c, 999f).toFloat()
         if (fill != 0) {
             b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), shape(fill, rad), null)
@@ -322,6 +328,7 @@ object Lm {
                     for (i in shown.indices) {
                         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                         if (i > 0) lp.topMargin = dp(c, 4f)
+                        if (i == 0 && shown[i] === pos) { shown[i].minHeight = dp(c, 56f); shown[i].minimumHeight = dp(c, 56f) }   // phone dialog primary = 56
                         row.addView(shown[i], lp)
                     }
                     row.requestLayout()

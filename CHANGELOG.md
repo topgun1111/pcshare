@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Buttons, chips, switches and text fields
+### Changed
+- Buttons are round with one size set: main (filled), tonal, outline, text and red filled Delete; dialog buttons are taller and easier to hit.
+- Chips are rounded pills; selected chips are tinted and can show a check mark.
+- Switches have a check mark in the thumb and the thumb grows while pressed; check boxes and radio buttons follow the theme colour.
+- Text fields have a soft filled look with a line that turns to the theme colour while typing.
+- The text size slider in Settings shows its filled part in the theme colour.
+
 ## 2026-11-07 - Icons: files, folders and app icon
 ### Changed
 - File type icons, folder symbols (heart, home, work, lock ...) and the remaining menu icons now use the same rounded outline style.

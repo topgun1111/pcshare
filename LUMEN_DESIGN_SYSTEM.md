@@ -917,7 +917,7 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 8 | Native dialog / sheet / snackbar helper; replace all `AlertDialog` and `Toast.makeText` | One dialog, one message style (native)(DONE 2026-11-07, sheets `NlSheets` still own look) |
 | 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family (DONE 2026-11-07, 46 glyphs; folder / file glyphs wait for Part 10) |
 | 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete (DONE 2026-11-07; Word / Excel realistic tiles, two-plate folder and splash logo screen left) |
-| 11 | Buttons, chips, switches, text fields to spec | Controls consistent |
+| 11 | Buttons, chips, switches, text fields to spec | Controls consistent (DONE 2026-11-07; floating label, clear glyph, search pill, sliding segment left) |
 | 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent |
 | 13 | Gradients (gPrimary etc.), category tile gradients, shadows | Depth and colour transitions |
 | 14 | Wallpaper Aurora + glass tiers G0-G3 | Glass chrome and sheets |
@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-10.** Next: Part 11 (buttons, chips, switches, text fields).
+**Done: Parts 1-11.** Next: Part 12 (lists, bars, selection visuals, ripple and press states).
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
