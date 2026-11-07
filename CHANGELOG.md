@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-09 - Orange colour, folder colour and button shape
+### Changed
+- The orange of the light theme is a little stronger and more readable (buttons, selected items, links).
+- Folders now take the colour of your theme (also in the Lite app); a folder you coloured yourself keeps its colour.
+- The "New folder" button in the file list is a pill, the same as on the other screens.
+- Print log, text editor, storage analyzer, PDF night button and the selection bar of the search screen follow your theme colours instead of fixed ones.
+- Notes without a colour in the text editor use the theme background.
+
 ## 2026-11-07 - Big title on the file list
 ### Added
 - The folder list now also opens with the big title, and it shrinks into the top bar as you scroll the list.

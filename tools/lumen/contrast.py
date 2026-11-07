@@ -47,11 +47,11 @@ for name in C["mono"]:
 print(f"category tiles {len(C['list'])} x 2 modes + {len(C['mono'])} mono themes, failing pairs {kbad}")
 
 # ---- P7: gradient ends against their labels, and glass tint alpha floor ----------------------------------------------------------------
-# gPrimary = primary 94 % + white 6 % -> primary 88 % + black 12 % (label onPrimary); gPrimarySoft = primaryCont -> primaryCont 90 % + primary 10 % (label onPrimaryCont).
+# gPrimary = primary 98 % + white 2 % -> primary 88 % + black 12 % (label onPrimary); gPrimarySoft = primaryCont -> primaryCont 90 % + primary 10 % (label onPrimaryCont).
 GLASS_MIN = 70   # lowest tint alpha (%) of the text-bearing glass steps (--gA1 / --gA2 in ui.html; the 58 % --gB1 is for borders / highlights only)
 def grad_check(d):
     out = []
-    for lab, bg, ends in (("onPrimary", "primary", (derive.mix(d["primary"][:7], "#ffffff", .06), derive.mix(d["primary"][:7], "#000000", .12))),
+    for lab, bg, ends in (("onPrimary", "primary", (derive.mix(d["primary"][:7], "#ffffff", .02), derive.mix(d["primary"][:7], "#000000", .12))),
                           ("onPrimaryCont", "primaryCont", (d["primaryCont"][:7], derive.mix(d["primaryCont"][:7], d["primary"][:7], .10)))):
         for e in ends:
             r = cr(d[lab][:7], e)

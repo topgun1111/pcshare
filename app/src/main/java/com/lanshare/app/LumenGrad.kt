@@ -20,7 +20,7 @@ object LumenGrad {
     private const val WHITE = 0xFFFFFFFF.toInt()
     private const val BLACK = 0xFF000000.toInt()
 
-    fun primary(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.primary, WHITE, 0.06f), LumenCategory.mix(lm.primary, BLACK, 0.12f))
+    fun primary(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.primary, WHITE, 0.02f), LumenCategory.mix(lm.primary, BLACK, 0.12f))
     fun fab(fab: Int): IntArray = intArrayOf(LumenCategory.mix(fab, WHITE, 0.06f), LumenCategory.mix(fab, BLACK, 0.10f))
     fun danger(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.error, WHITE, 0.06f), LumenCategory.mix(lm.error, BLACK, 0.14f))
     fun success(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.success, WHITE, 0.08f), LumenCategory.mix(lm.success, BLACK, 0.15f))
@@ -33,7 +33,7 @@ object LumenGrad {
 
     /**
      * Accent for the always-dark viewer stage (L7 black, spec 12.22): the theme primary, lifted towards white until it is bright
-     * enough on black (light themes have a dark primary, e.g. Ember light #B84D00 -> about #D9792F; dark themes stay as they are).
+     * enough on black (light themes have a dark primary, e.g. Ember light #C25100 -> about #D9792F; dark themes stay as they are).
      */
     fun onDark(lm: Lumen): Int {
         val c = lm.primary

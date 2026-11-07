@@ -666,8 +666,9 @@ class TextEditorActivity : Activity() {
 
     private fun applyTheme() {
         val p = PALS[color]
-        val bg = if (night) p.dark else p.light
-        textColor = if (night) 0xFFE8EAED.toInt() else 0xFF202124.toInt()
+        val lmE = Lumen.of(this)
+        val bg = if (color == 0) lmE.canvas else if (night) p.dark else p.light   // note colour 0 = no colour = the app theme canvas
+        textColor = lmE.ink
         bgColor = bg
         val sub = ColorUtils.setAlphaComponent(textColor, 150)
         val hint = ColorUtils.setAlphaComponent(textColor, 110)

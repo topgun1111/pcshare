@@ -55,7 +55,7 @@ def snap(fg, bgs, minr, darker):
 
 def grad_ok(prim, lab):
     """P7: label must reach 4.5 on both ends of gPrimary (primary 94 % + white 6 %, primary 88 % + black 12 %)."""
-    return all(cr(lab, e) >= 4.5 for e in (mix(prim, "#ffffff", .06), mix(prim, "#000000", .12)))
+    return all(cr(lab, e) >= 4.5 for e in (mix(prim, "#ffffff", .02), mix(prim, "#000000", .12)))
 
 def snap_grad(fg, lab, darker):
     """Move primary in 1 % lightness steps (darker or lighter) until grad_ok. Returns (hex, snapped?); unchanged if it cannot."""

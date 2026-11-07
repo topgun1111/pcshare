@@ -44,7 +44,7 @@ class Lumen(private val m: Map<String, Int>) {
             "ink" to 0xFF1F1A16.toInt(),
             "surface" to 0xFFFFFFFF.toInt(),
             "surfaceHi" to 0xFFFBEFE4.toInt(),
-            "primary" to 0xFFB84D00.toInt(),
+            "primary" to 0xFFC25100.toInt(),
             "onPrimary" to 0xFFFFFFFF.toInt(),
             "inkMut" to 0xFF5A5047.toInt(),
             "edge" to 0xFFEADFD4.toInt(),

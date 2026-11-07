@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun hapticPattern(csv: String) { Haptics.pattern(csv.split(',').mapNotNull { it.trim().toLongOrNull() }.toLongArray()) }
         /** Lumen Part 15 / 16: device facts for the glass ladder, and the in-app Reduce motion / Haptic feedback switches. */
         @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
-        @JavascriptInterface fun folderColor(): String = if (BuildConfig.LITE) "#9b63d8" else ""   // default folder colour = app icon colour
+        @JavascriptInterface fun folderColor(): String = ""   // default folder colour = theme primary (spec 4.5); kept for old pages
         /** Lumen Part 4a (N1 a): the glass step the page picked (f0..f3), so native dialogs / sheets use the same blur / tint step. */
         @JavascriptInterface fun glassStepSet(step: String) { LumenGlass.setStep(this@MainActivity, step) }
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)

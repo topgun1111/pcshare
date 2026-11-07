@@ -707,7 +707,7 @@ class StorageActivity : Activity() {
             selTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 2 }
             sbar.addView(selTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             sbar.addView(barBtn("Cancel", cCard, cFg) { exitMulti() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
-            sbar.addView(barBtn("Delete…", cErr, Color.WHITE) { onDeleteSelected() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
+            sbar.addView(barBtn("Delete…", cErr, Lumen.of(this).onError) { onDeleteSelected() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
             wrap.addView(sbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             showNode(cur ?: root)
             setMode(mode)

@@ -169,7 +169,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
 /**
  * Lumen two-plate folder (spec 11.5) in a 100 x 87.7 unit box; shared by the grid cards and every list view.
  * Back plate (with a tab 40 % wide) = darker shade, front plate = the colour, a soft light band and a thin highlight on the front top edge.
- * `tint` = folder colour (ARGB): the user's Style colour, else DEFAULT (app icon colour). Page twin: ui.html `foldSvg()`.
+ * `tint` = folder colour (ARGB): the user's Style colour, else DEFAULT (theme primary). Page twin: ui.html `foldSvg()`.
  */
 object NlClassicFolder {
     private val BACK = Path().apply {
@@ -186,9 +186,9 @@ object NlClassicFolder {
     }
     const val W = 100f
     const val H = 87.7f
-    /** Default folder colour = the app icon colour of the edition (full: orange, Lite: light purple); ui.html gets the same value from the bridge `folderColor()`. */
+    /** Default folder colour = the theme primary (spec 4.5), in both editions; Ember light primary until the page has sent its palette. ui.html uses `var(--primary)` too. */
     @Volatile var themeDefault: Int = 0   // Lumen primary of the current theme (set from MainActivity.nlPalette); 0 = not known yet
-    val DEFAULT: Int get() = if (BuildConfig.LITE) 0xFF9B63D8.toInt() else if (themeDefault != 0) themeDefault else 0xFFD2590A.toInt()
+    val DEFAULT: Int get() = if (themeDefault != 0) themeDefault else 0xFFC25100.toInt()
 
     private fun shade(c: Int, f: Float): Int = Color.argb(255, (Color.red(c) * f).toInt().coerceIn(0, 255), (Color.green(c) * f).toInt().coerceIn(0, 255), (Color.blue(c) * f).toInt().coerceIn(0, 255))
 

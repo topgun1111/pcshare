@@ -56,10 +56,14 @@ internal object WizThemes {
     fun pref(ctx: Context): String = ctx.getSharedPreferences(P, Context.MODE_PRIVATE).getString("wiztheme", "app") ?: "app"
     fun save(ctx: Context, id: String) { ctx.getSharedPreferences(P, Context.MODE_PRIVATE).edit().putString("wiztheme", id).apply() }
 
-    /** "App theme": the page palette (AppPal) with the classic WizTree colours. */
+    /** "App theme": the page palette (AppPal); the extension colours are the Lumen category table (spec 4.5, one table), the folder colour is the theme primary; the tail of the palette keeps the classic WizTree hues. */
     fun app(ctx: Context): WizTheme {
         val p = AppPal.pal(ctx)
-        return WizTheme("app", "App theme", p.bg, p.cont, p.fg, p.mut, p.bd, p.ac, p.onac, WizUtil.PAL_DEFAULT, WizUtil.FOLDER_DEFAULT)
+        val cc = LumenCategory.of(ctx)
+        // order = WizTheme.cat (SCat): [0] archives, [1] apps, [2] pictures, [3] video, [4] audio, [5] documents, then pdf, sheets, slides, code
+        val pal = intArrayOf(cc["zip"].base, cc["apk"].base, cc["pic"].base, cc["vid"].base, cc["aud"].base, cc["doc"].base,
+            cc["pdf"].base, cc["xls"].base, cc["ppt"].base, cc["code"].base) + WizUtil.PAL_DEFAULT.copyOfRange(10, WizUtil.PAL_DEFAULT.size)
+        return WizTheme("app", "App theme", p.bg, p.cont, p.fg, p.mut, p.bd, p.ac, p.onac, pal, Lumen.of(ctx).primary)
     }
 
     fun resolve(ctx: Context): WizTheme { val id = pref(ctx); return ALL.firstOrNull { it.id == id } ?: app(ctx) }

@@ -396,7 +396,7 @@ class PdfViewerActivity : Activity() {
         subTv.text = if (ready) "${curPage + 1} / $pageCount" + (if (size.isNotEmpty()) " \u00b7 $size" else "") + " \u00b7 " + com.lanshare.app.core.PdfPageCache.status(pcDir, pageCount) + " \u00b7 " + lastSrc else size
     }
 
-    private fun paintNightBtn() { nightBtn.setTextColor(if (night) 0xFFFFD54F.toInt() else Color.WHITE) }
+    private fun paintNightBtn() { nightBtn.setTextColor(if (night) LumenGrad.onDark(Lumen.of(this)) else Color.WHITE)   // theme accent on the dark stage (was fixed amber) }
 
     private fun setNight(on: Boolean) {
         night = on

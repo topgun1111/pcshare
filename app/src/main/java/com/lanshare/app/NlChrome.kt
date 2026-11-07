@@ -335,7 +335,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, LumenRadius.l(context) * d); o.setAlpha(1f) }
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, v.height / 2f); o.setAlpha(1f) }   // extended FAB = pill (spec 8.2 / 12.1), same as the page #fab
         }
         if (Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = (lumen().shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); outlineAmbientShadowColor = 0x33000000 }   // E3 shadow tinted by shadowTint (N4)
     }
@@ -355,7 +355,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         if (pressed != null) cv.scale(0.96f, 0.96f, bw / 2f, bh / 2f)
         fillP.shader = null; fillP.style = Paint.Style.FILL; val fp = pal ?: return
         fillP.color = fp.fab
-        val fr = LumenRadius.l(context) * d
+        val fr = bh / 2f   // pill (extended FAB)
         rf.set(0f, 0f, bw, bh)
         if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), 0f, 0f, bw, bh)   // gFab (flat at F3)
         cv.drawRoundRect(rf, fr, fr, fillP)
@@ -531,8 +531,8 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val top = r.top + Math.max(0f, (r.height() - (32f + 4f + 14f) * d) / 2f)
             val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
             if (pri) {
-                // gPrimary: 135 degrees, 6 % white start to 12 % black end (same as Lm.styleButton)
-                fillP.shader = LumenGrad.diag(intArrayOf(LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f)), pill.left, pill.top, pill.right, pill.bottom)
+                // gPrimary: 135 degrees, 2 % white start to 12 % black end (same as Lm.styleButton)
+                fillP.shader = LumenGrad.diag(intArrayOf(LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.02f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f)), pill.left, pill.top, pill.right, pill.bottom)
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)

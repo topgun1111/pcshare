@@ -71,7 +71,7 @@ internal object WizUtil {
     private fun c(v: Long) = v.toInt()
     val GRAY = c(0xFF707070)
     val DIM = c(0xFF3A3A3A)
-    val RED = c(0xFFF01818)
+    var RED = c(0xFFF01818)   // highlight colour; the Wiz screen sets it to the Lumen error slot
     val FOLDER_DEFAULT = c(0xFFE8B93C)
     var FOLDER = FOLDER_DEFAULT
     val PAL_DEFAULT = longArrayOf(0xFFF08A1C, 0xFFD4CB1E, 0xFF2DB84D, 0xFFA848E0, 0xFFE0408C, 0xFF1E9BFF, 0xFFF01A1A, 0xFFF030D0,
@@ -625,7 +625,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     // colours: the app theme (AppPal, the palette the page pushes), so the screen follows light / dark and the chosen theme
     private val theme = WizThemes.resolve(act)
-    private val themeApplied = run { WizUtil.PAL = theme.pal; WizUtil.CATC = theme.cat; WizUtil.FOLDER = theme.folder }
+    private val themeApplied = run { WizUtil.PAL = theme.pal; WizUtil.CATC = theme.cat; WizUtil.FOLDER = theme.folder; WizUtil.RED = Lumen.of(act).error }
     private val night = ColorUtils.calculateLuminance(theme.bg) < 0.5
     private fun mix(a: Int, b: Int, t: Float) = ColorUtils.blendARGB(a, b, t)
     private val cBg = theme.bg
@@ -638,7 +638,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private val cOnAcc = theme.onac
     private val cSel = mix(theme.bg, theme.ac, 0.22f)  // selected card
     private val cHl = mix(theme.bg, WizUtil.RED, 0.28f)  // highlighted extension card
-    private val cErr = if (night) 0xFFEF5350.toInt() else 0xFFC62828.toInt()
+    private val cErr = Lumen.of(act).error
 
     private val root: SNode = scan.root!!
     private var focus: SNode = root

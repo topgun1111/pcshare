@@ -427,9 +427,9 @@ object Lm {
         b.setPadding(dp(c, padH), 0, dp(c, padH), 0)
         val rad = dp(c, 999f).toFloat()
         if (fill != 0) {
-            // Lumen 5.2 gPrimary: 135 degrees, light start (6 % white) to darker end (12 % black); only the primary fill, tonal / danger stay flat
+            // Lumen 5.2 gPrimary: 135 degrees, light start (2 % white) to darker end (12 % black); only the primary fill, tonal / danger stay flat
             val face: android.graphics.drawable.Drawable = if (fill == Lumen.of(c).primary) {
-                val g = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(mixInk(fill, 0xFFFFFFFF.toInt(), 0.06f), mixInk(fill, 0xFF000000.toInt(), 0.12f)))
+                val g = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(mixInk(fill, 0xFFFFFFFF.toInt(), 0.02f), mixInk(fill, 0xFF000000.toInt(), 0.12f)))
                 g.cornerRadius = rad; g
             } else shape(fill, rad)
             b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), face, null)

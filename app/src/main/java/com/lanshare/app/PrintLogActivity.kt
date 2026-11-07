@@ -46,7 +46,7 @@ class PrintLogActivity : Activity() {
     private lateinit var pal: AppPal.P
     private val lm by lazy { Lumen.of(this) }
     /** Warning colour: the theme's own amber on dark themes, a darker amber on light ones (the theme amber is a fill colour, too pale for text). */
-    private fun amber(): Int = if (AppPal.night(this)) lm.warning else AMBER   // Lumen slots: error / success colours follow the app theme
+    private fun amber(): Int = lm.warning   // Lumen slots (warning #a66300 light / #ffc15e dark both pass 4.5:1 as text): error / success / warning follow the app theme
     private lateinit var info: TextView
     private lateinit var body: TextView
     private lateinit var scroll: ScrollView
@@ -260,7 +260,7 @@ class PrintLogActivity : Activity() {
             section(sb, prev, l, both); prev = l.src
             val s = sb.length
             sb.append(pretty(l)).append('\n')
-            val c = when (l.lvl) { "e" -> lm.error; "w" -> amber(); else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
+            val c = when (l.lvl) { "e" -> lm.error; "w" -> amber(); else -> if (l.src == "pc") lm.info else pal.fg }
             if (c != pal.fg) sb.setSpan(ForegroundColorSpan(c), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
@@ -373,9 +373,6 @@ class PrintLogActivity : Activity() {
         const val X_DEV = "dev"
         private const val MAXV = 600
         private const val MAXS = 300
-        private const val RED = 0xFFD64545.toInt()
-        private const val AMBER = 0xFFC58A00.toInt()
-        private const val GREEN = 0xFF1E9E5A.toInt()
         private const val COPY_MAX = 200_000
         private val SKIP = setOf("t", "run", "n", "src", "jid", "th", "lvl", "ev")
 

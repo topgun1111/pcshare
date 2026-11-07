@@ -19,7 +19,7 @@ function lmDarkCanvas(x){var c=lmH2r(x);return 0.2126*(c[0]/255)+0.7152*(c[1]/25
 function lmSnap(fg,bgs,min,darker){var ok=function(c){return bgs.every(function(b){return lmCr(c,b)>=min})};if(ok(fg))return[fg,false];
   var p=lmToHsl(fg),h=p[0],s=p[1],l=p[2];for(var i=0;i<100;i++){l+=darker?-0.01:0.01;var c=lmHsl(h,s,l);if(ok(c))return[c,true];if(l<=0||l>=1)break}
   return[darker?'#000000':'#ffffff',true]}
-function lmGradOk(p,lab){return[lmMix(p,'#ffffff',0.06),lmMix(p,'#000000',0.12)].every(function(e){return lmCr(lab,e)>=4.5})}
+function lmGradOk(p,lab){return[lmMix(p,'#ffffff',0.02),lmMix(p,'#000000',0.12)].every(function(e){return lmCr(lab,e)>=4.5})}
 function lmSnapGrad(fg,lab,darker){if(lmGradOk(fg,lab))return[fg,false];var q=lmToHsl(fg),h=q[0],s=q[1],l=q[2];
   for(var i=0;i<100;i++){l+=darker?-0.01:0.01;var c=lmHsl(h,s,l);if(lmGradOk(c,lab))return[c,true];if(l<=0||l>=1)break}
   return[fg,false]}
