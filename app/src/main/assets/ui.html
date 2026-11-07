@@ -1164,7 +1164,7 @@ html[data-rm] #toast .tu{display:none}
 /*LUMEN-UI13:END*/
 /*LUMEN-UI14:BEGIN*/
 :root{--lmDrift:60s}
-/* Lumen Part 2 (M2 M3 M4 / P1 P2 P3 P4): screen push, list collapse, Aurora drift, swipe rows, scrubber, field polish, split + glass buttons, on-picture pills, grain, flat list wallpaper */
+/* Lumen Part 2 (M2 M3 M4 / P1 P2 P3 P4): screen push, list collapse, Aurora drift, scrubber, field polish, split + glass buttons, on-picture pills, grain, flat list wallpaper */
 @keyframes lmDrift{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(3%,2%,0) scale(1.06)}}
 @keyframes lmPushF{from{transform:translateX(var(--lmpx,24px));opacity:.4}}
 @keyframes lmFadeIn{from{opacity:0}}
@@ -1181,13 +1181,6 @@ html[data-rm] #list.lm-push{animation:lmFadeIn var(--d-rm) linear}
 #list.lm-selst .row:nth-child(1){--lmd:0ms}#list.lm-selst .row:nth-child(2){--lmd:20ms}#list.lm-selst .row:nth-child(3){--lmd:40ms}#list.lm-selst .row:nth-child(4){--lmd:60ms}#list.lm-selst .row:nth-child(5){--lmd:80ms}#list.lm-selst .row:nth-child(6){--lmd:100ms}#list.lm-selst .row:nth-child(7){--lmd:120ms}#list.lm-selst .row:nth-child(8){--lmd:140ms}#list.lm-selst .row:nth-child(9){--lmd:160ms}#list.lm-selst .row:nth-child(10){--lmd:180ms}#list.lm-selst .row:nth-child(11){--lmd:200ms}#list.lm-selst .row:nth-child(12){--lmd:220ms}#list.lm-selst .row:nth-child(13){--lmd:240ms}#list.lm-selst .row:nth-child(14){--lmd:260ms}
 html[data-rm] #list.lm-selst .row{animation:none}
 #list:not(.v-grid) .row{touch-action:pan-y}
-.row.lm-swp{overflow:hidden}
-.row.lm-swp>*:not(.lm-sab){transform:translateX(var(--lmx,0px));position:relative;z-index:1;background:var(--bg)}
-.row.lm-swp.lm-back>*:not(.lm-sab){transition:transform var(--d-base) var(--ease-spring)}
-.lm-sab{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 var(--sp-6);pointer-events:none;background:var(--primaryCont);color:var(--onPrimaryCont)}
-.lm-sab.del{background:var(--errc,var(--err));color:var(--onerr,var(--err))}
-.lm-sab .s{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-14);font-weight:600;opacity:.6;transition:opacity var(--d-fast),transform var(--d-fast) var(--ease-spring)}
-.lm-sab .s svg{width:24px;height:24px}.lm-sab.go .s{opacity:1;transform:scale(1.08)}
 .row.lm-lift{position:relative;z-index:2;transform:scale(1.02);box-shadow:var(--e3);border-radius:var(--r-m);transition:transform var(--d-fast) var(--ease-spring),box-shadow var(--d-fast)}
 #lmsb{position:fixed;right:0;top:calc(env(safe-area-inset-top,0px) + 88px);bottom:112px;width:28px;z-index:6;display:none;touch-action:none}
 #lmsb.on{display:block}
@@ -2054,11 +2047,6 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
     try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
-  if(ev==='swd'||ev==='swr'){const nm=i.name;S.sel.clear();S.sel.add(nm);try{renderBar()}catch(e){}   // native row swipe (NlSwipe): right = Share, left = Delete, same as the page swipe
-    const un=()=>{if(S.sel.size===1&&S.sel.has(nm)){S.sel.clear();try{renderBar()}catch(e){}}};   // dialog cancelled / nothing happened: the row is not left selected
-    if(ev==='swd'){Promise.resolve(doDelete()).then(un,un)}
-    else{const k=(window.NLACL||[]).findIndex(a=>a.k==='share');if(k>=0)NLACT[k]();else{un();toast('Share is not available here',2500)}}
-    return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
   if(ev==='long'){S.sel.add(i.name);renderBar();return}
   if(ev==='tap'){const k=kind(i);
@@ -7145,26 +7133,8 @@ if(typeof render==='function'){const R0=render;window.render=render=function(){
   if(!same&&lastKey){const d=(S.path.match(/\//g)||[]).length;l2.style.setProperty('--lmpx',(d<lastDepth?-24:24)+'px');l2.classList.remove('lm-push');void l2.offsetWidth;l2.classList.add('lm-push');setTimeout(()=>l2.classList.remove('lm-push'),340)}
   lastKey=key;lastDepth=(S.path.match(/\//g)||[]).length;
   const n=S.sel.size;if(prevSel===0&&n>0&&!rm()){l2.classList.add('lm-selst');setTimeout(()=>l2.classList.remove('lm-selst'),480)}prevSel=n;return out}}
-/* P1 swipe actions: right = Share, left = Delete (96 px, tick at the threshold), same numbers the native list will use later */
-let dn=null;const TH=96;
-addEventListener('pointerdown',e=>{const r=e.target.closest&&e.target.closest('#list .row[data-n]');dn=null;if(!r)return;window.__lmRow=r;
-  if(S.sel.size||r.closest('#list.v-grid')||e.target.closest('input,textarea,.ck')||e.pointerType==='mouse')return;
-  dn={r,x:e.clientX,y:e.clientY,on:false,go:0,lay:null}},true);
-addEventListener('pointermove',e=>{if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
-  if(!dn.on){if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5){if(Math.abs(dy)>10)dn=null;return}
-    dn.on=true;try{LSAndroid.rowSwipe(true)}catch(_){}const r=dn.r;r.classList.add('lm-swp');r.classList.remove('lm-back');
-    const lay=E('div','lm-sab');dn.lay=lay;r.append(lay)}
-  const r=dn.r,x=Math.max(-160,Math.min(160,dx));r.style.setProperty('--lmx',x+'px');
-  const lay=dn.lay;lay.className='lm-sab'+(x<0?' del':'');lay.textContent='';
-  const sp=E('span','s');sp.append(ic(x<0?'del':'share'),document.createTextNode(x<0?'Delete':'Share'));
-  if(x<0){lay.style.justifyContent='flex-end'}else lay.style.justifyContent='flex-start';lay.append(sp);
-  const go=Math.abs(x)>=TH?1:0;if(go&&!dn.go)hp('tick');dn.go=go;lay.classList.toggle('go',!!go)},{passive:true});
-const swEnd=e=>{if(!dn)return;const d=dn;dn=null;if(!d.on)return;try{LSAndroid.rowSwipe(false)}catch(_){}const r=d.r,x=parseFloat(r.style.getPropertyValue('--lmx'))||0;r._lp=true;setTimeout(()=>{r._lp=false},400);
-  r.classList.add('lm-back');r.style.setProperty('--lmx','0px');
-  setTimeout(()=>{r.classList.remove('lm-swp','lm-back');r.style.removeProperty('--lmx');if(d.lay)d.lay.remove()},rm()?0:200);
-  if(e.type==='pointerup'&&d.go){const nm=r.dataset.n;S.sel.clear();S.sel.add(nm);try{renderBar()}catch(_){}
-    if(x<0){doDelete()}else{const i=(window.NLACL||[]).findIndex(a=>a.k==='share');if(i>=0)NLACT[i]();else{S.sel.clear();renderBar();toast('Share is not available here',2500)}}}};
-addEventListener('pointerup',swEnd,true);addEventListener('pointercancel',swEnd,true);
+/* the row under the finger, for the hold-menu lift below */
+addEventListener('pointerdown',e=>{const r=e.target.closest&&e.target.closest('#list .row[data-n]');if(r)window.__lmRow=r},true);
 /* P1 hold-menu lift: the row under the finger scales to 1.02 with E3 while the popup menu is open */
 new MutationObserver(ms=>{ms.forEach(m=>{m.addedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&window.__lmRow&&window.__lmRow.isConnected)window.__lmRow.classList.add('lm-lift')});
   m.removedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&!n.dataset.lmx)qa('.row.lm-lift').forEach(r=>r.classList.remove('lm-lift'))})})}).observe(document.body,{childList:true});

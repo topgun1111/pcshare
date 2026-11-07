@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-10 - Sideways slide on files and folders removed
+### Removed
+- Sliding a file or folder sideways to Share or Delete is gone. Press and hold still selects it and opens the menu, and sliding sideways switches to the Main menu again.
+
 ## 2026-11-07 - Dialog and message text sizes follow one scale
 ### Changed
 - Dialog titles, messages, buttons and the pop-up messages at the bottom now use the same text sizes as the rest of the app. Titles are a little larger.

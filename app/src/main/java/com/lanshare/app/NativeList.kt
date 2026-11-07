@@ -849,14 +849,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val failed = HashSet<String>()
     private val pool = Executors.newFixedThreadPool(3)
     private val ad = Ad()
-    // ---- Lumen P1 / M3 / M2 (native twins of the page effects, which are invisible while this list is shown) ----
-    private val swipe = NlSwipe(rv, d, { pos -> swipeOk(pos) }, { pos, del -> emit(if (del) "swd" else "swr", pos) })
-    private fun swipeOk(pos: Int): Boolean {
-        if (gridOn || sel.isNotEmpty() || overlay.passAll || pos >= galStart) return false
-        if (navUntil != 0L && android.os.SystemClock.uptimeMillis() < navUntil) return false
-        val r = rows.getOrNull(pos) ?: return false
-        return !r.hit && r.k != "hdr" && !r.gal
-    }
+    // ---- Lumen M3 / M2 (native twins of the page effects, which are invisible while this list is shown) ----
     private val collapseAnim = object : androidx.recyclerview.widget.DefaultItemAnimator() {
         init { supportsChangeAnimations = false; removeDuration = LumenMotion.exit(LumenMotion.BASE); moveDuration = LumenMotion.BASE; addDuration = 0L }
     }
@@ -1553,7 +1546,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             }
         }
         override fun onViewRecycled(h: VH) {
-            h.v.animate().cancel(); h.v.translationX = 0f; h.v.scaleX = 1f; h.v.scaleY = 1f   // a swiped / lifted row must not come back shifted
+            h.v.animate().cancel(); h.v.translationX = 0f; h.v.scaleX = 1f; h.v.scaleY = 1f   // a lifted / pushed row must not come back shifted
             h.job?.cancel(false); h.job = null; h.key = null
             for (k in 0 until 5) { h.gj[k]?.cancel(false); h.gj[k] = null; h.gk[k] = null }
         }

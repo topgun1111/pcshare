@@ -600,7 +600,7 @@ Height 32, pill, Label M. Types: **filter** (off: outline; on: `gPrimarySoft` + 
 - **Dividers**: none inside cards (spacing only); 1 dp `edge` inset 72 dp from the left in flat lists.
 - **Selected row**: `gPrimarySoft` background, `r.m`, 4 dp inset from the sides, leading tile swaps to the check circle with a 160 ms flip.
 - **Section header**: Title S `inkMut`, 24 dp top, 8 dp bottom, sticky with G1 glass when it sticks.
-- **Swipe actions** (if introduced): reveal tonal colours (Delete = error container, Share = primary container) with the same glyphs as 11.4.
+- **Swipe actions** (spec only; NOT built any more, row swipe removed 2026-11-10 by owner decision): reveal tonal colours (Delete = error container, Share = primary container) with the same glyphs as 11.4.
 - **Hold menu**: press 350 ms (haptic tick), row lifts (E5, scale 1.02), selection starts; the bottom action bar slides up.
 
 ### 12.6 Gallery grid, day and month headings
@@ -1102,6 +1102,8 @@ Status values: `NEXT`, `TODO`, `IN PROGRESS`, `DONE (date)`, `PARTLY (date, what
 | 2026-11-07 | (everyday polish: viewers + refresh) | Image viewer and PDF viewer bars hide 3 s after the last touch (`armAutoHide` + `onUserInteraction`; off with TalkBack touch exploration; the player already did this with `HIDE_MS`). Viewer top bars use the spec scrim (`LumenGrad.SCRIM_TOP_COLORS`, 55 % to 0; PDF title / sub line got a text shadow). Native pull-to-refresh plays the `tick` haptic (13.5). Checked: spec 8.2 / 12.5 apply the thumbnail radius by columns and the 88 % shrink to grid / gallery cells only, so list rows (`NlRowView`) need neither: item closed. | N7 (viewer auto-hide, viewer scrim) A6 | `LumenGrad.glow / scrimBottom` callers, Large collapsing bar, Search bar, job cards, permanent drawer, sliding tabs, glass pull-to-refresh, colour tables, type tokens, preset pairs | yes (`LumenGrad.kt`, `ImageViewerActivity.kt`, `PdfViewerActivity.kt`, `NativeList.kt`) | check next compile: open a picture and a PDF, wait 3 s, tap, pull a folder to refresh |
 | 2026-11-07 | (job cards, 12.16) | `JobOverlay` rows (viewer / editor / player progress card) use the new `GradBarView`: 8 dp full-radius bar, track `surfaceLo`, fill `gPrimary`, `gSuccess` when done, `gDanger` on error, eased fill, sweeping 40 % bar for unknown length (1.4 s, steady piece with Reduce motion), TalkBack reads "N percent". Replaces the tinted `ProgressBar`. The main screen's page progress card already had the gradient fill (UI4). | job cards | circular bubble ring (still flat accent, no gradient), 4 s auto-collapse after completion, check-glyph pop | yes (`ops/JobOverlay.kt`) | check next compile: start a copy / zip from the viewer, see the bar fill, finish (green), fail (red) |
 | 2026-11-07 | (type tokens, spec 7) | `gen.py` now writes `object LumenTypography` into `LumenTokens.kt` (13 styles from `tokens.json` `type`: sp size, line height, weight, tracking; `apply(textView, style)` sets size, `lineHeight` (API 28+, else line spacing), `letterSpacing` and weight, `tabular(tv)` = `tnum`). First callers in `Lm.kt`: snackbar message Body M, snackbar action Label L, dialog title Title L, dialog message Body L, dialog buttons Label L, details rows Body S / Body M, apply-all label Body M. Page: `--t-*` is used 26 times (was counted 10); the 278 `--fs-*` uses were NOT bulk-converted on purpose (a size alone does not say which style, and adding line heights moves layouts without a device check); `--st-*` still unused (the ripple / hover colours use `color-mix` percentages). | P8 partly | page `--fs-*` to `--t-*` per component, `--st-*` in ripple / hover, tabular figures callers (speeds, ETA, counters), native callers outside `Lm.kt` (`NlChrome` labels, `JobOverlay`, list rows) | yes (`LumenTokens.kt` regenerated, `Lm.kt`, `gen.py`) | check next compile: a dialog title / message / buttons and a snackbar look the same size as before (14 sp body, 20 sp title now) |
+| 2026-11-07 | (gap review, docs only) | Section 3.9 added: gaps found by reading the plan and grepping the code. Tools clean (`gen.py --check`, contrast 0 failing, parity 0, lint unchanged). | none | see 3.9 | no | n/a |
+| 2026-11-10 | (owner decision: remove row swipe) | Sideways slide on a file / folder row (Share right, Delete left) removed completely. Kotlin: class `NlSwipe` (`NlListFx.kt`), its wiring + `swipeOk` (`NativeList.kt`), `rowSwipe` bridge + the two `NlSwipe.active` checks (`MainActivity.kt`). Page (`ui.html`): swipe script, `swd` / `swr` events in `nlOn`, CSS `.lm-swp` / `.lm-sab`. KEPT: press and hold (selection + menu + lift; `window.__lmRow` is still set), the Main-menu slide (header, edge, empty space, grid, selection mode, and now also over rows again), pull to refresh. Checks: `node --check` 8 scripts, `gen.py --check`, `parity.py` 0, lint unchanged. NOT compiled. | P1 (row swipe removed) | none | yes (`NlListFx.kt`, `NativeList.kt`, `MainActivity.kt`) | check next compile; on the phone: slide a row sideways = Main menu switch, hold a row = still selects |
 | | | | | | | |
 
 
@@ -1161,7 +1163,7 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 | 4 | Floating 72 dp bottom action bar (12.8), top bar variants (12.7), drawer rows (12.9): native `NlChrome` / `NlDrawer` | **B (DONE 2026-11-07 except scroll-driven / large top bars, see Part B notes)** |
 | 5 | Native chrome and tiles on gradients / glass (gSurface, gChrome, G0-G3 in native), from Part 13-14 leftovers (to confirm) | **B (PARTLY: gChrome top light on top bar and dock, gPrimary on the primary dock pill, glass stand-in on the dock; tiles, sheets, dialogs left)** |
 | 6 | Native drawing leftovers of Parts 12-13 (check-circle flip, native ripple, press states) (to confirm) | **B (PARTLY: native ripple in NlChrome views; check-circle flip, ripple in list / drawer rows left)** |
-| 7 | Page leftovers of Parts 12-16: scrubber, swipe actions, hold-menu lift, exits, list insert / remove (to confirm) | C |
+| 7 | Page leftovers of Parts 12-16: scrubber, swipe actions (removed 2026-11-10), hold-menu lift, exits, list insert / remove (to confirm) | C |
 | 8 | Page leftovers of Parts 14-17: Light / Dark pairing, OS fonts, High contrast rings, per-theme contrast floor (to confirm) | C |
 | 9 | TalkBack labels in native screens, 48 px chip tap area | **C (PARTLY 2026-11-07: native chrome + chips)** |
 | 10 | Splash screen | **C (DONE 2026-11-07)** |
@@ -1284,7 +1286,7 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] M7 (2026-11-07: (a) skeleton 4d, (b) container transform 4f snapshot overlay, gallery cells / page-started viewers keep the scale-up) Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
 **P. Page leftovers**
-- [x] P1 (native twin 2026-11-09, `NlSwipe`) Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: swipe rows 96 px, scrubber, hold lift)
+- [x] P1 (row swipe REMOVED 2026-11-10 by owner decision: no Share / Delete slide on rows, `NlSwipe` and the page swipe are gone; do not rebuild) Fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: scrubber, hold lift)
 - [x] P2 Floating label + clear for fields outside `dlg` (sheets, settings, rename); password show / hide. (done 2026-11-07, Part 2: `.tf` outside dialogs get label + clear, password eye)
 - [x] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings). (done 2026-11-07, Part 2: `.sbtn` + `lmSplit`, `.tbtn.glass`, `.seg` caller = Glass quality)
 - [~] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens. (Part 2 2026-11-07: `.g0` class, grain on f0 dialogs / sheets, top bar glass on scroll, flat list wallpaper; `.g0` not yet applied to viewer counters / badges)
@@ -1314,3 +1316,33 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - **Start with:** owner compile of 4f, then the device pass. Check first: Settings > Glass quality Full (F0) and Auto on a normal phone: top bar, dock and drawer blur the list under them while scrolling (Android 12+ only); Light / Reduce transparency = flat as in 4b; scroll speed unchanged (T8 `lmFrameTest`); open a picture and a video from a list row or grid card: the thumbnail grows into the viewer, bars fade in after a moment, no flash when it hands over; Reduce motion = old scale-up. If the blur stutters set `NlBackdrop.ENABLED = false`. Older note (4f), kept for history: Older note, Part 4c (N7 bar variants: Search / Viewer, Large collapsing bar, scroll-driven transparent small bar needs a transparent `#top` twin + scroll event + `--topH`; N3 grid / gallery category tiles; N5 folder drawing in pickers / album covers / drawer icons / Devices-FTP-Cloud tiles; N13 older-Android splash; P6 one colour table for Storage / search chips / badges / CodeHl / editor). Part 4b check first on a device: Settings > Glass quality F0-F3 (top bar hairline, dock and drawer more or less see-through, flat at the lowest step), FAB gradient + press ripple, snackbar progress, Windows 11 theme corners (dock pills, snackbar, View options sheet), open the side menu: storage card on top (ring + free space, tap = Storage analyzer), drawer panel must show its rows (if it is empty set `localStorage ls_nld='0'`), long-press a folder > More > tap outside closes it. Owner can run V2-V5 any time in parallel.
 - **Check first (Parts 1-2):** swipe a row left / right, drag the scrubber, open Settings -> Glass quality (segment), delete a file (row collapses); open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
 - **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 4c); N1 (c): decided by default in 4f (real blur at F0, F1 only on non-low devices; F2 / F3 keep the stand-in); revisit if T8 fails. M7 (b): snapshot overlay chosen.
+
+## 3.9 Gap review against the code (added in a review session; docs only, no code touched)
+
+Method: read this file, `HANDOVER_READ_BEFORE_CODE.md`, `CHANGELOG.md` and `tools/lumen`; ran `gen.py --check`, `contrast.py`, `parity.py`, `lint.py` (all clean, same counts as 3.5); grepped `ui.html` and the Kotlin sources. Nothing was compiled or run on a device.
+
+**No code at all**
+- Banners (12.15): page `banner()` is only a one-line status text; there is no banner card class.
+- Tooltips and coach marks (12.21): none (one `title=` attribute in the page).
+- Designed empty / error states (12.17): page still says "Nothing here".
+- Large collapsing top bar and Search / Viewer bar variants (12.7, N7).
+- Tabs with sliding 3 dp indicator and fade-through (12.10).
+- Glass pull-to-refresh (12.18): native still uses `SwipeRefreshLayout` (`NativeList.kt`).
+- Breakpoints (9.4), the missing part: permanent drawer at 900 dp+, 24 / 32 dp margins, foldable reflow. Already present: 600 px rules for sheets / dialogs and 900 px columns for albums and gallery.
+- Multi-file conflict dialog (Replace / Skip / Keep both / Replace if newer + "Apply to all"): `applyAll` exists on page and native but has no caller.
+- No unit tests; the only CI workflow is `build-apk.yml`.
+
+**Built only partly**
+- Job cards (12.16): circular bubble ring flat, no 4 s auto-collapse, no check pop.
+- Container transform (M7): list rows and grid cards only; gallery cells and page-started viewers use the scale-up; no return transition; PDF viewer unchanged.
+- Type tokens (P8): page has about 255 `--fs-*` uses vs 11 `--t-*`; `--st-*` unused; native `LumenTypography` only called from `Lm.kt`.
+- One colour table (P6 / A5): Storage wizard, search chips, Drive / FTP / SMB badges, dark viewer chrome, `PlayerPal` light set, PDF night-button yellow are still literal; `LumenGrad.glow` has no caller, `scrimBottom` no real caller.
+- Native dialogs still run on `AlertDialog` through `Lm.restyle` (28 references); only about 8 callers pass a `kind`.
+- Real blur samples a flat canvas colour on page screens (WebView skipped, A9).
+- Themes: 16 presets without a Light / Dark partner (3.1 item 4); presets keep their hex.
+- Gallery (`NlGalView`): no file tiles, no container transform.
+
+**Housekeeping noted**
+- Dates in this file are out of order (log rows 2026-11-07 appear after 2026-11-10; the header says merged 2026-11-08 and last session 2026-11-07). Fix at the next edit of the status line.
+
+**Suggested order:** compile the 2026-11-10 edits and run V2-V5; conflict dialog with `applyAll`; banners; empty / error states; then the rest of 3.3.

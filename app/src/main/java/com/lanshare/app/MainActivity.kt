@@ -82,7 +82,6 @@ class MainActivity : Activity() {
         /** PERF-DEBUG (temporary): startup marks, ms since this process started. */
         @JavascriptInterface fun perfGet(): String { val base = android.os.Process.getStartElapsedRealtime(); val o = JSONObject(); perfMarks.forEach { (k, v) -> o.put(k, v - base) }; return JSONObject().put("marks", o).toString() }
         /** ui.html tells whether the swipe-right (Main menu <-> file manager) may act now, and where the header ends (CSS px; [vw] = page width in CSS px). */
-        @JavascriptInterface fun rowSwipe(on: Boolean) { NlSwipe.active = on }   // page-list row swipe (P1) in progress: no Main-menu swipe
         @JavascriptInterface fun edgeOk(ok: Boolean, top: Double, vw: Double) {
             swipeOk = ok
             swipeTop = if (vw > 0 && ::web.isInitialized) (top * web.width / vw).toFloat() else 0f
@@ -541,7 +540,7 @@ class MainActivity : Activity() {
         val d = resources.displayMetrics.density
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                swDone = false; NlSwipe.active = false      // a stale flag must never block the Main-menu swipe
+                swDone = false
                 swEdge = ev.rawX <= 36f * d                                       // system Back-gesture zone: leave it alone
                 swOn = swipeOk && ev.pointerCount == 1 && !swEdge
                 swTop = ev.rawY < swipeTop
@@ -550,7 +549,6 @@ class MainActivity : Activity() {
             MotionEvent.ACTION_POINTER_DOWN -> swOn = false                  // pinch / two fingers: not a swipe
             MotionEvent.ACTION_MOVE -> {
                 if (swDone) return true
-                if (NlSwipe.active) swOn = false                             // a row swipe (Share / Delete) owns this touch
                 if (swOn && ev.pointerCount == 1) {
                     val dx = ev.rawX - swX; val dy = ev.rawY - swY
                     val ok = swEdge || !swTop                                // the header scrolls horizontally itself, except right at the edge
