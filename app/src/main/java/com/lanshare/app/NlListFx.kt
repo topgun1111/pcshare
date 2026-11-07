@@ -8,6 +8,9 @@ import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
+import android.text.TextPaint
+import androidx.recyclerview.widget.RecyclerView
 
 /**
  * Lumen Part 4d (N9): press ripple for the native list views (row, grid card). Same look as `NlHitView.ripple()`:
@@ -170,5 +173,117 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
         tp.color = ink
         val fm = tp.fontMetrics
         cv.drawText(text, rf.left + 12f * d, rf.centerY() - (fm.ascent + fm.descent) / 2f, tp)
+    }
+}
+
+
+/**
+ * Lumen P1 (native twin of the page swipe in ui.html (block UI14-JS)): drag a list row right = Share, left = Delete.
+ * Same numbers as the page: starts after 12 dp when the move is clearly horizontal (1.5 x the vertical move), follows the finger to 160 dp,
+ * threshold 96 dp (haptic tick, label to full strength), release past it fires, otherwise the row springs back (200 ms, spring).
+ * Touch / pen only, never from the screen edges (system back gesture), never in grid / gallery / selection mode (the owner decides through [allowed]).
+ * The row view itself is moved (translationX); the coloured strip with glyph + label is an ItemDecoration drawn under the rows, only in the vacated part.
+ * [fire] gets the adapter position and true = Delete; the page selects that row and runs its own Delete dialog / Share action (ui.html nlOn `swd` / `swr`).
+ */
+class NlSwipe(
+    private val rv: RecyclerView, private val d: Float,
+    private val allowed: (Int) -> Boolean,
+    private val fire: (Int, Boolean) -> Unit
+) : RecyclerView.OnItemTouchListener {
+    private val slop = Math.max(ViewConfiguration.get(rv.context).scaledTouchSlop.toFloat(), 12f * d)
+    private val maxX = 160f * d
+    private val th = 96f * d
+    private val edge = 24f * d
+    private var down: View? = null
+    private var cur: View? = null
+    private var x0 = 0f; private var y0 = 0f
+    private var on = false; private var go = false
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 14f * d * UiScale.tf }
+
+    init {
+        rv.addOnItemTouchListener(this)
+        rv.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun onDraw(c: Canvas, parent: RecyclerView, st: RecyclerView.State) { reveal(c) }
+        })
+    }
+
+    override fun onInterceptTouchEvent(r: RecyclerView, e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                cur?.let { it.animate().cancel(); it.translationX = 0f }
+                cur = null; on = false; go = false; down = null
+                if (e.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE || e.x < edge || e.x > r.width - edge) return false
+                val c = r.findChildViewUnder(e.x, e.y) ?: return false
+                val pos = r.getChildAdapterPosition(c)
+                if (pos < 0 || !allowed(pos)) return false
+                down = c; x0 = e.x; y0 = e.y
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val c = down ?: return on
+                val dx = e.x - x0; val dy = e.y - y0
+                if (Math.abs(dx) < slop || Math.abs(dx) < Math.abs(dy) * 1.5f) { if (Math.abs(dy) > slop) down = null; return false }
+                on = true; cur = c; go = false; down = null
+                r.parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> down = null
+        }
+        return on
+    }
+
+    override fun onTouchEvent(r: RecyclerView, e: MotionEvent) {
+        val c = cur ?: return
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                val t = (e.x - x0).coerceIn(-maxX, maxX)
+                c.translationX = t
+                val g = Math.abs(t) >= th
+                if (g && !go) Haptics.view(r, "tick")
+                go = g; r.invalidate()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finish(r, e.actionMasked == MotionEvent.ACTION_UP)
+        }
+    }
+
+    override fun onRequestDisallowInterceptTouchEvent(disallow: Boolean) {}
+
+    private fun finish(r: RecyclerView, up: Boolean) {
+        val c = cur ?: return
+        val t = c.translationX
+        val doIt = up && go
+        on = false; go = false; down = null
+        val pos = r.getChildAdapterPosition(c)
+        c.animate().cancel()
+        if (LumenPrefs.reduceMotion(r.context)) { c.translationX = 0f; cur = null; r.invalidate() }
+        else c.animate().translationX(0f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.SPRING)
+            .setUpdateListener { r.invalidate() }
+            .withEndAction { if (cur === c) cur = null; r.invalidate() }.start()
+        if (doIt && pos >= 0) fire(pos, t < 0f)
+    }
+
+    private fun reveal(c: Canvas) {
+        val v = cur ?: return
+        val t = v.translationX
+        if (Math.abs(t) < 1f || v.parent !== rv) return
+        val del = t < 0f
+        val lm = Lumen.of(rv.context)
+        val top = v.top + v.translationY; val bot = v.bottom + v.translationY
+        val l = if (del) v.right + t else v.left.toFloat()
+        val r = if (del) v.right.toFloat() else v.left + t
+        p.style = Paint.Style.FILL; p.color = if (del) lm.errorCont else lm.primaryCont
+        c.save(); c.clipRect(l, top, r, bot); c.drawRect(l, top, r, bot, p)
+        val ink0 = if (del) lm.onErrorCont else lm.onPrimaryCont
+        val ink = (ink0 and 0x00FFFFFF) or ((if (go) 255 else 153) shl 24)
+        val label = if (del) "Delete" else "Share"
+        val gs = 24f * d; val gap = 8f * d; val gw = gs + gap + tp.measureText(label)
+        val cx = if (del) v.right - 24f * d - gw / 2f else v.left + 24f * d + gw / 2f
+        val cy = (top + bot) / 2f
+        val sc = if (go) 1.08f else 1f
+        c.save(); c.scale(sc, sc, cx, cy)
+        NlIcons.draw(c, p, if (del) "del" else "share", cx - gw / 2f, cy - gs / 2f, gs, ink)
+        tp.color = ink
+        c.drawText(label, cx - gw / 2f + gs + gap, cy - (tp.descent() + tp.ascent()) / 2f, tp)
+        c.restore(); c.restore()
     }
 }

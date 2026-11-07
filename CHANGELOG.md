@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-09 - Swipe rows, folder slide
+### Added
+- In the file list, swipe a row right to share it or left to delete it (the usual Delete question still appears).
+- Deleted files now fade out and the rows below slide up.
+- Opening a folder slides the list in from the right; going up slides it in from the left.
+
 ## 2026-11-08 - Theme picker colours
 ### Fixed
 - The Light, Dark and Follow system chips in the theme picker now show the real colours of those themes.

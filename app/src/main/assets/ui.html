@@ -2038,6 +2038,11 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
     try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
+  if(ev==='swd'||ev==='swr'){const nm=i.name;S.sel.clear();S.sel.add(nm);try{renderBar()}catch(e){}   // native row swipe (NlSwipe): right = Share, left = Delete, same as the page swipe
+    const un=()=>{if(S.sel.size===1&&S.sel.has(nm)){S.sel.clear();try{renderBar()}catch(e){}}};   // dialog cancelled / nothing happened: the row is not left selected
+    if(ev==='swd'){Promise.resolve(doDelete()).then(un,un)}
+    else{const k=(window.NLACL||[]).findIndex(a=>a.k==='share');if(k>=0)NLACT[k]();else{un();toast('Share is not available here',2500)}}
+    return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}
   if(ev==='long'){S.sel.add(i.name);renderBar();return}
   if(ev==='tap'){const k=kind(i);

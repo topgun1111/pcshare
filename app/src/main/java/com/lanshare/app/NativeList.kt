@@ -831,6 +831,49 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val failed = HashSet<String>()
     private val pool = Executors.newFixedThreadPool(3)
     private val ad = Ad()
+    // ---- Lumen P1 / M3 / M2 (native twins of the page effects, which are invisible while this list is shown) ----
+    private val swipe = NlSwipe(rv, d, { pos -> swipeOk(pos) }, { pos, del -> emit(if (del) "swd" else "swr", pos) })
+    private fun swipeOk(pos: Int): Boolean {
+        if (gridOn || sel.isNotEmpty() || overlay.passAll || pos >= galStart) return false
+        if (navUntil != 0L && android.os.SystemClock.uptimeMillis() < navUntil) return false
+        val r = rows.getOrNull(pos) ?: return false
+        return !r.hit && r.k != "hdr" && !r.gal
+    }
+    private val collapseAnim = object : androidx.recyclerview.widget.DefaultItemAnimator() {
+        init { supportsChangeAnimations = false; removeDuration = LumenMotion.exit(LumenMotion.BASE); moveDuration = LumenMotion.BASE; addDuration = 0L }
+    }
+    private val noAnim = Runnable { rv.itemAnimator = null }
+    /** M3: same folder, rows only vanished (names in the same order) -> (old indexes that went, new indexes whose content / selection changed); null = anything else (reload as before). */
+    private fun removalPlan(old: List<NlRow>, new: List<NlRow>, oldSel: Set<Int>, newSel: Set<Int>): Pair<List<Int>, List<Int>>? {
+        if (gridOn || old.size >= 200 || new.size >= old.size || LumenPrefs.reduceMotion(act)) return null
+        if (old.any { it.gal || it.hit || it.k == "hdr" } || new.any { it.gal || it.hit || it.k == "hdr" }) return null
+        val gone = ArrayList<Int>(); val chg = ArrayList<Int>()
+        var j = 0
+        for (i in old.indices) {
+            val o = old[i]; val n = new.getOrNull(j)
+            if (n != null && n.nm == o.nm && n.dir == o.dir) {
+                if (n.k != o.k || n.a != o.a || n.b != o.b || n.size != o.size || n.mtime != o.mtime || n.fresh != o.fresh || n.hid != o.hid || n.badge != o.badge || n.fcol != o.fcol || (i in oldSel) != (j in newSel)) chg.add(j)
+                j++
+            } else gone.add(i)
+        }
+        return if (j == new.size && gone.isNotEmpty() && gone.size <= 40) Pair(gone, chg) else null
+    }
+    private fun collapse(plan: Pair<List<Int>, List<Int>>) {
+        rv.removeCallbacks(noAnim); rv.itemAnimator = collapseAnim
+        for (k in plan.first.indices.reversed()) ad.notifyItemRemoved(plan.first[k])
+        for (j in plan.second) ad.notifyItemChanged(j)
+        rv.postDelayed(noAnim, 700)
+    }
+    /** M2: a folder one level deeper slides in from the right, one level up from the left (24 dp + fade, the page `.lm-push`). */
+    private fun depthOf(k: String): Int { val p = k.substringAfter('|', "").substringAfter('|', ""); return if (p.isEmpty() || p == "/") 0 else p.count { it == '/' } }
+    private fun push(prev: String, next: String) {
+        if (prev.isEmpty() || LumenPrefs.reduceMotion(act) || prev.substringBefore('|') != next.substringBefore('|')) return
+        val a = depthOf(prev); val b = depthOf(next)
+        if (a == b) return
+        rv.animate().cancel()
+        rv.translationX = (if (b > a) 24f else -24f) * d; rv.alpha = 0f
+        rv.animate().translationX(0f).alpha(1f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.EMPH).start()
+    }
 
     private class VH(val v: View) : RecyclerView.ViewHolder(v) {
         var key: String? = null; var job: Future<*>? = null
@@ -1257,15 +1300,22 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private fun applyItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
         skelOff()
         if (key == curKey && sig == curSig) { setSel(selected); return }
+        val oldSel = sel
         sel = selected
         if (key != curKey) {
+            val prevKey = curKey
             lm.onSaveInstanceState()?.let { states[curKey] = it; if (states.size > 40) states.remove(states.keys.first()) }
             rows = list; calcGal(); curKey = key; curSig = sig
             ensureMgr(key.split('|').getOrNull(1) == "grid")
             ad.notifyDataSetChanged()
             val st = states[key]
             if (st != null) lm.onRestoreInstanceState(st) else lm.scrollToPositionWithOffset(0, 0)
-        } else { rows = list; calcGal(); curSig = sig; if (gridOn) ensureMgr(true); ad.notifyDataSetChanged() }
+            push(prevKey, key)
+        } else {
+            val plan = removalPlan(rows, list, oldSel, selected)
+            rows = list; calcGal(); curSig = sig
+            if (plan != null) collapse(plan) else { if (gridOn) ensureMgr(true); ad.notifyDataSetChanged() }
+        }
     }
 
     fun setSel(n: Set<Int>) {
@@ -1485,6 +1535,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             }
         }
         override fun onViewRecycled(h: VH) {
+            h.v.animate().cancel(); h.v.translationX = 0f; h.v.scaleX = 1f; h.v.scaleY = 1f   // a swiped / lifted row must not come back shifted
             h.job?.cancel(false); h.job = null; h.key = null
             for (k in 0 until 5) { h.gj[k]?.cancel(false); h.gj[k] = null; h.gk[k] = null }
         }
