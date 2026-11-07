@@ -219,10 +219,10 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     var medium = false     // medium thumbnails (ui.html #list.t-md): row 72, lead 62x56
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 16f * d * UiScale.tf }
-    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 13f * d * UiScale.tf }
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d * UiScale.tf }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(16f) * d * UiScale.tf }
+    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(13f) * d * UiScale.tf }
+    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(10f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -260,7 +260,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
         if (r.k == "hdr") {   // "In subfolders (N)" search header: text only, padding 14/16/6, 13px muted
-            smallP.textSize = 13f * d * UiScale.tf; smallP.color = pl.mut
+            smallP.textSize = LumenTypography.snap(13f) * d * UiScale.tf; smallP.color = pl.mut
             val f = smallP.fontMetrics
             val t = TextUtils.ellipsize(r.nm, smallP, w - 32f * d, TextUtils.TruncateAt.END).toString()
             cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
@@ -408,9 +408,9 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 17f * d * UiScale.tf }
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 10f * d * UiScale.tf }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(17f) * d * UiScale.tf }
+    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(10f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -604,8 +604,8 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     private val du = arrayOfNulls<String>(5)
     private var pressed = -1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 11f * d * UiScale.tf }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -1039,7 +1039,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                 }
                 "pdf" -> {
                     PdfViewerActivity.pending = JSONObject().put("name", r.nm).put("url", url(r.nm)).put("size", r.size).put("key", key(r.nm, r.size)).toString()
-                    act.startActivity(Intent(act, PdfViewerActivity::class.java))
+                    act.startActivity(Intent(act, PdfViewerActivity::class.java), LumenPrefs.fadeIn(act))
                 }
                 else -> return false
             }
@@ -1280,7 +1280,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setPalette(json: String) {
         if (json == palJson) return
         palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
-        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac); sticky.fill = p.cont; sticky.ink = p.fg; sticky.edge = p.bd
+        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor((p.cont and 0x00FFFFFF) or (0xD6 shl 24))   /* Lumen 12.18: 40 dp circle, glass tint (84 % of the container colour) */; srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac); sticky.fill = p.cont; sticky.ink = p.fg; sticky.edge = p.bd
         ad.notifyDataSetChanged()
     }
 

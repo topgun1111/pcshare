@@ -196,7 +196,7 @@ class UsIndexActivity : Activity() {
     }
 
     private fun tv(size: Float, col: Int, bold: Boolean = false, lines: Int = 1): TextView = TextView(this).apply {
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setTextColor(col); typeface = if (bold) Fnt.semi() else Fnt.med()
+        LumenTypography.fit(this, size); setTextColor(col); typeface = if (bold) Fnt.semi() else Fnt.med()
         if (lines == 1) isSingleLine = true else maxLines = lines
         ellipsize = TextUtils.TruncateAt.END
     }
@@ -231,7 +231,7 @@ class UsIndexActivity : Activity() {
     }
 
     private fun button(label: String, filled: Boolean, click: () -> Unit) = TextView(this).apply {
-        text = label; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f); typeface = Fnt.semi(); isSingleLine = true
+        text = label; gravity = Gravity.CENTER; LumenTypography.fit(this, 14.5f); typeface = Fnt.semi(); isSingleLine = true
         setTextColor(if (filled) p.onac else p.ac)
         background = if (filled) card(p.ac, 24f) else GradientDrawable().apply { setColor(Color.TRANSPARENT); cornerRadius = dp(24f).toFloat(); setStroke(dp(1.5f), p.ac) }
         setOnClickListener { click() }

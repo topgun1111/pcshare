@@ -123,6 +123,9 @@ class ImageViewerActivity : Activity() {
 
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
+    /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
+    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Build.VERSION.SDK_INT >= 28)
@@ -171,7 +174,7 @@ class ImageViewerActivity : Activity() {
         }
         // details band: sits right under the top bar and spans the full width, so nothing is cut off with "..." (the dark space around the picture is used for it)
         infoTv = TextView(this).apply {
-            setTextColor(0xE6FFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setLineSpacing(0f, 1.15f)
+            setTextColor(0xE6FFFFFF.toInt()); LumenTypography.fit(this, 13f); setLineSpacing(0f, 1.15f)
             maxLines = 3; setPadding(dp(16), dp(8), dp(16), dp(8)); setBackgroundColor(0x99000000.toInt())
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = -dp(20) }
         }
@@ -186,11 +189,11 @@ class ImageViewerActivity : Activity() {
         }
         val back = icon(IconBtn.BACK, "Back") { finish() }.apply { layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)) }
         titleTv = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt())
         }
         subTv = TextView(this).apply {
-            setTextColor(0xB3FFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            setTextColor(0xB3FFFFFF.toInt()); LumenTypography.fit(this, 12f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setPadding(0, dp(1), 0, 0)
         }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(6), 0, dp(8), 0); addView(titleTv); addView(subTv) }
@@ -220,7 +223,7 @@ class ImageViewerActivity : Activity() {
         root.addView(topWrap)
 
         countPill = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 13f); gravity = Gravity.CENTER
             setPadding(dp(14), dp(6), dp(14), dp(6))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0x99000000.toInt()) }
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(20) }
@@ -234,7 +237,7 @@ class ImageViewerActivity : Activity() {
         root.addView(countPill)
 
         fun tv(txt: String, sp: Float) = TextView(this).apply {
-            text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
             gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
         }
         // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
@@ -326,7 +329,7 @@ class ImageViewerActivity : Activity() {
         if (it.size > 0) rows.add("Size\n" + android.text.format.Formatter.formatShortFileSize(this, it.size))
         rows.add("Position\n" + (pos + 1) + " of " + items.size)
         val base = rows.joinToString("\n\n")
-        val detDlg = AppPal.dlg(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
+        val detDlg = AppPal.dlg(this).kind("info").setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
         Thread({   // same media details as the file list's Details sheet (date taken etc.), via the app's own /api/stat
             val extra = MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
@@ -807,7 +810,7 @@ class ImageViewerActivity : Activity() {
             ov.onAction = { a -> when (a) { "copy" -> copyOcr(); "search" -> searchOcr(); "share" -> shareOcr() } }   // the floating Copy / Search / Share bubble
             val spin = ProgressBar(c).apply { layoutParams = FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER) }
             val err = TextView(c).apply {
-                setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
+                setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
             root.addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))

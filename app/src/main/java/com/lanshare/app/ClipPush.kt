@@ -108,17 +108,17 @@ object ClipPush {
         }
         card.addView(TextView(a).apply {
             this.text = (if (link != null) "Link from " else "Clipboard from ") + from
-            setTextColor(0xFFB8BCC0.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(0xFFB8BCC0.toInt()); LumenTypography.fit(this, 12f)
         })
         card.addView(TextView(a).apply {
             this.text = text.trim()
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 14f)
             maxLines = 4; ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(a, 3f), 0, dp(a, 3f))
         })
         card.addView(TextView(a).apply {
             this.text = if (link != null) "Tap to open" else "Tap to copy"
-            setTextColor(0xFFFFB77C.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(0xFFFFB77C.toInt()); LumenTypography.fit(this, 12f)
         })
         card.setOnClickListener {
             if (link != null) open(a, link) else { copy(a, text); Lm.snack(a, "Copied", Toast.LENGTH_SHORT) }

@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Calmer text sizes and smoother closing
+### Changed
+- Text across the native screens (storage analyzer, print log, text editor, PDF / image / video viewers, file list, inbox, search) now uses one common set of sizes, so similar texts look the same everywhere. Some texts are one point bigger.
+- Closing a picture, video or PDF fades and shrinks it away instead of cutting. The PDF reader fades in when it opens. Both are off when "Reduce motion" is on.
+- The pull-to-refresh circle has the same soft glass tint as the bars.
+
+## 2026-11-07 - Clearer dialogs
+### Changed
+- More questions and notices now start with a coloured icon (info, warning or danger): empty the Recycle bin, exit, import / restore settings, merge albums, find duplicates, print anyway, and the details / comments / notes / text-reading windows.
+- "Empty the Recycle bin?" in the menu now has the red delete style, like the other one.
+
 ## 2026-11-07 - Orange colour, folder colour and button shape
 ### Changed
 - The orange of the light theme is a little stronger and more readable (buttons, selected items, links).

@@ -196,6 +196,9 @@ class PdfViewerActivity : Activity() {
 
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
+    /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
+    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Build.VERSION.SDK_INT >= 28)
@@ -271,7 +274,7 @@ class PdfViewerActivity : Activity() {
         root.addView(sb)
 
         fun tv(txt: String, sp: Float) = TextView(this).apply {
-            text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
             gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
         }
         top = LinearLayout(this).apply {
@@ -281,8 +284,8 @@ class PdfViewerActivity : Activity() {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
         }
         val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
-        titleTv = TextView(this).apply { setTextColor(Color.WHITE); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setOnClickListener { askPage() } }
+        titleTv = TextView(this).apply { setTextColor(Color.WHITE); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); LumenTypography.fit(this, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); LumenTypography.fit(this, 12f); maxLines = 1; setOnClickListener { askPage() } }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val thumbsBtn = tv("\u25A6", 20f).apply { setOnClickListener { showThumbs() } }
         val textBtn = tv("T", 18f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD); setOnClickListener { pageText() } }
@@ -310,7 +313,7 @@ class PdfViewerActivity : Activity() {
         paintNightBtn()
 
         pill = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 13f); gravity = Gravity.CENTER
             setPadding(dp(14), dp(6), dp(14), dp(6))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0xCC000000.toInt()) }
             visibility = View.GONE
@@ -322,7 +325,7 @@ class PdfViewerActivity : Activity() {
 
         // loading / error panel
         stateTv = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); gravity = Gravity.CENTER; setPadding(dp(24), dp(8), dp(24), dp(12))
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 15f); gravity = Gravity.CENTER; setPadding(dp(24), dp(8), dp(24), dp(12))
         }
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = true }
         btnOpen = Button(this).apply { text = "Open with\u2026"; setOnClickListener { openWith() } }
@@ -1008,10 +1011,10 @@ class PdfViewerActivity : Activity() {
             itemAnimator = null
         }
         fun action(t: String, f: () -> Unit) = TextView(this).apply {
-            text = t; setTextColor(acc); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            text = t; setTextColor(acc); LumenTypography.fit(this, 14f); setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dp(12), dp(12), dp(12), dp(12)); setOnClickListener { f() }
         }
-        val info = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setPadding(dp(8), 0, dp(8), 0) }
+        val info = TextView(this).apply { setTextColor(Color.WHITE); LumenTypography.fit(this, 14f); setPadding(dp(8), 0, dp(8), 0) }
         val printB = action("Print") { printPages(if (sel.isEmpty()) null else sel.toList()) }
         val saveB = action("Save PDF") { savePages(sel.toList()) }
         val shareB = action("Share") { sharePages(sel.toList()) }
@@ -1029,7 +1032,7 @@ class PdfViewerActivity : Activity() {
             override fun getItemCount() = pageCount
             override fun onCreateViewHolder(parent: ViewGroup, t: Int): Th {
                 val iv = ImageView(parent.context).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setBackgroundColor(Color.WHITE) }
-                val num = TextView(parent.context).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(4)) }
+                val num = TextView(parent.context).apply { setTextColor(Color.WHITE); LumenTypography.fit(this, 12f); gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(4)) }
                 val box = LinearLayout(parent.context).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(2))
                     addView(iv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, boxH - dp(24)))
@@ -1249,8 +1252,8 @@ class PdfViewerActivity : Activity() {
 
     private fun showText(pos: Int, txt: String) {
         val shown = txt.ifEmpty { "No text found on this page." }
-        val tvx = TextView(this).apply { text = shown; setTextIsSelectable(true); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setPadding(dp(20), dp(12), dp(20), dp(4)) }
-        val b = AppPal.dlg(this).setTitle("Page ${pos + 1} \u00b7 text (OCR)").setView(ScrollView(this).apply { addView(tvx) })
+        val tvx = TextView(this).apply { text = shown; setTextIsSelectable(true); LumenTypography.fit(this, 15f); setPadding(dp(20), dp(12), dp(20), dp(4)) }
+        val b = AppPal.dlg(this).kind("info").setTitle("Page ${pos + 1} \u00b7 text (OCR)").setView(ScrollView(this).apply { addView(tvx) })
             .setNegativeButton("Close", null)
         if (txt.isNotEmpty()) {
             b.setPositiveButton("Copy") { _, _ ->

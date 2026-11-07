@@ -286,7 +286,7 @@ class TextEditorActivity : Activity() {
 
     // ---------------------------------------------------------------- UI (built in code, like the other viewers)
     private fun tvBtn(txt: String, sp: Float = 20f): TextView = TextView(this).apply {
-        text = txt; setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); gravity = Gravity.CENTER
+        text = txt; LumenTypography.fit(this, sp); gravity = Gravity.CENTER
         minWidth = dp(44); minimumHeight = dp(44); setPadding(dp(6), 0, dp(6), 0); typeface = Fnt.med()
     }
 
@@ -300,7 +300,7 @@ class TextEditorActivity : Activity() {
         moreBtn = tvBtn("⋮", 24f).apply { setOnClickListener { showMenu(it) } }
         spin = ProgressBar(this).apply { isIndeterminate = true; layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(8) }; visibility = View.GONE }
         linesTv = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            LumenTypography.fit(this, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER_VERTICAL or Gravity.START
             maxLines = 1; setPadding(dp(8), 0, dp(8), 0)
         }
         top = LinearLayout(this).apply {
@@ -314,7 +314,7 @@ class TextEditorActivity : Activity() {
         // find & replace bar (hidden until asked for)
         findEt = EditText(this).apply {
             hint = "Find"; setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); background = null; typeface = Fnt.med()
+            LumenTypography.fit(this, 15f); background = null; typeface = Fnt.med()
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
@@ -323,16 +323,16 @@ class TextEditorActivity : Activity() {
             setOnEditorActionListener { _, _, _ -> stepFind(1); true }
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
         }
-        findCount = TextView(this).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setPadding(dp(6), 0, dp(6), 0); typeface = Fnt.med() }
+        findCount = TextView(this).apply { LumenTypography.fit(this, 13f); setPadding(dp(6), 0, dp(6), 0); typeface = Fnt.med() }
         val fPrev = tvBtn("▲", 15f).apply { setOnClickListener { stepFind(-1) } }
         val fNext = tvBtn("▼", 15f).apply { setOnClickListener { stepFind(1) } }
         val fClose = tvBtn("✕", 16f).apply { setOnClickListener { hideFind() } }
         replEt = EditText(this).apply {
             hint = "Replace with"; setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); background = null; typeface = Fnt.med()
+            LumenTypography.fit(this, 15f); background = null; typeface = Fnt.med()
         }
         replBtn = TextView(this).apply {
-            text = "Replace all"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER
+            text = "Replace all"; LumenTypography.fit(this, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER
             setPadding(dp(12), dp(8), dp(12), dp(8)); setOnClickListener { replaceAll() }
         }
         val fRow1 = LinearLayout(this).apply {
@@ -351,13 +351,13 @@ class TextEditorActivity : Activity() {
         root.addView(findBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         banner = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); typeface = Fnt.med(); setPadding(dp(20), dp(6), dp(20), dp(6)); visibility = View.GONE
+            LumenTypography.fit(this, 13f); typeface = Fnt.med(); setPadding(dp(20), dp(6), dp(20), dp(6)); visibility = View.GONE
         }
         root.addView(banner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // note: location line, title, body
         locTv = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = Fnt.med(); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
+            LumenTypography.fit(this, 12f); typeface = Fnt.med(); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
             setPadding(0, dp(4), 0, 0)
         }
         titleEt = EditText(this).apply {
@@ -414,7 +414,7 @@ class TextEditorActivity : Activity() {
         redoBtn = tvBtn("↷", 22f).apply { setOnClickListener { doRedo() } }
         modeBtn = tvBtn("\uD83D\uDC41", 20f).apply { setOnClickListener { setPreview(!previewOn) }; setOnLongClickListener { if (previewOn) { showOutline(); true } else false }; visibility = View.GONE }
         status = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = Fnt.med(); gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            LumenTypography.fit(this, 12f); typeface = Fnt.med(); gravity = Gravity.CENTER_VERTICAL or Gravity.END
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(8), 0, dp(12), 0)
         }
         bar = LinearLayout(this).apply {
@@ -545,7 +545,7 @@ class TextEditorActivity : Activity() {
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(ColorUtils.setAlphaComponent(textColor, 26)) }
         }
         val lbl = TextView(this).apply {
-            text = b.lang.ifEmpty { "code" }; setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setTextColor(sub()); typeface = Fnt.semi()
+            text = b.lang.ifEmpty { "code" }; LumenTypography.fit(this, 11f); setTextColor(sub()); typeface = Fnt.semi()
         }
         val copy = tvBtn("Copy", 12f).apply {
             typeface = Fnt.semi(); setTextColor(sub()); minWidth = dp(56); minimumHeight = dp(36)
@@ -1063,7 +1063,7 @@ class TextEditorActivity : Activity() {
             val c = if (night) p.dark else p.light
             val v = TextView(this).apply {
                 gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                LumenTypography.fit(this, 16f)
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) Lumen.of(this@TextEditorActivity).primary else 0x33000000) }
                 layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(6), dp(6), dp(6), dp(6)) }
                 setOnClickListener { color = i; prefs.edit().putInt("color", i).apply(); applyTheme(); dlg.dismiss() }

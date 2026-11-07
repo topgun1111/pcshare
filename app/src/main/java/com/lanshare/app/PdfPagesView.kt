@@ -90,10 +90,10 @@ class PdfPagesView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val fill = Paint().apply { color = PLACE }
     private val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFFFFF; textAlign = Paint.Align.CENTER; textSize = 40f * dp }
-    private val msgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xAAFFFFFF.toInt(); textAlign = Paint.Align.CENTER; textSize = 15f * dp }
+    private val msgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xAAFFFFFF.toInt(); textAlign = Paint.Align.CENTER; textSize = LumenTypography.snap(15f) * dp }
     private val spin = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x88FFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 3f * dp; strokeCap = Paint.Cap.ROUND }
     private val pill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = 14f * dp }
+    private val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = LumenTypography.snap(14f) * dp }
     private val dst = RectF()
     private val arc = RectF()
 

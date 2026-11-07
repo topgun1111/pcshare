@@ -119,7 +119,7 @@ object UpdateCheck {
         val pad = (20 * d).toInt()
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         box.addView(TextView(a).apply {
-            setTextColor(p.mut); textSize = 14f
+            setTextColor(p.mut); LumenTypography.fit(this, 14f)
             text = "Mevcut sürüm: $cur"
             setPadding(0, 0, 0, (10 * d).toInt())
         })
@@ -138,7 +138,7 @@ object UpdateCheck {
                 }
             }
             card.addView(TextView(a).apply {
-                setTextColor(if (latest) greenLine else p.fg); textSize = 15f; setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (latest) greenLine else p.fg); LumenTypography.fit(this, 15f); setTypeface(typeface, Typeface.BOLD)
                 val date = o.optString("published_at").take(10)
                 text = buildString {
                     append(tag)
@@ -147,7 +147,7 @@ object UpdateCheck {
                     if (date.isNotEmpty()) append("\n").append(date)
                 }
             })
-            card.addView(TextView(a).apply { setTextColor(p.fg); textSize = 14f; text = notesText(a, o) })
+            card.addView(TextView(a).apply { setTextColor(p.fg); LumenTypography.fit(this, 14f); text = notesText(a, o) })
             box.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (10 * d).toInt() })
         }
         if (rels.isEmpty()) box.addView(TextView(a).apply { setTextColor(p.mut); text = "(not listed)" })

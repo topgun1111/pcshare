@@ -48,7 +48,7 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
             inputType = InputType.TYPE_CLASS_TEXT
             imeOptions = EditorInfo.IME_ACTION_SEARCH
             hint = "Search in this folder"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            LumenTypography.fit(this, 16f)
             setPadding(dp(2f), 0, dp(2f), 0)
             gravity = Gravity.CENTER_VERTICAL
             addTextChangedListener(object : TextWatcher {
@@ -60,7 +60,7 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
         }
         addView(back, LayoutParams(dp(40f), dp(40f)))
         addView(et, LayoutParams(0, dp(40f), 1f))
-        all.apply { text = "Phone"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setPadding(dp(8f), 0, dp(8f), 0); contentDescription = "Search the whole phone" }
+        all.apply { text = "Phone"; LumenTypography.fit(this, 12f); typeface = android.graphics.Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setPadding(dp(8f), 0, dp(8f), 0); contentDescription = "Search the whole phone" }
         addView(all, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f)))
         addView(clr, LayoutParams(dp(40f), dp(40f)))
         back.setOnClickListener { onBack?.invoke() }

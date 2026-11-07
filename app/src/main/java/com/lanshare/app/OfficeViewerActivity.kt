@@ -113,7 +113,7 @@ class OfficeViewerActivity : Activity() {
                     PdfViewerActivity.pending = org.json.JSONObject().put("name", f.nameWithoutExtension + ".pdf").put("file", p.absolutePath).put("size", p.length())
                         .put("key", "office|" + md5)
                         .put("office", org.json.JSONObject().put("path", f.absolutePath).put("dev", dev ?: "").put("rpath", rpath ?: "")).toString()
-                    startActivity(android.content.Intent(this, PdfViewerActivity::class.java))
+                    startActivity(android.content.Intent(this, PdfViewerActivity::class.java), LumenPrefs.fadeIn(this))
                     finish()
                 } else {
                     Lm.snack(this, (if (auto) "Simple view - " else "Exact pages not available - ") + (why ?: "unknown error"), Toast.LENGTH_LONG)
@@ -137,14 +137,14 @@ class OfficeViewerActivity : Activity() {
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         fun btn(txt: String, desc: String, click: (android.view.View) -> Unit) = android.widget.TextView(this).apply {
-            text = txt; textSize = 22f; gravity = android.view.Gravity.CENTER; setTextColor(pal.fg); contentDescription = desc
+            text = txt; LumenTypography.fit(this, 22f); gravity = android.view.Gravity.CENTER; setTextColor(pal.fg); contentDescription = desc
             layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48)); setOnClickListener(click)
             val tv = android.util.TypedValue(); if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)) setBackgroundResource(tv.resourceId)
         }
         val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(pal.bg) }
         top.addView(btn("\u2190", "Back") { finish() })
         top.addView(android.widget.TextView(this).apply {
-            id = android.R.id.title; text = title; textSize = 16f; setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            id = android.R.id.title; text = title; LumenTypography.fit(this, 16f); setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         top.addView(btn("\uD83D\uDD0D", "Find") { toggleFind() })
@@ -167,7 +167,7 @@ class OfficeViewerActivity : Activity() {
         findRow = fr
         val rr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER; visibility = android.view.View.GONE; setBackgroundColor(pal.cont) }
         rr.addView(btn("A\u2212", "Smaller text") { readStep(-DocxReading.STEP) })
-        val lbl = android.widget.TextView(this).apply { textSize = 14f; setTextColor(pal.fg); gravity = android.view.Gravity.CENTER; layoutParams = android.widget.LinearLayout.LayoutParams(dp(56), dp(48)) }
+        val lbl = android.widget.TextView(this).apply { LumenTypography.fit(this, 14f); setTextColor(pal.fg); gravity = android.view.Gravity.CENTER; layoutParams = android.widget.LinearLayout.LayoutParams(dp(56), dp(48)) }
         rr.addView(lbl); readLbl = lbl
         rr.addView(btn("A+", "Larger text") { readStep(DocxReading.STEP) })
         rr.addView(btn("\u25D0", "Reading colours: paper, sepia, dark") { readTheme() })
@@ -176,7 +176,7 @@ class OfficeViewerActivity : Activity() {
         root.addView(fr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         root.addView(rr, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         val fx = android.widget.TextView(this).apply {   // Part 12: formula bar (sheets only)
-            textSize = 14f; setTextColor(pal.fg); setPadding(dp(12), 0, dp(12), 0); gravity = android.view.Gravity.CENTER_VERTICAL; maxLines = 2
+            LumenTypography.fit(this, 14f); setTextColor(pal.fg); setPadding(dp(12), 0, dp(12), 0); gravity = android.view.Gravity.CENTER_VERTICAL; maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END; visibility = android.view.View.GONE; setBackgroundColor(pal.bg); setTextIsSelectable(false)
             text = "Tap a cell to see its formula"
         }
@@ -499,7 +499,7 @@ class OfficeViewerActivity : Activity() {
             if (c.date.isNotEmpty()) sb.append("  \u00b7  ").append(c.date.take(16).replace('T', ' '))
             sb.append('\n').append(c.text.ifEmpty { "(empty)" })
         }
-        AppPal.dlg(this).setTitle(if (focus != null) "Comment" else "Comments (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").setTitle(if (focus != null) "Comment" else "Comments (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
     }
 
     /** Part 9: one cell note ([ref] = "B2", from a tap on the red corner) or all notes of the sheet on screen ([ref] == null). */
@@ -513,7 +513,7 @@ class OfficeViewerActivity : Activity() {
             sb.append(n.ref); if (n.author.isNotEmpty()) sb.append("  \u00b7  ").append(n.author)
             sb.append('\n').append(n.text.ifEmpty { "(empty)" })
         }
-        AppPal.dlg(this).setTitle(if (ref != null) "Note" else "Notes (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").setTitle(if (ref != null) "Note" else "Notes (" + list.size + ")").setMessage(sb.toString()).setPositiveButton("OK", null).show()
     }
 
     private fun exportCsv() {

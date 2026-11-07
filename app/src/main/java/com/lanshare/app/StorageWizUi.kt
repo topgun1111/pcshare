@@ -233,7 +233,7 @@ internal class WizRing(ctx: Context) : View(ctx) {
         p.color = track; c.drawArc(r, 0f, 360f, false, p)
         p.color = col; c.drawArc(r, -90f, 360f * frac.coerceIn(0.01f, 1f), false, p)
         p.style = Paint.Style.FILL; p.color = textCol; p.typeface = Typeface.DEFAULT_BOLD
-        p.textSize = 15f * d * UiScale.tf; p.textAlign = Paint.Align.CENTER
+        p.textSize = LumenTypography.snap(15f) * d * UiScale.tf; p.textAlign = Paint.Align.CENTER
         c.drawText(Math.round(frac * 100f).toString() + "%", width / 2f, height / 2f + p.textSize * 0.35f, p)
     }
 }

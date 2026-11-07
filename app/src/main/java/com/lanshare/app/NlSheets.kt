@@ -149,7 +149,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
     fun close() { try { dlg?.dismiss() } catch (_: Throwable) { }; dlg = null }
 
     private fun tv(t: String, sp: Float, col: Int, medium: Boolean = false): TextView = TextView(act).apply {
-        text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); setTextColor(col)
+        text = t; LumenTypography.fit(this, sp); setTextColor(col)
         if (medium) typeface = Fnt.med()
     }
 

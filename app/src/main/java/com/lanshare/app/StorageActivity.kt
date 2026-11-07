@@ -247,12 +247,12 @@ class StorageActivity : Activity() {
         // header: back + title / subtitle + Rescan
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(8), dp(6)) }
         head.addView(TextView(this).apply {
-            text = "←"; textSize = 24f; setTextColor(cFg); gravity = Gravity.CENTER; contentDescription = "Back"
+            text = "←"; LumenTypography.fit(this, 24f); setTextColor(cFg); gravity = Gravity.CENTER; contentDescription = "Back"
             setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { onBackPressed() }
         })
         val tcol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleTv = TextView(this).apply { textSize = 20f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
+        titleTv = TextView(this).apply { LumenTypography.fit(this, 20f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        subTv = TextView(this).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
         tcol.addView(titleTv); tcol.addView(subTv)
         head.addView(tcol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         rescanBtn = Button(this).apply { text = "Rescan"; isAllCaps = false; setOnClickListener { attach(rescan = true) } }
@@ -263,7 +263,7 @@ class StorageActivity : Activity() {
         val ab = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)); background = rounded(cCard, 16f); visibility = View.GONE }
         ab.addView(TextView(this).apply {
             text = "All files access is off, so Android hides most folders from this scan and the sizes are far too small."
-            textSize = 13f; setTextColor(cErr)
+            LumenTypography.fit(this, 13f); setTextColor(cErr)
         })
         ab.addView(barBtn("Allow all files access", cAcc, cOnAcc) { openAccessSettings() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         accessBar = ab
@@ -277,7 +277,7 @@ class StorageActivity : Activity() {
         val vol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = rounded(cCard, 16f) }
         volBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progress = 0; progressDrawable = barDrawable(cAcc, cLine) }
         vol.addView(volBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)))
-        volTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setPadding(0, dp(8), 0, 0) }
+        volTv = TextView(this).apply { LumenTypography.fit(this, 14f); setTextColor(cFg); setPadding(0, dp(8), 0, 0) }
         vol.addView(volTv)
         // volume card (Used / Free / Total) intentionally not attached to the screen; the views stay alive so the fill / visibility code keeps working
         volCard = vol
@@ -304,7 +304,7 @@ class StorageActivity : Activity() {
         if (dev != "local" || vpath != "/" || vols.isEmpty()) { sc.visibility = View.GONE; return }
         sc.visibility = View.VISIBLE
         fun chip(label: String, on: Boolean, fn: () -> Unit) = TextView(this).apply {
-            text = label; textSize = 14f; maxLines = 1; isClickable = true; gravity = Gravity.CENTER
+            text = label; LumenTypography.fit(this, 14f); maxLines = 1; isClickable = true; gravity = Gravity.CENTER
             setPadding(dp(14), dp(8), dp(14), dp(8))
             background = rounded(if (on) cAcc else cCard, 16f)
             setTextColor(if (on) cOnAcc else cFg)
@@ -506,16 +506,16 @@ class StorageActivity : Activity() {
     private fun buildRunning() {
         content.removeAllViews(); volCard.visibility = View.VISIBLE
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(24), dp(24), dp(24)) }
-        pTitle = TextView(this).apply { textSize = 18f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); text = "Scanning…" }
+        pTitle = TextView(this).apply { LumenTypography.fit(this, 18f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); text = "Scanning…" }
         col.addView(pTitle)
         pBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; progressDrawable = barDrawable(cAcc, cLine) }
         col.addView(pBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)).apply { topMargin = dp(14) })
-        pCount = TextView(this).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }
+        pCount = TextView(this).apply { LumenTypography.fit(this, 15f); setTextColor(cFg); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }
         col.addView(pCount)
-        pCur = TextView(this).apply { textSize = 12f; setTextColor(cDim); gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setPadding(0, dp(8), 0, 0) }
+        pCur = TextView(this).apply { LumenTypography.fit(this, 12f); setTextColor(cDim); gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setPadding(0, dp(8), 0, 0) }
         col.addView(pCur)
         pHint = TextView(this).apply {
-            textSize = 12f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0)
+            LumenTypography.fit(this, 12f); setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0)
             text = "You can leave this screen: the scan keeps running and shows as a progress bubble and in the notification."
         }
         col.addView(pHint)
@@ -540,8 +540,8 @@ class StorageActivity : Activity() {
         shownState = if (scan == null) "error" else shownState
         content.removeAllViews(); volCard.visibility = View.VISIBLE
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
-        col.addView(TextView(this).apply { this.text = title; textSize = 18f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
-        col.addView(TextView(this).apply { this.text = text; textSize = 14f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) })
+        col.addView(TextView(this).apply { this.text = title; LumenTypography.fit(this, 18f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
+        col.addView(TextView(this).apply { this.text = text; LumenTypography.fit(this, 14f); setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) })
         fun btn(t: String, fn: () -> Unit) = col.addView(Button(this).apply { this.text = t; isAllCaps = false; setOnClickListener { fn() } },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
         // part 9b: after Cancel / an error the earlier finished result of this folder is still in memory: offer it instead of leaving nothing
@@ -558,7 +558,7 @@ class StorageActivity : Activity() {
         content.removeAllViews(); volCard.visibility = View.VISIBLE
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(40), dp(24), dp(24)) }
         col.addView(ProgressBar(this).apply { isIndeterminate = true })
-        col.addView(TextView(this).apply { this.text = text; textSize = 14f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
+        col.addView(TextView(this).apply { this.text = text; LumenTypography.fit(this, 14f); setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
         content.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
     }
 
@@ -584,8 +584,8 @@ class StorageActivity : Activity() {
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(4), dp(16), dp(4)) }
         dBody = col
-        sumSize = TextView(this).apply { textSize = if (compact) 22f else 28f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD) }
-        sumCnt = TextView(this).apply { textSize = 14f; setTextColor(cDim); setPadding(0, 0, 0, dp(4)) }
+        sumSize = TextView(this).apply { LumenTypography.fit(this, if (compact) 22f else 28f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD) }
+        sumCnt = TextView(this).apply { LumenTypography.fit(this, 14f); setTextColor(cDim); setPadding(0, 0, 0, dp(4)) }
         // big size + "N files · N folders · scanned ..." lines intentionally not attached (sumSize / sumCnt stay as detached views)
         // notes about the whole scan: only shown while the scan root is open (saves room when drilled in)
         val nb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -610,12 +610,12 @@ class StorageActivity : Activity() {
             wrap.addView(hs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             val info = TextView(this).apply {
-                textSize = 13f; setTextColor(cDim); maxLines = 2
+                LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             }
             infoTv = info
             val act = TextView(this).apply {
-                textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
+                LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
                 setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(cAcc, 16f); setTextColor(cOnAcc)
                 setTypeface(typeface, Typeface.BOLD); visibility = View.GONE
                 setOnClickListener {
@@ -675,7 +675,7 @@ class StorageActivity : Activity() {
             // tools row: name filter + sort (List / Largest tabs), report (all tabs)
             val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(12), dp(6)) }
             val et = EditText(this).apply {
-                hint = "Filter by name"; textSize = 14f; setTextColor(cFg); setHintTextColor(cDim); setSingleLine(true)
+                hint = "Filter by name"; LumenTypography.fit(this, 14f); setTextColor(cFg); setHintTextColor(cDim); setSingleLine(true)
                 inputType = InputType.TYPE_CLASS_TEXT; setPadding(dp(12), dp(8), dp(12), dp(8)); background = rounded(cCard, 20f); setText(query)
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
@@ -704,7 +704,7 @@ class StorageActivity : Activity() {
             // part 9a: selection bar (replaces the info row while rows are ticked): "N selected · size", Cancel, Delete…
             val sbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(6), dp(12), dp(8)); visibility = View.GONE }
             selBar = sbar
-            selTv = TextView(this).apply { textSize = 14f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 2 }
+            selTv = TextView(this).apply { LumenTypography.fit(this, 14f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 2 }
             sbar.addView(selTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             sbar.addView(barBtn("Cancel", cCard, cFg) { exitMulti() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
             sbar.addView(barBtn("Delete…", cErr, Lumen.of(this).onError) { onDeleteSelected() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(8) })
@@ -814,7 +814,7 @@ class StorageActivity : Activity() {
             val sp = SpannableString("● " + label)
             if (!on) sp.setSpan(ForegroundColorSpan(col), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             row.addView(TextView(this).apply {
-                text = sp; textSize = 13f; maxLines = 1; isClickable = true
+                text = sp; LumenTypography.fit(this, 13f); maxLines = 1; isClickable = true
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = if (on) rounded(col, 14f) else rounded(cCard, 14f)
                 setTextColor(if (on) (if (lumOf(col) > 0.6) 0xFF111111.toInt() else Color.WHITE) else cFg)
@@ -858,10 +858,10 @@ class StorageActivity : Activity() {
         for (i in chain.indices) {
             val nd = chain[i]
             val last = i == chain.size - 1
-            if (i > 0) row.addView(TextView(this).apply { text = "›"; textSize = 16f; setTextColor(cDim) })
+            if (i > 0) row.addView(TextView(this).apply { text = "›"; LumenTypography.fit(this, 16f); setTextColor(cDim) })
             row.addView(TextView(this).apply {
                 text = if (nd.parent == null) rootLabel() else nd.name
-                textSize = 14f; maxLines = 1
+                LumenTypography.fit(this, 14f); maxLines = 1
                 setTextColor(if (last) cFg else cAcc)
                 setTypeface(null, if (last) Typeface.BOLD else Typeface.NORMAL)
                 setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -914,7 +914,7 @@ class StorageActivity : Activity() {
         val up = n.parent
         // part 8a: message + one row per action (a plain AlertDialog only has three buttons)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(4)) }
-        val infoTv = TextView(this).apply { text = sb.toString(); textSize = 14f; setTextIsSelectable(true) }
+        val infoTv = TextView(this).apply { text = sb.toString(); LumenTypography.fit(this, 14f); setTextIsSelectable(true) }
         box.addView(infoTv)
         if (!n.dir && !n.agg) {   // pictures / videos / audio: container, codec, track and tag details, read straight from the file
             val baseText = sb.toString()
@@ -930,7 +930,7 @@ class StorageActivity : Activity() {
             .create()
         fun act(label: String, color: Int = cAcc, fn: () -> Unit) {
             box.addView(TextView(this).apply {
-                text = label; textSize = 15f; setTextColor(color); setTypeface(typeface, Typeface.BOLD); isClickable = true
+                text = label; LumenTypography.fit(this, 15f); setTextColor(color); setTypeface(typeface, Typeface.BOLD); isClickable = true
                 minimumHeight = dp(44); gravity = Gravity.CENTER_VERTICAL
                 setOnClickListener { dlg.dismiss(); fn() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
@@ -1045,7 +1045,7 @@ class StorageActivity : Activity() {
     private fun exitMulti() { lsV?.endMulti(); tpV?.endMulti() }
 
     private fun barBtn(t: String, bg: Int, fg: Int, fn: () -> Unit) = TextView(this).apply {
-        text = t; textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
+        text = t; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40); minimumWidth = dp(72)
         setPadding(dp(14), dp(8), dp(14), dp(8)); background = rounded(bg, 16f); setTextColor(fg); setTypeface(typeface, Typeface.BOLD)
         setOnClickListener { fn() }
     }
@@ -1195,7 +1195,7 @@ class StorageActivity : Activity() {
 
     /** Segment button of the Pie / List switch. */
     private fun segButton(t: String) = TextView(this).apply {
-        text = t; textSize = 14f; gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40)
+        text = t; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40)
         setPadding(dp(12), dp(8), dp(12), dp(8))
     }
 
@@ -1206,7 +1206,7 @@ class StorageActivity : Activity() {
     }
 
     private fun note(t: String, tap: Boolean = false, fn: (() -> Unit)? = null) = TextView(this).apply {
-        text = t; textSize = 13f; setTextColor(if (tap) cAcc else cDim); setPadding(0, dp(4), 0, dp(4))
+        text = t; LumenTypography.fit(this, 13f); setTextColor(if (tap) cAcc else cDim); setPadding(0, dp(4), 0, dp(4))
         if (fn != null) { isClickable = true; setOnClickListener { fn() } }
     }
 
@@ -1224,7 +1224,7 @@ class StorageActivity : Activity() {
             val smp = s.deniedSample.toList()
             if (smp.isNotEmpty()) { sb.append(", for example:\n"); for (p in smp.take(8)) sb.append(p).append('\n') } else sb.append(".\n")
         }
-        val b = AppPal.dlg(this).setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
+        val b = AppPal.dlg(this).kind("info").setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
         if (needAccess()) b.setNeutralButton("Allow access") { _, _ -> openAccessSettings() }
         b.show()
     }

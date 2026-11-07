@@ -2349,7 +2349,7 @@ function galView(a){
         if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,5000)}});
     btn('dup','Copy/Move new',async()=>{const ps=gp();   // copy / move only what is not already in the target album (same picture in another name / size / quality is skipped)
-      const m=await dlg({title:'Copy or move if new',msg:'Pictures that already look the same in the target album (same picture, even with another name, size or quality) are skipped and stay where they are. All others are copied or moved.',ok:'Move',alt:'Copy'});if(!m)return;
+      const m=await dlg({kind:'info',title:'Copy or move if new',msg:'Pictures that already look the same in the target album (same picture, even with another name, size or quality) are skipped and stay where they are. All others are copied or moved.',ok:'Move',alt:'Copy'});if(!m)return;
       const cut=m!=='alt',dir=await galPick(a,(cut?'Move':'Copy')+' if not similar to');if(!dir)return;
       try{await api('POST','/api/clip',{op:cut?'cut':'copy',dev:'local',paths:ps});clr();
         const r=await api('POST','/api/paste',{dev:'local',dir,conflict:'unsim'});watchJob(r.job);
@@ -2361,7 +2361,7 @@ function galView(a){
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;
-      const ch=await dlg({title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin',alt:'Delete permanently',altDanger:true});
+      const ch=await dlg({kind:'warn',title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin',alt:'Delete permanently',altDanger:true});
       if(!ch)return;
       try{const r=await api('POST','/api/rm',{dev:'local',paths:gp(),perm:ch==='alt'});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);GALT=0;if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
@@ -3257,7 +3257,7 @@ function openSettings(){
 
   body.append(none);
   if(window.LSAndroid&&LSAndroid.exitApp){const rx=E('button','tbtn dng sxe','Exit app');
-    rx.onclick=async()=>{if(await dlg({title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};body.append(rx)}
+    rx.onclick=async()=>{if(await dlg({kind:'warn',title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};body.append(rx)}
   filter()}
 /* Settings > Export / import settings: a file on the phone (the Google Drive screen has the cloud copy). Uses the same native callbacks as the Drive backup. */
 function openSettingsFile(){
@@ -3274,7 +3274,7 @@ function openSettingsFile(){
   const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
   window.lsSettingsCloudDone=(ok,msg)=>{busy(false);if(ok){toast(msg,3500);err.style.display='none'}else{err.textContent=msg;err.style.display=''}};
   window.lsSettingsCloudAsk=async t=>{busy(false);
-    const v=await dlg({title:'Import settings',msg:t,ok:'Import',danger:true});
+    const v=await dlg({kind:'warn',title:'Import settings',msg:t,ok:'Import',danger:true});
     if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
     try{const r=JSON.parse(LSAndroid.settingsCloudApply());
       if(r.error){err.textContent=r.error;err.style.display='';return}
@@ -3386,7 +3386,7 @@ function openUsSettings(){
   bT.onclick=()=>R&&post({op:'content',on:!(R.content&&R.content.on)});
   bTm.onclick=()=>{if(!R)return;const c=R.content||{};post({op:'contentlimits',maxMb:nxt([1,5,20],c.maxMb||5),budgetMb:c.budgetMb||300})};
   bTb.onclick=()=>{if(!R)return;const c=R.content||{};post({op:'contentlimits',maxMb:c.maxMb||5,budgetMb:nxt([100,300,1000],c.budgetMb||300)})};
-  bTr.onclick=async()=>{if(!await dlg({title:'Read text again?',msg:'The saved text is cleared and the files are read again in the background.',ok:'Read again'}))return;post({op:'contentrebuild'})};
+  bTr.onclick=async()=>{if(!await dlg({kind:'info',title:'Read text again?',msg:'The saved text is cleared and the files are read again in the background.',ok:'Read again'}))return;post({op:'contentrebuild'})};
   const tick=()=>{if(o.style.display==='none')return;api('GET','/api/uindex').then(draw).catch(()=>{});setTimeout(tick,2000)};tick();
   const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:var(--sp-2)';d.onclick=()=>{close();openSettings()};card.append(d);o.append(card)}
 function openUsFolders(){
@@ -3611,7 +3611,7 @@ async function openGdrive(){
   const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
   window.lsSettingsCloudDone=(ok,msg)=>{scBusy(false);if(ok)toast(msg,3500);else{err.textContent=msg;err.style.display=''}};
   window.lsSettingsCloudAsk=async t=>{scBusy(false);
-    const v=await dlg({title:'Restore settings',msg:t,ok:'Restore',danger:true});
+    const v=await dlg({kind:'warn',title:'Restore settings',msg:t,ok:'Restore',danger:true});
     if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
     try{const r=JSON.parse(LSAndroid.settingsCloudApply());
       if(r.error){err.textContent=r.error;err.style.display='';return}
@@ -4452,7 +4452,7 @@ async function printRecentPs(){
     const row=E('div','dact'),cl=E('button','tbtn','Clear list'),cx=E('button','tbtn fill','Close'),sl=E('button','tbtn','Select');
     sl.onclick=()=>{SEL=new Set();draw()};
     cl.onclick=async()=>{if(!R.sessions.length&&!old.length)return fin();
-      if(R.sessions.length&&!await dlg({title:'Clear recent prints?',msg:'The kept pictures, previews and PDFs of '+R.sessions.length+' print'+(R.sessions.length===1?'':'s')+' will be deleted.',ok:'Clear',danger:true}))return;
+      if(R.sessions.length&&!await dlg({kind:'warn',title:'Clear recent prints?',msg:'The kept pictures, previews and PDFs of '+R.sessions.length+' print'+(R.sessions.length===1?'':'s')+' will be deleted.',ok:'Clear',danger:true}))return;
       try{if(R.sessions.length)R=await api('POST','/api/pssess',{op:'clear'});const k=lsGet('printHist',[]).filter(h=>!h.ps);if(k.length)localStorage.setItem('printHist',JSON.stringify(k));else localStorage.removeItem('printHist')}catch(e){toast('\u26a0 '+e.message,4000)}fin()};
     cx.onclick=fin;if(R.sessions.length>1)row.append(sl);row.append(cl,cx);card.append(row)};
   draw()}
@@ -4542,14 +4542,14 @@ function mergeAlbums(ps){
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin(null);card.append(c);o.append(card);
   async function go(target){
     const rest=ps.filter(p=>p!==target);
-    const mm=await dlg({title:'Merge '+ps.length+' albums?',msg:'Everything in '+rest.map(p=>p.split('/').pop()).join(', ')+' is moved into '+target.split('/').pop()+'.\nSame name + same picture: you decide. Same name + different picture: renamed. Emptied albums are removed.\n\n\u201cSkip look-alikes\u201d also leaves behind every picture that already looks the same in the target (any name, size or quality).',ok:'Merge',alt:'Skip look-alikes'});if(!mm)return;
+    const mm=await dlg({kind:'warn',title:'Merge '+ps.length+' albums?',msg:'Everything in '+rest.map(p=>p.split('/').pop()).join(', ')+' is moved into '+target.split('/').pop()+'.\nSame name + same picture: you decide. Same name + different picture: renamed. Emptied albums are removed.\n\n\u201cSkip look-alikes\u201d also leaves behind every picture that already looks the same in the target (any name, size or quality).',ok:'Merge',alt:'Skip look-alikes'});if(!mm)return;
     try{const r=await api('POST','/api/merge',{target,paths:rest,skipSimilar:mm==='alt'});S.sel.clear();GALT=0;render();watchJob(r.job);toast('Merging\u2026',0,0);await track(r.job);galForce()}
     catch(e){toast('\u26a0 '+e.message,6000)}}}
 /* ---- exact duplicate finder: selected folders are scanned on the phone (size -> head hash -> SHA-256), groups are shown with a keep-one selection ---- */
 async function doDups(ps,similar){   // ps: explicit folder paths on this phone (gallery albums); otherwise the selected folders. similar: same picture in another size / quality (perceptual hash)
   if(!Array.isArray(ps))ps=null;
   if(similar===undefined){   // ask which kind of search
-    const m=await dlg({title:'Find duplicates',msg:'Exact copies: byte-identical files (any file type, fast).\nSimilar images: the same picture in another size, quality or format (slower, pictures only).',ok:'Similar images',alt:'Exact copies'});
+    const m=await dlg({kind:'info',title:'Find duplicates',msg:'Exact copies: byte-identical files (any file type, fast).\nSimilar images: the same picture in another size, quality or format (slower, pictures only).',ok:'Similar images',alt:'Exact copies'});
     if(!m)return;similar=m!=='alt'}
   const dev=ps?'local':S.dev,paths=ps||selItems().filter(i=>i.dir).map(i=>jn(S.path,i.name));   // only the selected folders (selected files are ignored)
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -4592,7 +4592,7 @@ async function doDups(ps,similar){   // ps: explicit folder paths on this phone 
   upd();
   del.onclick=async()=>{
     if(!chk.size)return;
-    if(!await dlg({title:'Delete '+chk.size+' file'+(chk.size>1?'s':'')+'?',msg:'The ones left unticked in each group are kept.'+(dev==='local'?' Deleted files go to the Recycle bin.':' This can\'t be undone.'),ok:'Delete',danger:dev!=='local'}))return;
+    if(!await dlg({kind:dev==='local'?'warn':'',title:'Delete '+chk.size+' file'+(chk.size>1?'s':'')+'?',msg:'The ones left unticked in each group are kept.'+(dev==='local'?' Deleted files go to the Recycle bin.':' This can\'t be undone.'),ok:'Delete',danger:dev!=='local'}))return;
     try{const r=await api('POST','/api/rm',{dev:dev,paths:[...chk]});close();S.sel.clear();render();toast('Deleting…',0,0);watchJob(r.job);track(r.job)}
     catch(e){toast('⚠ '+e.message,9000)}};
   row.prepend(del)}
@@ -4602,7 +4602,7 @@ async function doDelete(){
   const L=S.dev==='local'&&!inArc()&&!inBin();
   if(inBin()){if(!(await dlg({title:'Delete '+n+' item'+(n>1?'s':'')+' forever?',msg:'They are inside a deleted folder. This can\'t be undone.',ok:'Delete',danger:true})))return;
     try{const ps=selPaths(),r=await api('POST','/api/rm',{dev:S.dev,paths:ps,perm:true});S.sel.clear();render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job).then(()=>load(),()=>load())}catch(e){toast('\u26a0 '+e.message,9000);load()}return}
-  const a=await dlg({title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L,alt:L?'Delete permanently':null,altDanger:true});
+  const a=await dlg({kind:L?'warn':'',title:(L?'Move ':'Delete ')+n+' item'+(n>1?'s':'')+(L?' to the Recycle bin?':zipEd()?' from the archive?':'?'),msg:L?'You can restore them from the Recycle bin in the menu. Kept 30 days.':zipEd()?'They are removed from '+(arcRoot()||'').split('/').pop().replace(/!$/,'')+' for good (the rest of the archive is kept as it is). This can\'t be undone.':'From '+devName(S.dev)+'. This can\'t be undone.',ok:L?'Move to bin':'Delete',danger:!L,alt:L?'Delete permanently':null,altDanger:true});
   if(!a)return;
   try{const ps=selPaths(),gal=galRoot(),r=await api('POST','/api/rm',{dev:S.dev,paths:ps,perm:a==='alt'});S.sel.clear();if(gal)galDrop(ps);else GALT=0;render();toast('Deleting\u2026',0,0);watchJob(r.job);track(r.job).then(()=>{GALX=[];galForce()},()=>{GALX=[];galForce()})}  // progress + Cancel like copy; the list reloads when it ends
   catch(e){GALX=[];galForce();toast('\u26a0 '+e.message,9000);load()}}
@@ -5021,7 +5021,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
     try{
       await chain;   // let the last layout change land: SP / PL / PLACED are current
       const miss=PICS.reduce((t,m)=>t+Math.max(0,(m.copies||1)-(PLACED[m.id]||0)),0);
-      if(miss&&!await dlg({title:miss+(miss===1?' picture is':' pictures are')+' not on a sheet',msg:'Only what is on the sheets is printed. Print anyway?',ok:'Print'}))return;
+      if(miss&&!await dlg({kind:'warn',title:miss+(miss===1?' picture is':' pictures are')+' not on a sheet',msg:'Only what is on the sheets is printed. Print anyway?',ok:'Print'}))return;
       const edge=SP.flip==='short'?'short':'long',two=hasBack();
       let hand=false;
       if(two){   // pictures on the back: a duplex printer does both sides itself; any other printer needs the sheets turned over by hand
@@ -5411,7 +5411,7 @@ async function openFreeUp(){
       rows.push(r);body.append(r)});
     all.onclick=()=>{sel.size<items.length?items.forEach(i=>sel.add(i.path)):sel.clear();upd()};
     del.onclick=async()=>{if(!sel.size)return;
-      if(!await dlg({title:'Delete '+plural(sel.size,'item')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
+      if(!await dlg({kind:'warn',title:'Delete '+plural(sel.size,'item')+'?',msg:'They go to the Recycle bin (kept '+(window.BINDAYS||30)+' days). Empty the bin to really free the space.',ok:'Delete'}))return;
       try{const r=await api('POST','/api/rm',{dev:'local',paths:[...sel]});watchJob(r.job);toast('Deleting\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
       sel=new Set();if(live())start()};
     upd()}
@@ -5435,7 +5435,7 @@ async function openFreeUp(){
       if(last.errors&&last.errors.length)toast('\u26a0 '+last.errors.length+' failed: '+last.errors[0],7000);
       else toast('Bin emptied \u00b7 '+plural(last.done,'item')+(last.totalBytes?' \u00b7 '+fmt(last.bytes)+' freed':''),3500);
       start()}
-    em.onclick=async()=>{if(!await dlg({title:'Empty the Recycle bin?',msg:'Deletes '+plural(R.bin.items,'item')+' for good.',ok:'Empty'}))return;
+    em.onclick=async()=>{if(!await dlg({kind:'warn',title:'Empty the Recycle bin?',msg:'Deletes '+plural(R.bin.items,'item')+' for good.',ok:'Empty',danger:true}))return;
       let r;try{r=await api('POST','/api/bin',{op:'empty'},15000)}catch(e){toast('\u26a0 '+e.message,5000);return}
       follow(r.task)};
     row.append(op,em);hero.append(row,pg);body.append(hero);card.append(body);
@@ -5528,7 +5528,7 @@ async function binDo(op,ids){   // restore / purge / empty: start the task, show
   const tz=$('#toast');if(open){tz.onclick=()=>{tz.onclick=null;tz.style.display='none';openLoc('local',open)};setTimeout(()=>{tz.onclick=null},6100)}}
 async function binEmpty(){
   const n=S.items.length;if(!n)return toast('The recycle bin is empty',2000);
-  if(await dlg({title:'Empty the Recycle bin?',msg:n+' item'+(n===1?'':'s')+' will be deleted forever.',ok:'Empty',danger:true}))binDo('empty',[])}
+  if(await dlg({kind:'warn',title:'Empty the Recycle bin?',msg:n+' item'+(n===1?'':'s')+' will be deleted forever.',ok:'Empty',danger:true}))binDo('empty',[])}
 function binInBar(btn,it){   // inside a deleted folder: read-only (Copy out, Details, Share); Delete is permanent; no Cut / Rename / Zip / Paste / Hide
   const files=it.length>0&&it.every(i=>!i.dir);
   btn('copy','Copy',()=>setClip('copy'),'pri');

@@ -174,7 +174,7 @@ class UsActivity : Activity() {
     }
 
     private fun tv(size: Float, col: Int, bold: Boolean = false): TextView = TextView(this).apply {
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setTextColor(col); typeface = if (bold) Fnt.semi() else Fnt.med()
+        LumenTypography.fit(this, size); setTextColor(col); typeface = if (bold) Fnt.semi() else Fnt.med()
         isSingleLine = true; ellipsize = TextUtils.TruncateAt.END
     }
 
@@ -202,7 +202,7 @@ class UsActivity : Activity() {
         et = EditText(this).apply {
             background = null; setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_SEARCH; hint = if (scope.isEmpty()) "Search this phone" else "Search in " + File(scope).name
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0); typeface = Fnt.med()
+            LumenTypography.fit(this, 17f); setTextColor(p.fg); setHintTextColor(p.mut); setPadding(dp(2f), 0, dp(2f), 0); typeface = Fnt.med()
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) { }
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) { }
@@ -556,7 +556,7 @@ class UsActivity : Activity() {
                 val head = r.badge == "#t" || r.badge.startsWith("#h:")
                 t.setPadding(dp(14f), if (head) dp(12f) else dp(10f), dp(14f), dp(if (head) 4f else 10f))
                 t.setTextColor(if (head) p.ac else p.fg); t.typeface = if (head) Fnt.semi() else Fnt.med()
-                t.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (head) 13f else 15f)
+                LumenTypography.fit(t, if (head) 13f else 15f)
                 t.text = (if (r.badge == "#s") "\u2605  " + r.name + (if (r.snippet != r.name) "   " + r.snippet else "") else if (r.badge == "#r") "\u21BA  " + r.name else r.name) + (if (r.badge.startsWith("#h:")) "   \u203A" else "")
                 if (r.badge.startsWith("#h:") && sel.isNotEmpty()) t.text = (if (sectionAllSel(u[0])) "\u2611  " else "\u2610  ") + t.text
                 return t
@@ -628,7 +628,7 @@ class UsActivity : Activity() {
                 fl.layoutParams = LinearLayout.LayoutParams(side, side)
             }
             root.setPadding(dp(12f), dp(if (compact) 2f else 5f), dp(12f), dp(if (compact) 2f else 5f))
-            nameTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (compact) 14f else 15f)
+            LumenTypography.fit(nameTv, if (compact) 14f else 15f)
             pathTv.visibility = if (compact) View.GONE else View.VISIBLE
             dateTv.visibility = if (compact) View.GONE else View.VISIBLE
             nameTv.text = hl(r.name)

@@ -171,7 +171,7 @@ internal class WizBar(ctx: Context) : View(ctx) {
             r.set(0f, 0f, fw, h); c.drawRoundRect(r, rad, rad, p); p.shader = null
         }
         if (label.isNotEmpty()) {
-            p.color = textCol; p.textSize = 12f * d * UiScale.tf; p.textAlign = Paint.Align.CENTER
+            p.color = textCol; p.textSize = LumenTypography.snap(12f) * d * UiScale.tf; p.textAlign = Paint.Align.CENTER
             c.drawText(label, w / 2f, h / 2f + p.textSize * 0.35f, p)
         }
     }
@@ -458,7 +458,7 @@ internal class WizMap(ctx: Context) : View(ctx) {
         if (b == null || b.width != w || b.height != hh) { b = Bitmap.createBitmap(w, hh, Bitmap.Config.ARGB_8888); bmp = b }
         val c = Canvas(b)
         c.drawColor(bgCol)
-        txt.textSize = 11f * d
+        txt.textSize = LumenTypography.snap(11f) * d
         for (i in 0 until cnt) tile(c, i)
         invalidate()
     }
@@ -683,21 +683,21 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     // ------------------------------------------------------------------ build
     private fun txt(t: String, sp: Float = 15f, col: Int = cFg, bold: Boolean = false) = TextView(act).apply {
-        text = t; textSize = sp; setTextColor(col); if (bold) setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        text = t; LumenTypography.fit(this, sp); setTextColor(col); if (bold) setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
     }
 
     private fun round(col: Int, rdp: Int) = GradientDrawable().apply { setColor(col); cornerRadius = rdp * d }
 
     /** Rounded chip button (min 44 dp touch height). */
     private fun btn(t: String, fn: () -> Unit) = TextView(act).apply {
-        text = t; textSize = 14f; setTextColor(cFg); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
+        text = t; LumenTypography.fit(this, 14f); setTextColor(cFg); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
         setPadding(dp(16), dp(8), dp(16), dp(8)); background = round(cHdr, 22)
         isClickable = true; setOnClickListener { fn() }
     }
 
     /** Text-only toolbar button (treemap bar), 44 dp touch target. */
     private fun tbtn(t: String, sp: Float, fn: () -> Unit) = TextView(act).apply {
-        text = t; textSize = sp; setTextColor(cAcc); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
+        text = t; LumenTypography.fit(this, sp); setTextColor(cAcc); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
         setPadding(dp(8), 0, dp(8), 0); isClickable = true; setOnClickListener { fn() }
     }
 
@@ -754,9 +754,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                 setOnClickListener { WizThemes.save(act, t.id); dlg?.dismiss(); host.rebuild() }
             }
             row.addView(WizSwatch(act, t), LinearLayout.LayoutParams(dp(88), dp(52)).apply { rightMargin = dp(14) })
-            val nm = TextView(act).apply { text = if (t.id == "app") "App theme (follows the app)" else t.name; textSize = 16f; setTextColor(p.fg); maxLines = 2 }
+            val nm = TextView(act).apply { text = if (t.id == "app") "App theme (follows the app)" else t.name; LumenTypography.fit(this, 16f); setTextColor(p.fg); maxLines = 2 }
             row.addView(nm, LinearLayout.LayoutParams(0, -2, 1f))
-            if (t.id == cur) row.addView(TextView(act).apply { text = "✓"; textSize = 20f; setTextColor(p.ac) })
+            if (t.id == cur) row.addView(TextView(act).apply { text = "✓"; LumenTypography.fit(this, 20f); setTextColor(p.ac) })
             list.addView(row)
         }
         val sc = android.widget.ScrollView(act).apply { addView(list) }
@@ -798,7 +798,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             }
         }
         hd.addView(seg, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(12); rightMargin = dp(8) })
-        if (legend.isNotEmpty()) hd.addView(TextView(act).apply { text = legend; textSize = 13f; setTextColor(cDim); maxLines = 2 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        if (legend.isNotEmpty()) hd.addView(TextView(act).apply { text = legend; LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 2 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         val sp = if (known) NlModel.fmt(v!![0]) + " used of " + NlModel.fmt(v[2]) + "  ·  " + NlModel.fmt(v[1]) + " free" else "Scanned: " + NlModel.fmt(root.size) + "  ·  " + root.folders + " folders"
         hd.addView(txt(sp, 13f, cDim), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         return hd
@@ -810,7 +810,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val names = arrayOf("Folders", "Files", "Types", "Treemap", "Apps")
         for (i in 0..(if (host.appsOk()) 4 else 3)) {
             val t = TextView(act).apply {
-                text = names[i]; textSize = 14f; gravity = Gravity.CENTER; minimumHeight = dp(44); maxLines = 1; isClickable = true
+                text = names[i]; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; minimumHeight = dp(44); maxLines = 1; isClickable = true
                 setOnClickListener { showTab(i) }
             }
             tabV[i] = t
@@ -833,7 +833,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val fb = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         val fr = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(cBg); setPadding(dp(12), dp(8), dp(12), dp(4)) }
         filterEt = EditText(act).apply {
-            hint = "Filter, e.g. *.jpg  >10mb  !tmp"; textSize = 15f; setTextColor(cFg); setHintTextColor(mix(cBg, cDim, 0.8f))
+            hint = "Filter, e.g. *.jpg  >10mb  !tmp"; LumenTypography.fit(this, 15f); setTextColor(cFg); setHintTextColor(mix(cBg, cDim, 0.8f))
             setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT; background = round(cHdr, 14); minimumHeight = dp(48); setPadding(dp(16), dp(10), dp(16), dp(10))
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -885,7 +885,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun buildMapBox(): View {
         val b = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
         val tr = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(cBg); setPadding(dp(16), dp(2), dp(4), dp(2)) }
-        tmTitle.apply { textSize = 14f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        tmTitle.apply { LumenTypography.fit(this, 14f); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         tr.addView(tmTitle, LinearLayout.LayoutParams(0, -2, 1f))
         val zl = txt("", 13f, cDim).apply { setPadding(dp(4), 0, dp(4), 0) }
         map.onZoom = { z -> zl.text = if (z > 1.01f) String.format(Locale.US, "×%.1f", z) else "" }
@@ -904,7 +904,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     }
 
     private fun styleStatus(t: TextView) {
-        t.textSize = 13f; t.setTextColor(cFg); t.background = round(cHdr, 18); t.setPadding(dp(16), dp(10), dp(16), dp(12)); t.maxLines = 2; t.ellipsize = TextUtils.TruncateAt.MIDDLE
+        LumenTypography.fit(t, 13f); t.setTextColor(cFg); t.background = round(cHdr, 18); t.setPadding(dp(16), dp(10), dp(16), dp(12)); t.maxLines = 2; t.ellipsize = TextUtils.TruncateAt.MIDDLE
     }
 
     // ------------------------------------------------------------------ tabs
@@ -1096,11 +1096,11 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     private inner class TreeRow(c: Context) : LinearLayout(c) {
         val indent = View(c)
-        val tog = TextView(c).apply { textSize = 22f; setTextColor(cAcc); gravity = Gravity.CENTER; isClickable = true }
+        val tog = TextView(c).apply { LumenTypography.fit(this, 22f); setTextColor(cAcc); gravity = Gravity.CENTER; isClickable = true }
         val sw = WizGlyph(c)
-        val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
+        val name = TextView(c).apply { LumenTypography.fit(this, 16f); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val meta = TextView(c).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val size = TextView(c).apply { LumenTypography.fit(this, 15f); setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         var pos = -1
         init {
@@ -1147,9 +1147,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     // ------------------------------------------------------------------ types
     private inner class TypeRow(c: Context) : LinearLayout(c) {
         val sw = WizGlyph(c)
-        val ext = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
-        val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
+        val ext = TextView(c).apply { LumenTypography.fit(this, 16f); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
+        val meta = TextView(c).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val size = TextView(c).apply { LumenTypography.fit(this, 15f); setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(64)
@@ -1234,9 +1234,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     private inner class FileRow(c: Context) : LinearLayout(c) {
         val sw = WizGlyph(c)
-        val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
-        val dir = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.START }
-        val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
+        val name = TextView(c).apply { LumenTypography.fit(this, 16f); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        val dir = TextView(c).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.START }
+        val size = TextView(c).apply { LumenTypography.fit(this, 15f); setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(64)
             addView(sw, LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(12) })
@@ -1284,13 +1284,13 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun buildApps(): LinearLayout {
         val b = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
         val pm = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(32), dp(32), dp(32), dp(32)) }
-        pm.addView(TextView(act).apply { text = "Allow usage access"; textSize = 20f; setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
+        pm.addView(TextView(act).apply { text = "Allow usage access"; LumenTypography.fit(this, 20f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
         pm.addView(TextView(act).apply {
             text = "Android only tells an app how big the other apps are when Usage access is switched on for it. Only the sizes are read, never the files inside other apps."
-            textSize = 15f; setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(24))
+            LumenTypography.fit(this, 15f); setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(24))
         })
         pm.addView(TextView(act).apply {
-            text = "Open settings"; textSize = 15f; setTextColor(cOnAcc); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+            text = "Open settings"; LumenTypography.fit(this, 15f); setTextColor(cOnAcc); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
             minimumHeight = dp(48); setPadding(dp(28), dp(10), dp(28), dp(10)); background = round(cAcc, 24); isClickable = true
             setOnClickListener { AppsUtil.openUsageSettings(act) }
         })
@@ -1356,9 +1356,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     private inner class AppRow(c: Context) : LinearLayout(c) {
         val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-        val name = TextView(c).apply { textSize = 16f; setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
-        val meta = TextView(c).apply { textSize = 13f; setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        val size = TextView(c).apply { textSize = 15f; setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
+        val name = TextView(c).apply { LumenTypography.fit(this, 16f); setTextColor(cFg); maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setTypeface(typeface, Typeface.BOLD) }
+        val meta = TextView(c).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val size = TextView(c).apply { LumenTypography.fit(this, 15f); setTextColor(cFg); gravity = Gravity.END; maxLines = 1 }
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(68)

@@ -1,5 +1,6 @@
 package com.lanshare.app.ops
 
+import com.lanshare.app.LumenTypography
 import android.app.Activity
 import android.content.Context
 import android.content.res.ColorStateList
@@ -91,15 +92,15 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(TextView(act).apply {
-            text = "Running tasks"; setTextColor(pal.text); textSize = 15f; setTypeface(typeface, Typeface.BOLD)
+            text = "Running tasks"; setTextColor(pal.text); LumenTypography.fit(this, 15f); setTypeface(typeface, Typeface.BOLD)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         clearBtn = TextView(act).apply {
-            text = "Clear"; setTextColor(pal.accent); textSize = 13f; setPadding(px(10), px(8), px(10), px(8))
+            text = "Clear"; setTextColor(pal.accent); LumenTypography.fit(this, 13f); setPadding(px(10), px(8), px(10), px(8))
             setOnClickListener { JobView.clearFinished(); poll(false) }
         }
         addView(clearBtn)
         addView(TextView(act).apply {
-            text = "\u2013"; setTextColor(pal.text); textSize = 22f; gravity = Gravity.CENTER
+            text = "\u2013"; setTextColor(pal.text); LumenTypography.fit(this, 22f); gravity = Gravity.CENTER
             contentDescription = "Minimize"
             setOnClickListener { setExpanded(false) }
         }, LinearLayout.LayoutParams(px(40), px(40)))
@@ -222,10 +223,10 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
 
     private inner class RowHolder {
         val root = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(6), 0, px(6)) }
-        private val title = TextView(act).apply { setTextColor(pal.text); textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        private val title = TextView(act).apply { setTextColor(pal.text); LumenTypography.fit(this, 14f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         private val bar = GradBarView(act)   // Lumen 12.16: 8 dp linear bar, gPrimary fill, gSuccess when done, gDanger on error, sweeping bar when the length is unknown
-        private val detail = TextView(act).apply { setTextColor(pal.subtext); textSize = 11f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
-        private val action = TextView(act).apply { textSize = 20f; gravity = Gravity.CENTER }
+        private val detail = TextView(act).apply { setTextColor(pal.subtext); LumenTypography.fit(this, 11f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        private val action = TextView(act).apply { LumenTypography.fit(this, 20f); gravity = Gravity.CENTER }
         private var id = ""
 
         init {

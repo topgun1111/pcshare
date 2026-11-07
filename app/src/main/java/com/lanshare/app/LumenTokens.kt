@@ -167,6 +167,23 @@ object LumenTypography {
         return tv
     }
 
+    private val SCALE = floatArrayOf(11.0f, 12.0f, 14.0f, 16.0f, 20.0f, 24.0f, 28.0f, 36.0f)
+
+    /** Nearest size of the type scale in sp (ties go up: 13 -> 14, 15 -> 16, 18 -> 20). Use for Paint / canvas text and for hand-set sizes. */
+    fun snap(sp: Float): Float { var b = SCALE[0]; for (v in SCALE) if (Math.abs(v - sp) <= Math.abs(b - sp)) b = v; return b }
+
+    /** Moves a hand-sized TextView onto the scale: snapped size plus that style's line height and tracking. Typeface / weight stay the caller's (custom fonts, bold). */
+    fun fit(tv: android.widget.TextView, sp: Float): android.widget.TextView {
+        val sn = snap(sp)
+        val s = listOf(DISPLAY, HEADLINE_L, HEADLINE_M, TITLE_L, TITLE_M, TITLE_S, BODY_L, BODY_M, BODY_S, LABEL_L, LABEL_M, LABEL_S).first { it.sp == sn }
+        tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, s.sp)
+        tv.letterSpacing = s.tracking
+        val lhPx = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, s.lineSp, tv.resources.displayMetrics)
+        if (android.os.Build.VERSION.SDK_INT >= 28) tv.lineHeight = Math.round(lhPx)
+        else { val fm = tv.paint.fontMetricsInt; tv.setLineSpacing(Math.max(0f, lhPx - (fm.descent - fm.ascent)), 1f) }
+        return tv
+    }
+
     /** Spec 7: numbers in sizes, counts, speeds and times use tabular figures so columns line up and counters do not jitter. */
     fun tabular(tv: android.widget.TextView): android.widget.TextView { tv.fontFeatureSettings = "tnum"; return tv }
 }

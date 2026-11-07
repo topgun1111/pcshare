@@ -36,6 +36,15 @@ object LumenPrefs {
         }
     } catch (_: Throwable) { null }
 
+    /** Lumen M7: ActivityOptions for screens that have no thumbnail to grow from (PDF reader): fade + 94 % scale in, the old screen holds. null = platform default (Reduce motion). */
+    fun fadeIn(act: android.app.Activity): android.os.Bundle? = try {
+        if (reduceMotion(act)) null else android.app.ActivityOptions.makeCustomAnimation(act, R.anim.lm_open_in, R.anim.lm_open_hold).toBundle()
+    } catch (_: Throwable) { null }
+
+    /** Lumen M7 return transition, call after super.finish() in a viewer: it fades and shrinks to 94 % in 200 ms (accelerate) over the list that is already there. Not under Reduce motion. */
+    @Suppress("DEPRECATION")
+    fun closeAnim(act: android.app.Activity) { try { if (!reduceMotion(act)) act.overridePendingTransition(R.anim.lm_close_in, R.anim.lm_close_out) } catch (_: Throwable) { } }
+
     /** Lumen 4f: same "low-end device" guess as glassHint (used to keep the real backdrop blur off F1 on weak phones). */
     fun lowEnd(c: Context): Boolean = try {
         val am = c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager

@@ -166,6 +166,9 @@ class PlayerActivity : Activity() {
 
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
+    /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
+    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (Build.VERSION.SDK_INT >= 28)
@@ -230,7 +233,7 @@ class PlayerActivity : Activity() {
         root.addView(touch, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         fun label(sp: Float, bold: Boolean) = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, sp); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            LumenTypography.fit(this, sp); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             if (bold) typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             includeFontPadding = false
         }
@@ -282,14 +285,14 @@ class PlayerActivity : Activity() {
         controlsOn = true
 
         hud = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 18f); gravity = Gravity.CENTER
             setPadding(dp(18), dp(10), dp(18), dp(10)); visibility = View.GONE
             background = GradientDrawable().apply { setColor(0xAA000000.toInt()); cornerRadius = dp(20).toFloat() }
         }
         root.addView(hud, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
 
         errTv = TextView(this).apply {
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); gravity = Gravity.CENTER
             setPadding(dp(24), dp(16), dp(24), dp(16)); visibility = View.GONE
             background = GradientDrawable().apply { setColor(0xCC000000.toInt()); cornerRadius = dp(16).toFloat() }
         }
@@ -854,7 +857,7 @@ class PlayerActivity : Activity() {
         val mt = if (it.mtime > 0) it.mtime else mtimes[it.url] ?: 0L
         if (mt > 0) sb.append("\nModified: ").append(dateText(mt))
         val base = sb.toString()
-        val detDlg = dlg(AppPal.dlg(this).setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
+        val detDlg = dlg(AppPal.dlg(this).kind("info").setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
         Thread({   // container / codec / track / tag details from the app's own /api/stat (same as the file list's Details sheet)
             val extra = MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }

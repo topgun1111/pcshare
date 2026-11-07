@@ -81,7 +81,7 @@ object StorageActions {
                 ext == "pdf" -> {
                     PdfViewerActivity.pending = JSONObject().put("name", f.name).put("url", url(v)).put("size", f.length())
                         .put("key", "local|" + v + "|" + f.length()).toString()
-                    a.startActivity(Intent(a, PdfViewerActivity::class.java)); return true
+                    a.startActivity(Intent(a, PdfViewerActivity::class.java), LumenPrefs.fadeIn(a)); return true
                 }
                 ext in IMG -> {
                     if (ext in setOf("heic", "heif") && android.os.Build.VERSION.SDK_INT < 28) return false

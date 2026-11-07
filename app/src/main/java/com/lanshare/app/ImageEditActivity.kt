@@ -110,15 +110,15 @@ class ImageEditActivity : Activity() {
     // ---------------------------------------------------------------- arayüz (kodla)
     private fun buildUi() {
         fun btn(txt: String, sp: Float) = TextView(this).apply {
-            text = txt; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
             gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
         }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
 
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)) }
         val close = btn("✕", 20f).apply { setOnClickListener { finish() } }
-        val titleTv = TextView(this).apply { text = name; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1 }
+        val titleTv = TextView(this).apply { text = name; setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); LumenTypography.fit(this, 12f); maxLines = 1 }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val save = btn("Save", 15f).apply {
             setTextColor(accent); setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -239,13 +239,13 @@ class ImageEditActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(wEt)
-            addView(TextView(this@ImageEditActivity).apply { text = "  ×  "; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f) })
+            addView(TextView(this@ImageEditActivity).apply { text = "  ×  "; LumenTypography.fit(this, 16f) })
             addView(hEt)
         }
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         for (pc in intArrayOf(100, 75, 50, 25)) {
             chips.addView(TextView(this).apply {
-                text = "$pc%"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setTextColor(accent); gravity = Gravity.CENTER
+                text = "$pc%"; LumenTypography.fit(this, 15f); setTextColor(accent); gravity = Gravity.CENTER
                 setPadding(dp(14), dp(10), dp(14), dp(10))
                 setOnClickListener { wEt.setText(max(1, (cw * pc / 100.0).roundToInt()).toString()) }
             })

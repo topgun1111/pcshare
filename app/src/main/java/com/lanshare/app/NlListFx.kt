@@ -140,7 +140,7 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
     var edge = 0
     private var text = ""
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 12f * d * UiScale.tf }
+    private val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(12f) * d * UiScale.tf }
     private val rf = RectF()
     private val hideRun = Runnable { fade(0f) }
 

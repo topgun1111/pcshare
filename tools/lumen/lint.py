@@ -33,4 +33,55 @@ for _a in re.findall(r'<button\b([^>]*)>\s*</button>',s):
     _m=re.search(r'data-i=["\']?(\w+)',_a)
     if _m and not re.search(r'aria-label|title=',_a) and _m.group(1) not in _lb:_un.append(_m.group(1))
 print('A3 icon-only buttons without a name (add to LB):',len(_un),sorted(set(_un)))
-sys.exit(1 if bad else 0)
+
+# A8: every page dlg({...}) must end up with a hero path: kind / hero given, an input prompt (no hero by design), or danger + delete-like words (auto trash)
+_raw=open(P,encoding='utf-8').read()
+_dl=[]
+for _m in re.finditer(r'dlg\(\{',_raw):
+    _j=_m.end()-1;_d=0
+    while True:
+        _c=_raw[_j]
+        if _c=='{':_d+=1
+        elif _c=='}':
+            _d-=1
+            if _d==0:break
+        _j+=1
+    _b=_raw[_m.start():_j+1];_dl.append(_b)
+def _ok(b):
+    if re.search(r'\b(kind|hero|input)\s*:',b):return True
+    return bool(re.search(r'\bdanger\s*:',b) and re.search(r'delete|remove|erase',b,re.I))
+_bad=[re.sub(r'\s+',' ',b)[:70] for b in _dl if not _ok(b)]
+print('A8 page dlg() with a kind / hero / input / auto-trash:',len(_dl)-len(_bad),'of',len(_dl),'| without:',len(_bad),_bad)
+# A8 native: AppPal.dlg() chains that are plain notices (message, no list / view / progress) must pass kind()
+_nat=os.path.join(os.path.dirname(__file__),'..','..','app','src','main','java','com','lanshare','app')
+_nb=[]
+for _f in sorted(os.listdir(_nat)):
+    if not _f.endswith('.kt') or _f=='AppPal.kt':continue
+    _L=open(os.path.join(_nat,_f),encoding='utf-8').read().split('\n')
+    for _i,_l in enumerate(_L):
+        if 'AppPal.dlg(' in _l:
+            _ch=_l;_k=_i
+            while 'show()' not in _ch and 'create()' not in _ch and _k<_i+8:_k+=1;_ch+=_L[_k]
+            if '.kind(' not in _ch and re.search(r'setMessage\(',_ch) and not re.search(r'setItems|setSingleChoice|setMultiChoice|setView|setCancelable\(false\)',_ch):_nb.append(f'{_f}:{_i+1}')
+print('A8 native notice dialogs without kind():',len(_nb),_nb)
+# V5: every dark preset (canvas luminance < .18) must sit in the static dark selector lists UI4 / UI5 / UI6
+import json
+_t=json.load(open(os.path.join(os.path.dirname(__file__),'tokens.json')))
+def _lum(h):
+    h=h.lstrip('#');r,g,b=[int(h[i:i+2],16)/255 for i in(0,2,4)];f=lambda c:c/12.92 if c<=.03928 else((c+.055)/1.055)**2.4
+    return .2126*f(r)+.7152*f(g)+.0722*f(b)
+_dk={k for k,v in _t['themes'].items() if _lum(v['canvas'])<.18}
+for _n in('UI4','UI5','UI6'):
+    _a=_raw.index(f'/*LUMEN-{_n}:BEGIN*/');_z=_raw.index(f'/*LUMEN-{_n}:END*/')
+    _best=max((set(re.findall(r'data-theme=([a-z0-9]+)',x)) for x in re.findall(r'([^{}]*?)\{',_raw[_a:_z]) if 'data-theme=' in x),key=len)
+    print(f'V5 {_n} dark presets missing from the selector list:',sorted(_dk-_best))
+# P8 native: TextView sizes set by hand (should be 0; use LumenTypography.fit / snap). Paint / canvas text and user-sized editor text are excluded.
+_hand=[]
+for _f in sorted(os.listdir(_nat)):
+    if not _f.endswith('.kt') or _f=='LumenTokens.kt':continue
+    for _i,_l in enumerate(open(os.path.join(_nat,_f),encoding='utf-8').read().split('\n')):
+        if re.search(r'(?<![\w.])(?:\w+\.)?textSize\s*=\s*[0-9.]+f(?!\s*\*)|setTextSize\(\s*(?:android\.util\.)?TypedValue\.COMPLEX_UNIT_SP\s*,\s*[0-9.]+f',_l) and 'Paint' not in _l and 'sizeSp' not in _l:_hand.append(f'{_f}:{_i+1}')
+print('P8 native TextViews with a hand-set literal size:',len(_hand),_hand)
+
+_x=[b for b in (_bad,_nb) if b]
+sys.exit(1 if bad or _x else 0)

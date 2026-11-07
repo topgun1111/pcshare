@@ -57,10 +57,10 @@ class InboxActivity : Activity() {
 
         // header: title + menu
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(6)) }
-        head.addView(TextView(this).apply { text = "Text inbox"; textSize = 20f; setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
+        head.addView(TextView(this).apply { text = "Text inbox"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(TextView(this).apply {
-            text = "⋮"; textSize = 24f; setTextColor(pal.fg); gravity = Gravity.CENTER
+            text = "⋮"; LumenTypography.fit(this, 24f); setTextColor(pal.fg); gravity = Gravity.CENTER
             setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { menu() }
             contentDescription = "Menu"
         })
@@ -68,7 +68,7 @@ class InboxActivity : Activity() {
 
         // target line
         toLine = TextView(this).apply {
-            textSize = 14f; setTextColor(pal.mut); setBackgroundColor(pal.cont)
+            LumenTypography.fit(this, 14f); setTextColor(pal.mut); setBackgroundColor(pal.cont)
             setPadding(dp(16), dp(10), dp(16), dp(10)); setOnClickListener { chooseTarget(null) }
         }
         root.addView(toLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -76,7 +76,7 @@ class InboxActivity : Activity() {
         // list (+ empty hint)
         list = ListView(this).apply { divider = null; dividerHeight = 0; isStackFromBottom = true; transcriptMode = android.widget.AbsListView.TRANSCRIPT_MODE_NORMAL; adapter = this@InboxActivity.adapter }
         val empty = TextView(this).apply {
-            text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; textSize = 15f; setTextColor(pal.mut); setPadding(dp(32), dp(32), dp(32), dp(32))
+            text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; LumenTypography.fit(this, 15f); setTextColor(pal.mut); setPadding(dp(32), dp(32), dp(32), dp(32))
         }
         val frame = FrameLayout(this)
         frame.addView(list, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -251,10 +251,10 @@ class InboxActivity : Activity() {
             }
             bubble.addView(TextView(this@InboxActivity).apply {
                 text = (if (n.out) "To " else "From ") + n.peer + " · " + whenText(n.ts)
-                textSize = 12f; setTextColor(pal.mut)
+                LumenTypography.fit(this, 12f); setTextColor(pal.mut)
             })
             bubble.addView(TextView(this@InboxActivity).apply {
-                text = n.text.trim().take(1500); textSize = 15f; setTextColor(pal.fg)
+                text = n.text.trim().take(1500); LumenTypography.fit(this, 15f); setTextColor(pal.fg)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
                 setPadding(0, dp(2), 0, 0)
             })

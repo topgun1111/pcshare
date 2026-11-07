@@ -182,7 +182,7 @@ class MainActivity : Activity() {
         }
         /** PDF tapped: open the dedicated PDF reader (PdfRenderer). [json] = {name, url, size, key} */
         @JavascriptInterface fun viewPdf(json: String) {
-            runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java)) }
+            runOnUiThread { PdfViewerActivity.pending = json; startActivity(Intent(this@MainActivity, PdfViewerActivity::class.java), LumenPrefs.fadeIn(this@MainActivity)) }
         }
         /** Word / Excel / ODF tapped: copy to cache (max 60 MB) and open the Office viewer. [json] = {name, url, size} */
         @JavascriptInterface fun viewOffice(json: String) {

@@ -117,7 +117,7 @@ class PrintLiveActivity : Activity() {
         // bottom row: tick box left, buttons right
         val bot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)) }
         val cb = CheckBox(this).apply {
-            text = "Don't open automatically"; setTextColor(FG); textSize = 12f; typeface = Fnt.med(); buttonTintList = ColorStateList.valueOf(DIM)
+            text = "Don't open automatically"; setTextColor(FG); LumenTypography.fit(this, 12f); typeface = Fnt.med(); buttonTintList = ColorStateList.valueOf(DIM)
             isChecked = noAuto(this@PrintLiveActivity)
             setOnCheckedChangeListener { _, v -> try { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("noauto", v).apply() } catch (_: Throwable) {} }
         }
@@ -129,9 +129,9 @@ class PrintLiveActivity : Activity() {
         setContentView(root)
     }
 
-    private fun tv(t: String, sp: Float, c: Int, tf: Typeface) = TextView(this).apply { text = t; textSize = sp; setTextColor(c); typeface = tf }
+    private fun tv(t: String, sp: Float, c: Int, tf: Typeface) = TextView(this).apply { text = t; LumenTypography.fit(this, sp); setTextColor(c); typeface = tf }
     private fun btn(t: String, f: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; textSize = 12f; setTextColor(FG); typeface = Fnt.med(); minWidth = 0; minimumWidth = 0
+        text = t; isAllCaps = false; LumenTypography.fit(this, 12f); setTextColor(FG); typeface = Fnt.med(); minWidth = 0; minimumWidth = 0
         background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
         setPadding(dp(12), 0, dp(12), 0); setOnClickListener { try { f() } catch (_: Throwable) {} }
     }.also { it.layoutParams = LinearLayout.LayoutParams(-2, dp(36)).apply { leftMargin = dp(6) } }
