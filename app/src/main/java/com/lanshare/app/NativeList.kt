@@ -214,6 +214,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
+    private val rpl = NlRpl(this)      // Lumen 4d N9: press ripple
+    private val flip = NlFlip(this)    // Lumen 4d N10: selection check-circle flip
     private var ell: String? = null
     private var ellFor: NlRow? = null
     private var ellW = -1f
@@ -226,10 +228,13 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean, md: Boolean = false) {
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; requestLayout() }
         if ((r.k == "hdr") != (row?.k == "hdr")) requestLayout()
+        if (row === r) { if (sel != isSel) flip.start() } else { flip.cancel(); rpl.reset() }
         row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; NlA11y.apply(this, r, sel); invalidate()
     }
 
     override fun setPressed(pressed: Boolean) { super.setPressed(pressed); invalidate() }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
     override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f) * d)) }
 
@@ -249,7 +254,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
             return
         }
-        if (isSel || isPressed) {
+        if (isSel) {
             val gsel = isSel && pl.st != 0
             if (gsel) { p.color = Color.WHITE; p.shader = LinearGradient(0f, 1f * d, 0f, h - 3f * d, pl.st, pl.sb, Shader.TileMode.CLAMP) } else p.color = if (isSel) pl.sel else pl.hov
             rf.set(4f * d, 1f * d, w - 4f * d, h - 3f * d); cv.drawRoundRect(rf, 12f * d, 12f * d, p); p.shader = null   // rounded highlight like the grid cells (the 2px divider below stays square)
@@ -258,6 +263,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 p.style = Paint.Style.FILL; p.color = pl.ac; rf.set(10f * d, h * 0.28f, 13f * d, h * 0.72f - 2f * d); cv.drawRoundRect(rf, 1.5f * d, 1.5f * d, p)
             }
         }
+        rf.set(4f * d, 1f * d, w - 4f * d, h - 3f * d); rpl.draw(cv, rf, 12f * d, if (isSel) pl.onsel else pl.fg)   // Lumen 4d N9: press ripple replaces the flat hover fill
         if (pl.dv != 0) { p.color = pl.dv; cv.drawRect(0f, h - 2f * d, w, h - 1f * d, p); p.color = pl.hl; cv.drawRect(0f, h - 1f * d, w, h, p) }   // engraved two-tone divider (gradient themes)
         else { p.color = pl.bd; val ins = if (compact) 52f else if (large) 100f else if (medium) 84f else 72f; cv.drawRect(ins * d, h - 1f * d, w, h, p) }   // Lumen 12.5: 1 dp divider inset to the text (flat lists)
 
@@ -272,7 +278,10 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         val leadR = (if (c) 18f else if (lg) 38f else if (md) 31f else 24f) * d                       // half lead width
         val leadB = (if (c) 18f else if (lg) 34f else if (md) 28f else 22f) * d                       // half lead height
         // ---- lead ----
-        if (isSel) {
+        val flipS = flip.scale()                                  // Lumen 4d N10: 160 ms squeeze, face changes at the half way point
+        val leadSel = if (flip.showNew()) isSel else !isSel
+        cv.save(); if (flipS != 1f) cv.scale(flipS, 1f, lcx, cy)
+        if (leadSel) {
             p.color = pl.ac; cv.drawCircle(lcx, cy, tile, p)
             icon("check", lcx - ico / 2f, cy - ico / 2f, ico, pl.onac, cv)
         } else if (r.dir) {
@@ -310,6 +319,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 NlFileIcons.draw(cv, r.nm, r.k, lcx - tile, cy - tile, tile * 2f, LumenCategory.of(context), d)   // Lumen 11.6: category gradient tile + glyph (+ extension from 64 dp)
             }
         }
+        cv.restore()
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
         // ---- texts ----
         val xr = w - 14f * d
@@ -378,6 +388,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     var selMode = false
     var thumb: Bitmap? = null
     var dur: String? = null
+    private val rpl = NlRpl(this)      // Lumen 4d N9: press ripple
+    override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = 17f * d * UiScale.tf }
@@ -412,6 +424,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
+        if (row !== r) rpl.reset()
         row = r; pal = pl; isSel = sel; selMode = selm; this.bare = bare; thumb = null; dur = null; layRow = null; NlA11y.apply(this, r, sel); invalidate()
     }
 
@@ -479,6 +492,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         } else if (isSel) {
             p.style = Paint.Style.FILL; p.color = pl.sel; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 12f * d, 12f * d, p)
         }
+        rf.set(0f, 0f, w, h); rpl.draw(cv, rf, if (bare) 16f * d else 12f * d, if (isSel) pl.onsel else pl.fg)
         p.style = Paint.Style.FILL
         val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 3f * d
         val sh = if (bare) h - 2f * d else s * tall
@@ -742,6 +756,16 @@ class NativeList(private val act: Activity, private val web: WebView) {
     val overlay = NlOverlay(act, web)
     private val srl = SwipeRefreshLayout(act)
     private val rv = RecyclerView(act)
+    private val skel = NlSkelView(act, UiScale.dens(act))   // Lumen 4d M7 a: placeholder rows while a tapped folder is still being built
+    private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.visibility = View.VISIBLE; skel.invalidate(); skel.postDelayed({ skelOff() }, 4000) } }
+    private fun skelArm() { rv.removeCallbacks(skelRun); rv.postDelayed(skelRun, 180) }      // instant entries never flash it
+    private fun skelOff() { rv.removeCallbacks(skelRun); if (skel.visibility != View.GONE) skel.visibility = View.GONE }
+    /** Lumen 4d N10: hold-menu lift, 1.02 and back (the page menu has no close event to hang a longer hold on). */
+    private fun lift(v: View) {
+        if (LumenPrefs.reduceMotion(act)) return
+        v.animate().cancel()
+        v.animate().scaleX(1.02f).scaleY(1.02f).setDuration(120).withEndAction { v.animate().scaleX(1f).scaleY(1f).setDuration(160).start() }.start()
+    }
     private val sb = PdfScrollBar(act)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
     private var lm: LinearLayoutManager = LinearLayoutManager(act)
     private var gridOn = false
@@ -827,6 +851,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         })
         sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
+        overlay.addView(skel, FrameLayout.LayoutParams(1, 1)); skel.visibility = View.GONE
         overlay.addView(sb, FrameLayout.LayoutParams(1, 1))     // above the list, same rect (see layout()); only the thumb takes touches
         overlay.addView(head, FrameLayout.LayoutParams(1, 1))
         head.visibility = View.GONE
@@ -1021,7 +1046,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             else { emit("tap", i); return }
         }
         else if (fresh(e)) { navKey = null; applyItems(ck.first, e!!.rows, emptySet(), e.sig); headTo(ck.second, e.sumB, e.sumS) }
-        else { navKey = ck.first; warm(ck.first, ck.second, true) }
+        else { navKey = ck.first; warm(ck.first, ck.second, true); skelArm() }
         raw("tap", i); navUntil = android.os.SystemClock.uptimeMillis() + 2000
     }
 
@@ -1033,7 +1058,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val key = "$dev|$view|$path"
         val e = built[key]
         if (e != null && e.cfg == curCfg && android.os.SystemClock.uptimeMillis() - e.at < 600_000) { navKey = null; applyItems(key, e.rows, emptySet(), e.sig); headTo(path, e.sumB, e.sumS) }
-        else if (dev == "local") { navKey = key; warm(key, path, true) }
+        else if (dev == "local") { navKey = key; warm(key, path, true); skelArm() }
         else return false                                  // not cached and not buildable here: the page does it
         rawPath(path); navUntil = android.os.SystemClock.uptimeMillis() + 2000
         return true
@@ -1197,6 +1222,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     private fun applyItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
+        skelOff()
         if (key == curKey && sig == curSig) { setSel(selected); return }
         sel = selected
         if (key != curKey) {
@@ -1238,6 +1264,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
             val sp = sb.layoutParams as FrameLayout.LayoutParams
             sp.leftMargin = nl; sp.topMargin = nt; sp.width = nw; sp.height = nh
             sb.layoutParams = sp
+            val kp = skel.layoutParams as FrameLayout.LayoutParams
+            kp.leftMargin = nl; kp.topMargin = nt; kp.width = nw; kp.height = nh
+            skel.layoutParams = kp
         }
         overlay.listRect.set(l, t, l + w, t + h)
         val hs = ArrayList<RectF>(); val o = j.optJSONArray("o")
@@ -1316,7 +1345,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { skelOff(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {
@@ -1385,7 +1414,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) tapRow(i) }
             v.setOnLongClickListener {
                 val i = h.bindingAdapterPosition
-                if (i >= 0) { Haptics.view(it, "long"); emit("long", i); true } else false
+                if (i >= 0) { Haptics.view(it, "long"); lift(it); emit("long", i); true } else false
             }
             v.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = h.bindingAdapterPosition; if (i >= 0) { warmFor(i); emit("down", i) } }; false }
             return h

@@ -4,7 +4,7 @@ Companion to `LUMEN_DESIGN_SYSTEM.md` (spec + item list 19.1c). This file answer
 Created 2026-11-07. Item IDs (V / N / M / P / T / A) are the ones in 19.1c; every one of the 42 open items sits in exactly one part below.
 
 **Status line (edit this first in every session):**
-`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b and 4c (partly) of 8 | Next: Part 4d (+ 4c leftovers) | Open items: 14 (M1, M5 native exits elsewhere, P8, M2, P4 partly; N1 (c) real in-window blur; N4 gGlow / gSkeleton / gScrim callers) | Last session: 2026-11-07`
+`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b, 4c (partly) and 4d (partly) of 8 | Next: Part 4e (4d leftovers: N1 (c), M7 (b), N11 sticky strip, N9 gallery / drawer, N10 heading + stagger) | Open items: 14 (M1, M5 native exits elsewhere, P8, M2, P4 partly; N1 (c) real in-window blur; N4 gGlow / gSkeleton / gScrim callers) | Last session: 2026-11-07`
 
 ---
 
@@ -56,7 +56,7 @@ Open parts of the above are tracked in the parts below, not here.
 | 4a | L8 + L9 + native M1 / M5: A1 A2, N2 N12 N1 (a), `Lm.kt` exits + Undo bar + merge | native + page | 700-1000 | DONE (2026-11-07; not compiled) |
 | 4b | L10 + N8: N1 (b) N4 N6, N8 (chrome glass stand-in, gradients + shadow tint slot, radius flavour, drawer storage card) | native + page + tools | 600-900 | DONE (2026-11-07; not compiled) |
 | 4c | L11 + N7: N3 N5 N13 P6, N7 (tiles, colour tables, bar variants + scroll-driven top bar) | native + page | 1000-1400 | PARTLY (2026-11-07, see 4c left over) |
-| 4d | L12 + L14 + N1 (c): N9 N10 N11 M7, N1 (c) (list interactions, container transform, real backdrop blur for in-window chrome) | native + page | 1100-1500 | NEXT |
+| 4d | L12 + L14 + N1 (c): N9 N10 N11 M7, N1 (c) (list interactions, container transform, real backdrop blur for in-window chrome) | native + page | 1100-1500 | PARTLY (2026-11-07: N9 rows + grid, N10 flip + lift, M7 a skeleton; rest left) |
 | owner | L1: V2 V3 V4 V5 device pass; send results any time, findings become tasks in Part 4a-4d | device | 0-100 | OPEN |
 
 Part 1 left over: P8 `--t-*` / `--st-*` adoption and the 194 hex colours (kept: per-theme and brand values), 25 spacing nudges (negative margins), 13 infinite-loop durations. Native part of M1 / M5 was done in Part 4a. Part 2 left over: M2 old-screen shift / dim and dock slide (dock is native, Part 4c), P4 `.g0` has no caller yet (viewer counters / badges are native, Part 4c). Part 2 touched Kotlin: NO; headless Chromium smoke: dialog exit ok, no init errors. Part 1 touched Kotlin: NO. Page JS `node --check` ok (7 scripts), CSS braces balanced, `gen.py --check`, T1 0 failing, `parity.py` 0 differences; not opened in a browser or on a device.
@@ -177,6 +177,7 @@ Files: `ImageViewerActivity.kt`, `PlayerActivity.kt`, `MainActivity.kt`, `ui.htm
 | 2026-11-07 | Part 4a | A1: TalkBack text + selected state for list rows / grid cards (`NlA11y`), virtual buttons for gallery cells and drawer hit rects, snackbar live region + dialog pane title; A2: chips 48 px box (`lmChipAt`) with ripple; N2: `NlSheets` glass panel, r-xxl top corners, drag handle, swipe-to-dismiss, slide in / out, scrim 32 / 56 %; N1 (a): `LumenGlass` (F0-F3, API 31 blur-behind, page reports step through `glassStepSet`); N12: snackbar lifts above the dock (`Lm.setLift`); M1 native: snackbar exit 140 ms, dialog + sheet window exit styles; M5 native: Undo countdown bar + number merge | A1 A2 N1a N2 N12 M1n M5n x | N1 (b) chrome glass (4b); `NlSheets` Sort dialog keeps its own row layout | yes (`Lm.kt`, `NlSheets.kt`, `NlDrawer.kt`, `NativeList.kt`, `NlChrome.kt`, `MainActivity.kt`, new `LumenGlass.kt`, `NlA11y.kt`, `res/anim`, `res/values/lm_anim.xml`) | check next CI run |
 | 2026-11-07 | (fix) | Selection-bar More popup stuck: native list swallowed taps outside the menu (`nlLay` now sends all touches to the page while `.dsc` is open, dims the list 18 %) | none | none | no | n/a |
 | 2026-11-07 | Part 4b | N1 (b) stand-in: `LumenGlass.chromeFill` / `chromeGradient`, bar / dock / drawer by glass step; N4: `shadowTint` slot, `LumenGrad.kt`, gFab / gPrimary / gSuccess / gSurface callers; N6: `LumenRadius`; N8: drawer storage card + ring | N6 N8 x; N1b N4 ~ | real blur N1 (c) (4d); gGlow / gSkeleton / gScrim callers (4c / 4d); N7 moved to 4c | yes (`NlChrome.kt`, `NlDrawer.kt`, `NlSheets.kt`, `LumenGlass.kt`, new `LumenGrad.kt`, `LumenTokens.kt` generated) | check next CI run |
+| 2026-11-07 | Part 4d (partly) | N9: `NlRpl` ripple in `NlRowView` + `NlGridView` (hover fill replaced); N10: `NlFlip` 160 ms check-circle flip in rows, hold lift pulse 1.02; M7 a: `NlSkelView` shown 180 ms after a tapped folder starts building, off in `applyItems` / `hide()` / 4 s; all in new `NlListFx.kt` + `NativeList.kt` | N9 N10 M7 ~ | N1 (c) real blur (owner decision still open), M7 b container transform, N11 sticky heading strip, N9 gallery cells + drawer rows, N10 day-heading partial state + dock stagger | yes (`NlListFx.kt` new, `NativeList.kt`) | check next CI run |
 | | | | | | | |
 
 ## 6. Next session

@@ -1025,9 +1025,9 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] N6 Native radius flavour (win11 `--r-l` 12 / `--r-xxl` 24); native dialogs keep 32 dp. (2026-11-07, Part 4b, `LumenRadius`)
 - [ ] N7 (moved to Part 4c) `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native). (4c partly: scroll-driven transparent small bar done; Large collapsing bar and Search / Viewer variants open)
 - [x] N8 Drawer storage-card header with ring chart. (2026-11-07, Part 4b, `dStorCard()`, block `LUMEN-UI16`)
-- [ ] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill).
-- [ ] N10 Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
-- [ ] N11 Sticky heading strip and fast-scroll scrubber in the native list.
+- [~] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill). (2026-11-07, 4d: rows + grid cards done; gallery cells and drawer rows NOT)
+- [~] N10 (2026-11-07, 4d: flip in list rows + hold lift pulse done; day-heading partial state and dock stagger NOT) Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
+- [~] N11 Sticky heading strip and fast-scroll scrubber in the native list. (scrubber already existed: `PdfScrollBar` + bubble; sticky heading strip NOT done)
 - [x] N12 (2026-11-07, Part 4a) Snackbar lift above the bottom bar / dock (`Lm.snack`), system toast only where no Activity exists.
 - [x] N13 Splash: logo screen is the system one (Android 12+); older versions still show the window background only. (2026-11-07, 4c: accepted for Android under 12, window background only)
 
@@ -1038,7 +1038,7 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] M4 Aurora wallpaper drift (60 s) and drift off in battery saver. (done 2026-11-07, Part 2: `#home::before` drifts 60 s, off in f2 / f3 / Reduce motion / saver)
 - [x] M5 Undo countdown bar and merging of repeated snackbar numbers. (page done 2026-11-07, Part 1: merge + Undo bar; native Undo bar + number merge in `Lm.snack` 2026-11-07, Part 4a)
 - [x] M6 Sheet swipe-to-dismiss (page `#sheet`). (done 2026-11-07, Part 1: `/*LUMEN-UI13*/`)
-- [ ] M7 Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
+- [~] M7 (2026-11-07, 4d: (a) skeleton done, (b) container transform NOT) Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
 **P. Page leftovers**
 - [x] P1 Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: swipe rows 96 px, scrubber, hold lift)
