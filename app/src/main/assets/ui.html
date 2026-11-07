@@ -1166,6 +1166,24 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 .dsec{text-transform:none;letter-spacing:.1px;font-size:var(--fs-14);font-weight:600;color:var(--inkMut)}
 .dsep{height:1px;margin:var(--sp-2) var(--sp-4);background:var(--edge);border-bottom:0}
 /*LUMEN-UI11:END*/
+/*LUMEN-UI12:BEGIN*/
+/* Lumen Round 2 Part C (hand-written): search pill 52, floating label + clear on dialog fields, sliding segmented pill, slider value bubble, 48 px chip hit rows */
+#srow{height:52px;border-radius:var(--r-full);padding:0 var(--sp-2)}#srow .ibtn{width:44px;height:44px}#sq{height:44px}
+.tfw{position:relative;display:block}
+.tfw .tf{height:56px;padding:20px 48px 0 var(--sp-4);box-sizing:border-box}
+.tfw .fl{position:absolute;left:var(--sp-4);top:17px;font-size:var(--fs-16);line-height:1.2;color:var(--inkMut,var(--mut));pointer-events:none;transition:top var(--d-fast,120ms) var(--ease-standard,ease),font-size var(--d-fast,120ms) var(--ease-standard,ease),color var(--d-fast,120ms) linear}
+.tfw .tf:focus~.fl,.tfw .tf:not(:placeholder-shown)~.fl{top:8px;font-size:var(--fs-12)}
+.tfw .tf:focus~.fl{color:var(--primary)}
+.tfw .clr{position:absolute;right:var(--sp-2);top:8px;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:none;place-items:center}
+.tfw .tf:not(:placeholder-shown)~.clr{display:grid}.tfw .clr svg{width:20px;height:20px}
+.seg{position:relative}
+.seg.sl::before{content:"";position:absolute;top:var(--sp-1);bottom:var(--sp-1);left:0;width:var(--sw,0);transform:translateX(var(--sx,0));border-radius:var(--r-full);background:var(--primaryCont);transition:transform var(--d-base,200ms) var(--ease-emph,cubic-bezier(.2,0,0,1)),width var(--d-base,200ms) var(--ease-emph,cubic-bezier(.2,0,0,1))}
+.seg.sl button{position:relative;z-index:1}.seg.sl button.on{background:transparent}
+:root[data-rm] .seg.sl::before{transition:none}
+#lmbub{position:fixed;z-index:99999;min-width:32px;height:32px;padding:0 var(--sp-2);box-sizing:border-box;border-radius:var(--r-full);display:none;align-items:center;justify-content:center;background:var(--primary);color:var(--onPrimary);font-size:var(--fs-14);font-weight:600;pointer-events:none;transform:translate(-50%,-100%);box-shadow:var(--e2)}
+#lmbub.on{display:flex}
+.chips{padding-top:var(--sp-2);padding-bottom:var(--sp-2)}
+/*LUMEN-UI12:END*/
 /*LUMEN-UI9:BEGIN*/
 /* Lumen Part 18 (hand-written): accessibility + performance. 2 px focus ring on every control (3 px in high contrast / f3), visually hidden live regions, fling drops glass to solid (spec 6.4), dialogs scroll at large text, forced-colors borders. */
 :where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -1586,7 +1604,7 @@ function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o
   const hero=o.hero||(o.danger&&/delete|remove|erase/i.test((o.ok||'')+' '+(o.title||''))?'del':'');
   if(hero){const h=E('div','dhero'+(dng?' dng':''));h.append(ic(hero));card.append(h)}
   card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
-  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=o.input.label||'';inp.autocomplete='off';card.append(inp)}
+  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.innerHTML=ic('close');cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
   const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':' lmp'),o.ok||'OK');
   let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
@@ -6885,4 +6903,24 @@ let ft=0;addEventListener('scroll',()=>{if(!H.classList.contains('lm-fling'))H.c
 window.lmFrameTest=(ms=5000)=>new Promise(r=>{const t=[];let l=0;const s=performance.now();const f=x=>{if(l)t.push(x-l);l=x;if(x-s<ms)requestAnimationFrame(f);else{const m=[...t].sort((a,b)=>a-b)[t.length>>1]||16.7,d=t.filter(v=>v>m*1.5).length,o={frames:t.length,medianMs:+m.toFixed(1),dropped:d,pct:+(100*d/Math.max(1,t.length)).toFixed(1),glass:H.dataset.glass||''};console.log('[lumen] frame test',JSON.stringify(o));r(o)}};requestAnimationFrame(f)});
 }catch(e){console.log('[lumen] a11y init failed',e)}})();
 /*LUMEN-A11Y:END*/
-</script></body></html>
+</script><script>/*LUMEN-UI12-JS:BEGIN*/
+(function(){try{
+const $$=(q,r=document)=>[...r.querySelectorAll(q)];
+/* sliding pill of .seg: --sx / --sw follow the button with class on */
+function segSync(g){const b=g.querySelector('button.on');if(!b||!b.offsetWidth)return;g.classList.add('sl');g.style.setProperty('--sx',b.offsetLeft+'px');g.style.setProperty('--sw',b.offsetWidth+'px')}
+window.lmSegSync=segSync;
+const mo=new MutationObserver(ms=>{for(const m of ms){const g=m.target.closest&&m.target.closest('.seg');if(g)segSync(g)}});
+mo.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
+const mo2=new MutationObserver(()=>$$('.seg:not(.sl)').forEach(segSync));mo2.observe(document.body,{subtree:true,childList:true});
+addEventListener('resize',()=>$$('.seg.sl').forEach(segSync));
+/* slider value bubble on input.lmr (shows while dragging, 700 ms after) */
+const bb=document.createElement('div');bb.id='lmbub';bb.setAttribute('aria-hidden','true');document.body.appendChild(bb);let bt=0;
+function bub(e){const i=e.target;if(!(i&&i.classList&&i.classList.contains('lmr')))return;const r=i.getBoundingClientRect(),mn=+i.min||0,mx=+i.max||100,f=(i.value-mn)/Math.max(1e-9,mx-mn);
+ bb.textContent=i.dataset.unit?i.value+i.dataset.unit:i.value;bb.style.left=(r.left+10+(r.width-20)*f)+'px';bb.style.top=(r.top-4)+'px';bb.classList.add('on');clearTimeout(bt);bt=setTimeout(()=>bb.classList.remove('on'),700)}
+document.addEventListener('input',bub,true);document.addEventListener('pointerdown',bub,true);
+/* 48 px hit rows for chips: a tap in the padding of .chips above / below a chip counts as a tap on that chip */
+document.addEventListener('click',e=>{const row=e.target;if(!(row&&row.classList&&row.classList.contains('chips')))return;
+ for(const c of row.children){const r=c.getBoundingClientRect();if(e.clientX>=r.left-4&&e.clientX<=r.right+4&&e.clientY>=r.top-8&&e.clientY<=r.bottom+8){c.click();break}}},true);
+}catch(e){console.log('[lumen] ui12 init failed',e)}})();
+/*LUMEN-UI12-JS:END*/</script>
+</body></html>

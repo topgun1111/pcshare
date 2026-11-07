@@ -52,6 +52,36 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     protected val hits = ArrayList<Hit>()
     protected var pressed: String? = null
     protected val fillP = Paint(Paint.ANTI_ALIAS_FLAG)
+    // TalkBack (Lumen Round 2 Part C): every hit rectangle with a label becomes a virtual button.
+    /** Spoken name of the button [id]; null = not announced. Subclasses override. */
+    protected open fun labelOf(id: String): String? = null
+    private val ebt = object : androidx.customview.widget.ExploreByTouchHelper(this) {
+        override fun getVirtualViewAt(x: Float, y: Float): Int {
+            for (i in hits.indices.reversed()) if (hits[i].r.contains(x, y) && labelOf(hits[i].id) != null) return i
+            return INVALID_ID
+        }
+        override fun getVisibleVirtualViews(ids: MutableList<Int>) { for (i in hits.indices) if (labelOf(hits[i].id) != null) ids.add(i) }
+        override fun onPopulateNodeForVirtualView(i: Int, n: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+            val h = hits.getOrNull(i) ?: return
+            n.contentDescription = labelOf(h.id) ?: ""
+            n.className = "android.widget.Button"
+            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
+            val r = android.graphics.Rect(); h.r.roundOut(r); n.setBoundsInParent(r)
+        }
+        override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
+            val h = hits.getOrNull(i) ?: return false
+            if (action == androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK) { onTap?.invoke(h.id); return true }
+            return false
+        }
+    }
+    private val a11yInv = Runnable { ebt.invalidateRoot() }
+    private var a11yReady = false   // View's constructor may call invalidate() before the fields above exist
+    init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt); a11yReady = true }
+    override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+    override fun invalidate() {
+        super.invalidate()
+        if (a11yReady && (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) { removeCallbacks(a11yInv); postDelayed(a11yInv, 250) }
+    }
     protected val rf = RectF()
     private var downX = 0f
     private var downY = 0f
@@ -143,6 +173,10 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
 
 /** #top .mainb (menu, title, device name, search, view options, refresh, split screen, settings) and #top .selb (cancel, count, select all). 52 dp. */
 class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
+    override fun labelOf(id: String): String? = when (id) {
+        "menub" -> "Menu"; "cog" -> "Settings"; "dualb" -> "Split screen"; "scan" -> "Refresh"
+        "tune" -> "View options"; "srch" -> "Search"; "xsel" -> "Cancel selection"; "allsel" -> "Select all"; else -> null
+    }
     private var sel = false
     private var ttl = ""
     private var nm = ""
@@ -245,6 +279,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
 
 /** #fab: "New folder" / "Extract all". 56 dp pill-rect, fixed colours from the CSS. */
 class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
+    override fun labelOf(id: String): String? = if (id == "fab") lb.ifEmpty { "Add" } else null
     private var lb = ""
     private var ik = "newfolder"
     private var bw = 0f
@@ -286,6 +321,11 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
  * The view reaches [inset] px above the dock so the soft shadow (box-shadow 0 -2px 8px) has room; all geometry below is relative to the dock itself.
  */
 class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
+    override fun labelOf(id: String): String? = when {
+        id == "clipx" -> "Dismiss"; id == "paste" -> "Paste here"
+        id.startsWith("a") -> acts.getOrNull(id.substring(1).toIntOrNull() ?: -1)?.lb
+        else -> null
+    }
     class Act(val k: String, val lb: String, val c: String)
     /** Lumen 12.8: the dock floats (12 dp from the edges, r.xl, 72 dp row); the page reports the card's own rect, so no extra room is needed for a shadow (the system elevation shadow is drawn). */
     val inset: Float = 0f
@@ -440,6 +480,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
 
 /** #toast: message, optional Cancel and progress bar. Lumen snackbar (Part 8): surfaceHi pill with an edge hairline, ink text, primary action, same as the page. */
 class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
+    override fun labelOf(id: String): String? = if (id == "tc") "Cancel" else null
     private var tx = ""
     private var pct = -1f
     private var cancel = false
@@ -503,6 +544,7 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
 
 /** #dlw: one card per download (name, Cancel, progress bar, info line). Sits on the container's rect; each card's y/height come from the page. */
 class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
+    override fun labelOf(id: String): String? = if (id.startsWith("dl:")) "Cancel" else null
     class Card(val key: String, val n: String, val cancel: Boolean, val w: Float, val ind: Boolean, val info: String, val y: Float, val h: Float)
     private var cards: List<Card> = emptyList()
     private var bw = 0f

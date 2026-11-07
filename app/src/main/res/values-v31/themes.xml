@@ -1,0 +1,16 @@
+<resources>
+    <!-- Android 12+: same theme as values/themes.xml plus the system splash screen on the Lumen canvas with the launcher icon (full = orange, Lite = purple, from the manifest icon) -->
+    <style name="Theme.LANShare" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/bar</item>
+        <item name="android:navigationBarColor">@color/bar</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorControlActivated">@color/accent</item>
+        <item name="android:alertDialogTheme">@style/Theme.LANShare.Dialog</item>
+        <item name="android:windowSplashScreenBackground">@color/canvas</item>
+        <item name="android:windowSplashScreenAnimationDuration">300</item>
+    </style>
+</resources>

@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Screen reader for the top bar and action bar, nicer fields
+### Added
+- Screen readers (TalkBack) now read and press the buttons of the top bar, the action bar, the add button and the progress card.
+- Text fields in dialogs have a floating label and a clear (x) button.
+- Moving slider shows its value in a small bubble.
+- Android 12 and newer: the start screen uses the app colours.
+### Changed
+- The search box is a taller pill.
+- Chips can be tapped a little above and below as well.
+
 ## 2026-11-07 - Floating action bar and drawer
 ### Added
 - The bar with Copy, Cut, Delete and the other file actions now floats above the list as a rounded glass card and slides up when you select something.

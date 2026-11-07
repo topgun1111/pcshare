@@ -984,9 +984,11 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 | 6 | Native drawing leftovers of Parts 12-13 (check-circle flip, native ripple, press states) (to confirm) | **B (PARTLY: native ripple in NlChrome views; check-circle flip, ripple in list / drawer rows left)** |
 | 7 | Page leftovers of Parts 12-16: scrubber, swipe actions, hold-menu lift, exits, list insert / remove (to confirm) | C |
 | 8 | Page leftovers of Parts 14-17: Light / Dark pairing, OS fonts, High contrast rings, per-theme contrast floor (to confirm) | C |
-| 9 | TalkBack labels in native screens, 48 px chip tap area | C |
-| 10 | Splash screen | C |
-| 11 | Remaining form controls (floating label, clear button, search pill, sliding segment, slider bubble) | C |
+| 9 | TalkBack labels in native screens, 48 px chip tap area | **C (PARTLY 2026-11-07: native chrome + chips)** |
+| 10 | Splash screen | **C (DONE 2026-11-07)** |
+| 11 | Remaining form controls (floating label, clear button, search pill, sliding segment, slider bubble) | **C (DONE 2026-11-07, dialog fields only)** |
+
+**Part C as built, partial (2026-11-07).** Done: item 9 (native TalkBack: `NlHitView` exposes each labelled hit rect as a virtual button through `ExploreByTouchHelper`; labels in `labelOf` of `NlBarView`, `NlFabView`, `NlDockView`, `NlToastView`, `NlDlView`; chips get a 48 px hit row by a click redirect on `.chips` padding, no ripple there), item 10 (`values-v31/themes.xml`: splash background = canvas, icon = launcher icon, so Lite stays purple), item 11 (block `/*LUMEN-UI12*/`: search pill 52, `dlg` field floating label + clear, `.seg.sl` sliding pill, `input.lmr` value bubble, optional `data-unit`). **Not done:** item 7 (scrubber, swipe actions, hold-menu lift, exit animations, list insert / remove), item 8 (Light / Dark pairing, OS fonts, per-theme glass contrast floor), `contentDescription` of native list rows / drawer rows / Lm dialogs, floating label for non-dialog fields (`.tf` in sheets keep placeholders), TalkBack run on a device. Kotlin NOT compiled, nothing seen on a device; JS `node --check` ok, CSS braces balanced, `gen.py --check` ok.
 
 **Part B as built (2026-11-07).**
 - Page, block `/*LUMEN-UI11*/` (after UI8; the file already had two `UI9` / `UI10` blocks from Parts 18 / owner feedback): `#dock` floats (12 px from the sides, `12px + safe inset` from the bottom, `r-xl`, glass G2 with the same F0-F3 tiers as `.g2`), icon 24 over Label M 12 px, 72 px row, no dividers, `.lm-in` slide-up 220 ms (Reduce motion: 120 ms fade). `--dockh` is now `offsetHeight + 12`. `renderBar()`: more than 5 actions keep the first 3 (4 without a Delete) + **More** (`lmDockMore()`, a `.dsc`/`.dmn` popup above the bar) + Delete (rightmost, error tint). New Lumen glyph `more`. Drawer: panel `min(88vw,320px)` with `r-xxl` on the right corners, 56 px pill rows with 8 px side margin, Title S section labels, hairline separators (native mirrors these computed values).
@@ -1002,6 +1004,65 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 - New Lumen glyphs `sheet` and `slides` in `icons.json` (the file category glyphs `file doc img vid aud pdf zip apk code` already existed).
 - Tests: `contrast.py` now also runs **T1b**: glyph against both tile gradient ends >= 3:1 for the 11 categories in light and dark and the two mono themes (0 failing). `gen.py --check` in sync; `parity.py` 0 differences; page JS `node --check` OK. Kotlin NOT compiled, nothing seen on a device.
 - Left for later (Part B / C): grid and gallery file tiles (`NlGridView`, 11.6 "Grid file" 64-96 dp), page list `.kd` tiles still use the older `--k-*-c/-b` vars (not the `--cat-*` family), Storage Analyzer treemap / pie, search chips and Drive / FTP / SMB badges still use their own colours (4.5 says one table feeds all).
+
+### 19.1c To-do list: everything still missing (added 2026-11-07)
+
+Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (`[x]`) and date an item when it is built; add new leftovers here, not in the part notes. Order inside a group = suggested order.
+
+**V. Verification debt (do before building more)**
+- [ ] V1 Build the APK (CI) and fix compile errors. Never compiled: `LumenTokens.kt`, `Lm.kt`, `LumenPrefs.kt`, `NlChrome.kt` (dock, ripple, TalkBack `ExploreByTouchHelper`), `NlDrawer.kt`, `NlFileIcons.kt`, `NativeList.kt` changes, `NlClassicFolder`, launcher icon resources, `values-v31/themes.xml`.
+- [ ] V2 Device pass: T5 parity screenshots, T6 glass ladder, T7 font scale 130 / 160 / 200 %, T8 gallery scroll frame budget (`lmFrameTest`), T10 native theme-switch flash.
+- [ ] V3 TalkBack run on the file browser, dialogs, top bar, dock, drawer, settings.
+- [ ] V4 `LumenPrefs.glassHint()` low-end guess (`isLowRamDevice`, `memoryClass <= 128`, <= 4 cores) check on the reference devices.
+- [ ] V5 Check the three static dark-theme selector lists (UI4 / UI5 / UI6, with `data-cdark`) after any new dark preset.
+
+**N. Native drawing (never done in native)**
+- [ ] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step.
+- [ ] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss.
+- [ ] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now.
+- [ ] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot.
+- [ ] N5 Folder drawing in pickers, album covers and other native places; drawer icons (`NlDrawer`); tiles for Devices / FTP / Cloud sheets.
+- [ ] N6 Native radius flavour (win11 `--r-l` 12 / `--r-xxl` 24); native dialogs keep 32 dp.
+- [ ] N7 `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native).
+- [ ] N8 Drawer storage-card header with ring chart.
+- [ ] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill).
+- [ ] N10 Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
+- [ ] N11 Sticky heading strip and fast-scroll scrubber in the native list.
+- [ ] N12 Snackbar lift above the bottom bar / dock (`Lm.snack`), system toast only where no Activity exists.
+- [ ] N13 Splash: logo screen is the system one (Android 12+); older versions still show the window background only.
+
+**M. Motion (Part 16 leftovers)**
+- [ ] M1 Exit animations: dialog, sheet, popup menu close in 200 ms accelerate (they close instantly).
+- [ ] M2 Screen push of the main file screens with old-screen shift / dim; selection-start choreography.
+- [ ] M3 List insert / remove collapse.
+- [ ] M4 Aurora wallpaper drift (60 s) and drift off in battery saver.
+- [ ] M5 Undo countdown bar and merging of repeated snackbar numbers.
+- [ ] M6 Sheet swipe-to-dismiss (page `#sheet`).
+- [ ] M7 Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
+
+**P. Page leftovers**
+- [ ] P1 Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11).
+- [ ] P2 Floating label + clear for fields outside `dlg` (sheets, settings, rename); password show / hide.
+- [ ] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings).
+- [ ] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens.
+- [ ] P5 Grid fallback page still uses the realistic icon; page list `.kd` tiles still use `--k-*-c / -b` instead of `--cat-*`.
+- [ ] P6 Storage Analyzer treemap / pie (`StorageTreemap.CAT_COL`, `StorageWiz`), search chips, Drive / FTP / SMB badges, `CodeHl`, dark viewer chrome and text-editor palette still use their own colours (4.5: one table).
+- [ ] P7 Contrast check of gradient ends against labels (T1 tests flat slots only) and of glass tint alpha per theme (floor).
+- [ ] P8 Use `--t-*` style tokens and `--st-*` in page CSS; 17 `font:` shorthands with px; lint: raw durations 68, hex 201, spacing >= 3 px 26, radius 1.
+- [ ] P9 Delete unused `--hc1..7` theme rules and `brand_lite_bg`.
+- [ ] P10 Selection-circle announce inside the gallery overlay (own count node).
+
+**T. Themes**
+- [ ] T1 Regenerate the 42 presets from the three inputs (hue, tint, mode); today only the 8 fresh slots are derived.
+- [ ] T2 Lumen family as Light / Dark pairs with a separate Auto / Light / Dark choice; Custom follow-system mode.
+- [ ] T3 OS font option (Segoe-like / Ubuntu; clashes with the user's own font choice: decide).
+- [ ] T4 High contrast: 3 dp focus ring and 7:1 text as a theme, not only the media query.
+- [ ] T5 Live preview card in the theme picker; `onWarning` slot; ubuntu / win11 own button gradients and shadows vs Lumen.
+
+**A. Accessibility (Part 18 / Round 2 C leftovers)**
+- [ ] A1 `contentDescription` / roles for native list rows (`NativeList`), drawer rows (`NlDrawer`), `Lm` dialogs and snackbar.
+- [ ] A2 Chips: real 48 px hit box with ripple (today a click redirect on the `.chips` padding, no ripple there).
+- [ ] A3 Extend the icon-button name table `LB` whenever a new icon-only button appears.
 
 ### 19.2 Old to new quick map
 
