@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Storage card in the side menu, glass bars
+### Added
+- The side menu starts with a storage card: a ring and the free space of this phone. Tap it to open the storage analyzer.
+### Changed
+- The top bar, the bottom action bar and the side menu follow the Glass quality setting; at the lowest step they are flat and solid.
+- The New folder button, progress bars and message pills use soft gradients, and shadows take a tint of the theme colour.
+- In the Windows 11 theme the rounded corners now also apply to the bottom bar buttons, the message pill and the View options sheet.
+### Fixed
+- The More menu of the selection bar closes when you tap outside it (it used to get stuck).
+
 ## 2026-11-07 - Smoother sheets, snackbars and screen reader support
 ### Added
 - View options sheet: glass look, drag handle, and swipe down to close.

@@ -28,10 +28,11 @@ class Lumen(private val m: Map<String, Int>) {
     val glassTint: Int get() = m.getValue("glassTint")
     val focus: Int get() = m.getValue("focus")
     val onWarning: Int get() = m.getValue("onWarning")
+    val shadowTint: Int get() = m.getValue("shadowTint")
     operator fun get(n: String): Int = m[n] ?: 0
 
     companion object {
-        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning")
+        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning", "shadowTint")
         private val LIGHT = mapOf(
             "canvas" to 0xFFFFF8F2.toInt(),
             "ink" to 0xFF1F1A16.toInt(),
@@ -56,7 +57,8 @@ class Lumen(private val m: Map<String, Int>) {
             "scrim" to 0x521A0F05.toInt(),
             "glassTint" to 0xFFFFF8F2.toInt(),
             "focus" to 0xFF0B5FFF.toInt(),
-            "onWarning" to 0xFF1F1400.toInt()
+            "onWarning" to 0xFF1F1400.toInt(),
+            "shadowTint" to 0xFF401B00.toInt()
         )
         private val DARK = mapOf(
             "canvas" to 0xFF17110C.toInt(),
@@ -82,7 +84,8 @@ class Lumen(private val m: Map<String, Int>) {
             "scrim" to 0x8F000000.toInt(),
             "glassTint" to 0xFF1E1610.toInt(),
             "focus" to 0xFF8AB4FF.toInt(),
-            "onWarning" to 0xFF1F1400.toInt()
+            "onWarning" to 0xFF1F1400.toInt(),
+            "shadowTint" to 0xFF59402B.toInt()
         )
 
         fun of(c: android.content.Context): Lumen {

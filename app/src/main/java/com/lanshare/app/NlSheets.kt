@@ -237,7 +237,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
         // Lumen sheet: glass panel with r-xxl top corners + edge hairline, drag handle, swipe-to-dismiss (textured themes keep their own texture)
         val sheet = SwipeSheet(act, scroll) { dl.window?.setWindowAnimations(0); dl.dismiss() }
-        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, 28f, true)
+        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), true)   // N6: same r-xxl as the page's #sheet (32 dp, Windows 11 = 24)
         val handle = View(act).apply { background = round(LumenGlass.withAlpha(p.mut, 0.5f), 2f); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         sheet.addView(handle, LinearLayout.LayoutParams(dp(32f), dp(4f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12f); bottomMargin = dp(4f) })
         sheet.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

@@ -121,6 +121,17 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     protected val med: Typeface = Fnt.med()
     protected val semi: Typeface = Fnt.semi()
 
+    // Lumen.of() parses the palette JSON; onDraw runs every frame during a ripple, so keep the result until the page sends a new palette.
+    private var lmSig: String? = null
+    private var lmCache: Lumen? = null
+    protected fun lumen(): Lumen {
+        val j = AppPal.json(context)
+        val c = lmCache
+        if (c != null && j === lmSig) return c
+        val n = Lumen.of(context); lmCache = n; lmSig = j
+        return n
+    }
+
     protected fun tp(sizeDp: Float, tf: Typeface): TextPaint =
         TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d * UiScale.tf }
 
@@ -234,13 +245,24 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         fillP.shader = null
         fillP.style = Paint.Style.FILL
         val sliding = sel && selAt != 0L && SystemClock.uptimeMillis() - selAt < 200L
-        fillP.color = if (sel && !sliding) p.sel else p.bar
+        // Part 4b (N1 b): G1 chrome fill by glass step (tint-raised stand-in, opaque at F3)
+        fillP.color = LumenGlass.chromeFill(context, if (sel && !sliding) p.sel else p.bar)
         cv.drawRect(0f, 0f, bw, bh, fillP)
-        // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge)
+        // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge); flat at F3
         val dark = AppPal.night(context)
-        fillP.shader = LinearGradient(0f, 0f, 0f, bh, if (dark) 0x0DFFFFFF else 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, bw, bh, fillP)
-        fillP.shader = null
+        if (LumenGlass.chromeGradient(context)) {
+            fillP.shader = LinearGradient(0f, 0f, 0f, bh, if (dark) 0x0DFFFFFF else 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, bw, bh, fillP)
+            fillP.shader = null
+        }
+        // outer hairline (spec 6.1 item 6): 0.5 dp edge at 60 % along the bottom edge; F3 = 1 dp opaque edge
+        run {
+            val f3 = !LumenGlass.chromeGradient(context)
+            val hw = if (f3) Math.max(1f, d) else Math.max(1f, d * 0.5f)
+            fillP.style = Paint.Style.FILL
+            fillP.color = if (f3) lumen().edge else LumenGlass.withAlpha(lumen().edge, 0.6f)
+            cv.drawRect(0f, bh - hw, bw, bh, fillP)
+        }
         var slid = false
         if (sel && selAt != 0L) {
             val t = Math.min(1f, (SystemClock.uptimeMillis() - selAt) / 200f)
@@ -289,8 +311,9 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, 16f * d); o.setAlpha(1f) }
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, LumenRadius.l(context) * d); o.setAlpha(1f) }
         }
+        if (Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = (lumen().shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); outlineAmbientShadowColor = 0x33000000 }   // E3 shadow tinted by shadowTint (N4)
     }
 
     /** Width the pill needs for [text] with the natively scaled label font (icon + paddings = 72 dp). */
@@ -308,7 +331,12 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         if (pressed != null) cv.scale(0.96f, 0.96f, bw / 2f, bh / 2f)
         fillP.shader = null; fillP.style = Paint.Style.FILL; val fp = pal ?: return
         fillP.color = fp.fab
-        rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
+        val fr = LumenRadius.l(context) * d
+        rf.set(0f, 0f, bw, bh)
+        if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), 0f, 0f, bw, bh)   // gFab (flat at F3)
+        cv.drawRoundRect(rf, fr, fr, fillP)
+        fillP.shader = null
+        ripple(cv, "fab", rf, fr, fp.onfab)
         glyph(cv, ik, 16f * d + 12f * d, bh / 2f, 24f, fp.onfab)
         lbP.color = fp.onfab
         cv.drawText(fit(lb, lbP, bw - (16f + 24f + 12f + 20f) * d), (16f + 24f + 12f) * d, ty(bh / 2f, lbP), lbP)
@@ -349,7 +377,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, rx * d); o.setAlpha(1f) }
         }
         if (Build.VERSION.SDK_INT >= 28) {   // E3: shadow tinted by the primary slot (spec 5.4)
-            val pr = Lumen.of(c).primary
+            val pr = Lumen.of(c).shadowTint   // N4: real slot (was primary)
             outlineSpotShadowColor = (pr and 0x00FFFFFF) or 0x80000000.toInt()
             outlineAmbientShadowColor = 0x33000000
         }
@@ -422,25 +450,32 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     override fun onDraw(cv: Canvas) {
         val p = pal ?: return
         if (bw <= 0f) return
-        val lm = Lumen.of(context)
+        val lm = lumen()
         val rad = rx * d
-        // G2 stand-in: no backdrop blur is possible under a native view, so the fill is the page's own G2 / F2 tint raised to at least 92 % (opaque for F3 and when unknown)
-        val base = if (bg != 0) bg else ((lm.glassTint and 0x00FFFFFF) or 0xF0000000.toInt())
-        val a = Math.max(0xEB, base ushr 24)
+        val rl = LumenRadius.l(context) * d   // N6: strip / pills follow the theme's r-l (Windows 11 = 12)
+        // N1 (b): the page's own tint (or glassTint) by glass step. No backdrop blur is possible under a native view, so F0-F2 are tint-raised (see LumenGlass.chromeFill); F3 = opaque
+        val base = if (bg != 0) bg else lm.glassTint
+        val raised = Math.max(0xEB, LumenGlass.chromeFill(context, base) ushr 24)   // list rows run under the dock: never less than 92 %
+        val f3 = !LumenGlass.chromeGradient(context)
         fillP.shader = null; fillP.style = Paint.Style.FILL
-        fillP.color = (base and 0x00FFFFFF) or (a shl 24)
+        fillP.color = if (f3) ((base and 0x00FFFFFF) or 0xFF000000.toInt()) else ((base and 0x00FFFFFF) or (raised shl 24))
         rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
-        // gChrome light from the top + edge hairline
-        fillP.shader = LinearGradient(0f, 0f, 0f, bh, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
-        cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null
+        // gChrome light from the top (not at F3) + edge: highlight from the top-left (edgeHi) over a 0.5 dp outer hairline (spec 6.1 items 4-6); F3 = 1 dp edge
+        if (!f3) { fillP.shader = LinearGradient(0f, 0f, 0f, bh, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP); cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null }
         val sw = Math.max(1f, d)
-        fillP.style = Paint.Style.STROKE; fillP.strokeWidth = sw; fillP.color = lm.edge
+        fillP.style = Paint.Style.STROKE
+        fillP.strokeWidth = if (f3) sw else Math.max(1f, d * 0.5f); fillP.color = if (f3) lm.edge else LumenGlass.withAlpha(lm.edge, 0.6f)
         rf.set(sw / 2f, sw / 2f, bw - sw / 2f, bh - sw / 2f); cv.drawRoundRect(rf, rad, rad, fillP)
+        if (!f3) {
+            fillP.strokeWidth = sw
+            fillP.shader = LinearGradient(0f, 0f, bw, bh, lm.edgeHi, 0x00FFFFFF, Shader.TileMode.CLAMP)
+            rf.set(sw / 2f, sw / 2f, bw - sw / 2f, bh - sw / 2f); cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null
+        }
         fillP.style = Paint.Style.FILL
         // clipboard strip
         val ct = clipTx
         if (ct != null) {
-            fillP.color = p.sel; cv.drawRoundRect(strip, 16f * d, 16f * d, fillP)
+            fillP.color = p.sel; cv.drawRoundRect(strip, rl, rl, fillP)
             val x = strip.left + 16f * d
             val right = (if (clipPaste) pasteR.left else closeR.left) - 8f * d
             clipP.color = p.onsel
@@ -466,10 +501,10 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
             if (pri) {
                 // gPrimary: 135 degrees, 6 % white start to 12 % black end (same as Lm.styleButton)
-                fillP.shader = LinearGradient(pill.left, pill.top, pill.right, pill.bottom, LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f), Shader.TileMode.CLAMP)
-                cv.drawRoundRect(pill, 16f * d, 16f * d, fillP); fillP.shader = null
+                fillP.shader = LumenGrad.diag(intArrayOf(LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f)), pill.left, pill.top, pill.right, pill.bottom)
+                cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
-            ripple(cv, "a$i", pill, 16f * d, if (pri) p.onac else col)
+            ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
             glyph(cv, a2.k, pill.centerX(), pill.centerY(), 24f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
@@ -495,8 +530,9 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, Math.min(24f * d, v.height / 2f)); o.setAlpha(1f) }
+            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, Math.min(LumenRadius.xl(context) * d, v.height / 2f)); o.setAlpha(1f) }
         }
+        if (Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = (lumen().shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); outlineAmbientShadowColor = 0x33000000 }   // N4
     }
 
     fun setData(tx: String, pct: Float, cancel: Boolean, w: Float, h: Float) {
@@ -518,10 +554,12 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
 
     override fun onDraw(cv: Canvas) {
         if (pal == null || bw <= 0f) return
-        val lm = Lumen.of(context)
-        val rad = Math.min(24f * d, bh / 2f)
+        val lm = lumen()
+        val rad = Math.min(LumenRadius.xl(context) * d, bh / 2f)   // N6: r-xl of the theme
         fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = lm.surfaceHi
+        if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.surface(lm, 0f, bh)   // gSurface (flat at F3)
         rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
+        fillP.shader = null
         val sw = Math.max(1f, d)
         fillP.style = Paint.Style.STROKE; fillP.strokeWidth = sw; fillP.color = lm.edge
         rf.set(sw / 2f, sw / 2f, bw - sw / 2f, bh - sw / 2f); cv.drawRoundRect(rf, rad, rad, fillP)
@@ -537,7 +575,12 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
             val top = bh - 14f * d - 4f * d; val l = 16f * d; val r = bw - 16f * d
             fillP.color = lm.edge; rf.set(l, top, r, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
             val w = (r - l) * Math.min(100f, pct) / 100f
-            if (w > 0f) { fillP.color = lm.primary; rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP) }
+            if (w > 0f) {
+                // gPrimary progress fill; a finished transfer (100 %) turns gSuccess
+                fillP.color = if (pct >= 100f) lm.success else lm.primary
+                if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(if (pct >= 100f) LumenGrad.success(lm) else LumenGrad.primary(lm), l, top, l + w, top + 4f * d)
+                rf.set(l, top, l + w, top + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP); fillP.shader = null
+            }
         }
     }
 }

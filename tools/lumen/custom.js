@@ -40,6 +40,7 @@ function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1
   var f=dark?'#8ab4ff':'#0b5fff',cs=[f,'#0b5fff','#8ab4ff','#ffb000','#ffffff','#000000'];
   for(var i=0;i<cs.length;i++){if(lmCr(cs[i],d.canvas)>=3&&lmCr(cs[i],d.surface)>=3){f=cs[i];break}}
   var w=d.warning||'#f9ab00';o.onWarning=lmCr('#1f1400',w)>=lmCr('#ffffff',w)?'#1f1400':'#ffffff';
+  o.shadowTint=lmMix(d.primary,'#000000',0.65);
   o.focus=f;return o}
 /* function, not var: the boot call runs before a later `var` line would have been assigned */
 function lmSem(dark){return dark?{errorCont:'#8c1d18',onErrorCont:'#f9dedc',error:'#f2b8b5',success:'#7fd99a',warning:'#ffc15e'}:{errorCont:'#f9dedc',onErrorCont:'#410e0b',error:'#b3261e',success:'#1e8e3e',warning:'#f9ab00'}}

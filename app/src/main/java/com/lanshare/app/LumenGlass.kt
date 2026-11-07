@@ -64,4 +64,25 @@ object LumenGlass {
     }
 
     fun withAlpha(col: Int, a: Float): Int = (Math.round(255f * a) shl 24) or (col and 0x00FFFFFF)
+
+    /**
+     * Part 4b (N1 b): fill for in-window chrome (top / selection bar, bottom action bar, drawer panel), spec 6.2 tier G1 + 6.5 ladder.
+     * A native view cannot blur what the page draws underneath it (blur-behind belongs to a Window), so F0 / F1 use a tint-raised stand-in:
+     * the tier alpha 72 % / 62 % would show unblurred page content, so it is lifted to 88 / 84 % (F0) and 92 / 88 % (F1) light / dark; F2 = 94 / 92 %; F3 = opaque.
+     * Real backdrop blur for this chrome is task N1 (c), Part 4d. [base] = the colour the page uses for that surface (its own bar / card colour).
+     */
+    fun chromeFill(c: Context, base: Int): Int {
+        if ((base ushr 24) < 0xFF) return base   // the page already chose a translucent colour: keep it
+        val night = AppPal.night(c)
+        val a = when (step(c)) {
+            0 -> if (night) 0.84f else 0.88f
+            1 -> if (night) 0.88f else 0.92f
+            2 -> if (night) 0.92f else 0.94f
+            else -> 1f
+        }
+        return withAlpha(base, a)
+    }
+
+    /** gChrome (top light from above) is only drawn for F0-F2; F3 is flat (spec 6.5). */
+    fun chromeGradient(c: Context): Boolean = step(c) < 3
 }

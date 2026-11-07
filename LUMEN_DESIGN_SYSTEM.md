@@ -1017,14 +1017,14 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [ ] V5 Check the three static dark-theme selector lists (UI4 / UI5 / UI6, with `data-cdark`) after any new dark preset.
 
 **N. Native drawing (never done in native)**
-- [~] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer left for Part 4b)
+- [~] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer: stand-in done 2026-11-07, Part 4b, `LumenGlass.chromeFill`, tint-raised, NO blur; real in-window blur = N1 (c), Part 4d)
 - [x] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss. (2026-11-07, Part 4a)
 - [ ] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now.
-- [ ] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot.
+- [~] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot. (2026-11-07, Part 4b: `shadowTint` slot + `LumenGrad.kt`; FAB, dock pill, snackbar, tinted shadows done; `gGlow` / `gSkeleton` / `gScrim*` exist without callers: Parts 4c / 4d)
 - [ ] N5 Folder drawing in pickers, album covers and other native places; drawer icons (`NlDrawer`); tiles for Devices / FTP / Cloud sheets.
-- [ ] N6 Native radius flavour (win11 `--r-l` 12 / `--r-xxl` 24); native dialogs keep 32 dp.
-- [ ] N7 `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native).
-- [ ] N8 Drawer storage-card header with ring chart.
+- [x] N6 Native radius flavour (win11 `--r-l` 12 / `--r-xxl` 24); native dialogs keep 32 dp. (2026-11-07, Part 4b, `LumenRadius`)
+- [ ] N7 (moved to Part 4c) `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native).
+- [x] N8 Drawer storage-card header with ring chart. (2026-11-07, Part 4b, `dStorCard()`, block `LUMEN-UI16`)
 - [ ] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill).
 - [ ] N10 Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
 - [ ] N11 Sticky heading strip and fast-scroll scrubber in the native list.

@@ -113,6 +113,7 @@ def fresh(d, over=None):
     o["focus"] = f
     w = d.get("warning", "#f9ab00")
     o["onWarning"] = "#1f1400" if cr("#1f1400", w) >= cr("#ffffff", w) else "#ffffff"
+    o["shadowTint"] = mix(d["primary"], "#000000", .65)   # Part 4b (N4): 35 % primary over black, the tint of every elevation shadow (page --shT used to compute this in CSS)
     if over: o.update(over)
     return o
 

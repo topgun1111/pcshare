@@ -419,7 +419,9 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (card == 0) card = p.optLong("card").toInt()
         if (ct == 0) { ct = p.optLong("ct").toInt(); cb = p.optLong("cb").toInt() }
         if (card == 0) card = AppPal.pal(act).bg
-        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(card)
+        // Lumen Part 4b (N1 b): G1 panel by glass step (tint-raised stand-in, opaque at F3); textured / gradient themes keep their texture. The page hides its own #dwr (html.nldr) so the panel can be see-through.
+        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(LumenGlass.chromeFill(act, card))
+        if (android.os.Build.VERSION.SDK_INT >= 28) { dp.outlineSpotShadowColor = (Lumen.of(act).shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); dp.outlineAmbientShadowColor = 0x33000000 }   // N4
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.rx = j.optDouble("rx", 0.0).toFloat() * d
         dp.setPadding(0, Math.round(j.optDouble("pt", 0.0).toFloat() * d), 0, Math.round(j.optDouble("pb", 0.0).toFloat() * d))
