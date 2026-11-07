@@ -97,13 +97,51 @@ object Lm {
         try { Toast.makeText(c.applicationContext, text, if (len == Toast.LENGTH_LONG) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() } catch (_: Throwable) { }
     }
 
-    private fun dismissNow() {
+    private fun dismissNow(animate: Boolean = false) {
         hideJob?.let { main.removeCallbacks(it) }
         hideJob = null
         val v = cur
         val h = curHost
-        cur = null; curHost = null; curMsg = ""
-        if (v != null && h != null) { try { h.removeView(v) } catch (_: Throwable) { } }
+        curBarAnim?.cancel(); curBarAnim = null
+        cur = null; curHost = null; curMsg = ""; curTv = null; curHasAction = false
+        if (v == null || h == null) return
+        if (!animate || v.parent == null) { try { h.removeView(v) } catch (_: Throwable) { }; return }
+        // M1 (native): exit = t.exit (0.7 x base = 140 ms), accelerate, slide down 16 dp + fade; Reduce motion = 120 ms fade
+        v.isClickable = false
+        val end = Runnable { try { h.removeView(v) } catch (_: Throwable) { } }
+        if (reduceMotion(v.context)) v.animate().alpha(0f).setDuration(LumenMotion.REDUCE_FADE).withEndAction(end).start()
+        else v.animate().alpha(0f).translationY(dp(v.context, 16f).toFloat()).setDuration(LumenMotion.exit(LumenMotion.BASE)).setInterpolator(LumenMotion.ACCEL).withEndAction(end).start()
+    }
+
+    // M5 (native): "3 files" then "4 files" = same pill, only the number changes (text after the number identical)
+    private val MERGE = Regex("^(\\d+)\\s+(.+)$", RegexOption.DOT_MATCHES_ALL)
+    private fun mergeable(a: String, b: String): Boolean {
+        val x = MERGE.matchEntire(a); val y = MERGE.matchEntire(b)
+        return x != null && y != null && x.groupValues[2] == y.groupValues[2] && x.groupValues[1] != y.groupValues[1]
+    }
+
+    // N12 (native): the main screen reports how high its bottom dock is, so a snackbar sits above it instead of covering it
+    private var liftAct: java.lang.ref.WeakReference<Activity>? = null
+    private var liftPx = 0
+    private var curTv: TextView? = null
+    private var curHasAction = false
+    private var curBarAnim: android.animation.ObjectAnimator? = null
+
+    private fun liftFor(a: Activity, host: ViewGroup): Int =
+        if (liftAct?.get() === a && host === a.findViewById<ViewGroup>(android.R.id.content)) liftPx else 0
+
+    /** [px] = distance from the bottom of the activity's content to the top of the dock (0 = no dock). Called by NlChrome. */
+    fun setLift(a: Activity, px: Int) {
+        val l = Math.max(0, px)
+        if (liftAct?.get() === a && liftPx == l) return
+        liftAct = java.lang.ref.WeakReference(a); liftPx = l
+        main.post {
+            val v = cur ?: return@post; val h = curHost ?: return@post
+            val act = actOf(v.context) ?: return@post
+            val lp = v.layoutParams as? FrameLayout.LayoutParams ?: return@post
+            val nb = dp(act, 12f) + liftFor(act, h)
+            if (lp.bottomMargin != nb) { lp.bottomMargin = nb; v.layoutParams = lp }
+        }
     }
 
     private fun show(c: Context, text: String, len: Int, kind: String?, actionLabel: String?, action: (() -> Unit)?) {
@@ -120,35 +158,55 @@ object Lm {
         val hasAction = actionLabel != null && action != null
         val ms = if (kind == "err") 8000L else if (hasAction || len == Toast.LENGTH_LONG) 5000L else 3000L
 
-        // identical message again: keep the pill, only restart the timer
-        if (cur != null && curHost === host && curMsg == text && !hasAction) {
-            hideJob?.let { main.removeCallbacks(it) }
-            val again = Runnable { dismissNow() }
-            hideJob = again
-            main.postDelayed(again, ms)
-            return
+        if (cur != null && curHost === host && !hasAction && !curHasAction) {
+            val same = curMsg == text
+            if (same || mergeable(curMsg, text)) {
+                // identical message: keep the pill, restart the timer; changed number: same pill, new number, a small pulse and a polite re-announce
+                hideJob?.let { main.removeCallbacks(it) }
+                val again = Runnable { dismissNow(true) }
+                hideJob = again
+                main.postDelayed(again, ms)
+                if (!same) {
+                    curTv?.text = text; curMsg = text
+                    cur?.contentDescription = prefix(kind) + text
+                    if (!reduceMotion(act)) cur?.let { v -> v.scaleX = 1.04f; v.scaleY = 1.04f; v.animate().scaleX(1f).scaleY(1f).setDuration(LumenMotion.FAST).setInterpolator(LumenMotion.DECEL).start() }
+                    cur?.announceForAccessibility(text)
+                }
+                return
+            }
         }
         dismissNow()
 
         val lm = Lumen.of(act)
-        val pill = LinearLayout(act)
-        pill.orientation = LinearLayout.HORIZONTAL
-        pill.gravity = Gravity.CENTER_VERTICAL
-        pill.setPadding(dp(act, 16f), dp(act, 12f), dp(act, 16f), dp(act, 12f))
+        val pill = FrameLayout(act)
+        val row = LinearLayout(act)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.setPadding(dp(act, 16f), dp(act, 12f), dp(act, 16f), dp(act, 12f))
+        pill.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val bg = shape(lm.surfaceHi, dp(act, 24f).toFloat())
         bg.setStroke(Math.max(1, dp(act, 1f)), lm.edge)
         pill.background = bg
         pill.elevation = dp(act, 6f).toFloat()
+        pill.clipToOutline = true   // the Undo countdown bar is clipped to the pill
+        pill.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, Math.min(dp(act, 24f).toFloat(), v.height / 2f)) }
+        }
         pill.isClickable = true
-        pill.setOnClickListener { dismissNow() }
+        pill.setOnClickListener { dismissNow(true) }
+        // A1: the snackbar is a polite live region ("Error: ..." / "Warning: ..." prefix), the countdown bar and glyph are decoration
+        pill.contentDescription = prefix(kind) + text
+        pill.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        pill.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
 
         var used = dp(act, 32f)
         if (kind == "ok" || kind == "warn" || kind == "err") {
             val col = if (kind == "ok") lm.success else if (kind == "warn") lm.warning else lm.error
             val gv = GlyphView(act, kind ?: "ok", col)
+            gv.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             val lp = LinearLayout.LayoutParams(dp(act, 20f), dp(act, 20f))
             lp.rightMargin = dp(act, 8f)
-            pill.addView(gv, lp)
+            row.addView(gv, lp)
             used += dp(act, 28f)
         }
 
@@ -158,11 +216,12 @@ object Lm {
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         tv.maxLines = 2
         tv.ellipsize = android.text.TextUtils.TruncateAt.END
+        tv.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO   // the pill carries the text
         val hostW = if (host.width > 0) host.width else act.resources.displayMetrics.widthPixels
         val avail = Math.min(dp(act, 560f), hostW - dp(act, 32f))
         if (hasAction) used += dp(act, 96f)
         tv.maxWidth = Math.max(dp(act, 120f), avail - used)
-        pill.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        row.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         if (hasAction) {
             val ta = TextView(act)
@@ -173,21 +232,36 @@ object Lm {
             ta.gravity = Gravity.CENTER
             ta.minimumHeight = dp(act, 48f)
             ta.setPadding(dp(act, 12f), 0, dp(act, 12f), 0)
-            ta.setOnClickListener { dismissNow(); try { action?.invoke() } catch (_: Throwable) { } }
+            ta.setOnClickListener { dismissNow(true); try { action?.invoke() } catch (_: Throwable) { } }
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.leftMargin = dp(act, 12f)
             lp.topMargin = -dp(act, 12f)
             lp.bottomMargin = -dp(act, 12f)
-            pill.addView(ta, lp)
+            row.addView(ta, lp)
+            androidx.core.view.ViewCompat.addAccessibilityAction(pill, actionLabel!!) { _, _ -> ta.performClick(); true }
+        }
+
+        // M5: Undo snackbars show a 3 dp countdown bar along the bottom edge that shrinks over the visible time
+        if (hasAction && Regex("undo", RegexOption.IGNORE_CASE).containsMatchIn(actionLabel ?: "")) {
+            val bar = View(act)
+            bar.setBackgroundColor(withAlpha(lm.primary, 0.6f))
+            bar.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            bar.pivotX = 0f
+            pill.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(act, 3f), Gravity.BOTTOM or Gravity.START))
+            bar.post { bar.pivotX = 0f }
+            val an = android.animation.ObjectAnimator.ofFloat(bar, View.SCALE_X, 1f, 0f)
+            an.duration = ms; an.interpolator = android.view.animation.LinearInterpolator()
+            an.start()
+            curBarAnim = an
         }
 
         val flp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-        flp.bottomMargin = dp(act, 12f)
+        flp.bottomMargin = dp(act, 12f) + liftFor(act, host)
         flp.leftMargin = dp(act, 16f)
         flp.rightMargin = dp(act, 16f)
         host.addView(pill, flp)
         pill.bringToFront()
-        cur = pill; curHost = host; curMsg = text
+        cur = pill; curHost = host; curMsg = text; curTv = tv; curHasAction = hasAction
 
         if (reduceMotion(act)) {   // spec 13.4: no transform, 120 ms fade
             pill.alpha = 0f
@@ -197,10 +271,12 @@ object Lm {
             pill.translationY = dp(act, 16f).toFloat()
             pill.animate().alpha(1f).translationY(0f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start()
         }
-        val job = Runnable { dismissNow() }
+        val job = Runnable { dismissNow(true) }
         hideJob = job
         main.postDelayed(job, ms)
     }
+
+    private fun prefix(kind: String?): String = if (kind == "err") "Error: " else if (kind == "warn") "Warning: " else ""
 
     /** 20 dp semantic glyph: filled disc in the semantic colour with a check (ok), an exclamation mark (warn) or a cross (err). */
     private class GlyphView(c: Context, private val kind: String, private val col: Int) : View(c) {
@@ -352,6 +428,7 @@ object Lm {
                 val tid = c.resources.getIdentifier("alertTitle", "id", "android")
                 if (top != null && top.visibility == View.VISIBLE) {
                     val hero = HeroView(c, lm.errorCont, lm.onErrorCont)
+                    hero.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     val lp = LinearLayout.LayoutParams(dp(c, 56f), dp(c, 56f))
                     lp.gravity = Gravity.CENTER_HORIZONTAL
                     lp.topMargin = dp(c, 16f)
@@ -362,6 +439,11 @@ object Lm {
             }
         } catch (_: Throwable) { }
 
+        // M1 (native): dialog exit 140 ms accelerate (window exit animation; 120 ms fade with Reduce motion). A1: the window is announced with the dialog title.
+        try {
+            d.window?.setWindowAnimations(if (reduceMotion(c)) R.style.LmDialogExitReduced else R.style.LmDialogExit)
+            if (title != null && title.isNotEmpty()) d.window?.decorView?.let { androidx.core.view.ViewCompat.setAccessibilityPaneTitle(it, title) }
+        } catch (_: Throwable) { }
         // scale 0.92 -> 1 + fade, t.base decelerate; with Reduce motion only a 120 ms fade (spec 13.3 / 13.4)
         try {
             val dv = d.window?.decorView

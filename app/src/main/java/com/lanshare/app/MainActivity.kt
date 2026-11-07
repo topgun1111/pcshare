@@ -71,6 +71,8 @@ class MainActivity : Activity() {
         /** Lumen Part 15 / 16: device facts for the glass ladder, and the in-app Reduce motion / Haptic feedback switches. */
         @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
         @JavascriptInterface fun folderColor(): String = if (BuildConfig.LITE) "#9b63d8" else "#d2590a"   // default folder colour = app icon colour
+        /** Lumen Part 4a (N1 a): the glass step the page picked (f0..f3), so native dialogs / sheets use the same blur / tint step. */
+        @JavascriptInterface fun glassStepSet(step: String) { LumenGlass.setStep(this@MainActivity, step) }
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
         @JavascriptInterface fun reduceMotionSet(on: Boolean) { LumenPrefs.setReduceMotion(this@MainActivity, on) }
         @JavascriptInterface fun hapticsGet(): Boolean = LumenPrefs.hapticsOn(this@MainActivity)

@@ -19,7 +19,11 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import androidx.core.graphics.PathParser
+import androidx.core.view.ViewCompat
 import org.json.JSONObject
 
 /** A 24x24 Material path drawn at [px] x [px]. Shared by the sheets and the native search row. */
@@ -50,6 +54,63 @@ private class NlRadio(c: Context, private val on: Boolean, private val ring: Int
         p.style = Paint.Style.STROKE; p.strokeWidth = 2f * d; p.color = if (on) tl else ring
         cv.drawCircle(r, r, r - d, p)
         if (on) { p.style = Paint.Style.FILL; p.color = tl; cv.drawCircle(r, r, 6f * d, p) }
+    }
+}
+
+/**
+ * Lumen Part 4a (N2): bottom sheet with a drag handle and swipe-to-dismiss. A downward drag that starts on the handle, or anywhere while the content is scrolled to the top,
+ * moves the sheet with the finger; letting go past 30 % of its height or with a fast fling slides it out (t.exit, accelerate), otherwise it settles back (t.base, decelerate).
+ */
+private class SwipeSheet(c: Context, private val scroll: ScrollView, private val onDismiss: () -> Unit) : LinearLayout(c) {
+    private var y0 = 0f
+    private var drag = false
+    private var vt: VelocityTracker? = null
+    private val slop = ViewConfiguration.get(c).scaledTouchSlop
+    init { orientation = VERTICAL }
+
+    private fun track(e: MotionEvent) { vt?.addMovement(e) }
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { y0 = e.rawY; drag = false; vt?.recycle(); vt = VelocityTracker.obtain(); track(e) }
+            MotionEvent.ACTION_MOVE -> { track(e); if (!drag && e.rawY - y0 > slop && scroll.scrollY == 0) { drag = true; y0 = e.rawY } }
+        }
+        return drag
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        track(e)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { y0 = e.rawY; if (vt == null) vt = VelocityTracker.obtain(); return true }
+            MotionEvent.ACTION_MOVE -> {
+                if (!drag && e.rawY - y0 > slop) { drag = true; y0 = e.rawY }
+                if (drag) translationY = Math.max(0f, e.rawY - y0)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!drag) { vt?.recycle(); vt = null; return true }
+                vt?.computeCurrentVelocity(1000)
+                val v = vt?.yVelocity ?: 0f
+                vt?.recycle(); vt = null; drag = false
+                if (e.actionMasked == MotionEvent.ACTION_UP && (translationY > height * 0.3f || v > 1200f)) dismissOut() else settle()
+                return true
+            }
+        }
+        return true
+    }
+
+    fun settle() { animate().translationY(0f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start() }
+
+    fun dismissOut() {
+        if (LumenPrefs.reduceMotion(context)) { animate().alpha(0f).setDuration(LumenMotion.REDUCE_FADE).withEndAction { onDismiss() }.start(); return }
+        animate().translationY(height.toFloat()).setDuration(LumenMotion.exit(LumenMotion.BASE)).setInterpolator(LumenMotion.ACCEL).withEndAction { onDismiss() }.start()
+    }
+
+    /** Slide up from the bottom edge (t.med decelerate); Reduce motion = 120 ms fade. */
+    fun enter() {
+        if (LumenPrefs.reduceMotion(context)) { translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start(); return }
+        alpha = 1f; translationY = height.toFloat()
+        animate().translationY(0f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.DECEL).start()
     }
 }
 
@@ -96,12 +157,17 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         if (act.theme.resolveAttribute(android.R.attr.selectableItemBackground, tvv, true)) v.setBackgroundResource(tvv.resourceId)
     }
 
+    /** Panel fill chosen by [LumenGlass] for the last dialog made (blur-behind is switched on in its window when the F-step allows it). */
+    private var fill = 0
+
     private fun newDialog(bottom: Boolean): Dialog {
         val dl = Dialog(act)
         dl.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        fill = LumenGlass.apply(dl.window, act)
         dl.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0.42f)
+            setDimAmount(if (AppPal.night(act)) 0.56f else 0.32f)   // Lumen scrim: 32 % light / 56 % dark (same as Lm.restyle)
+            setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (bottom) R.style.LmSheetExit else R.style.LmDialogExit)
             setGravity(if (bottom) Gravity.BOTTOM else Gravity.CENTER)
             setLayout(if (bottom) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
@@ -125,7 +191,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val card = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(24f), 0, dp(8f))
-            background = if (p.ct != 0) NlTex.card(p.ct, p.cb, 28f * d, p.bd, Math.max(1, Math.round(d))) else round(p.card, 28f)
+            background = if (p.ct != 0) NlTex.card(p.ct, p.cb, 28f * d, p.bd, Math.max(1, Math.round(d))) else LumenGlass.panel(act, fill, 28f, false)   // Lumen: glass panel, r-xxl, edge hairline
         }
         card.addView(tv("Sort By", 20f, p.fg, true).apply { setPadding(dp(24f), 0, dp(24f), dp(8f)) })
         fun opt(k: String, asc: Boolean) {
@@ -152,6 +218,11 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         wrap.addView(card, LinearLayout.LayoutParams(dp(360f), ViewGroup.LayoutParams.WRAP_CONTENT))
         dl.setContentView(wrap)
         dlg = dl
+        ViewCompat.setAccessibilityPaneTitle(wrap, "Sort by")
+        dl.setOnShowListener {   // scale 0.92 -> 1 + fade, t.base decelerate (Reduce motion: 120 ms fade)
+            if (LumenPrefs.reduceMotion(act)) { card.alpha = 0f; card.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start() }
+            else { card.alpha = 0f; card.scaleX = 0.92f; card.scaleY = 0.92f; card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start() }
+        }
         dl.show()
     }
 
@@ -163,7 +234,16 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val p = s.pal
         val dl = newDialog(true)
         val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12f), 0, dp(12f), dp(8f)) }
-        val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb) else setBackgroundColor(p.card); addView(col) }
+        val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
+        // Lumen sheet: glass panel with r-xxl top corners + edge hairline, drag handle, swipe-to-dismiss (textured themes keep their own texture)
+        val sheet = SwipeSheet(act, scroll) { dl.window?.setWindowAnimations(0); dl.dismiss() }
+        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, 28f, true)
+        val handle = View(act).apply { background = round(LumenGlass.withAlpha(p.mut, 0.5f), 2f); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        sheet.addView(handle, LinearLayout.LayoutParams(dp(32f), dp(4f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12f); bottomMargin = dp(4f) })
+        sheet.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        ViewCompat.setAccessibilityPaneTitle(sheet, "View options")
+        sheet.translationY = 4000f   // off screen until enter() runs (no one-frame flash)
+        ViewCompat.addAccessibilityAction(sheet, "Close") { _, _ -> dl.dismiss(); true }
 
         fun hr() = View(act).apply { setBackgroundColor(p.bd) }.also { col.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)) }
         fun head(t: String) { col.addView(tv(t, 16f, p.tl, true).apply { setPadding(dp(4f), dp(14f), dp(4f), dp(6f)) }) }
@@ -243,8 +323,9 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             cbRow("Show hidden files", s.hid) { v -> s.hid = v; onPref(JSONObject().put("hid", if (v) 1 else 0)); draw() }
         }
         draw()
-        dl.setContentView(scroll)
+        dl.setContentView(sheet)
         dlg = dl
+        dl.setOnShowListener { sheet.post { sheet.enter() } }
         dl.show()
         dl.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }

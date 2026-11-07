@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Smoother sheets, snackbars and screen reader support
+### Added
+- View options sheet: glass look, drag handle, and swipe down to close.
+- Undo messages show a small countdown bar.
+- Screen reader (TalkBack) now reads file names, folder / file, selection state, gallery cells and side menu entries.
+### Changed
+- Messages appear above the bottom action bar instead of covering it, and fade out smoothly.
+- Repeated messages like "3 files" then "4 files" update in place.
+- Dialogs and sheets close with a short animation.
+- Filter chips are easier to tap and show a press ripple.
+
 ## 2026-11-07 - Light / Dark mode, theme preview, contrast
 ### Added
 - Settings > Theme: choose Auto, Light or Dark and each theme switches to its partner (Sky and Ocean, Mint and Forest, Windows 11 Light and Dark and more).

@@ -609,7 +609,7 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
  * Owner of the five views. [layer] goes into MainActivity's root above the page and the native list; it has no background and no click handling,
  * so every touch outside a button reaches the views below. [fire] runs nlCh(event, id) in the page.
  */
-class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
+class NlChrome(private val act: Activity, private val fire: (String, String) -> Unit) {
     companion object {
         /** Kill switch: false = the page's HTML bars / buttons / snackbar only. */
         const val ENABLED = true
@@ -697,6 +697,9 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
             dock.setData(acts, cl?.optString("t"), cl != null && cl.optInt("p") == 1, dock.layoutParams.width.toFloat(), dock.layoutParams.height.toFloat(),
                 k.optLong("bg").toInt(), k.optDouble("rx", 0.0).toFloat())
         }
+
+        // N12: Lm.snack (other native messages) sits above the dock while it is on screen: distance from the bottom of the content to the card's top edge
+        try { Lm.setLift(act, if (dock.visibility == View.VISIBLE && k != null) Math.max(0, layer.height - px(k.getJSONArray("r").getDouble(1))) else 0) } catch (_: Throwable) { }
 
         val t = j.optJSONObject("t")
         if (place(toast, t?.optJSONArray("r")) && t != null)

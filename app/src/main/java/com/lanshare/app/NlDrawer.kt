@@ -58,6 +58,7 @@ private class DrReg(val h: Float, val its: List<DrIt>, val hits: List<DrHit>)
 /** One painted region: the tab strip, a body row or the footer. Taps on a hit rectangle go to [onHit]; a touch outside every hit is not consumed. */
 private class DrView(c: Context, private val d: Float) : View(c) {
     var reg: DrReg? = null
+        set(v) { field = v; try { ebt.invalidateRoot() } catch (_: Throwable) { } }
     var idx = 0
     var hov = 0
     var onHit: ((DrHit, Int) -> Unit)? = null
@@ -157,6 +158,39 @@ private class DrView(c: Context, private val d: Float) : View(c) {
         lay.draw(cv)
         cv.restore()
     }
+
+    // A1 (Part 4a): every hit rectangle is a virtual button; its spoken name = the text painted inside it (icon-only hits get a fallback)
+    private fun labelOf(h: DrHit): String {
+        val r = reg ?: return ""
+        val sb = StringBuilder()
+        for (it in r.its) if (it.k == 't' && it.s.isNotBlank()) {
+            val cx = it.x + it.w / 2f; val cy = it.y + it.h / 2f
+            if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) { if (sb.isNotEmpty()) sb.append(", "); sb.append(it.s.trim()) }
+        }
+        return if (sb.isNotEmpty()) sb.toString() else if (h.k == "x") "Close" else "Button"
+    }
+    private val ebt = object : androidx.customview.widget.ExploreByTouchHelper(this) {
+        override fun getVirtualViewAt(x: Float, y: Float): Int {
+            val r = reg ?: return INVALID_ID
+            for (i in r.hits.indices) { val h = r.hits[i]; if (x / d >= h.x && x / d <= h.x + h.w && y / d >= h.y && y / d <= h.y + h.h) return i }
+            return INVALID_ID
+        }
+        override fun getVisibleVirtualViews(ids: MutableList<Int>) { val r = reg ?: return; for (i in r.hits.indices) ids.add(i) }
+        override fun onPopulateNodeForVirtualView(i: Int, n: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+            val h = reg?.hits?.getOrNull(i) ?: return
+            n.contentDescription = labelOf(h)
+            n.className = if (h.k == "t") "android.widget.Tab" else "android.widget.Button"
+            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
+            n.setBoundsInParent(android.graphics.Rect((h.x * d).toInt(), (h.y * d).toInt(), ((h.x + h.w) * d).toInt(), ((h.y + h.h) * d).toInt()))
+        }
+        override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
+            val h = reg?.hits?.getOrNull(i) ?: return false
+            if (action == androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK) { onHit?.invoke(h, idx); return true }
+            return false
+        }
+    }
+    init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt) }
+    override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
 
     private fun find(px: Float, py: Float): DrHit? {
         val r = reg ?: return null

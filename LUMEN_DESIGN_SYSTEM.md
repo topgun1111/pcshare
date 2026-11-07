@@ -1017,8 +1017,8 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [ ] V5 Check the three static dark-theme selector lists (UI4 / UI5 / UI6, with `data-cdark`) after any new dark preset.
 
 **N. Native drawing (never done in native)**
-- [ ] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step.
-- [ ] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss.
+- [~] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer left for Part 4b)
+- [x] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss. (2026-11-07, Part 4a)
 - [ ] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now.
 - [ ] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot.
 - [ ] N5 Folder drawing in pickers, album covers and other native places; drawer icons (`NlDrawer`); tiles for Devices / FTP / Cloud sheets.
@@ -1028,15 +1028,15 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [ ] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill).
 - [ ] N10 Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
 - [ ] N11 Sticky heading strip and fast-scroll scrubber in the native list.
-- [ ] N12 Snackbar lift above the bottom bar / dock (`Lm.snack`), system toast only where no Activity exists.
+- [x] N12 (2026-11-07, Part 4a) Snackbar lift above the bottom bar / dock (`Lm.snack`), system toast only where no Activity exists.
 - [ ] N13 Splash: logo screen is the system one (Android 12+); older versions still show the window background only.
 
 **M. Motion (Part 16 leftovers)**
-- [~] M1 Exit animations: dialog, sheet, popup menu close in 200 ms accelerate (they close instantly). (page done 2026-11-07, Part 1; native `Lm.kt` dialog exit left for Part 4)
+- [x] M1 Exit animations: dialog, sheet, popup menu close in 200 ms accelerate (they close instantly). (page done 2026-11-07, Part 1; native dialog / sheet / snackbar exits 2026-11-07, Part 4a)
 - [~] M2 Screen push of the main file screens with old-screen shift / dim; selection-start choreography. (Part 2 2026-11-07: folder push + 20 ms row tint on selection start; old-screen shift / dim and native bar / dock slide left)
 - [x] M3 List insert / remove collapse. (done 2026-11-07, Part 2: render() wrapper collapses removed rows, under 200 rows)
 - [x] M4 Aurora wallpaper drift (60 s) and drift off in battery saver. (done 2026-11-07, Part 2: `#home::before` drifts 60 s, off in f2 / f3 / Reduce motion / saver)
-- [~] M5 Undo countdown bar and merging of repeated snackbar numbers. (page done 2026-11-07, Part 1: merge + Undo bar; native `Lm.snack` 6-arg form left for Part 4)
+- [x] M5 Undo countdown bar and merging of repeated snackbar numbers. (page done 2026-11-07, Part 1: merge + Undo bar; native Undo bar + number merge in `Lm.snack` 2026-11-07, Part 4a)
 - [x] M6 Sheet swipe-to-dismiss (page `#sheet`). (done 2026-11-07, Part 1: `/*LUMEN-UI13*/`)
 - [ ] M7 Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
@@ -1060,8 +1060,8 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] T5 Live preview card in the theme picker; `onWarning` slot; ubuntu / win11 own button gradients and shadows vs Lumen. (2026-11-07, Part 3)
 
 **A. Accessibility (Part 18 / Round 2 C leftovers)**
-- [ ] A1 `contentDescription` / roles for native list rows (`NativeList`), drawer rows (`NlDrawer`), `Lm` dialogs and snackbar.
-- [ ] A2 Chips: real 48 px hit box with ripple (today a click redirect on the `.chips` padding, no ripple there).
+- [x] A1 (2026-11-07, Part 4a) `contentDescription` / roles for native list rows (`NativeList`), drawer rows (`NlDrawer`), `Lm` dialogs and snackbar.
+- [x] A2 (2026-11-07, Part 4a) Chips: real 48 px hit box with ripple (today a click redirect on the `.chips` padding, no ripple there).
 - [x] A3 Extend the icon-button name table `LB` whenever a new icon-only button appears. (done 2026-11-07, Part 1: `lint.py` A3 line lists unnamed icon-only buttons; 0 now)
 
 ### 19.2 Old to new quick map

@@ -226,7 +226,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean, md: Boolean = false) {
         if (cp != compact || lg != large || md != medium) { compact = cp; large = lg; medium = md; requestLayout() }
         if ((r.k == "hdr") != (row?.k == "hdr")) requestLayout()
-        row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; invalidate()
+        row = r; pal = pl; isSel = sel; thumb = null; dur = null; ell = null; NlA11y.apply(this, r, sel); invalidate()
     }
 
     override fun setPressed(pressed: Boolean) { super.setPressed(pressed); invalidate() }
@@ -412,7 +412,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
-        row = r; pal = pl; isSel = sel; selMode = selm; this.bare = bare; thumb = null; dur = null; layRow = null; invalidate()
+        row = r; pal = pl; isSel = sel; selMode = selm; this.bare = bare; thumb = null; dur = null; layRow = null; NlA11y.apply(this, r, sel); invalidate()
     }
 
     private fun prep(w: Int) {
@@ -592,8 +592,35 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
         }
     })
 
+    // A1 (Part 4a): several cells share one view, so every cell is a virtual TalkBack button (name, folder / file, selected state; tap and long press)
+    private val ebt = object : androidx.customview.widget.ExploreByTouchHelper(this) {
+        override fun getVirtualViewAt(x: Float, y: Float): Int { val i = hit(x, y); return if (i >= 0) i else INVALID_ID }
+        override fun getVisibleVirtualViews(ids: MutableList<Int>) { for (i in cells.indices) ids.add(i) }
+        override fun onPopulateNodeForVirtualView(i: Int, n: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+            val r = cells.getOrNull(i) ?: return
+            val cs = cell(width.toFloat()); val x = 4f * d + i * (cs + 4f * d); val y = 4f * d
+            n.contentDescription = NlA11y.describe(r)
+            n.className = "android.widget.Button"
+            n.isSelected = (first + i) in sel
+            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
+            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
+            n.setBoundsInParent(Rect(x.toInt(), y.toInt(), (x + cs).toInt(), (y + cs).toInt()))
+        }
+        override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
+            if (i !in cells.indices) return false
+            return when (action) {
+                androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK -> { onTap?.invoke(first + i); true }
+                androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK -> { onLong?.invoke(first + i); true }
+                else -> false
+            }
+        }
+    }
+    init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt) }
+    override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+
     fun bind(cs: List<NlRow>, firstIdx: Int, columns: Int, pl: NlPal, selected: Set<Int>, selm: Boolean, isLast: Boolean) {
         cells = cs; first = firstIdx; cols = columns; pal = pl; sel = selected; selMode = selm; last = isLast
+        ebt.invalidateRoot()
         for (i in th.indices) { th[i] = null; du[i] = null }
         pressed = -1
         requestLayout(); invalidate()

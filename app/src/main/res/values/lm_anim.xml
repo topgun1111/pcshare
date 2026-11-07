@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LmDialogExit">
+        <item name="android:windowEnterAnimation">@null</item>
+        <item name="android:windowExitAnimation">@anim/lm_dlg_out</item>
+    </style>
+    <style name="LmSheetExit">
+        <item name="android:windowEnterAnimation">@null</item>
+        <item name="android:windowExitAnimation">@anim/lm_sheet_out</item>
+    </style>
+    <style name="LmDialogExitReduced">
+        <item name="android:windowEnterAnimation">@null</item>
+        <item name="android:windowExitAnimation">@anim/lm_fade_out</item>
+    </style>
+</resources>
