@@ -175,3 +175,36 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
         cv.drawText(text, rf.left + 12f * d, rf.centerY() - (fm.ascent + fm.descent) / 2f, tp)
     }
 }
+
+/**
+ * Lumen 12.18 / 13.5 (native twin of the page `#ptr`): SwipeRefreshLayout (its 40 dp circle, glass tint and primary ring are set in
+ * `NativeList.setPalette`) with the trigger distance fixed at 70 dp (spec) and a haptic tick the moment the pull PASSES the threshold,
+ * not when the refresh starts (SwipeRefreshLayout has no such callback). SwipeRefreshLayout moves the circle by 0.5 x the finger travel, so the
+ * same maths is applied to the raw touches here. One tick per crossing; a pull that goes back under the threshold re-arms it.
+ * NOT compiled in the Lumen environment (owner compile).
+ */
+class NlPullLayout(c: android.content.Context, d: Float) : androidx.swiperefreshlayout.widget.SwipeRefreshLayout(c) {
+    private val trigger = 70f * d
+    private var y0 = 0f
+    private var armed = false
+    private var crossed = false
+    var onThreshold: (() -> Unit)? = null
+
+    init { setDistanceToTriggerSync(Math.round(trigger)) }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> { y0 = ev.y; armed = !isRefreshing && !canChildScrollUp(); crossed = false }
+            android.view.MotionEvent.ACTION_MOVE -> if (armed && ev.pointerCount == 1) {
+                if (canChildScrollUp() || isRefreshing) armed = false
+                else {
+                    val over = (ev.y - y0) * 0.5f
+                    if (!crossed && over >= trigger) { crossed = true; onThreshold?.invoke() }
+                    else if (crossed && over < trigger * 0.9f) crossed = false   // small hysteresis so a jittering finger does not tick twice
+                }
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { armed = false; crossed = false }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+}

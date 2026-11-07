@@ -218,6 +218,7 @@ class UsActivity : Activity() {
             override fun onDraw(cv: Canvas) { val cx = width / 2f; val cy = height / 2f; val g = dp(6f).toFloat(); for (k in -1..1) cv.drawCircle(cx, cy + k * g, dp(2f).toFloat(), pt) }
         }.apply { contentDescription = "Sort and options"; setOnClickListener { menu() } }
         bar.addView(menuBtn, LinearLayout.LayoutParams(dp(44f), dp(52f)))
+        NlViewerBar.styleSearchBar(this, bar, p.bg)   // Lumen N7: Search variant = 64 dp + G1 chrome fill
         root.addView(bar)
         // chips
         val hs = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }

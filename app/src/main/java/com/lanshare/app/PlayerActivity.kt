@@ -96,7 +96,7 @@ class PlayerActivity : Activity() {
         @Volatile var pending: String? = null
         private const val PREFS = "ls_player"
         private const val MAX_ITEMS = 500
-        private const val HIDE_MS = 3500L
+        private const val HIDE_MS = NlViewerBar.HIDE_MS   // Lumen N7: spec 12.7, 3 s (was 3.5 s)
         /** Set after a video was deleted here: MainActivity refreshes the file list when it comes back to the front. */
         @Volatile private var changed = false
         fun consumeChanged(): Boolean { val c = changed; changed = false; return c }
@@ -167,7 +167,12 @@ class PlayerActivity : Activity() {
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
     /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
-    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+    private var heroClosing = false
+    override fun finish() {
+        if (!heroClosing && NlHero.close(this, try { curIndex() } catch (_: Throwable) { -1 }, startIdx) { heroClosing = true; finish() }) return   // Lumen M7 return: shrink into the thumbnail
+        super.finish()
+        if (heroClosing) overridePendingTransition(0, 0) else LumenPrefs.closeAnim(this)
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -375,9 +380,9 @@ class PlayerActivity : Activity() {
             v.animate().cancel()
             if (on) {
                 v.visibility = View.VISIBLE
-                if (animate) v.animate().alpha(1f).setDuration(150).start() else v.alpha = 1f
+                if (animate) v.animate().alpha(1f).setDuration(NlViewerBar.FADE_MS).start() else v.alpha = 1f
             } else if (animate) {
-                v.animate().alpha(0f).setDuration(150).withEndAction { if (!controlsOn) v.visibility = View.GONE }.start()
+                v.animate().alpha(0f).setDuration(NlViewerBar.FADE_MS).withEndAction { if (!controlsOn) v.visibility = View.GONE }.start()
             } else { v.alpha = 0f; v.visibility = View.GONE }
         }
         ui.removeCallbacks(autoHide)
@@ -990,6 +995,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        NlHero.release(this)
         ui.removeCallbacksAndMessages(null)
         rotAnim?.cancel()
         gen++

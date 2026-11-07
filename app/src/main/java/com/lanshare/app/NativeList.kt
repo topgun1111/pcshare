@@ -778,7 +778,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private val d = UiScale.dens(act)
     val overlay = NlOverlay(act, web)
-    private val srl = SwipeRefreshLayout(act)
+    private val srl = NlPullLayout(act, UiScale.dens(act))   // Lumen 12.18 / 13.5: 70 dp trigger + tick when the pull passes it
     private val rv = RecyclerView(act)
     private val skel = NlSkelView(act, UiScale.dens(act))   // Lumen 4d M7 a: placeholder rows while a tapped folder is still being built
     private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.visibility = View.VISIBLE; skel.invalidate(); skel.removeCallbacks(skelOffRun); skel.postDelayed(skelOffRun, 4000) } }
@@ -907,7 +907,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     init {
         rv.layoutManager = lm; rv.adapter = ad; rv.itemAnimator = null; rv.setHasFixedSize(true)
         srl.addView(rv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        srl.setOnRefreshListener { Haptics.play("tick"); emit("refresh", 0) }   // Lumen 13.5: tick when the pull passes the threshold
+        srl.onThreshold = { Haptics.play("tick") }   // Lumen 13.5: tick when the pull passes the threshold (NlPullLayout), not when the refresh starts
+        srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { run { val sy = r.computeVerticalScrollOffset(); val q = if (sy > 400) 999 else sy; if (q != lastSy) { lastSy = q; emit("sy", q) } }; val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }

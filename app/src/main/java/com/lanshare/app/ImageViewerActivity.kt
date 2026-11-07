@@ -124,7 +124,14 @@ class ImageViewerActivity : Activity() {
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
     /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
-    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+    private var heroIdx = -9          // item the viewer was opened on (NlHero.close shrinks back only while it is still shown)
+    private var heroClosing = false
+    override fun finish() {
+        if (!heroClosing) { val cur = try { pager.currentItem } catch (_: Throwable) { -1 }
+            if (NlHero.close(this, cur, heroIdx) { heroClosing = true; finish() }) return }   // Lumen M7 return: shrink into the thumbnail
+        super.finish()
+        if (heroClosing) overridePendingTransition(0, 0) else LumenPrefs.closeAnim(this)
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -147,6 +154,7 @@ class ImageViewerActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        NlHero.release(this)   // the kept list snapshot belongs to the first item
         setIntent(intent)
         begin()
     }
@@ -168,7 +176,7 @@ class ImageViewerActivity : Activity() {
         // top bar: back, file name + date, then three icon actions and a menu (slideshow, details). The position counter lives in a pill at the bottom.
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, LumenGrad.SCRIM_TOP_COLORS)
+            background = NlViewerBar.scrim()
             setPadding(dp(4), dp(6), dp(4), dp(28))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
@@ -188,15 +196,9 @@ class ImageViewerActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(2) }
         }
         val back = icon(IconBtn.BACK, "Back") { finish() }.apply { layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)) }
-        titleTv = TextView(this).apply {
-            setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt())
-        }
-        subTv = TextView(this).apply {
-            setTextColor(0xB3FFFFFF.toInt()); LumenTypography.fit(this, 12f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setPadding(0, dp(1), 0, 0)
-        }
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(6), 0, dp(8), 0); addView(titleTv); addView(subTv) }
+        titleTv = NlViewerBar.title(this)   // Lumen N7: shared viewer-bar title / subtitle / column (NlViewerBar.kt)
+        subTv = NlViewerBar.subtitle(this)
+        val col = NlViewerBar.textColumn(this, titleTv, subTv)
         ocrBtn = icon(IconBtn.TEXT, "Text on this picture") { toggleOcr() }
         val edit = icon(IconBtn.EDIT, "Edit") { edit() }
         val print = icon(IconBtn.PRINT, "Print") { printCurrent() }
@@ -269,8 +271,7 @@ class ImageViewerActivity : Activity() {
 
     private fun toggleUi() {
         uiOn = !uiOn
-        topWrap.visibility = if (uiOn) View.VISIBLE else View.GONE
-        countPill.visibility = if (uiOn) View.VISIBLE else View.GONE
+        NlViewerBar.fade(this, listOf(topWrap, countPill), uiOn)   // Lumen N7: 200 ms fade, plain with Reduce motion
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (uiOn) c.show(WindowInsetsCompat.Type.systemBars()) else c.hide(WindowInsetsCompat.Type.systemBars())
@@ -278,14 +279,8 @@ class ImageViewerActivity : Activity() {
     }
 
     // Lumen 12.7 / 12.22: the viewer bars hide after 3 s without a touch (not with a screen reader, not while hidden)
-    private val autoHideUi = Runnable { if (uiOn && !isFinishing) toggleUi() }
-    private fun armAutoHide() {
-        ui.removeCallbacks(autoHideUi)
-        if (!uiOn) return
-        val am = getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
-        if (am?.isTouchExplorationEnabled == true) return
-        ui.postDelayed(autoHideUi, 3000L)
-    }
+    private val autoHide = NlViewerBar.AutoHide(this, { uiOn }, { toggleUi() })
+    private fun armAutoHide() = autoHide.arm()
     override fun onUserInteraction() { super.onUserInteraction(); armAutoHide() }
 
     private fun setSlide(on: Boolean) {
@@ -355,6 +350,7 @@ class ImageViewerActivity : Activity() {
         items = list
         pager.adapter = Ad()
         pager.setCurrentItem(start, false)
+        if (heroIdx == -9) heroIdx = start
         updateTitle(start)
         prefetch(start)
     }
@@ -832,6 +828,7 @@ class ImageViewerActivity : Activity() {
     override fun onResume() { super.onResume(); ModelLinks.showIfAny(this); armAutoHide() }
 
     override fun onDestroy() {
+        NlHero.release(this)
         gen++
         ui.removeCallbacksAndMessages(null)
         pool.shutdownNow()

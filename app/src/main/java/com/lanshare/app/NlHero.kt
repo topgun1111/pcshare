@@ -35,6 +35,9 @@ import android.widget.ImageView
 object NlHero {
     private class Src(val rect: RectF, val radius: Float, val thumb: Bitmap, val snap: Bitmap?, val at: Long)
     @Volatile private var src: Src? = null
+    /** Lumen session 7 (M7 return): what the open transition used, kept so the viewer can run it backwards. Owner = the viewer Activity that played it. */
+    private class Ret(val owner: Activity, val s: Src) { var busy = false }
+    @Volatile private var ret: Ret? = null
 
     private fun take(): Src? { val s = src; src = null; return if (s != null && SystemClock.uptimeMillis() - s.at < 4000L) s else null }
 
@@ -76,12 +79,55 @@ object NlHero {
             val a = ValueAnimator.ofFloat(0f, 1f).apply { duration = LumenMotion.SLOW; interpolator = LumenMotion.EMPH }
             a.addUpdateListener { x -> val t = x.animatedValue as Float; hero.t = t; hero.invalidate(); if (s.snap != null) scrim.alpha = t }
             val t0 = SystemClock.uptimeMillis()
-            fun finish() { ov.animate().alpha(0f).setDuration(LumenMotion.FAST).withEndAction { try { root.removeView(ov) } catch (_: Throwable) { }; s.snap?.recycle() }.start() }
+            if (ctx is Activity && s.snap != null) { ret?.s?.snap?.recycle(); ret = Ret(ctx, s) }   // the snapshot stays alive for the return ([close]); [release] frees it
+            fun finish() { ov.animate().alpha(0f).setDuration(LumenMotion.FAST).withEndAction { try { root.removeView(ov) } catch (_: Throwable) { }; if (ret?.s !== s) s.snap?.recycle() }.start() }
             fun waitReady() { if (ready() || SystemClock.uptimeMillis() - t0 > 1500L) finish() else ov.postDelayed({ waitReady() }, 50L) }
             a.addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(an: android.animation.Animator) { waitReady() } })
             a.start()
             ov.postDelayed({ for (v in chrome) v.animate().alpha(1f).setDuration(LumenMotion.BASE).start() }, 120L)
         } catch (_: Throwable) { for (v in chrome) v.alpha = 1f }
+    }
+
+    /**
+     * Lumen session 7 (M7 return): shrink back into the launching thumbnail. Called from the viewer's `finish()`.
+     * Runs only when this Activity played the open transition, the viewer is still on the item it was opened on ([idxNow] == [idx0], a viewer that
+     * paged elsewhere keeps the fade + scale of [LumenPrefs.closeAnim]) and Reduce motion is off. The overlay shows the list snapshot taken at launch
+     * (so the list looks as it did), the thumbnail bitmap shrinks from the fitted picture to its old rect (rounded again) while the black scrim fades
+     * out; 280 ms accelerate. [done] then really finishes the Activity (no platform animation). Returns true = [done] will be called, the caller returns.
+     */
+    fun close(act: Activity, idxNow: Int, idx0: Int, done: () -> Unit): Boolean {
+        val r = ret ?: return false
+        if (r.owner !== act) return false
+        if (r.busy) return true
+        val snap = r.s.snap
+        if (idxNow != idx0 || snap == null || snap.isRecycled || r.s.thumb.isRecycled || LumenPrefs.reduceMotion(act)) return false
+        try {
+            val root = act.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? FrameLayout ?: return false
+            if (root.width <= 0 || root.height <= 0) return false
+            r.busy = true
+            val ov = FrameLayout(act)
+            val bgv = ImageView(act).apply { scaleType = ImageView.ScaleType.FIT_XY; setImageBitmap(snap) }
+            val scrim = View(act).apply { setBackgroundColor(Color.BLACK); alpha = 1f }
+            val hero = HeroView(act, r.s).apply { t = 1f }
+            val mp = ViewGroup.LayoutParams.MATCH_PARENT
+            ov.addView(bgv, FrameLayout.LayoutParams(mp, mp)); ov.addView(scrim, FrameLayout.LayoutParams(mp, mp)); ov.addView(hero, FrameLayout.LayoutParams(mp, mp))
+            root.addView(ov, FrameLayout.LayoutParams(mp, mp))
+            val a = ValueAnimator.ofFloat(1f, 0f).apply { duration = LumenMotion.exit(LumenMotion.SLOW); interpolator = LumenMotion.ACCEL }
+            a.addUpdateListener { x -> val t = x.animatedValue as Float; hero.t = t; hero.invalidate(); scrim.alpha = t }
+            a.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(an: android.animation.Animator) { done() }   // the overlay stays up until the window is gone: no flash of the viewer
+            })
+            a.start()
+            return true
+        } catch (_: Throwable) { r.busy = false; return false }
+    }
+
+    /** Frees the kept snapshot when [act] (the viewer) goes away or loads another item. */
+    fun release(act: Activity) {
+        val r = ret ?: return
+        if (r.owner !== act) return
+        ret = null
+        try { r.s.snap?.recycle() } catch (_: Throwable) { }
     }
 
     /** The hero: the thumbnail bitmap, interpolated from the centre-cropped rounded list rect to the picture fitted in the view. */

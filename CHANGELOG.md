@@ -5,6 +5,20 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Pictures and videos shrink back
+### Changed
+- Closing a picture or video you opened from the file list now shrinks it back into its thumbnail. If you swiped to another picture first, it fades away as before. Off when "Reduce motion" is on.
+
+## 2026-11-07 - Pull to refresh feels right
+### Changed
+- Pulling the file list down gives a light tick exactly when the pull is far enough to refresh, instead of when the refresh starts.
+
+## 2026-11-07 - Viewer bars that fade
+### Changed
+- The top bar of the picture, video and PDF viewers now fades away after 3 seconds and fades back when you tap, instead of cutting. It stays plain when "Reduce motion" is on and never hides with a screen reader.
+- The video header hides after 3 seconds like the other viewers (it was 3.5).
+- The top row of the search screen has the same soft glass tint as the other bars.
+
 ## 2026-11-07 - Calmer text sizes and smoother closing
 ### Changed
 - Text across the native screens (storage analyzer, print log, text editor, PDF / image / video viewers, file list, inbox, search) now uses one common set of sizes, so similar texts look the same everywhere. Some texts are one point bigger.
