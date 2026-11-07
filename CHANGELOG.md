@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Big titles, pull circle, tabs and hints
+### Added
+- Screens drawn by the page (gallery and similar) now open with a big title that shrinks into the top bar as you scroll.
+- Pull to refresh is now a small glass circle with a ring that fills as you pull, then spins while refreshing.
+- The tabs in the print sheet have a coloured line that slides to the chosen tab.
+- Long-press an icon button to see its name. The first time you see your files, a hint explains the row swipes (share right, delete left).
+### Changed
+- Progress bars on copy / move cards use the theme gradient and turn green when finished.
+- Several notices at once collapse into one "N notices" row you can open.
+- The recycle bin and settings search use the new friendly empty screen.
+
 ## 2026-11-07 - Friendlier empty and error screens
 ### Added
 - Empty folders, "no matches" and "can't reach this device" now show a big icon with a soft glow, a short title, one line of help and a Try again button.

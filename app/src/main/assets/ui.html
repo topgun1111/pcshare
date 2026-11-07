@@ -3113,7 +3113,7 @@ function openSettings(){
   const hb=E('button','ibtn');hb.append(ic('back'));hb.setAttribute('aria-label','Back');hb.onclick=close;
   const hd=E('div','fh');hd.append(hb,E('h3','','Settings'));
   const sb=E('div','sxs'),si=E('input');si.type='search';si.placeholder='Search settings';si.setAttribute('aria-label','Search settings');sb.append(ic('search'),si);
-  const body=E('div','fb'),none=E('div','fempty','No settings match your search');none.style.display='none';
+  const body=E('div','fb'),none=lmEmpty('neutral','No settings match','Try a different word.',null,null,'search',null,true);none.style.display='none';
   card.append(hd,sb,body);
   const secs=[];let cur=null;
   const sec=(title,color)=>{const h=E('div','sxh',title),g=E('div','sxg');g.style.setProperty('--sc',color);body.append(h,g);cur={h,g,rows:[]};secs.push(cur)};
@@ -5367,7 +5367,7 @@ async function openFreeUp(){
     const sub=E('div','fsub',c.n+(d.count?'  \u00b7  '+plural(d.count,'file')+(d.bytes?' \u00b7 '+fmt(d.bytes):''):''));card.append(sub);
     const body=E('div','fb');card.append(body);
     const bar=E('div','fa'),del=E('button','fdel','Delete');bar.append(del);card.append(bar);
-    if(!items.length){body.append(Object.assign(E('div','fempty'),{textContent:busy&&busy!=='Scanning\u2026'?busy:'Nothing here. Nice and clean.'}));bar.style.display='none';return}
+    if(!items.length){body.append(busy&&busy!=='Scanning\u2026'?Object.assign(E('div','fempty'),{textContent:busy}):lmEmpty('','The recycle bin is empty','Deleted files wait here before they go for good.',null,null,'del',null,true));bar.style.display='none';return}
     if(d.count>items.length)sub.textContent+='  (biggest '+items.length+' shown)';
     sub.append(E('br'),Object.assign(E('span'),{textContent:'Tap a file to open it \u00b7 press and hold to select',style:'opacity:.8'}));
     const rows=[];
@@ -5804,7 +5804,7 @@ function lvEnd(id,j){const L=LVS;if(!L||L.id!==id)return false;const vis=lvOn();
   L.askBox.style.display='none';
   const ok=j.state==='done',el=j.elapsed||0;
   L.h.textContent=ok?'✅ Done':j.state==='cancel'?'Cancelled':'⚠ Failed';
-  L.fill.style.width=(ok?100:L.fill.style.width.replace('%','')||0)+'%';if(!ok)L.fill.style.background=j.state==='cancel'?'var(--mut)':'var(--err)';
+  L.fill.style.width=(ok?100:L.fill.style.width.replace('%','')||0)+'%';if(L.fill.parentNode)L.fill.parentNode.classList.toggle('ok',ok);if(!ok)L.fill.style.background=j.state==='cancel'?'var(--mut)':'var(--err)';
   L.pc.textContent=ok?'100%':L.pc.textContent;L.now.style.display='none';
   L.sub.style.display='';L.sub.textContent=ok?(j.note||'')+(j.bytes&&el>=1&&j.total>1?(j.note?' · ':'')+fmt(j.total)+' in '+durTxt(el)+' · avg '+fmt(j.total/el)+'/s':(j.note?'':'Finished in '+durTxt(el))):(j.error||'');
   if(!ok&&j.state==='error')L.sub.style.color='var(--err)';
@@ -7173,20 +7173,20 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 }catch(e){console.log('[lumen] ui14 init failed',e)}})();
 /*LUMEN-UI14-JS:END*/</script>
 <style>
-/*LUMEN-UI19*/
+/*LUMEN-UI20*/
 /* 12.17 empty / error / permission states: glyph tile with glow, title, body, one action. 12.15 banner: glyph + text + action. */
-#empty{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);padding:var(--sp-12) var(--sp-6)}
-#empty .es-t{position:relative;width:88px;height:88px;display:grid;place-items:center;margin-bottom:var(--sp-2)}
-#empty .es-t::before{content:"";position:absolute;inset:-18px;border-radius:var(--r-full);background:radial-gradient(closest-side,color-mix(in srgb,var(--es-c,var(--primary)) 26%,transparent),transparent);pointer-events:none}
-#empty .es-t svg{position:relative;width:64px;height:64px;margin:0;padding:var(--sp-4);border-radius:var(--r-full);background:var(--es-b,var(--primaryCont));color:var(--es-c,var(--primary))}
-#empty.es-err{--es-c:var(--error);--es-b:var(--errorCont)}
-#empty.es-warn{--es-c:var(--warning);--es-b:var(--warningCont)}
-#empty.es-neutral{--es-c:var(--inkMut);--es-b:var(--cont)}
-#empty .es-h{margin:0;font-size:var(--fs-16);font-weight:600;color:var(--ink)}
-#empty .es-p{margin:0;max-width:28ch;font-size:var(--fs-14);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-#empty .es-a{margin-top:var(--sp-3)}
-#empty .es-d{margin-top:var(--sp-2);font-size:var(--fs-11);color:var(--mut);opacity:.8;word-break:break-word}
-@media (prefers-reduced-motion:no-preference){#empty .es-t{animation:esIn 240ms cubic-bezier(.2,0,0,1)}@keyframes esIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}}
+.es{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);padding:var(--sp-12) var(--sp-6)}
+.es .es-t{position:relative;width:88px;height:88px;display:grid;place-items:center;margin-bottom:var(--sp-2)}
+.es .es-t::before{content:"";position:absolute;inset:-18px;border-radius:var(--r-full);background:radial-gradient(closest-side,color-mix(in srgb,var(--es-c,var(--primary)) 26%,transparent),transparent);pointer-events:none}
+.es .es-t svg{position:relative;width:64px;height:64px;margin:0;padding:var(--sp-4);border-radius:var(--r-full);background:var(--es-b,var(--primaryCont));color:var(--es-c,var(--primary))}
+.es.es-err{--es-c:var(--error);--es-b:var(--errorCont)}
+.es.es-warn{--es-c:var(--warning);--es-b:var(--warningCont)}
+.es.es-neutral{--es-c:var(--inkMut);--es-b:var(--cont)}
+.es .es-h{margin:0;font-size:var(--fs-16);font-weight:600;color:var(--ink)}
+.es .es-p{margin:0;max-width:28ch;font-size:var(--fs-14);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.es .es-a{margin-top:var(--sp-3)}
+.es .es-d{margin-top:var(--sp-2);font-size:var(--fs-11);color:var(--mut);opacity:.8;word-break:break-word}
+@media (prefers-reduced-motion:no-preference){.es .es-t{animation:esIn 240ms cubic-bezier(.2,0,0,1)}@keyframes esIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}}
 #banner{display:none;align-items:center;gap:var(--sp-3);background:var(--errorCont);color:var(--onErrorCont)}
 #banner.on{display:flex}
 #banner.bn-warn{background:var(--warningCont);color:var(--onWarning)}
@@ -7195,28 +7195,107 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 #banner .bn-x{flex:1;min-width:0}
 #banner .bn-a{flex:none;background:none;border:0;color:inherit;font-weight:600;padding:var(--sp-2);min-height:40px;border-radius:var(--r-m);cursor:pointer}
 #banner .bn-a:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
+
+/* 12.7 Large top bar (page screens only: the native bar draws its own copy when html.nlcbar is set). --lg 1 = large (112), 0 = small (52 + 0). */
+#lgrow{display:none;overflow:hidden;height:calc(var(--lg,1)*60px);padding:0 var(--sp-4);background:var(--bar);color:var(--onbar);align-items:flex-end}
+#lgrow h1{margin:0;padding-bottom:var(--sp-3);font-size:calc(16px + var(--lg,1)*12px);line-height:1.15;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:var(--lg,1)}
+html.lgbar:not(.nlcbar) body:not(.selm):not(.srch) #lgrow{display:flex}
+html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{opacity:calc(1 - var(--lg,1))}
+/* 12.15 collapsed notices */
+#banner .bn-n{flex:1;min-width:0}
+#banner .bn-l{display:none;flex-basis:100%;margin:0;padding:0 0 0 36px;list-style:none;font-size:var(--fs-12)}
+#banner.open .bn-l{display:block}
+#banner{flex-wrap:wrap}
+/* 12.16 job cards: gradient bars, success on completion, check pop */
+.pj .pjb{height:8px;border-radius:var(--r-full);background:var(--surfaceLo,var(--bd))}
+.pj .pjb i{border-radius:var(--r-full);background:var(--gPrimary,var(--ac))}
+.pj .pjb.ok i{background:var(--gSuccess,var(--success))}
+.pj .pjb.ok{animation:pjOk 320ms cubic-bezier(.2,0,0,1)}
+@keyframes pjOk{0%{transform:scaleY(1)}40%{transform:scaleY(1.6)}100%{transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){.pj .pjb.ok{animation:none}}
+/* 12.18 pull to refresh: 40 px glass circle, ring grows with the pull, glyph only (no label) */
+#ptr div{position:relative;width:40px;height:40px;min-width:0;padding:0;margin:0 0 var(--sp-2);border-radius:var(--r-full);font-size:0;color:transparent;display:grid;place-items:center;background:color-mix(in srgb,var(--glassTint,var(--cont)) 80%,transparent);-webkit-backdrop-filter:blur(var(--gb2,16px));backdrop-filter:blur(var(--gb2,16px));box-shadow:var(--sh);transform:scale(calc(.6 + var(--p,0)*.4));opacity:calc(.35 + var(--p,0)*.65)}
+#ptr div::before{content:"";position:absolute;inset:7px;border-radius:50%;background:conic-gradient(var(--primary) calc(var(--p,0)*360deg),color-mix(in srgb,var(--ink) 14%,transparent) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px))}
+#ptr.spin div::before{background:conic-gradient(from 0deg,var(--primary) 25%,color-mix(in srgb,var(--ink) 14%,transparent) 0);animation:ptrSpin .9s linear infinite}
+@keyframes ptrSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#ptr.spin div::before{animation:none}}
+/* 12.10 tabs: sliding 3 px indicator */
+.ptabs{position:relative}
+.ptabs .tabind{position:absolute;left:0;bottom:0;height:3px;border-radius:var(--r-full) var(--r-full) 0 0;background:var(--primary);transform:translateX(0);transition:transform 200ms cubic-bezier(.2,0,0,1),width 200ms cubic-bezier(.2,0,0,1);pointer-events:none}
+.ptabs>button.on{border-bottom-color:transparent!important}
+@media (prefers-reduced-motion:reduce){.ptabs .tabind{transition:none}}
+/* 12.21 tooltips and coach marks */
+.lmtip{position:fixed;z-index:60;max-width:min(260px,80vw);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-m);font-size:var(--fs-12);line-height:1.3;background:color-mix(in srgb,var(--surfaceHi,var(--cont)) 92%,transparent);color:var(--ink);box-shadow:var(--sh);-webkit-backdrop-filter:blur(var(--gb2,16px));backdrop-filter:blur(var(--gb2,16px));pointer-events:none;opacity:0;transition:opacity 120ms}
+.lmtip.on{opacity:1}
+.lmcoach{position:fixed;z-index:61;max-width:min(280px,86vw);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-l);background:var(--primaryCont);color:var(--onPrimaryCont);box-shadow:var(--sh);font-size:var(--fs-14);animation:esIn 200ms cubic-bezier(.2,0,0,1)}
+.lmcoach button{display:block;margin:var(--sp-2) 0 0 auto;background:none;border:0;color:inherit;font-weight:600;padding:var(--sp-2);min-height:40px}
 </style>
 <script>
-/*LUMEN-UI19-JS*/
+/*LUMEN-UI20-JS*/
 (function(){try{
   /* lmEmpty(tone, title, body, actLabel, actFn, glyph, detail): tone err | warn | neutral | (default = primary) */
-  window.lmEmpty=function(tone,title,body,act,fn,glyph,detail){
-    const e=E('div');e.id='empty';e.className=tone?'es-'+tone:'';e.setAttribute('role',tone==='err'?'alert':'status');
+  window.lmEmpty=function(tone,title,body,act,fn,glyph,detail,noid){
+    const e=E('div');if(!noid)e.id='empty';e.className='es'+(tone?' es-'+tone:'');e.setAttribute('role',tone==='err'?'alert':'status');
     const t=E('div','es-t');t.append(ic(glyph||(tone==='err'?'wifi':tone==='warn'?'warn':'folder')));
     e.append(t,E('p','es-h',title));if(body)e.append(E('p','es-p',body));
     if(act&&fn){const b=E('button','tbtn fill es-a',act);b.onclick=fn;e.append(b)}
     if(detail)e.append(E('div','es-d',detail));
     return e};
-  /* banner(text, opts): opts = {kind:'err'|'warn'|'info', act:'Retry', fn:()=>{}}; a leading warning sign in the text is dropped (the glyph replaces it) */
+  /* banner(text, opts): opts = {kind:'err'|'warn'|'info', act:'Retry', fn:()=>{}}; a leading warning sign is dropped (the glyph replaces it).
+     Several different notices at once collapse into one "N notices" row that opens on tap (max one banner per screen, 12.15). */
+  let BN=[];
   window.banner=function(m,o){const b=$('#banner');o=o||{};
-    b.textContent='';b.className='';
-    if(!m){b.style.display='none';return}
-    const kind=o.kind||(/^\u26a0/.test(m)?'err':'info');
-    if(kind!=='err')b.classList.add('bn-'+kind);
-    b.classList.add('on');b.style.display='';b.setAttribute('role',kind==='err'?'alert':'status');
-    b.append(ic(kind==='info'?'info':'warn'),E('span','bn-x',String(m).replace(/^\u26a0\s*/,'')));
-    if(o.act&&o.fn){const a=E('button','bn-a',o.act);a.onclick=o.fn;b.append(a)}};
-}catch(e){console.log('[lumen] ui19 init failed',e)}})();
-/*LUMEN-UI19-JS:END*/
+    if(!m){BN=[];b.textContent='';b.className='';b.style.display='none';return}
+    const txt=String(m).replace(/^\u26a0\s*/,''),kind=o.kind||(/^\u26a0/.test(m)?'err':'info');
+    const i=BN.findIndex(x=>x.txt===txt);const it={txt,kind,act:o.act,fn:o.fn};
+    if(i<0)BN.push(it);else BN[i]=it;
+    if(BN.length>1&&i<0&&BN.length>3)BN.shift();
+    const open=b.classList.contains('open');
+    b.textContent='';b.className='on';b.style.display='';
+    const k=BN.some(x=>x.kind==='err')?'err':BN[BN.length-1].kind;if(k!=='err')b.classList.add('bn-'+k);
+    b.setAttribute('role',k==='err'?'alert':'status');
+    b.append(ic(k==='info'?'info':'warn'));
+    if(BN.length===1){b.append(E('span','bn-x',BN[0].txt));if(BN[0].act&&BN[0].fn){const a=E('button','bn-a',BN[0].act);a.onclick=BN[0].fn;b.append(a)}}
+    else{const n=E('span','bn-n',BN.length+' notices'),a=E('button','bn-a',open?'Hide':'Show');a.onclick=()=>{b.classList.toggle('open');a.textContent=b.classList.contains('open')?'Hide':'Show'};
+      const ul=E('ul','bn-l');BN.forEach(x=>ul.append(E('li','',x.txt)));b.append(n,a,ul);if(open){b.classList.add('open');a.textContent='Hide'}}};
+  /* large top bar: a title row under the small bar; --lg goes 1 to 0 over the first 56 px of scroll */
+  (function(){const top=$('#top'),mainb=top&&top.querySelector('.mainb'),ht=$('#ht');if(!top||!mainb||!ht)return;
+    const row=E('div');row.id='lgrow';row.setAttribute('aria-hidden','true');const h=E('h1');row.append(h);mainb.after(row);
+    const sync=()=>{h.textContent=ht.textContent};sync();new MutationObserver(sync).observe(ht,{childList:true,characterData:true,subtree:true});
+    let raf=0;const upd=()=>{raf=0;const y=Math.max(0,window.scrollY||0),lg=Math.max(0,1-y/56);document.documentElement.style.setProperty('--lg',lg.toFixed(3));document.body.classList.toggle('lg0',lg<=0.01)};
+    addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
+    document.documentElement.classList.add('lgbar')})();
+  /* pull to refresh: ring progress from the bubble height; spinner while refreshing */
+  (function(){const box=$('#ptr');if(!box)return;const d=box.firstElementChild;
+    const up=()=>{const h=parseFloat(box.style.height)||0;box.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));d.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));box.classList.toggle('spin',/^Refreshing/.test(d.textContent))};
+    new MutationObserver(up).observe(box,{attributes:true,attributeFilter:['style','class'],subtree:true,childList:true,characterData:true})})();
+  /* tabs: one sliding indicator per .ptabs */
+  (function(){const place=t=>{const on=t.querySelector('button.on');let i=t.querySelector('.tabind');if(!i){i=E('i','tabind');t.append(i)}
+      if(!on||!on.offsetWidth){i.style.width='0';return}i.style.width=on.offsetWidth+'px';i.style.transform='translateX('+on.offsetLeft+'px)'};
+    const all=()=>document.querySelectorAll('.ptabs').forEach(place);
+    new MutationObserver(()=>requestAnimationFrame(all)).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});addEventListener('resize',all)})();
+  /* tooltips (long press on touch, hover for mouse) for icon buttons; coach marks run once per key */
+  (function(){let tip=null,tm=0;
+    const hide=()=>{clearTimeout(tm);if(tip){tip.remove();tip=null}};
+    const show=el=>{const t=el.getAttribute('aria-label')||el.getAttribute('title');if(!t)return;hide();tip=E('div','lmtip',t);tip.setAttribute('role','tooltip');document.body.append(tip);
+      const r=el.getBoundingClientRect(),w=tip.offsetWidth;tip.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';
+      const below=r.top<80;tip.style.top=(below?r.bottom+8:r.top-tip.offsetHeight-8)+'px';requestAnimationFrame(()=>tip&&tip.classList.add('on'));tm=setTimeout(hide,2200)};
+    const tgt=e=>e.target.closest&&e.target.closest('.ibtn[aria-label],.ibtn[title]');
+    document.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse'){const t=tgt(e);if(t)tm=setTimeout(()=>show(t),600)}},true);
+    document.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hide()},true);
+    document.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){hide();return}const t=tgt(e);if(!t)return;clearTimeout(tm);tm=setTimeout(()=>show(t),550)},true);
+    ['pointerup','pointercancel','scroll'].forEach(n=>document.addEventListener(n,()=>{if(tip)tm=setTimeout(hide,900);else clearTimeout(tm)},true));
+    window.lmCoach=function(key,el,text,ok){let seen=false;try{seen=localStorage.getItem('lmcoach_'+key)==='1'}catch(_){}
+      if(seen||!el||!el.isConnected||!el.getBoundingClientRect().width)return false;
+      const c=E('div','lmcoach');c.setAttribute('role','dialog');c.setAttribute('aria-label',text);c.append(E('div','',text));const b=E('button','',ok||'Got it');
+      b.onclick=()=>{try{localStorage.setItem('lmcoach_'+key,'1')}catch(_){}c.remove()};c.append(b);document.body.append(c);
+      const r=el.getBoundingClientRect(),w=c.offsetWidth;c.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';
+      const bt=r.bottom+10;c.style.top=(bt+c.offsetHeight>innerHeight-8?Math.max(8,r.top-c.offsetHeight-10):bt)+'px';return true};
+    /* first use: tell about row swipes once, after the first rows are on screen */
+    let tries=0;const tick=()=>{if(++tries>40)return;const r=document.querySelector('#list .row[data-n]');
+      if(r&&!document.querySelector('.lmcoach')){if(lmCoach('swipe',r,'Swipe a row right to share it, left to delete it.'))return}
+      setTimeout(tick,1500)};setTimeout(tick,2500)})();
+}catch(e){console.log('[lumen] ui20 init failed',e)}})();
+/*LUMEN-UI20-JS:END*/
 </script>
 </body></html>
