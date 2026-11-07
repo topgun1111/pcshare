@@ -76,11 +76,12 @@ object NlBackdrop {
             val rc = node.beginRecording(sw, sh)
             try {
                 rc.scale(sw.toFloat() / w, sh.toFloat() / h)
+                rc.drawColor(Lumen.of(target.context).canvas or 0xFF000000.toInt())   // always an opaque base: the blur never flips between "live" and "see-through" while the list overlay hides / shows during swipes
                 rc.translate(-ox, -oy)
                 val end = root.indexOfChild(below)
                 for (i in 0 until end) {
                     val ch = root.getChildAt(i)
-                    if (ch.visibility != View.VISIBLE) continue
+                    if (ch.visibility != View.VISIBLE || ch is android.webkit.WebView) continue   // a WebView drawn into a second recording can come out blank for a frame = flicker; the page area blurs as the plain canvas colour
                     rc.save(); rc.translate(ch.left.toFloat(), ch.top.toFloat()); ch.draw(rc); rc.restore()
                 }
             } finally { node.endRecording() }
