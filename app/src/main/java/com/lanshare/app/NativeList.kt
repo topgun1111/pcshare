@@ -913,7 +913,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     init {
         rv.layoutManager = lm; rv.adapter = ad; rv.itemAnimator = null; rv.setHasFixedSize(true)
         srl.addView(rv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        srl.setOnRefreshListener { emit("refresh", 0) }
+        srl.setOnRefreshListener { Haptics.play("tick"); emit("refresh", 0) }   // Lumen 13.5: tick when the pull passes the threshold
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }

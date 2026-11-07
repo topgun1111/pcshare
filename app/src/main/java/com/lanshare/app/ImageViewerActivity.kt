@@ -165,7 +165,7 @@ class ImageViewerActivity : Activity() {
         // top bar: back, file name + date, then three icon actions and a menu (slideshow, details). The position counter lives in a pill at the bottom.
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x66000000, 0x00000000))
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, LumenGrad.SCRIM_TOP_COLORS)
             setPadding(dp(4), dp(6), dp(4), dp(28))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
@@ -271,7 +271,19 @@ class ImageViewerActivity : Activity() {
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (uiOn) c.show(WindowInsetsCompat.Type.systemBars()) else c.hide(WindowInsetsCompat.Type.systemBars())
+        armAutoHide()
     }
+
+    // Lumen 12.7 / 12.22: the viewer bars hide after 3 s without a touch (not with a screen reader, not while hidden)
+    private val autoHideUi = Runnable { if (uiOn && !isFinishing) toggleUi() }
+    private fun armAutoHide() {
+        ui.removeCallbacks(autoHideUi)
+        if (!uiOn) return
+        val am = getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+        if (am?.isTouchExplorationEnabled == true) return
+        ui.postDelayed(autoHideUi, 3000L)
+    }
+    override fun onUserInteraction() { super.onUserInteraction(); armAutoHide() }
 
     private fun setSlide(on: Boolean) {
         slide = on
@@ -814,7 +826,7 @@ class ImageViewerActivity : Activity() {
         if (hasFocus && !uiOn) WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
     }
 
-    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this) }
+    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this); armAutoHide() }
 
     override fun onDestroy() {
         gen++

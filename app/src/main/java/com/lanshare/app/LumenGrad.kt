@@ -59,6 +59,9 @@ object LumenGrad {
     }
 
     /** gScrimTop: black 55 % at the top edge fading to 0 % at [b]; gScrimBottom is the mirror image (55 % at the bottom edge [b], 0 % at [t]). */
+    /** gScrimTop as drawable colours (viewer top bars): black 55 % -> 28 % -> 0 (the middle stop keeps the fade smooth on bright pictures). */
+    val SCRIM_TOP_COLORS = intArrayOf(0x8C000000.toInt(), 0x47000000, 0x00000000)
+
     fun scrimTop(t: Float, b: Float): Shader = LinearGradient(0f, t, 0f, b, 0x8C000000.toInt(), 0x00000000, Shader.TileMode.CLAMP)
     fun scrimBottom(t: Float, b: Float): Shader = LinearGradient(0f, t, 0f, b, 0x00000000, 0x8C000000.toInt(), Shader.TileMode.CLAMP)
 }

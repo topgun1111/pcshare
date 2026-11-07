@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Viewer bars hide by themselves
+### Changed
+- In the picture viewer and the PDF viewer the top bar now hides after 3 seconds without a touch; tap to bring it back.
+- Pulling a folder down to refresh gives a small tick.
+
 ## 2026-11-07 - Clearer question and notice dialogs
 ### Changed
 - Dialogs that warn about replacing, clearing or stopping something now show a warning symbol, and plain notices show an info symbol.

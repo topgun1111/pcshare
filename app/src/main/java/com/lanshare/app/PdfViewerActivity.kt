@@ -276,13 +276,13 @@ class PdfViewerActivity : Activity() {
         }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x00000000))
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, LumenGrad.SCRIM_TOP_COLORS)
             setPadding(dp(8), dp(8), dp(8), dp(16))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
         }
         val back = tv("\u2190", 24f).apply { setOnClickListener { finish() } }
-        titleTv = TextView(this).apply { setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setOnClickListener { askPage() } }
+        titleTv = TextView(this).apply { setTextColor(Color.WHITE); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0x99000000.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1; setOnClickListener { askPage() } }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val thumbsBtn = tv("\u25A6", 20f).apply { setOnClickListener { showThumbs() } }
         val textBtn = tv("T", 18f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD); setOnClickListener { pageText() } }
@@ -359,7 +359,19 @@ class PdfViewerActivity : Activity() {
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (uiOn) c.show(WindowInsetsCompat.Type.systemBars()) else c.hide(WindowInsetsCompat.Type.systemBars())
+        armAutoHide()
     }
+
+    // Lumen 12.7 / 12.22: the viewer bars hide after 3 s without a touch (not with a screen reader, not while hidden)
+    private val autoHideUi = Runnable { if (uiOn && !isFinishing) toggleUi() }
+    private fun armAutoHide() {
+        ui.removeCallbacks(autoHideUi)
+        if (!uiOn) return
+        val am = getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+        if (am?.isTouchExplorationEnabled == true) return
+        ui.postDelayed(autoHideUi, 3000L)
+    }
+    override fun onUserInteraction() { super.onUserInteraction(); armAutoHide() }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -1326,7 +1338,7 @@ class PdfViewerActivity : Activity() {
         super.onPause()
     }
 
-    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this) }
+    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this); armAutoHide() }
 
     override fun onDestroy() {
         gen++; rgen++
