@@ -292,6 +292,7 @@ object Routes {
                 return ex.json(com.lanshare.app.pe.PePc.put(ex.q("ip"), (q["hport"] ?: "8798").toIntOrNull() ?: 8798, ex.header("x-pe-pass") ?: "", ex.q("sid"), ex.q("name"),
                     (q["off"] ?: "0").toLongOrNull() ?: 0L, (q["total"] ?: "0").toLongOrNull() ?: 0L, ex.bodyBytes ?: ByteArray(0)))
             }
+            "pcclearlog" -> return ex.json(Jobs.pcClearLog(ex.q("dev")))
             "pccancel" -> return ex.json(Jobs.pcCancel(ex.q("dev"), (q["id"] ?: "").toIntOrNull() ?: throw BadReq("id missing")))
             "wifiprinters" -> {
                 val rmBox = arrayOfNulls<org.json.JSONArray>(1)

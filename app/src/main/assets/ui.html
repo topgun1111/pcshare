@@ -2893,7 +2893,14 @@ function openPcScreen(pc){
   const tabs=E('div','pct'),tLive=E('button','tbtn on','Live');tabs.append(tLive);
   if(window.LSAndroid&&LSAndroid.openPrintLog){const tLogs=E('button','tbtn','Logs');tLogs.onclick=()=>{try{LSAndroid.openPrintLog('',pc.id)}catch(e){}};tabs.append(tLogs)}
   if(window.LSAndroid&&LSAndroid.openPrintLive){const tJob=E('button','tbtn','Job');tJob.onclick=()=>{try{LSAndroid.openPrintLive(pc.id)}catch(e){}};tabs.append(tJob)}
-  const hb=E('div');hb.style.cssText='display:flex;gap:var(--sp-1)';hb.append(cb);
+  const tJobs=E('button','tbtn','Jobs');tJobs.onclick=()=>{close();openPrintQueue(pc)};tabs.append(tJobs);   /* the print queue: printing now / waiting / recent */
+  const del=E('button','tbtn','Delete logs');del.onclick=async()=>{
+    if(!await dlg({title:'Delete logs?',msg:'This empties the print log on '+(pc.name||'the PC')+'. Printing is not affected.',ok:'Delete',danger:true}))return;
+    try{const r=await api('POST','/api/pcclearlog?dev='+enc(pc.id),{},8000);
+      if(r&&r.ok){log.textContent='';n=0;pos=-1;toast('Logs deleted',2500,undefined,{kind:'ok'})}
+      else toast(r&&r.result==='old'?'Update pcprint.py on the PC (needs version 38)':'Could not delete the logs',3500,undefined,{kind:'err'})}
+    catch(e){toast(String((e&&e.message)||e||'PC not reachable'),3500,undefined,{kind:'err'})}};
+  const hb=E('div');hb.style.cssText='display:flex;gap:var(--sp-1)';hb.append(del,cb);
   hd.append(E('h3','',pc.name||'PC'),hb);bar.append(dot,st);card.append(E('div','handle'),hd,tabs,bar,log);o.append(card);
   const add=l=>{const d=E('div','pcln'+(l.k?' '+l.k:''),l.t);log.append(d);if(++n>1000){log.firstChild.remove();n--}};
   const draw=r=>{

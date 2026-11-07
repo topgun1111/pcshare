@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - PC screen: Jobs tab and Delete logs
+### Added
+- PC screen: a Jobs tab (printing now, waiting, recent) and a Delete logs button that empties the print log on the PC (needs the new pcprint.py).
+
 ## 2026-11-07 - Bigger main menu
 ### Changed
 - Main menu: bigger icons, tiles, top buttons and text, and buttons are at least 48 px high.

@@ -62,7 +62,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8799
-VERSION = "37"
+VERSION = "38"
 WIN = os.name == "nt"
 MAX_BYTES = 300 << 20
 APP = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LANSharePrint") if WIN else os.path.expanduser("~/.lansharep")
@@ -3189,7 +3189,7 @@ class H(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True, "name": socket.gethostname(), "version": VERSION, "queued": PRINTQ.qsize(),
                                     "busy": CURRENT[0], "printer": pr, "problem": prob, "default": DEFAULT_PRINTER[0], "printers": PRINTERS,
                                     "pypdf": have_pypdf(), "engine": "SumatraPDF" if (WIN and find_sumatra()) else None,
-                                    "office": office_engine(), "convert": True, "clip": True, "screen": True, "diag": True, "cancel": True,
+                                    "office": office_engine(), "convert": True, "clip": True, "screen": True, "diag": True, "cancel": True, "clearlog": True,
                                     "hard": hard_margin(pr), "trays": printer_bins(pr), "quiet": bool(WIN and quiet_map(pr))})
         if u.path == "/clip":   # the text inbox, only for the window on this PC (other devices must not read it)
             if not self.is_local():
@@ -3269,6 +3269,17 @@ class H(BaseHTTPRequestHandler):
             return self.clip_post(cp, u)
         if u.path == "/convert":   # office file -> PDF, only so the app can show a real page preview (nothing is printed)
             return self.convert(u)
+        if u.path == "/clearlog":   # the app's PC screen "Delete logs": empties log.txt and log.old (LAN / Tailscale like /cancel); diag.jsonl stays
+            n = 0
+            with _LOGLOCK:
+                for f in (LOG, LOG + ".old"):
+                    try:
+                        n += os.path.getsize(f)
+                        os.remove(f)
+                    except OSError:
+                        pass
+            log("log deleted from the phone")
+            return self.reply(200, {"ok": True, "bytes": n})
         if u.path == "/cancel":   # the app's print queue screen: cancel one WAITING job by its id (from GET /jobs "waiting")
             try:
                 qid = int((parse_qs(u.query).get("id") or [""])[0])

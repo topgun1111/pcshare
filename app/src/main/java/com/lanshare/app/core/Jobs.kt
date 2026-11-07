@@ -344,6 +344,19 @@ object Jobs {
         } catch (e: Exception) { throw IOException("PC not reachable (${errText(e)})") }
     }
 
+    /** Deletes the PC's print log (log.txt + log.old): {ok, bytes} or {ok:false, result:"old"} (pcprint.py < 38). */
+    fun pcClearLog(dev: String): JSONObject {
+        val (ip, _) = printTarget(dev)
+        return try {
+            val r = Http.request(ip, PRINT_PORT, "POST", "/clearlog", mapOf("Content-Length" to "0"), 5000)
+            try {
+                if (r.status == 404) return JSONObject().put("ok", false).put("result", "old")
+                val o = try { JSONObject(String(r.readUpTo(4096), Charsets.UTF_8)) } catch (_: Exception) { JSONObject() }
+                JSONObject().put("ok", o.optBoolean("ok", false)).put("bytes", o.optLong("bytes", 0))
+            } finally { r.close() }
+        } catch (e: Exception) { throw IOException("PC not reachable (${errText(e)})") }
+    }
+
     /** Streams the files to the print service (pcprint.py) on the PC; it prints them on the PC's default printer. */
     private val PRINT_KEYS = listOf("printer", "copies", "duplex", "color", "fit", "paper", "nup", "booklet", "border", "pages",
         "reverse", "range", "wm", "wm_under", "hdr", "ftr", "noauto", "margin", "scale", "align", "autorot", "tray", "quiet")
