@@ -912,7 +912,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val gk = arrayOfNulls<String>(5); val gj = arrayOfNulls<Future<*>>(5)
     }
 
-    private fun galSpan() = if (web.width / d >= 600f) 5 else 3
+    private fun galSpan() = if ((if (overlay.listRect.width() > 0f) overlay.listRect.width() else web.width.toFloat()) / d >= 600f) 5 else 3   // Lumen 9.4: the list is narrower than the window beside the permanent drawer
     private fun galRowCount() = if (rows.size > galStart) (rows.size - galStart + gs - 1) / gs else 0
     /** combined row index -> adapter position */
     private fun posOf(i: Int) = if (i < galStart) i else galStart + (i - galStart) / gs

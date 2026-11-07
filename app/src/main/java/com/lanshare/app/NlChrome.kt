@@ -212,6 +212,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     private val nmP = tp(12f, med)
     private val cntP = tp(20f, semi)
 
+    var perm = false             // Lumen 9.4: permanent drawer (>= 900 dp) = no menu button, the title starts at the left margin
     fun setData(sel: Boolean, ttl: String, nm: String, dual: Boolean, cnt: String, w: Float, h: Float) {
         if (sel && !this.sel && !LumenPrefs.reduceMotion(context)) selAt = SystemClock.uptimeMillis()   // selection bar slides over the bar (200 ms)
         this.sel = sel; this.ttl = ttl; this.nm = nm; this.dual = dual; this.cnt = cnt; bw = w; bh = h
@@ -229,7 +230,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             add("allsel", bw - 2f * d - s)
             return
         }
-        add("menub", 14f * d)
+        if (!perm) add("menub", 14f * d)
         var x = bw - 2f * d - s
         add("cog", x); x -= s
         if (dual) { add("dualb", x); x -= s }
@@ -237,7 +238,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         add("tune", x); x -= s
         add("srch", x)
         // title + device name share the space between the menu button and the first right-hand button (ui.html .ttl: h1 and #nm both flex 0 1 auto, gap 10, #nm max 50 %)
-        val l0 = 14f * d + s
+        val l0 = if (perm) 16f * d else 14f * d + s
         val r0 = btn["srch"]!!.left
         val tw = Math.max(0f, r0 - l0)
         val nmWd = 0f   // the device name was removed from the top bar (rename it in Settings)
@@ -776,9 +777,11 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
         }
 
         val b = j.optJSONObject("bar")
-        if (place(bar, b?.optJSONArray("r")) && b != null)
+        if (place(bar, b?.optJSONArray("r")) && b != null) {
+            bar.perm = b.optInt("pm") == 1
             bar.setData(b.optInt("sel") == 1, b.optString("t"), b.optString("nm"), b.optInt("du") == 1, b.optString("c"),
                 bar.layoutParams.width.toFloat(), bar.layoutParams.height.toFloat())
+        }
 
         val f = j.optJSONObject("fab")
         if (place(fab, f?.optJSONArray("r")) && f != null) {

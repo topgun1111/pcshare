@@ -426,6 +426,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         }
         val j = JSONObject(json)
         ver = j.optInt("v")
+        val pm = j.optInt("pm") == 1   // Lumen 9.4: permanent drawer (>= 900 dp): no slide, no real blur (nothing scrolls under it), a small shadow only
         val p = j.getJSONObject("p")
         hov = p.optLong("hov").toInt()
         // Surface = the SAME palette the rest of the native UI uses (AppPal, sent by ui.html nlPal() on every theme change), so the drawer always follows the general theme;
@@ -438,10 +439,11 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (card == 0) card = AppPal.pal(act).bg
         // Lumen Part 4b (N1 b): G1 panel by glass step (tint-raised stand-in, opaque at F3); textured / gradient themes keep their texture. The page hides its own #dwr (html.nldr) so the panel can be see-through.
         if (ct != 0) { dp.background = NlTex.layered(dp.context, ct, cb); dp.blurFill = 0 }
-        else if (NlBackdrop.wanted(act) && (card ushr 24) == 0xFF) {   // 4f N1 (c): real blur under the panel (F0 / F1)
+        else if (!pm && NlBackdrop.wanted(act) && (card ushr 24) == 0xFF) {   // 4f N1 (c): real blur under the panel (F0 / F1)
             dp.setBackgroundColor(Color.TRANSPARENT); dp.blurFill = LumenGlass.blurFill(act, card); dp.fallback = LumenGlass.chromeFill(act, card); dp.invalidate()
         } else { dp.blurFill = 0; dp.setBackgroundColor(LumenGlass.chromeFill(act, card)) }
         if (android.os.Build.VERSION.SDK_INT >= 28) { dp.outlineSpotShadowColor = (Lumen.of(act).shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); dp.outlineAmbientShadowColor = 0x33000000 }   // N4
+        dp.elevation = (if (pm) 2f else 8f) * d
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.rx = j.optDouble("rx", 0.0).toFloat() * d
         dp.setPadding(0, Math.round(j.optDouble("pt", 0.0).toFloat() * d), 0, Math.round(j.optDouble("pb", 0.0).toFloat() * d))
@@ -469,9 +471,10 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         open = true
         dp.animate().cancel()
         if (dp.visibility != View.VISIBLE) {
-            dp.translationX = if (!wasOpen) -wpx.toFloat() else 0f
+            dp.translationX = if (!wasOpen && !pm) -wpx.toFloat() else 0f
             dp.visibility = View.VISIBLE
         }
+        if (pm) { dp.translationX = 0f; return }
         if (dp.translationX != 0f)
             dp.animate().translationX(0f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
     }

@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-08 - Wide screens
+### Added
+- On a wide window (tablet, unfolded foldable) with split screen off, the side menu stays open next to your files and the menu button is gone.
+### Changed
+- Lists get wider side margins on bigger screens, and bottom sheets float in the middle from 600 dp up.
+
 ## 2026-11-07 - Finished jobs say so
 ### Changed
 - When a copy, zip or similar job finishes while a viewer is open, the progress bubble pulses and the check mark pops. The bubble stays 4 seconds, then fades away. Off with "Reduce motion".

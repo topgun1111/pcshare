@@ -1319,6 +1319,28 @@ html.nldr #dwr{opacity:0}
 .dall{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);margin:var(--sp-3) 0 0;padding:var(--sp-2) 0;font-size:var(--fs-14);color:var(--fg);cursor:pointer}
 html.nlcbar #top .mainb>*,html.nlcbar #top .selb>*{opacity:0!important}   /* garbled top bar while scrolling: page copy + native bar drawn on top of each other */
 /*LUMEN-UI19:END*/
+/*LUMEN-UI21:BEGIN*/
+/* 9.4 responsive: compact < 600, medium 600-899, expanded >= 900. --gx = extra list margin (rows already carry 16): 8 -> 24 total, 16 -> 32 total.
+   Expanded: html.dperm (set by lmPermSync) = permanent drawer: body moves right by --dw, #dwr stays open without scrim / edge swipe / menu button. Medium and up: bottom sheets float. */
+:root{--dw:0px;--gx:0px}
+@media (min-width:600px){:root{--gx:8px}}
+@media (min-width:900px){:root{--gx:16px}}
+#list{margin-left:var(--gx);margin-right:var(--gx)}
+html.dperm{--dw:320px}
+html.dperm body{padding-left:var(--dw)}
+html.dperm #dwr{transform:none;visibility:visible;transition:none;width:var(--dw);z-index:4;border-radius:0;box-shadow:inset -1px 0 0 var(--bd)}
+html.dperm #dscrim,html.dperm #dedge,html.dperm #menub{display:none}
+html.dperm body.dopen{overflow:visible}
+html.dperm .bar.mainb{padding-left:var(--sp-4)}
+html.dperm #ptr,html.dperm #home{left:var(--dw)}
+html.dperm:root:root #dock{left:calc(var(--dw) + 12px)}   /* beats `:root:root:root #dock` (floating dock, UI11) */
+html.dperm #toast{left:calc(50% + var(--dw) / 2)}   /* the snackbar is centred (UI), now in the content area */
+html.dperm #home .hb button:first-child{display:none}
+html.dperm #sheet{padding-left:var(--dw)}
+html.dperm #dlg{padding-left:calc(var(--dw) + var(--sp-6))}
+html.nldr.dperm.nldrh #dwr{opacity:1}
+@media (min-width:600px){#sheet .card:not(.fu):not(.pfull):not(.vs):not(.pj){max-width:560px;margin:0 auto var(--sp-6);border-radius:var(--r-xxl)}}
+/*LUMEN-UI21:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -2008,7 +2030,7 @@ function nlLay(force){if(!NL||!NLL)return;
   if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
     if(vis(pr)&&vis(tr)){const a=pr.getBoundingClientRect(),b=tr.getBoundingClientRect(),q=v=>Math.round(v*100)/100;
       if(a.width>0&&a.height>0&&b.height>0)hd=[q(a.left),q(a.top),q(a.width),q(a.height),q(b.height)]}}
-  const j=JSON.stringify({l:0,t:top,w:window.innerWidth,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,gc:S.cols,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
+  const j=JSON.stringify({l:Math.round(r.left*100)/100,t:top,w:Math.round(r.width*100)/100,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,gc:S.cols,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
   if(force||j!==NLLAY){NLLAY=j;NL.nlLayout(j)}}
 /* Instant folder entry is done in Kotlin (NlModel + NativeList.tapRow): it builds the next folder's rows itself and shows them on tap;
    go() below still runs as usual and its rows replace them only if they differ. Nothing to do here but send nlCfg() with every render. */
@@ -2081,14 +2103,14 @@ function nlChPush(){if(!NLCH)return;
   let modal=0,all=0;
   ['#sheet','#dlg','#pcs','#pq','.dsc'].forEach(q=>{if(vis($(q)))modal=1});
   ['#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))all=1});
-  const sc=$('#dscrim');if(document.body.classList.contains('dopen')||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
+  const sc=$('#dscrim');if((document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm'))||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
   if(all){document.documentElement.classList.remove('nlcbar');if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
   const sel=document.body.classList.contains('selm'),o={p:nlChPal(),ic:{}};
   const need=k=>{if(k&&!(k in o.ic))o.ic[k]=nlIc(k)};
   if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
     const br=rc($(sel?'#top .selb':'#top .mainb'));
     if(br){['menu','search','tune','refresh','vsplit','settings','edit','close','selall'].forEach(need);
-      o.bar={r:br,sel:sel?1:0,t:(window.lgBig&&lgBig())?'':$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
+      o.bar={r:br,pm:document.documentElement.classList.contains('dperm')?1:0,sel:sel?1:0,t:(window.lgBig&&lgBig())?'':$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
     const fr=rc($('#fab'));if(fr){const ik=inArc()&&!zipEd()?'extract':'newfolder';need(ik);o.fab={r:fr,l:$('#fab').textContent,k:ik}}
     const dr=rc($('#dock'));
     if(dr){NLACL.forEach(a=>need(a.k));need('close');
@@ -2159,10 +2181,12 @@ function nlDrBuild(){
     else{const b=c.querySelector(':scope>button');if(b)hs.push({k:'b',j:0,g:nlDrRel(b,c)})}
     f.hit=hs;return f});
   const F=nlDrFlat(ft);F.hit=[...ft.children].map((b,j)=>({k:'f',j,g:nlDrRel(b,ft)}));
-  return{w:dw.offsetWidth,rx:parseFloat(cs.borderTopRightRadius)||0,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
-function nlDrState(){if(!document.body.classList.contains('dopen'))return'0';
+  return{w:dw.offsetWidth,pm:document.documentElement.classList.contains('dperm')?1:0,rx:parseFloat(cs.borderTopRightRadius)||0,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
+function nlDrState(){const root=document.documentElement,perm=root.classList.contains('dperm');if(!document.body.classList.contains('dopen')){root.classList.remove('nldrh');return'0'}
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
-  return(vis($('#sheet'))||vis($('#dlg')))?'h':'o'}      // a page dialog / bottom sheet opened from the drawer (rename shortcut ...) must show above it
+  const hid=vis($('#sheet'))||vis($('#dlg'))||(perm&&['#gal','#pv','#pcs','#pq'].some(q=>vis($(q))));   // permanent drawer: a full-screen page layer covers it too
+  root.classList.toggle('nldrh',perm&&hid);   // CSS UI21: the page's own #dwr shows (under the dim layer) while the native panel is away
+  return hid?'h':'o'}      // a page dialog / bottom sheet opened from the drawer (rename shortcut ...) must show above it
 function nlDrTick(){if(!NLDR)return;const k=nlDrState();if(k===NLDRK)return;NLDRK=k;
   if(k==='0'){if(NLDRJ!=='0'){NLDRJ='0';NL.nlDrawer('0')}}
   else if(k==='h'){NLDRJ='h';NL.nlDrawer('h')}
@@ -6004,7 +6028,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
 function lsBack(){
   {const rs=$('#rsh');if(rs){const c=rs.querySelector('.rshc');if(c)c.onclick({target:c});else rs._close();return true}}
   if($('#hmfav')){hmFavClose();return true}
-  if(document.body.classList.contains('dopen')){drawerClose();return true}
+  if(document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm')){drawerClose();return true}
   const pv=$('#pv');if(pv.style.display==='flex'){if(pv._close)pv._close();else{pv.style.display='none';pv.textContent=''}return true}
   if($('#gal').style.display==='flex'){const g=$('#gal');if(g._sel&&g._sel())return true;galClose();return true}
   for(const id of ['#dlg','#sheet']){const o=$(id);if(o.style.display==='flex'){const cd=o.querySelector('.card');if(cd&&cd._back&&cd._back())return true;   // a sheet with its own pages (Free up space) steps back one page first
@@ -6133,9 +6157,15 @@ const baseName=(dev,path)=>path==='/'||!path?(dev==='local'?'Main storage':devNa
 const sameLoc=(a,b)=>a.dev===b.dev&&a.path===b.path;
 let DEVCOL=true;   // Devices list is collapsed every time the drawer opens; the toggle only lasts until it closes
 function drawerOpen(){DEVCOL=true;if(!Array.isArray(S.peers))S.peers=[];document.body.classList.add('dopen');try{drawerRender()}catch(e){console.log('drawerRender',e)}api('POST','/api/scan',{},4000).catch(()=>{});try{pollPeers()}catch(e){}try{warmWifi()}catch(e){}}   // opening the drawer = look for devices now
-function drawerClose(){document.body.classList.remove('dopen');DRW.edit=false}
+function drawerClose(){DRW.edit=false;if(document.documentElement.classList.contains('dperm'))return;document.body.classList.remove('dopen')}   // Lumen 9.4: the permanent drawer (html.dperm, >= 900 px) never closes
+/* Lumen 9.4: expanded width (>= 900) = permanent drawer. html.dperm + body.dopen stay on, #list / header move right by --dw (CSS block UI21), the native drawer panel stays up. Called from the breakpoint block (resize / fold). */
+window.lmPermSync=()=>{const h=document.documentElement,on=(window.innerWidth||0)>=900&&!(typeof KID!=='undefined'&&KID)&&!document.body.classList.contains('dual');
+  /* not inside a split-screen pane (KID), and not while this page shows the two panes (each pane has its own drawer) */
+  if(on===h.classList.contains('dperm'))return;
+  h.classList.toggle('dperm',on);if(on)drawerOpen();else{document.body.classList.remove('dopen');DRW.edit=false}
+  if(window.nlLay&&window.NL)try{nlLay(true)}catch(e){}};
 // native swipe (MainActivity.dispatchTouchEvent): swipe (anywhere below the header, not from the left screen edge) toggles file manager <-> Main menu; ignored when something else is on top
-const lsEdgeOk=()=>{const b=document.body.classList;if(b.contains('dopen')||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
+const lsEdgeOk=()=>{const b=document.body.classList;if((b.contains('dopen')&&!document.documentElement.classList.contains('dperm'))||b.contains('selm')||b.contains('dual')||b.contains('srch'))return false;
   for(const id of ['#sheet','#dlg','#pcs','#pq','#pv','#gal']){const o=$(id);if(o&&o.style.display==='flex')return false}
   if(/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))return false;return true};
 window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
@@ -7278,7 +7308,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
     document.documentElement.classList.add('lgbar')})();
   /* breakpoint class for page and native: html[data-bp] = compact | medium | expanded (re-evaluated on resize / fold) */
-  (function(){const f=()=>{const w=window.innerWidth||0,v=w>=900?'expanded':w>=600?'medium':'compact';if(document.documentElement.getAttribute('data-bp')!==v)document.documentElement.setAttribute('data-bp',v)};f();addEventListener('resize',f)})();
+  (function(){const f=()=>{const w=window.innerWidth||0,v=w>=900?'expanded':w>=600?'medium':'compact';if(document.documentElement.getAttribute('data-bp')!==v)document.documentElement.setAttribute('data-bp',v);if(window.lmPermSync)window.lmPermSync()};f();addEventListener('resize',f);new MutationObserver(()=>{if(window.lmPermSync)window.lmPermSync()}).observe(document.body,{attributes:true,attributeFilter:['class']})})();
   /* pull to refresh: ring progress from the bubble height; spinner while refreshing */
   (function(){const box=$('#ptr');if(!box)return;const d=box.firstElementChild;
     const up=()=>{const h=parseFloat(box.style.height)||0;box.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));d.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));box.classList.toggle('spin',/^Refreshing/.test(d.textContent))};
