@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Bigger main menu
+### Changed
+- Main menu: bigger icons, tiles, top buttons and text, and buttons are at least 48 px high.
+
 ## 2026-11-07 - Easier to use with a screen reader and a keyboard
 ### Added
 - A clear focus outline on every button and control when you use a keyboard (thicker with high contrast).

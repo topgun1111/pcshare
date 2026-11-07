@@ -1153,6 +1153,25 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 @supports(background:color-mix(in srgb,red 50%,blue)){html.lm-fling .g1,html.lm-fling .g2,html.lm-fling .dmn,html.lm-fling #toast,html.lm-fling #jp{backdrop-filter:none;-webkit-backdrop-filter:none;background-color:color-mix(in srgb,var(--surface) 94%,transparent)}}
 @media(forced-colors:active){.tbtn.fill,.tbtn.dngf,.chip.on,.seg .on{border:1px solid ButtonText}}
 /*LUMEN-UI9:END*/
+/*LUMEN-UI10:BEGIN*/
+/* Owner feedback 2026-11-07: main menu icons and buttons were too small. Bigger tiles, glyphs, header buttons, text. */
+#home .hb{height:calc(60px + env(safe-area-inset-top))}
+#home .hb button{width:56px;height:56px}
+#home .hb svg{width:36px;height:36px}#home .hb button:first-child svg{width:38px;height:38px}
+#home .hb h1{font-size:var(--fs-20);line-height:28px}
+#home .hero .ic{width:64px;height:64px}
+#home .hero .ic svg{width:38px;height:38px}
+#home .hrow .hero b{font-size:var(--fs-20)}
+#home .hrow .hero small,#home .hero .row{font-size:var(--fs-14)}
+#home .ht{padding:var(--sp-4) var(--sp-1);gap:var(--sp-3);min-height:148px}
+#home .ht .tb{width:72px;height:72px;border-radius:var(--r-xl)}
+#home .ht .tb svg{width:42px;height:42px}
+#home .ht .tt{font-size:var(--fs-14)}
+#home .ht .ts{font-size:var(--fs-12)}
+#home .sec{font-size:var(--fs-16)}
+.tbtn{min-height:48px}.tbtn:not(.fill):not(.dngf){min-height:48px}
+.ibtn{min-width:48px;min-height:48px}
+/*LUMEN-UI10:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
