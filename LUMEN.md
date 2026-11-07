@@ -6,7 +6,7 @@ One file (merged 2026-11-08 from `LUMEN.md`, `LUMEN.md`, `LUMEN.md`; those three
 2. **Part 2: what is done** (status line, session rules, done table, plan parts, session log, fixes from the audit).
 3. **Part 3: what is missing in the code** (current open list, decisions, owner checks, item IDs).
 
-**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes 2026-11-08 | Next: owner compile + device pass (V2-V5, check 4f first), then the open list in Part 3 | Last session: 2026-11-07 (A5 viewer accents; A8 hero kinds on 18 page dialogs; viewer auto-hide + scrim, refresh tick; job card gradient bars; `LumenTypography`; code audit corrected the open list). Owner reports CI compile OK 2026-11-07..09 pushes; device testing in progress. Kotlin from 4a-4f, the 2026-11-08 edits and the 2026-11-09 edits is NOT compiled.
+**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes + native Activity consistency pass 2026-11-07 | Next: compile and device verification (V2-V5, check 4f first), then remaining native spec items in Part 3 | Last session: 2026-11-07 (shared `LumenNativeTheme` applied from Activity lifecycle). Kotlin changes are NOT compiled in this environment.
 
 **Rule:** after every change, update this file (status line, Part 2 log, Part 3 list), `HANDOVER_READ_BEFORE_CODE.md` and `CHANGELOG.md` (user-visible only).
 
@@ -109,7 +109,7 @@ Accent ramp (hue about 24):
 | T10 | #3A1A00 | on-container text (light) |
 | T20 | #5E2900 | |
 | T30 | #8F3E00 | |
-| T40 | #B84D00 | Primary (light), corrected 2026-11-10: #C25100 failed the gradient-end contrast test (4.28:1 against white, needs 4.5) |
+| T40 | #C25100 | Primary (light) , equals today's accent |
 | T50 | #E4690F | |
 | T60 | #FF8A3D | |
 | T70 | #FFA566 | |
@@ -134,7 +134,7 @@ Neutral ramp (warm, hue 28, chroma about 4): N10 #1F1A16, N20 #342E29, N30 #4B44
 | `ink` | primary text | #1F1A16 | #EFE5DB |
 | `inkMut` | secondary text, icons at rest | #5A5047 | #C9BBAD |
 | `inkDim` | disabled, hints (never for needed info) | #8C8176 | #8E8174 |
-| `primary` | accent for fills, links, active icons | #B84D00 | #FFB77C |
+| `primary` | accent for fills, links, active icons | #C25100 | #FFB77C |
 | `onPrimary` | text / icon on primary | #FFFFFF | #4A2800 |
 | `primaryCont` | selected state, chips on, tonal buttons | #FFDCC2 | #7A3E00 |
 | `onPrimaryCont` | | #3A1A00 | #FFDCC2 |
@@ -600,7 +600,7 @@ Height 32, pill, Label M. Types: **filter** (off: outline; on: `gPrimarySoft` + 
 - **Dividers**: none inside cards (spacing only); 1 dp `edge` inset 72 dp from the left in flat lists.
 - **Selected row**: `gPrimarySoft` background, `r.m`, 4 dp inset from the sides, leading tile swaps to the check circle with a 160 ms flip.
 - **Section header**: Title S `inkMut`, 24 dp top, 8 dp bottom, sticky with G1 glass when it sticks.
-- **Swipe actions** (spec only; NOT built any more, row swipe removed 2026-11-10 by owner decision): reveal tonal colours (Delete = error container, Share = primary container) with the same glyphs as 11.4.
+- **Swipe actions** (if introduced): reveal tonal colours (Delete = error container, Share = primary container) with the same glyphs as 11.4.
 - **Hold menu**: press 350 ms (haptic tick), row lifts (E5, scale 1.02), selection starts; the bottom action bar slides up.
 
 ### 12.6 Gallery grid, day and month headings
@@ -1094,16 +1094,6 @@ Status values: `NEXT`, `TODO`, `IN PROGRESS`, `DONE (date)`, `PARTLY (date, what
 | 2026-11-09 | (one more 3) | Grid folder category badge plate = `surfaceHi` + `edge` (was fixed white / `#D0D0D0`; dark-theme pastel glyphs were low contrast). | A4 | player / viewer literals, `LumenGrad.glow / scrim*` callers | yes (`NativeList.kt`) | check next compile: folder with a badge in a dark theme |
 | 2026-11-09 | (big one: A8 dialog kinds, page) | `dlg(o)` gets `o.kind` = info / warn / perm / ok (hero tile on slots `info`+`onInfo`, `warning`+`onWarning`, `primary`+`onPrimary`, `success`+`onSuccess`; icons info / warn / lock / check; danger keeps the red tile), `o.details` = `[[label, value]]` rows (`.ddet`), `o.applyAll` = label (switch row `.dall`, state in `window.lmApplyAll`, false when cancelled). New icon `warn` (`icons.json`, regenerated `LumenIcons.kt`). CSS block `/*LUMEN-UI19*/` (hand-written, after UI18) also fixes `.dhero svg` (the `svg.li` class matched the list row `.li{min-height:56px}` so the glyph was 12 px). Callers: zip "already exists" (warn + details), Replace layout (warn), root access (perm). Tested in headless Chromium: 4 kinds colours, details rows, switch result true, hero svg 28 x 28; `gen.py --check`, `node --check` 8 scripts, CSS braces balanced, lint unchanged. | A8 page half | native `Lm` dialogs (`AlertDialog`) have no info / warn / perm heroes, details row or Apply-to-all row; the other 55 `dlg()` callers still pick no kind (add `kind:` where it fits); no caller uses `applyAll` yet (multi-file conflict loops) | yes (`LumenIcons.kt` regenerated) | check next compile; open a conflict dialog on the phone |
 | 2026-11-09 | (bug: garbled top bar while scrolling) | Cause: the page's own `#top` title + icons stay under the native `NlBarView` ("HTML elements stay underneath"); since 4c / 4f the native bar is transparent at the list top and a translucent glass fill (F0 88 % / F1 92 %, blurred) once scrolled, so the page copy showed through (and was blurred into `NlBackdrop`). Fix (page only): `nlChPush` toggles `html.nlcbar` when it sends `o.bar` (removed when the native chrome is hidden: modal / full screens / no bar rect); CSS in `/*LUMEN-UI19*/`: `html.nlcbar #top .mainb>*, #top .selb>*{opacity:0!important}` (opacity only: layout, rect and click twins unchanged). Not testable in a browser (needs the native bridge); `gen.py --check`, `node --check` 8 scripts, braces ok. | bug | if it still garbles: check `NlBarView.onDraw` draws title / icons once (compare the 2026-11-07 "drawn twice" fix) and that `lsNlResync` re-pushes after a theme change | none | no | check on the phone: scroll a long folder, top bar crisp in F0 / F1 / Reduce transparency |
-| 2026-11-10 | (A8 native + spec decisions) | Native dialog kinds: `AppPal.dlg(c).kind("info"/"warn"/"perm"/"ok"/"danger").details(listOf(a to b)).applyAll(label)`; `applyAllChecked` read in the button listener; hero tiles on slots info / warning / primary / success (glyphs info / warn / lock / check), details tile, switch row above the buttons. Ember: warning light / dark and success dark set to spec. Folder default = theme primary. Checks: `gen.py --check`, `contrast.py` 0 failing, `parity.py` 0 differences, lint unchanged. NOT compiled. | A8 native | other native dialogs pick no kind yet; no caller uses `applyAll` | yes (`AppPal.kt`, `Lm.kt`, `NativeList.kt`, `MainActivity.kt`, callers, regenerated `LumenTokens.kt`) | check next compile: open Details, "File changed", a download-failed dialog; folder colour in a dark and a light theme |
-| 2026-11-10 | (CI fix) | CI `compileReleaseKotlin` failed in both editions: the 2026-11-09 "duplicate?" edit in `NativeList.kt` put code after a `//` comment on the same line (`dupW = ...}` in `NlRowView`, `val fd = ...` in `NlGridView`), so a `}` was missing and every later reference to `NativeList` failed. Fixed: comment moved to the end of the line. Lesson: never append code after a `//` comment. | none | none | yes (`NativeList.kt`) | check next CI run |
-| 2026-11-10 | (bug: row slide) | `MainActivity.dispatchTouchEvent` switches file manager <-> Main menu after a 72 dp horizontal slide and cancels the touch; the row swipe (P1, `NlSwipe`, 96 dp threshold) never got there. Fix: `NlSwipe.active` (companion, volatile) set while a row swipe runs; MainActivity ignores the menu swipe then (reset on every DOWN); page list reports through `LSAndroid.rowSwipe(bool)`. Trade-off: on file rows a sideways slide is now Share / Delete; the Main-menu slide still works from the header, the screen edge, empty space, grid and selection mode. | none | hold (long press) path read, no defect found; needs a device description | yes (`NlListFx.kt`, `MainActivity.kt`, `ui.html`) | check next CI run: slide a row both ways |
-| 2026-11-07 | (A5: viewer accents) | New `LumenGrad.onDark(lm)` = theme primary lifted until bright enough on the black viewer stage. PDF viewer page-picker accent + selected-page fill + fast-scroll thumb (`PdfScrollBar`, also used by the file list) and the image viewer OCR-on tint now follow the theme (were fixed Ember orange `#FFB77C` / blue `#8AB4F8`). Black stage and white text stay literal on purpose (spec 12.22: L7 pure black). Verified in code: skeleton has a caller, grid thumbnail radius by columns is done, player auto-hide exists. | A5 partly | player `PlayerPal` light set, PDF night-button yellow, image / PDF scrims (`LumenGrad.scrim*` still no caller), image / PDF viewer auto-hide | yes (`LumenGrad.kt`, `PdfViewerActivity.kt`, `ImageViewerActivity.kt`) | check next compile: PDF viewer in a blue theme (thumb, page picker highlight), image viewer OCR button |
-| 2026-11-07 | (A8: page dialog kinds) | 18 page `dlg()` callers got a hero kind: `warn` for replace / clear / rescan-from-scratch / stop / reset / damaged-archive style questions (Rescan all pictures, Clear PDF caches, Clean junk, Auto-fill, Use layout, Switch shell, Stop program, New PIN, Reset shortcuts, Stored PDF not found, Keep pictures apart, archive damaged), `info` for notices (Google Drive sign-in, Rescan phone, printer report, Two-sided, Now the backs, Eject). The warning sign in the archive titles was dropped (the tile shows it). Danger dialogs untouched (red trash tile). Checks: `node --check` 8 scripts ok, `gen.py --check`, `contrast.py` 0 failing, lint unchanged (T3 59 sites). | A8 | the remaining plain confirms / inputs stay without a hero on purpose (rename, new folder, copies, ...); no caller uses `applyAll`; other native dialogs pick no kind | no | open an archive check, Rescan all, Clear caches on the phone |
-| 2026-11-07 | (everyday polish: viewers + refresh) | Image viewer and PDF viewer bars hide 3 s after the last touch (`armAutoHide` + `onUserInteraction`; off with TalkBack touch exploration; the player already did this with `HIDE_MS`). Viewer top bars use the spec scrim (`LumenGrad.SCRIM_TOP_COLORS`, 55 % to 0; PDF title / sub line got a text shadow). Native pull-to-refresh plays the `tick` haptic (13.5). Checked: spec 8.2 / 12.5 apply the thumbnail radius by columns and the 88 % shrink to grid / gallery cells only, so list rows (`NlRowView`) need neither: item closed. | N7 (viewer auto-hide, viewer scrim) A6 | `LumenGrad.glow / scrimBottom` callers, Large collapsing bar, Search bar, job cards, permanent drawer, sliding tabs, glass pull-to-refresh, colour tables, type tokens, preset pairs | yes (`LumenGrad.kt`, `ImageViewerActivity.kt`, `PdfViewerActivity.kt`, `NativeList.kt`) | check next compile: open a picture and a PDF, wait 3 s, tap, pull a folder to refresh |
-| 2026-11-07 | (job cards, 12.16) | `JobOverlay` rows (viewer / editor / player progress card) use the new `GradBarView`: 8 dp full-radius bar, track `surfaceLo`, fill `gPrimary`, `gSuccess` when done, `gDanger` on error, eased fill, sweeping 40 % bar for unknown length (1.4 s, steady piece with Reduce motion), TalkBack reads "N percent". Replaces the tinted `ProgressBar`. The main screen's page progress card already had the gradient fill (UI4). | job cards | circular bubble ring (still flat accent, no gradient), 4 s auto-collapse after completion, check-glyph pop | yes (`ops/JobOverlay.kt`) | check next compile: start a copy / zip from the viewer, see the bar fill, finish (green), fail (red) |
-| 2026-11-07 | (type tokens, spec 7) | `gen.py` now writes `object LumenTypography` into `LumenTokens.kt` (13 styles from `tokens.json` `type`: sp size, line height, weight, tracking; `apply(textView, style)` sets size, `lineHeight` (API 28+, else line spacing), `letterSpacing` and weight, `tabular(tv)` = `tnum`). First callers in `Lm.kt`: snackbar message Body M, snackbar action Label L, dialog title Title L, dialog message Body L, dialog buttons Label L, details rows Body S / Body M, apply-all label Body M. Page: `--t-*` is used 26 times (was counted 10); the 278 `--fs-*` uses were NOT bulk-converted on purpose (a size alone does not say which style, and adding line heights moves layouts without a device check); `--st-*` still unused (the ripple / hover colours use `color-mix` percentages). | P8 partly | page `--fs-*` to `--t-*` per component, `--st-*` in ripple / hover, tabular figures callers (speeds, ETA, counters), native callers outside `Lm.kt` (`NlChrome` labels, `JobOverlay`, list rows) | yes (`LumenTokens.kt` regenerated, `Lm.kt`, `gen.py`) | check next compile: a dialog title / message / buttons and a snackbar look the same size as before (14 sp body, 20 sp title now) |
-| 2026-11-07 | (gap review, docs only) | Section 3.9 added: gaps found by reading the plan and grepping the code. Tools clean (`gen.py --check`, contrast 0 failing, parity 0, lint unchanged). | none | see 3.9 | no | n/a |
-| 2026-11-10 | (owner decision: remove row swipe) | Sideways slide on a file / folder row (Share right, Delete left) removed completely. Kotlin: class `NlSwipe` (`NlListFx.kt`), its wiring + `swipeOk` (`NativeList.kt`), `rowSwipe` bridge + the two `NlSwipe.active` checks (`MainActivity.kt`). Page (`ui.html`): swipe script, `swd` / `swr` events in `nlOn`, CSS `.lm-swp` / `.lm-sab`. KEPT: press and hold (selection + menu + lift; `window.__lmRow` is still set), the Main-menu slide (header, edge, empty space, grid, selection mode, and now also over rows again), pull to refresh. Checks: `node --check` 8 scripts, `gen.py --check`, `parity.py` 0, lint unchanged. NOT compiled. | P1 (row swipe removed) | none | yes (`NlListFx.kt`, `NativeList.kt`, `MainActivity.kt`) | check next compile; on the phone: slide a row sideways = Main menu switch, hold a row = still selects |
 | | | | | | | |
 
 
@@ -1163,7 +1153,7 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 | 4 | Floating 72 dp bottom action bar (12.8), top bar variants (12.7), drawer rows (12.9): native `NlChrome` / `NlDrawer` | **B (DONE 2026-11-07 except scroll-driven / large top bars, see Part B notes)** |
 | 5 | Native chrome and tiles on gradients / glass (gSurface, gChrome, G0-G3 in native), from Part 13-14 leftovers (to confirm) | **B (PARTLY: gChrome top light on top bar and dock, gPrimary on the primary dock pill, glass stand-in on the dock; tiles, sheets, dialogs left)** |
 | 6 | Native drawing leftovers of Parts 12-13 (check-circle flip, native ripple, press states) (to confirm) | **B (PARTLY: native ripple in NlChrome views; check-circle flip, ripple in list / drawer rows left)** |
-| 7 | Page leftovers of Parts 12-16: scrubber, swipe actions (removed 2026-11-10), hold-menu lift, exits, list insert / remove (to confirm) | C |
+| 7 | Page leftovers of Parts 12-16: scrubber, swipe actions, hold-menu lift, exits, list insert / remove (to confirm) | C |
 | 8 | Page leftovers of Parts 14-17: Light / Dark pairing, OS fonts, High contrast rings, per-theme contrast floor (to confirm) | C |
 | 9 | TalkBack labels in native screens, 48 px chip tap area | **C (PARTLY 2026-11-07: native chrome + chips)** |
 | 10 | Splash screen | **C (DONE 2026-11-07)** |
@@ -1198,39 +1188,43 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 
 # PART 3. WHAT IS MISSING IN THE CODE
 
-Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast.py`, `lint.py` all clean). Nothing below was run on a device; Kotlin was never compiled by Claude.
+Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast.py`, `lint.py` all clean), with a shared native Activity styling pass added 2026-11-07. Nothing below was run on a device; this new Kotlin pass has not been compiled here.
 
 ## 3.1 Decisions waiting for the owner
 
-1. **Ember values vs spec 4.2-4.4** (A1): DECIDED 2026-11-10 (spec wins): warning light `#a66300`, warning dark `#ffc15e`, success dark `#7fd99a` now in `tokens.json`. Light primary stays `#b84d00`: the spec value `#C25100` fails P7 (gradient end 4.28:1 against `onPrimary`), so the spec text was corrected.
-2. **Folder colour** (A3): DONE 2026-11-10: default = theme `primary` (page `--fcol` falls back to `var(--primary)`, native `NlClassicFolder.themeDefault`); Lite keeps its purple. A folder with its own Style colour is unchanged.
-3. **FAB shape** (A7): no change needed: the FAB always carries a label ("New folder", "Extract all" ...), so it is an extended FAB and the pill is what spec 8.2 asks for. A 56 dp square is only needed if an icon-only FAB is added (for example collapse on scroll).
+1. **Ember values vs spec 4.2-4.4** (A1): light primary `#b84d00` (spec `#C25100`); warning light `#f9ab00` (spec `#A66300`), dark `#fdd663` (spec `#FFC15E`); success dark `#81c995` (spec `#7FD99A`). Spec wins or spec text is corrected. T1 passes either way.
+2. **Folder colour** (A3): code uses the fixed app-icon colour (`#D2590A` / Lite `#9B63D8`, `NlClassicFolder.DEFAULT`); spec 4.5 says theme `primary`.
+3. **FAB shape** (A7): code is a pill (Part 11); spec 8.2 says 56 dp rounded square, 20 dp radius, pill only for the extended FAB.
 4. **16 presets with no Light / Dark partner** (mode switch leaves them as they are): solar, nord, dracula, cyber, matcha, coffee, midnight, tokyo, rosepine, catppuccin, vivaldi, opensuse, ubuntuorange, kali, popos, garuda. Pairing needs new theme designs.
 5. T1 regenerate presets or keep hex (kept so far); T3 OS font vs own font (default: only when font is Default); N13 older-Android splash logo or accept (accepted); N1 (c) blur policy (default taken in 4f; revisit if T8 fails).
 
 ## 3.2 Code that differs from the spec
 
+- **Native Activity baseline (2026-11-07):** `LumenNativeTheme.kt` now applies theme-aware system bars, plain-root canvas, default monochrome text, EditText colours and 48 dp standard Button targets through `App.ActivityLifecycleCallbacks`. It intentionally preserves custom semantic colours and custom-drawn surfaces. This improves consistency across native Activities but does not complete the per-component spec or replace feature-specific styling.
+
 - (Dock action colours now read the category table: 2026-11-09.) (Download cards now read the slots: 2026-11-09.) (A4)
-- **Viewers and tokens** (A5): the black stage and white text are literal on purpose (spec 12.22). Accents now follow the theme (`LumenGrad.onDark`: PDF picker highlight + scroll thumb, image viewer OCR tint, player seek bar). Still literal: `PlayerPal` light set, PDF night-button yellow, scrims are hand-made.
-- **`LumenGrad.glow / scrimBottom` have no caller** (`skeleton` has one in `NlListFx`; viewer top bars use `SCRIM_TOP_COLORS` since 2026-11-07).
-- **Thumbnail radius** (A6, 8.2): done. The grid is by column count (`NlGridView.thumbCorner`); list rows keep 12 dp (r.m) because the column rule and the 88 % shrink apply to grid / gallery cells only (checked 2026-11-07).
-- **Dialogs** (A8, 12.12): DONE natively 2026-11-10 (`AppPal.Dlg.kind / details / applyAll`, `Lm.Opts`, `KindHero`, `Lm.addExtras`); callers: Details x2, File changed, Rescan, could not be moved, update failed / done, dead model link. Page `dlg()` now has Info / Warning / Permission / Success heroes, a Details row and an "Apply to all" switch row (2026-11-09, `o.kind`, `o.details`, `o.applyAll`); native `Lm` dialogs still have hero tiles only for destructive ones and none of the rest; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
+- **Viewers ignore tokens** (A5): image / PDF viewer / player use literal black, white and alpha values; `PlayerWidgets` has its own light / dark set; scrims are hand-made. (Seek bar fill and the red "new" badge now read the theme: 2026-11-09.)
+- **`LumenGrad.glow / scrimTop / scrimBottom` have no caller** (A5 / N4 gGlow / gSkeleton / gScrim callers).
+- **Thumbnail radius** (A6, 8.2) is fixed 12 dp (15 dp bare) in `NlGridView` / `NlRowView`; spec: by column count (r.m up to 3, r.s at 4-5, r.xs at 6-8). (Selected-thumbnail 88 % shrink done in the grid: 2026-11-09; list rows not.)
+- **Dialogs** (A8, 12.12): page `dlg()` now has Info / Warning / Permission / Success heroes, a Details row and an "Apply to all" switch row (2026-11-09, `o.kind`, `o.details`, `o.applyAll`); native `Lm` dialogs still have hero tiles only for destructive ones and none of the rest; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
 - **Real glass only partly real** (A9): native bar / dock / drawer blur = `NlBackdrop` (API 31+, not compiled, not measured); the WebView is skipped in the blur, so page screens blur a flat canvas colour; page glass is CSS.
 - **Folder colour, FAB shape, Ember values**: see 3.1.
 
 ## 3.3 Spec items with no code
 
-- Large collapsing top bar (12.7), Search and Viewer bar variants (N7). (Viewer auto-hide after 3 s: done 2026-11-07 in the image viewer, PDF viewer and player.)
+- Large collapsing top bar (12.7), Search and Viewer bar variants, viewer auto-hide after 3 s (12.7 / 12.22) (N7).
 - Banners (12.15); designed empty / error / permission states with glyph + glow (12.17, page still says "Nothing here"); tooltips and coach marks (12.21); tabs with sliding 3 dp indicator and fade-through (12.10); pull-to-refresh as 40 dp glass circle (12.18, still `SwipeRefreshLayout`); scrollbar fade (12.19) only partly.
-- Job cards (12.16): `JobOverlay` bars are gradient since 2026-11-07 (`GradBarView`); still open: the circular bubble ring is flat, no 4 s auto-collapse after completion, no check pop; ring chart only in the drawer card.
+- Job cards (12.16): `JobOverlay` has no `gPrimary` / `gSuccess` bars; ring chart only in the drawer card.
 - Breakpoints (9.4): permanent drawer at 900 dp+, 24 / 32 dp margins, foldable reflow; dialog widths per 9.2; sheets Full size / modal-center only on the page.
-- Typography: native `LumenTypography` exists since 2026-11-07 (generated; callers so far only in `Lm.kt`); page `--t-*` used 26 times, 278 `--fs-*` uses remain, `--st-*` never (P8); other native screens still hand-set sizes in sp.
-- Haptic map (13.5): pull-to-refresh tick added in native 2026-11-07; the success "double soft tick" is the `success` effect in `Haptics.kt` (not felt on a device).
+- Typography: `--t-*` used 10 times, `--st-*` never (P8); native `LumenTypography` does not exist (sizes hand-set in sp).
+- Haptic map (13.5): pull-to-refresh tick and success "double soft tick" not checked in native.
 - Container transform: gallery cells (`NlGalView`) and page-started viewers have none; no return transition; PDF viewer unchanged (M7).
 - Round 2 / Part 2 leftovers: M2 old-screen shift / dim, native dock slide, `.g0` callers (viewer counters / badges), native N5 pickers / album covers / drawer icons / Devices-FTP-Cloud tiles, P6 `StorageWiz` + search chips + Drive / FTP / SMB badges + `CodeHl` + dark viewer chrome (one colour table), `NlSplash`.
 - Round 2 items 7 and 8 (see 2.5).
 
 ## 3.4 Unverified (needs the owner)
+
+- **2026-11-07 native Activity pass:** compile `LumenNativeTheme.kt` and inspect every native screen in light and dark modes. Check viewer stages, Storage Analyzer, editor, dialogs, input focus and system-bar contrast; ensure explicitly coloured semantic controls remain unchanged.
 
 - **Compile:** all Kotlin from Parts 4a-4f (`NlBackdrop`, `NlHero`, `DrPanel.draw`, `NlListFx`, `Lm` exits) and the 2026-11-08 edits (`NlFileIcons`, `NlChrome.release`, `MainActivity.onDestroy`, regenerated `LumenTokens.kt`) are not compiled. Check: file tiles look the same in list / grid / search.
 - **V2** device pass: T5 parity screenshots, T6 glass ladder F0-F3, T7 font scale 130 / 160 / 200 %, T8 gallery scroll with `lmFrameTest`, T10 native theme-switch flash. **V3** TalkBack. **V4** `LumenPrefs.glassHint()` low-end guess. **V5** the three static dark-theme selector lists (UI4 / UI5 / UI6, `data-cdark`) after any new dark preset.
@@ -1286,7 +1280,7 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] M7 (2026-11-07: (a) skeleton 4d, (b) container transform 4f snapshot overlay, gallery cells / page-started viewers keep the scale-up) Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
 **P. Page leftovers**
-- [x] P1 (row swipe REMOVED 2026-11-10 by owner decision: no Share / Delete slide on rows, `NlSwipe` and the page swipe are gone; do not rebuild) Fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: scrubber, hold lift)
+- [x] P1 (native twin 2026-11-09, `NlSwipe`) Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: swipe rows 96 px, scrubber, hold lift)
 - [x] P2 Floating label + clear for fields outside `dlg` (sheets, settings, rename); password show / hide. (done 2026-11-07, Part 2: `.tf` outside dialogs get label + clear, password eye)
 - [x] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings). (done 2026-11-07, Part 2: `.sbtn` + `lmSplit`, `.tbtn.glass`, `.seg` caller = Glass quality)
 - [~] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens. (Part 2 2026-11-07: `.g0` class, grain on f0 dialogs / sheets, top bar glass on scroll, flat list wallpaper; `.g0` not yet applied to viewer counters / badges)
@@ -1316,33 +1310,3 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - **Start with:** owner compile of 4f, then the device pass. Check first: Settings > Glass quality Full (F0) and Auto on a normal phone: top bar, dock and drawer blur the list under them while scrolling (Android 12+ only); Light / Reduce transparency = flat as in 4b; scroll speed unchanged (T8 `lmFrameTest`); open a picture and a video from a list row or grid card: the thumbnail grows into the viewer, bars fade in after a moment, no flash when it hands over; Reduce motion = old scale-up. If the blur stutters set `NlBackdrop.ENABLED = false`. Older note (4f), kept for history: Older note, Part 4c (N7 bar variants: Search / Viewer, Large collapsing bar, scroll-driven transparent small bar needs a transparent `#top` twin + scroll event + `--topH`; N3 grid / gallery category tiles; N5 folder drawing in pickers / album covers / drawer icons / Devices-FTP-Cloud tiles; N13 older-Android splash; P6 one colour table for Storage / search chips / badges / CodeHl / editor). Part 4b check first on a device: Settings > Glass quality F0-F3 (top bar hairline, dock and drawer more or less see-through, flat at the lowest step), FAB gradient + press ripple, snackbar progress, Windows 11 theme corners (dock pills, snackbar, View options sheet), open the side menu: storage card on top (ring + free space, tap = Storage analyzer), drawer panel must show its rows (if it is empty set `localStorage ls_nld='0'`), long-press a folder > More > tap outside closes it. Owner can run V2-V5 any time in parallel.
 - **Check first (Parts 1-2):** swipe a row left / right, drag the scrubber, open Settings -> Glass quality (segment), delete a file (row collapses); open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
 - **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 4c); N1 (c): decided by default in 4f (real blur at F0, F1 only on non-low devices; F2 / F3 keep the stand-in); revisit if T8 fails. M7 (b): snapshot overlay chosen.
-
-## 3.9 Gap review against the code (added in a review session; docs only, no code touched)
-
-Method: read this file, `HANDOVER_READ_BEFORE_CODE.md`, `CHANGELOG.md` and `tools/lumen`; ran `gen.py --check`, `contrast.py`, `parity.py`, `lint.py` (all clean, same counts as 3.5); grepped `ui.html` and the Kotlin sources. Nothing was compiled or run on a device.
-
-**No code at all**
-- Banners (12.15): page `banner()` is only a one-line status text; there is no banner card class.
-- Tooltips and coach marks (12.21): none (one `title=` attribute in the page).
-- Designed empty / error states (12.17): page still says "Nothing here".
-- Large collapsing top bar and Search / Viewer bar variants (12.7, N7).
-- Tabs with sliding 3 dp indicator and fade-through (12.10).
-- Glass pull-to-refresh (12.18): native still uses `SwipeRefreshLayout` (`NativeList.kt`).
-- Breakpoints (9.4), the missing part: permanent drawer at 900 dp+, 24 / 32 dp margins, foldable reflow. Already present: 600 px rules for sheets / dialogs and 900 px columns for albums and gallery.
-- Multi-file conflict dialog (Replace / Skip / Keep both / Replace if newer + "Apply to all"): `applyAll` exists on page and native but has no caller.
-- No unit tests; the only CI workflow is `build-apk.yml`.
-
-**Built only partly**
-- Job cards (12.16): circular bubble ring flat, no 4 s auto-collapse, no check pop.
-- Container transform (M7): list rows and grid cards only; gallery cells and page-started viewers use the scale-up; no return transition; PDF viewer unchanged.
-- Type tokens (P8): page has about 255 `--fs-*` uses vs 11 `--t-*`; `--st-*` unused; native `LumenTypography` only called from `Lm.kt`.
-- One colour table (P6 / A5): Storage wizard, search chips, Drive / FTP / SMB badges, dark viewer chrome, `PlayerPal` light set, PDF night-button yellow are still literal; `LumenGrad.glow` has no caller, `scrimBottom` no real caller.
-- Native dialogs still run on `AlertDialog` through `Lm.restyle` (28 references); only about 8 callers pass a `kind`.
-- Real blur samples a flat canvas colour on page screens (WebView skipped, A9).
-- Themes: 16 presets without a Light / Dark partner (3.1 item 4); presets keep their hex.
-- Gallery (`NlGalView`): no file tiles, no container transform.
-
-**Housekeeping noted**
-- Dates in this file are out of order (log rows 2026-11-07 appear after 2026-11-10; the header says merged 2026-11-08 and last session 2026-11-07). Fix at the next edit of the status line.
-
-**Suggested order:** compile the 2026-11-10 edits and run V2-V5; conflict dialog with `applyAll`; banners; empty / error states; then the rest of 3.3.

@@ -5,42 +5,6 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-11-10 - Sideways slide on files and folders removed
-### Removed
-- Sliding a file or folder sideways to Share or Delete is gone. Press and hold still selects it and opens the menu, and sliding sideways switches to the Main menu again.
-
-## 2026-11-07 - Dialog and message text sizes follow one scale
-### Changed
-- Dialog titles, messages, buttons and the pop-up messages at the bottom now use the same text sizes as the rest of the app. Titles are a little larger.
-
-## 2026-11-07 - Nicer progress bars for running tasks
-### Changed
-- The progress bars of copy, zip and print tasks in the viewers are now smooth colour bars: green when done, red on error.
-
-## 2026-11-07 - Viewer bars hide by themselves
-### Changed
-- In the picture viewer and the PDF viewer the top bar now hides after 3 seconds without a touch; tap to bring it back.
-- Pulling a folder down to refresh gives a small tick.
-
-## 2026-11-07 - Clearer question and notice dialogs
-### Changed
-- Dialogs that warn about replacing, clearing or stopping something now show a warning symbol, and plain notices show an info symbol.
-
-## 2026-11-07 - Viewer accents follow your theme
-### Changed
-- The PDF viewer (scroll handle, page picker highlight) and the picture viewer's text-recognition button now use your theme colour instead of a fixed orange or blue.
-
-## 2026-11-10 - Swiping a file or folder to Share / Delete
-### Fixed
-- Sliding a file or folder sideways now follows your finger and gives Share / Delete; before, the slide was taken by the Main menu switch before it could finish.
-
-## 2026-11-10 - Dialog types on every screen, default folder colour
-### Added
-- Dialogs outside the file list (Details, "File changed", rescan, update failed / done and others) now show the coloured icon tile for information, warning or success, and can show a details list and an "Apply to all" switch.
-### Changed
-- Folders without their own colour now use the theme colour instead of a fixed orange.
-- Warning and success colours in the default themes follow the design spec (a darker amber in light, softer green and amber in dark).
-
 ## 2026-11-09 - Top bar no longer garbled while scrolling
 ### Fixed
 - While you scroll a folder, the title and icons on the top bar no longer look doubled or smeared.
@@ -726,3 +690,12 @@
 
 ### Added
 - The update dialog now shows what was added, removed or changed (all versions you skipped, newest first) before you press download.
+
+## 2026-11-07 - Lumen native interface consistency pass
+
+### Changed
+- Added an Activity-lifecycle Lumen pass for native screens: system status/navigation bars follow the active Lumen canvas and light/dark icon contrast; default monochrome text and editable fields use Lumen ink, muted ink and primary focus tint; standard buttons receive Lumen primary text and a 48 dp minimum touch height.
+- The pass deliberately preserves explicitly coloured feature controls, custom artwork, viewer stages and non-default surfaces.
+
+### Notes
+- This is a shared native baseline, not a claim that every outstanding Lumen spec item is complete. Large collapsing/search/viewer bars, native tooltips, tab transitions, dedicated empty/error states, typography-scale migration and device/TalkBack verification remain open.

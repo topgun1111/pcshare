@@ -1,12 +1,26 @@
 package com.lanshare.app
 
 import android.app.Application
+import android.app.Activity
+import android.os.Bundle
 
 /** Process start: registers the screen counter of the clipboard sync before any activity exists (a service would be created too late to see the first one). */
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (isBuildProcess()) return                       // :pdfbuild only renders PDF pages: no clipboard sync, no FileInfo
+        if (isBuildProcess()) return
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, state: Bundle?) { }
+            override fun onActivityStarted(activity: Activity) { }
+            override fun onActivityResumed(activity: Activity) {
+                // Post until each Activity has finished its first content/layout pass.
+                activity.window.decorView.post { try { LumenNativeTheme.apply(activity) } catch (_: Throwable) { } }
+            }
+            override fun onActivityPaused(activity: Activity) { }
+            override fun onActivityStopped(activity: Activity) { }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) { }
+            override fun onActivityDestroyed(activity: Activity) { }
+        })                       // :pdfbuild only renders PDF pages: no clipboard sync, no FileInfo
         com.lanshare.app.core.FileInfo.ctx = applicationContext
         Haptics.init(this)
         try { ClipSync.install(this) } catch (_: Throwable) {}
