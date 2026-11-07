@@ -223,11 +223,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
     private inner class RowHolder {
         val root = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(6), 0, px(6)) }
         private val title = TextView(act).apply { setTextColor(pal.text); textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
-        private val bar = ProgressBar(act, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progressTintList = ColorStateList.valueOf(pal.accent); progressBackgroundTintList = ColorStateList.valueOf(pal.track)
-            indeterminateTintList = ColorStateList.valueOf(pal.accent)
-        }
+        private val bar = GradBarView(act)   // Lumen 12.16: 8 dp linear bar, gPrimary fill, gSuccess when done, gDanger on error, sweeping bar when the length is unknown
         private val detail = TextView(act).apply { setTextColor(pal.subtext); textSize = 11f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         private val action = TextView(act).apply { textSize = 20f; gravity = Gravity.CENTER }
         private var id = ""
@@ -243,7 +239,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         fun bind(r: JobView.Row) {
             id = r.id
             title.text = r.label
-            if (r.pct < 0) bar.isIndeterminate = true else { bar.isIndeterminate = false; bar.progress = r.pct }
+            bar.set(r.pct, r.state)
             detail.text = r.detail; detail.visibility = if (r.detail.isEmpty()) View.GONE else View.VISIBLE
             when {
                 r.state == "run" && r.cancellable -> { action.text = "\u2715"; action.setTextColor(pal.text); action.tag = "cancel"; action.contentDescription = "Cancel" }
@@ -319,5 +315,64 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
             if (root.findViewWithTag<View>(TAG) != null) return
             root.addView(JobOverlay(act).also { it.hidePrefix = hidePrefix }, ViewGroup.LayoutParams(-1, -1))
         }
+    }
+}
+
+/**
+ * Lumen 12.16 linear progress: 8 dp, full radius, track = `surfaceLo`, fill = `gPrimary` (`gSuccess` when the job is done, `gDanger` on error).
+ * Unknown length (pct < 0): a 40 % wide bar sweeps along the track in 1.4 s (a steady 40 % piece with Reduce motion).
+ * The fill eases towards the new value instead of jumping (not with Reduce motion).
+ */
+private class GradBarView(c: Context) : View(c) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private var lm = com.lanshare.app.Lumen.of(c)
+    private var target = 0f
+    private var shown = 0f
+    private var state = "run"
+    private var indet = false
+
+    fun set(pct: Int, st: String) {
+        lm = com.lanshare.app.Lumen.of(context)
+        state = st; indet = pct < 0 && st == "run"
+        target = if (st == "done") 100f else pct.coerceIn(0, 100).toFloat()
+        if (com.lanshare.app.LumenPrefs.reduceMotion(context)) shown = target
+        contentDescription = if (indet) null else "${target.toInt()} percent"
+        invalidate()
+    }
+
+    override fun onDraw(cv: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val r = h / 2f
+        p.shader = null; p.style = Paint.Style.FILL; p.color = lm.surfaceLo
+        rect.set(0f, 0f, w, h); cv.drawRoundRect(rect, r, r, p)
+        val cols = when (state) {
+            "done" -> com.lanshare.app.LumenGrad.success(lm)
+            "error" -> com.lanshare.app.LumenGrad.danger(lm)
+            else -> com.lanshare.app.LumenGrad.primary(lm)
+        }
+        var again = false
+        val l: Float; val rr: Float
+        if (indet) {
+            val bw = w * 0.4f
+            if (com.lanshare.app.LumenPrefs.reduceMotion(context)) { l = (w - bw) / 2f }
+            else {
+                val t = (System.currentTimeMillis() % 1400L) / 1400f
+                val e = t * t * (3f - 2f * t)                       // accelerate-decelerate
+                l = -bw + (w + bw) * e; again = true
+            }
+            rr = l + bw
+        } else {
+            if (Math.abs(shown - target) > 0.4f) { shown += (target - shown) * 0.25f; again = true } else shown = target
+            l = 0f; rr = w * shown / 100f
+        }
+        val cl = Math.max(0f, l); val cr = Math.min(w, rr)
+        if (cr - cl > 1f) {
+            rect.set(cl, 0f, cr, h)
+            p.shader = com.lanshare.app.LumenGrad.diag(cols, cl, 0f, cr, 0f)
+            cv.drawRoundRect(rect, r, r, p); p.shader = null
+        }
+        if (again) postInvalidateOnAnimation()
     }
 }

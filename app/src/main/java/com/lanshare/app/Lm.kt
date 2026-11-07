@@ -213,7 +213,7 @@ object Lm {
         val tv = TextView(act)
         tv.text = text
         tv.setTextColor(lm.ink)
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        LumenTypography.apply(tv, LumenTypography.BODY_M)   // spec 7 Body M
         tv.maxLines = 2
         tv.ellipsize = android.text.TextUtils.TruncateAt.END
         tv.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO   // the pill carries the text
@@ -227,8 +227,7 @@ object Lm {
             val ta = TextView(act)
             ta.text = actionLabel
             ta.setTextColor(lm.primary)
-            ta.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            ta.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            LumenTypography.apply(ta, LumenTypography.LABEL_L)   // spec 7 Label L (semi-bold)
             ta.gravity = Gravity.CENTER
             ta.minimumHeight = dp(act, 48f)
             ta.setPadding(dp(act, 12f), 0, dp(act, 12f), 0)
@@ -353,8 +352,8 @@ object Lm {
             for ((i, r) in rows!!.withIndex()) {
                 val row = LinearLayout(c)
                 row.orientation = LinearLayout.HORIZONTAL
-                val l = TextView(c); l.text = r.first; l.setTextColor(lm.inkMut); l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                val v = TextView(c); v.text = r.second; v.setTextColor(lm.ink); v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                val l = TextView(c); l.text = r.first; l.setTextColor(lm.inkMut); LumenTypography.apply(l, LumenTypography.BODY_S)
+                val v = TextView(c); v.text = r.second; v.setTextColor(lm.ink); LumenTypography.apply(v, LumenTypography.BODY_M)
                 v.maxLines = 2; v.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; v.gravity = Gravity.END
                 row.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.38f))
                 row.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.62f))
@@ -367,7 +366,7 @@ object Lm {
             row.orientation = LinearLayout.HORIZONTAL
             row.gravity = Gravity.CENTER_VERTICAL
             row.minimumHeight = dp(c, 48f)
-            val t = TextView(c); t.text = o.applyAllLabel; t.setTextColor(lm.ink); t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            val t = TextView(c); t.text = o.applyAllLabel; t.setTextColor(lm.ink); LumenTypography.apply(t, LumenTypography.BODY_M)
             val sw = android.widget.Switch(c)
             sw.contentDescription = o.applyAllLabel
             try {
@@ -424,7 +423,7 @@ object Lm {
         b.minimumHeight = dp(c, h)
         b.minWidth = dp(c, 64f)
         b.minimumWidth = dp(c, 64f)
-        b.textSize = 14f
+        LumenTypography.apply(b, LumenTypography.LABEL_L)   // spec 7 Label L
         b.setPadding(dp(c, padH), 0, dp(c, padH), 0)
         val rad = dp(c, 999f).toFloat()
         if (fill != 0) {
@@ -457,6 +456,12 @@ object Lm {
         try {
             val tid = c.resources.getIdentifier("alertTitle", "id", "android")
             if (tid != 0) title = d.findViewById<TextView>(tid)?.text
+        } catch (_: Throwable) { }
+        try {   // spec 7: dialog title = Title L, message = Body L (colours stay as the dialog theme sets them)
+            val tv = d.findViewById<TextView>(c.resources.getIdentifier("alertTitle", "id", "android"))
+            if (tv != null) LumenTypography.apply(tv, LumenTypography.TITLE_L)
+            val mv = d.findViewById<TextView>(android.R.id.message)
+            if (mv != null) LumenTypography.apply(mv, LumenTypography.BODY_L)
         } catch (_: Throwable) { }
 
         val danger = o?.kind == "danger" || (o?.kind == null && pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))

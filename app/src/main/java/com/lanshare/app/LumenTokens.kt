@@ -137,6 +137,40 @@ object LumenMotion {
     val SPRING: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.34f, 1.45f, 0.64f, 1f) }
 }
 
+/** Type scale (spec 7), the native twin of the page vars --t-<style>-size/lh/w/tr. Use LumenTypography.apply(textView, LumenTypography.BODY_M) instead of hand-set sizes. */
+object LumenTypography {
+    class Style(val sp: Float, val lineSp: Float, val weight: Int, val tracking: Float)
+    val DISPLAY = Style(36f, 44f, 600, -0.005f)
+    val HEADLINE_L = Style(28f, 36f, 600, -0.0025f)
+    val HEADLINE_M = Style(24f, 32f, 600, 0.0f)
+    val TITLE_L = Style(20f, 28f, 600, 0.0f)
+    val TITLE_M = Style(16f, 24f, 600, 0.001f)
+    val TITLE_S = Style(14f, 20f, 600, 0.001f)
+    val BODY_L = Style(16f, 24f, 400, 0.003f)
+    val BODY_M = Style(14f, 20f, 400, 0.002f)
+    val BODY_S = Style(12f, 16f, 400, 0.003f)
+    val LABEL_L = Style(14f, 20f, 600, 0.001f)
+    val LABEL_M = Style(12f, 16f, 600, 0.004f)
+    val LABEL_S = Style(11f, 16f, 600, 0.005f)
+    val MONO = Style(13f, 20f, 450, 0.0f)
+
+    /** Size, line height, weight and tracking of [s]; colour, alignment and lines are left alone. */
+    fun apply(tv: android.widget.TextView, s: Style): android.widget.TextView {
+        tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, s.sp)
+        tv.letterSpacing = s.tracking
+        val lhPx = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, s.lineSp, tv.resources.displayMetrics)
+        if (android.os.Build.VERSION.SDK_INT >= 28) tv.lineHeight = Math.round(lhPx)
+        else { val fm = tv.paint.fontMetricsInt; tv.setLineSpacing(Math.max(0f, lhPx - (fm.descent - fm.ascent)), 1f) }
+        val base = tv.typeface ?: android.graphics.Typeface.DEFAULT
+        tv.typeface = if (android.os.Build.VERSION.SDK_INT >= 28) android.graphics.Typeface.create(base, s.weight, false)
+                      else android.graphics.Typeface.create(base, if (s.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        return tv
+    }
+
+    /** Spec 7: numbers in sizes, counts, speeds and times use tabular figures so columns line up and counters do not jitter. */
+    fun tabular(tv: android.widget.TextView): android.widget.TextView { tv.fontFeatureSettings = "tnum"; return tv }
+}
+
 /** Named category colours (spec 4.5). Tone = base (tile colour), tint (container), deep (glyph on a dark-mode tile). */
 object LumenCategory {
     class Tone(val base: Int, val tint: Int, val deep: Int) {

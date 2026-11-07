@@ -5,6 +5,14 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Dialog and message text sizes follow one scale
+### Changed
+- Dialog titles, messages, buttons and the pop-up messages at the bottom now use the same text sizes as the rest of the app. Titles are a little larger.
+
+## 2026-11-07 - Nicer progress bars for running tasks
+### Changed
+- The progress bars of copy, zip and print tasks in the viewers are now smooth colour bars: green when done, red on error.
+
 ## 2026-11-07 - Viewer bars hide by themselves
 ### Changed
 - In the picture viewer and the PDF viewer the top bar now hides after 3 seconds without a touch; tap to bring it back.

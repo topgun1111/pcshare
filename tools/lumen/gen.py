@@ -115,8 +115,41 @@ def kotlin():
     for k, b in M["bez"].items():
         o.append(f"    val {k.upper()}: android.view.animation.Interpolator by lazy {{ android.view.animation.PathInterpolator({b[0]}f, {b[1]}f, {b[2]}f, {b[3]}f) }}")
     o += ["}", ""]
+    o += typography_kt()
     o += category_kt()
     return "\n".join(o)
+
+def typography_kt():
+    """Spec 7 type scale for native views: sp size, line height (sp), weight, tracking (em). Same numbers as the page --t-* vars."""
+    def kn(n):   # headlineL -> HEADLINE_L
+        out = ""
+        for ch in n:
+            out += ("_" + ch) if ch.isupper() else ch.upper()
+        return out
+    o = ["/** Type scale (spec 7), the native twin of the page vars --t-<style>-size/lh/w/tr. Use LumenTypography.apply(textView, LumenTypography.BODY_M) instead of hand-set sizes. */",
+         "object LumenTypography {",
+         "    class Style(val sp: Float, val lineSp: Float, val weight: Int, val tracking: Float)"]
+    for n, (sz, lh, w, tr) in T["type"].items():
+        trv = float(tr.replace("em", ""))
+        o.append(f"    val {kn(n)} = Style({sz}f, {lh}f, {w}, {trv}f)")
+    o += ["",
+          "    /** Size, line height, weight and tracking of [s]; colour, alignment and lines are left alone. */",
+          "    fun apply(tv: android.widget.TextView, s: Style): android.widget.TextView {",
+          "        tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, s.sp)",
+          "        tv.letterSpacing = s.tracking",
+          "        val lhPx = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, s.lineSp, tv.resources.displayMetrics)",
+          "        if (android.os.Build.VERSION.SDK_INT >= 28) tv.lineHeight = Math.round(lhPx)",
+          "        else { val fm = tv.paint.fontMetricsInt; tv.setLineSpacing(Math.max(0f, lhPx - (fm.descent - fm.ascent)), 1f) }",
+          "        val base = tv.typeface ?: android.graphics.Typeface.DEFAULT",
+          "        tv.typeface = if (android.os.Build.VERSION.SDK_INT >= 28) android.graphics.Typeface.create(base, s.weight, false)",
+          "                      else android.graphics.Typeface.create(base, if (s.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)",
+          "        return tv",
+          "    }",
+          "",
+          "    /** Spec 7: numbers in sizes, counts, speeds and times use tabular figures so columns line up and counters do not jitter. */",
+          "    fun tabular(tv: android.widget.TextView): android.widget.TextView { tv.fontFeatureSettings = \"tnum\"; return tv }",
+          "}", ""]
+    return o
 
 def category_kt():
     ks = list(CAT["list"])
