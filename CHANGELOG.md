@@ -5,6 +5,19 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Glass and soft background
+### Added
+- The start menu has a soft coloured background glow behind the tiles (off in the pure black theme).
+### Changed
+- Dialogs, bottom sheets, pop-up menus and messages are now frosted glass: the page behind shows through blurred, with a light rim and a tinted shadow.
+
+## 2026-11-07 - Colour depth and shadows
+### Changed
+- Main buttons, the round add button, switches, tick boxes, selection circles and progress bars get a soft two-tone colour instead of a flat fill.
+- File icon tiles in page lists fade from a lighter to a deeper shade of their colour.
+- Menus, messages, dialogs and sheets cast softer, theme-tinted shadows; dark themes lean on shadow strength instead of colour.
+- The main button in native dialogs has the same soft colour fade.
+
 ## 2026-11-07 - Lists and touch feedback
 ### Changed
 - A soft ripple spreads from your finger on buttons, chips and option rows.

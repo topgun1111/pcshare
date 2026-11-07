@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.ColorStateList
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -265,6 +266,11 @@ object Lm {
         }
     }
 
+    private fun mixInk(base: Int, with: Int, t: Float): Int {
+        fun ch(x: Int, y: Int) = Math.round(x + (y - x) * t)
+        return Color.argb(Color.alpha(base), ch(Color.red(base), Color.red(with)), ch(Color.green(base), Color.green(with)), ch(Color.blue(base), Color.blue(with)))
+    }
+
     private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context) {
         b.setAllCaps(false)
         b.setTextColor(text)
@@ -279,7 +285,12 @@ object Lm {
         b.setPadding(dp(c, padH), 0, dp(c, padH), 0)
         val rad = dp(c, 999f).toFloat()
         if (fill != 0) {
-            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), shape(fill, rad), null)
+            // Lumen 5.2 gPrimary: 135 degrees, light start (6 % white) to darker end (12 % black); only the primary fill, tonal / danger stay flat
+            val face: android.graphics.drawable.Drawable = if (fill == Lumen.of(c).primary) {
+                val g = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(mixInk(fill, 0xFFFFFFFF.toInt(), 0.06f), mixInk(fill, 0xFF000000.toInt(), 0.12f)))
+                g.cornerRadius = rad; g
+            } else shape(fill, rad)
+            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), face, null)
         } else {
             b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.12f)), null, shape(0xFFFFFFFF.toInt(), rad))
         }

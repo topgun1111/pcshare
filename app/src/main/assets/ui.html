@@ -1007,6 +1007,52 @@ input.lmr:active::-webkit-slider-thumb{box-shadow:0 0 0 12px color-mix(in srgb,v
 .rpl.out{animation:none;transform:scale(1);opacity:0;transition:opacity .2s}
 @media(prefers-reduced-motion:reduce){.rpl{display:none}}
 /*LUMEN-UI3:END*/
+/*LUMEN-UI4:BEGIN*/
+/* Lumen Part 13: gradients, category tiles, elevation (hand-written). Everything sits inside @supports(color-mix) so old WebViews keep the flat colours. Dark-theme list below = themes whose canvas luminance < 0.4 (same test as gen.py); regenerate it when themes change. */
+@supports(background:color-mix(in srgb,red,blue)){
+:root{--shT:color-mix(in srgb,var(--primary) 35%,#000);--shK:1;--sh1:1;
+--gPrimary:linear-gradient(135deg,color-mix(in srgb,var(--primary) 94%,#fff),color-mix(in srgb,var(--primary) 88%,#000));
+--gPrimarySoft:linear-gradient(135deg,var(--primaryCont),color-mix(in srgb,var(--primaryCont) 90%,var(--primary)));
+--gDanger:linear-gradient(135deg,color-mix(in srgb,var(--error) 94%,#fff),color-mix(in srgb,var(--error) 86%,#000));
+--gFab:linear-gradient(135deg,color-mix(in srgb,var(--fab) 94%,#fff),color-mix(in srgb,var(--fab) 90%,#000));
+--e1:0 1px 3px color-mix(in srgb,var(--shT) calc(10% * var(--sh1)),transparent),0 1px 2px color-mix(in srgb,var(--shT) calc(6% * var(--sh1)),transparent);
+--e2:0 2px 8px color-mix(in srgb,var(--shT) calc(12% * var(--shK)),transparent),0 1px 3px color-mix(in srgb,var(--shT) calc(8% * var(--shK)),transparent);
+--e3:0 6px 18px color-mix(in srgb,var(--shT) calc(16% * var(--shK)),transparent),0 2px 6px color-mix(in srgb,var(--shT) calc(10% * var(--shK)),transparent);
+--e4:0 12px 32px color-mix(in srgb,var(--shT) calc(20% * var(--shK)),transparent),0 4px 10px color-mix(in srgb,var(--shT) calc(12% * var(--shK)),transparent);
+--e5:0 16px 40px color-mix(in srgb,var(--shT) calc(24% * var(--shK)),transparent)}
+:root[data-theme=dark],:root[data-theme=win11],:root[data-theme=ubuntu],:root[data-theme=ocean],:root[data-theme=amoled],:root[data-theme=forest],:root[data-theme=nord],:root[data-theme=dracula],:root[data-theme=sunset],:root[data-theme=cyber],:root[data-theme=crimson],:root[data-theme=midnight],:root[data-theme=mocha],:root[data-theme=gruvbox],:root[data-theme=tokyo],:root[data-theme=rosepine],:root[data-theme=catppuccin],:root[data-theme=tealnight],:root[data-theme=trueblack],:root[data-theme=hcd],:root[data-theme=vivaldi],:root[data-theme=opensuse],:root[data-theme=ubuntuorange],:root[data-theme=kali],:root[data-theme=popos],:root[data-theme=garuda]{--shK:2.8;--sh1:0}
+@media(prefers-color-scheme:dark){:root[data-theme=auto]{--shK:2.8;--sh1:0}}
+.tbtn.fill,.ib.pri .ii{background:var(--gPrimary)}
+.tbtn.dngf{background:var(--gDanger)}
+.tbtn.tonal,.chip.on,.chip.sug,.seg button.on,.ibtn.on{background:var(--gPrimarySoft)}
+#fab{background:var(--gFab);box-shadow:var(--e3)}
+.sw input:checked+i{background:var(--gPrimary)}
+.cbx:checked,.cbx:indeterminate{background:var(--gPrimary)}
+.lead .ck,#gal .gc .ck,.vc .ck{background:var(--gPrimary)}
+#tp i{background:var(--gPrimary)}
+.row .lead .kd{background:linear-gradient(135deg,color-mix(in srgb,var(--b) 100%,#fff 10%),color-mix(in srgb,var(--b) 88%,#000))}
+.dmn,#toast,#jp,#jb{box-shadow:var(--e3)}
+#dlg .dcard,#sheet .card{box-shadow:var(--e4)}
+.dgh{box-shadow:var(--e5)}
+.tbtn.fill{box-shadow:var(--e1)}
+}
+/*LUMEN-UI4:END*/
+/*LUMEN-UI5:BEGIN*/
+/* Lumen Part 14: wallpaper Aurora (home menu) + glass tiers G1-G3 (hand-written). Needs backdrop-filter AND color-mix, otherwise nothing here applies and the solid surfaces stay. Fallback ladder F1-F3 and the settings are Part 15. Dark-theme list = gen.py is_dark (regenerate with the Part 13 list when themes change). */
+@supports((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) and (background:color-mix(in srgb,red,blue)){
+:root{--aK:1;--gA1:78%;--gB1:66%;--gA2:78%;--gA3:84%}
+:root[data-theme=dark],:root[data-theme=win11],:root[data-theme=ubuntu],:root[data-theme=ocean],:root[data-theme=amoled],:root[data-theme=forest],:root[data-theme=nord],:root[data-theme=dracula],:root[data-theme=sunset],:root[data-theme=cyber],:root[data-theme=crimson],:root[data-theme=midnight],:root[data-theme=mocha],:root[data-theme=gruvbox],:root[data-theme=tokyo],:root[data-theme=rosepine],:root[data-theme=catppuccin],:root[data-theme=tealnight],:root[data-theme=trueblack],:root[data-theme=hcd],:root[data-theme=vivaldi],:root[data-theme=opensuse],:root[data-theme=ubuntuorange],:root[data-theme=kali],:root[data-theme=popos],:root[data-theme=garuda]{--aK:1.5;--gA1:70%;--gB1:58%;--gA2:70%;--gA3:76%}
+@media(prefers-color-scheme:dark){:root[data-theme=auto]{--aK:1.5;--gA1:70%;--gB1:58%;--gA2:70%;--gA3:76%}}
+:root[data-theme=amoled]{--aK:0}
+#home{background:radial-gradient(70% 45% at 6% 4%,color-mix(in srgb,var(--primary) calc(12% * var(--aK)),transparent),transparent 72%),radial-gradient(60% 40% at 100% 26%,color-mix(in srgb,var(--secondary) calc(12% * var(--aK)),transparent),transparent 72%),radial-gradient(70% 45% at 0% 64%,color-mix(in srgb,var(--tertiary) calc(11% * var(--aK)),transparent),transparent 72%),radial-gradient(65% 45% at 96% 100%,color-mix(in srgb,color-mix(in srgb,var(--primary) 70%,var(--tertiary)) calc(12% * var(--aK)),transparent),transparent 72%),var(--canvas)}
+#home::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.025;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E")}
+.g1{-webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);background:linear-gradient(180deg,color-mix(in srgb,var(--glassTint) var(--gA1),transparent),color-mix(in srgb,var(--glassTint) var(--gB1),transparent));box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e2)}
+.g2{-webkit-backdrop-filter:blur(32px) saturate(1.45);backdrop-filter:blur(32px) saturate(1.45);background:linear-gradient(180deg,color-mix(in srgb,var(--glassTint) var(--gA2),transparent),color-mix(in srgb,var(--glassTint) var(--gA2),transparent));box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e3)}
+.g3{-webkit-backdrop-filter:blur(40px) saturate(1.5);backdrop-filter:blur(40px) saturate(1.5);background:linear-gradient(180deg,color-mix(in srgb,var(--glassTint) var(--gA3),transparent),color-mix(in srgb,var(--glassTint) var(--gA3),transparent));box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e4)}
+#dlg .dcard,#sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs){-webkit-backdrop-filter:blur(40px) saturate(1.5);backdrop-filter:blur(40px) saturate(1.5);background:color-mix(in srgb,var(--glassTint) var(--gA3),transparent);box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e4)}
+.dmn,#toast,#jp{-webkit-backdrop-filter:blur(32px) saturate(1.45);backdrop-filter:blur(32px) saturate(1.45);background:color-mix(in srgb,var(--glassTint) var(--gA2),transparent);box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e3)}
+}
+/*LUMEN-UI5:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
