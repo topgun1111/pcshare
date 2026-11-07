@@ -5,11 +5,20 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Ripples everywhere and a heading pill
+### Added
+- Gallery thumbnails and side menu rows now show the same soft ripple when touched.
+- While you scroll a long folder, a small pill at the top names the group you are in (letter, size or month).
+### Changed
+- The action buttons at the bottom now appear one after the other.
+- The month and day headings in the gallery open their selection circle with a short squeeze.
+
 ## 2026-11-07 - Smoother lists
 ### Added
 - Touching a file or folder in the list or grid now shows a soft ripple.
 - A loading skeleton appears while a folder opens slowly.
 ### Changed
+- Fixed the garbled top bar: the title and icons were drawn twice at the top of the list.
 - Selecting a file flips its icon into the check mark.
 - Long-pressing a file lifts it slightly.
 

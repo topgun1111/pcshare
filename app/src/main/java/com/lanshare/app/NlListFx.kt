@@ -26,9 +26,12 @@ class NlRpl(private val v: View) {
     fun touch(e: MotionEvent) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { on = true; x = e.x; y = e.y; t0 = SystemClock.uptimeMillis(); end = 0L; v.invalidate() }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (on && end == 0L) { end = SystemClock.uptimeMillis(); v.invalidate() }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> release()
         }
     }
+
+    /** Finger lifted or the gesture turned into a scroll: let the ripple fade (4e: also called by views that drop the press themselves). */
+    fun release() { if (on && end == 0L) { end = SystemClock.uptimeMillis(); v.invalidate() } }
 
     /** A recycled view must not carry a ripple of the previous row. */
     fun reset() { on = false; end = 0L }
@@ -120,5 +123,52 @@ class NlSkelView(c: Context, private val d: Float) : View(c) {
         }
         p.shader = null
         if (!rm) postInvalidateOnAnimation()
+    }
+}
+
+/**
+ * Lumen Part 4e (N11): sticky heading strip of the native list, twin of the page scrubber bubble. A small pill at the top-left of the list
+ * names the group of the first visible row (initial / size / month, same text as the fast scroller) while the list scrolls, fades out 900 ms
+ * after it stops. Never takes touches. Reduce motion = no fade (appears and disappears at once).
+ */
+class NlStickyView(c: Context, private val d: Float) : View(c) {
+    var fill = 0
+    var ink = 0
+    var edge = 0
+    private var text = ""
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = 12f * d * UiScale.tf }
+    private val rf = RectF()
+    private val hideRun = Runnable { fade(0f) }
+
+    init { alpha = 0f; isClickable = false; isFocusable = false; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+
+    private fun fade(to: Float) {
+        animate().cancel()
+        if (LumenPrefs.reduceMotion(context)) { alpha = to; return }
+        animate().alpha(to).setDuration(if (to > 0f) 120L else 160L).start()
+    }
+
+    /** [label] of the first visible row; empty hides the strip. Call on every scroll step. */
+    fun pulse(label: String) {
+        removeCallbacks(hideRun)
+        if (label.isEmpty()) { if (alpha > 0f) fade(0f); return }
+        if (label != text) { text = label; invalidate() }
+        if (alpha < 1f) fade(1f)
+        postDelayed(hideRun, 900)
+    }
+
+    fun hideNow() { removeCallbacks(hideRun); animate().cancel(); alpha = 0f }
+
+    override fun onDraw(cv: Canvas) {
+        if (text.isEmpty()) return
+        val tw = tp.measureText(text)
+        val h = 28f * d
+        rf.set(12f * d, 8f * d, 12f * d + tw + 24f * d, 8f * d + h)
+        p.style = Paint.Style.FILL; p.color = (fill and 0x00FFFFFF) or (0xEB shl 24); cv.drawRoundRect(rf, h / 2f, h / 2f, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = Math.max(1f, d * 0.5f); p.color = edge; cv.drawRoundRect(rf, h / 2f, h / 2f, p)
+        tp.color = ink
+        val fm = tp.fontMetrics
+        cv.drawText(text, rf.left + 12f * d, rf.centerY() - (fm.ascent + fm.descent) / 2f, tp)
     }
 }

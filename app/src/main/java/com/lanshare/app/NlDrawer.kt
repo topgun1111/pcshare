@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
@@ -58,12 +59,14 @@ private class DrReg(val h: Float, val its: List<DrIt>, val hits: List<DrHit>)
 /** One painted region: the tab strip, a body row or the footer. Taps on a hit rectangle go to [onHit]; a touch outside every hit is not consumed. */
 private class DrView(c: Context, private val d: Float) : View(c) {
     var reg: DrReg? = null
-        set(v) { field = v; try { ebt.invalidateRoot() } catch (_: Throwable) { } }
+        set(v) { field = v; rpl.reset(); rplHit = null; try { ebt.invalidateRoot() } catch (_: Throwable) { } }
     var idx = 0
     var hov = 0
     var onHit: ((DrHit, Int) -> Unit)? = null
 
     private var pressed: DrHit? = null
+    private val rpl = NlRpl(this)      // Lumen 4e N9: press ripple on drawer rows (replaces the flat hover fill)
+    private var rplHit: DrHit? = null
     private var tracking = false
     private var dx0 = 0f
     private var dy0 = 0f
@@ -80,12 +83,10 @@ private class DrView(c: Context, private val d: Float) : View(c) {
 
     override fun onDraw(cv: Canvas) {
         val r = reg ?: return
-        val pr = pressed
-        if (pr != null && hov != 0) {
-            fill.style = Paint.Style.FILL
-            fill.color = hov
-            if (pr.k == "x") cv.drawCircle((pr.x + pr.w / 2f) * d, (pr.y + pr.h / 2f) * d, Math.min(pr.w, pr.h) / 2f * d, fill)
-            else cv.drawRect(pr.x * d, pr.y * d, (pr.x + pr.w) * d, (pr.y + pr.h) * d, fill)
+        val rh = rplHit
+        if (rh != null) {   // ripple stays on the hit rect that was pressed until it has faded; 'x' (close) is a circle
+            val rr = RectF(rh.x * d, rh.y * d, (rh.x + rh.w) * d, (rh.y + rh.h) * d)
+            rpl.draw(cv, rr, if (rh.k == "x") Math.min(rr.width(), rr.height()) / 2f else 12f * d, if (hov != 0) hov or 0xFF000000.toInt() else 0xFF808080.toInt())
         }
         for (it in r.its) {
             when (it.k) {
@@ -206,6 +207,7 @@ private class DrView(c: Context, private val d: Float) : View(c) {
                 val h = find(e.x / d, e.y / d)
                 pressed = h
                 tracking = h != null
+                rpl.reset(); rplHit = h; if (h != null) rpl.touch(e)
                 invalidate()
                 return tracking
             }
@@ -213,6 +215,7 @@ private class DrView(c: Context, private val d: Float) : View(c) {
                 if (tracking && (Math.abs(e.x - dx0) > slop || Math.abs(e.y - dy0) > slop)) {
                     tracking = false
                     pressed = null
+                    rpl.release()
                     invalidate()
                 }
             }
@@ -221,12 +224,14 @@ private class DrView(c: Context, private val d: Float) : View(c) {
                 val was = tracking
                 tracking = false
                 pressed = null
+                rpl.touch(e)
                 invalidate()
                 if (was && h != null) onHit?.invoke(h, idx)
             }
             MotionEvent.ACTION_CANCEL -> {
                 tracking = false
                 pressed = null
+                rpl.touch(e)
                 invalidate()
             }
         }

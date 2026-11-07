@@ -256,7 +256,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         val sliding = sel && selAt != 0L && SystemClock.uptimeMillis() - selAt < 200L
         // Part 4b (N1 b): G1 chrome fill by glass step (tint-raised stand-in, opaque at F3)
         // transparent only where the page twin (#top) is transparent too: glass steps F0 / F1; F2 / F3 stay filled
-        val goal = if (elev || sel || !LumenGlass.chromeGradient(context)) 1f else 0f
+        val goal = 1f   // 4d fix: the page's own #top bar (title + glyphs) sits under this view, so the fill must stay opaque or both get drawn on top of each other (garbled title)
         if (elevAt != 0L) {
             val t = Math.min(1f, (SystemClock.uptimeMillis() - elevAt) / 160f)
             elevK = if (goal == 1f) t else 1f - t
@@ -266,7 +266,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         // text / glyph colour: the bar's own (on a filled bar) fades to the theme ink (on the transparent bar)
         val ob = if (sel) p.onbar else LumenCategory.mix(lumen().ink, p.onbar, ek)
         val cf = LumenGlass.chromeFill(context, if (sel && !sliding) p.sel else p.bar)
-        fillP.color = LumenGlass.withAlpha(cf, ek * ((cf ushr 24) / 255f))
+        fillP.color = LumenGlass.withAlpha(cf or 0xFF000000.toInt(), ek)
         cv.drawRect(0f, 0f, bw, bh, fillP)
         // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge); flat at F3
         val dark = AppPal.night(context)
@@ -438,7 +438,8 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     /** Slide-up + fade when the bar appears (220 ms, decelerate); skipped with Reduce motion (spec 13.4: 120 ms fade only). */
     fun enter() {
         animate().cancel()
-        if (LumenPrefs.reduceMotion(context)) { translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(120).start(); return }
+        if (LumenPrefs.reduceMotion(context)) { shownAt = 0L; translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(120).start(); return }
+        shownAt = SystemClock.uptimeMillis(); invalidate()   // Lumen 4e N10: the action cells stagger in 20 ms apart after the bar
         translationY = 24f * d; alpha = 0f
         animate().translationY(0f).alpha(1f).setDuration(220).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
@@ -511,10 +512,20 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             ripple(cv, "clipx", closeR, 18f * d, p.onsel)
             glyph(cv, "close", closeR.centerX(), closeR.centerY(), 24f, p.onsel)
         }
-        // action cells: 24 dp icon in a 56 x 32 pill over a Label M caption; stagger-free (the whole bar slides in)
+        // action cells: 24 dp icon in a 56 x 32 pill over a Label M caption; Lumen 4e N10: each cell fades up 6 dp, 20 ms after the one before (160 ms, decelerate)
+        val now = SystemClock.uptimeMillis()
+        var moving = false
         for ((i, a2) in acts.withIndex()) {
             if (i >= cells.size) break
             val r = cells[i]
+            var sk = 1f
+            if (shownAt != 0L) {
+                val k = ((now - shownAt - 20L * i) / 160f).coerceIn(0f, 1f)
+                if (k < 1f) moving = true
+                sk = 1f - (1f - k) * (1f - k)
+            }
+            val lay = if (sk < 1f) cv.saveLayerAlpha(r.left, r.top - 8f * d, r.right, r.bottom + 8f * d, Math.round(255f * sk)) else -1
+            if (sk < 1f) cv.translate(0f, (1f - sk) * 6f * d)
             val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
             val col = if (dng) lm.error else p.fg
             val icol = if (dng) lm.error else iconColor(a2.k, p.fg)   // colourful icon; label keeps the theme colour
@@ -530,7 +541,9 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
             cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7f * d, lbP), lbP)
+            if (lay >= 0) cv.restoreToCount(lay)
         }
+        if (moving) postInvalidateOnAnimation() else shownAt = 0L
     }
 }
 

@@ -589,6 +589,8 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
+    private val rpl = NlRpl(this)      // Lumen 4e N9: press ripple per cell (replaces the flat 15 % black press fill)
+    private var rplCell = -1
 
     private val gd = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean { pressed = hit(e.x, e.y); invalidate(); return true }
@@ -629,7 +631,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
         cells = cs; first = firstIdx; cols = columns; pal = pl; sel = selected; selMode = selm; last = isLast
         ebt.invalidateRoot()
         for (i in th.indices) { th[i] = null; du[i] = null }
-        pressed = -1
+        pressed = -1; rpl.reset(); rplCell = -1
         requestLayout(); invalidate()
     }
 
@@ -646,6 +648,8 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = hit(e.x, e.y); rplCell = i; rpl.reset(); if (i >= 0) rpl.touch(e) }
+        else if (rplCell >= 0) rpl.touch(e)
         gd.onTouchEvent(e)
         if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) { pressed = -1; invalidate() }
         return true
@@ -708,7 +712,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
                 val f2 = dubP.fontMetrics
                 cv.drawText(t, right - tw2 + 6f * d, bottom - 7.5f * d - (f2.ascent + f2.descent) / 2f, dubP)
             }
-            if (pressed == k) { p.color = 0x26000000; rf.set(x, y, x + cs, y + cs); cv.drawRect(rf, p) }
+            if (rplCell == k) { rf.set(x, y, x + cs, y + cs); rpl.draw(cv, rf, 14f * d, Color.WHITE) }   // Lumen 4e N9
             cv.restore()
             // select circle (same as the grid card): top 5, right 5, 24
             val kx = x + cs - 5f * d - 12f * d; val ky = y + 5f * d + 12f * d
@@ -766,6 +770,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         v.animate().cancel()
         v.animate().scaleX(1.02f).scaleY(1.02f).setDuration(120).withEndAction { v.animate().scaleX(1f).scaleY(1f).setDuration(160).start() }.start()
     }
+    private val sticky = NlStickyView(act, UiScale.dens(act))   // Lumen 4e N11: sticky heading strip (group of the first visible row while scrolling)
     private val sb = PdfScrollBar(act)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
     private var lm: LinearLayoutManager = LinearLayoutManager(act)
     private var gridOn = false
@@ -847,12 +852,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy) }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
         })
         sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
         overlay.addView(skel, FrameLayout.LayoutParams(1, 1)); skel.visibility = View.GONE
         overlay.addView(sb, FrameLayout.LayoutParams(1, 1))     // above the list, same rect (see layout()); only the thumb takes touches
+        overlay.addView(sticky, FrameLayout.LayoutParams(1, 1))   // 4e N11: same rect, never takes touches
         overlay.addView(head, FrameLayout.LayoutParams(1, 1))
         head.visibility = View.GONE
         search.visibility = View.GONE
@@ -875,6 +881,15 @@ class NativeList(private val act: Activity, private val web: WebView) {
             else -> (r.computeVerticalScrollOffset().toFloat() / span).coerceIn(0f, 1f)
         }
         if (dy != 0) sb.flash()
+    }
+
+    /** Lumen 4e N11: heading strip. Same condition as the thumb (folder longer than about 1.5 screens), only while scrolling away from the top, not while the thumb is dragged (its bubble names the spot), never over the gallery cells. */
+    private fun syncSticky(r: RecyclerView, dy: Int) {
+        if (dy == 0) return
+        val ext = r.computeVerticalScrollExtent(); val span = r.computeVerticalScrollRange() - ext
+        if (sb.dragging || ext <= 0 || span < ext * 1.5f || !r.canScrollVertically(-1)) { sticky.pulse(""); return }
+        val pos = lm.findFirstVisibleItemPosition()
+        sticky.pulse(if (pos < 0 || pos >= galStart) "" else scrollerLabel(rows.getOrNull(pos)))
     }
 
     /** Thumb dragged to [f] (0..1): jump to that row and name the spot in the bubble (initial / size / month by the current sort). */
@@ -1192,7 +1207,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setPalette(json: String) {
         if (json == palJson) return
         palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
-        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac)
+        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor(p.cont); srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac); sticky.fill = p.cont; sticky.ink = p.fg; sticky.edge = p.bd
         ad.notifyDataSetChanged()
     }
 
@@ -1267,6 +1282,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
             val kp = skel.layoutParams as FrameLayout.LayoutParams
             kp.leftMargin = nl; kp.topMargin = nt; kp.width = nw; kp.height = nh
             skel.layoutParams = kp
+            val tp = sticky.layoutParams as FrameLayout.LayoutParams
+            tp.leftMargin = nl; tp.topMargin = nt; tp.width = nw; tp.height = nh
+            sticky.layoutParams = tp
         }
         overlay.listRect.set(l, t, l + w, t + h)
         val hs = ArrayList<RectF>(); val o = j.optJSONArray("o")
@@ -1345,7 +1363,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { skelOff(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

@@ -4,7 +4,7 @@ Companion to `LUMEN_DESIGN_SYSTEM.md` (spec + item list 19.1c). This file answer
 Created 2026-11-07. Item IDs (V / N / M / P / T / A) are the ones in 19.1c; every one of the 42 open items sits in exactly one part below.
 
 **Status line (edit this first in every session):**
-`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b, 4c (partly) and 4d (partly) of 8 | Next: Part 4e (4d leftovers: N1 (c), M7 (b), N11 sticky strip, N9 gallery / drawer, N10 heading + stagger) | Open items: 14 (M1, M5 native exits elsewhere, P8, M2, P4 partly; N1 (c) real in-window blur; N4 gGlow / gSkeleton / gScrim callers) | Last session: 2026-11-07`
+`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b, 4c (partly), 4d (partly) and 4e of 8 | Next: Part 4f (N1 (c) real in-window blur, M7 (b) container transform; both need an owner decision first) | Open items: 11 (M1, M5 native exits elsewhere, P8, M2, P4 partly; N1 (c); M7 (b); N4 gGlow / gSkeleton / gScrim callers) | Last session: 2026-11-07`
 
 ---
 
@@ -46,7 +46,7 @@ Open parts of the above are tracked in the parts below, not here.
 
 ---
 
-## 3. The 8 parts (Parts 4 and 5 re-split into 4a / 4b / 4c / 4d on 2026-11-07; one part per session, in order)
+## 3. The 8 parts (Parts 4 and 5 re-split into 4a-4d on 2026-11-07, 4e / 4f split off 4d leftovers on 2026-11-07; one part per session, in order)
 
 | Part | Content (old L-numbers, item IDs) | Layer | Est. lines | Status |
 |---|---|---|---|---|
@@ -56,7 +56,9 @@ Open parts of the above are tracked in the parts below, not here.
 | 4a | L8 + L9 + native M1 / M5: A1 A2, N2 N12 N1 (a), `Lm.kt` exits + Undo bar + merge | native + page | 700-1000 | DONE (2026-11-07; not compiled) |
 | 4b | L10 + N8: N1 (b) N4 N6, N8 (chrome glass stand-in, gradients + shadow tint slot, radius flavour, drawer storage card) | native + page + tools | 600-900 | DONE (2026-11-07; not compiled) |
 | 4c | L11 + N7: N3 N5 N13 P6, N7 (tiles, colour tables, bar variants + scroll-driven top bar) | native + page | 1000-1400 | PARTLY (2026-11-07, see 4c left over) |
-| 4d | L12 + L14 + N1 (c): N9 N10 N11 M7, N1 (c) (list interactions, container transform, real backdrop blur for in-window chrome) | native + page | 1100-1500 | PARTLY (2026-11-07: N9 rows + grid, N10 flip + lift, M7 a skeleton; rest left) |
+| 4d | L12 + L14 + N1 (c): N9 N10 N11 M7, N1 (c) (list interactions, container transform, real backdrop blur for in-window chrome) | native + page | 1100-1500 | PARTLY (2026-11-07: N9 rows + grid, N10 flip + lift, M7 a skeleton; rest moved to 4e / 4f) |
+| 4e | L12 leftovers: N9 gallery cells + drawer rows, N10 dock stagger + day-heading circle, N11 sticky heading strip | native + page | 250-400 | DONE (2026-11-07; not compiled) |
+| 4f | L12 + L14 leftovers: N1 (c) real in-window blur, M7 (b) container transform | native | 600-1000 | NEXT (owner decisions first: N1 (c) cost on low devices, M7 (b) Activity transition or snapshot overlay) |
 | owner | L1: V2 V3 V4 V5 device pass; send results any time, findings become tasks in Part 4a-4d | device | 0-100 | OPEN |
 
 Part 1 left over: P8 `--t-*` / `--st-*` adoption and the 194 hex colours (kept: per-theme and brand values), 25 spacing nudges (negative margins), 13 infinite-loop durations. Native part of M1 / M5 was done in Part 4a. Part 2 left over: M2 old-screen shift / dim and dock slide (dock is native, Part 4c), P4 `.g0` has no caller yet (viewer counters / badges are native, Part 4c). Part 2 touched Kotlin: NO; headless Chromium smoke: dialog exit ok, no init errors. Part 1 touched Kotlin: NO. Page JS `node --check` ok (7 scripts), CSS braces balanced, `gen.py --check`, T1 0 failing, `parity.py` 0 differences; not opened in a browser or on a device.
@@ -146,11 +148,11 @@ Files: `NlChrome.kt`, `NlDrawer.kt`, `NlSheets.kt`, `LumenGlass.kt`, new `LumenG
 Also uses the 4b `LumenGrad.glow` (press glow on Home tiles) and `scrimTop / scrimBottom` (viewer bars).
 Files: `NlFileIcons.kt`, `NativeList.kt`, `NlSheets.kt`, `NlDrawer.kt`, `StorageTreemap.kt`, `StorageWiz.kt`, `StoragePie.kt`, `CodeHl.kt`, `TextEditorActivity.kt`, `NlSplash.kt`. Touches Kotlin: yes.
 
-### L12 Native list interactions (Part 4d)
-- [ ] **N9** Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill); reuse `NlHitView.ripple()`.
-- [ ] **N10** Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
-- [ ] **N11** Sticky heading strip and fast-scroll scrubber in the native list (twin of P1; same thresholds).
-- [ ] **M7 (a)** Skeletons in native lists (shimmer rows with `LumenGrad.skeleton` = `gSkeleton`, shown while the folder loads).
+### L12 Native list interactions (Part 4d, finished in 4e; N1 (c) = 4f)
+- [x] **N9** (2026-11-07, 4e) Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill); reuse `NlHitView.ripple()`.
+- [x] **N10** (2026-11-07, 4e) Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
+- [x] **N11** (2026-11-07, 4e) Sticky heading strip and fast-scroll scrubber in the native list (twin of P1; same thresholds).
+- [x] **M7 (a)** (2026-11-07, 4d) Skeletons in native lists (shimmer rows with `LumenGrad.skeleton` = `gSkeleton`, shown while the folder loads).
 - [ ] **N1 (c)** (new, from 4b) Real backdrop blur for in-window chrome (dock, drawer, top / selection bar): draw the page + list under the view into a small bitmap (1/8 scale), blur with `RenderEffect` on API 31+ (F0 radius 24 dp, F1 12 dp), cache until the list scrolls; F2 / F3 keep the 4b stand-in. Performance-critical: check T8 after.
 Files: `NativeList.kt`, `NlChrome.kt`, `NlDrawer.kt`. Touches Kotlin: yes. Risk: highest, list drawing is performance-critical; check T8 after.
 
@@ -178,10 +180,11 @@ Files: `ImageViewerActivity.kt`, `PlayerActivity.kt`, `MainActivity.kt`, `ui.htm
 | 2026-11-07 | (fix) | Selection-bar More popup stuck: native list swallowed taps outside the menu (`nlLay` now sends all touches to the page while `.dsc` is open, dims the list 18 %) | none | none | no | n/a |
 | 2026-11-07 | Part 4b | N1 (b) stand-in: `LumenGlass.chromeFill` / `chromeGradient`, bar / dock / drawer by glass step; N4: `shadowTint` slot, `LumenGrad.kt`, gFab / gPrimary / gSuccess / gSurface callers; N6: `LumenRadius`; N8: drawer storage card + ring | N6 N8 x; N1b N4 ~ | real blur N1 (c) (4d); gGlow / gSkeleton / gScrim callers (4c / 4d); N7 moved to 4c | yes (`NlChrome.kt`, `NlDrawer.kt`, `NlSheets.kt`, `LumenGlass.kt`, new `LumenGrad.kt`, `LumenTokens.kt` generated) | check next CI run |
 | 2026-11-07 | Part 4d (partly) | N9: `NlRpl` ripple in `NlRowView` + `NlGridView` (hover fill replaced); N10: `NlFlip` 160 ms check-circle flip in rows, hold lift pulse 1.02; M7 a: `NlSkelView` shown 180 ms after a tapped folder starts building, off in `applyItems` / `hide()` / 4 s; all in new `NlListFx.kt` + `NativeList.kt` | N9 N10 M7 ~ | N1 (c) real blur (owner decision still open), M7 b container transform, N11 sticky heading strip, N9 gallery cells + drawer rows, N10 day-heading partial state + dock stagger | yes (`NlListFx.kt` new, `NativeList.kt`) | check next CI run |
+| 2026-11-07 | Part 4e | N9: `NlRpl` ripple on gallery cells (`NlGalView`, per-cell, replaces the 15 % black press fill) and drawer rows (`DrView`, hit rect, circle for the close button; `NlRpl.release()` added); N10: dock action cells stagger in (`NlDockView.enter()`, 20 ms apart, 6 dp rise, off with Reduce motion), page day / month heading circle squeezes open on `.part` / `.sel` (CSS `LUMEN-UI18`); N11: `NlStickyView` heading pill (group of the first visible row, 900 ms after scroll stops, only in lists over 1.5 screens, not over gallery cells, never takes touches) | N9 N10 N11 x | N1 (c), M7 (b) = Part 4f | yes (`NlListFx.kt`, `NativeList.kt`, `NlDrawer.kt`, `NlChrome.kt`) | check next CI run |
 | | | | | | | |
 
 ## 6. Next session
 
-- **Start with:** Part 4c (N7 bar variants: Search / Viewer, Large collapsing bar, scroll-driven transparent small bar needs a transparent `#top` twin + scroll event + `--topH`; N3 grid / gallery category tiles; N5 folder drawing in pickers / album covers / drawer icons / Devices-FTP-Cloud tiles; N13 older-Android splash; P6 one colour table for Storage / search chips / badges / CodeHl / editor). Part 4b check first on a device: Settings > Glass quality F0-F3 (top bar hairline, dock and drawer more or less see-through, flat at the lowest step), FAB gradient + press ripple, snackbar progress, Windows 11 theme corners (dock pills, snackbar, View options sheet), open the side menu: storage card on top (ring + free space, tap = Storage analyzer), drawer panel must show its rows (if it is empty set `localStorage ls_nld='0'`), long-press a folder > More > tap outside closes it. Owner can run V2-V5 any time in parallel.
+- **Start with:** Part 4f (N1 (c) real blur and M7 (b) container transform; ask the owner first, see decisions). Older note, Part 4c (N7 bar variants: Search / Viewer, Large collapsing bar, scroll-driven transparent small bar needs a transparent `#top` twin + scroll event + `--topH`; N3 grid / gallery category tiles; N5 folder drawing in pickers / album covers / drawer icons / Devices-FTP-Cloud tiles; N13 older-Android splash; P6 one colour table for Storage / search chips / badges / CodeHl / editor). Part 4b check first on a device: Settings > Glass quality F0-F3 (top bar hairline, dock and drawer more or less see-through, flat at the lowest step), FAB gradient + press ripple, snackbar progress, Windows 11 theme corners (dock pills, snackbar, View options sheet), open the side menu: storage card on top (ring + free space, tap = Storage analyzer), drawer panel must show its rows (if it is empty set `localStorage ls_nld='0'`), long-press a folder > More > tap outside closes it. Owner can run V2-V5 any time in parallel.
 - **Check first (Parts 1-2):** swipe a row left / right, drag the scrubber, open Settings -> Glass quality (segment), delete a file (row collapses); open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
 - **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 4c); N1 (c) real in-window blur is costly on low devices: do it, or keep the 4b stand-in (Part 4d).
