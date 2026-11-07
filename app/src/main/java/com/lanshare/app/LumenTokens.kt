@@ -27,16 +27,17 @@ class Lumen(private val m: Map<String, Int>) {
     val scrim: Int get() = m.getValue("scrim")
     val glassTint: Int get() = m.getValue("glassTint")
     val focus: Int get() = m.getValue("focus")
+    val onWarning: Int get() = m.getValue("onWarning")
     operator fun get(n: String): Int = m[n] ?: 0
 
     companion object {
-        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus")
+        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning")
         private val LIGHT = mapOf(
             "canvas" to 0xFFFFF8F2.toInt(),
             "ink" to 0xFF1F1A16.toInt(),
             "surface" to 0xFFFFFFFF.toInt(),
             "surfaceHi" to 0xFFFBEFE4.toInt(),
-            "primary" to 0xFFC25100.toInt(),
+            "primary" to 0xFFB84D00.toInt(),
             "onPrimary" to 0xFFFFFFFF.toInt(),
             "inkMut" to 0xFF5A5047.toInt(),
             "edge" to 0xFFEADFD4.toInt(),
@@ -54,7 +55,8 @@ class Lumen(private val m: Map<String, Int>) {
             "tertiary" to 0xFF3F6B55.toInt(),
             "scrim" to 0x521A0F05.toInt(),
             "glassTint" to 0xFFFFF8F2.toInt(),
-            "focus" to 0xFF0B5FFF.toInt()
+            "focus" to 0xFF0B5FFF.toInt(),
+            "onWarning" to 0xFF1F1400.toInt()
         )
         private val DARK = mapOf(
             "canvas" to 0xFF17110C.toInt(),
@@ -79,7 +81,8 @@ class Lumen(private val m: Map<String, Int>) {
             "tertiary" to 0xFFA5D2B8.toInt(),
             "scrim" to 0x8F000000.toInt(),
             "glassTint" to 0xFF1E1610.toInt(),
-            "focus" to 0xFF8AB4FF.toInt()
+            "focus" to 0xFF8AB4FF.toInt(),
+            "onWarning" to 0xFF1F1400.toInt()
         )
 
         fun of(c: android.content.Context): Lumen {

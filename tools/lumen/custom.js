@@ -19,6 +19,14 @@ function lmDarkCanvas(x){var c=lmH2r(x);return 0.2126*(c[0]/255)+0.7152*(c[1]/25
 function lmSnap(fg,bgs,min,darker){var ok=function(c){return bgs.every(function(b){return lmCr(c,b)>=min})};if(ok(fg))return[fg,false];
   var p=lmToHsl(fg),h=p[0],s=p[1],l=p[2];for(var i=0;i<100;i++){l+=darker?-0.01:0.01;var c=lmHsl(h,s,l);if(ok(c))return[c,true];if(l<=0||l>=1)break}
   return[darker?'#000000':'#ffffff',true]}
+function lmGradOk(p,lab){return[lmMix(p,'#ffffff',0.06),lmMix(p,'#000000',0.12)].every(function(e){return lmCr(lab,e)>=4.5})}
+function lmSnapGrad(fg,lab,darker){if(lmGradOk(fg,lab))return[fg,false];var q=lmToHsl(fg),h=q[0],s=q[1],l=q[2];
+  for(var i=0;i<100;i++){l+=darker?-0.01:0.01;var c=lmHsl(h,s,l);if(lmGradOk(c,lab))return[c,true];if(l<=0||l>=1)break}
+  return[fg,false]}
+function lmGradcOk(pc,p,lab){return[pc,lmMix(pc,p,0.10)].every(function(e){return lmCr(lab,e)>=4.5})}
+function lmSnapGradc(pc,p,lab,darker){if(lmGradcOk(pc,p,lab))return[pc,false];var q=lmToHsl(pc),h=q[0],s=q[1],l=q[2];
+  for(var i=0;i<100;i++){l+=darker?-0.01:0.01;var c=lmHsl(h,s,l);if(lmGradcOk(c,p,lab))return[c,true];if(l<=0||l>=1)break}
+  return[pc,false]}
 function lmNeutral(hue,tint,l){var k=1-Math.abs(2*l-1),s=k<1e-6?0:Math.min(1,(tint/100)/k);return lmHsl(hue,s,l)}
 function lmHexa(h,a){return h+('0'+Math.floor(a*255+0.5).toString(16)).slice(-2)}
 function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1]<0.1?0.08:0.28,L=dark?0.78:0.40,o={};
@@ -31,6 +39,7 @@ function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1
   o.glassTint=dark?lmMix(d.canvas,d.surface,0.5):d.canvas;
   var f=dark?'#8ab4ff':'#0b5fff',cs=[f,'#0b5fff','#8ab4ff','#ffb000','#ffffff','#000000'];
   for(var i=0;i<cs.length;i++){if(lmCr(cs[i],d.canvas)>=3&&lmCr(cs[i],d.surface)>=3){f=cs[i];break}}
+  var w=d.warning||'#f9ab00';o.onWarning=lmCr('#1f1400',w)>=lmCr('#ffffff',w)?'#1f1400':'#ffffff';
   o.focus=f;return o}
 /* function, not var: the boot call runs before a later `var` line would have been assigned */
 function lmSem(dark){return dark?{errorCont:'#8c1d18',onErrorCont:'#f9dedc',error:'#f2b8b5',success:'#7fd99a',warning:'#ffc15e'}:{errorCont:'#f9dedc',onErrorCont:'#410e0b',error:'#b3261e',success:'#1e8e3e',warning:'#f9ab00'}}
@@ -47,6 +56,8 @@ function lmFromInputs(hue,tint,mode){hue=lmMod(+hue,360);tint=Math.max(0,Math.mi
   else{d.onPrimary=A(0.12);t=lmSnap(A(0.77),[d.onPrimary],4.5,false);d.primary=t[0];sn=sn||t[1];d.onPrimaryCont=A(0.90);
     t=lmSnap(A(0.26),[d.onPrimaryCont],4.5,true);d.primaryCont=t[0];sn=sn||t[1]}
   t=lmSnap(d.primary,[d.canvas],3.0,!dark);d.primary=t[0];sn=sn||t[1];
+  t=lmSnapGrad(d.primary,d.onPrimary,!dark);d.primary=t[0];
+  t=lmSnapGradc(d.primaryCont,d.primary,d.onPrimaryCont,dark);d.primaryCont=t[0];
   if(lmCr(d.onPrimary,d.primary)<4.5)d.onPrimary=lmLum(d.primary)<0.18?'#ffffff':'#000000';
   var sem=lmSem(dark);for(var k in sem)d[k]=sem[k];
   var fr=lmFresh(d);for(var k2 in fr)d[k2]=fr[k2];
@@ -64,12 +75,27 @@ function lmCustExtras(d,hue,dark){var o={},K={img:340,vid:265,aud:205,pdf:5,zip:
   [0,60,120,180,240,300].forEach(function(a,i){o['chc'+(i+1)]=lmSnap(lmHsl(hue+a,0.65,dark?0.72:0.40),[d.canvas],3.0,!dark)[0]});
   return o}
 function lmCustGet(){var o={};try{o=JSON.parse(LD('ls_cust','{}'))||{}}catch(e){}
-  return{h:isFinite(o.h)?+o.h:24,t:isFinite(o.t)?+o.t:4,m:(o.m==='dark'||o.m==='amoled')?o.m:'light',w:o.w===0?0:1}}
+  return{h:isFinite(o.h)?+o.h:24,t:isFinite(o.t)?+o.t:4,m:(o.m==='dark'||o.m==='amoled'||o.m==='auto')?o.m:'light',w:o.w===0?0:1}}
 function lmCustClear(){var el=document.documentElement,s=el.style;(window.__lmCV||[]).forEach(function(k){s.removeProperty(k)});window.__lmCV=[];
   s.removeProperty('color-scheme');delete el.dataset.cdark;delete el.dataset.cwall}
 /* paints the Custom theme as inline vars on <html> (inline beats every stylesheet rule); returns true when some tone had to move to pass contrast */
-function lmCustApply(){var c=lmCustGet(),r=lmFromInputs(c.h,c.t,c.m),dark=c.m!=='light',el=document.documentElement,s=el.style,all=Object.assign({},r.d,lmCustExtras(r.d,c.h,dark));
+function lmCustApply(){var c=lmCustGet(),cm=lmCustMode(c),r=lmFromInputs(c.h,c.t,cm),dark=cm!=='light',el=document.documentElement,s=el.style,all=Object.assign({},r.d,lmCustExtras(r.d,c.h,dark));
   lmCustClear();window.__lmCV=[];Object.keys(all).forEach(function(k){s.setProperty('--'+k,all[k]);window.__lmCV.push('--'+k)});
-  s.setProperty('color-scheme',dark?'dark':'light');if(dark)el.dataset.cdark='1';if(!c.w||c.m==='amoled')el.dataset.cwall='0';
+  s.setProperty('color-scheme',dark?'dark':'light');if(dark)el.dataset.cdark='1';if(!c.w||cm==='amoled')el.dataset.cwall='0';
   return r.sn}
-function lmThemeSet(id){lmThemeFx();S.theme=id;SV('ls_theme',id);lmCustClear();document.documentElement.dataset.theme=id;if(id==='custom')lmCustApply();nlTheme()}
+function lmThemeSet(id){lmThemeFx();S.theme=id;SV('ls_theme',id);lmThemeApply(1)}
+/* ---- Part 19 T2: Light / Dark pairs with a separate Auto / Light / Dark choice (ls_tmode: theme | auto | light | dark; theme = the chosen preset as it is) ---- */
+function lmPairs(){return /*PAIRS*/[]}
+function lmPair(id){if(id==='auto')id='light';var p=lmPairs();for(var i=0;i<p.length;i++)if(p[i][0]===id||p[i][1]===id)return p[i];return null}
+function lmSysDark(){try{return matchMedia('(prefers-color-scheme: dark)').matches}catch(e){return false}}
+function lmMode(){var m=LD('ls_tmode','theme');return(m==='auto'||m==='light'||m==='dark')?m:'theme'}
+/* the data-theme to paint: the chosen preset, or its Light / Dark partner when a mode is set; presets without a partner and Custom stay as they are */
+function lmResolve(id){var m=lmMode();if(m==='theme'||id==='custom')return id;var p=lmPair(id);if(!p)return id;
+  return m==='light'?p[0]:m==='dark'?p[1]:(lmSysDark()?p[1]:p[0])}
+/* Custom: its own Light / Dark / AMOLED / Auto chip, overridden by the global mode when that is set */
+function lmCustMode(c){var tm=lmMode(),m=c.m;if(tm==='light')return'light';if(tm==='dark')return m==='amoled'?'amoled':'dark';
+  if(tm==='auto'||m==='auto')return lmSysDark()?(m==='amoled'?'amoled':'dark'):'light';return m}
+function lmOsFont(){var el=document.documentElement;if(LD('ls_osfont','1')==='0')el.dataset.osfont='0';else delete el.dataset.osfont}
+function lmThemeApply(nat){var el=document.documentElement;lmCustClear();el.dataset.theme=lmResolve(S.theme);if(S.theme==='custom')lmCustApply();lmOsFont();if(nat){try{glassApply()}catch(e){}nlTheme()}}
+function lmModeSet(m){lmThemeFx();SV('ls_tmode',m);lmThemeApply(1)}
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){if(typeof S!=='undefined'&&S.theme&&(lmMode()==='auto'||(S.theme==='custom'&&lmCustGet().m==='auto')))lmThemeApply(1)})}catch(e){}

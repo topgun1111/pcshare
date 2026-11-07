@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Light / Dark mode, theme preview, contrast
+### Added
+- Settings > Theme: choose Auto, Light or Dark and each theme switches to its partner (Sky and Ocean, Mint and Forest, Windows 11 Light and Dark and more).
+- A live preview card in the theme picker shows how a theme will look and its text contrast.
+- The Custom theme can follow the system Light / Dark setting.
+- A switch to turn off the Windows / Ubuntu look of the font.
+### Changed
+- High contrast themes have a thicker focus ring and flat backgrounds.
+- Buttons in the Windows 11 and Ubuntu themes use the theme colours.
+- A few orange, blue and purple theme colours are slightly adjusted so button text is easier to read.
+
 ## 2026-11-07 - More button fix
 ### Fixed
 - The More button in the action bar now opens its menu.

@@ -44,7 +44,9 @@ class PrintLogActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private val exec = Executors.newSingleThreadExecutor()
     private lateinit var pal: AppPal.P
-    private val lm by lazy { Lumen.of(this) }   // Lumen slots: error / success colours follow the app theme
+    private val lm by lazy { Lumen.of(this) }
+    /** Warning colour: the theme's own amber on dark themes, a darker amber on light ones (the theme amber is a fill colour, too pale for text). */
+    private fun amber(): Int = if (AppPal.night(this)) lm.warning else AMBER   // Lumen slots: error / success colours follow the app theme
     private lateinit var info: TextView
     private lateinit var body: TextView
     private lateinit var scroll: ScrollView
@@ -258,7 +260,7 @@ class PrintLogActivity : Activity() {
             section(sb, prev, l, both); prev = l.src
             val s = sb.length
             sb.append(pretty(l)).append('\n')
-            val c = when (l.lvl) { "e" -> lm.error; "w" -> AMBER; else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
+            val c = when (l.lvl) { "e" -> lm.error; "w" -> amber(); else -> if (l.src == "pc") 0xFF3B82F6.toInt() else pal.fg }
             if (c != pal.fg) sb.setSpan(ForegroundColorSpan(c), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
@@ -288,7 +290,7 @@ class PrintLogActivity : Activity() {
             val time = l.t.substringAfter(' ', l.t).substringBefore('.')
             val mark = when (it.kind) { 'e' -> "\u2716"; 'w' -> "\u26A0"; 'o' -> "\u2714"; else -> "\u2022" }
             sb.append(time).append("  ").append(mark).append(' ').append(if (l.src == "pc") "PC: " else "Phone: ").append(it.text).append('\n')
-            val c = when (it.kind) { 'e' -> lm.error; 'w' -> AMBER; 'o' -> lm.success; else -> pal.fg }
+            val c = when (it.kind) { 'e' -> lm.error; 'w' -> amber(); 'o' -> lm.success; else -> pal.fg }
             if (c != pal.fg) sb.setSpan(ForegroundColorSpan(c), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (it.kind == 'e') sb.setSpan(StyleSpan(Typeface.BOLD), s, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (it.tip != null) {

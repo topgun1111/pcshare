@@ -53,6 +53,35 @@ def snap(fg, bgs, minr, darker):
         if l <= 0 or l >= 1: break
     return ("#000000" if darker else "#ffffff"), True
 
+def grad_ok(prim, lab):
+    """P7: label must reach 4.5 on both ends of gPrimary (primary 94 % + white 6 %, primary 88 % + black 12 %)."""
+    return all(cr(lab, e) >= 4.5 for e in (mix(prim, "#ffffff", .06), mix(prim, "#000000", .12)))
+
+def snap_grad(fg, lab, darker):
+    """Move primary in 1 % lightness steps (darker or lighter) until grad_ok. Returns (hex, snapped?); unchanged if it cannot."""
+    if grad_ok(fg, lab): return fg, False
+    h, s, l = to_hsl(fg)
+    for _ in range(100):
+        l += -.01 if darker else .01
+        c = hsl(h, s, l)
+        if grad_ok(c, lab): return c, True
+        if l <= 0 or l >= 1: break
+    return fg, False
+
+def gradc_ok(pc, prim, lab):
+    """P7: gPrimarySoft ends (primaryCont, primaryCont 90 % + primary 10 %) against onPrimaryCont."""
+    return all(cr(lab, e) >= 4.5 for e in (pc, mix(pc, prim, .10)))
+
+def snap_gradc(pc, prim, lab, darker):
+    if gradc_ok(pc, prim, lab): return pc, False
+    h, s, l = to_hsl(pc)
+    for _ in range(100):
+        l += -.01 if darker else .01
+        c = hsl(h, s, l)
+        if gradc_ok(c, prim, lab): return c, True
+        if l <= 0 or l >= 1: break
+    return pc, False
+
 def neutral(hue, tint, l):
     """Grey of lightness l with the accent hue mixed in: chroma = tint % (0..8)."""
     k = 1 - abs(2 * l - 1)
@@ -82,6 +111,8 @@ def fresh(d, over=None):
             f = c
             break
     o["focus"] = f
+    w = d.get("warning", "#f9ab00")
+    o["onWarning"] = "#1f1400" if cr("#1f1400", w) >= cr("#ffffff", w) else "#ffffff"
     if over: o.update(over)
     return o
 
@@ -122,6 +153,8 @@ def from_inputs(hue, tint, mode):
         d["primaryCont"], x = snap(A(.26), [d["onPrimaryCont"]], 4.5, True); sn |= x
     p, x = snap(d["primary"], [d["canvas"]], 3.0, not dark); sn |= x
     d["primary"] = p
+    d["primary"], _ = snap_grad(d["primary"], d["onPrimary"], not dark)   # silent: a one-step nudge, no notice
+    d["primaryCont"], _ = snap_gradc(d["primaryCont"], d["primary"], d["onPrimaryCont"], dark)
     if cr(d["onPrimary"], d["primary"]) < 4.5:
         d["onPrimary"] = "#ffffff" if lum(d["primary"]) < .18 else "#000000"
     d.update(SEM_DARK if dark else SEM_LIGHT)

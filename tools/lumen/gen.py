@@ -52,6 +52,7 @@ def build():
     root += "".join(f"--{old}:var(--{s});" for old, s in T["aliases"].items())
     root += decl(T["themes"]["ember"]) + decl(T["fresh"]["light"]) + cat_decl("light")
     o.append(":root{" + root + "}")
+    o.append("[data-pv=ember]{" + decl(T["themes"]["ember"]) + decl(T["fresh"]["light"]) + "}")   # T5 preview card: scoped copy of each theme's slots
     for n, d in T["themes"].items():
         if n != "ember":
             # Part 17: the 8 fresh slots are derived from each preset's own slots (derive.fresh); "dark" keeps the Ember dark set
@@ -59,7 +60,7 @@ def build():
             ct = ""
             if n in CAT["mono"]: ct = cat_decl("dark" if is_dark(d) else "light", d)
             elif n == "dark" or is_dark(d): ct = cat_decl("dark")
-            o.append(f":root[data-theme={n}]{{" + decl(d) + decl(fr) + ct + "}")
+            o.append(f":root[data-theme={n}],[data-pv={n}]{{" + decl(d) + decl(fr) + ct + "}")
     for n, r in T.get("radiusFlavour", {}).items():   # OS flavours (spec 14.2): Windows maps r.l to 12 and r.xxl to 24
         o.append(f":root[data-theme={n}]{{" + decl(r, "r-") + "}")
     o.append("@media(prefers-color-scheme:dark){:root[data-theme=auto]{" + decl(T["themes"]["dark"]) + decl(T["fresh"]["dark"]) + cat_decl("dark") + "}}")
@@ -191,7 +192,7 @@ if JB in new:
 else:
     new = new.replace("function nlPal(){", jb + "\nfunction nlPal(){", 1)
 CB, CE = "/*LUMEN-CUSTOM:BEGIN*/", "/*LUMEN-CUSTOM:END*/"
-cblk = CB + "\n" + (here / "custom.js").read_text(encoding="utf-8").rstrip("\n") + "\n" + CE
+cblk = CB + "\n" + (here / "custom.js").read_text(encoding="utf-8").rstrip("\n").replace("/*PAIRS*/[]", json.dumps(T["pairs"], separators=(",", ":"))) + "\n" + CE
 if CB in new:
     new = re.sub(re.escape(CB) + r".*?" + re.escape(CE), lambda m: cblk, new, count=1, flags=re.S)
 else:

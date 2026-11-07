@@ -4,7 +4,7 @@ Companion to `LUMEN_DESIGN_SYSTEM.md` (spec + item list 19.1c). This file answer
 Created 2026-11-07. Item IDs (V / N / M / P / T / A) are the ones in 19.1c; every one of the 42 open items sits in exactly one part below.
 
 **Status line (edit this first in every session):**
-`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-2 of 5 | Next: Part 3 | Open items: 27 (M1, M5, P8, M2, P4 partly) | Last session: 2026-11-07`
+`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3 of 5 | Next: Part 4 | Open items: 21 (M1, M5, P8, M2, P4 partly) | Last session: 2026-11-07`
 
 ---
 
@@ -51,8 +51,8 @@ Open parts of the above are tracked in the parts below, not here.
 |---|---|---|---|---|
 | 1 | L2 + page side of L3: P8 P9 P5 P10 A3, M1 / M5 / M6 (page) | page | 300-450 | DONE (2026-11-07) |
 | 2 | L4 + L5 + L6: M3 M4 M2, P2 P3 P4, P1 | page | 700-1000 | DONE (2026-11-07; M2, P4 partly) |
-| 3 | L7: T1-T5, P7 (decisions first, see section 6) | page + tools | 300-450 | NEXT |
-| 4 | L8 + L9 + L10 + native rest of L3: A1 A2, N2 N12 N1 N4 N6, M1 / M5 native (`Lm.kt` exit, 6-arg snack) | native | 700-1000 | TODO |
+| 3 | L7: T1-T5, P7 (decisions first, see section 6) | page + tools | 300-450 | DONE (2026-11-07; defaults used: T1 apply only close presets, T3 OS font only when font is Default) |
+| 4 | L8 + L9 + L10 + native rest of L3: A1 A2, N2 N12 N1 N4 N6, M1 / M5 native (`Lm.kt` exit, 6-arg snack) | native | 700-1000 | NEXT |
 | 5 | L11 + L12 + L13 + L14: N3 N5 N13 P6, N9 N10 N11 M7, N7 N8 | native + page | 900-1300 | TODO |
 | owner | L1: V2 V3 V4 V5 device pass; send results any time, findings become tasks in Part 4 (A1 / A2) or 5 | device | 0-100 | OPEN |
 
@@ -163,10 +163,11 @@ Files: `ImageViewerActivity.kt`, `PlayerActivity.kt`, `MainActivity.kt`, `ui.htm
 | 2026-11-07 | (fix) | CI compile error `NlChrome.kt:469` `Lumen.mix` to `LumenCategory.mix` | none | none | yes (1 line) | check next CI run |
 | 2026-11-07 | Part 1 (5-part plan) | P8 (mostly) P9 P5 P10 A3 M6 done; M1 M5 page side done | P9 P5 P10 A3 M6 x; P8 M1 M5 ~ | P8 `--t-*` use, native M1 / M5 | no | n/a |
 | 2026-11-07 | Part 2 | M3 M4 P1 P2 P3 done; M2 P4 partly | M3 M4 P1 P2 P3 x; M2 P4 ~ | M2 shift / dim, `.g0` callers | no | n/a |
+| 2026-11-07 | Part 3 | T1 (2 of 42 presets re-derived, report tool `preset_report.py`), T2 pairs + Auto/Light/Dark + Custom Auto, T3 switch, T4 hcl/hcd rings + 7:1 test, T5 preview card + `onWarning` + Ubuntu/Win11 buttons on slots, P7 gradient + glass floor tests (fixes: 6 presets, 4 glass tints, custom snap) | T1-T5 P7 x | `onWarning` in print log done; native use of `onWarning` elsewhere | yes (`LumenTokens.kt` new slot, `PrintLogActivity.kt`) | check next CI run |
 | | | | | | | |
 
 ## 6. Next session
 
-- **Start with:** Part 3 (themes and contrast; decide T1 / T3 first). Owner can run V2-V5 any time in parallel.
+- **Start with:** Part 4 (native). Part 3 check first: Settings > Theme > Mode (Auto / Light / Dark), hover a theme chip to see the preview, Custom > Auto chip, HC theme focus ring. Owner can run V2-V5 any time in parallel.
 - **Check first (Parts 1-2):** swipe a row left / right, drag the scrubber, open Settings -> Glass quality (segment), delete a file (row collapses); open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
 - **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 5).
