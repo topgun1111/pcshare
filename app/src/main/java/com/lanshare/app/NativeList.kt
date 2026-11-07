@@ -159,7 +159,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
 /**
  * Lumen two-plate folder (spec 11.5) in a 100 x 87.7 unit box; shared by the grid cards and every list view.
  * Back plate (with a tab 40 % wide) = darker shade, front plate = the colour, a soft light band and a thin highlight on the front top edge.
- * `tint` = folder colour (ARGB): the user's Style colour, else the caller passes the theme accent. Page twin: ui.html `foldSvg()`.
+ * `tint` = folder colour (ARGB): the user's Style colour, else DEFAULT (app icon colour). Page twin: ui.html `foldSvg()`.
  */
 object NlClassicFolder {
     private val BACK = Path().apply {
@@ -176,12 +176,14 @@ object NlClassicFolder {
     }
     const val W = 100f
     const val H = 87.7f
+    /** Default folder colour = the app icon colour of the edition (full: orange, Lite: light purple); ui.html gets the same value from the bridge `folderColor()`. */
+    val DEFAULT: Int get() = if (BuildConfig.LITE) 0xFF9B63D8.toInt() else 0xFFD2590A.toInt()
 
     private fun shade(c: Int, f: Float): Int = Color.argb(255, (Color.red(c) * f).toInt().coerceIn(0, 255), (Color.green(c) * f).toInt().coerceIn(0, 255), (Color.blue(c) * f).toInt().coerceIn(0, 255))
 
-    /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. `tint` 0 = a neutral amber (only used when a caller has no theme accent). */
+    /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. `tint` 0 = DEFAULT. */
     fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float, tint: Int = 0) {
-        val base = if (tint != 0) tint or (0xFF shl 24) else 0xFFE2AC62.toInt()
+        val base = if (tint != 0) tint or (0xFF shl 24) else DEFAULT
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
         p.style = Paint.Style.FILL; p.shader = null; p.color = shade(base, .74f); cv.drawPath(BACK, p)
         p.color = base; cv.drawPath(FRONT, p)
@@ -276,7 +278,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         } else if (r.dir) {
             val fw = (if (c) 34f else if (lg) 68f else if (md) 54f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else if (md) 46f else 34f) * d
             val fk = Math.min(fw / NlClassicFolder.W, fh / NlClassicFolder.H)       // classic folder, centred in the old folder box
-            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk, if (r.fcol != 0) r.fcol else pl.ac)
+            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk, if (r.fcol != 0) r.fcol else NlClassicFolder.DEFAULT)
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
                 val bottom = cy + leadB + (if (c) 2f else 1f) * d; val top = bottom - bs
@@ -491,7 +493,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         // ---- lead ----
         if (r.dir) {
             val k = s / 100f
-            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, if (r.fcol != 0) r.fcol else pl.ac)
+            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, if (r.fcol != 0) r.fcol else NlClassicFolder.DEFAULT)
         } else {
             val bm = thumb
             if (bm != null) {

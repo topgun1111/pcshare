@@ -70,6 +70,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun hapticPattern(csv: String) { Haptics.pattern(csv.split(',').mapNotNull { it.trim().toLongOrNull() }.toLongArray()) }
         /** Lumen Part 15 / 16: device facts for the glass ladder, and the in-app Reduce motion / Haptic feedback switches. */
         @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
+        @JavascriptInterface fun folderColor(): String = if (BuildConfig.LITE) "#9b63d8" else "#d2590a"   // default folder colour = app icon colour
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
         @JavascriptInterface fun reduceMotionSet(on: Boolean) { LumenPrefs.setReduceMotion(this@MainActivity, on) }
         @JavascriptInterface fun hapticsGet(): Boolean = LumenPrefs.hapticsOn(this@MainActivity)

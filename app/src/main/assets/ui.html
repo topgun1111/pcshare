@@ -1264,9 +1264,10 @@ down:'M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z',
 vlist:'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
 vcomp:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',
 vgrid:'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'};
-/* Lumen two-plate folder (spec 11.5): back plate (darker, tab 40 % wide) + front plate + light band + rim light; no outline. Default colour = theme primary, Style colour = custom. Twin of native NlClassicFolder. */
+/* Lumen two-plate folder (spec 11.5): back plate (darker, tab 40 % wide) + front plate + light band + rim light; no outline. Default colour = app icon colour (--fcol), Style colour = custom. Twin of native NlClassicFolder. */
 const foldMk=(f,k)=>'<svg viewBox="0 0 100 88"><path d="M0 11Q0 4 7 4L30 4Q34 4 37 7L40 10L93 10Q100 10 100 17L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+k+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+f+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 46L0 46Z" fill="#fff" fill-opacity=".16"/><path d="M8 25.2L92 25.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.2" stroke-linecap="round"/></svg>';
-const FOLD=foldMk('fill:var(--primary)','fill:var(--primary);filter:brightness(.74)');
+try{document.documentElement.style.setProperty('--fcol',LSAndroid.folderColor())}catch(e){}   // default folder colour = app icon colour (orange full, light purple Lite)
+const FOLD=foldMk('fill:var(--fcol,#d2590a)','fill:var(--fcol,#d2590a);filter:brightness(.74)');
 const HOME='<svg viewBox="0 0 32 32" class="cico"><path d="M6 17l10-8.5L26 17v11H6z" fill="#f5f5f5" stroke="#b5b5b5"/><path d="M2 16L16 4l14 12-2 2.2L16 8 4 18.2z" fill="#e53935"/><path d="M13 20h6v8h-6z" fill="#fb8c00"/></svg>';
 const DRIVE='<svg viewBox="0 0 32 32" class="cico"><path d="M9 4h14l4 15v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7z" fill="#c9c9c9"/><path d="M5 19h22v7a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="#b2b2b2"/><circle cx="9.5" cy="24" r="1.4" fill="#4caf50"/></svg>';
 const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.innerHTML=h;return e.firstChild.nodeType===1&&!c?e.firstChild:e};
