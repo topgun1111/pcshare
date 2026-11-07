@@ -407,26 +407,20 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         }
     }
 
-    /** Icon colour per action key (mid-tones that read on both the light and the dark theme). Unknown keys fall back to the theme text colour. */
-    private fun iconColor(k: String, fallback: Int): Int = when (k) {
-        "copy" -> 0xFF1E88E5.toInt()            // blue
-        "cut" -> 0xFFFB8C00.toInt()             // orange
-        "zip" -> 0xFFF4B400.toInt()             // amber
-        "edit" -> 0xFF43A047.toInt()            // green (Rename)
-        "info" -> 0xFF00ACC1.toInt()            // cyan (Details)
-        "dup" -> 0xFF8E24AA.toInt()             // purple (Duplicates)
-        "palette" -> 0xFFE91E63.toInt()         // pink (Style)
-        "search" -> 0xFF5C6BC0.toInt()          // indigo (AI search)
-        "hide" -> 0xFF78909C.toInt()            // blue grey (Hide / Unhide)
-        "extract" -> 0xFF00897B.toInt()         // teal
-        "paste" -> 0xFF7CB342.toInt()           // light green
-        "print" -> 0xFF6D4C41.toInt()           // brown
-        "add" -> 0xFF26A69A.toInt()             // To Print space
-        "openw" -> 0xFF29B6F6.toInt()           // Open with
-        "share" -> 0xFF039BE5.toInt()           // Share
-        "merge" -> 0xFFAB47BC.toInt()
-        "fwd", "back", "send" -> 0xFF1E88E5.toInt()
-        else -> fallback
+    /** Icon colour per action key, from the theme's category tones (spec 4.5: light value in light themes, pastel in dark ones) and semantic slots. Unknown keys fall back to the theme text colour. */
+    private fun iconColor(k: String, fallback: Int, lm: Lumen): Int {
+        val cat = when (k) {
+            "copy", "fwd", "back", "send", "search" -> "aud"
+            "share", "openw" -> "doc"
+            "cut" -> "ppt"
+            "zip", "print" -> "zip"
+            "edit", "extract", "paste", "add" -> "xls"
+            "dup", "merge" -> "vid"
+            "palette" -> "pic"
+            else -> null
+        }
+        if (cat != null) return LumenCategory.of(context)[cat].base
+        return when (k) { "info" -> lm.info; "hide" -> lm.inkMut; else -> fallback }
     }
     private val clipP = tp(14f, med)
     private val pasteP = tp(14f, semi)
@@ -533,7 +527,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             if (sk < 1f) cv.translate(0f, (1f - sk) * 6f * d)
             val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
             val col = if (dng) lm.error else p.fg
-            val icol = if (dng) lm.error else iconColor(a2.k, p.fg)   // colourful icon; label keeps the theme colour
+            val icol = if (dng) lm.error else iconColor(a2.k, p.fg, lm)   // colourful icon; label keeps the theme colour
             val top = r.top + Math.max(0f, (r.height() - (32f + 4f + 14f) * d) / 2f)
             val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
             if (pri) {
@@ -651,24 +645,28 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
     override fun onDraw(cv: Canvas) {
         if (pal == null || bw <= 0f) return
         var anim = false
+        val lm = lumen()   // Lumen slots: card = surfaceHi + edge, text = ink, accent = primary (was fixed dark colours)
         for (k in cards) {
             val y = k.y * d; val h = k.h * d
-            fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = 0xFF2E3133.toInt()
+            fillP.shader = null; fillP.style = Paint.Style.FILL; fillP.color = lm.surfaceHi
             rf.set(0f, y, bw, y + h); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
+            fillP.color = lm.edge; fillP.style = Paint.Style.STROKE; fillP.strokeWidth = d
+            rf.set(0.5f * d, y + 0.5f * d, bw - 0.5f * d, y + h - 0.5f * d); cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
+            fillP.style = Paint.Style.FILL
             val rowC = y + 12f * d + 13.1f * d
             val br = btnR[k.key]
-            nmP.color = 0xFFF0F0F0.toInt()
+            nmP.color = lm.ink
             val right = (br?.left ?: (bw - 14f * d)) - (if (br != null) 10f * d else 0f)
             cv.drawText(fit(k.n, nmP, right - 14f * d), 14f * d, ty(rowC, nmP), nmP)
             if (br != null) {
-                if (pressed == "dl:" + k.key) { fillP.color = 0x22FFFFFF; cv.drawRoundRect(br, 12f * d, 12f * d, fillP) }
-                cxP.color = 0xFFFFB77C.toInt()
+                if (pressed == "dl:" + k.key) { fillP.color = (lm.ink and 0x00FFFFFF) or 0x22000000; cv.drawRoundRect(br, 12f * d, 12f * d, fillP) }
+                cxP.color = lm.primary
                 cv.drawText("Cancel", br.left + 8f * d, ty(br.centerY(), cxP), cxP)
             }
             val bt = y + 12f * d + 26.2f * d + 8f * d
             val l = 14f * d; val r = bw - 14f * d
-            fillP.color = 0x33FFFFFF; rf.set(l, bt, r, bt + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
-            fillP.color = 0xFFFFB77C.toInt()
+            fillP.color = (lm.primary and 0x00FFFFFF) or 0x33000000; rf.set(l, bt, r, bt + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
+            fillP.color = lm.primary
             if (k.ind) {
                 anim = true
                 val ph = (SystemClock.uptimeMillis() % 1100L) / 1100f
@@ -680,7 +678,7 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
             } else if (k.w > 0f) {
                 rf.set(l, bt, l + (r - l) * Math.min(100f, k.w) / 100f, bt + 4f * d); cv.drawRoundRect(rf, 2f * d, 2f * d, fillP)
             }
-            infoP.color = 0xFFF0F0F0.toInt(); infoP.alpha = 204
+            infoP.color = lm.inkMut
             cv.drawText(fit(k.info, infoP, r - l), l, ty(bt + 4f * d + 6f * d + 8.4f * d, infoP), infoP)
         }
         if (anim) postInvalidateOnAnimation()

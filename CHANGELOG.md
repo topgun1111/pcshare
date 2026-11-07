@@ -5,6 +5,15 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-09 - Dock icons and thumbnail corners
+### Changed
+- The coloured icons in the bottom action bar now follow the theme and look right in dark themes too.
+- Picture thumbnails in the grid have smaller corners when there are more columns.
+
+## 2026-11-09 - Download cards follow the theme
+### Changed
+- The download progress cards now use your theme's card, text and accent colours instead of a fixed dark grey and orange, so they match light and dark themes.
+
 ## 2026-11-09 - Theme colours in the player and the new-file dot
 ### Fixed
 - The video player's progress bar now uses the colour of your theme instead of a fixed blue.

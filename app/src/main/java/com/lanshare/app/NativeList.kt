@@ -392,6 +392,9 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
  * Picture-only cards of an image folder (bare) keep their own frame.
  */
 class NlGridView(c: Context, private val d: Float) : View(c) {
+    /** Grid column count, set by NativeList at bind: thumbnail corner radius follows spec 8.2 (r.m up to 3 columns, r.s at 4-5, r.xs at 6-8; bare image cards +3). */
+    var cols = 2
+    private fun thumbCorner(): Float = (when { cols <= 3 -> 12f; cols <= 5 -> 8f; else -> 4f }) + (if (bare) 3f else 0f)
     var row: NlRow? = null
     var pal: NlPal? = null
     var isSel = false
@@ -518,8 +521,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 val sc = Math.max(s / bm.width, sh / bm.height)
                 val sw = (s / sc).toInt(); val shh = (sh / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - shh) / 2, (bm.width - sw) / 2 + sw, (bm.height - shh) / 2 + shh)
-                rf.set(lx, ly, lx + s, ly + sh); thumbR.set(rf); thumbRad = (if (bare) 15f else 12f) * d
-                clip.reset(); clip.addRoundRect(rf, (if (bare) 15f else 12f) * d, (if (bare) 15f else 12f) * d, Path.Direction.CW)
+                rf.set(lx, ly, lx + s, ly + sh); thumbR.set(rf); thumbRad = thumbCorner() * d
+                clip.reset(); clip.addRoundRect(rf, thumbCorner() * d, thumbCorner() * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
@@ -1520,7 +1523,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             if (hv is NlGalView) { bindGal(h, hv, pos, p); return }
             val r = rows[pos]
             h.job?.cancel(false); h.job = null; h.key = null
-            if (hv is NlGridView) { hv.tall = if (spanN <= 2) 1.3f else 1f; hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") } else (hv as NlRowView).bind(r, p, pos in sel, compact, large, medium)
+            if (hv is NlGridView) { hv.tall = if (spanN <= 2) 1.3f else 1f; hv.cols = spanN; hv.bind(r, p, pos in sel, sel.isNotEmpty(), imgMode && !r.dir && r.k == "img") } else (hv as NlRowView).bind(r, p, pos in sel, compact, large, medium)
             val key = r.thumbKey ?: return
             val hit = thumbs.get(key)
             if (hit != null) { setThumb(hv, hit.bm, hit.dur); return }
