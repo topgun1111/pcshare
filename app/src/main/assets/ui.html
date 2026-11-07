@@ -1143,6 +1143,16 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 .cus .cl span:last-child{text-align:right;color:var(--inkMut)}
 .cus .cl input{width:100%}
 /*LUMEN-UI8:END*/
+/*LUMEN-UI9:BEGIN*/
+/* Lumen Part 18 (hand-written): accessibility + performance. 2 px focus ring on every control (3 px in high contrast / f3), visually hidden live regions, fling drops glass to solid (spec 6.4), dialogs scroll at large text, forced-colors borders. */
+:where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+@media(prefers-contrast:more){:where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline-width:3px}}
+:root[data-glass=f3] :where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline-width:3px}
+.lmvh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#dlg .dcard{max-height:90%;overflow-y:auto;overscroll-behavior:contain}
+@supports(background:color-mix(in srgb,red 50%,blue)){html.lm-fling .g1,html.lm-fling .g2,html.lm-fling .dmn,html.lm-fling #toast,html.lm-fling #jp{backdrop-filter:none;-webkit-backdrop-filter:none;background-color:color-mix(in srgb,var(--surface) 94%,transparent)}}
+@media(forced-colors:active){.tbtn.fill,.tbtn.dngf,.chip.on,.seg .on{border:1px solid ButtonText}}
+/*LUMEN-UI9:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -1225,7 +1235,7 @@ Object.assign(IC,{star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.1
 const BADGE={dcim:['camera','#333'],download:['download','#e65100'],downloads:['download','#e65100'],movies:['vid','#b3261e'],music:['aud','#0f8a6d'],pictures:['img','#2e7d32'],documents:['doc','#8d4b00']};
 const ic=(k,cls)=>{const NS='http://www.w3.org/2000/svg',s=document.createElementNS(NS,'svg'),p=document.createElementNS(NS,'path');
   const L=LUMEN_ICONS[k],c=(cls||'')+(L?(cls?' ':'')+'li':'');   // Lumen Icons (outline, stroke) first; old filled path for keys not redrawn yet
-  s.setAttribute('viewBox','0 0 24 24');if(c)s.setAttribute('class',c);p.setAttribute('d',L||IC[k]);s.append(p);return s};
+  s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');s.setAttribute('focusable','false');s.setAttribute('data-ik',k);if(c)s.setAttribute('class',c);p.setAttribute('d',L||IC[k]);s.append(p);return s};
 Object.assign(IC,{zip:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2 6h-2v2h2v2h-2v2h-2v-2h2v-2h-2v-2h2v-2h-2V8h2v2h2v2z',extract:'M20.55 5.22l-1.39-1.68A1.51 1.51 0 0018 3H6c-.47 0-.88.21-1.15.55L3.46 5.22C3.17 5.57 3 6.01 3 6.5V19a2 2 0 002 2h14c1.1 0 2-.9 2-2V6.5c0-.49-.17-.93-.45-1.28zM12 9.5l5.5 5.5H14v2h-4v-2H6.5L12 9.5zM5.12 5l.82-1h12l.94 1H5.12z',menu:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',star:'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',starb:'M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z',hist:'M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z',folders:'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',pc:'M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z',info:'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',vsplit:'M3 15h8v-2H3v2zm0 4h8v-2H3v2zm0-8h8V9H3v2zm0-6v2h8V5H3zm10 0v14h8V5h-8zm6 12h-4V7h4v10z',single:'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z',fwd:'M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z'});
 document.querySelectorAll('[data-i]').forEach(e=>e.append(ic(e.dataset.i)));
 const LD=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}};
@@ -6733,4 +6743,55 @@ const r=t.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,R=Math.hy
 s.className='rpl';s.style.cssText='width:'+2*R+'px;height:'+2*R+'px;left:'+(x-R)+'px;top:'+(y-R)+'px';t.appendChild(s);
 let done=0;const end=()=>{if(done)return;done=1;EV.forEach(k=>t.removeEventListener(k,end));s.classList.add('out');setTimeout(()=>s.remove(),240)};
 EV.forEach(k=>t.addEventListener(k,end));setTimeout(end,1500)}catch(_){}},{passive:true,capture:true});})();
+</script>
+<script>
+/*LUMEN-A11Y:BEGIN*/
+/* Lumen Part 18 (hand-written): roles, names, live regions, dialog focus trap + Escape, fling class, frame test. Page only. */
+(function(){try{
+const H=document.documentElement,B=document.body,q=(s,r)=>(r||document).querySelector(s),qa=(s,r)=>[...(r||document).querySelectorAll(s)];
+if(!H.lang)H.lang='en';
+const LB={back:'Back',close:'Close',menu:'Main menu',more:'More options',search:'Search',settings:'Settings',refresh:'Refresh',edit:'Edit',del:'Delete',share:'Share',copy:'Copy',cut:'Cut',paste:'Paste',add:'Add',newfolder:'New folder',selall:'Select all',tune:'View options',vsplit:'Split screen',sort:'Sort',info:'Details',check:'Select',star:'Favorite',download:'Download',dl:'Download',print:'Print',play:'Play',pause:'Pause',home:'Home',undo:'Undo',redo:'Redo',rotate:'Rotate',save:'Save',mute:'Mute',vol:'Volume',openw:'Open with',hist:'History',palette:'Style',up2:'Move up',dn2:'Move down',dup:'Duplicate',merge:'Merge',single:'Single view',extract:'Extract',zip:'Zip'};
+const vis=e=>!!(e&&e.style.display&&e.style.display!=='none');
+const mk=(id,live)=>{const d=document.createElement('div');d.id=id;d.className='lmvh';d.setAttribute('role',live==='assertive'?'alert':'status');d.setAttribute('aria-live',live);d.setAttribute('aria-atomic','true');B.appendChild(d);return d};
+const lp=mk('lmlive','polite'),la=mk('lmalert','assertive');
+let sayT=0;const say=(t,hard)=>{const d=hard?la:lp;clearTimeout(sayT);d.textContent='';sayT=setTimeout(()=>{d.textContent=t},60)};
+window.lmSay=say;
+/* names + roles for what the page builds (icon-only buttons, day headings, switches) */
+const lab=r=>{if(r.nodeType!==1)return;
+  const bs=(r.matches('button,[role=button]')?[r]:[]).concat(qa('button:not([aria-label]),[role=button]:not([aria-label])',r));
+  bs.forEach(b=>{if(b.getAttribute('aria-label')||b.textContent.trim())return;const s=q('svg[data-ik]',b),k=s&&s.getAttribute('data-ik'),t=b.getAttribute('title')||(k&&LB[k]);if(t)b.setAttribute('aria-label',t)});
+  (r.matches('.galh,.gdh')?[r]:[]).concat(qa('.galh,.gdh',r)).forEach(h=>{h.setAttribute('role','heading');h.setAttribute('aria-level','2')});
+  qa('.sw input:not([role])',r).forEach(i=>i.setAttribute('role','switch'))};
+let qd=new Set(),qt=0;
+const flush=()=>{qt=0;const a=[...qd];qd=new Set();a.forEach(n=>{if(n.isConnected)lab(n)})};
+new MutationObserver(ms=>{for(const m of ms){if(m.target.closest&&m.target.closest('#list'))continue;m.addedNodes.forEach(n=>{if(n.nodeType===1)qd.add(n)})}if(qd.size&&!qt)qt=requestAnimationFrame(flush)}).observe(B,{childList:true,subtree:true});
+lab(B);
+/* dialog: role, labelled by its title, focus in, trap, return focus */
+const dl=q('#dlg'),sh=q('#sheet');let opener=null,n=0;
+const foc=r=>qa('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])',r).filter(e=>!e.disabled&&e.offsetParent!==null);
+if(dl)new MutationObserver(()=>{const c=q('.dcard',dl);
+  if(vis(dl)&&c){if(!dl._o){dl._o=1;opener=document.activeElement}
+    if(!c.hasAttribute('role')){const h=q('h3',c),m=q('p',c);n++;if(h){h.id='lmdt'+n;c.setAttribute('aria-labelledby',h.id)}if(m){m.id='lmdm'+n;c.setAttribute('aria-describedby',m.id)}
+      c.setAttribute('role',q('.tbtn.dng',c)?'alertdialog':'dialog');c.setAttribute('aria-modal','true');
+      setTimeout(()=>{if(vis(dl)&&!dl.contains(document.activeElement)){const f=q('input',c)||q('.lmp',c)||foc(c)[0];if(f)f.focus()}},0)}}
+  else if(!vis(dl)&&dl._o){dl._o=0;const o=opener;opener=null;try{if(o&&o.isConnected&&o.focus)o.focus()}catch(e){}}
+ }).observe(dl,{childList:true,attributes:true,attributeFilter:['style']});
+if(sh)new MutationObserver(()=>{const c=q('.card',sh);if(vis(sh)&&c&&!c.hasAttribute('role')){const h=q('h2,h3',c);c.setAttribute('role','dialog');c.setAttribute('aria-modal','true');c.setAttribute('aria-label',(h&&h.textContent.trim())||'Panel')}}).observe(sh,{childList:true,attributes:true,attributeFilter:['style']});
+/* toast text + progress (10 % steps) and selection count go to the live regions */
+const tx=q('#tx'),tp=q('#tp'),tt=q('#toast');let lastP=-1;
+if(tx&&tt)new MutationObserver(()=>{const t=tx.textContent;if(!t||(tp&&tp.style.display!=='none'))return;say(t,tt.className==='err')}).observe(tx,{childList:true,characterData:true,subtree:true});
+if(tp&&tp.firstChild)new MutationObserver(()=>{const p=parseFloat(tp.firstChild.style.width);if(isNaN(p))return;const st=Math.floor(p/10);if(st!==lastP){lastP=st;say((tx?tx.textContent+' ':'')+st*10+'%')}if(p>=100)lastP=-1}).observe(tp.firstChild,{attributes:true,attributeFilter:['style']});
+const sc=q('#selcount');let selT=0;
+if(sc)new MutationObserver(()=>{clearTimeout(selT);selT=setTimeout(()=>{if(sc.textContent.trim())say(sc.textContent.trim())},500)}).observe(sc,{childList:true,characterData:true,subtree:true});
+/* keys: Tab stays inside an open dialog, Escape closes only the top layer */
+addEventListener('keydown',e=>{
+  if(e.key==='Tab'&&vis(dl)){const f=foc(dl);if(f.length){const i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0){e.preventDefault();f[f.length-1].focus()}else if(!e.shiftKey&&(i<0||i===f.length-1)){e.preventDefault();f[0].focus()}}}
+  else if(e.key==='Escape'&&!e.defaultPrevented&&!e.isComposing){if(vis(dl)){e.preventDefault();dl.click()}else if(vis(sh)&&typeof lsBack==='function'){e.preventDefault();lsBack()}}
+});
+/* fling: glass bars go solid while a list scrolls (CSS html.lm-fling), back after 140 ms */
+let ft=0;addEventListener('scroll',()=>{if(!H.classList.contains('lm-fling'))H.classList.add('lm-fling');clearTimeout(ft);ft=setTimeout(()=>H.classList.remove('lm-fling'),140)},{passive:true,capture:true});
+/* spec 18 Measure: lmFrameTest(5000) in the console while scrolling the gallery or file browser */
+window.lmFrameTest=(ms=5000)=>new Promise(r=>{const t=[];let l=0;const s=performance.now();const f=x=>{if(l)t.push(x-l);l=x;if(x-s<ms)requestAnimationFrame(f);else{const m=[...t].sort((a,b)=>a-b)[t.length>>1]||16.7,d=t.filter(v=>v>m*1.5).length,o={frames:t.length,medianMs:+m.toFixed(1),dropped:d,pct:+(100*d/Math.max(1,t.length)).toFixed(1),glass:H.dataset.glass||''};console.log('[lumen] frame test',JSON.stringify(o));r(o)}};requestAnimationFrame(f)});
+}catch(e){console.log('[lumen] a11y init failed',e)}})();
+/*LUMEN-A11Y:END*/
 </script></body></html>

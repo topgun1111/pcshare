@@ -5,6 +5,15 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Easier to use with a screen reader and a keyboard
+### Added
+- A clear focus outline on every button and control when you use a keyboard (thicker with high contrast).
+- Screen readers now announce dialogs, messages, progress and how many items are selected, and every icon button has a name.
+- Escape closes the open dialog or panel; Tab stays inside a dialog.
+### Changed
+- Frosted bars turn solid while you scroll, so scrolling stays smooth.
+- Long dialogs scroll when the text size is large.
+
 ## 2026-11-07 - Custom theme and a tidier theme list
 ### Added
 - Settings, Appearance, Theme: a Custom theme. Pick a colour (0-360), how strong the tint is, Light / Dark / AMOLED, and the soft background glow on or off. The colours are made for you and kept readable.

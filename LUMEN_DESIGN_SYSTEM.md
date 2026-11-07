@@ -924,13 +924,13 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 15 | Glass fallback ladder + settings (Reduce transparency, Glass quality) | Safe on low devices (DONE 2026-11-07 on the page; native has no glass yet) |
 | 16 | Motion tokens, container transform, haptic mapping, skeletons | Fluid feel (DONE 2026-11-07 partly: tokens, enter animations, reduce motion, haptic map, skeletons; exits, true container transform, drift left) |
 | 17 | Theme presets regenerated from 3 inputs, Custom theme, OS flavours | Final catalogue (PARTLY DONE 2026-11-07, page only: per-preset derived slots, grouped picker, Custom theme, Windows radii, T1 clean; presets keep their hex, Light / Dark pairing, OS fonts, High contrast rings left) |
-| 18 | Screen-by-screen pass (section 16), accessibility (17), performance (18) | Release candidate |
+| 18 | Screen-by-screen pass (section 16), accessibility (17), performance (18) | Release candidate (PARTLY DONE 2026-11-07, page only: focus rings, roles / names / live regions, dialog focus trap + Escape, fling-to-solid, frame test, lint T2 / T3; native a11y, TalkBack, T5 / T7 / T8 / T10 left) |
 
 Each part: update the handover chapter, `CHANGELOG.md`, and send back only changed files in `.tar.xz`.
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Next: Part 18 (screen pass, accessibility, performance); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
+**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Part 18 done on the page (see the handover note). Next: device verification (T5 / T7 / T8 / T10, TalkBack); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
