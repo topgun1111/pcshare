@@ -709,9 +709,10 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
     private val all: List<NlHitView> = listOf(bar, dock, fab, dls, toast)
     private val icons = HashMap<String, Path?>()
     private var last = ""
+    private val elevCb: (Boolean) -> Unit = { e -> bar.setElevated(e) }
 
     init {
-        onElev = { e -> bar.setElevated(e) }
+        onElev = elevCb
         NlBackdrop.register(bar); NlBackdrop.register(dock)
         for (v in all) { v.visibility = View.GONE; v.icons = icons; layer.addView(v, FrameLayout.LayoutParams(1, 1)) }
         bar.onTap = { id -> if (id == "scan") bar.spin(); fire("btn", id) }
@@ -730,6 +731,9 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
 
     /** App returned from the background: the page's next push must not be skipped as "unchanged". */
     fun resync() { last = "" }
+
+    /** Activity destroyed: drop the static scroll callback so this chrome (and its views) is not kept alive; a newer chrome's callback is left alone. */
+    fun release() { if (onElev === elevCb) onElev = null }
 
     private fun px(v: Double): Int = Math.round((v * d).toFloat())
 

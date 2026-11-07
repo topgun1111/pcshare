@@ -578,6 +578,7 @@ class MainActivity : Activity() {
     /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
     override fun onDestroy() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
+        if (::chrome.isInitialized) chrome.release()
         super.onDestroy()
     }
 
