@@ -129,6 +129,7 @@ class NlPal(private val j: JSONObject) {
 
 /** Overlay over the WebView: touches outside the list (or inside "holes" such as the FAB / toast) go to the WebView. */
 class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
+    companion object { @Volatile var downX = -1f; @Volatile var downY = -1f }   // Lumen Part 16: last touch-down (screen px), origin of the viewer's grow-from-thumbnail animation
     val listRect = RectF()
     val headRect = RectF()  // path bar + tool row (NlHeadView); empty = not shown natively
     var holes: List<RectF> = emptyList()
@@ -139,6 +140,7 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            downX = ev.rawX; downY = ev.rawY
             val x = ev.x; val y = ev.y
             toWeb = passAll || (!listRect.contains(x, y) && !headRect.contains(x, y)) || holes.any { it.contains(x, y) }
         }
@@ -858,6 +860,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val HEIC = Regex("\\.(heic|heif)$", RegexOption.IGNORE_CASE)
     private val SUBX = Regex("\\.(srt|vtt|ass|ssa)$", RegexOption.IGNORE_CASE)
 
+    private fun growFrom(): android.os.Bundle? = LumenPrefs.growFrom(act)   // Lumen Part 16: viewer grows out of the tapped thumbnail
+
     /** Same payloads as ui.html nativePlay / nativeImg / nativePdf. false = not handled here (the page decides: documents, svg/gif, search, archives, newest ...). */
     private fun openNative(i: Int): Boolean {
         try {
@@ -883,7 +887,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     }
                     val at = Math.max(0, v.indexOfFirst { it.nm == r.nm })
                     PlayerActivity.pending = JSONObject().put("start", at).put("items", items).toString()
-                    act.startActivity(Intent(act, PlayerActivity::class.java))
+                    act.startActivity(Intent(act, PlayerActivity::class.java), growFrom())
                 }
                 "img" -> {
                     val heicOk = Build.VERSION.SDK_INT >= 28
@@ -893,7 +897,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     val items = JSONArray()
                     for (m in v) items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("size", m.size))
                     ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, v.indexOfFirst { it.nm == r.nm })).put("items", items).toString()
-                    act.startActivity(Intent(act, ImageViewerActivity::class.java))
+                    act.startActivity(Intent(act, ImageViewerActivity::class.java), growFrom())
                 }
                 "pdf" -> {
                     PdfViewerActivity.pending = JSONObject().put("name", r.nm).put("url", url(r.nm)).put("size", r.size).put("key", key(r.nm, r.size)).toString()

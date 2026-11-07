@@ -24,6 +24,11 @@ def build():
         root += f"--t-{n}-size:{sz}px;--t-{n}-lh:{lh}px;--t-{n}-w:{w};--t-{n}-tr:{tr};"
     root += "".join(f"--fs-{n}:{n}px;" for n in T["fontSizes"])
     root += decl(T["state"], "st-")
+    M = T["motion"]
+    root += "".join(f"--d-{k}:{v}ms;" for k, v in M["dur"].items())
+    root += "".join(f"--d-{k}-x:{round(v * M['exit'])}ms;" for k, v in M["dur"].items())   # exit = about 70 % of enter
+    root += f"--d-rm:{M['reduceFade']}ms;"
+    root += "".join(f"--ease-{k}:{v};" for k, v in M["ease"].items())
     root += "".join(f"--{old}:var(--{s});" for old, s in T["aliases"].items())
     root += decl(T["themes"]["ember"]) + decl(T["fresh"]["light"])
     o.append(":root{" + root + "}")
@@ -72,6 +77,15 @@ def kotlin():
           "                Lumen(m)",
           "            } catch (_: Throwable) { Lumen(base) }",
           "        }", "    }", "}", ""]
+    M = T["motion"]
+    o += ["/** Motion tokens (spec 13.1 / 13.2): durations in ms, named easings as cubic-bezier control points. Exit = about 70 % of enter. */",
+          "object LumenMotion {"]
+    o += [f"    const val {k.upper()}: Long = {v}L" for k, v in M["dur"].items()]
+    o += [f"    const val EXIT_FACTOR = {M['exit']}f", f"    const val REDUCE_FADE: Long = {M['reduceFade']}L",
+          "    fun exit(ms: Long): Long = (ms * EXIT_FACTOR).toLong()"]
+    for k, b in M["bez"].items():
+        o.append(f"    val {k.upper()}: android.view.animation.Interpolator by lazy {{ android.view.animation.PathInterpolator({b[0]}f, {b[1]}f, {b[2]}f, {b[3]}f) }}")
+    o += ["}", ""]
     return "\n".join(o)
 
 def js_block():

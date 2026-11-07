@@ -28,6 +28,7 @@ object Haptics {
 
     fun init(c: Context) {
         ctx = c.applicationContext
+        enabled = LumenPrefs.hapticsOn(c)   // Lumen Part 16: in-app Haptic feedback switch (Settings -> Appearance)
         if (vib == null) vib = try {
             if (Build.VERSION.SDK_INT >= 31) (c.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
             else @Suppress("DEPRECATION") (c.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)

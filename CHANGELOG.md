@@ -5,6 +5,17 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Calmer motion, glass fallback and loading placeholders
+### Added
+- Settings, Appearance: Glass quality (Auto / Full / Light), Reduce transparency, Reduce motion and Haptic feedback.
+- Grey placeholder shapes with a soft shimmer while pictures and albums load, instead of a plain "Loading" text.
+### Changed
+- Frosted glass steps down by itself on slow phones and in battery saver; with Reduce transparency every surface is solid.
+- Dialogs, bottom sheets, menus and messages open with one set of timings; with Reduce motion they only fade in.
+- Pictures and videos grow out of the thumbnail you tapped.
+- Vibration is more consistent: stronger for errors and destructive confirmations, light for selecting and switches.
+- Changing the theme fades the colours instead of jumping.
+
 ## 2026-11-07 - Glass and soft background
 ### Added
 - The start menu has a soft coloured background glow behind the tiles (off in the pure black theme).

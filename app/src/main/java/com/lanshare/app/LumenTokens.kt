@@ -94,3 +94,21 @@ class Lumen(private val m: Map<String, Int>) {
         }
     }
 }
+
+/** Motion tokens (spec 13.1 / 13.2): durations in ms, named easings as cubic-bezier control points. Exit = about 70 % of enter. */
+object LumenMotion {
+    const val INSTANT: Long = 90L
+    const val FAST: Long = 140L
+    const val BASE: Long = 200L
+    const val MED: Long = 280L
+    const val SLOW: Long = 400L
+    const val HERO: Long = 520L
+    const val EXIT_FACTOR = 0.7f
+    const val REDUCE_FADE: Long = 120L
+    fun exit(ms: Long): Long = (ms * EXIT_FACTOR).toLong()
+    val STANDARD: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f) }
+    val DECEL: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0f, 0f, 0f, 1f) }
+    val ACCEL: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.3f, 0f, 1f, 1f) }
+    val EMPH: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.05f, 0.7f, 0.1f, 1f) }
+    val SPRING: android.view.animation.Interpolator by lazy { android.view.animation.PathInterpolator(0.34f, 1.45f, 0.64f, 1f) }
+}

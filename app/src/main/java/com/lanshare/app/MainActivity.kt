@@ -68,6 +68,12 @@ class MainActivity : Activity() {
         /** Haptics from the page: kind = tick | click | heavy | long | double | success | error | warn | select | <ms>. Alarm-usage, so Battery saver does not mute it. */
         @JavascriptInterface fun haptic(kind: String) { Haptics.play(kind) }
         @JavascriptInterface fun hapticPattern(csv: String) { Haptics.pattern(csv.split(',').mapNotNull { it.trim().toLongOrNull() }.toLongArray()) }
+        /** Lumen Part 15 / 16: device facts for the glass ladder, and the in-app Reduce motion / Haptic feedback switches. */
+        @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
+        @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
+        @JavascriptInterface fun reduceMotionSet(on: Boolean) { LumenPrefs.setReduceMotion(this@MainActivity, on) }
+        @JavascriptInterface fun hapticsGet(): Boolean = LumenPrefs.hapticsOn(this@MainActivity)
+        @JavascriptInterface fun hapticsSet(on: Boolean) { LumenPrefs.setHaptics(this@MainActivity, on) }
         /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
         @JavascriptInterface fun homeStart(): Boolean = showHome
         /** PERF-DEBUG (temporary): startup marks, ms since this process started. */
@@ -165,11 +171,11 @@ class MainActivity : Activity() {
         @JavascriptInterface fun shareFiles(json: String) { shareFilesImpl(json) }
         /** Video tapped: open the dedicated player (Media3) with the folder's videos as a playlist. [json] = {start, items:[{name,url,key,subs}]} */
         @JavascriptInterface fun play(json: String) {
-            runOnUiThread { PlayerActivity.pending = json; startActivity(Intent(this@MainActivity, PlayerActivity::class.java)) }
+            runOnUiThread { PlayerActivity.pending = json; startActivity(Intent(this@MainActivity, PlayerActivity::class.java), LumenPrefs.growFrom(this@MainActivity)) }
         }
         /** Picture tapped: open the dedicated image viewer with the folder's pictures. [json] = {start, items:[{name,url,size}]} */
         @JavascriptInterface fun viewImages(json: String) {
-            runOnUiThread { ImageViewerActivity.pending = json; startActivity(Intent(this@MainActivity, ImageViewerActivity::class.java)) }
+            runOnUiThread { ImageViewerActivity.pending = json; startActivity(Intent(this@MainActivity, ImageViewerActivity::class.java), LumenPrefs.growFrom(this@MainActivity)) }
         }
         /** PDF tapped: open the dedicated PDF reader (PdfRenderer). [json] = {name, url, size, key} */
         @JavascriptInterface fun viewPdf(json: String) {

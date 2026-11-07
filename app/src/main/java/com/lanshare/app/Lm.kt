@@ -14,12 +14,10 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -56,9 +54,7 @@ object Lm {
 
     private fun dp(c: Context, v: Float): Int = Math.round(v * c.resources.displayMetrics.density)
 
-    private fun reduceMotion(c: Context): Boolean = try {
-        Settings.Global.getFloat(c.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-    } catch (_: Throwable) { false }
+    private fun reduceMotion(c: Context): Boolean = LumenPrefs.reduceMotion(c)   // in-app Reduce motion OR system "remove animations" (Part 16)
 
     private fun withAlpha(col: Int, a: Float): Int {
         val al = Math.round(255f * a)
@@ -193,11 +189,13 @@ object Lm {
         pill.bringToFront()
         cur = pill; curHost = host; curMsg = text
 
-        if (reduceMotion(act)) { pill.alpha = 1f }
-        else {
+        if (reduceMotion(act)) {   // spec 13.4: no transform, 120 ms fade
             pill.alpha = 0f
-            pill.translationY = dp(act, 12f).toFloat()
-            pill.animate().alpha(1f).translationY(0f).setDuration(120).setInterpolator(DecelerateInterpolator()).start()
+            pill.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start()
+        } else {   // spec 13.3 Snackbar: slides up 16 dp + fade (t.base, decelerate)
+            pill.alpha = 0f
+            pill.translationY = dp(act, 16f).toFloat()
+            pill.animate().alpha(1f).translationY(0f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start()
         }
         val job = Runnable { dismissNow() }
         hideJob = job
@@ -364,12 +362,17 @@ object Lm {
             }
         } catch (_: Throwable) { }
 
-        // scale-in 0.92 -> 1 + fade, 220 ms decelerate (nothing with "remove animations")
+        // scale 0.92 -> 1 + fade, t.base decelerate; with Reduce motion only a 120 ms fade (spec 13.3 / 13.4)
         try {
             val dv = d.window?.decorView
-            if (dv != null && !reduceMotion(c)) {
-                dv.alpha = 0f; dv.scaleX = 0.92f; dv.scaleY = 0.92f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+            if (dv != null) {
+                if (reduceMotion(c)) {
+                    dv.alpha = 0f
+                    dv.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start()
+                } else {
+                    dv.alpha = 0f; dv.scaleX = 0.92f; dv.scaleY = 0.92f
+                    dv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start()
+                }
             }
         } catch (_: Throwable) { }
     }

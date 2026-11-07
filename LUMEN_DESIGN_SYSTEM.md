@@ -921,8 +921,8 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent (PARTLY DONE 2026-11-07: rows, selection, dividers, ripple; bars and drawer left) |
 | 13 | Gradients (gPrimary etc.), category tile gradients, shadows | Depth and colour transitions (DONE 2026-11-07 on the page + native dialog button; native tiles / chrome / gSurface / gSuccess left) |
 | 14 | Wallpaper Aurora + glass tiers G0-G3 | Glass chrome and sheets (PARTLY DONE 2026-11-07, page only: Aurora on the home menu, G2 / G3 on dialogs, sheets, menus, toast; native chrome / dialogs, G0, grain, drift left) |
-| 15 | Glass fallback ladder + settings (Reduce transparency, Glass quality) | Safe on low devices |
-| 16 | Motion tokens, container transform, haptic mapping, skeletons | Fluid feel |
+| 15 | Glass fallback ladder + settings (Reduce transparency, Glass quality) | Safe on low devices (DONE 2026-11-07 on the page; native has no glass yet) |
+| 16 | Motion tokens, container transform, haptic mapping, skeletons | Fluid feel (DONE 2026-11-07 partly: tokens, enter animations, reduce motion, haptic map, skeletons; exits, true container transform, drift left) |
 | 17 | Theme presets regenerated from 3 inputs, Custom theme, OS flavours | Final catalogue |
 | 18 | Screen-by-screen pass (section 16), accessibility (17), performance (18) | Release candidate |
 
@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-11; Part 12 partly (bars, drawer, headings strip left).** Parts 13 and 14 done on the page. Next: Part 15 (glass fallback ladder + settings); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
+**Done: Parts 1-11; Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Next: Part 17 (theme presets, Custom theme); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -956,6 +956,10 @@ Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh 
 | 13 | Block `/*LUMEN-UI4*/` (inside `@supports(color-mix)`): gradients derived from each theme's slots (`--gPrimary --gPrimarySoft --gDanger --gFab`), applied to filled / tonal buttons, FAB, switch, checkbox, selection circles, progress fill, page-list tiles; elevation `--e1..--e5` tinted by primary, dark themes get 2.8x alpha and edge-only E1 (selector list generated with `is_dark`). Native: `Lm.styleButton` primary gradient. Left: native tiles / chrome, gSurface, gChrome, gSuccess, gGlow, gSkeleton, scrims, real `shadowTint` slot, contrast check of gradient ends. |
 
 | 14 | Block `/*LUMEN-UI5*/` (inside `@supports(backdrop-filter + color-mix)`): tier alphas as vars (light 78-66 / 78 / 84 %, dark 70-58 / 70 / 76 %), `.g1 .g2 .g3` utilities, G3 on `#dlg .dcard` and floating sheets, G2 on `.dmn #toast #jp`; Aurora = four radial blobs x `--aK` on `#home` (amoled 0) + 2.5 % SVG grain, static. Left: native chrome / dialogs / sheets, G0 pills, G2-G3 grain, drift (Part 16), scroll-driven top bar, max-two-blurs rule, per-theme contrast floor. |
+
+| 15 | `html[data-glass]` f0-f3 chosen by `glassPick()` (Reduce transparency or high contrast or no `color-mix` = f3, no blur = f2, Glass quality Light = f1 / Full = f0, Auto = f1 on battery saver or low-end device). UI5 blur / saturation are vars; block `/*LUMEN-UI6*/`: f1 blur 12 / 16 / 20, no saturation, no grain; f2 tint 94 % (92 % dark) no blur; f3 opaque `surface` + 1 px `edge`, no Aurora; `html.dlo` drops sheet / menu blur under an open dialog. Native hint `LumenPrefs.glassHint()`. Settings -> Appearance: Glass quality, Reduce transparency. |
+
+| 16 | Motion tokens `--d-*` / `--ease-*` (generated) + Kotlin `LumenMotion`; block `/*LUMEN-UI7*/`: enter animations of dialog, sheet, full-screen sheet, menu, snackbar, glass frost-in, theme cross-fade, success pulse, error shake, skeleton shimmer; Reduce motion (`html[data-rm]`, switch + system + native); haptic map `HAP` and Haptic feedback switch; native `Lm.kt` dialog / snackbar on tokens; viewer launch grows from the tapped thumbnail (platform scale-up stand-in for the container transform). Left: exits, shared-element transform, drift, selection choreography, list insert / remove, Undo bar, swipe-to-dismiss. |
 
 Known gaps carried forward:
 - T1 fails 4 pairs: `ubuntu`, `peach`, `garuda` (onPrimary on primary) and `solar` (inkMut on surfaceHi). Fixed in Part 17.
