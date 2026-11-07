@@ -265,7 +265,10 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         val ek = elevK
         // text / glyph colour: the bar's own (on a filled bar) fades to the theme ink (on the transparent bar)
         val ob = if (sel) p.onbar else LumenCategory.mix(lumen().ink, p.onbar, ek)
-        val cf = LumenGlass.chromeFill(context, if (sel && !sliding) p.sel else p.bar)
+        // 4f N1 (c): real backdrop blur under the bar (F0 / F1, API 31+); otherwise the 4b tint-raised stand-in
+        val barBase = if (sel && !sliding) p.sel else p.bar
+        val live = ek > 0.01f && NlBackdrop.draw(cv, this, parent as? View, 0f)
+        val cf = if (live) LumenGlass.blurFill(context, barBase) else LumenGlass.chromeFill(context, barBase)
         fillP.color = LumenGlass.withAlpha(cf or 0xFF000000.toInt(), ek)
         cv.drawRect(0f, 0f, bw, bh, fillP)
         // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge); flat at F3
@@ -477,7 +480,9 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         val rl = LumenRadius.l(context) * d   // N6: strip / pills follow the theme's r-l (Windows 11 = 12)
         // N1 (b): the page's own tint (or glassTint) by glass step. No backdrop blur is possible under a native view, so F0-F2 are tint-raised (see LumenGlass.chromeFill); F3 = opaque
         val base = if (bg != 0) bg else lm.glassTint
-        val raised = Math.max(0xEB, LumenGlass.chromeFill(context, base) ushr 24)   // list rows run under the dock: never less than 92 %
+        val live = NlBackdrop.draw(cv, this, parent as? View, rad)   // 4f N1 (c): real blur under the dock pill (F0 / F1, API 31+)
+        val raised = if (live) Math.max(0xD2, LumenGlass.blurFill(context, base) ushr 24)   // blurred rows: never less than 82 %
+                     else Math.max(0xEB, LumenGlass.chromeFill(context, base) ushr 24)   // list rows run under the dock: never less than 92 %
         val f3 = !LumenGlass.chromeGradient(context)
         fillP.shader = null; fillP.style = Paint.Style.FILL
         fillP.color = if (f3) ((base and 0x00FFFFFF) or 0xFF000000.toInt()) else ((base and 0x00FFFFFF) or (raised shl 24))
@@ -707,6 +712,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
 
     init {
         onElev = { e -> bar.setElevated(e) }
+        NlBackdrop.register(bar); NlBackdrop.register(dock)
         for (v in all) { v.visibility = View.GONE; v.icons = icons; layer.addView(v, FrameLayout.LayoutParams(1, 1)) }
         bar.onTap = { id -> if (id == "scan") bar.spin(); fire("btn", id) }
         fab.onTap = { _ -> fire("btn", "fab") }
@@ -746,6 +752,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
         if (!ENABLED || json == last) return
         last = json
         if (json == "0") { for (v in all) v.visibility = View.GONE; return }
+        layer.post { NlBackdrop.invalidateAll() }   // 4f: the page under the chrome changed
         val j = JSONObject(json)
         j.optJSONObject("p")?.let { pj -> val cp = NlCp(pj); for (v in all) v.pal = cp }
         j.optJSONObject("ic")?.let { ic ->

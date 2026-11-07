@@ -201,6 +201,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     var pal: NlPal? = null
     var isSel = false
     var thumb: Bitmap? = null
+    val thumbR = RectF(); var thumbRad = 0f   // 4f M7 b: where the thumbnail was drawn last (view coords) + its corner radius, read by the viewer launch
     var dur: String? = null
     var compact = false
     var large = false      // big-thumbnail list (ui.html #list.t-lg): row 84, lead 76x68
@@ -304,7 +305,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 val sc = Math.max(dw / bm.width, dh / bm.height)
                 val sw = (dw / sc).toInt(); val sh = (dh / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - sh) / 2, (bm.width - sw) / 2 + sw, (bm.height - sh) / 2 + sh)
-                rf.set(L, T, R, B)
+                rf.set(L, T, R, B); thumbR.set(rf); thumbRad = 12f * d
                 clip.reset(); clip.addRoundRect(rf, 12f * d, 12f * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
@@ -387,6 +388,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     var isSel = false
     var selMode = false
     var thumb: Bitmap? = null
+    val thumbR = RectF(); var thumbRad = 0f   // 4f M7 b
     var dur: String? = null
     private val rpl = NlRpl(this)      // Lumen 4d N9: press ripple
     override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
@@ -507,7 +509,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 val sc = Math.max(s / bm.width, sh / bm.height)
                 val sw = (s / sc).toInt(); val shh = (sh / sc).toInt()
                 src.set((bm.width - sw) / 2, (bm.height - shh) / 2, (bm.width - sw) / 2 + sw, (bm.height - shh) / 2 + shh)
-                rf.set(lx, ly, lx + s, ly + sh)
+                rf.set(lx, ly, lx + s, ly + sh); thumbR.set(rf); thumbRad = (if (bare) 15f else 12f) * d
                 clip.reset(); clip.addRoundRect(rf, (if (bare) 15f else 12f) * d, (if (bare) 15f else 12f) * d, Path.Direction.CW)
                 cv.save(); cv.clipPath(clip); p.color = Color.WHITE; cv.drawBitmap(bm, src, rf, p); cv.restore()
                 dur?.let { t ->
@@ -852,7 +854,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
         })
         sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
@@ -927,6 +929,21 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private fun growFrom(): android.os.Bundle? = LumenPrefs.growFrom(act)   // Lumen Part 16: viewer grows out of the tapped thumbnail
 
+    /** Lumen 4f (M7 b): start a viewer / player from row [i] as a container transform (NlHero) when that row is on screen with a drawn thumbnail; else the Part 16 scale-up. */
+    private fun launchHero(i: Int, it: Intent) {
+        try {
+            val v = rv.findViewHolderForAdapterPosition(i)?.itemView
+            val bm: Bitmap?; val tr: RectF?; val rad: Float
+            when (v) {
+                is NlRowView -> { bm = v.thumb; tr = v.thumbR; rad = v.thumbRad }
+                is NlGridView -> { bm = v.thumb; tr = v.thumbR; rad = v.thumbRad }
+                else -> { bm = null; tr = null; rad = 0f }
+            }
+            if (v != null && bm != null && tr != null && !tr.isEmpty) { NlHero.launch(act, v, tr, rad, bm, it); return }
+        } catch (_: Throwable) { }
+        act.startActivity(it, growFrom())
+    }
+
     /** Same payloads as ui.html nativePlay / nativeImg / nativePdf. false = not handled here (the page decides: documents, svg/gif, search, archives, newest ...). */
     private fun openNative(i: Int): Boolean {
         try {
@@ -952,7 +969,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     }
                     val at = Math.max(0, v.indexOfFirst { it.nm == r.nm })
                     PlayerActivity.pending = JSONObject().put("start", at).put("items", items).toString()
-                    act.startActivity(Intent(act, PlayerActivity::class.java), growFrom())
+                    launchHero(i, Intent(act, PlayerActivity::class.java))
                 }
                 "img" -> {
                     val heicOk = Build.VERSION.SDK_INT >= 28
@@ -962,7 +979,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     val items = JSONArray()
                     for (m in v) items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("size", m.size))
                     ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, v.indexOfFirst { it.nm == r.nm })).put("items", items).toString()
-                    act.startActivity(Intent(act, ImageViewerActivity::class.java), growFrom())
+                    launchHero(i, Intent(act, ImageViewerActivity::class.java))
                 }
                 "pdf" -> {
                     PdfViewerActivity.pending = JSONObject().put("name", r.nm).put("url", url(r.nm)).put("size", r.size).put("key", key(r.nm, r.size)).toString()

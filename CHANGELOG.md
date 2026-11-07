@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Frosted bars and a smoother picture opening
+### Added
+- On Android 12 and newer the top bar, the action buttons at the bottom and the side menu now blur the files behind them (Glass quality Full or Auto; Light and Reduce transparency keep them solid).
+### Changed
+- Opening a picture or video from the list or grid now grows it straight out of its thumbnail, and the buttons fade in a moment later.
+
 ## 2026-11-07 - Ripples everywhere and a heading pill
 ### Added
 - Gallery thumbnails and side menu rows now show the same soft ripple when touched.

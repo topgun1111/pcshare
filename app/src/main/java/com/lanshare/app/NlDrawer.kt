@@ -3,6 +3,7 @@ package com.lanshare.app
 import android.app.Activity
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -275,6 +276,17 @@ private class DrPanel(c: Context, private val d: Float) : LinearLayout(c) {
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean = true
+
+    /** 4f N1 (c): blur fill (ARGB, translucent) painted over the real backdrop blur; [fallback] is the 4b stand-in used when the blur cannot be drawn. 0 = use the plain background. */
+    var blurFill = 0
+    var fallback = 0
+    override fun draw(canvas: Canvas) {
+        if (blurFill != 0) {
+            val live = NlBackdrop.draw(canvas, this, this, 0f)
+            canvas.drawColor(if (live) blurFill else fallback)
+        }
+        super.draw(canvas)
+    }
 }
 
 private class DrVh(v: View) : RecyclerView.ViewHolder(v)
@@ -425,7 +437,10 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (ct == 0) { ct = p.optLong("ct").toInt(); cb = p.optLong("cb").toInt() }
         if (card == 0) card = AppPal.pal(act).bg
         // Lumen Part 4b (N1 b): G1 panel by glass step (tint-raised stand-in, opaque at F3); textured / gradient themes keep their texture. The page hides its own #dwr (html.nldr) so the panel can be see-through.
-        if (ct != 0) dp.background = NlTex.layered(dp.context, ct, cb) else dp.setBackgroundColor(LumenGlass.chromeFill(act, card))
+        if (ct != 0) { dp.background = NlTex.layered(dp.context, ct, cb); dp.blurFill = 0 }
+        else if (NlBackdrop.wanted(act) && (card ushr 24) == 0xFF) {   // 4f N1 (c): real blur under the panel (F0 / F1)
+            dp.setBackgroundColor(Color.TRANSPARENT); dp.blurFill = LumenGlass.blurFill(act, card); dp.fallback = LumenGlass.chromeFill(act, card); dp.invalidate()
+        } else { dp.blurFill = 0; dp.setBackgroundColor(LumenGlass.chromeFill(act, card)) }
         if (android.os.Build.VERSION.SDK_INT >= 28) { dp.outlineSpotShadowColor = (Lumen.of(act).shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); dp.outlineAmbientShadowColor = 0x33000000 }   // N4
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.rx = j.optDouble("rx", 0.0).toFloat() * d

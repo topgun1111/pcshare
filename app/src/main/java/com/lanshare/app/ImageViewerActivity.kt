@@ -260,6 +260,7 @@ class ImageViewerActivity : Activity() {
         }
         root.addView(selBar)
         setContentView(root)
+        NlHero.play(this, root, listOf(topWrap, countPill)) { cache.size() > 0 }   // Lumen 4f M7 b: container transform from the tapped thumbnail (no-op when not launched from the list)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
     }
 

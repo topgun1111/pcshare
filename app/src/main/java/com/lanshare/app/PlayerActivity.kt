@@ -107,6 +107,7 @@ class PlayerActivity : Activity() {
 
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var root: FrameLayout
+    private val heroT0 = android.os.SystemClock.uptimeMillis()   // Lumen 4f: the player has no "picture ready" signal, the overlay lifts 250 ms after the grow ends
     private lateinit var stage: FrameLayout          // the video area (whole window, behind the bars)
     private lateinit var view: PlayerView
     private lateinit var touch: View                 // gesture layer above the video
@@ -309,6 +310,7 @@ class PlayerActivity : Activity() {
         setupGestures()
         setContentView(root)
         layoutBars()
+        NlHero.play(this, root, listOf(header, bottom)) { android.os.SystemClock.uptimeMillis() - heroT0 > 250L }   // Lumen 4f M7 b: container transform from the tapped thumbnail
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
     }
 

@@ -83,6 +83,14 @@ object LumenGlass {
         return withAlpha(base, a)
     }
 
+    /** Lumen 4f (N1 c): fill when the real backdrop blur is painted under the chrome (spec 6.2 G1 tier alpha, F0 lower than F1 because it is blurrier). */
+    fun blurFill(c: Context, base: Int): Int {
+        if ((base ushr 24) < 0xFF) return base
+        val night = AppPal.night(c)
+        val a = if (step(c) == 0) (if (night) 0.66f else 0.72f) else (if (night) 0.72f else 0.78f)
+        return withAlpha(base, a)
+    }
+
     /** gChrome (top light from above) is only drawn for F0-F2; F3 is flat (spec 6.5). */
     fun chromeGradient(c: Context): Boolean = step(c) < 3
 }
