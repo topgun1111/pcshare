@@ -155,9 +155,12 @@ class UsActivity : Activity() {
 
     override fun onResume() { super.onResume(); ui.post(tick) }
     override fun onPause() { super.onPause(); ui.removeCallbacks(tick); commit() }
-    override fun onDestroy() { super.onDestroy(); token.cancel(); seq++; ui.removeCallbacksAndMessages(null); exec.shutdownNow(); thPool.shutdownNow() }
+    override fun onDestroy() { backGate.release(); super.onDestroy(); token.cancel(); seq++; ui.removeCallbacksAndMessages(null); exec.shutdownNow(); thPool.shutdownNow() }
 
     @Suppress("OVERRIDE_DEPRECATION")
+    // Lumen predictive back: on Android 13+ the callback is registered only while a selection exists (BackGate); otherwise the system animation runs and finishes the screen
+    private val backGate = BackGate(this, { sel.isNotEmpty() }, { endSel() })
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() { if (sel.isNotEmpty()) endSel() else super.onBackPressed() }
 
     // ---------------------------------------------------------------- UI
@@ -587,7 +590,9 @@ class UsActivity : Activity() {
                 return
             }
             if (dir) {
-                NlIcons.draw(cv, pt, "folder", a.dp(2f).toFloat(), a.dp(2f).toFloat(), s - a.dp(4f), a.p.ac)
+                // Lumen N5: the same two-plate folder as the file list (theme primary), not a flat glyph
+                val fw = s - a.dp(4f); val fk = fw / NlClassicFolder.W
+                NlClassicFolder.draw(cv, pt, android.graphics.RectF(), a.dp(2f).toFloat(), a.dp(2f).toFloat() + (fw - NlClassicFolder.H * fk) / 2f, fk)
             } else NlFileIcons.draw(cv, name, kindOfName(name), a.dp(3f).toFloat(), a.dp(3f).toFloat(), s - a.dp(6f), LumenCategory.of(context))
         }
     }
@@ -828,6 +833,7 @@ class UsActivity : Activity() {
     private fun updateSelBar() {
         selBar.visibility = if (sel.isEmpty()) View.GONE else View.VISIBLE
         selTv.text = sel.size.toString() + " selected"
+        backGate.refresh()
     }
 
     private fun picked(): List<UsSearch.Row> = rows.filter { sel.contains(it.id) }
