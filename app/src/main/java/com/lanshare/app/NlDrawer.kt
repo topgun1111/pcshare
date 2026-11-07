@@ -120,9 +120,11 @@ private class DrView(c: Context, private val d: Float) : View(c) {
             if (p.stroke != 0 && p.sw > 0f) {
                 fill.style = Paint.Style.STROKE
                 fill.strokeWidth = p.sw
+                fill.strokeCap = Paint.Cap.ROUND; fill.strokeJoin = Paint.Join.ROUND   // Lumen Icons: round caps / joins
                 fill.color = p.stroke
                 cv.drawPath(path, fill)
                 fill.style = Paint.Style.FILL
+                fill.strokeCap = Paint.Cap.BUTT; fill.strokeJoin = Paint.Join.MITER
             }
         }
         cv.restore()

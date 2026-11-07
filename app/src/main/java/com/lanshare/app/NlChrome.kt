@@ -73,8 +73,12 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
         val path = icons[key] ?: return
         val s = sizeDp * d / 24f
         cv.save(); cv.translate(cx - sizeDp * d / 2f, cy - sizeDp * d / 2f); cv.scale(s, s)
-        fillP.style = Paint.Style.FILL; fillP.color = color; fillP.shader = null
+        val st = ChStroke.keys.contains(key)
+        if (st) { fillP.style = Paint.Style.STROKE; fillP.strokeWidth = LumenIcons.SW; fillP.strokeCap = Paint.Cap.ROUND; fillP.strokeJoin = Paint.Join.ROUND }
+        else fillP.style = Paint.Style.FILL
+        fillP.color = color; fillP.shader = null
         cv.drawPath(path, fillP)
+        if (st) { fillP.style = Paint.Style.FILL; fillP.strokeCap = Paint.Cap.BUTT; fillP.strokeJoin = Paint.Join.MITER }
         cv.restore()
     }
 
@@ -555,7 +559,7 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
         j.optJSONObject("p")?.let { pj -> val cp = NlCp(pj); for (v in all) v.pal = cp }
         j.optJSONObject("ic")?.let { ic ->
             val ks = ic.keys()
-            while (ks.hasNext()) { val k = ks.next(); if (!icons.containsKey(k)) icons[k] = NlGlyph.parse(ic.getString(k)) }
+            while (ks.hasNext()) { val k = ks.next(); if (!icons.containsKey(k)) { val raw = ic.getString(k); if (raw.startsWith("~")) { ChStroke.keys.add(k); icons[k] = NlGlyph.parse(raw.substring(1)) } else icons[k] = NlGlyph.parse(raw) } }
         }
 
         val b = j.optJSONObject("bar")
@@ -597,3 +601,6 @@ class NlChrome(act: Activity, private val fire: (String, String) -> Unit) {
         }
     }
 }
+
+/** Keys of page icons that arrive with the "~" prefix = Lumen stroke icons (ui.html nlIc). */
+private object ChStroke { val keys = HashSet<String>() }

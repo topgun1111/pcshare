@@ -75,8 +75,8 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
         et.setTextColor(p.fg); et.setHintTextColor(p.mut); all.setTextColor(p.ac)
         line.color = p.bd
         back.removeAllViews(); clr.removeAllViews()
-        back.addView(NlGlyph(context, NlIcons.path("back"), p.fg, dp(24f)), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        clr.addView(NlGlyph(context, NlIcons.path("close"), p.fg, dp(24f)), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        back.addView(NlGlyph(context, NlIcons.path("back"), p.fg, dp(24f), true), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        clr.addView(NlGlyph(context, NlIcons.path("close"), p.fg, dp(24f), true), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         invalidate()
     }
 

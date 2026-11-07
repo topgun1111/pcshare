@@ -23,8 +23,13 @@ import androidx.core.graphics.PathParser
 import org.json.JSONObject
 
 /** A 24x24 Material path drawn at [px] x [px]. Shared by the sheets and the native search row. */
-class NlGlyph(c: Context, private val path: Path?, col: Int, private val px: Int) : View(c) {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = col; style = Paint.Style.FILL }
+class NlGlyph(c: Context, private val path: Path?, col: Int, private val px: Int, stroke: Boolean = false) : View(c) {
+    // stroke = Lumen Icons outline glyph (24 grid, LumenIcons.SW wide, round caps and joins); false = old filled Material path
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = col
+        if (stroke) { style = Paint.Style.STROKE; strokeWidth = LumenIcons.SW; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+        else style = Paint.Style.FILL
+    }
     override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(px, px) }
     override fun onDraw(cv: Canvas) {
         val pa = path ?: return

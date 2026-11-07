@@ -915,7 +915,7 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 6 | Native screens recolour from tokens | Native and page match (DONE 2026-11-07) |
 | 7 | Page dialog, sheet (5 sizes) and snackbar components | One dialog, one message style (page) (DONE 2026-11-07) |
 | 8 | Native dialog / sheet / snackbar helper; replace all `AlertDialog` and `Toast.makeText` | One dialog, one message style (native)(DONE 2026-11-07, sheets `NlSheets` still own look) |
-| 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family |
+| 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family (DONE 2026-11-07, 46 glyphs; folder / file glyphs wait for Part 10) |
 | 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete |
 | 11 | Buttons, chips, switches, text fields to spec | Controls consistent |
 | 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent |
@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-8.** Next: Part 9 (Lumen Icons A).
+**Done: Parts 1-9.** Next: Part 10 (Lumen Icons B).
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -944,6 +944,8 @@ Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh 
 | 6 | Native screens use `Lumen.of(ctx)` for fallback palette, Storage Analyzer, job overlay, update dialog, print log (semantic success / error). The page palette already reached native via `AppPal` (old keys alias the slots). Not migrated yet: category colours, chrome action-button colours, code highlight, dark viewer chrome, editor highlight palette; they move with Parts 9-10 (icons) and 13 (gradients). Print-log warning keeps its darker amber (slot `warning` is too light as text; revisit in Part 17 with `onWarning`). |
 | 7 | The existing page `dlg()` and `toast()` became the Lumen dialog / snackbar (call sites untouched): hero tile, stacked phone buttons, filled primary, tonal danger, 32 px corners (fixes the undefined `--dr` square corners), toast `kind` + `action`, pill look. Sheets: drag handle, scrim slot, `sz-peek/half/tall`, centred modal from 600 px. Hand-written CSS block `/*LUMEN-UI:BEGIN*/` at the end of the page style. |
 | 8 | New `Lm.kt`. Snackbar: `Lm.snack(ctx, msg, Toast.LENGTH_x)` (or the 6-arg form with kind `ok / warn / err` and a Text action) draws the 12.14 pill on the activity content view (surfaceHi, edge hairline, 24 dp radius, glyph only for ok / warn / err, 3 s, 5 s with action or LONG, 8 s error, identical message restarts the timer, system toast only when no Activity). All 89 `Toast.makeText` calls converted. Full-screen `Dialog`s register with `Lm.track(d)` so the pill shows above them. Dialog: `AppPal.dlg` calls `Lm.restyle` on show: filled primary / tonal danger (detected from the OK label or a Delete / Clear / Remove / Discard title) buttons, stacked with primary on top on phones for 3+ actions or a label over 16 characters, trash hero tile and Cancel focus for danger, scrim 32 / 56 %, scale-in 220 ms (skipped with animations off), window radius 32 dp (`dlg_bg*.xml` too). Player, image viewer and image editor dialogs moved onto `AppPal.dlg`. `NlToastView` (page toast drawn natively) reads Lumen slots and the pill radius. Open: `NlSheets` look, snackbar lift above bottom bars, hero tiles for other dialog types, Undo countdown bar and number merging (Part 16). |
+
+| 9 | `tools/lumen/icons.json` is the icon source (stroke 1.75, round, 24 grid). Page `ic()` prefers it (class `li`), native chrome gets a `~` prefix, `NlGlyph` / `NlDrawer` draw round strokes. Filled originals stay for keys without a Lumen drawing and for folder-style / file / category glyphs (Part 10). |
 
 Known gaps carried forward:
 - T1 fails 4 pairs: `ubuntu`, `peach`, `garuda` (onPrimary on primary) and `solar` (inkMut on surfaceHi). Fixed in Part 17.

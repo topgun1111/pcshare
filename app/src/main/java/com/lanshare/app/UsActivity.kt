@@ -180,7 +180,7 @@ class UsActivity : Activity() {
 
     private fun iconBtn(path: String, desc: String, click: () -> Unit): FrameLayout = FrameLayout(this).apply {
         contentDescription = desc
-        addView(NlGlyph(context, NlIcons.path(path), p.fg, dp(24f)), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        addView(NlGlyph(context, NlIcons.path(path), p.fg, dp(24f), NlIcons.stroke(path)), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         setOnClickListener { click() }
     }
 

@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - New icon style
+### Changed
+- Toolbar, menu and action icons (back, close, search, copy, share, delete, print, settings, view modes and more) are redrawn as one rounded outline set.
+- The start menu tiles for Downloads, Printers, FTP, Cloud, Devices, Storage and Shell use the same outline icons.
+
 ## 2026-11-07 - New look for messages and dialogs
 ### Changed
 - Short messages (Copied, Saved, errors) now appear as a rounded pill that matches the theme; failures get a red cross and stay longer.

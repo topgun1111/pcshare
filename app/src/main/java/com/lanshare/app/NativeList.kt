@@ -68,9 +68,12 @@ object NlIcons {
         "close" to "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
     )
     private val cache = HashMap<String, Path>()
+    /** Keys drawn as Lumen Icons (outline, stroke) instead of the filled Material path; the rest follow in Part 10 (file / category glyphs). */
+    private val lumen = setOf("back", "close")
+    fun stroke(k: String): Boolean = k in lumen
     fun path(k: String): Path? {
         cache[k]?.let { return it }
-        val s = raw[k] ?: (if (k == "office") raw["doc"] else null) ?: return null   // office files use the document icon
+        val s = (if (k in lumen) LumenIcons.D[k] else null) ?: raw[k] ?: (if (k == "office") raw["doc"] else null) ?: return null   // office files use the document icon
         val p = PathParser.createPathFromPathData(s) ?: return null
         cache[k] = p
         return p
