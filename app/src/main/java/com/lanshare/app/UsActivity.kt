@@ -929,7 +929,7 @@ class UsActivity : Activity() {
             rows.add("Folders" to dirs.toString())
             rows.add("Size" to NlModel.fmt(bytes) + " (files only)")
         }
-        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(title).details(rows).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").details(rows).setTitle("Details").setMessage(title).setPositiveButton("OK", null).show()
     }
 
     private fun actFolder() {

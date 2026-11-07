@@ -1111,7 +1111,7 @@ class TextEditorActivity : Activity() {
             "Modified" to mt,
             "Encoding" to enc,
             "Line endings" to (if (crlf) "CRLF (Windows)" else "LF"))
-        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(titleEt.text.toString().ifEmpty { "Text file" }).details(rows).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").details(rows).setTitle("Details").setMessage(titleEt.text.toString().ifEmpty { "Text file" }).setPositiveButton("OK", null).show()
     }
 
     private fun humanSize(n: Long): String {
