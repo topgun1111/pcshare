@@ -923,14 +923,14 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 14 | Wallpaper Aurora + glass tiers G0-G3 | Glass chrome and sheets (PARTLY DONE 2026-11-07, page only: Aurora on the home menu, G2 / G3 on dialogs, sheets, menus, toast; native chrome / dialogs, G0, grain, drift left) |
 | 15 | Glass fallback ladder + settings (Reduce transparency, Glass quality) | Safe on low devices (DONE 2026-11-07 on the page; native has no glass yet) |
 | 16 | Motion tokens, container transform, haptic mapping, skeletons | Fluid feel (DONE 2026-11-07 partly: tokens, enter animations, reduce motion, haptic map, skeletons; exits, true container transform, drift left) |
-| 17 | Theme presets regenerated from 3 inputs, Custom theme, OS flavours | Final catalogue |
+| 17 | Theme presets regenerated from 3 inputs, Custom theme, OS flavours | Final catalogue (PARTLY DONE 2026-11-07, page only: per-preset derived slots, grouped picker, Custom theme, Windows radii, T1 clean; presets keep their hex, Light / Dark pairing, OS fonts, High contrast rings left) |
 | 18 | Screen-by-screen pass (section 16), accessibility (17), performance (18) | Release candidate |
 
 Each part: update the handover chapter, `CHANGELOG.md`, and send back only changed files in `.tar.xz`.
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-11; Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Next: Part 17 (theme presets, Custom theme); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
+**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left).** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Next: Part 18 (screen pass, accessibility, performance); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -961,10 +961,12 @@ Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh 
 
 | 16 | Motion tokens `--d-*` / `--ease-*` (generated) + Kotlin `LumenMotion`; block `/*LUMEN-UI7*/`: enter animations of dialog, sheet, full-screen sheet, menu, snackbar, glass frost-in, theme cross-fade, success pulse, error shake, skeleton shimmer; Reduce motion (`html[data-rm]`, switch + system + native); haptic map `HAP` and Haptic feedback switch; native `Lm.kt` dialog / snackbar on tokens; viewer launch grows from the tapped thumbnail (platform scale-up stand-in for the container transform). Left: exits, shared-element transform, drift, selection choreography, list insert / remove, Undo bar, swipe-to-dismiss. |
 
+| 17 | Colour maths in `tools/lumen/derive.py` (HSL + WCAG, snap to the nearest passing tone); `fresh()` derives the 8 unlisted slots per preset, `from_inputs(hue, tint, mode)` is the 4.1 generator used by the Custom theme (`custom.js`, parity-tested against Python). Picker grouped by `tokens.json` `groups`; OS flavours: win11 radii 12 / 24, `freshOverride` for the four Windows / Ubuntu themes (wallpaper blobs). Custom = hue 0-360, tint 0-8, Light / Dark / AMOLED, wallpaper on / off, notice when snapped. Presets keep their hand-picked hex (decision: regenerating 42 well-known palettes would change their identity without a device to judge). |
+
 Known gaps carried forward:
-- T1 fails 4 pairs: `ubuntu`, `peach`, `garuda` (onPrimary on primary) and `solar` (inkMut on surfaceHi). Fixed in Part 17.
+- T1 is clean since Part 17 (the 4 old fails `ubuntu`, `peach`, `garuda`, `solar` were fixed by moving one colour each).
 - Native screens still hardcode the old Ember colours, so page and native differ slightly until Parts 5-6.
-- Fresh slots (`secondary`, `tertiary`, `glassTint`, `focus`, `scrim`, `inkDim`, `edgeHi`, `surfaceLo`) hold Ember values for every theme until Part 17 derives them per theme.
+- Fresh slots (`secondary`, `tertiary`, `glassTint`, `focus`, `scrim`, `inkDim`, `edgeHi`, `surfaceLo`) are derived per preset since Part 17 (`derive.fresh`); `ember` and `dark` keep the spec values.
 - Part 8 built `Lm.kt` (snackbar + dialog restyle through `AppPal.dlg`) and converted all `Toast.makeText`; `NlSheets` bottom sheets, snackbar bottom lift above bars, and hero tiles for non-destructive dialog types are still open.
 - Sheet swipe-to-dismiss, identical-message merging and the Undo countdown bar wait for Part 16 (motion); glass surfaces for Parts 14-15.
 

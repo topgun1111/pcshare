@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Lumen token generator. Reads tokens.json, writes the LUMEN block into ui.html. --check = verify only."""
 import json, re, sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import derive
 here = pathlib.Path(__file__).resolve().parent
 ui = here.parents[1] / "app/src/main/assets/ui.html"
 T = json.loads((here / "tokens.json").read_text(encoding="utf-8"))
@@ -34,7 +36,11 @@ def build():
     o.append(":root{" + root + "}")
     for n, d in T["themes"].items():
         if n != "ember":
-            o.append(f":root[data-theme={n}]{{" + decl(d) + (decl(T["fresh"]["dark"]) if is_dark(d) else "") + "}")
+            # Part 17: the 8 fresh slots are derived from each preset's own slots (derive.fresh); "dark" keeps the Ember dark set
+            fr = T["fresh"]["dark"] if n == "dark" else derive.fresh(d, T.get("freshOverride", {}).get(n))
+            o.append(f":root[data-theme={n}]{{" + decl(d) + decl(fr) + "}")
+    for n, r in T.get("radiusFlavour", {}).items():   # OS flavours (spec 14.2): Windows maps r.l to 12 and r.xxl to 24
+        o.append(f":root[data-theme={n}]{{" + decl(r, "r-") + "}")
     o.append("@media(prefers-color-scheme:dark){:root[data-theme=auto]{" + decl(T["themes"]["dark"]) + decl(T["fresh"]["dark"]) + "}}")
     o.append(E)
     return "\n".join(o)
@@ -89,7 +95,7 @@ def kotlin():
     return "\n".join(o)
 
 def js_block():
-    return JB + "const LUMEN_SLOTS=" + json.dumps(slots()) + ";" + JE
+    return JB + "const LUMEN_SLOTS=" + json.dumps(slots()) + ";const LUMEN_GROUPS=" + json.dumps(T["groups"], separators=(",", ":")) + ";" + JE
 
 IJ = json.loads((here / "icons.json").read_text(encoding="utf-8"))
 IB, IE = "/*LUMEN-ICONS:BEGIN*/", "/*LUMEN-ICONS:END*/"
@@ -115,6 +121,12 @@ if JB in new:
     new = re.sub(re.escape(JB) + r".*?" + re.escape(JE), lambda m: jb, new, count=1, flags=re.S)
 else:
     new = new.replace("function nlPal(){", jb + "\nfunction nlPal(){", 1)
+CB, CE = "/*LUMEN-CUSTOM:BEGIN*/", "/*LUMEN-CUSTOM:END*/"
+cblk = CB + "\n" + (here / "custom.js").read_text(encoding="utf-8").rstrip("\n") + "\n" + CE
+if CB in new:
+    new = re.sub(re.escape(CB) + r".*?" + re.escape(CE), lambda m: cblk, new, count=1, flags=re.S)
+else:
+    new = new.replace("/*LUMEN-FX:BEGIN*/", cblk + "\n/*LUMEN-FX:BEGIN*/", 1)
 ib = icons_js()
 if IB in new:
     new = re.sub(re.escape(IB) + r".*?" + re.escape(IE), lambda m: ib, new, count=1, flags=re.S)

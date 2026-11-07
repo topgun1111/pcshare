@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Custom theme and a tidier theme list
+### Added
+- Settings, Appearance, Theme: a Custom theme. Pick a colour (0-360), how strong the tint is, Light / Dark / AMOLED, and the soft background glow on or off. The colours are made for you and kept readable.
+- The theme list is grouped: Basic, Lumen, Contrast, Classic, OS flavours, Custom.
+### Changed
+- Every theme now has its own second and third accent colours, so the start menu glow, frosted glass, the dim behind dialogs and the focus ring follow the theme instead of always being orange.
+- Windows 11 themes use the rounder Windows corners.
+### Fixed
+- Text on the main button in Ubuntu Aubergine, Peach and Garuda, and secondary text in Solarized Light, was a little too faint; now easier to read.
+
 ## 2026-11-07 - Calmer motion, glass fallback and loading placeholders
 ### Added
 - Settings, Appearance: Glass quality (Auto / Full / Light), Reduce transparency, Reduce motion and Haptic feedback.
