@@ -1161,6 +1161,58 @@ html[data-rm] .lm-out,html[data-rm] .lm-out .dcard,html[data-rm] .lm-out .card,h
 #toast .tu{position:absolute;left:var(--sp-4);right:var(--sp-4);bottom:2px;height:2px;border-radius:var(--r-full);background:currentColor;opacity:.45;transform-origin:left center;animation:lmTu linear forwards;pointer-events:none}
 html[data-rm] #toast .tu{display:none}
 /*LUMEN-UI13:END*/
+/*LUMEN-UI14:BEGIN*/
+:root{--lmDrift:60s}
+/* Lumen Part 2 (M2 M3 M4 / P1 P2 P3 P4): screen push, list collapse, Aurora drift, swipe rows, scrubber, field polish, split + glass buttons, on-picture pills, grain, flat list wallpaper */
+@keyframes lmDrift{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(3%,2%,0) scale(1.06)}}
+@keyframes lmPushF{from{transform:translateX(var(--lmpx,24px));opacity:.4}}
+@keyframes lmFadeIn{from{opacity:0}}
+@keyframes lmTint{0%{background:color-mix(in srgb,var(--primaryCont) 55%,transparent)}100%{background:transparent}}
+@supports(background:color-mix(in srgb,red,blue)){
+:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]):not([data-saver]) #home{background:var(--canvas)}
+:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]):not([data-saver]) #home::before{content:'';position:absolute;inset:-12%;z-index:-1;pointer-events:none;background:radial-gradient(70% 45% at 6% 4%,color-mix(in srgb,var(--primary) calc(12% * var(--aK)),transparent),transparent 72%),radial-gradient(60% 40% at 100% 26%,color-mix(in srgb,var(--secondary) calc(12% * var(--aK)),transparent),transparent 72%),radial-gradient(70% 45% at 0% 64%,color-mix(in srgb,var(--tertiary) calc(11% * var(--aK)),transparent),transparent 72%),radial-gradient(65% 45% at 96% 100%,color-mix(in srgb,color-mix(in srgb,var(--primary) 70%,var(--tertiary)) calc(12% * var(--aK)),transparent),transparent 72%);animation:lmDrift var(--lmDrift) ease-in-out infinite alternate;will-change:transform}
+:root:not([data-glass=f2]):not([data-glass=f3]) body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(70% 40% at 8% 0%,color-mix(in srgb,var(--primary) calc(5% * var(--aK)),transparent),transparent 72%),radial-gradient(60% 40% at 100% 100%,color-mix(in srgb,var(--tertiary) calc(5% * var(--aK)),transparent),transparent 72%)}
+}
+.lm-gh{overflow:hidden;transition:height var(--d-base) var(--ease-standard),opacity var(--d-base) linear,margin var(--d-base) var(--ease-standard),padding var(--d-base) var(--ease-standard)}
+#list.lm-push{animation:lmPushF var(--d-med) var(--ease-decel)}
+html[data-rm] #list.lm-push{animation:lmFadeIn var(--d-rm) linear}
+#list.lm-selst .row{animation:lmTint var(--d-med) var(--ease-standard) backwards;animation-delay:var(--lmd,0ms)}
+#list.lm-selst .row:nth-child(1){--lmd:0ms}#list.lm-selst .row:nth-child(2){--lmd:20ms}#list.lm-selst .row:nth-child(3){--lmd:40ms}#list.lm-selst .row:nth-child(4){--lmd:60ms}#list.lm-selst .row:nth-child(5){--lmd:80ms}#list.lm-selst .row:nth-child(6){--lmd:100ms}#list.lm-selst .row:nth-child(7){--lmd:120ms}#list.lm-selst .row:nth-child(8){--lmd:140ms}#list.lm-selst .row:nth-child(9){--lmd:160ms}#list.lm-selst .row:nth-child(10){--lmd:180ms}#list.lm-selst .row:nth-child(11){--lmd:200ms}#list.lm-selst .row:nth-child(12){--lmd:220ms}#list.lm-selst .row:nth-child(13){--lmd:240ms}#list.lm-selst .row:nth-child(14){--lmd:260ms}
+html[data-rm] #list.lm-selst .row{animation:none}
+#list:not(.v-grid) .row{touch-action:pan-y}
+.row.lm-swp{overflow:hidden}
+.row.lm-swp>*:not(.lm-sab){transform:translateX(var(--lmx,0px));position:relative;z-index:1;background:var(--bg)}
+.row.lm-swp.lm-back>*:not(.lm-sab){transition:transform var(--d-base) var(--ease-spring)}
+.lm-sab{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 var(--sp-6);pointer-events:none;background:var(--primaryCont);color:var(--onPrimaryCont)}
+.lm-sab.del{background:var(--errc,var(--err));color:var(--onerr,var(--err))}
+.lm-sab .s{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-14);font-weight:600;opacity:.6;transition:opacity var(--d-fast),transform var(--d-fast) var(--ease-spring)}
+.lm-sab .s svg{width:24px;height:24px}.lm-sab.go .s{opacity:1;transform:scale(1.08)}
+.row.lm-lift{position:relative;z-index:2;transform:scale(1.02);box-shadow:var(--e3);border-radius:var(--r-m);transition:transform var(--d-fast) var(--ease-spring),box-shadow var(--d-fast)}
+#lmsb{position:fixed;right:0;top:calc(env(safe-area-inset-top,0px) + 88px);bottom:112px;width:28px;z-index:6;display:none;touch-action:none}
+#lmsb.on{display:block}
+#lmsb i{position:absolute;right:2px;width:6px;height:44px;border-radius:var(--r-full);background:var(--inkMut,var(--mut));opacity:.55;transition:width var(--d-fast),opacity var(--d-fast)}
+#lmsb.dr i{width:12px;opacity:.95;background:var(--primary)}
+#lmsb b{position:absolute;right:36px;min-width:64px;padding:var(--sp-2) var(--sp-4);border-radius:var(--r-l);background:var(--primaryCont);color:var(--onPrimaryCont);font-size:var(--fs-14);font-weight:600;text-align:center;box-shadow:var(--e3);display:none;white-space:nowrap}
+#lmsb.dr b{display:block}
+.tfw .eye{position:absolute;right:48px;top:8px;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:grid;place-items:center}
+.tfw .eye svg{width:20px;height:20px}.tfw.pw .tf{padding-right:calc(var(--sp-10) * 2 + var(--sp-2))}
+.sbtn{display:inline-flex;gap:2px;vertical-align:middle}
+.sbtn>.tbtn:first-child{border-radius:var(--r-full) var(--r-xs) var(--r-xs) var(--r-full)}
+.sbtn>.tbtn:last-child{border-radius:var(--r-xs) var(--r-full) var(--r-full) var(--r-xs);padding:0 var(--sp-3);min-width:40px}
+.sbtn>.tbtn:last-child svg{width:20px;height:20px}
+.g0{background:rgb(0 0 0/.36);color:white;border-radius:var(--r-full);padding:var(--sp-1) var(--sp-2);font-size:var(--fs-12)}
+@supports((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+:root:not([data-glass=f2]):not([data-glass=f3]) .g0{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);background:rgb(0 0 0/.28)}
+.tbtn.glass{background:color-mix(in srgb,var(--glassTint) var(--gA1),transparent);-webkit-backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));color:var(--ink);box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px var(--edge)}
+.tbtn.glass.on-pic{background:rgb(0 0 0/.3);color:white}
+}
+:root[data-glass=f0] #dlg .dcard::after,:root[data-glass=f0] #sheet .card:not(.fu):not(.pfull):not(.pfx)::after,:root[data-glass=f0] .g3::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.03;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)'/%3E%3C/svg%3E")}
+:root[data-glass=f0] #dlg .dcard,:root[data-glass=f0] #sheet .card:not(.fu):not(.pfull):not(.pfx){position:relative}
+@supports((backdrop-filter:blur(1px)) and (background:color-mix(in srgb,red,blue))){
+:root[data-glass=f0] #top:not(.el),:root[data-glass=f1] #top:not(.el){background:transparent;box-shadow:none;border-color:transparent}
+:root[data-glass=f0] #top.el,:root[data-glass=f1] #top.el{-webkit-backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));background:color-mix(in srgb,var(--glassTint) var(--gA1),transparent)}
+}
+/*LUMEN-UI14:END*/
 /*LUMEN-UI9:BEGIN*/
 /* Lumen Part 18 (hand-written): accessibility + performance. 2 px focus ring on every control (3 px in high contrast / f3), visually hidden live regions, fling drops glass to solid (spec 6.4), dialogs scroll at large text, forced-colors borders. */
 :where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -2577,7 +2629,7 @@ function render(){
   if(NLL){NLL=null;NLSEL='';NLLAY='';NL.nlHide();$('#top').classList.toggle('el',(window.scrollY||0)>4)}
   const mk=i=>{
     const k=kind(i),r=E('div','row'+(k==='img'&&!i.dir?' im':'')+(S.sel.has(i.name)?' sel':'')+(isHid(i)?' hdn':''));
-    const lead=E('div','lead k-'+k);
+    r.dataset.n=i.name;const lead=E('div','lead k-'+k);
     if(i.dir){const fs=fsGet(jn(S.path,i.name));lead.append(raw(fs&&fs.c?foldSvg(fs.c):FOLD,'fold'));let bd=BADGE[i.name.toLowerCase()];if(fs&&fs.i)bd=[fs.i,fsIc(fs)];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
       if(!AR&&(k==='img'||k==='vid'||(k==='office'&&S.dev==='local'))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
@@ -3016,10 +3068,10 @@ function openSettings(){
   /* Lumen Part 15 / 16: glass quality, reduce transparency, reduce motion, haptic feedback */
   {const GQN={auto:'Auto',full:'Full',light:'Light'},STN={f0:'full glass',f1:'light glass',f2:'frosted',f3:'flat'};
     const gsub=()=>{const r=glassPick();return GQN[LD('ls_glassq','auto')]+' \u00b7 now: '+STN[r.step]+' ('+r.why+')'};
-    const rg=row('palette','Glass quality',gsub(),()=>{rg.open=!rg.open;filter()});
-    const gq=E('div','');gq.style.cssText='display:none;grid-template-columns:repeat(3,1fr);gap:var(--sp-2);padding:var(--sp-2) var(--sp-4) var(--sp-3)';
-    ['auto','full','light'].forEach(v=>{const b=E('button','chip'+(LD('ls_glassq','auto')===v?' on':''),GQN[v]);b.dataset.v=v;
-      b.onclick=()=>{SV('ls_glassq',v);glassApply();rg.set(gsub());gq.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x.dataset.v===v))};gq.append(b)});
+    const rg=row('palette','Glass quality',gsub(),()=>{rg.open=!rg.open;filter();setTimeout(()=>{try{lmSegSync(sg)}catch(_){}},30)});
+    const gq=E('div','');gq.style.cssText='display:none;padding:var(--sp-2) var(--sp-4) var(--sp-3)';const sg=E('div','seg');gq.append(sg);
+    ['auto','full','light'].forEach(v=>{const b=E('button',LD('ls_glassq','auto')===v?'on':'',GQN[v]);b.dataset.v=v;
+      b.onclick=()=>{SV('ls_glassq',v);glassApply();rg.set(gsub());sg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));lmSegSync(sg)};sg.append(b)});
     rg.extra=gq;cur.g.append(gq);
     const rt2=row('hide','Reduce transparency','Solid backgrounds instead of frosted glass',v=>{SV('ls_reduceT',v?'1':'0');glassApply();rg.set(gsub())},{sw:1});rt2.cb.checked=LD('ls_reduceT','0')==='1';
     const rm=row('refresh','Reduce motion','Quick fades instead of sliding and zooming (also on when the system asks for it)',v=>{SV('ls_rm',v?'1':'0');try{LSAndroid.reduceMotionSet(v)}catch(e){}motionApply()},{sw:1});rm.cb.checked=LD('ls_rm','0')==='1';
@@ -6931,4 +6983,78 @@ const sh=q('#sheet');if(sh){let c=null,y0=0,t0=0,dy=0,h=1,on=false;
   addEventListener('pointerup',end,true);addEventListener('pointercancel',end,true)}
 }catch(e){console.log('[lumen] ui13 init failed',e)}})();
 /*LUMEN-UI13-JS:END*/</script>
+<script>/*LUMEN-UI14-JS:BEGIN*/
+(function(){try{
+const H=document.documentElement,q=x=>document.querySelector(x),qa=(x,r=document)=>[...r.querySelectorAll(x)],rm=()=>H.hasAttribute('data-rm'),hp=n=>{try{hap(n)}catch(_){}};
+/* M4: battery saver switches the drift off (native hint) */
+try{if(window.LSAndroid&&LSAndroid.glassHint&&JSON.parse(LSAndroid.glassHint()).saver)H.setAttribute('data-saver','')}catch(_){}
+/* M3 + M2: wrap render(): rows that left the list collapse (under 200 rows, same folder), a new folder pushes in, entering selection tints the rows in 20 ms steps */
+const L=()=>q('#list');let lastKey='',lastDepth=0,prevSel=0;
+if(typeof render==='function'){const R0=render;window.render=render=function(){
+  const l=L(),key=S.dev+'|'+S.path,same=key===lastKey,keep=[];
+  if(l&&same&&!rm()){const rows=qa(':scope>.row[data-n]',l);if(rows.length&&rows.length<200)rows.forEach((r,i)=>keep.push({n:r.dataset.n,i,h:r.offsetHeight,c:r.cloneNode(true)}))}
+  const out=R0.apply(this,arguments),l2=L();if(!l2)return out;
+  if(keep.length){const now=new Set(qa(':scope>.row[data-n]',l2).map(r=>r.dataset.n));
+    keep.filter(k=>!now.has(k.n)&&k.h>0).slice(0,12).forEach(k=>{const g=k.c,ch=[...l2.children];g.classList.add('lm-gh');g.style.height=k.h+'px';g.style.pointerEvents='none';g.removeAttribute('data-n');l2.insertBefore(g,ch[Math.min(k.i,ch.length)]||null);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{g.style.height='0';g.style.opacity='0';g.style.margin='0';g.style.padding='0'}));setTimeout(()=>g.remove(),260)})}
+  if(!same&&lastKey){const d=(S.path.match(/\//g)||[]).length;l2.style.setProperty('--lmpx',(d<lastDepth?-24:24)+'px');l2.classList.remove('lm-push');void l2.offsetWidth;l2.classList.add('lm-push');setTimeout(()=>l2.classList.remove('lm-push'),340)}
+  lastKey=key;lastDepth=(S.path.match(/\//g)||[]).length;
+  const n=S.sel.size;if(prevSel===0&&n>0&&!rm()){l2.classList.add('lm-selst');setTimeout(()=>l2.classList.remove('lm-selst'),480)}prevSel=n;return out}}
+/* P1 swipe actions: right = Share, left = Delete (96 px, tick at the threshold), same numbers the native list will use later */
+let dn=null;const TH=96;
+addEventListener('pointerdown',e=>{const r=e.target.closest&&e.target.closest('#list .row[data-n]');dn=null;if(!r)return;window.__lmRow=r;
+  if(S.sel.size||r.closest('#list.v-grid')||e.target.closest('input,textarea,.ck')||e.pointerType==='mouse')return;
+  dn={r,x:e.clientX,y:e.clientY,on:false,go:0,lay:null}},true);
+addEventListener('pointermove',e=>{if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
+  if(!dn.on){if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5){if(Math.abs(dy)>10)dn=null;return}
+    dn.on=true;const r=dn.r;r.classList.add('lm-swp');r.classList.remove('lm-back');
+    const lay=E('div','lm-sab');dn.lay=lay;r.append(lay)}
+  const r=dn.r,x=Math.max(-160,Math.min(160,dx));r.style.setProperty('--lmx',x+'px');
+  const lay=dn.lay;lay.className='lm-sab'+(x<0?' del':'');lay.textContent='';
+  const sp=E('span','s');sp.append(ic(x<0?'del':'share'),document.createTextNode(x<0?'Delete':'Share'));
+  if(x<0){lay.style.justifyContent='flex-end'}else lay.style.justifyContent='flex-start';lay.append(sp);
+  const go=Math.abs(x)>=TH?1:0;if(go&&!dn.go)hp('tick');dn.go=go;lay.classList.toggle('go',!!go)},{passive:true});
+const swEnd=e=>{if(!dn)return;const d=dn;dn=null;if(!d.on)return;const r=d.r,x=parseFloat(r.style.getPropertyValue('--lmx'))||0;r._lp=true;setTimeout(()=>{r._lp=false},400);
+  r.classList.add('lm-back');r.style.setProperty('--lmx','0px');
+  setTimeout(()=>{r.classList.remove('lm-swp','lm-back');r.style.removeProperty('--lmx');if(d.lay)d.lay.remove()},rm()?0:200);
+  if(e.type==='pointerup'&&d.go){const nm=r.dataset.n;S.sel.clear();S.sel.add(nm);try{renderBar()}catch(_){}
+    if(x<0){doDelete()}else{const i=(window.NLACL||[]).findIndex(a=>a.k==='share');if(i>=0)NLACT[i]();else{S.sel.clear();renderBar();toast('Share is not available here',2500)}}}};
+addEventListener('pointerup',swEnd,true);addEventListener('pointercancel',swEnd,true);
+/* P1 hold-menu lift: the row under the finger scales to 1.02 with E3 while the popup menu is open */
+new MutationObserver(ms=>{ms.forEach(m=>{m.addedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&window.__lmRow&&window.__lmRow.isConnected)window.__lmRow.classList.add('lm-lift')});
+  m.removedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&!n.dataset.lmx)qa('.row.lm-lift').forEach(r=>r.classList.remove('lm-lift'))})})}).observe(document.body,{childList:true});
+/* P1 fast-scroll scrubber with a name / date bubble (page list, 40+ rows) */
+const sb=E('div','');sb.id='lmsb';const th=E('i'),bb=E('b');sb.append(th,bb);document.body.append(sb);
+let sbT=0,drag=false;const span=()=>Math.max(1,sb.clientHeight-44),mx=()=>Math.max(1,document.documentElement.scrollHeight-innerHeight);
+function sbPos(){th.style.top=Math.round(Math.min(1,scrollY/mx())*span())+'px'}
+function label(){const l=L();if(!l)return'';const y=innerHeight*.25,rows=qa(':scope>.row[data-n],:scope>.galh,:scope>.gdh',l);let pick=null;
+  for(const r of rows){if(r.getBoundingClientRect().top>y)break;pick=r}if(!pick)pick=rows[0];if(!pick)return'';
+  if(pick.matches('.galh,.gdh'))return pick.textContent.trim();
+  let h=null;for(const r of rows){if(r===pick)break;if(r.matches('.galh,.gdh'))h=r}return h?h.textContent.trim():pick.dataset.n.charAt(0).toUpperCase()}
+function sbShow(){const l=L();if(!l||l.classList.contains('v-grid')&&0)return;if(qa(':scope>.row',l).length<40||document.body.classList.contains('selm')||!l.offsetParent){sb.classList.remove('on');return}
+  sb.classList.add('on');sbPos();clearTimeout(sbT);if(!drag)sbT=setTimeout(()=>sb.classList.remove('on'),1300)}
+addEventListener('scroll',sbShow,{passive:true,capture:true});
+sb.addEventListener('pointerdown',e=>{drag=true;sb.classList.add('dr');sb.setPointerCapture(e.pointerId);mv(e);hp('click')});
+function mv(e){const r=sb.getBoundingClientRect(),f=Math.max(0,Math.min(1,(e.clientY-r.top-22)/span()));scrollTo(0,f*mx());sbPos();bb.textContent=label();bb.style.top=Math.max(0,Math.round(f*span()-8))+'px'}
+sb.addEventListener('pointermove',e=>{if(drag)mv(e)});
+const sbEnd=()=>{if(!drag)return;drag=false;sb.classList.remove('dr');hp('tick');sbT=setTimeout(()=>sb.classList.remove('on'),1000)};
+sb.addEventListener('pointerup',sbEnd);sb.addEventListener('pointercancel',sbEnd);
+/* P2: floating label + clear (+ show / hide for passwords) for .tf inputs outside the dialog */
+const OK=/^(text|search|url|email|password|number|tel)$/;
+function fw(i){if(i._lmf||i.closest('.tfw')||!i.classList.contains('tf')||!OK.test(i.type||'text'))return;
+  const lab=i.getAttribute('aria-label')||(i.placeholder&&i.placeholder.trim())||'';if(!lab||!i.parentNode)return;i._lmf=1;
+  const w=E('div','tfw'),fl=E('span','fl',lab),cl=E('button','clr');if(!i.getAttribute('aria-label'))i.setAttribute('aria-label',lab);i.placeholder=' ';
+  const cs=getComputedStyle(i.parentNode);if(cs.display.indexOf('flex')>=0)w.style.cssText='flex:1 1 0;min-width:0';
+  cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.innerHTML=ic('close');cl.onclick=ev=>{ev.preventDefault();i.value='';i.focus();i.dispatchEvent(new Event('input',{bubbles:true}))};
+  i.replaceWith(w);w.append(i,fl,cl);
+  if(i.type==='password'){w.classList.add('pw');const ey=E('button','eye');ey.type='button';ey.tabIndex=-1;ey.setAttribute('aria-label','Show password');ey.setAttribute('aria-pressed','false');ey.innerHTML=ic('hide');
+    ey.onclick=ev=>{ev.preventDefault();const sh=i.type==='password';i.type=sh?'text':'password';ey.setAttribute('aria-pressed',sh?'true':'false');ey.setAttribute('aria-label',sh?'Hide password':'Show password')};w.append(ey)}}
+const scan=r=>{if(r.nodeType!==1)return;(r.matches&&r.matches('input.tf')?[r]:[]).concat(qa('input.tf',r)).forEach(fw)};
+['#sheet','#pv','#dual'].forEach(id=>{const el=q(id);if(el){new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(el,{childList:true,subtree:true});scan(el)}});
+/* P3: split button helper: lmSplit('Save',fn,[{l:'Save as...',k:'save',f:fn}]) -> element */
+window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn fill',label),d=E('button','tbtn fill');d.innerHTML=ic('more');d.setAttribute('aria-label','More options');d.setAttribute('aria-haspopup','menu');a.onclick=main;
+  d.onclick=()=>{const sc=E('div','dsc'),m=E('div','dmn'),done=()=>sc.remove();items.forEach(o=>{const b=E('button','dmb'+(o.danger?' dng':'')),ii=E('span','dmi');if(o.k){const g=ic(o.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g)}b.append(ii,E('span','',o.l));b.onclick=()=>{done();o.f()};m.append(b)});
+    sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);const r=d.getBoundingClientRect();m.style.right=Math.max(8,innerWidth-r.right)+'px';m.style.top=Math.round(r.bottom+8)+'px'};w.append(a,d);return w};
+}catch(e){console.log('[lumen] ui14 init failed',e)}})();
+/*LUMEN-UI14-JS:END*/</script>
 </body></html>

@@ -5,6 +5,18 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Swipe actions, fast scroller, softer motion
+### Added
+- Swipe a file row right to share it or left to delete it.
+- Long lists get a fast scroller with a letter or date bubble.
+- Opening a folder slides the list in; deleted items collapse away.
+- The start menu background drifts slowly (off in battery saver and with reduced motion).
+- Text fields in sheets get a floating label and a clear button; password fields get a show / hide button.
+### Changed
+- Glass quality in Settings is now a sliding segmented control.
+- The top bar turns into frosted glass once you scroll.
+- A pressed-and-held file lifts slightly while its menu is open.
+
 ## 2026-11-07 - Smoother closing, swipe sheets down, Undo timer
 ### Added
 - Dialogs, sheets and menus now fade out when they close instead of vanishing.

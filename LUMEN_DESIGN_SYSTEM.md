@@ -1033,18 +1033,18 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 
 **M. Motion (Part 16 leftovers)**
 - [~] M1 Exit animations: dialog, sheet, popup menu close in 200 ms accelerate (they close instantly). (page done 2026-11-07, Part 1; native `Lm.kt` dialog exit left for Part 4)
-- [ ] M2 Screen push of the main file screens with old-screen shift / dim; selection-start choreography.
-- [ ] M3 List insert / remove collapse.
-- [ ] M4 Aurora wallpaper drift (60 s) and drift off in battery saver.
+- [~] M2 Screen push of the main file screens with old-screen shift / dim; selection-start choreography. (Part 2 2026-11-07: folder push + 20 ms row tint on selection start; old-screen shift / dim and native bar / dock slide left)
+- [x] M3 List insert / remove collapse. (done 2026-11-07, Part 2: render() wrapper collapses removed rows, under 200 rows)
+- [x] M4 Aurora wallpaper drift (60 s) and drift off in battery saver. (done 2026-11-07, Part 2: `#home::before` drifts 60 s, off in f2 / f3 / Reduce motion / saver)
 - [~] M5 Undo countdown bar and merging of repeated snackbar numbers. (page done 2026-11-07, Part 1: merge + Undo bar; native `Lm.snack` 6-arg form left for Part 4)
 - [x] M6 Sheet swipe-to-dismiss (page `#sheet`). (done 2026-11-07, Part 1: `/*LUMEN-UI13*/`)
 - [ ] M7 Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
 **P. Page leftovers**
-- [ ] P1 Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11).
-- [ ] P2 Floating label + clear for fields outside `dlg` (sheets, settings, rename); password show / hide.
-- [ ] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings).
-- [ ] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens.
+- [x] P1 Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: swipe rows 96 px, scrubber, hold lift)
+- [x] P2 Floating label + clear for fields outside `dlg` (sheets, settings, rename); password show / hide. (done 2026-11-07, Part 2: `.tf` outside dialogs get label + clear, password eye)
+- [x] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings). (done 2026-11-07, Part 2: `.sbtn` + `lmSplit`, `.tbtn.glass`, `.seg` caller = Glass quality)
+- [~] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens. (Part 2 2026-11-07: `.g0` class, grain on f0 dialogs / sheets, top bar glass on scroll, flat list wallpaper; `.g0` not yet applied to viewer counters / badges)
 - [x] P5 Grid fallback page still uses the realistic icon; page list `.kd` tiles still use `--k-*-c / -b` instead of `--cat-*`. (done 2026-11-07, Part 1: `.k-*` tiles read `--cat-*`, `.k-office` added)
 - [ ] P6 Storage Analyzer treemap / pie (`StorageTreemap.CAT_COL`, `StorageWiz`), search chips, Drive / FTP / SMB badges, `CodeHl`, dark viewer chrome and text-editor palette still use their own colours (4.5: one table).
 - [ ] P7 Contrast check of gradient ends against labels (T1 tests flat slots only) and of glass tint alpha per theme (floor).
