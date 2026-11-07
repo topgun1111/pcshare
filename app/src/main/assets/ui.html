@@ -995,6 +995,18 @@ input.lmr:active::-webkit-slider-thumb{box-shadow:0 0 0 12px color-mix(in srgb,v
 .fh{display:block;margin:calc(var(--sp-4) * -1 + var(--sp-2)) var(--sp-4) var(--sp-4);font-size:var(--t-bodyS-size);line-height:var(--t-bodyS-lh);color:var(--inkMut)}.fh.err{color:var(--error)}
 @media(prefers-reduced-motion:reduce){.tbtn,.sw i,.sw i:after,.sw i::before,.cbx,.opt .rd:after,.tf{transition:none!important;animation:none!important}}
 /*LUMEN-UI2:END*/
+/*LUMEN-UI3:BEGIN*/
+/* Lumen Part 12: rows, headings, press ripple (hand-written; tokens only). Native list / chrome / drawer are drawn in Kotlin and are NOT restyled from here. */
+.row{border-bottom:0;background:linear-gradient(var(--edge),var(--edge)) left 72px bottom/calc(100% - 72px) 1px no-repeat}
+.row:active{background-color:var(--hov);background-image:none}
+.row.sel{border-radius:var(--r-m);margin:0 var(--sp-1);background:var(--primaryCont);color:var(--onPrimaryCont)}
+.galh{padding:var(--sp-6) var(--sp-4) var(--sp-2);font-size:var(--t-titleS-size);line-height:var(--t-titleS-lh);font-weight:var(--t-titleS-w);letter-spacing:var(--t-titleS-tr);color:var(--inkMut)}
+.tbtn,.chip,.opt,.vrow,.seg button{position:relative;overflow:hidden}
+.rpl{position:absolute;border-radius:var(--r-full);pointer-events:none;background:currentColor;opacity:0;transform:scale(0);animation:lmrp .28s cubic-bezier(.2,0,0,1) forwards}
+@keyframes lmrp{to{transform:scale(1);opacity:.14}}
+.rpl.out{animation:none;transform:scale(1);opacity:0;transition:opacity .2s}
+@media(prefers-reduced-motion:reduce){.rpl{display:none}}
+/*LUMEN-UI3:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -6423,4 +6435,12 @@ duApply();
   document.title='LANShare - '+i.name;if(i.storage_ok===false)toast('⚠ Files are hidden by Android - allow "All files access" for LANShare',9000);
   await pollOnce();renderPeers();load();refreshClip();pollPeers();
   try{if(!window.LSAndroid||!LSAndroid.homeStart||LSAndroid.homeStart())homeShow()}catch(e){homeShow()}})();
+</script><script>
+/* Lumen Part 12: press ripple (spec 12: from the touch point, reaches the farthest corner in 280 ms, 14 % ink) */
+(()=>{const SEL='.tbtn,.chip,.opt,.vrow,.seg button',rd=matchMedia('(prefers-reduced-motion:reduce)'),EV=['pointerup','pointercancel','pointerleave'];
+document.addEventListener('pointerdown',e=>{try{if(rd.matches||e.button>0)return;const t=e.target.closest&&e.target.closest(SEL);if(!t||t.disabled||t.getAttribute('aria-disabled')==='true')return;
+const r=t.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,R=Math.hypot(Math.max(x,r.width-x),Math.max(y,r.height-y)),s=document.createElement('span');
+s.className='rpl';s.style.cssText='width:'+2*R+'px;height:'+2*R+'px;left:'+(x-R)+'px;top:'+(y-R)+'px';t.appendChild(s);
+let done=0;const end=()=>{if(done)return;done=1;EV.forEach(k=>t.removeEventListener(k,end));s.classList.add('out');setTimeout(()=>s.remove(),240)};
+EV.forEach(k=>t.addEventListener(k,end));setTimeout(end,1500)}catch(_){}},{passive:true,capture:true});})();
 </script></body></html>

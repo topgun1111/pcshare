@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Lists and touch feedback
+### Changed
+- A soft ripple spreads from your finger on buttons, chips and option rows.
+- Selected rows are a little tighter to the edges with softer corners.
+- Rows are separated by a thin line that starts at the text, not at the screen edge.
+- Date headings in the gallery have more space above them and a calmer look.
+
 ## 2026-11-07 - Buttons, chips, switches and text fields
 ### Changed
 - Buttons are round with one size set: main (filled), tonal, outline, text and red filled Delete; dialog buttons are taller and easier to hit.

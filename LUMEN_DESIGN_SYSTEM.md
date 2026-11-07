@@ -918,7 +918,7 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family (DONE 2026-11-07, 46 glyphs; folder / file glyphs wait for Part 10) |
 | 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete (DONE 2026-11-07; Word / Excel realistic tiles, two-plate folder and splash logo screen left) |
 | 11 | Buttons, chips, switches, text fields to spec | Controls consistent (DONE 2026-11-07; floating label, clear glyph, search pill, sliding segment left) |
-| 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent |
+| 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent (PARTLY DONE 2026-11-07: rows, selection, dividers, ripple; bars and drawer left) |
 | 13 | Gradients (gPrimary etc.), category tile gradients, shadows | Depth and colour transitions |
 | 14 | Wallpaper Aurora + glass tiers G0-G3 | Glass chrome and sheets |
 | 15 | Glass fallback ladder + settings (Reduce transparency, Glass quality) | Safe on low devices |
@@ -930,7 +930,7 @@ Each part: update the handover chapter, `CHANGELOG.md`, and send back only chang
 
 ### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
 
-**Done: Parts 1-11.** Next: Part 12 (lists, bars, selection visuals, ripple and press states).
+**Done: Parts 1-11; Part 12 partly (bars, drawer, headings strip left).** Next: Part 13 (gradients, category tile gradients, shadows); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -948,6 +948,10 @@ Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh 
 | 9 | `tools/lumen/icons.json` is the icon source (stroke 1.75, round, 24 grid). Page `ic()` prefers it (class `li`), native chrome gets a `~` prefix, `NlGlyph` / `NlDrawer` draw round strokes. Filled originals stay for keys without a Lumen drawing and for folder-style / file / category glyphs (Part 10). |
 
 | 10 | 85 glyphs in `icons.json`; `NlIcons.draw` is the one native icon drawer; launcher = gradient + stacked-squares-with-L mark, monochrome layer, one-colour notification mark; window background = Ember canvas. |
+
+| 11 | Hand-written block `/*LUMEN-UI2*/` in `ui.html`: `.tbtn` pill (text 40, `.fill` / `.tonal` / `.out` / `.dngf` 48, `.busy`, disabled, focus ring), `#fab` pill, `.chip` 32 pill (`.on` / `.sug` / opt-in `.flt` `.inp`, `.chips` row), `.sw` with thumb check and 28 px press thumb, custom `.cbx`, 24 px radio, `.seg`, `input.lmr` slider, filled `.tf` + `.fh` helper. Native: `Lm.styleButton` sizes. Left: floating label, clear glyph, search pill, sliding segment, value bubble, split button. |
+
+| 12 | Block `/*LUMEN-UI3*/` + ripple script at the end of `ui.html`: 1 px inset row divider, tinted selected row with `r-m` and 4 px inset, Title S date heading, ripple (280 ms, 14 %) on `.tbtn .chip .opt .vrow .seg button`. Native: `NlRowView` highlight inset 4 dp / radius 12 dp, 1 dp inset divider in flat lists. Left: floating bottom bar, top-bar variants, drawer, check-circle flip, scrubber, swipe actions, hold-menu lift, ripple in native views. |
 
 Known gaps carried forward:
 - T1 fails 4 pairs: `ubuntu`, `peach`, `garuda` (onPrimary on primary) and `solar` (inkMut on surfaceHi). Fixed in Part 17.

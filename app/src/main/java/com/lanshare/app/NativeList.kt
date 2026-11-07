@@ -245,14 +245,14 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         if (isSel || isPressed) {
             val gsel = isSel && pl.st != 0
             if (gsel) { p.color = Color.WHITE; p.shader = LinearGradient(0f, 1f * d, 0f, h - 3f * d, pl.st, pl.sb, Shader.TileMode.CLAMP) } else p.color = if (isSel) pl.sel else pl.hov
-            rf.set(6f * d, 1f * d, w - 6f * d, h - 3f * d); cv.drawRoundRect(rf, 14f * d, 14f * d, p); p.shader = null   // rounded highlight like the grid cells (the 2px divider below stays square)
+            rf.set(4f * d, 1f * d, w - 4f * d, h - 3f * d); cv.drawRoundRect(rf, 12f * d, 12f * d, p); p.shader = null   // rounded highlight like the grid cells (the 2px divider below stays square)
             if (gsel) {   // Yaru: lit top edge + orange marker on the left
-                p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.hl; rf.set(6.5f * d, 1.5f * d, w - 6.5f * d, h - 3.5f * d); cv.drawRoundRect(rf, 13.5f * d, 13.5f * d, p)
+                p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.hl; rf.set(4.5f * d, 1.5f * d, w - 4.5f * d, h - 3.5f * d); cv.drawRoundRect(rf, 11.5f * d, 11.5f * d, p)
                 p.style = Paint.Style.FILL; p.color = pl.ac; rf.set(10f * d, h * 0.28f, 13f * d, h * 0.72f - 2f * d); cv.drawRoundRect(rf, 1.5f * d, 1.5f * d, p)
             }
         }
         if (pl.dv != 0) { p.color = pl.dv; cv.drawRect(0f, h - 2f * d, w, h - 1f * d, p); p.color = pl.hl; cv.drawRect(0f, h - 1f * d, w, h, p) }   // engraved two-tone divider (gradient themes)
-        else { p.color = pl.bd; cv.drawRect(0f, h - 2f * d, w, h, p) }           // border-bottom 2px
+        else { p.color = pl.bd; val ins = if (compact) 52f else if (large) 100f else if (medium) 84f else 72f; cv.drawRect(ins * d, h - 1f * d, w, h, p) }   // Lumen 12.5: 1 dp divider inset to the text (flat lists)
 
         val c = compact
         val lg = large && !c
