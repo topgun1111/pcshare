@@ -5,7 +5,7 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-11-09 - Orange colour, folder colour and button shape
+## 2026-11-07 - Orange colour, folder colour and button shape
 ### Changed
 - The orange of the light theme is a little stronger and more readable (buttons, selected items, links).
 - Folders now take the colour of your theme (also in the Lite app); a folder you coloured yourself keeps its colour.
