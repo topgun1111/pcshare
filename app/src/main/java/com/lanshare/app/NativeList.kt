@@ -813,6 +813,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
     private var elev = false
+    private var lastSy = -1   // Lumen large top bar: scroll offset (px) sent to the page while inside the collapse range, 999 beyond it
     // ---- native path bar + tool row (NlHead.kt) ----
     private val head = NlHeadView(act, d)
     private var headData: NlHeadData? = null
@@ -909,7 +910,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { Haptics.play("tick"); emit("refresh", 0) }   // Lumen 13.5: tick when the pull passes the threshold
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { run { val sy = r.computeVerticalScrollOffset(); val q = if (sy > 400) 999 else sy; if (q != lastSy) { lastSy = q; emit("sy", q) } }; val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
         })
         sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
@@ -970,7 +971,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private fun raw(ev: String, i: Int) { web.evaluateJavascript("window.nlOn&&nlOn('$ev',$i)", null) }
     private fun emit(ev: String, i: Int) {
-        if (navUntil != 0L && ev != "refresh" && ev != "el") { if (android.os.SystemClock.uptimeMillis() < navUntil) return; navUntil = 0L }
+        if (navUntil != 0L && ev != "refresh" && ev != "el" && ev != "sy") { if (android.os.SystemClock.uptimeMillis() < navUntil) return; navUntil = 0L }
         if (ev == "tap" && sel.isEmpty() && openNative(i)) return
         if ((ev == "tap" && sel.isNotEmpty()) || ev == "long") optimisticSel(ev, i)
         raw(ev, i)
@@ -1442,7 +1443,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

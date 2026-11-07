@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Big title on the file list
+### Added
+- The folder list now also opens with the big title, and it shrinks into the top bar as you scroll the list.
+### Changed
+- Wider screens (tablet, unfolded) get wider side margins on the title, notices and empty screens.
+
 ## 2026-11-07 - Big titles, pull circle, tabs and hints
 ### Added
 - Screens drawn by the page (gallery and similar) now open with a big title that shrinks into the top bar as you scroll.

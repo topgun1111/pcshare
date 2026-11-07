@@ -2036,6 +2036,7 @@ function nlBurst(ms){if(!NL)return;const end=performance.now()+ms,go=!NLB;NLB=Ma
   const f=()=>{if(NLL)nlLay();nlSrPush();nlChPush();if(performance.now()<NLB)requestAnimationFrame(f);else{NLB=0;if(NLL)nlLay()}};requestAnimationFrame(f)}
 if(NL){['click','pointerup','touchend','transitionrun','transitionend','animationstart','animationend'].forEach(ev=>document.addEventListener(ev,()=>nlBurst(500),true))}
 window.nlOn=(ev,x)=>{if(!NLL)return;
+  if(ev==='sy'){if(window.lgNative)lgNative(x);return}
   if(ev==='el'){$('#top').classList.toggle('el',x===1);return}     // list scrolled: header shadow like the page scroll handler
   if(ev==='crumb'){const sg=S.path.split('/').filter(Boolean);go(x<2?'/':'/'+sg.slice(0,x-1).join('/'));return}   // 0 root, 1 drive, 2.. folders: same targets as the HTML crumbs
   if(ev==='goto'){go(x);return}   // instant crumb / back: Kotlin already shows this folder; navigate the page to the same path
@@ -2087,7 +2088,7 @@ function nlChPush(){if(!NLCH)return;
   if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
     const br=rc($(sel?'#top .selb':'#top .mainb'));
     if(br){['menu','search','tune','refresh','vsplit','settings','edit','close','selall'].forEach(need);
-      o.bar={r:br,sel:sel?1:0,t:$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
+      o.bar={r:br,sel:sel?1:0,t:(window.lgBig&&lgBig())?'':$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
     const fr=rc($('#fab'));if(fr){const ik=inArc()&&!zipEd()?'extract':'newfolder';need(ik);o.fab={r:fr,l:$('#fab').textContent,k:ik}}
     const dr=rc($('#dock'));
     if(dr){NLACL.forEach(a=>need(a.k));need('close');
@@ -7182,53 +7183,60 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 .es.es-err{--es-c:var(--error);--es-b:var(--errorCont)}
 .es.es-warn{--es-c:var(--warning);--es-b:var(--warningCont)}
 .es.es-neutral{--es-c:var(--inkMut);--es-b:var(--cont)}
-.es .es-h{margin:0;font-size:var(--fs-16);font-weight:600;color:var(--ink)}
-.es .es-p{margin:0;max-width:28ch;font-size:var(--fs-14);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.es .es-h{margin:0;font-size:var(--t-titleM-size);line-height:var(--t-titleM-lh);font-weight:var(--t-titleM-w);letter-spacing:var(--t-titleM-tr);color:var(--ink)}
+.es .es-p{margin:0;max-width:28ch;font-size:var(--t-bodyM-size);line-height:var(--t-bodyM-lh);letter-spacing:var(--t-bodyM-tr);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .es .es-a{margin-top:var(--sp-3)}
-.es .es-d{margin-top:var(--sp-2);font-size:var(--fs-11);color:var(--mut);opacity:.8;word-break:break-word}
-@media (prefers-reduced-motion:no-preference){.es .es-t{animation:esIn 240ms cubic-bezier(.2,0,0,1)}@keyframes esIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}}
+.es .es-d{margin-top:var(--sp-2);font-size:var(--t-labelS-size);line-height:var(--t-labelS-lh);color:var(--mut);opacity:.8;word-break:break-word}
+@media (prefers-reduced-motion:no-preference){.es .es-t{animation:esIn var(--d-base) var(--ease-standard)}@keyframes esIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}}
 #banner{display:none;align-items:center;gap:var(--sp-3);background:var(--errorCont);color:var(--onErrorCont)}
 #banner.on{display:flex}
 #banner.bn-warn{background:var(--warningCont);color:var(--onWarning)}
 #banner.bn-info{background:var(--primaryCont);color:var(--onPrimaryCont)}
 #banner svg{flex:none;width:24px;height:24px;margin:0;padding:0}
 #banner .bn-x{flex:1;min-width:0}
-#banner .bn-a{flex:none;background:none;border:0;color:inherit;font-weight:600;padding:var(--sp-2);min-height:40px;border-radius:var(--r-m);cursor:pointer}
+#banner .bn-a{flex:none;background:none;border:0;color:inherit;font-size:var(--t-labelL-size);font-weight:var(--t-labelL-w);padding:var(--sp-2);min-height:40px;border-radius:var(--r-m);cursor:pointer}
 #banner .bn-a:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
 
 /* 12.7 Large top bar (page screens only: the native bar draws its own copy when html.nlcbar is set). --lg 1 = large (112), 0 = small (52 + 0). */
-#lgrow{display:none;overflow:hidden;height:calc(var(--lg,1)*60px);padding:0 var(--sp-4);background:var(--bar);color:var(--onbar);align-items:flex-end}
-#lgrow h1{margin:0;padding-bottom:var(--sp-3);font-size:calc(16px + var(--lg,1)*12px);line-height:1.15;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:var(--lg,1)}
-html.lgbar:not(.nlcbar) body:not(.selm):not(.srch) #lgrow{display:flex}
+#lgrow{display:none;overflow:hidden;height:calc(var(--lg,1)*60px);padding:0 var(--gut,var(--sp-4));background:var(--bar);color:var(--onbar);align-items:flex-end}
+#lgrow h1{margin:0;padding-bottom:var(--sp-3);font-size:calc(var(--t-titleM-size) + var(--lg,1)*(var(--t-headlineM-size) - var(--t-titleM-size)));line-height:1.15;font-weight:var(--t-headlineM-w);letter-spacing:var(--t-headlineM-tr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:var(--lg,1)}
+html.lgbar body:not(.selm):not(.srch) #lgrow{display:flex}
 html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{opacity:calc(1 - var(--lg,1))}
 /* 12.15 collapsed notices */
 #banner .bn-n{flex:1;min-width:0}
-#banner .bn-l{display:none;flex-basis:100%;margin:0;padding:0 0 0 36px;list-style:none;font-size:var(--fs-12)}
+#banner .bn-l{display:none;flex-basis:100%;margin:0;padding:0 0 0 calc(var(--sp-8) + var(--sp-1));list-style:none;font-size:var(--fs-12)}
 #banner.open .bn-l{display:block}
 #banner{flex-wrap:wrap}
 /* 12.16 job cards: gradient bars, success on completion, check pop */
 .pj .pjb{height:8px;border-radius:var(--r-full);background:var(--surfaceLo,var(--bd))}
 .pj .pjb i{border-radius:var(--r-full);background:var(--gPrimary,var(--ac))}
 .pj .pjb.ok i{background:var(--gSuccess,var(--success))}
-.pj .pjb.ok{animation:pjOk 320ms cubic-bezier(.2,0,0,1)}
+.pj .pjb.ok{animation:pjOk var(--d-med) var(--ease-standard)}
 @keyframes pjOk{0%{transform:scaleY(1)}40%{transform:scaleY(1.6)}100%{transform:scaleY(1)}}
 @media (prefers-reduced-motion:reduce){.pj .pjb.ok{animation:none}}
 /* 12.18 pull to refresh: 40 px glass circle, ring grows with the pull, glyph only (no label) */
 #ptr div{position:relative;width:40px;height:40px;min-width:0;padding:0;margin:0 0 var(--sp-2);border-radius:var(--r-full);font-size:0;color:transparent;display:grid;place-items:center;background:color-mix(in srgb,var(--glassTint,var(--cont)) 80%,transparent);-webkit-backdrop-filter:blur(var(--gb2,16px));backdrop-filter:blur(var(--gb2,16px));box-shadow:var(--sh);transform:scale(calc(.6 + var(--p,0)*.4));opacity:calc(.35 + var(--p,0)*.65)}
-#ptr div::before{content:"";position:absolute;inset:7px;border-radius:50%;background:conic-gradient(var(--primary) calc(var(--p,0)*360deg),color-mix(in srgb,var(--ink) 14%,transparent) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px))}
-#ptr.spin div::before{background:conic-gradient(from 0deg,var(--primary) 25%,color-mix(in srgb,var(--ink) 14%,transparent) 0);animation:ptrSpin .9s linear infinite}
+#ptr div::before{content:"";position:absolute;inset:7px;border-radius:var(--r-full);background:conic-gradient(var(--primary) calc(var(--p,0)*360deg),color-mix(in srgb,var(--ink) 14%,transparent) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px))}
+#ptr.spin div::before{background:conic-gradient(from 0deg,var(--primary) 25%,color-mix(in srgb,var(--ink) 14%,transparent) 0);animation:ptrSpin var(--d-slow) var(--ease-linear) infinite}
 @keyframes ptrSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){#ptr.spin div::before{animation:none}}
 /* 12.10 tabs: sliding 3 px indicator */
 .ptabs{position:relative}
-.ptabs .tabind{position:absolute;left:0;bottom:0;height:3px;border-radius:var(--r-full) var(--r-full) 0 0;background:var(--primary);transform:translateX(0);transition:transform 200ms cubic-bezier(.2,0,0,1),width 200ms cubic-bezier(.2,0,0,1);pointer-events:none}
+.ptabs .tabind{position:absolute;left:0;bottom:0;height:3px;border-radius:var(--r-full) var(--r-full) 0 0;background:var(--primary);transform:translateX(0);transition:transform var(--d-base) var(--ease-standard),width var(--d-base) var(--ease-standard);pointer-events:none}
 .ptabs>button.on{border-bottom-color:transparent!important}
 @media (prefers-reduced-motion:reduce){.ptabs .tabind{transition:none}}
 /* 12.21 tooltips and coach marks */
-.lmtip{position:fixed;z-index:60;max-width:min(260px,80vw);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-m);font-size:var(--fs-12);line-height:1.3;background:color-mix(in srgb,var(--surfaceHi,var(--cont)) 92%,transparent);color:var(--ink);box-shadow:var(--sh);-webkit-backdrop-filter:blur(var(--gb2,16px));backdrop-filter:blur(var(--gb2,16px));pointer-events:none;opacity:0;transition:opacity 120ms}
+.lmtip{position:fixed;z-index:60;max-width:min(260px,80vw);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-m);font-size:var(--t-bodyS-size);line-height:var(--t-bodyS-lh);background:color-mix(in srgb,var(--surfaceHi,var(--cont)) 92%,transparent);color:var(--ink);box-shadow:var(--sh);-webkit-backdrop-filter:blur(var(--gb2,16px));backdrop-filter:blur(var(--gb2,16px));pointer-events:none;opacity:0;transition:opacity var(--d-rm)}
 .lmtip.on{opacity:1}
-.lmcoach{position:fixed;z-index:61;max-width:min(280px,86vw);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-l);background:var(--primaryCont);color:var(--onPrimaryCont);box-shadow:var(--sh);font-size:var(--fs-14);animation:esIn 200ms cubic-bezier(.2,0,0,1)}
+.lmcoach{position:fixed;z-index:61;max-width:min(280px,86vw);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-l);background:var(--primaryCont);color:var(--onPrimaryCont);box-shadow:var(--sh);font-size:var(--t-bodyM-size);line-height:var(--t-bodyM-lh);animation:esIn var(--d-base) var(--ease-standard)}
 .lmcoach button{display:block;margin:var(--sp-2) 0 0 auto;background:none;border:0;color:inherit;font-weight:600;padding:var(--sp-2);min-height:40px}
+
+/* 9.4 breakpoints: compact < 600, medium 600-899 (24 margins), expanded >= 900 (32 margins); --gut is used by the large title, banner and empty state */
+:root{--gut:var(--sp-4)}
+@media (min-width:600px){:root{--gut:var(--sp-6)}}
+@media (min-width:900px){:root{--gut:var(--sp-8)}}
+#banner{margin-left:var(--gut);margin-right:var(--gut)}
+.es{padding-left:var(--gut);padding-right:var(--gut)}
 </style>
 <script>
 /*LUMEN-UI20-JS*/
@@ -7262,9 +7270,15 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
   (function(){const top=$('#top'),mainb=top&&top.querySelector('.mainb'),ht=$('#ht');if(!top||!mainb||!ht)return;
     const row=E('div');row.id='lgrow';row.setAttribute('aria-hidden','true');const h=E('h1');row.append(h);mainb.after(row);
     const sync=()=>{h.textContent=ht.textContent};sync();new MutationObserver(sync).observe(ht,{childList:true,characterData:true,subtree:true});
-    let raf=0;const upd=()=>{raf=0;const y=Math.max(0,window.scrollY||0),lg=Math.max(0,1-y/56);document.documentElement.style.setProperty('--lg',lg.toFixed(3));document.body.classList.toggle('lg0',lg<=0.01)};
+    const setLg=lg=>{const v=lg.toFixed(3);if(document.documentElement.style.getPropertyValue('--lg')===v)return false;document.documentElement.style.setProperty('--lg',v);document.body.classList.toggle('lg0',lg<=0.01);return true};
+    let raf=0;const upd=()=>{raf=0;if(typeof NLL!=='undefined'&&NLL)return;setLg(Math.max(0,1-Math.max(0,window.scrollY||0)/56))};
+    /* native list scroll offset (device px, 999 = past the collapse range): the page row follows and the native layers are told the new rects */
+    window.lgNative=x=>{const y=x>=999?999:x/(window.devicePixelRatio||1);if(setLg(Math.max(0,1-y/56))){try{nlLay()}catch(e){}try{nlChPush()}catch(e){}}};
+    window.lgBig=()=>document.documentElement.classList.contains('lgbar')&&!document.body.classList.contains('selm')&&!document.body.classList.contains('srch')&&(parseFloat(document.documentElement.style.getPropertyValue('--lg'))||0)>0.6;
     addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
     document.documentElement.classList.add('lgbar')})();
+  /* breakpoint class for page and native: html[data-bp] = compact | medium | expanded (re-evaluated on resize / fold) */
+  (function(){const f=()=>{const w=window.innerWidth||0,v=w>=900?'expanded':w>=600?'medium':'compact';if(document.documentElement.getAttribute('data-bp')!==v)document.documentElement.setAttribute('data-bp',v)};f();addEventListener('resize',f)})();
   /* pull to refresh: ring progress from the bubble height; spinner while refreshing */
   (function(){const box=$('#ptr');if(!box)return;const d=box.firstElementChild;
     const up=()=>{const h=parseFloat(box.style.height)||0;box.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));d.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));box.classList.toggle('spin',/^Refreshing/.test(d.textContent))};
