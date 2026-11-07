@@ -466,7 +466,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
             if (pri) {
                 // gPrimary: 135 degrees, 6 % white start to 12 % black end (same as Lm.styleButton)
-                fillP.shader = LinearGradient(pill.left, pill.top, pill.right, pill.bottom, Lumen.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), Lumen.mix(p.ac, 0xFF000000.toInt(), 0.12f), Shader.TileMode.CLAMP)
+                fillP.shader = LinearGradient(pill.left, pill.top, pill.right, pill.bottom, LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.06f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f), Shader.TileMode.CLAMP)
                 cv.drawRoundRect(pill, 16f * d, 16f * d, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, 16f * d, if (pri) p.onac else col)
