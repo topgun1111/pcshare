@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Themes tab fixes
+### Fixed
+- The Themes tab in Settings no longer freezes the app, and its buttons work again.
+- The theme preview card shows real contrast numbers instead of NaN.
+
 ## 2026-11-07 - Storage card in the side menu, glass bars
 ### Added
 - The side menu starts with a storage card: a ring and the free space of this phone. Tap it to open the storage analyzer.

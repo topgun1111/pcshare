@@ -3108,7 +3108,7 @@ function openSettings(){
   sec('Appearance','#8e4ec6');
   {const THN={light:'Light',dark:'Dark',auto:'Follow system'};LSTH.forEach(t=>THN[t.id]=t.n);
     const THL=[{id:'light',n:'Light',sw:['#ffffff','#1f1f1f','#c25100','#ffdcc2']},{id:'dark',n:'Dark',sw:['#18120d','#e3e3e3','#ffb77c','#7a3e00']},{id:'auto',n:'Follow system',sw:['#ffffff','#1f1f1f','#c25100','#18120d']}].concat(LSTH);
-    const rt=row('palette','Theme',THN[S.theme],()=>{rt.open=!rt.open;filter();setTimeout(()=>{try{lmSegSync(ms)}catch(_){}},30)});
+    const rt=row('palette','Theme',THN[S.theme],()=>{rt.open=!rt.open;filter();setTimeout(()=>{try{lmSegSync(ms);if(rt.open)pvSet(S.theme)}catch(_){}},30)});
     const thGrid=E('div','thg');thGrid.style.display='none';
     /* Lumen Part 17: grouped picker (groups from tokens.json) + Custom theme (hue, tint strength, mode, wallpaper) */
     THN.custom='Custom';const cusSw=()=>{const c=lmCustGet(),d=lmFromInputs(c.h,c.t,lmCustMode(c)).d;return[d.canvas,d.ink,d.primary,d.primaryCont]};
@@ -3125,7 +3125,7 @@ function openSettings(){
       let r=lmResolve(id);if(r==='light')r='ember';if(r==='auto')r=lmSysDark()?'dark':'ember';
       if(r==='custom'){const c=lmCustGet(),o=lmFromInputs(c.h,c.t,lmCustMode(c)).d;delete pv.dataset.pv;Object.keys(o).forEach(k=>{pv.style.setProperty('--'+k,o[k]);pvCV.push('--'+k)})}else pv.dataset.pv=r;
       const cs=getComputedStyle(pv),g=n=>cs.getPropertyValue('--'+n).trim().slice(0,7),f=(a,b)=>{try{return lmCr(g(a),g(b)).toFixed(1)}catch(e){return'?'}};
-      pv.querySelector('.thpn').textContent='Text '+f('ink','canvas')+':1 \u00b7 Button '+f('onPrimary','primary')+':1';
+      if(pv.isConnected)pv.querySelector('.thpn').textContent='Text '+f('ink','canvas')+':1 \u00b7 Button '+f('onPrimary','primary')+':1';
       pv.setAttribute('data-name',THN[id]||id)};
     const mr=E('div','thm'),ms=E('div','seg');mr.append(E('span','','Mode'),ms);
     [['theme','As theme'],['auto','Auto'],['light','Light'],['dark','Dark']].forEach(([v,n])=>{const b=E('button',lmMode()===v?'on':'',n);b.dataset.v=v;
@@ -7038,9 +7038,9 @@ window.lmFrameTest=(ms=5000)=>new Promise(r=>{const t=[];let l=0;const s=perform
 (function(){try{
 const $$=(q,r=document)=>[...r.querySelectorAll(q)];
 /* sliding pill of .seg: --sx / --sw follow the button with class on */
-function segSync(g){const b=g.querySelector('button.on');if(!b||!b.offsetWidth)return;g.classList.add('sl');g.style.setProperty('--sx',b.offsetLeft+'px');g.style.setProperty('--sw',b.offsetWidth+'px')}
+function segSync(g){const b=g.querySelector('button.on');if(!b||!b.offsetWidth)return;if(!g.classList.contains('sl'))g.classList.add('sl');const x=b.offsetLeft+'px',w=b.offsetWidth+'px';if(g.style.getPropertyValue('--sx')!==x)g.style.setProperty('--sx',x);if(g.style.getPropertyValue('--sw')!==w)g.style.setProperty('--sw',w)}
 window.lmSegSync=segSync;
-const mo=new MutationObserver(ms=>{for(const m of ms){const g=m.target.closest&&m.target.closest('.seg');if(g)segSync(g)}});
+const mo=new MutationObserver(ms=>{const seen=new Set();for(const m of ms){const g=m.target.closest&&m.target.closest('.seg');if(g&&!seen.has(g)){seen.add(g);segSync(g)}}});
 mo.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
 const mo2=new MutationObserver(()=>$$('.seg:not(.sl)').forEach(segSync));mo2.observe(document.body,{subtree:true,childList:true});
 addEventListener('resize',()=>$$('.seg.sl').forEach(segSync));
