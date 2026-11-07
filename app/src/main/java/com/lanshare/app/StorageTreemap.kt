@@ -291,15 +291,20 @@ class StorageTreemap(ctx: Context) : View(ctx) {
         private const val K_DIRLEAF = 2
         private const val K_BOX = 3               // folder with name header, content inside
         private const val K_BOXNH = 4             // folder box without header
-        /** File category colours, SCat order: other img vid aud doc arc app. */
+        /** File category colours, SCat order: other img vid aud doc arc app. Filled from the Lumen category table (spec 4.5) by [refreshCat]; the Ember light values until then. Same array instance, so every user sees the update. */
         val CAT_COL = intArrayOf(
-            0xFF8E8E93.toInt(),   // other  - grey
-            0xFF43A047.toInt(),   // img    - green
-            0xFFE64A19.toInt(),   // vid    - red-orange
-            0xFF8E24AA.toInt(),   // aud    - purple
-            0xFF1E88E5.toInt(),   // doc    - blue
-            0xFFFBC02D.toInt(),   // arc    - amber
-            0xFF00ACC1.toInt()    // app    - teal
+            0xFF6B625A.toInt(),   // other
+            0xFFC2185B.toInt(),   // img  = pic
+            0xFF6A4BC4.toInt(),   // vid
+            0xFF0B6BCB.toInt(),   // aud
+            0xFF1E5FB0.toInt(),   // doc
+            0xFFA66300.toInt(),   // arc  = zip
+            0xFF5D7A00.toInt()    // app  = apk
         )
+        private val CAT_KEYS = arrayOf("other", "pic", "vid", "aud", "doc", "zip", "apk")
+        /** Lumen P6: read the page theme's category tones (LumenCategory.of). Call from each Storage screen's onCreate. */
+        fun refreshCat(ctx: android.content.Context) {
+            try { val c = LumenCategory.of(ctx); for (i in CAT_KEYS.indices) CAT_COL[i] = c[CAT_KEYS[i]].base } catch (_: Throwable) {}
+        }
     }
 }

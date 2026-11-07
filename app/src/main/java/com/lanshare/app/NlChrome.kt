@@ -197,6 +197,15 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     private var bh = 0f
     private var spinAt = 0L
     private var selAt = 0L
+    private var elev = true          // N7: false = list at its top, the bar is transparent (ink on canvas)
+    private var elevK = 1f           // 0..1 fill amount, eased over 160 ms
+    private var elevAt = 0L
+    fun setElevated(e: Boolean) {
+        if (e == elev) return
+        elev = e; elevAt = SystemClock.uptimeMillis()
+        if (LumenPrefs.reduceMotion(context)) { elevK = if (e) 1f else 0f; elevAt = 0L }
+        invalidate()
+    }
     private val btn = LinkedHashMap<String, RectF>()
     private var tX = 0f; private var tW = 0f; private var nX = 0f; private var nW = 0f
     private val ttlP = tp(18f, semi)
@@ -246,11 +255,23 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         fillP.style = Paint.Style.FILL
         val sliding = sel && selAt != 0L && SystemClock.uptimeMillis() - selAt < 200L
         // Part 4b (N1 b): G1 chrome fill by glass step (tint-raised stand-in, opaque at F3)
-        fillP.color = LumenGlass.chromeFill(context, if (sel && !sliding) p.sel else p.bar)
+        // transparent only where the page twin (#top) is transparent too: glass steps F0 / F1; F2 / F3 stay filled
+        val goal = if (elev || sel || !LumenGlass.chromeGradient(context)) 1f else 0f
+        if (elevAt != 0L) {
+            val t = Math.min(1f, (SystemClock.uptimeMillis() - elevAt) / 160f)
+            elevK = if (goal == 1f) t else 1f - t
+            if (t < 1f) postInvalidateOnAnimation() else elevAt = 0L
+        } else elevK = goal
+        val ek = elevK
+        // text / glyph colour: the bar's own (on a filled bar) fades to the theme ink (on the transparent bar)
+        val ob = if (sel) p.onbar else LumenCategory.mix(lumen().ink, p.onbar, ek)
+        val cf = LumenGlass.chromeFill(context, if (sel && !sliding) p.sel else p.bar)
+        fillP.color = LumenGlass.withAlpha(cf, ek * ((cf ushr 24) / 255f))
         cv.drawRect(0f, 0f, bw, bh, fillP)
         // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge); flat at F3
         val dark = AppPal.night(context)
         if (LumenGlass.chromeGradient(context)) {
+            fillP.alpha = Math.round(255f * ek)
             fillP.shader = LinearGradient(0f, 0f, 0f, bh, if (dark) 0x0DFFFFFF else 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
             cv.drawRect(0f, 0f, bw, bh, fillP)
             fillP.shader = null
@@ -260,7 +281,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             val f3 = !LumenGlass.chromeGradient(context)
             val hw = if (f3) Math.max(1f, d) else Math.max(1f, d * 0.5f)
             fillP.style = Paint.Style.FILL
-            fillP.color = if (f3) lumen().edge else LumenGlass.withAlpha(lumen().edge, 0.6f)
+            fillP.color = LumenGlass.withAlpha(lumen().edge, (if (f3) 1f else 0.6f) * ek)
             cv.drawRect(0f, bh - hw, bw, bh, fillP)
         }
         var slid = false
@@ -281,20 +302,20 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             if (slid) cv.restore()
             return
         }
-        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, p.onbar) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
-        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 30f, p.onbar) }
-        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 30f, p.onbar) }
+        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, ob) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
+        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 30f, ob) }
+        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 30f, ob) }
         btn["scan"]?.let {
             val t = SystemClock.uptimeMillis() - spinAt
             if (spinAt != 0L && t >= 0L && t < 800L) {
                 cv.save(); cv.rotate(360f * t / 800f, it.centerX(), it.centerY())
-                glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, p.onbar)
+                glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, ob)
                 cv.restore(); postInvalidateOnAnimation()
-            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, p.onbar)
+            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, ob)
         }
-        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 30f, p.onbar) }
-        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 30f, p.onbar) }
-        ttlP.color = p.onbar
+        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 30f, ob) }
+        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 30f, ob) }
+        ttlP.color = ob
         cv.drawText(fit(ttl, ttlP, tW), tX, ty(bh / 2f, ttlP), ttlP)
     }
 }
@@ -656,6 +677,8 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
     companion object {
         /** Kill switch: false = the page's HTML bars / buttons / snackbar only. */
         const val ENABLED = true
+        /** Lumen N7: NativeList tells the top bar whether the list is scrolled (true) or at its top (false = transparent small bar). */
+        @JvmField var onElev: ((Boolean) -> Unit)? = null
     }
 
     private val d = UiScale.dens(act)
@@ -670,6 +693,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
     private var last = ""
 
     init {
+        onElev = { e -> bar.setElevated(e) }
         for (v in all) { v.visibility = View.GONE; v.icons = icons; layer.addView(v, FrameLayout.LayoutParams(1, 1)) }
         bar.onTap = { id -> if (id == "scan") bar.spin(); fire("btn", id) }
         fab.onTap = { _ -> fire("btn", "fab") }

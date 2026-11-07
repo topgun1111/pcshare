@@ -194,6 +194,7 @@ class StorageActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        StorageTreemap.refreshCat(this)
         wizState = b?.getString("wizstate")?.takeIf { it.isNotEmpty() }
         vpath = vnorm(b?.getString(X_PATH) ?: intent.getStringExtra(X_PATH) ?: "/")
         dev = b?.getString(X_DEV) ?: intent.getStringExtra(X_DEV) ?: "local"

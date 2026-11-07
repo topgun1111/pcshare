@@ -1019,17 +1019,17 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 **N. Native drawing (never done in native)**
 - [~] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer: stand-in done 2026-11-07, Part 4b, `LumenGlass.chromeFill`, tint-raised, NO blur; real in-window blur = N1 (c), Part 4d)
 - [x] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss. (2026-11-07, Part 4a)
-- [ ] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now.
+- [x] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now. (2026-11-07, 4c: grid no-thumbnail page = category tile; gallery has no file tiles)
 - [~] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot. (2026-11-07, Part 4b: `shadowTint` slot + `LumenGrad.kt`; FAB, dock pill, snackbar, tinted shadows done; `gGlow` / `gSkeleton` / `gScrim*` exist without callers: Parts 4c / 4d)
-- [ ] N5 Folder drawing in pickers, album covers and other native places; drawer icons (`NlDrawer`); tiles for Devices / FTP / Cloud sheets.
+- [ ] N5 Folder drawing in pickers, album covers and other native places; drawer icons (`NlDrawer`); tiles for Devices / FTP / Cloud sheets. (4c partly: Devices / FTP / Cloud sheet tiles done in page block UI17; no native pickers / album covers exist, drawer icons already Lumen)
 - [x] N6 Native radius flavour (win11 `--r-l` 12 / `--r-xxl` 24); native dialogs keep 32 dp. (2026-11-07, Part 4b, `LumenRadius`)
-- [ ] N7 (moved to Part 4c) `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native).
+- [ ] N7 (moved to Part 4c) `NlChrome` Search and Viewer bar variants; Large (collapsing) top bar and scroll-driven transparent small bar (needs a scroll event page to native). (4c partly: scroll-driven transparent small bar done; Large collapsing bar and Search / Viewer variants open)
 - [x] N8 Drawer storage-card header with ring chart. (2026-11-07, Part 4b, `dStorCard()`, block `LUMEN-UI16`)
 - [ ] N9 Native ripple inside list rows, grid / gallery views, drawer rows (today they keep the `--hov` press fill).
 - [ ] N10 Selection check-circle flip (160 ms), partial / bar state on the day-heading select circle, hold-menu lift (1.02), 20 ms action stagger on the dock.
 - [ ] N11 Sticky heading strip and fast-scroll scrubber in the native list.
 - [x] N12 (2026-11-07, Part 4a) Snackbar lift above the bottom bar / dock (`Lm.snack`), system toast only where no Activity exists.
-- [ ] N13 Splash: logo screen is the system one (Android 12+); older versions still show the window background only.
+- [x] N13 Splash: logo screen is the system one (Android 12+); older versions still show the window background only. (2026-11-07, 4c: accepted for Android under 12, window background only)
 
 **M. Motion (Part 16 leftovers)**
 - [x] M1 Exit animations: dialog, sheet, popup menu close in 200 ms accelerate (they close instantly). (page done 2026-11-07, Part 1; native dialog / sheet / snackbar exits 2026-11-07, Part 4a)
@@ -1046,7 +1046,7 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] P3 Split button; glass buttons (Part 14); `.seg` has no caller yet (use it in Settings). (done 2026-11-07, Part 2: `.sbtn` + `lmSplit`, `.tbtn.glass`, `.seg` caller = Glass quality)
 - [~] P4 G0 on-picture pills; grain on G2 / G3; top bar transparent-to-G1 on scroll; flatter wallpaper variant for list screens. (Part 2 2026-11-07: `.g0` class, grain on f0 dialogs / sheets, top bar glass on scroll, flat list wallpaper; `.g0` not yet applied to viewer counters / badges)
 - [x] P5 Grid fallback page still uses the realistic icon; page list `.kd` tiles still use `--k-*-c / -b` instead of `--cat-*`. (done 2026-11-07, Part 1: `.k-*` tiles read `--cat-*`, `.k-office` added)
-- [ ] P6 Storage Analyzer treemap / pie (`StorageTreemap.CAT_COL`, `StorageWiz`), search chips, Drive / FTP / SMB badges, `CodeHl`, dark viewer chrome and text-editor palette still use their own colours (4.5: one table).
+- [ ] P6 Storage Analyzer treemap / pie (`StorageTreemap.CAT_COL`, `StorageWiz`), search chips, Drive / FTP / SMB badges, `CodeHl`, dark viewer chrome and text-editor palette still use their own colours (4.5: one table). (4c partly: Storage CAT_COL + CodeHl read LumenCategory; StorageWiz, search chips, badges, dark viewer chrome open)
 - [x] P7 Contrast check of gradient ends against labels (T1 tests flat slots only) and of glass tint alpha per theme (floor). (2026-11-07, Part 3)
 - [~] P8 Use `--t-*` style tokens and `--st-*` in page CSS; 17 `font:` shorthands with px; lint: raw durations 68, hex 201, spacing >= 3 px 26, radius 1. (Part 1 2026-11-07: durations 68 to 13 (rest = infinite spinners), spacing 27 to 25 (negative nudges), radius 0, `font:` shorthands now `--fs-*`, hex 194 left on purpose; `--t-*` / `--st-*` still unused)
 - [x] P9 Delete unused `--hc1..7` theme rules and `brand_lite_bg`. (done 2026-11-07, Part 1)

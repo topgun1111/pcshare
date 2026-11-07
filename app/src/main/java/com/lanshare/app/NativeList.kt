@@ -462,17 +462,10 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         cv.restore()
     }
 
-    /** File without a thumbnail: grey page with a folded corner and a white badge holding the type icon (page is 100 units wide, the badge sticks out 20 units on the left). */
+    /** File without a thumbnail (Lumen N3): the category gradient tile with glyph + extension (spec 11.6 "Grid file"), 100 units wide, centred in the page-shaped 100 x 127 slot. `d / k` makes the 64 dp "show the extension" test work in unit space. */
     private fun page(cv: Canvas, ox: Float, oy: Float, k: Float, kind: String, name: String) {
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
-        p.style = Paint.Style.FILL; p.color = 0xFF85908C.toInt(); cv.drawPath(PAGE, p)
-        p.color = 0xFFAAB5B0.toInt(); cv.drawPath(FOLD, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.1f; p.color = 0xFF66736E.toInt()
-        clip.reset(); clip.moveTo(0f, 121f); clip.quadTo(0f, 127.2f, 7.4f, 127.2f); clip.lineTo(92.6f, 127.2f); clip.quadTo(100f, 127.2f, 100f, 121f); cv.drawPath(clip, p)
-        rf.set(-20.3f, 28.8f, 59.6f, 107.9f)
-        p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 6.6f, 6.6f, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = 0xFFA8A8A8.toInt(); cv.drawRoundRect(rf, 6.6f, 6.6f, p)
-        NlFileIcons.drawLegacy(cv, name, kind, 19.65f - 30f, 68.35f - 30f, 60f)   // coloured type icon inside the white badge (grid fallback page keeps the realistic icon until the grid tiles are redone)
+        NlFileIcons.draw(cv, name, kind, 0f, 13.5f, 100f, LumenCategory.of(context), d / k)
         cv.restore()
     }
 
@@ -830,7 +823,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy) }
+            override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) preload(dy > 0); syncScroller(r, dy) }
         })
         sb.onDrag = { f -> scrollerTo(f) }
         overlay.addView(srl, FrameLayout.LayoutParams(1, 1))
@@ -1277,6 +1270,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         } else headGeom = false
         updateHeadVis()
         overlay.visibility = if (j.optBoolean("v", true)) View.VISIBLE else View.INVISIBLE
+        NlChrome.onElev?.invoke(overlay.visibility != View.VISIBLE || rv.canScrollVertically(-1))   // Lumen N7: small top bar is transparent while the list sits at its top
         overlay.invalidate()
     }
 
@@ -1322,7 +1316,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

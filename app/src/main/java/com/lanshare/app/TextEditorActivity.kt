@@ -493,7 +493,7 @@ class TextEditorActivity : Activity() {
             var k = 0
             while (k + 2 < arr.size) {
                 val s = arr[k]; val e = arr[k + 1]
-                if (s >= 0 && e > s && e <= n) ed.setSpan(HlSpan(CodeHl.color(arr[k + 2], dark)), s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (s >= 0 && e > s && e <= n) ed.setSpan(HlSpan(CodeHl.color(this@TextEditorActivity, arr[k + 2], dark)), s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 k += 3
             }
         } finally { body.endBatchEdit() }
@@ -559,7 +559,7 @@ class TextEditorActivity : Activity() {
         val key = CodeHl.key(b.lang)
         if (key != null && key != "md") {
             val arr = try { CodeHl.scan(b.code, key) } catch (_: Throwable) { null }
-            if (arr != null) { var k = 0; while (k + 2 < arr.size) { sp.setSpan(ForegroundColorSpan(CodeHl.color(arr[k + 2], night)), arr[k], arr[k + 1], Spannable.SPAN_EXCLUSIVE_EXCLUSIVE); k += 3 } }
+            if (arr != null) { var k = 0; while (k + 2 < arr.size) { sp.setSpan(ForegroundColorSpan(CodeHl.color(this@TextEditorActivity, arr[k + 2], night)), arr[k], arr[k + 1], Spannable.SPAN_EXCLUSIVE_EXCLUSIVE); k += 3 } }
         }
         val code = TextView(this).apply {
             typeface = Typeface.MONOSPACE; setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp * 0.88f); setTextColor(textColor); setLineSpacing(0f, 1.1f)

@@ -1295,6 +1295,18 @@ html.nldr #dwr{opacity:0}
 }
 :root[data-rm] #home .ht .tb{transition:none}
 /*LUMEN-UI10:END*/
+/*LUMEN-UI17:BEGIN*/
+/* Part 4c N5: Devices / FTP / Cloud / SMB / USB sheet icon tiles = category tone tile (tint to tint+base, glyph in the base tone), same recipe as .k-* file tiles */
+@supports(selector(:has(a)))and(background:color-mix(in srgb,red,blue)){
+.smi:has(svg[data-ik=dev]),.sma:has(svg[data-ik=dev]){--tc:var(--cat-aud);--tt:var(--cat-aud-t)}
+.smi:has(svg[data-ik=ftp]),.sma:has(svg[data-ik=ftp]){--tc:var(--cat-zip);--tt:var(--cat-zip-t)}
+.smi:has(svg[data-ik=cld]),.sma:has(svg[data-ik=cld]){--tc:var(--cat-doc);--tt:var(--cat-doc-t)}
+.smi:has(svg[data-ik=smb]),.sma:has(svg[data-ik=smb]){--tc:var(--cat-code);--tt:var(--cat-code-t)}
+.smi:has(svg[data-ik=usb]),.sma:has(svg[data-ik=usb]){--tc:var(--cat-apk);--tt:var(--cat-apk-t)}
+.smi:has(svg[data-ik=dev]),.smi:has(svg[data-ik=ftp]),.smi:has(svg[data-ik=cld]),.smi:has(svg[data-ik=smb]),.smi:has(svg[data-ik=usb]),
+.sma:has(svg[data-ik=dev]),.sma:has(svg[data-ik=ftp]),.sma:has(svg[data-ik=cld]),.sma:has(svg[data-ik=smb]),.sma:has(svg[data-ik=usb]){
+  background:linear-gradient(135deg,var(--tt),color-mix(in srgb,var(--tt) 86%,var(--tc)));color:var(--tc);box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 40%,transparent)}}
+/*LUMEN-UI17:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>

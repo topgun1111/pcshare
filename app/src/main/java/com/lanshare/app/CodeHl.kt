@@ -24,6 +24,21 @@ object CodeHl {
 
     fun color(kind: Int, dark: Boolean): Int = (if (dark) DARK else LIGHT)[kind.coerceIn(0, 7)]
 
+    /** Lumen P6: token colours from the category table (spec 4.5) so code matches the theme: keyword = pdf, string = xls, number = zip, type = doc, call = vid, attribute = ppt, meta = pic; comments = a muted neutral. The page theme's table is used when its light / dark side equals [dark], else the Ember default for that side. */
+    fun color(ctx: android.content.Context, kind: Int, dark: Boolean): Int = try {
+        val t = LumenCategory.of(ctx).let { if (it.night == dark) it else if (dark) LumenCategory.DEFAULT_DARK else LumenCategory.DEFAULT_LIGHT }
+        when (kind) {
+            COMMENT -> color(kind, dark)
+            STRING -> t["xls"].base
+            NUMBER -> t["zip"].base
+            KEYWORD -> t["pdf"].base
+            TYPE -> t["doc"].base
+            FUNC -> t["vid"].base
+            ATTR -> t["ppt"].base
+            else -> t["pic"].base
+        }
+    } catch (_: Throwable) { color(kind, dark) }
+
     private class Lang(
         val kw: Set<String> = emptySet(),
         val line: Array<String> = emptyArray(),

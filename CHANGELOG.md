@@ -5,7 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
-## 2026-11-07 - Themes tab fixes
+## 2026-11-07 - Colours and tiles
+### Changed
+- Files without a picture in the grid view now show the same coloured type tile as the list.
+- The top bar is see-through while the list is at its top and fills in as you scroll (when glass is on).
+- Storage analyzer colours and code colours in the text editor follow the theme.
+- Devices, FTP and cloud screens use coloured icon tiles.
 ### Fixed
 - The Themes tab in Settings no longer freezes the app, and its buttons work again.
 - The theme preview card shows real contrast numbers instead of NaN.
