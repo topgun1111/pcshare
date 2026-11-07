@@ -1172,6 +1172,18 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 .tbtn{min-height:48px}.tbtn:not(.fill):not(.dngf){min-height:48px}
 .ibtn{min-width:48px;min-height:48px}
 /*LUMEN-UI10:END*/
+/*LUMEN-UI10:BEGIN*/
+/* Part 10 leftovers: home menu tiles as category gradient tiles (5.3 / 11.6) and the two-plate folder (11.5). Theme rules for ubuntu / win11 keep winning (higher specificity). */
+#home .ht .tb{background-color:var(--c);color:var(--tg,#fff)}
+#home .ht .tb svg{filter:drop-shadow(0 1px 1px #00000040)}
+#home .hero .ic{box-shadow:inset 0 1px 0 #ffffff59}
+@supports(background:color-mix(in srgb,red 50%,blue)){
+#home .ht .tb{background-image:linear-gradient(135deg,color-mix(in srgb,var(--c) 78%,#fff),color-mix(in srgb,var(--c) 85%,#000));box-shadow:inset 0 1px 0 #ffffff59,0 1px 3px color-mix(in srgb,var(--c) 38%,transparent);transition:box-shadow var(--d-fast) var(--ease-standard)}
+#home .ht:active .tb{box-shadow:inset 0 1px 0 #ffffff59,0 0 0 6px color-mix(in srgb,var(--c) 22%,transparent),0 8px 20px -6px color-mix(in srgb,var(--c) 60%,transparent)}
+#home .hero .ic{background-image:var(--gPrimary)}
+}
+:root[data-rm] #home .ht .tb{transition:none}
+/*LUMEN-UI10:END*/
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -1246,7 +1258,9 @@ down:'M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z',
 vlist:'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z',
 vcomp:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',
 vgrid:'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'};
-const FOLD='<svg viewBox="0 0 100 88"><rect x="8" y="0" width="84" height="32" rx="4.5" fill="#d49a50"/><rect x="2.8" y="6.4" width="84.4" height="33.6" rx="3" fill="#fff" stroke="#b9b9b9" stroke-width=".5"/><rect x="2.8" y="11.9" width="84.4" height="28.1" rx="3" fill="#fff" stroke="#b9b9b9" stroke-width=".5"/><rect x="2.8" y="18" width="84.4" height="22" rx="3" fill="#fff" stroke="#b9b9b9" stroke-width=".5"/><path d="M0 32.7Q0 25.7 7 25.7L42.2 25.7L56.5 11.8Q58.8 9.9 62 9.9L95 9.9Q100 9.9 100 15L100 81.3Q100 87.7 93.5 87.7L6.5 87.7Q0 87.7 0 81.3Z" fill="#e2ac62" stroke="#d08a3e" stroke-width=".6"/></svg>';
+/* Lumen two-plate folder (spec 11.5): back plate (darker, tab 40 % wide) + front plate + light band + rim light; no outline. Default colour = theme primary, Style colour = custom. Twin of native NlClassicFolder. */
+const foldMk=(f,k)=>'<svg viewBox="0 0 100 88"><path d="M0 11Q0 4 7 4L30 4Q34 4 37 7L40 10L93 10Q100 10 100 17L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+k+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+f+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 46L0 46Z" fill="#fff" fill-opacity=".16"/><path d="M8 25.2L92 25.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const FOLD=foldMk('fill:var(--primary)','fill:var(--primary);filter:brightness(.74)');
 const HOME='<svg viewBox="0 0 32 32" class="cico"><path d="M6 17l10-8.5L26 17v11H6z" fill="#f5f5f5" stroke="#b5b5b5"/><path d="M2 16L16 4l14 12-2 2.2L16 8 4 18.2z" fill="#e53935"/><path d="M13 20h6v8h-6z" fill="#fb8c00"/></svg>';
 const DRIVE='<svg viewBox="0 0 32 32" class="cico"><path d="M9 4h14l4 15v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7z" fill="#c9c9c9"/><path d="M5 19h22v7a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="#b2b2b2"/><circle cx="9.5" cy="24" r="1.4" fill="#4caf50"/></svg>';
 const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.innerHTML=h;return e.firstChild.nodeType===1&&!c?e.firstChild:e};
@@ -2015,7 +2029,7 @@ let FSTY={};try{FSTY=JSON.parse(localStorage.getItem('ls_fsty')||'{}')}catch(e){
 const FS_COLS=['#EF5350','#FB8C00','#FDD835','#66BB6A','#26A69A','#42A5F5','#5C6BC0','#AB47BC','#EC407A','#8D6E63','#90A4AE'];
 const FS_ICONS=['star','heart','home','work','school','games','lock','cloud','build','code','bookmark','place','flight','camera','aud','vid','img','doc','download','zip'];
 const shade=(h,f)=>{const n=parseInt(h.slice(1),16),r=Math.round((n>>16&255)*f),g=Math.round((n>>8&255)*f),b=Math.round((n&255)*f);return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)};
-const foldSvg=c=>c?FOLD.replace('#d49a50',shade(c,.88)).replace('#e2ac62',c).replace('#d08a3e',shade(c,.78)):FOLD;
+const foldSvg=c=>c?foldMk('fill:'+c,'fill:'+shade(c,.74)):FOLD;
 const fsIc=f=>f&&f.c?shade(f.c,.62):'#555';
 const fsGet=p=>FSTY[S.dev+'|'+p]||null;
 function fsPush(){try{if(NL&&NL.nlFStyle){const o={};for(const k in FSTY){if(k.indexOf('local|')!==0)continue;const f=FSTY[k];o[k.slice(6)]=[f.c?nlCol(f.c):0,f.i||'',f.i?nlCol(fsIc(f)):0]}NL.nlFStyle(JSON.stringify(o))}}catch(e){}}
@@ -5812,6 +5826,13 @@ const HM_P={
  usr:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'};
 const HM_L={dl:'download',prn:'print',ftp:'ftp',cld:'cld',dev:'dev',sto:'sto',usr:'search',sh:'term',ms:'phone',vid:'vid',gal:'gal',usb:'usb',smb:'smb',fav:'fav'};
 const hmSvg=k=>{const L=LUMEN_ICONS[HM_L[k]];return '<svg viewBox="0 0 24 24"'+(L?' class="li"':'')+' aria-hidden="true"><path d="'+(L||HM_P[k])+'"/></svg>'};
+/* Lumen 11.6 home tiles: glyph = white or dark ink, whichever reads better on both gradient stops of the tile colour (works for every preset and Custom) */
+function hmInk(root){const hx=h=>{h=(h||'').trim();if(h[0]!=='#')return null;if(h.length===4)h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];if(h.length!==7)return null;const n=parseInt(h.slice(1),16);return[n>>16&255,n>>8&255,n&255]},
+  lum=a=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};return .2126*f(a[0])+.7152*f(a[1])+.0722*f(a[2])},
+  mx=(a,b,t)=>a.map((v,i)=>v*t+b[i]*(1-t)),cr=(x,y)=>(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
+  root.querySelectorAll('.ht').forEach(b=>{const c=hx(getComputedStyle(b).getPropertyValue('--c'));if(!c)return;
+    const lo=lum(mx(c,[255,255,255],.78)),hi=lum(mx(c,[0,0,0],.85));
+    b.style.setProperty('--tg',cr(1,lo)>=cr(hi,.011)?'#ffffff':'#1f1a16')})}
 const homeOn=()=>$('#home').style.display==='flex';
 /* Universal Search (native screen UsActivity): reached from the file manager search button / search row of a folder (q = text typed so far) */
 function usOpen(q){if(typeof LSAndroid==='undefined'||!LSAndroid.openUsearch){usWeb(q);return}try{if(!LSAndroid.usearchOk()){toast('Search index is off \u2013 Settings \u203a Search index',4000);return}LSAndroid.openUsearch(q||'')}catch(e){usWeb(q)}}
@@ -5892,7 +5913,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
   g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld,tile('sh','Remote shell','Run commands on a PC',()=>openRemoteShell()));
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
-  o.append(hb,bd);
+  o.append(hb,bd);try{hmInk(bd)}catch(e){}
   warmWifi();if(window.nlLay)try{nlLay(true)}catch(e){}}
 
 /* ---- side drawer: main menu, devices, quick folders ---- */

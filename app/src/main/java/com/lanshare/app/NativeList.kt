@@ -156,36 +156,39 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
     }
 }
 
-/** The classic folder (paper sheets behind a tan front panel) in a 100 x 87.7 unit box; shared by the grid cards and every list view. */
+/**
+ * Lumen two-plate folder (spec 11.5) in a 100 x 87.7 unit box; shared by the grid cards and every list view.
+ * Back plate (with a tab 40 % wide) = darker shade, front plate = the colour, a soft light band and a thin highlight on the front top edge.
+ * `tint` = folder colour (ARGB): the user's Style colour, else the caller passes the theme accent. Page twin: ui.html `foldSvg()`.
+ */
 object NlClassicFolder {
-    // front panel: flat left part, diagonal rise, raised right part
-    private val FRONT = Path().apply {
-        moveTo(0f, 32.7f); quadTo(0f, 25.7f, 7f, 25.7f); lineTo(42.2f, 25.7f); lineTo(56.5f, 11.8f); quadTo(58.8f, 9.9f, 62f, 9.9f)
-        lineTo(95f, 9.9f); quadTo(100f, 9.9f, 100f, 15f); lineTo(100f, 81.3f); quadTo(100f, 87.7f, 93.5f, 87.7f)
-        lineTo(6.5f, 87.7f); quadTo(0f, 87.7f, 0f, 81.3f); close()
+    private val BACK = Path().apply {
+        moveTo(0f, 11f); quadTo(0f, 4f, 7f, 4f); lineTo(30f, 4f); quadTo(34f, 4f, 37f, 7f); lineTo(40f, 10f)
+        lineTo(93f, 10f); quadTo(100f, 10f, 100f, 17f); lineTo(100f, 80.7f); quadTo(100f, 87.7f, 93f, 87.7f)
+        lineTo(7f, 87.7f); quadTo(0f, 87.7f, 0f, 80.7f); close()
     }
-    private val SHEETS = floatArrayOf(6.4f, 11.9f, 18f)
+    private val FRONT = Path().apply {
+        moveTo(0f, 31f); quadTo(0f, 24f, 7f, 24f); lineTo(93f, 24f); quadTo(100f, 24f, 100f, 31f); lineTo(100f, 80.7f)
+        quadTo(100f, 87.7f, 93f, 87.7f); lineTo(7f, 87.7f); quadTo(0f, 87.7f, 0f, 80.7f); close()
+    }
+    private val BAND = Path().apply {
+        moveTo(0f, 31f); quadTo(0f, 24f, 7f, 24f); lineTo(93f, 24f); quadTo(100f, 24f, 100f, 31f); lineTo(100f, 46f); lineTo(0f, 46f); close()
+    }
     const val W = 100f
     const val H = 87.7f
 
-    /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. */
-    /** `tint` = custom folder colour (ARGB, 0 = classic tan): front panel = tint, back tab / outline = darker shades of it (same factors as ui.html foldSvg). */
     private fun shade(c: Int, f: Float): Int = Color.argb(255, (Color.red(c) * f).toInt().coerceIn(0, 255), (Color.green(c) * f).toInt().coerceIn(0, 255), (Color.blue(c) * f).toInt().coerceIn(0, 255))
 
+    /** Draws the folder with its top-left corner at (ox, oy); `k` = canvas px per unit. `tint` 0 = a neutral amber (only used when a caller has no theme accent). */
     fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float, tint: Int = 0) {
-        val back = if (tint != 0) shade(tint, .88f) else 0xFFD49A50.toInt()
-        val front = if (tint != 0) tint or (0xFF shl 24) else 0xFFE2AC62.toInt()
-        val edge = if (tint != 0) shade(tint, .78f) else 0xFFD08A3E.toInt()
+        val base = if (tint != 0) tint or (0xFF shl 24) else 0xFFE2AC62.toInt()
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
-        p.style = Paint.Style.FILL; p.color = back; rf.set(8f, 0f, 92f, 32f); cv.drawRoundRect(rf, 4.5f, 4.5f, p)
-        for (t in SHEETS) {
-            rf.set(2.8f, t, 87.2f, 40f)
-            p.style = Paint.Style.FILL; p.color = Color.WHITE; cv.drawRoundRect(rf, 3f, 3f, p)
-            p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = 0xFFB9B9B9.toInt(); cv.drawRoundRect(rf, 3f, 3f, p)
-        }
-        p.style = Paint.Style.FILL; p.color = front; cv.drawPath(FRONT, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 0.6f; p.color = edge; cv.drawPath(FRONT, p)
-        p.style = Paint.Style.FILL
+        p.style = Paint.Style.FILL; p.shader = null; p.color = shade(base, .74f); cv.drawPath(BACK, p)
+        p.color = base; cv.drawPath(FRONT, p)
+        p.color = 0x29FFFFFF; cv.drawPath(BAND, p)                                   // light band over the upper front
+        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f; p.strokeCap = Paint.Cap.ROUND; p.color = 0x80FFFFFF.toInt()
+        cv.drawLine(8f, 25.2f, 92f, 25.2f, p)                                         // rim light on the front top edge
+        p.strokeCap = Paint.Cap.BUTT; p.style = Paint.Style.FILL
         cv.restore()
     }
 }
@@ -273,7 +276,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         } else if (r.dir) {
             val fw = (if (c) 34f else if (lg) 68f else if (md) 54f else 40f) * d; val fh = (if (c) 29f else if (lg) 58f else if (md) 46f else 34f) * d
             val fk = Math.min(fw / NlClassicFolder.W, fh / NlClassicFolder.H)       // classic folder, centred in the old folder box
-            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk, r.fcol)
+            NlClassicFolder.draw(cv, p, rf, lcx - NlClassicFolder.W * fk / 2f, cy - NlClassicFolder.H * fk / 2f, fk, if (r.fcol != 0) r.fcol else pl.ac)
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
                 val bottom = cy + leadB + (if (c) 2f else 1f) * d; val top = bottom - bs
@@ -488,7 +491,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         // ---- lead ----
         if (r.dir) {
             val k = s / 100f
-            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, r.fcol)
+            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, if (r.fcol != 0) r.fcol else pl.ac)
         } else {
             val bm = thumb
             if (bm != null) {

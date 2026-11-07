@@ -916,7 +916,7 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 | 7 | Page dialog, sheet (5 sizes) and snackbar components | One dialog, one message style (page) (DONE 2026-11-07) |
 | 8 | Native dialog / sheet / snackbar helper; replace all `AlertDialog` and `Toast.makeText` | One dialog, one message style (native)(DONE 2026-11-07, sheets `NlSheets` still own look) |
 | 9 | Lumen Icons A: inventory 11.4 redrawn for page and native lists | One icon family (DONE 2026-11-07, 46 glyphs; folder / file glyphs wait for Part 10) |
-| 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete (DONE 2026-11-07; Word / Excel realistic tiles, two-plate folder and splash logo screen left) |
+| 10 | Lumen Icons B: folder and category tiles, launcher / notification / splash | Icons complete (DONE 2026-11-07; two-plate folder and gradient main-menu tiles added later the same day; Word / Excel realistic tiles and splash logo screen left) |
 | 11 | Buttons, chips, switches, text fields to spec | Controls consistent (DONE 2026-11-07; floating label, clear glyph, search pill, sliding segment left) |
 | 12 | Lists, bars, selection visuals, ripple and press states | Lists and bars consistent (PARTLY DONE 2026-11-07: rows, selection, dividers, ripple; bars and drawer left) |
 | 13 | Gradients (gPrimary etc.), category tile gradients, shadows | Depth and colour transitions (DONE 2026-11-07 on the page + native dialog button; native tiles / chrome / gSurface / gSuccess left) |

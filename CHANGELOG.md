@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - New folder and main menu icons
+### Changed
+- Folders: new two-layer folder (darker back with a tab, lighter front with a soft shine) in lists, grids and the folder style preview. Folders now use the theme colour unless you gave them a style colour.
+- Main menu: tiles are now soft two-tone colour tiles with a white or dark icon (whichever reads better), a light rim and a glow while pressed; the storage and devices cards use the theme gradient.
+
 ## 2026-11-07 - PC screen: Jobs tab and Delete logs
 ### Added
 - PC screen: a Jobs tab (printing now, waiting, recent) and a Delete logs button that empties the print log on the PC (needs the new pcprint.py).
