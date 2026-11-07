@@ -10,14 +10,14 @@ import android.view.MotionEvent
 import android.view.View
 
 /** Colours of the player screen. Light = white page with dark text (like the system gallery), dark = black page. */
-class PlayerPal(val light: Boolean) {
+class PlayerPal(val light: Boolean, primary: Int = 0xFF4F63FF.toInt()) {
     val bg = if (light) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
     val text = if (light) 0xFF111111.toInt() else 0xFFFFFFFF.toInt()
     val icon = if (light) 0xFF1B1B1B.toInt() else 0xFFFFFFFF.toInt()
     val panel = if (light) 0xB8FFFFFF.toInt() else 0x99262626.toInt()      // frosted pill / round buttons
     val edge = if (light) 0x30000000 else 0x33FFFFFF                        // thin outline of the panels
     val track = if (light) 0x33000000 else 0x44FFFFFF
-    val fill = 0xFF4F63FF.toInt()                                           // played part of the seek bar
+    val fill = primary                                                      // played part of the seek bar = theme primary (Lumen)
     val scrimTop = if (light) 0xA6FFFFFF.toInt() else 0xB3000000.toInt()    // header gradient start
     val scrimEnd = if (light) 0x00FFFFFF else 0x00000000
 }

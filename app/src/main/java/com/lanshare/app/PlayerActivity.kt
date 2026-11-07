@@ -201,7 +201,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun applyTheme() {
-        pal = PlayerPal(isLight())
+        pal = PlayerPal(isLight(), Lumen.of(this).primary)
         root.setBackgroundColor(pal.bg)
         window.setBackgroundDrawable(ColorDrawable(pal.bg))
         val c = WindowInsetsControllerCompat(window, window.decorView)

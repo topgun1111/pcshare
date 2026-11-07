@@ -94,10 +94,19 @@ object NlIcons {
 const val NL_NEW_SEC = 60L
 fun nlIsNew(mtimeSec: Long): Boolean = mtimeSec > 0 && (System.currentTimeMillis() / 1000 - mtimeSec) < NL_NEW_SEC
 
-private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: Int, d: Float) {
+private var nlErrJ: String? = null
+private var nlErrC = 0
+/** Lumen `error` slot for the "new" dot; `Lumen.of` parses JSON, so it is cached per palette string (onDraw calls this). */
+private fun nlErr(c: android.content.Context): Int {
+    val j = AppPal.json(c)
+    if (j == null || j !== nlErrJ || nlErrC == 0) { nlErrC = Lumen.of(c).error; nlErrJ = j }
+    return nlErrC
+}
+
+private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: Int, d: Float, col: Int) {
     p.style = Paint.Style.FILL; p.shader = null
     p.color = ring; cv.drawCircle(cx, cy, r + 1.5f * d, p)
-    p.color = 0xFFFF3B30.toInt(); cv.drawCircle(cx, cy, r, p)
+    p.color = col; cv.drawCircle(cx, cy, r, p)
 }
 
 class NlRow(
@@ -321,7 +330,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             }
         }
         cv.restore()
-        if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d) }
+        if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d, nlErr(context)) }
         // ---- texts ----
         val xr = w - 14f * d
         nameP.textSize = (if (c) 15f else 16f) * d * UiScale.tf
@@ -526,7 +535,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             }
         }
         p.style = Paint.Style.FILL
-        if (r.fresh) nlDot(cv, p, lx + 9f * d, ly + 9f * d, 5.5f * d, Color.WHITE, d)
+        if (r.fresh) nlDot(cv, p, lx + 9f * d, ly + 9f * d, 5.5f * d, Color.WHITE, d, nlErr(context))
         // ---- check circle (top 5, right 5, 24px) ----
         val kx = lx + s - 5f * d - 12f * d; val ky = ly + 5f * d + 12f * d
         if (isSel) {
@@ -700,7 +709,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             val fm = nameP.fontMetrics
             val txt = TextUtils.ellipsize(r.nm, nameP, Math.max(0f, tw), TextUtils.TruncateAt.END).toString()
             cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + 7f * d - (fm.ascent + fm.descent) / 2f, nameP)
-            if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d)
+            if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d, nlErr(context))
             // play dot
             p.style = Paint.Style.FILL; p.color = 0x99000000.toInt()
             cv.drawCircle(x + 6f * d + 11f * d, y + cs - 6f * d - 11f * d, 11f * d, p)

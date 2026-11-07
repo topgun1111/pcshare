@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-09 - Theme colours in the player and the new-file dot
+### Fixed
+- The video player's progress bar now uses the colour of your theme instead of a fixed blue.
+- The red dot on files that are less than a minute old now follows the theme's error colour.
+
 ## 2026-11-09 - Swipe rows, folder slide
 ### Added
 - In the file list, swipe a row right to share it or left to delete it (the usual Delete question still appears).

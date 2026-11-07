@@ -915,6 +915,7 @@ Open (ranked) is in section 3 B: (4) why page load is 157 ms, (5) WebView constr
 
 ## 14. Changelog (newest first)
 
+- 2026-11-09: **Lumen audit round 4 - theme colours in player and new-file dot** [6] (NOT compiled; `PlayerWidgets.kt` `PlayerPal(light, primary)`, `PlayerActivity.kt` `applyTheme`, `NativeList.kt` `nlErr` / `nlDot`; `CHANGELOG.md`, `LUMEN.md` log row). Owner check next compile: player progress bar shows the theme primary on light and dark player pages; the red dot on fresh files matches the error colour.
 - 2026-11-09: **Lumen follow-up - native swipe / collapse / push** [6] (NOT compiled, NOT device-tested; `NlListFx.kt` `NlSwipe`, `NativeList.kt` `swipeOk` / `removalPlan` / `collapse` / `push`, `ui.html` `nlOn` events `swd` / `swr`; details in `LUMEN.md` log row 2026-11-09).
 - 2026-11-07: **Fix (4d session): garbled top bar** [6] (`NlChrome.kt` `NlBarView`: the 4c transparent small bar let the page twin `#top` title / glyphs show through, drawn twice; fill is opaque again, `goal = 1f`. The scroll-driven transparent bar (N7 part) is switched off until the page twin hides its content when native chrome is active).
 - 2026-11-07: **Lumen Part 4f - real backdrop blur for chrome, container transform for viewers** [6] (NOT compiled, NOT device-tested; `NlBackdrop.kt` + `NlHero.kt` new; `NlChrome.kt`, `NlDrawer.kt`, `NativeList.kt`, `LumenGlass.kt`, `LumenPrefs.kt`, `ImageViewerActivity.kt`, `PlayerActivity.kt`; details in the lead paragraph).
