@@ -1,4 +1,20 @@
-# LANShare "Lumen" Design System v1.0
+# LANShare Lumen: plan, what is done, what is missing
+
+One file (merged 2026-11-08 from `LUMEN.md`, `LUMEN.md`, `LUMEN.md`; those three are gone). Read in this order:
+
+1. **Part 1: the original plan** (the design spec, sections 1-19, unchanged except that the status sub-sections moved to Part 2 and 3).
+2. **Part 2: what is done** (status line, session rules, done table, plan parts, session log, fixes from the audit).
+3. **Part 3: what is missing in the code** (current open list, decisions, owner checks, item IDs).
+
+**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes 2026-11-08 | Next: owner compile + device pass (V2-V5, check 4f first), then the open list in Part 3 | Last session: 2026-11-08. Kotlin from 4a-4f and the 2026-11-08 edits is NOT compiled.
+
+**Rule:** after every change, update this file (status line, Part 2 log, Part 3 list), `HANDOVER_READ_BEFORE_CODE.md` and `CHANGELOG.md` (user-visible only).
+
+---
+
+# PART 1. THE ORIGINAL PLAN (design spec)
+
+## LANShare "Lumen" Design System v1.0
 
 One visual language for the whole app: page (`ui.html`), native screens (Kotlin Activities), dialogs, sheets, notifications, launcher, splash. Specification only, no code. Every value here is a **token**; screens may use tokens, never raw values.
 
@@ -928,9 +944,154 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 
 Each part: update the handover chapter, `CHANGELOG.md`, and send back only changed files in `.tar.xz`.
 
-### 19.1a Status and decisions as built (updated 2026-11-08)
+### 19.2 Old to new quick map
 
-**The current status is the status line in `LUMEN_WORK_PLAN.md` (it also has Parts 4a-4f and the semantic slots of 4g); the audit of what differs from this spec is `LUMEN_AUDIT.md`.** Older text of this section (Parts 1-11 / 17 done, Round 2 A) is history. Numbering: spec Parts 1-18, Round 2 A-C and plan Parts 1-4g are three systems; the plan file maps them. Next: owner compile, device verification (T5 / T7 / T8 / T10, TalkBack).
+| Old | New |
+|---|---|
+| `--bg` / `--card` / `--cont` | `canvas` / `surface` / `surfaceHi` (or `surfaceLo` for wells) |
+| `--ac` / `--onac` | `primary` / `onPrimary` |
+| `--sel` / `--onsel` | `primaryCont` / `onPrimaryCont` |
+| `--fab` | `gPrimary` |
+| `--bd` | `edge` |
+| `--mut` | `inkMut` |
+| `--err`, `--errc`, `--ok`, `--warn` | semantic set 4.4 |
+| `--hc1..6` | category set 4.5 |
+| radii 2, 4 / 8, 9, 10 / 12 / 14, 16, 18 / 20, 24 / 28 / 50% | `r.xs` / `r.s` / `r.m` / `r.l` / `r.xl` / `r.xxl` / `r.full` |
+| `#sheet .card` variants (`.vs`, `.fu`, `.pj`) | sheet sizes Tall / Full / Modal-center |
+| native `AlertDialog`, `dlg_bg*.xml` | dialog component 12.12 |
+| `Toast.makeText`, page `toast()` | snackbar 12.14 |
+
+### 19.3 Acceptance tests
+
+| ID | Test | Pass when |
+|---|---|---|
+| T1 | Contrast table for every theme and glass step | all pairs in 4.3 and 4.7 pass |
+| T2 | Token lint | no raw colour, radius, spacing, duration in page CSS or native layouts outside the token file |
+| T3 | Dialog audit | every dialog in the app (list generated from code) uses the one component |
+| T4 | Icon audit | every glyph is on the 24 grid, 1.75 dp stroke, from the inventory |
+| T5 | Parity screenshots | page and native screens of the same theme show identical colours (pixel sample of 20 points) |
+| T6 | Fallback | F0 to F3 each render without clipped or unreadable elements; Reduce transparency forces F3 |
+| T7 | Font scale | 200 % on file browser, gallery, settings, dialogs: nothing clipped, nothing unreachable |
+| T8 | Performance | gallery scroll with 3000 items keeps frame drops under 5 % at F0 on the mid reference device, under 10 % at F1 on the low one |
+| T9 | Motion | Reduce motion removes all transforms and loops |
+| T10 | Theme switch | switching themes cross-fades with no white flash on any screen, native included |
+
+### 19.4 Do / don't
+
+| Do | Don't |
+|---|---|
+| Use the next token on the scale | Invent 10 dp, 14 dp, 18 dp, 22 dp |
+| Put one Primary action per surface | Show two gradient buttons side by side |
+| Let glass float above content | Put blur behind list rows or text columns |
+| Pair colour with glyph and word | Use red / green alone for meaning |
+| Reuse the dialog, sheet, snackbar | Build a feature-specific popup card |
+| Animate transform and opacity | Animate width, height, blur radius inside lists |
+| Keep gradient hue drift under 20 degrees | Use rainbow gradients (except Aurora wallpaper) |
+| Test every new colour on glass and on gradient | Trust that "it looked fine on my theme" |
+| Offer the solid fallback for every effect | Make any feature depend on blur |
+| Add new glyphs to the inventory first | Paste a random icon path |
+
+---
+
+*End of Lumen Design System v1.0. Next step suggested: Part 1 of 19.1 (token file and scales), then Part 7 (page dialog and snackbar) because those give the largest consistency gain for the least risk.*
+
+
+---
+
+# PART 2. WHAT IS DONE
+
+## 2.1 Session rules (apply to every part)
+
+
+1. Read `HANDOVER_READ_BEFORE_CODE.md` (Lumen chapter) and this file; pick the first part marked `NEXT`.
+2. Tokens first: edit `tools/lumen/tokens.json`, then `python3 tools/lumen/gen.py`; never hand-edit the generated `/*LUMEN:BEGIN*/` block or `LumenTokens.kt`.
+3. Before returning: `gen.py --check`, `contrast.py` (T1, must stay 0 failing), `lint.py` (counts must not rise), `parity.py` (0 differences), `node --check` on the page JS.
+4. Update: this file (status line, part status, session log), 19.1c ticks (`[x]` + date), `HANDOVER_READ_BEFORE_CODE.md`, `CHANGELOG.md` (new top section, plain words).
+5. Return only changed files in a `.tar.xz`, folder structure kept.
+6. Kotlin: owner compiles. Say in the log whether the part touched Kotlin so the next compile is expected to be checked.
+
+---
+
+
+## 2.2 Done (history, do not redo)
+
+| What | Date | Note |
+|---|---|---|
+| Parts 1-3: token file, radius, spacing and type scales | 2026-11-07 | `tokens.json`, `gen.py`, `--r-* --sp-* --fs-*` |
+| Part 4: 42 themes in slots, Ember spec values, T1 contrast script | 2026-11-07 | 0 failing pairs |
+| Parts 5-6: slots to native, native screens on `Lumen.of(ctx)` | 2026-11-07 | `LumenTokens.kt` generated |
+| Part 7: page dialog, sheets, snackbar | 2026-11-07 | block `LUMEN-UI` |
+| Part 8: native `Lm.kt` dialog + snackbar, all 89 `Toast.makeText` converted | 2026-11-07 | `NlSheets` still own look |
+| Parts 9-10: Lumen icons (85 glyphs), folder / category tiles, launcher, notification, splash window | 2026-11-07 | |
+| Part 11: buttons, chips, switches, fields | 2026-11-07 | block `LUMEN-UI2` |
+| Part 12 (partly): rows, selection, dividers, ripple | 2026-11-07 | bars / drawer finished in Round 2 B |
+| Part 13: gradients, elevation (page + native dialog button) | 2026-11-07 | |
+| Parts 14-15: Aurora, glass G1-G3, fallback ladder, settings (page only) | 2026-11-07 | native glass = N1 |
+| Part 16 (partly): motion tokens, enter animations, reduce motion, haptics, skeletons (page) | 2026-11-07 | exits etc. = M items |
+| Part 17 (partly): derived slots, grouped picker, Custom theme, Windows radii | 2026-11-07 | presets keep their hex |
+| Part 18 (partly): focus rings, roles, focus trap, frame test, lint | 2026-11-07 | |
+| Round 2 A: brand category colours, main menu tiles, file list tiles (`NlFileIcons`) | 2026-11-07 | |
+| Round 2 B: floating dock + More, native ripple, drawer rows | 2026-11-07 | |
+| Round 2 C: native TalkBack for chrome, splash colours (v31), dialog field floating label, search pill, sliding segment, slider bubble | 2026-11-07 | |
+| Part 4b: chrome glass stand-in by step, `shadowTint` slot + `LumenGrad`, radius flavour (`LumenRadius`), drawer storage card | 2026-11-07 | not compiled; see Part 4b left over |
+| **V1: APK compiled by the owner, app runs fine** | 2026-11-07 | |
+
+Open parts of the above are tracked in the parts below, not here.
+
+---
+
+
+## 2.3 The plan parts (Parts 4 and 5 re-split into 4a-4d on 2026-11-07, 4e / 4f split off 4d leftovers)
+
+| Part | Content (old L-numbers, item IDs) | Layer | Est. lines | Status |
+|---|---|---|---|---|
+| 1 | L2 + page side of L3: P8 P9 P5 P10 A3, M1 / M5 / M6 (page) | page | 300-450 | DONE (2026-11-07) |
+| 2 | L4 + L5 + L6: M3 M4 M2, P2 P3 P4, P1 | page | 700-1000 | DONE (2026-11-07; M2, P4 partly) |
+| 3 | L7: T1-T5, P7 (decisions first, see section 6) | page + tools | 300-450 | DONE (2026-11-07; defaults used: T1 apply only close presets, T3 OS font only when font is Default) |
+| 4a | L8 + L9 + native M1 / M5: A1 A2, N2 N12 N1 (a), `Lm.kt` exits + Undo bar + merge | native + page | 700-1000 | DONE (2026-11-07; not compiled) |
+| 4b | L10 + N8: N1 (b) N4 N6, N8 (chrome glass stand-in, gradients + shadow tint slot, radius flavour, drawer storage card) | native + page + tools | 600-900 | DONE (2026-11-07; not compiled) |
+| 4c | L11 + N7: N3 N5 N13 P6, N7 (tiles, colour tables, bar variants + scroll-driven top bar) | native + page | 1000-1400 | PARTLY (2026-11-07, see 4c left over) |
+| 4d | L12 + L14 + N1 (c): N9 N10 N11 M7, N1 (c) (list interactions, container transform, real backdrop blur for in-window chrome) | native + page | 1100-1500 | PARTLY (2026-11-07: N9 rows + grid, N10 flip + lift, M7 a skeleton; rest moved to 4e / 4f) |
+| 4e | L12 leftovers: N9 gallery cells + drawer rows, N10 dock stagger + day-heading circle, N11 sticky heading strip | native + page | 250-400 | DONE (2026-11-07; not compiled) |
+| 4f | L12 + L14 leftovers: N1 (c) real in-window blur, M7 (b) container transform | native | 600-1000 | DONE (2026-11-07; not compiled; decisions taken by default: blur only F0, or F1 on a non-low device out of battery saver; container transform = snapshot overlay) |
+| owner | L1: V2 V3 V4 V5 device pass; send results any time, findings become tasks in Part 4a-4d | device | 0-100 | OPEN |
+
+Part 1 left over: P8 `--t-*` / `--st-*` adoption and the 194 hex colours (kept: per-theme and brand values), 25 spacing nudges (negative margins), 13 infinite-loop durations. Native part of M1 / M5 was done in Part 4a. Part 2 left over: M2 old-screen shift / dim and dock slide (dock is native, Part 4c), P4 `.g0` has no caller yet (viewer counters / badges are native, Part 4c). Part 2 touched Kotlin: NO; headless Chromium smoke: dialog exit ok, no init errors. Part 1 touched Kotlin: NO. Page JS `node --check` ok (7 scripts), CSS braces balanced, `gen.py --check`, T1 0 failing, `parity.py` 0 differences; not opened in a browser or on a device.
+
+Part 4b left over: (1) N1 (b) is a tint-raised stand-in, not real blur: a native view cannot blur what the page draws under it (blur-behind belongs to a Window), so real blur of the bars / dock / drawer needs a backdrop snapshot = new task **N1 (c), Part 4d**; the top / selection bar still sit on top of the page's own `#top` bar, so they only look different once that twin is transparent (N7, Part 4c). (2) `LumenGrad.glow / skeleton / scrimTop / scrimBottom` exist but have no caller yet (tiles + splash and viewer bars in Part 4c, skeleton rows in Part 4d). (3) N7 (Search / Viewer bar variants, Large collapsing bar, scroll-driven transparent small bar) moved to Part 4c: it needs a page twin that is transparent at scroll 0, a scroll event page to native and a layout change (`--topH`). Part 4b touched Kotlin: YES (not compiled). Page JS `node --check` ok (8 scripts), `gen.py --check`, T1 0 failing, `parity.py` 0 differences, lint unchanged (0 / 25 / 0 / 13 / 194).
+
+Part 4c done (2026-11-07, native + page, Kotlin NOT compiled): **P6** `StorageTreemap.CAT_COL` is filled from `LumenCategory.of(ctx)` (`StorageTreemap.refreshCat(ctx)`, called in `StorageActivity.onCreate`; pie / list / chips share the array); `CodeHl.color(ctx, kind, dark)` takes token colours from the category table (keyword = pdf, string = xls, number = zip, type = doc, call = vid, attribute = ppt, meta = pic, comment stays neutral) and `TextEditorActivity` uses it. **N3** grid "no thumbnail" page = the Lumen category tile (`NlGridView.page()` calls `NlFileIcons.draw`, extension shown from 64 dp); `drawLegacy` now has no caller (deleted 2026-11-08, with its helpers and colour constants). **N5 (page part)** block `/*LUMEN-UI17*/`: Devices / FTP / Cloud / SMB / USB sheet header icons and server avatars (`.smi`, `.sma`) are category tone tiles (needs `:has()` + `color-mix`, plain icons otherwise). **N7 (scroll-driven part)** `NlChrome.onElev` (set by `NlChrome`, called by `NativeList` on scroll, on layout and on `hide()`): the small top bar (`NlBarView.setElevated`) is transparent with ink-coloured title / glyphs while the list is at its top and fills in over 160 ms once scrolled; only at glass F0 / F1 (the page twin `#top` is transparent only there), instant with Reduce motion.
+Part 4c left over: Large (collapsing 112 to 64 dp) top bar (needs `--topH` layout change and page twin, not started), Search / Viewer bar variants (the viewers already use scrim gradients; `LumenGrad.scrimTop / scrimBottom` still have no caller), folder drawing in pickers / album covers (no native picker or album cover exists: the album cards are page-drawn), `NlDrawer` icons (already Lumen glyphs since Part 9), gallery (`NlGalView`) has no file tiles, dark viewer chrome / `StorageWiz` themes / search chips / Drive-FTP-SMB badges keep their own colours, `NlSplash`. **N13 decision: accepted for Android under 12** (window background `canvas` only; `NlSplash` is the instant-start snapshot, not a logo screen); revisit only if the owner asks for a logo frame. Part 4c touched Kotlin: YES (`StorageTreemap`, `StorageActivity`, `CodeHl`, `TextEditorActivity`, `NativeList`, `NlChrome`); not compiled, nothing seen on a device; page JS `node --check` ok, CSS braces balanced, `gen.py --check` ok, lint unchanged except hex 195 (+1).
+
+Status values: `NEXT`, `TODO`, `IN PROGRESS`, `DONE (date)`, `PARTLY (date, what is left)`.
+
+---
+
+
+## 2.4 Session log (add one row per session, newest last)
+
+| Date | Part | Result | Tick in 19.1c | Left over / new tasks | Kotlin touched? | Owner compile OK? |
+|---|---|---|---|---|---|---|
+| 2026-11-07 | (setup) | Plan created; V1 ticked | V1 | none | no | n/a |
+| 2026-11-07 | (fix) | CI compile error `NlChrome.kt:469` `Lumen.mix` to `LumenCategory.mix` | none | none | yes (1 line) | check next CI run |
+| 2026-11-07 | Part 1 (5-part plan) | P8 (mostly) P9 P5 P10 A3 M6 done; M1 M5 page side done | P9 P5 P10 A3 M6 x; P8 M1 M5 ~ | P8 `--t-*` use, native M1 / M5 | no | n/a |
+| 2026-11-07 | Part 2 | M3 M4 P1 P2 P3 done; M2 P4 partly | M3 M4 P1 P2 P3 x; M2 P4 ~ | M2 shift / dim, `.g0` callers | no | n/a |
+| 2026-11-07 | Part 3 | T1 (2 of 42 presets re-derived, report tool `preset_report.py`), T2 pairs + Auto/Light/Dark + Custom Auto, T3 switch, T4 hcl/hcd rings + 7:1 test, T5 preview card + `onWarning` + Ubuntu/Win11 buttons on slots, P7 gradient + glass floor tests (fixes: 6 presets, 4 glass tints, custom snap) | T1-T5 P7 x | `onWarning` in print log done; native use of `onWarning` elsewhere | yes (`LumenTokens.kt` new slot, `PrintLogActivity.kt`) | check next CI run |
+| 2026-11-07 | Part 4a | A1: TalkBack text + selected state for list rows / grid cards (`NlA11y`), virtual buttons for gallery cells and drawer hit rects, snackbar live region + dialog pane title; A2: chips 48 px box (`lmChipAt`) with ripple; N2: `NlSheets` glass panel, r-xxl top corners, drag handle, swipe-to-dismiss, slide in / out, scrim 32 / 56 %; N1 (a): `LumenGlass` (F0-F3, API 31 blur-behind, page reports step through `glassStepSet`); N12: snackbar lifts above the dock (`Lm.setLift`); M1 native: snackbar exit 140 ms, dialog + sheet window exit styles; M5 native: Undo countdown bar + number merge | A1 A2 N1a N2 N12 M1n M5n x | N1 (b) chrome glass (4b); `NlSheets` Sort dialog keeps its own row layout | yes (`Lm.kt`, `NlSheets.kt`, `NlDrawer.kt`, `NativeList.kt`, `NlChrome.kt`, `MainActivity.kt`, new `LumenGlass.kt`, `NlA11y.kt`, `res/anim`, `res/values/lm_anim.xml`) | check next CI run |
+| 2026-11-07 | (fix) | Selection-bar More popup stuck: native list swallowed taps outside the menu (`nlLay` now sends all touches to the page while `.dsc` is open, dims the list 18 %) | none | none | no | n/a |
+| 2026-11-07 | Part 4b | N1 (b) stand-in: `LumenGlass.chromeFill` / `chromeGradient`, bar / dock / drawer by glass step; N4: `shadowTint` slot, `LumenGrad.kt`, gFab / gPrimary / gSuccess / gSurface callers; N6: `LumenRadius`; N8: drawer storage card + ring | N6 N8 x; N1b N4 ~ | real blur N1 (c) (4d); gGlow / gSkeleton / gScrim callers (4c / 4d); N7 moved to 4c | yes (`NlChrome.kt`, `NlDrawer.kt`, `NlSheets.kt`, `LumenGlass.kt`, new `LumenGrad.kt`, `LumenTokens.kt` generated) | check next CI run |
+| 2026-11-07 | Part 4d (partly) | N9: `NlRpl` ripple in `NlRowView` + `NlGridView` (hover fill replaced); N10: `NlFlip` 160 ms check-circle flip in rows, hold lift pulse 1.02; M7 a: `NlSkelView` shown 180 ms after a tapped folder starts building, off in `applyItems` / `hide()` / 4 s; all in new `NlListFx.kt` + `NativeList.kt` | N9 N10 M7 ~ | N1 (c) real blur (owner decision still open), M7 b container transform, N11 sticky heading strip, N9 gallery cells + drawer rows, N10 day-heading partial state + dock stagger | yes (`NlListFx.kt` new, `NativeList.kt`) | check next CI run |
+| 2026-11-07 | Part 4e | N9: `NlRpl` ripple on gallery cells (`NlGalView`, per-cell, replaces the 15 % black press fill) and drawer rows (`DrView`, hit rect, circle for the close button; `NlRpl.release()` added); N10: dock action cells stagger in (`NlDockView.enter()`, 20 ms apart, 6 dp rise, off with Reduce motion), page day / month heading circle squeezes open on `.part` / `.sel` (CSS `LUMEN-UI18`); N11: `NlStickyView` heading pill (group of the first visible row, 900 ms after scroll stops, only in lists over 1.5 screens, not over gallery cells, never takes touches) | N9 N10 N11 x | N1 (c), M7 (b) = Part 4f | yes (`NlListFx.kt`, `NativeList.kt`, `NlDrawer.kt`, `NlChrome.kt`) | check next CI run |
+| 2026-11-07 | Part 4f | N1 (c): new `NlBackdrop.kt` (siblings under the chrome re-recorded into a 1/4-scale `RenderNode` + `RenderEffect` blur, drawn in the view's own onDraw, API 31+; F0 24 dp, F1 12 dp; F1 only on a non-low device out of battery saver; any failure = 4b stand-in) used by `NlBarView`, `NlDockView`, `DrPanel` (drawer); `LumenGlass.blurFill` (F0 72 / 66 %, F1 78 / 72 % light / dark; dock never under 82 %); repaint on list scroll and page push. M7 (b): new `NlHero.kt` snapshot overlay (PixelCopy of the list window, viewer starts with no platform animation, hero = the SAME thumbnail bitmap grows from its centre-cropped rounded rect to the picture fitted in the screen in 400 ms emphasized, snapshot fades to black, bars fade in after 120 ms, overlay lifts when the picture is ready, max 1.5 s); `NlRowView` / `NlGridView` remember `thumbR` / `thumbRad`; `NativeList.launchHero` for video and picture rows | N1c M7b x | gallery cells (`NlGalView`) and page-started viewers keep the Part 16 scale-up; PDF unchanged; blur is repainted on list scroll / page push only (page animations under the bar do not repaint it) | yes (`NlBackdrop.kt` new, `NlHero.kt` new, `NlChrome.kt`, `NlDrawer.kt`, `NativeList.kt`, `LumenGlass.kt`, `LumenPrefs.kt`, `ImageViewerActivity.kt`, `PlayerActivity.kt`) | check next CI run |
+| 2026-11-07 | (review 4a-4f) | Audit fixes: sheet fling velocity read raw coordinates (a fling never closed the sheet), TalkBack bounds never empty (NlHitView, NlGalView), ripple stops redrawing while a finger is held, skeleton hide timer, blur repaint only when active, no nested blur | none | `NlChrome.onElev` is a static callback to the newest chrome (cleared only by the next chrome); device pass still open | yes (`NlSheets.kt`, `NlChrome.kt`, `NativeList.kt`, `NlListFx.kt`, `NlBackdrop.kt`) | check next CI run |
+| 2026-11-08 | (audit fixes) | Picker swatches = token values; semantic slots `info` / `onInfo` / `onError` / `onSuccess` / `successCont` / `warningCont`; docs status text; `drawLegacy` + helpers deleted; `NlChrome.release()` | A1-A2 audit rows (none in 19.1c) | dialog heroes / banners that use the new slots (A8); 16 presets without a Light / Dark partner | yes (`NlFileIcons`, `NlChrome`, `MainActivity`, regenerated `LumenTokens`) | check next compile |
+| | | | | | | |
+
+
+## 2.5 Status and decisions as built (from the spec 19.1a / 19.1b)
+
+
+**The current status is the status line in `LUMEN.md` (it also has Parts 4a-4f and the semantic slots of 4g); the audit of what differs from this spec is `LUMEN.md`.** Older text of this section (Parts 1-11 / 17 done, Round 2 A) is history. Numbering: spec Parts 1-18, Round 2 A-C and plan Parts 1-4g are three systems; the plan file maps them. Next: owner compile, device verification (T5 / T7 / T8 / T10, TalkBack).
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -970,7 +1131,8 @@ Known gaps carried forward:
 - Part 8 built `Lm.kt` (snackbar + dialog restyle through `AppPal.dlg`) and converted all `Toast.makeText`; `NlSheets` bottom sheets, snackbar bottom lift above bars, and hero tiles for non-destructive dialog types are still open.
 - Sheet swipe-to-dismiss, identical-message merging and the Undo countdown bar wait for Part 16 (motion); glass surfaces for Parts 14-15.
 
-### 19.1b Round 2: eleven follow-up items, in three parts (added 2026-11-07)
+
+#### 19.1b Round 2: eleven follow-up items, in three parts (added 2026-11-07)
 
 After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11 are named in the plan chat; **items 4-8 are only partly recorded** (the plan text for them was not in the session that built Round 2 Part A) and are written here from the leftovers of Parts 12-16, so check them against the owner's list before starting Part B / C. Whole round is roughly 2,800-4,700 lines; items 1-3 are about 370-580 lines; items 4-6 are the biggest and riskiest because they change native drawing code that has never been compiled or tested on a device.
 
@@ -1005,7 +1167,71 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 - Tests: `contrast.py` now also runs **T1b**: glyph against both tile gradient ends >= 3:1 for the 11 categories in light and dark and the two mono themes (0 failing). `gen.py --check` in sync; `parity.py` 0 differences; page JS `node --check` OK. Kotlin NOT compiled, nothing seen on a device.
 - Left for later (Part B / C): grid and gallery file tiles (`NlGridView`, 11.6 "Grid file" 64-96 dp), page list `.kd` tiles still use the older `--k-*-c/-b` vars (not the `--cat-*` family), Storage Analyzer treemap / pie, search chips and Drive / FTP / SMB badges still use their own colours (4.5 says one table feeds all).
 
-### 19.1c To-do list: everything still missing (added 2026-11-07)
+
+## 2.6 Fixes after the audit (2026-11-08)
+
+- Picker swatches for Light / Dark / Follow system now use the token values (`#b84d00`, `#17110c`).
+- Semantic slots A2: `info`, `onInfo`, `onError`, `onSuccess`, `successCont`, `warningCont` (derive.py, custom.js, tokens.json, gen.py; `LumenTokens.kt` regenerated; `contrast.py` 7 new pairs, 0 failing; parity 0 differences). The dialog heroes, banners and conflict dialog that use them are still unbuilt.
+- A10: `NlFileIcons.drawLegacy`, its helpers and ~139 hex colours deleted; static `NlChrome.onElev` cleared by `NlChrome.release()` from `MainActivity.onDestroy`. Kept on purpose: `LumenGrad.glow / scrimTop / scrimBottom` (callers planned, N4).
+- Docs: the three Lumen md files merged into this one; status text and the wrong "Open items: 9" count removed.
+
+---
+
+# PART 3. WHAT IS MISSING IN THE CODE
+
+Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast.py`, `lint.py` all clean). Nothing below was run on a device; Kotlin was never compiled by Claude.
+
+## 3.1 Decisions waiting for the owner
+
+1. **Ember values vs spec 4.2-4.4** (A1): light primary `#b84d00` (spec `#C25100`); warning light `#f9ab00` (spec `#A66300`), dark `#fdd663` (spec `#FFC15E`); success dark `#81c995` (spec `#7FD99A`). Spec wins or spec text is corrected. T1 passes either way.
+2. **Folder colour** (A3): code uses the fixed app-icon colour (`#D2590A` / Lite `#9B63D8`, `NlClassicFolder.DEFAULT`); spec 4.5 says theme `primary`.
+3. **FAB shape** (A7): code is a pill (Part 11); spec 8.2 says 56 dp rounded square, 20 dp radius, pill only for the extended FAB.
+4. **16 presets with no Light / Dark partner** (mode switch leaves them as they are): solar, nord, dracula, cyber, matcha, coffee, midnight, tokyo, rosepine, catppuccin, vivaldi, opensuse, ubuntuorange, kali, popos, garuda. Pairing needs new theme designs.
+5. T1 regenerate presets or keep hex (kept so far); T3 OS font vs own font (default: only when font is Default); N13 older-Android splash logo or accept (accepted); N1 (c) blur policy (default taken in 4f; revisit if T8 fails).
+
+## 3.2 Code that differs from the spec
+
+- **Dock action colours** are hard-coded Material colours (`NlChrome.kt` ~l.412-428); not slots, not the category table; they ignore theme and dark mode. Download cards (`NlDlView`: `0xFF2E3133`, `0xFFFFB77C`, `0xFFF0F0F0`) are fixed dark colours too. (A4)
+- **Viewers ignore tokens** (A5): image / PDF viewer / player use literal black, white and alpha values; player seek-bar fill `0xFF4F63FF` (`PlayerWidgets.kt:20`) exists nowhere in the palette (spec: `gPrimary`); `PlayerWidgets` has its own light / dark set; scrims are hand-made; red badge `0xFFFF3B30` in `NativeList.kt:100`.
+- **`LumenGrad.glow / scrimTop / scrimBottom` have no caller** (A5 / N4 gGlow / gSkeleton / gScrim callers).
+- **Thumbnail radius** (A6, 8.2) is fixed 12 dp (15 dp bare) in `NlGridView` / `NlRowView`; spec: by column count (r.m up to 3, r.s at 4-5, r.xs at 6-8). No 88 % selected-thumbnail shrink in native.
+- **Dialogs** (A8, 12.12): hero tiles only for destructive dialogs (`Lm.kt`); Info, Warning (conflict) and Permission heroes, the Details row and the "Apply to all" switch row are not built; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
+- **Real glass only partly real** (A9): native bar / dock / drawer blur = `NlBackdrop` (API 31+, not compiled, not measured); the WebView is skipped in the blur, so page screens blur a flat canvas colour; page glass is CSS.
+- **Folder colour, FAB shape, Ember values**: see 3.1.
+
+## 3.3 Spec items with no code
+
+- Large collapsing top bar (12.7), Search and Viewer bar variants, viewer auto-hide after 3 s (12.7 / 12.22) (N7).
+- Banners (12.15); designed empty / error / permission states with glyph + glow (12.17, page still says "Nothing here"); tooltips and coach marks (12.21); tabs with sliding 3 dp indicator and fade-through (12.10); pull-to-refresh as 40 dp glass circle (12.18, still `SwipeRefreshLayout`); scrollbar fade (12.19) only partly.
+- Job cards (12.16): `JobOverlay` has no `gPrimary` / `gSuccess` bars; ring chart only in the drawer card.
+- Breakpoints (9.4): permanent drawer at 900 dp+, 24 / 32 dp margins, foldable reflow; dialog widths per 9.2; sheets Full size / modal-center only on the page.
+- Typography: `--t-*` used 10 times, `--st-*` never (P8); native `LumenTypography` does not exist (sizes hand-set in sp).
+- Haptic map (13.5): pull-to-refresh tick and success "double soft tick" not checked in native.
+- Container transform: gallery cells (`NlGalView`) and page-started viewers have none; no return transition; PDF viewer unchanged (M7).
+- Round 2 / Part 2 leftovers: M2 old-screen shift / dim, native dock slide, `.g0` callers (viewer counters / badges), native N5 pickers / album covers / drawer icons / Devices-FTP-Cloud tiles, P6 `StorageWiz` + search chips + Drive / FTP / SMB badges + `CodeHl` + dark viewer chrome (one colour table), `NlSplash`.
+- Round 2 items 7 and 8 (see 2.5).
+
+## 3.4 Unverified (needs the owner)
+
+- **Compile:** all Kotlin from Parts 4a-4f (`NlBackdrop`, `NlHero`, `DrPanel.draw`, `NlListFx`, `Lm` exits) and the 2026-11-08 edits (`NlFileIcons`, `NlChrome.release`, `MainActivity.onDestroy`, regenerated `LumenTokens.kt`) are not compiled. Check: file tiles look the same in list / grid / search.
+- **V2** device pass: T5 parity screenshots, T6 glass ladder F0-F3, T7 font scale 130 / 160 / 200 %, T8 gallery scroll with `lmFrameTest`, T10 native theme-switch flash. **V3** TalkBack. **V4** `LumenPrefs.glassHint()` low-end guess. **V5** the three static dark-theme selector lists (UI4 / UI5 / UI6, `data-cdark`) after any new dark preset.
+- **4f check first:** Settings > Glass quality Full and Auto: top bar, dock, drawer blur the list (Android 12+); Light / Reduce transparency = flat; scroll speed unchanged; picture / video grows from its thumbnail; if the blur stutters set `NlBackdrop.ENABLED = false`.
+
+## 3.5 Page lint (kept on purpose)
+
+195 raw hex colours (per-theme and brand values), 25 spacing nudges (negative margins), 13 infinite-loop durations. Target in P8: `--t-*` / `--st-*` adoption.
+
+## 3.6 Suggested order
+
+1. Owner compile + device pass (V2-V5, 4f check) before more native code.
+2. Decide 3.1 items 1-3 (one-line token or text edits).
+3. Quick code fixes: player seek bar to theme primary, give `LumenGrad.scrim*` / `glow` callers, thumbnail radius by column count.
+4. Dialog heroes + banners + conflict dialog on the new semantic slots (A8).
+5. Move dock / download-card / viewer colours onto slots and the category table (A4, A5).
+6. Then the spec items in 3.3.
+
+## 3.7 Item list with ticks (spec 19.1c)
+
 
 Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (`[x]`) and date an item when it is built; add new leftovers here, not in the part notes. Order inside a group = suggested order.
 
@@ -1064,53 +1290,10 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] A2 (2026-11-07, Part 4a) Chips: real 48 px hit box with ripple (today a click redirect on the `.chips` padding, no ripple there).
 - [x] A3 Extend the icon-button name table `LB` whenever a new icon-only button appears. (done 2026-11-07, Part 1: `lint.py` A3 line lists unnamed icon-only buttons; 0 now)
 
-### 19.2 Old to new quick map
 
-| Old | New |
-|---|---|
-| `--bg` / `--card` / `--cont` | `canvas` / `surface` / `surfaceHi` (or `surfaceLo` for wells) |
-| `--ac` / `--onac` | `primary` / `onPrimary` |
-| `--sel` / `--onsel` | `primaryCont` / `onPrimaryCont` |
-| `--fab` | `gPrimary` |
-| `--bd` | `edge` |
-| `--mut` | `inkMut` |
-| `--err`, `--errc`, `--ok`, `--warn` | semantic set 4.4 |
-| `--hc1..6` | category set 4.5 |
-| radii 2, 4 / 8, 9, 10 / 12 / 14, 16, 18 / 20, 24 / 28 / 50% | `r.xs` / `r.s` / `r.m` / `r.l` / `r.xl` / `r.xxl` / `r.full` |
-| `#sheet .card` variants (`.vs`, `.fu`, `.pj`) | sheet sizes Tall / Full / Modal-center |
-| native `AlertDialog`, `dlg_bg*.xml` | dialog component 12.12 |
-| `Toast.makeText`, page `toast()` | snackbar 12.14 |
+## 3.8 Next-session notes (from the old work plan)
 
-### 19.3 Acceptance tests
 
-| ID | Test | Pass when |
-|---|---|---|
-| T1 | Contrast table for every theme and glass step | all pairs in 4.3 and 4.7 pass |
-| T2 | Token lint | no raw colour, radius, spacing, duration in page CSS or native layouts outside the token file |
-| T3 | Dialog audit | every dialog in the app (list generated from code) uses the one component |
-| T4 | Icon audit | every glyph is on the 24 grid, 1.75 dp stroke, from the inventory |
-| T5 | Parity screenshots | page and native screens of the same theme show identical colours (pixel sample of 20 points) |
-| T6 | Fallback | F0 to F3 each render without clipped or unreadable elements; Reduce transparency forces F3 |
-| T7 | Font scale | 200 % on file browser, gallery, settings, dialogs: nothing clipped, nothing unreachable |
-| T8 | Performance | gallery scroll with 3000 items keeps frame drops under 5 % at F0 on the mid reference device, under 10 % at F1 on the low one |
-| T9 | Motion | Reduce motion removes all transforms and loops |
-| T10 | Theme switch | switching themes cross-fades with no white flash on any screen, native included |
-
-### 19.4 Do / don't
-
-| Do | Don't |
-|---|---|
-| Use the next token on the scale | Invent 10 dp, 14 dp, 18 dp, 22 dp |
-| Put one Primary action per surface | Show two gradient buttons side by side |
-| Let glass float above content | Put blur behind list rows or text columns |
-| Pair colour with glyph and word | Use red / green alone for meaning |
-| Reuse the dialog, sheet, snackbar | Build a feature-specific popup card |
-| Animate transform and opacity | Animate width, height, blur radius inside lists |
-| Keep gradient hue drift under 20 degrees | Use rainbow gradients (except Aurora wallpaper) |
-| Test every new colour on glass and on gradient | Trust that "it looked fine on my theme" |
-| Offer the solid fallback for every effect | Make any feature depend on blur |
-| Add new glyphs to the inventory first | Paste a random icon path |
-
----
-
-*End of Lumen Design System v1.0. Next step suggested: Part 1 of 19.1 (token file and scales), then Part 7 (page dialog and snackbar) because those give the largest consistency gain for the least risk.*
+- **Start with:** owner compile of 4f, then the device pass. Check first: Settings > Glass quality Full (F0) and Auto on a normal phone: top bar, dock and drawer blur the list under them while scrolling (Android 12+ only); Light / Reduce transparency = flat as in 4b; scroll speed unchanged (T8 `lmFrameTest`); open a picture and a video from a list row or grid card: the thumbnail grows into the viewer, bars fade in after a moment, no flash when it hands over; Reduce motion = old scale-up. If the blur stutters set `NlBackdrop.ENABLED = false`. Older note (4f), kept for history: Older note, Part 4c (N7 bar variants: Search / Viewer, Large collapsing bar, scroll-driven transparent small bar needs a transparent `#top` twin + scroll event + `--topH`; N3 grid / gallery category tiles; N5 folder drawing in pickers / album covers / drawer icons / Devices-FTP-Cloud tiles; N13 older-Android splash; P6 one colour table for Storage / search chips / badges / CodeHl / editor). Part 4b check first on a device: Settings > Glass quality F0-F3 (top bar hairline, dock and drawer more or less see-through, flat at the lowest step), FAB gradient + press ripple, snackbar progress, Windows 11 theme corners (dock pills, snackbar, View options sheet), open the side menu: storage card on top (ring + free space, tap = Storage analyzer), drawer panel must show its rows (if it is empty set `localStorage ls_nld='0'`), long-press a folder > More > tap outside closes it. Owner can run V2-V5 any time in parallel.
+- **Check first (Parts 1-2):** swipe a row left / right, drag the scrubber, open Settings -> Glass quality (segment), delete a file (row collapses); open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
+- **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 4c); N1 (c): decided by default in 4f (real blur at F0, F1 only on non-low devices; F2 / F3 keep the stand-in); revisit if T8 fails. M7 (b): snapshot overlay chosen.
