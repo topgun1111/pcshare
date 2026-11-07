@@ -5,6 +5,15 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-08 - Tar archives with any name
+### Fixed
+- A tar archive packed as .xz, .gz or .bz2 whose name does not end in ".tar" (for example "backup_tar.xz") now opens as an archive with its files listed, instead of showing one unnamed file.
+
+## 2026-11-08 - Swipe hint and lift removed
+### Removed
+- The first-run hint that told you to swipe a row right to share it or left to delete it. Rows cannot be swiped; use the long-press menu or the selection bar.
+- The small lift (scale-up) of a file or folder while you hold it. Long-press still starts selection with a tick.
+
 ## 2026-11-08 - Wide screens
 ### Added
 - On a wide window (tablet, unfolded foldable) with split screen off, the side menu stays open next to your files and the menu button is gone.

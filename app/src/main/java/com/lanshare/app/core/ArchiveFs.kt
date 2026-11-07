@@ -38,15 +38,18 @@ import java.util.zip.ZipFile
 private val ARC_EXT = setOf("zip", "rar", "cbz", "cbr", "7z", "cb7", "tar", "cbt", "tgz", "tbz", "tbz2", "txz", "gz", "bz2", "xz",
     "jar", "war", "aar", "xpi", "apks", "xapk")
 
+/** "name_tar.xz", "name-tar.gz", "name tar.bz2": a tar that was renamed with a separator other than a dot (the real test is the content, see [ArcIndex.sniffTar]). */
+private val TAR_SEP = Regex("[_\\- ]tar\\.(gz|bz2|xz)$")
+
 /** Reader to use for an archive name: "zip", "rar", "7z", "tar" / "tgz" / "tbz" / "txz" (tar, plain or compressed) or "gz" / "bz2" / "xz" (one compressed file). */
 fun arcFmt(name: String): String {
     val n = name.lowercase()
     return when {
         n.endsWith(".rar") || n.endsWith(".cbr") -> "rar"
         n.endsWith(".7z") || n.endsWith(".cb7") -> "7z"
-        n.endsWith(".tar.gz") || n.endsWith(".tgz") -> "tgz"
-        n.endsWith(".tar.bz2") || n.endsWith(".tbz") || n.endsWith(".tbz2") -> "tbz"
-        n.endsWith(".tar.xz") || n.endsWith(".txz") -> "txz"
+        n.endsWith(".tar.gz") || n.endsWith(".tgz") || TAR_SEP.containsMatchIn(n) && n.endsWith(".gz") -> "tgz"
+        n.endsWith(".tar.bz2") || n.endsWith(".tbz") || n.endsWith(".tbz2") || TAR_SEP.containsMatchIn(n) && n.endsWith(".bz2") -> "tbz"
+        n.endsWith(".tar.xz") || n.endsWith(".txz") || TAR_SEP.containsMatchIn(n) && n.endsWith(".xz") -> "txz"
         n.endsWith(".tar") || n.endsWith(".cbt") -> "tar"
         n.endsWith(".gz") -> "gz"
         n.endsWith(".bz2") -> "bz2"
@@ -126,6 +129,15 @@ class ArcIndex(val file: File?, val fmt: String, val charset: Charset, val rz: R
 
         private fun isTar(fmt: String) = fmt == "tar" || fmt == "tgz" || fmt == "tbz" || fmt == "txz"
 
+        /** For a single compressed file ("gz" / "bz2" / "xz"): the tar format ("tgz" / "tbz" / "txz") when the unpacked data is a tar archive (the "ustar" mark at byte 257 of the first block), else null. */
+        fun sniffTar(fmt: String, file: File): String? = try {
+            unpack(fmt, file.inputStream()).use { i ->
+                val h = ByteArray(512); var n = 0
+                while (n < 512) { val r = i.read(h, n, 512 - n); if (r < 0) break; n += r }
+                if (n >= 262 && String(h, 257, 5, Charsets.ISO_8859_1) == "ustar") when (fmt) { "gz" -> "tgz"; "bz2" -> "tbz"; else -> "txz" } else null
+            }
+        } catch (_: Exception) { null }
+
         /** Name of the one file inside a plain .gz / .bz2 / .xz: the archive name without its last extension. */
         fun singleName(file: File): String = file.name.substringBeforeLast('.').ifEmpty { file.name }
 
@@ -154,6 +166,7 @@ class ArcIndex(val file: File?, val fmt: String, val charset: Charset, val rz: R
                 return ix
             }
             if (fmt == "gz" || fmt == "bz2" || fmt == "xz") {
+                sniffTar(fmt, file)?.let { return read(file, it) }   // a tar inside, whatever the file is called: list its entries
                 val ix = ArcIndex(file, fmt, Charsets.UTF_8)
                 try {
                     var n = 0L

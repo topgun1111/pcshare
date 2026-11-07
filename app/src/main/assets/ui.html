@@ -1181,7 +1181,6 @@ html[data-rm] #list.lm-push{animation:lmFadeIn var(--d-rm) linear}
 #list.lm-selst .row:nth-child(1){--lmd:0ms}#list.lm-selst .row:nth-child(2){--lmd:20ms}#list.lm-selst .row:nth-child(3){--lmd:40ms}#list.lm-selst .row:nth-child(4){--lmd:60ms}#list.lm-selst .row:nth-child(5){--lmd:80ms}#list.lm-selst .row:nth-child(6){--lmd:100ms}#list.lm-selst .row:nth-child(7){--lmd:120ms}#list.lm-selst .row:nth-child(8){--lmd:140ms}#list.lm-selst .row:nth-child(9){--lmd:160ms}#list.lm-selst .row:nth-child(10){--lmd:180ms}#list.lm-selst .row:nth-child(11){--lmd:200ms}#list.lm-selst .row:nth-child(12){--lmd:220ms}#list.lm-selst .row:nth-child(13){--lmd:240ms}#list.lm-selst .row:nth-child(14){--lmd:260ms}
 html[data-rm] #list.lm-selst .row{animation:none}
 #list:not(.v-grid) .row{touch-action:pan-y}
-.row.lm-lift{position:relative;z-index:2;transform:scale(1.02);box-shadow:var(--e3);border-radius:var(--r-m);transition:transform var(--d-fast) var(--ease-spring),box-shadow var(--d-fast)}
 #lmsb{position:fixed;right:0;top:calc(env(safe-area-inset-top,0px) + 88px);bottom:112px;width:28px;z-index:6;display:none;touch-action:none}
 #lmsb.on{display:block}
 #lmsb i{position:absolute;right:2px;width:6px;height:44px;border-radius:var(--r-full);background:var(--inkMut,var(--mut));opacity:.55;transition:width var(--d-fast),opacity var(--d-fast)}
@@ -7164,11 +7163,6 @@ if(typeof render==='function'){const R0=render;window.render=render=function(){
   if(!same&&lastKey){const d=(S.path.match(/\//g)||[]).length;l2.style.setProperty('--lmpx',(d<lastDepth?-24:24)+'px');l2.classList.remove('lm-push');void l2.offsetWidth;l2.classList.add('lm-push');setTimeout(()=>l2.classList.remove('lm-push'),340)}
   lastKey=key;lastDepth=(S.path.match(/\//g)||[]).length;
   const n=S.sel.size;if(prevSel===0&&n>0&&!rm()){l2.classList.add('lm-selst');setTimeout(()=>l2.classList.remove('lm-selst'),480)}prevSel=n;return out}}
-/* the row under the finger, for the hold-menu lift below */
-addEventListener('pointerdown',e=>{const r=e.target.closest&&e.target.closest('#list .row[data-n]');if(r)window.__lmRow=r},true);
-/* P1 hold-menu lift: the row under the finger scales to 1.02 with E3 while the popup menu is open */
-new MutationObserver(ms=>{ms.forEach(m=>{m.addedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&window.__lmRow&&window.__lmRow.isConnected)window.__lmRow.classList.add('lm-lift')});
-  m.removedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('dsc')&&!n.dataset.lmx)qa('.row.lm-lift').forEach(r=>r.classList.remove('lm-lift'))})})}).observe(document.body,{childList:true});
 /* P1 fast-scroll scrubber with a name / date bubble (page list, 40+ rows) */
 const sb=E('div','');sb.id='lmsb';const th=E('i'),bb=E('b');sb.append(th,bb);document.body.append(sb);
 let sbT=0,drag=false;const span=()=>Math.max(1,sb.clientHeight-44),mx=()=>Math.max(1,document.documentElement.scrollHeight-innerHeight);
@@ -7335,10 +7329,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
       b.onclick=()=>{try{localStorage.setItem('lmcoach_'+key,'1')}catch(_){}c.remove()};c.append(b);document.body.append(c);
       const r=el.getBoundingClientRect(),w=c.offsetWidth;c.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';
       const bt=r.bottom+10;c.style.top=(bt+c.offsetHeight>innerHeight-8?Math.max(8,r.top-c.offsetHeight-10):bt)+'px';return true};
-    /* first use: tell about row swipes once, after the first rows are on screen */
-    let tries=0;const tick=()=>{if(++tries>40)return;const r=document.querySelector('#list .row[data-n]');
-      if(r&&!document.querySelector('.lmcoach')){if(lmCoach('swipe',r,'Swipe a row right to share it, left to delete it.'))return}
-      setTimeout(tick,1500)};setTimeout(tick,2500)})();
+    })();
 }catch(e){console.log('[lumen] ui20 init failed',e)}})();
 /*LUMEN-UI20-JS:END*/
 </script>

@@ -785,12 +785,6 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val skelOffRun = Runnable { skelOff() }   // one removable 4 s timeout: an old one must not hide the skeleton of a later folder
     private fun skelArm() { rv.removeCallbacks(skelRun); rv.postDelayed(skelRun, 180) }      // instant entries never flash it
     private fun skelOff() { rv.removeCallbacks(skelRun); skel.removeCallbacks(skelOffRun); if (skel.visibility != View.GONE) skel.visibility = View.GONE }
-    /** Lumen 4d N10: hold-menu lift, 1.02 and back (the page menu has no close event to hang a longer hold on). */
-    private fun lift(v: View) {
-        if (LumenPrefs.reduceMotion(act)) return
-        v.animate().cancel()
-        v.animate().scaleX(1.02f).scaleY(1.02f).setDuration(120).withEndAction { v.animate().scaleX(1f).scaleY(1f).setDuration(160).start() }.start()
-    }
     private val sticky = NlStickyView(act, UiScale.dens(act))   // Lumen 4e N11: sticky heading strip (group of the first visible row while scrolling)
     private val sb = PdfScrollBar(act)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
     private var lm: LinearLayoutManager = LinearLayoutManager(act)
@@ -1534,7 +1528,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) tapRow(i) }
             v.setOnLongClickListener {
                 val i = h.bindingAdapterPosition
-                if (i >= 0) { Haptics.view(it, "long"); lift(it); emit("long", i); true } else false
+                if (i >= 0) { Haptics.view(it, "long"); emit("long", i); true } else false
             }
             v.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) { val i = h.bindingAdapterPosition; if (i >= 0) { warmFor(i); emit("down", i) } }; false }
             return h
@@ -1569,7 +1563,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             }
         }
         override fun onViewRecycled(h: VH) {
-            h.v.animate().cancel(); h.v.translationX = 0f; h.v.scaleX = 1f; h.v.scaleY = 1f   // a lifted / pushed row must not come back shifted
+            h.v.animate().cancel(); h.v.translationX = 0f; h.v.scaleX = 1f; h.v.scaleY = 1f   // a pushed row must not come back shifted
             h.job?.cancel(false); h.job = null; h.key = null
             for (k in 0 until 5) { h.gj[k]?.cancel(false); h.gj[k] = null; h.gk[k] = null }
         }
