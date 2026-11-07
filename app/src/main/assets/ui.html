@@ -2713,7 +2713,7 @@ function render(){
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
   showFree();
   const V=shown();renderTools(V);
-  if(!V.length){const e=E('div');e.id='empty';e.append(ic(S.err?'wifi':'folder'),E('p','',S.err?'Can\'t reach this device right now…':(S.q?'No matches':S.items.length?'No visible files (hidden files are off)':galRoot()?'No albums':binRoot()?'The recycle bin is empty':'This folder is empty')));l.append(e)}
+  if(!V.length){l.append(S.err?lmEmpty('err','Can\'t reach this device','Check that it is on and on the same Wi-Fi.','Try again',()=>load(),'wifi',S.err):S.q?lmEmpty('neutral','No matches','Try a different word.',null,null,'search'):S.items.length?lmEmpty('neutral','Nothing to show','Hidden files are off.',null,null,'folder'):galRoot()?lmEmpty('','No albums','Pictures and videos will appear here.'):binRoot()?lmEmpty('','The recycle bin is empty','Deleted files wait here before they go for good.'):lmEmpty('','This folder is empty','Files you add will show up here.'))}
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
   const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
@@ -7172,4 +7172,51 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
     sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);const r=d.getBoundingClientRect();m.style.right=Math.max(8,innerWidth-r.right)+'px';m.style.top=Math.round(r.bottom+8)+'px'};w.append(a,d);return w};
 }catch(e){console.log('[lumen] ui14 init failed',e)}})();
 /*LUMEN-UI14-JS:END*/</script>
+<style>
+/*LUMEN-UI19*/
+/* 12.17 empty / error / permission states: glyph tile with glow, title, body, one action. 12.15 banner: glyph + text + action. */
+#empty{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);padding:var(--sp-12) var(--sp-6)}
+#empty .es-t{position:relative;width:88px;height:88px;display:grid;place-items:center;margin-bottom:var(--sp-2)}
+#empty .es-t::before{content:"";position:absolute;inset:-18px;border-radius:var(--r-full);background:radial-gradient(closest-side,color-mix(in srgb,var(--es-c,var(--primary)) 26%,transparent),transparent);pointer-events:none}
+#empty .es-t svg{position:relative;width:64px;height:64px;margin:0;padding:var(--sp-4);border-radius:var(--r-full);background:var(--es-b,var(--primaryCont));color:var(--es-c,var(--primary))}
+#empty.es-err{--es-c:var(--error);--es-b:var(--errorCont)}
+#empty.es-warn{--es-c:var(--warning);--es-b:var(--warningCont)}
+#empty.es-neutral{--es-c:var(--inkMut);--es-b:var(--cont)}
+#empty .es-h{margin:0;font-size:var(--fs-16);font-weight:600;color:var(--ink)}
+#empty .es-p{margin:0;max-width:28ch;font-size:var(--fs-14);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#empty .es-a{margin-top:var(--sp-3)}
+#empty .es-d{margin-top:var(--sp-2);font-size:var(--fs-11);color:var(--mut);opacity:.8;word-break:break-word}
+@media (prefers-reduced-motion:no-preference){#empty .es-t{animation:esIn 240ms cubic-bezier(.2,0,0,1)}@keyframes esIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}}
+#banner{display:none;align-items:center;gap:var(--sp-3);background:var(--errorCont);color:var(--onErrorCont)}
+#banner.on{display:flex}
+#banner.bn-warn{background:var(--warningCont);color:var(--onWarning)}
+#banner.bn-info{background:var(--primaryCont);color:var(--onPrimaryCont)}
+#banner svg{flex:none;width:24px;height:24px;margin:0;padding:0}
+#banner .bn-x{flex:1;min-width:0}
+#banner .bn-a{flex:none;background:none;border:0;color:inherit;font-weight:600;padding:var(--sp-2);min-height:40px;border-radius:var(--r-m);cursor:pointer}
+#banner .bn-a:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
+</style>
+<script>
+/*LUMEN-UI19-JS*/
+(function(){try{
+  /* lmEmpty(tone, title, body, actLabel, actFn, glyph, detail): tone err | warn | neutral | (default = primary) */
+  window.lmEmpty=function(tone,title,body,act,fn,glyph,detail){
+    const e=E('div');e.id='empty';e.className=tone?'es-'+tone:'';e.setAttribute('role',tone==='err'?'alert':'status');
+    const t=E('div','es-t');t.append(ic(glyph||(tone==='err'?'wifi':tone==='warn'?'warn':'folder')));
+    e.append(t,E('p','es-h',title));if(body)e.append(E('p','es-p',body));
+    if(act&&fn){const b=E('button','tbtn fill es-a',act);b.onclick=fn;e.append(b)}
+    if(detail)e.append(E('div','es-d',detail));
+    return e};
+  /* banner(text, opts): opts = {kind:'err'|'warn'|'info', act:'Retry', fn:()=>{}}; a leading warning sign in the text is dropped (the glyph replaces it) */
+  window.banner=function(m,o){const b=$('#banner');o=o||{};
+    b.textContent='';b.className='';
+    if(!m){b.style.display='none';return}
+    const kind=o.kind||(/^\u26a0/.test(m)?'err':'info');
+    if(kind!=='err')b.classList.add('bn-'+kind);
+    b.classList.add('on');b.style.display='';b.setAttribute('role',kind==='err'?'alert':'status');
+    b.append(ic(kind==='info'?'info':'warn'),E('span','bn-x',String(m).replace(/^\u26a0\s*/,'')));
+    if(o.act&&o.fn){const a=E('button','bn-a',o.act);a.onclick=o.fn;b.append(a)}};
+}catch(e){console.log('[lumen] ui19 init failed',e)}})();
+/*LUMEN-UI19-JS:END*/
+</script>
 </body></html>

@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Friendlier empty and error screens
+### Added
+- Empty folders, "no matches" and "can't reach this device" now show a big icon with a soft glow, a short title, one line of help and a Try again button.
+### Changed
+- The notice bar under the top bar now has an icon, a coloured background (red, amber or blue) and an optional action button.
+
 ## 2026-11-07 - Dialog looks and theme colours
 ### Changed
 - Delete, clear, error and info questions now show their coloured icon tile everywhere.

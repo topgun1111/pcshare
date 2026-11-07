@@ -1213,7 +1213,8 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 ## 3.3 Spec items with no code
 
 - Large collapsing top bar (12.7), Search and Viewer bar variants, viewer auto-hide after 3 s (12.7 / 12.22) (N7).
-- Banners (12.15); designed empty / error / permission states with glyph + glow (12.17, page still says "Nothing here"); tooltips and coach marks (12.21); tabs with sliding 3 dp indicator and fade-through (12.10); pull-to-refresh as 40 dp glass circle (12.18, still `SwipeRefreshLayout`); scrollbar fade (12.19) only partly.
+- (DONE 2026-11-07, page block `/*LUMEN-UI19*/`: `lmEmpty(tone,title,body,act,fn,glyph,detail)` for the file list empty / error states and `banner(text,{kind,act,fn})` with glyph + action; headless smoke ok, not on a device; other `fempty` screens (bin, settings) and a "N notices" stack not converted yet.)
+-  tooltips and coach marks (12.21); tabs with sliding 3 dp indicator and fade-through (12.10); pull-to-refresh as 40 dp glass circle (12.18, still `SwipeRefreshLayout`); scrollbar fade (12.19) only partly.
 - Job cards (12.16): `JobOverlay` has no `gPrimary` / `gSuccess` bars; ring chart only in the drawer card.
 - Breakpoints (9.4): permanent drawer at 900 dp+, 24 / 32 dp margins, foldable reflow; dialog widths per 9.2; sheets Full size / modal-center only on the page.
 - Typography: `--t-*` used 10 times, `--st-*` never (P8); native `LumenTypography` does not exist (sizes hand-set in sp).
