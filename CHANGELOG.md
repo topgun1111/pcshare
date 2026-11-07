@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Smoother closing, swipe sheets down, Undo timer
+### Added
+- Dialogs, sheets and menus now fade out when they close instead of vanishing.
+- Bottom sheets can be dragged down to close.
+- Messages with an Undo button show a small timer bar that runs out.
+### Changed
+- Repeated messages like "3 files" then "4 files" update the same message quietly.
+- Screen readers announce the selection count in the gallery.
+- Office files in the grid have the same coloured tile as other file types.
+
 ## 2026-11-07 - Screen reader for the top bar and action bar, nicer fields
 ### Added
 - Screen readers (TalkBack) now read and press the buttons of the top bar, the action bar, the add button and the progress card.

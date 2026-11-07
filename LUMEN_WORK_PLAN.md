@@ -4,7 +4,7 @@ Companion to `LUMEN_DESIGN_SYSTEM.md` (spec + item list 19.1c). This file answer
 Created 2026-11-07. Item IDs (V / N / M / P / T / A) are the ones in 19.1c; every one of the 42 open items sits in exactly one part below.
 
 **Status line (edit this first in every session):**
-`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 | Next: L1 | Open items: 42 | Last session: 2026-11-07`
+`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Part 1 of 5 (L2 + L3 page) | Next: Part 2 | Open items: 34 (M1, M5, P8 partly) | Last session: 2026-11-07`
 
 ---
 
@@ -45,32 +45,24 @@ Open parts of the above are tracked in the parts below, not here.
 
 ---
 
-## 3. Part overview (do in this order unless noted)
+## 3. The 5 parts (re-split 2026-11-07; one part per session, in order)
 
-| Part | Title | Items | Layer | Est. lines | Depends on | Status |
-|---|---|---|---|---|---|---|
-| L1 | Device verification | V2 V3 V4 V5 | owner on device | 0-100 | none | NEXT |
-| L2 | Page cleanup and token adoption | P8 P9 P5 P10 A3 | page | 200-300 | none | TODO |
-| L3 | Motion A: exits, sheet swipe, snackbar | M1 M6 M5 | page + `Lm.kt` | 200-300 | none | TODO |
-| L4 | Motion B: list, wallpaper, screens | M3 M4 M2 | page | 200-300 | L3 | TODO |
-| L5 | Page controls and glass leftovers | P2 P3 P4 | page | 250-350 | none | TODO |
-| L6 | Page list interactions | P1 | page | 250-350 | L4 (M3) | TODO |
-| L7 | Themes and contrast | T1 T2 T3 T4 T5 P7 | page + tools | 300-450 | L5 | TODO |
-| L8 | Native accessibility | A1 A2 | native + page | 120-200 | L1 (V3 findings) | TODO |
-| L9 | Native sheets and dialogs | N2 N12 N1 (a) | native | 200-300 | L3 | TODO |
-| L10 | Native chrome glass and gradients | N1 (b) N4 N6 | native | 200-300 | L9 | TODO |
-| L11 | Native tiles, icons, colour tables | N3 N5 N13 P6 | native + page | 300-450 | L1 | TODO |
-| L12 | Native list interactions | N9 N10 N11 M7 (a) | native | 250-350 | L6, L11 | TODO |
-| L13 | Native bar variants and drawer header | N7 N8 | native + page | 150-250 | L10 | TODO |
-| L14 | Container transform | M7 (b) | page + native | 80-150 | L12 | TODO |
-| | **Total** | **42** | | **about 2,700-4,150** | | |
+| Part | Content (old L-numbers, item IDs) | Layer | Est. lines | Status |
+|---|---|---|---|---|
+| 1 | L2 + page side of L3: P8 P9 P5 P10 A3, M1 / M5 / M6 (page) | page | 300-450 | DONE (2026-11-07) |
+| 2 | L4 + L5 + L6: M3 M4 M2, P2 P3 P4, P1 | page | 700-1000 | NEXT |
+| 3 | L7: T1-T5, P7 (decisions first, see section 6) | page + tools | 300-450 | TODO |
+| 4 | L8 + L9 + L10 + native rest of L3: A1 A2, N2 N12 N1 N4 N6, M1 / M5 native (`Lm.kt` exit, 6-arg snack) | native | 700-1000 | TODO |
+| 5 | L11 + L12 + L13 + L14: N3 N5 N13 P6, N9 N10 N11 M7, N7 N8 | native + page | 900-1300 | TODO |
+| owner | L1: V2 V3 V4 V5 device pass; send results any time, findings become tasks in Part 4 (A1 / A2) or 5 | device | 0-100 | OPEN |
+
+Part 1 left over: P8 `--t-*` / `--st-*` adoption and the 194 hex colours (kept: per-theme and brand values), 25 spacing nudges (negative margins), 13 infinite-loop durations. Native part of M1 / M5 moves to Part 4. Part 1 touched Kotlin: NO. Page JS `node --check` ok (7 scripts), CSS braces balanced, `gen.py --check`, T1 0 failing, `parity.py` 0 differences; not opened in a browser or on a device.
 
 Status values: `NEXT`, `TODO`, `IN PROGRESS`, `DONE (date)`, `PARTLY (date, what is left)`.
-Page parts (L2-L7) can run in any order and do not need a device. Native parts (L8-L14) should wait for L1 so device findings feed them.
 
 ---
 
-## 4. Parts in detail
+## 4. Item detail (written for the old L1-L14 split; the item text stays valid, the grouping is section 3)
 
 ### L1 Device verification (owner runs, Claude fixes what fails)
 Goal: confirm the built Lumen on real devices before more native code is added. Almost no new code.
@@ -169,10 +161,11 @@ Files: `ImageViewerActivity.kt`, `PlayerActivity.kt`, `MainActivity.kt`, `ui.htm
 |---|---|---|---|---|---|---|
 | 2026-11-07 | (setup) | Plan created; V1 ticked | V1 | none | no | n/a |
 | 2026-11-07 | (fix) | CI compile error `NlChrome.kt:469` `Lumen.mix` to `LumenCategory.mix` | none | none | yes (1 line) | check next CI run |
+| 2026-11-07 | Part 1 (5-part plan) | P8 (mostly) P9 P5 P10 A3 M6 done; M1 M5 page side done | P9 P5 P10 A3 M6 x; P8 M1 M5 ~ | P8 `--t-*` use, native M1 / M5 | no | n/a |
 | | | | | | | |
 
 ## 6. Next session
 
-- **Start with:** L1 (owner: run V2-V5 on device and send results) or, if no device time, L2 (page cleanup).
-- **Carry-over from last session:** none.
-- **Decisions waiting for the owner:** T1 regenerate presets or keep hex (L7); T3 OS font vs own font choice (L7); N13 older-Android splash logo or accept (L11).
+- **Start with:** Part 2 (page motion B, page controls, list interactions; no Kotlin). Owner can run V2-V5 any time in parallel.
+- **Check first:** open the page once in a browser / WebView: dialog + sheet + popup exits (`/*LUMEN-UI13*/` restores `display:flex` for 170 ms on close, cancels when content is replaced), sheet swipe on a bottom sheet, Undo bar under the snackbar.
+- **Decisions waiting for the owner:** T1 regenerate presets or keep hex (Part 3); T3 OS font vs own font choice (Part 3); N13 older-Android splash logo or accept (Part 5).
