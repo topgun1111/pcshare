@@ -517,7 +517,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         if (slide) setSlide(false)
-        AppPal.dlg(this).setTitle("Delete this picture?")
+        AppPal.dlg(this).kind("danger").setTitle("Delete this picture?")
             .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->

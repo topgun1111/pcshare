@@ -913,7 +913,7 @@ class PlayerActivity : Activity() {
     /** Asks, then moves the video to the Recycle bin (this phone) / deletes it (other devices) and plays the next one. */
     private fun deleteCurrent() {
         val i = curIndex(); val it = items.getOrNull(i) ?: return
-        dlg(AppPal.dlg(this).setTitle("Delete this video?")
+        dlg(AppPal.dlg(this).kind("danger").setTitle("Delete this video?")
             .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->

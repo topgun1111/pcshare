@@ -196,7 +196,7 @@ class InboxActivity : Activity() {
                     ClipSync.refresh(this)
                     toast(if (on) "Text you copy is sent to the default device while this app is open" else "Clipboard sync off")
                 }
-                2 -> AppPal.dlg(this).setTitle("Clear the inbox?").setMessage("Removes the list on this phone only.")
+                2 -> AppPal.dlg(this).kind("danger").setTitle("Clear the inbox?").setMessage("Removes the list on this phone only.")
                     .setPositiveButton("Clear") { _, _ -> Notes.clear() }.setNegativeButton("Cancel", null).show()
             }
         }.show()

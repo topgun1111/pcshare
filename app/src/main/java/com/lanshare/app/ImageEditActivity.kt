@@ -56,8 +56,10 @@ class ImageEditActivity : Activity() {
         private const val PREVIEW = 2048
         private const val MAX_SIDE = 8192
         private const val MAX_PIX = 64_000_000L
-        private const val ACCENT = 0xFFFF8F00.toInt()
     }
+
+    /** Theme primary lifted for the black editor stage (was a fixed orange). */
+    private val accent: Int by lazy { LumenGrad.onDark(Lumen.of(this)) }
 
     private lateinit var src: File
     private var dev = "local"
@@ -119,7 +121,7 @@ class ImageEditActivity : Activity() {
         subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 1 }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val save = btn("Save", 15f).apply {
-            setTextColor(ACCENT); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(accent); setTypeface(typeface, android.graphics.Typeface.BOLD)
             setOnClickListener { askSave() }
         }
         top.addView(close)
@@ -243,7 +245,7 @@ class ImageEditActivity : Activity() {
         val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         for (pc in intArrayOf(100, 75, 50, 25)) {
             chips.addView(TextView(this).apply {
-                text = "$pc%"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setTextColor(ACCENT); gravity = Gravity.CENTER
+                text = "$pc%"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setTextColor(accent); gravity = Gravity.CENTER
                 setPadding(dp(14), dp(10), dp(14), dp(10))
                 setOnClickListener { wEt.setText(max(1, (cw * pc / 100.0).roundToInt()).toString()) }
             })

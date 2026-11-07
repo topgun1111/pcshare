@@ -6,7 +6,7 @@ One file (merged 2026-11-08 from `LUMEN.md`, `LUMEN.md`, `LUMEN.md`; those three
 2. **Part 2: what is done** (status line, session rules, done table, plan parts, session log, fixes from the audit).
 3. **Part 3: what is missing in the code** (current open list, decisions, owner checks, item IDs).
 
-**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes + native Activity consistency pass 2026-11-07 | Next: compile and device verification (V2-V5, check 4f first), then remaining native spec items in Part 3 | Last session: 2026-11-07 (shared `LumenNativeTheme` applied from Activity lifecycle). Kotlin changes are NOT compiled in this environment.
+**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes + native Activity consistency pass 2026-11-07 | Next: compile and device verification (V2-V5, check 4f first), then remaining native spec items in Part 3 | Last session: 2026-11-08 (doc audit only, no code: Part 3 corrected against the code, see 3.2; the native dialog kinds and viewer scrims were already built and the old text missed them). Kotlin changes are NOT compiled in this environment.
 
 **Rule:** after every change, update this file (status line, Part 2 log, Part 3 list), `HANDOVER_READ_BEFORE_CODE.md` and `CHANGELOG.md` (user-visible only).
 
@@ -1192,9 +1192,9 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 
 ## 3.1 Decisions waiting for the owner
 
-1. **Ember values vs spec 4.2-4.4** (A1): light primary `#b84d00` (spec `#C25100`); warning light `#f9ab00` (spec `#A66300`), dark `#fdd663` (spec `#FFC15E`); success dark `#81c995` (spec `#7FD99A`). Spec wins or spec text is corrected. T1 passes either way.
+1. **Ember values vs spec 4.2-4.4** (A1, rechecked 2026-11-08 against `tokens.json`): only light primary differs: code `#b84d00`, spec `#C25100`. Warning (`#a66300` / `#ffc15e`), success (`#1e8e3e` / `#7fd99a`) and error already match the spec. Spec wins or spec text is corrected. T1 passes either way.
 2. **Folder colour** (A3): code uses the fixed app-icon colour (`#D2590A` / Lite `#9B63D8`, `NlClassicFolder.DEFAULT`); spec 4.5 says theme `primary`.
-3. **FAB shape** (A7): code is a pill (Part 11); spec 8.2 says 56 dp rounded square, 20 dp radius, pill only for the extended FAB.
+3. **FAB shape** (A7): page `#fab` is a 56 px high box with `--r-l` (16); spec 8.2 says 20 dp (`r.l` + 4) for the plain FAB and a pill only for the extended FAB. Old text said "pill": that was stale.
 4. **16 presets with no Light / Dark partner** (mode switch leaves them as they are): solar, nord, dracula, cyber, matcha, coffee, midnight, tokyo, rosepine, catppuccin, vivaldi, opensuse, ubuntuorange, kali, popos, garuda. Pairing needs new theme designs.
 5. T1 regenerate presets or keep hex (kept so far); T3 OS font vs own font (default: only when font is Default); N13 older-Android splash logo or accept (accepted); N1 (c) blur policy (default taken in 4f; revisit if T8 fails).
 
@@ -1203,10 +1203,10 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 - **Native Activity baseline (2026-11-07):** `LumenNativeTheme.kt` now applies theme-aware system bars, plain-root canvas, default monochrome text, EditText colours and 48 dp standard Button targets through `App.ActivityLifecycleCallbacks`. It intentionally preserves custom semantic colours and custom-drawn surfaces. This improves consistency across native Activities but does not complete the per-component spec or replace feature-specific styling.
 
 - (Dock action colours now read the category table: 2026-11-09.) (Download cards now read the slots: 2026-11-09.) (A4)
-- **Viewers ignore tokens** (A5): image / PDF viewer / player use literal black, white and alpha values; `PlayerWidgets` has its own light / dark set; scrims are hand-made. (Seek bar fill and the red "new" badge now read the theme: 2026-11-09.)
-- **`LumenGrad.glow / scrimTop / scrimBottom` have no caller** (A5 / N4 gGlow / gSkeleton / gScrim callers).
+- **Viewers partly on tokens** (A5, rechecked 2026-11-08): image and PDF viewer top bars use `LumenGrad.SCRIM_TOP_COLORS`, their accents use `LumenGrad.onDark(Lumen.of(..))`, the player seek bar and the "new" badge read the theme. Still literal: black / white and alpha values in `PdfViewerActivity` (12 + 5), `ImageViewerActivity` (7), `ImageEditActivity` (7), `PlayerWidgets` own light / dark set, `OfficeViewerActivity`, `StorageWiz` / `StorageWizUi` and `TextEditorActivity` (no `Lumen` reference at all except `CodeHl`).
+- **`LumenGrad.glow` and `scrimBottom` have no caller** (`scrimTop` is used as `SCRIM_TOP_COLORS`, `skeleton` has 2 callers). The viewers have no bottom bar that needs `scrimBottom` (counter pills are at the bottom), so add callers only when a real bottom chrome or empty-state halo is built.
 - **Thumbnail radius** (A6, 8.2) is fixed 12 dp (15 dp bare) in `NlGridView` / `NlRowView`; spec: by column count (r.m up to 3, r.s at 4-5, r.xs at 6-8). (Selected-thumbnail 88 % shrink done in the grid: 2026-11-09; list rows not.)
-- **Dialogs** (A8, 12.12): page `dlg()` now has Info / Warning / Permission / Success heroes, a Details row and an "Apply to all" switch row (2026-11-09, `o.kind`, `o.details`, `o.applyAll`); native `Lm` dialogs still have hero tiles only for destructive ones and none of the rest; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
+- **Dialogs** (A8, 12.12, rechecked 2026-11-08): page `dlg()` AND native `AppPal.Dlg` / `Lm.restyle` both have Info / Warning / Permission / Success / Danger heroes, a Details row and an "Apply to all" switch row (`kind()`, `details()`, `applyAll()`). Native dialogs still run on `AlertDialog` (that is the component, not a gap). UPDATE 2026-11-07 (session 2): 15 more native callers now pass `kind(...)` (delete / clear = danger, errors = warn, info), and the two "Details" dialogs (`UsActivity.actDetails`, `TextEditorActivity.details`) use `details()` rows. The multi-file "replace?" question is a page card with its own "Do this for all remaining files" box, so no native conflict loop needs `applyAll()`. Literals moved to slots: `ImageEditActivity` accent, `TextEditorActivity` colour ring + search highlights. Left on purpose: black / white over pictures in the viewers, `StorageWiz` own theme palettes, `PlayerPal`. NOT compiled. Older text: Open: only 9 native callers pass `kind(...)` (the other callers fall back to the title-based danger guess), no native caller uses `details()` (the two "Details" dialogs in `UsActivity` and `TextEditorActivity` pass one text block) or `applyAll()` (multi-file conflict loops), and the page has 59 `dlg()` callers, most without a kind.
 - **Real glass only partly real** (A9): native bar / dock / drawer blur = `NlBackdrop` (API 31+, not compiled, not measured); the WebView is skipped in the blur, so page screens blur a flat canvas colour; page glass is CSS.
 - **Folder colour, FAB shape, Ember values**: see 3.1.
 
@@ -1238,9 +1238,9 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 
 1. Owner compile + device pass (V2-V5, 4f check) before more native code.
 2. Decide 3.1 items 1-3 (one-line token or text edits).
-3. Quick code fixes: player seek bar to theme primary, give `LumenGrad.scrim*` / `glow` callers, thumbnail radius by column count.
-4. Dialog heroes + banners + conflict dialog on the new semantic slots (A8).
-5. Move dock / download-card / viewer colours onto slots and the category table (A4, A5).
+3. (Done: player seek bar, thumbnail radius by column count, viewer top scrims.) Remaining quick fix: nothing without a caller need.
+4. Add `kind` / `details` / `applyAll` to the remaining dialog callers, then banners (A8).
+5. Move the remaining literals (see 3.2 Viewers) onto slots: `ImageEditActivity`, `PdfViewerActivity`, `TextEditorActivity`, `StorageWiz*`, `OfficeViewerActivity`, `PlayerWidgets` (A5).
 6. Then the spec items in 3.3.
 
 ## 3.7 Item list with ticks (spec 19.1c)

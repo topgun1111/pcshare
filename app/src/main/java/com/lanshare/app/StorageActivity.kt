@@ -956,7 +956,7 @@ class StorageActivity : Activity() {
     // ---------------------------------------------------------------- delete (part 8b)
     private fun toast(m: String) = Lm.snack(this, m, Toast.LENGTH_LONG)
     /** A failed delete: the full message in a dialog (a toast cuts it off). */
-    private fun errBox(title: String, m: String) { try { AppPal.dlg(this).setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
+    private fun errBox(title: String, m: String) { try { AppPal.dlg(this).kind("warn").setTitle(title).setMessage(m).setPositiveButton("OK", null).show() } catch (_: Throwable) { toast(m) } }
 
     /** Ask before deleting file [n]; the file only goes to the recycle bin (restorable), like a delete in the file manager. */
     private fun confirmDelete(n: SNode) {
@@ -965,7 +965,7 @@ class StorageActivity : Activity() {
         val what = if (n.dir) n.files.toString() + " files · " + n.folders + " folders\n" else ""
         val dn = if (n.dir) StorageScan.deniedBelow(n) else 0
         val warn = if (dn > 0) "\nAndroid did not let the scan read " + (if (dn == 1) "one folder" else "$dn folders") + " inside it, so the size shown is only what was scanned; the real size may be larger.\n" else ""
-        AppPal.dlg(this)
+        AppPal.dlg(this).kind("danger")
             .setTitle(if (n.dir) "Delete this folder?" else "Delete this file?")
             .setMessage(n.name + "\n" + fmt(n.size) + "\n" + what + warn + "\nIt is moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days. You can restore it from the recycle bin of the file manager.")
             .setPositiveButton("Delete") { _, _ -> deleteNode(s, n) }
@@ -1069,7 +1069,7 @@ class StorageActivity : Activity() {
         sb.append('\n')
         if (dn > 0) sb.append("\nAndroid did not let the scan read ").append(if (dn == 1) "one folder" else "$dn folders").append(" inside them, so the size shown is only what was scanned; the real size may be larger.\n")
         sb.append("\nThey are moved to the recycle bin and kept there for ").append(Bin.KEEP_DAYS).append(" days. You can restore them from the recycle bin of the file manager.")
-        AppPal.dlg(this)
+        AppPal.dlg(this).kind("danger")
             .setTitle("Delete " + nodes.size + " items?")
             .setMessage(sb.toString())
             .setPositiveButton("Delete") { _, _ -> deleteMany(s, nodes) }

@@ -359,7 +359,7 @@ class PrintLogActivity : Activity() {
     }
 
     private fun clear() {
-        AppPal.dlg(this).setTitle("Clear the print log?").setMessage("Only this phone's log file is emptied. The PC keeps its own log.")
+        AppPal.dlg(this).kind("danger").setTitle("Clear the print log?").setMessage("Only this phone's log file is emptied. The PC keeps its own log.")
             .setPositiveButton("Clear") { _, _ -> bg { PrintLog.clear(); ui.post { phone = emptyList(); render(); toast("Print log cleared") } } }
             .setNegativeButton("Cancel", null).show()
     }

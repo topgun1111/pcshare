@@ -1350,7 +1350,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     private fun appDialog(a: AppRec) {
         val msg = "Total   " + NlModel.fmt(a.total) + "\nApp   " + NlModel.fmt(a.code) + "\nData   " + NlModel.fmt(a.userData) + "\nCache   " + NlModel.fmt(a.cache) +
             "\n\n" + a.pkg + "\n\nClear cache / data is in App settings, under Storage."
-        AppPal.dlg(act).setTitle(a.label).setMessage(msg)
+        AppPal.dlg(act).kind("info").setTitle(a.label).setMessage(msg)
             .setPositiveButton("App settings") { _, _ -> AppsUtil.openAppInfo(act, a.pkg) }.setNegativeButton("Close", null).show()
     }
 

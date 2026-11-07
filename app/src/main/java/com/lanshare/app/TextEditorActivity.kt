@@ -826,7 +826,7 @@ class TextEditorActivity : Activity() {
     }
 
     private fun failLoad(msg: String) {
-        AppPal.dlg(this).setMessage(msg).setCancelable(false)
+        AppPal.dlg(this).kind("warn").setMessage(msg).setCancelable(false)
             .setPositiveButton("Close") { _, _ -> finish() }
             .setNegativeButton("Retry") { _, _ -> load() }
             .show()
@@ -966,12 +966,12 @@ class TextEditorActivity : Activity() {
                     saving = false; busy(false)
                     if (isDestroyed || auto) return@post
                     val m = "Could not save: ${errText(x)}"
-                    if (then != null) AppPal.dlg(this).setMessage(m)
+                    if (then != null) AppPal.dlg(this).kind("warn").setMessage(m)
                         .setPositiveButton("Retry") { _, _ -> save(false, force, then) }
                         .setNegativeButton("Stay", null)
                         .setNeutralButton("Discard") { _, _ -> dirty = false; finish() }
                         .show()
-                    else AppPal.dlg(this).setMessage(m).setPositiveButton("OK", null).show()
+                    else AppPal.dlg(this).kind("warn").setMessage(m).setPositiveButton("OK", null).show()
                 }
             }
         }
@@ -995,7 +995,7 @@ class TextEditorActivity : Activity() {
             when (it.itemId) {
                 1 -> showFind()
                 8 -> gotoLine()
-                2 -> if (dirty && !readOnly) AppPal.dlg(this).setMessage("Discard your changes and reload the file?")
+                2 -> if (dirty && !readOnly) AppPal.dlg(this).kind("warn").setMessage("Discard your changes and reload the file?")
                         .setPositiveButton("Reload") { _, _ -> readOnly = path?.let { arcSplit(it) != null } ?: false; banner.visibility = View.GONE; load() }.setNegativeButton("Cancel", null).show()
                      else { banner.visibility = View.GONE; load() }
                 7 -> { wrap = !wrap; prefs.edit().putBoolean("wrap", wrap).apply(); applyTypography() }
@@ -1063,7 +1063,7 @@ class TextEditorActivity : Activity() {
             val v = TextView(this).apply {
                 gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) 0xFFC25100.toInt() else 0x33000000) }
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) Lumen.of(this@TextEditorActivity).primary else 0x33000000) }
                 layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(6), dp(6), dp(6), dp(6)) }
                 setOnClickListener { color = i; prefs.edit().putInt("color", i).apply(); applyTheme(); dlg.dismiss() }
             }
@@ -1104,8 +1104,14 @@ class TextEditorActivity : Activity() {
         val sz = if (diskSizeShown > 0) humanSize(diskSizeShown) else "-"
         val mt = if (diskMtime > 0) DateFormat.getDateTimeInstance().format(Date(diskMtime * 1000)) else "-"
         val enc = cs.name() + (if (bom.isNotEmpty()) " (BOM)" else "")
-        val msg = "Device: ${devName.ifEmpty { dev }}\nPath: ${path ?: "(new note in $dir)"}\nSize: $sz\nModified: $mt\nEncoding: $enc\nLine endings: ${if (crlf) "CRLF (Windows)" else "LF"}"
-        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
+        val rows = listOf(
+            "Device" to devName.ifEmpty { dev },
+            "Path" to (path ?: "(new note in $dir)"),
+            "Size" to sz,
+            "Modified" to mt,
+            "Encoding" to enc,
+            "Line endings" to (if (crlf) "CRLF (Windows)" else "LF"))
+        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(titleEt.text.toString().ifEmpty { "Text file" }).details(rows).setPositiveButton("OK", null).show()
     }
 
     private fun humanSize(n: Long): String {
@@ -1164,7 +1170,7 @@ class TextEditorActivity : Activity() {
         val t = body.text
         for (s in hl) t.removeSpan(s)
         hl.clear()
-        val soft = 0x66FFC107; val strong = 0xFFFF9800.toInt()
+        val wn = Lumen.of(this).warning; val soft = (wn and 0x00FFFFFF) or 0x66000000; val strong = wn or 0xFF000000.toInt()
         for (k in hits.indices) {
             if (k != hi && k >= 400) continue
             val s = BackgroundColorSpan(if (k == hi) strong else soft)

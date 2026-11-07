@@ -492,7 +492,7 @@ class UsActivity : Activity() {
                 })
                 if (st.optString("error").let { it.isNotEmpty() && it != "null" }) t.append("\n  Last error: " + st.optString("error"))
             } catch (e: Throwable) { t.append("Could not read the status: " + (e.message ?: e.javaClass.simpleName)) }
-            ui.post { if (!isFinishing) AppPal.dlg(this).setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
+            ui.post { if (!isFinishing) AppPal.dlg(this).kind("info").setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
         }.start()
     }
 
@@ -914,15 +914,22 @@ class UsActivity : Activity() {
 
     private fun actDetails() {
         val ps = picked(); if (ps.isEmpty()) return
-        val msg: String
+        val rows = ArrayList<Pair<String, String>>()
+        val title: String
         if (ps.size == 1) {
             val r = ps[0]
-            msg = r.name + "\n\n" + r.path + "\n" + (if (r.dir) "Folder" else NlModel.fmt(r.size)) + "\n" + (if (r.mtime > 0) dateF.format(Date(r.mtime * 1000L)) else "")
+            title = r.name
+            rows.add("Path" to r.path)
+            rows.add((if (r.dir) "Type" else "Size") to (if (r.dir) "Folder" else NlModel.fmt(r.size)))
+            if (r.mtime > 0) rows.add("Modified" to dateF.format(Date(r.mtime * 1000L)))
         } else {
             val files = ps.count { !it.dir }; val dirs = ps.size - files; val bytes = ps.filter { !it.dir }.sumOf { it.size }
-            msg = ps.size.toString() + " items\n" + files + " files, " + dirs + " folders\n" + NlModel.fmt(bytes) + " (files only)"
+            title = ps.size.toString() + " items"
+            rows.add("Files" to files.toString())
+            rows.add("Folders" to dirs.toString())
+            rows.add("Size" to NlModel.fmt(bytes) + " (files only)")
         }
-        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(title).details(rows).setPositiveButton("OK", null).show()
     }
 
     private fun actFolder() {
@@ -939,7 +946,7 @@ class UsActivity : Activity() {
         if (jobs.isEmpty()) { toast("These items cannot be moved to the recycle bin"); return }
         val folders = jobs.count { it.first.dir }; val files = jobs.size - folders
         val what = (if (files > 0) files.toString() + (if (files == 1) " file" else " files") else "") + (if (files > 0 && folders > 0) " and " else "") + (if (folders > 0) folders.toString() + (if (folders == 1) " folder" else " folders") else "")
-        AppPal.dlg(this).setTitle("Delete " + what + "?")
+        AppPal.dlg(this).kind("danger").setTitle("Delete " + what + "?")
             .setMessage(jobs.take(5).joinToString("\n") { it.first.name } + (if (jobs.size > 5) "\n+ " + (jobs.size - 5) + " more" else "") +
                 "\n\nThey are moved to the recycle bin and kept there for " + Bin.KEEP_DAYS + " days.")
             .setPositiveButton("Delete") { _, _ -> runDelete(jobs, maxOf(PAGE, rows.size)) }

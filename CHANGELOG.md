@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Dialog looks and theme colours
+### Changed
+- Delete, clear, error and info questions now show their coloured icon tile everywhere.
+- The Details dialogs for files and text notes show a neat list of rows (path, size, date, encoding).
+- The picture editor percentage and labels follow the theme colour; the text editor colour picker ring and search highlights follow the theme.
+
 ## 2026-11-09 - Top bar no longer garbled while scrolling
 ### Fixed
 - While you scroll a folder, the title and icons on the top bar no longer look doubled or smeared.

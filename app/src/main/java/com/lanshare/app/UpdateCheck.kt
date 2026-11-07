@@ -67,7 +67,7 @@ object UpdateCheck {
                     if (!force) return@Thread
                     a.runOnUiThread {
                         if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                        AppPal.dlg(a)
+                        AppPal.dlg(a).kind("info")
                             .setTitle("Güncel: $cur")
                             .setView(changeView(a, cur, all))
                             .setPositiveButton("Kapat", null)
@@ -81,7 +81,7 @@ object UpdateCheck {
                 val dl = apk.getString("browser_download_url"); val dlSize = apk.optLong("size", 0L)
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                    AppPal.dlg(a)
+                    AppPal.dlg(a).kind("info")
                         .setTitle("Yeni sürüm: $tag")
                         .setView(changeView(a, cur, all))
                         .setPositiveButton("İndir") { _, _ ->
