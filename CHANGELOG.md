@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - More button fix
+### Fixed
+- The More button in the action bar now opens its menu.
+
 ## 2026-11-07 - Swipe actions, fast scroller, softer motion
 ### Added
 - Swipe a file row right to share it or left to delete it.

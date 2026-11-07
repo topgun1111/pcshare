@@ -3660,7 +3660,9 @@ function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above
   ex.forEach(o=>{const c=o.l.c||'',b=E('button','dmb'+(c.indexOf('dng')>=0?' dng':'')+(c.indexOf('pri')>=0?' pri':'')),ii=E('span','dmi');
     const g=ic(o.l.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g);b.append(ii,E('span','',o.l.l));b.onclick=()=>{done();o.f()};m.append(b)});
   sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);
-  const t=$('#dock').getBoundingClientRect().top;m.style.right='12px';m.style.bottom=Math.round(innerHeight-t+8)+'px'}
+  const dr=$('#dock').getBoundingClientRect();m.style.right='12px';
+  /* native dock: the page #dock is hidden (0 x 0), so the menu would sit below the screen; use the native dock height (about 96 px + inset) instead */
+  m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(104px + env(safe-area-inset-bottom))'}
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
