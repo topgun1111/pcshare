@@ -205,7 +205,9 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
 
     // ---- rendering ----
     private fun render(l: List<JobView.Row>) {
-        if (l.isEmpty()) { expanded = false; bubble.visibility = View.GONE; card.visibility = View.GONE; return }
+        if (l.isEmpty()) { expanded = false; leave(); return }
+        if (leaving) { leaving = false; bubble.animate().cancel(); card.animate().cancel() }
+        bubble.alpha = 1f; card.alpha = 1f
         bubble.visibility = if (expanded) View.GONE else View.VISIBLE
         card.visibility = if (expanded) View.VISIBLE else View.GONE
         bubble.set(l)
@@ -221,6 +223,18 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         clearBtn.visibility = if (l.any { it.state != "run" }) View.VISIBLE else View.INVISIBLE
     }
 
+    private var leaving = false
+    /** Lumen 12.16: when the last job row is gone the card / bubble fades out (140 ms) instead of vanishing; plain with Reduce motion. */
+    private fun leave() {
+        val shown = bubble.visibility == View.VISIBLE || card.visibility == View.VISIBLE
+        if (!shown || leaving) { if (!leaving) { bubble.visibility = View.GONE; card.visibility = View.GONE }; return }
+        if (com.lanshare.app.LumenPrefs.reduceMotion(act)) { bubble.visibility = View.GONE; card.visibility = View.GONE; return }
+        leaving = true
+        for (v in listOf<View>(bubble, card)) if (v.visibility == View.VISIBLE) v.animate().alpha(0f).setDuration(com.lanshare.app.LumenMotion.FAST)
+            .withEndAction { if (leaving) { v.visibility = View.GONE; v.alpha = 1f } }.start()
+        ui.postDelayed({ leaving = false }, com.lanshare.app.LumenMotion.FAST + 30L)
+    }
+
     private inner class RowHolder {
         val root = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(6), 0, px(6)) }
         private val title = TextView(act).apply { setTextColor(pal.text); LumenTypography.fit(this, 14f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
@@ -228,6 +242,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         private val detail = TextView(act).apply { setTextColor(pal.subtext); LumenTypography.fit(this, 11f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         private val action = TextView(act).apply { LumenTypography.fit(this, 20f); gravity = Gravity.CENTER }
         private var id = ""
+        private var popped = false
 
         init {
             val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
@@ -245,7 +260,14 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
             when {
                 r.state == "run" && r.cancellable -> { action.text = "\u2715"; action.setTextColor(pal.text); action.tag = "cancel"; action.contentDescription = "Cancel" }
                 r.state == "run" -> { action.text = "\u2026"; action.setTextColor(pal.subtext); action.tag = null }
-                r.state == "done" -> { action.text = "\u2713"; action.setTextColor(pal.ok); action.tag = null }
+                r.state == "done" -> {
+                    action.text = "\u2713"; action.setTextColor(pal.ok); action.tag = null
+                    if (!popped) { popped = true   // Lumen 12.16: the check pops once (0.5 -> 1, 240 ms spring)
+                        if (com.lanshare.app.LumenPrefs.reduceMotion(act)) { action.scaleX = 1f; action.scaleY = 1f } else {
+                            action.scaleX = 0.5f; action.scaleY = 0.5f
+                            action.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(com.lanshare.app.LumenMotion.SPRING).start() }
+                    }
+                }
                 r.state == "error" -> { action.text = "!"; action.setTextColor(pal.err); action.tag = null }
                 else -> { action.text = "\u2013"; action.setTextColor(pal.subtext); action.tag = null }   // cancelled
             }
@@ -270,7 +292,12 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
             val run = l.filter { it.state == "run" }
             n = run.size; pct = JobView.overallPct(l)
             failed = run.isEmpty() && l.any { it.state == "error" }
+            val wasDone = done
             done = run.isEmpty() && !failed
+            if (done && !wasDone && !com.lanshare.app.LumenPrefs.reduceMotion(context)) {   // Lumen 12.16 Success: the container pulses once (1.0 -> 1.06 -> 1.0)
+                animate().cancel()
+                animate().scaleX(1.06f).scaleY(1.06f).setDuration(120).withEndAction { animate().scaleX(1f).scaleY(1f).setDuration(120).start() }.start()
+            }
             invalidate()
         }
         override fun onDraw(c: Canvas) {

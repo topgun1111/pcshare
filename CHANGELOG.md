@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Finished jobs say so
+### Changed
+- When a copy, zip or similar job finishes while a viewer is open, the progress bubble pulses and the check mark pops. The bubble stays 4 seconds, then fades away. Off with "Reduce motion".
+
 ## 2026-11-07 - Back gesture preview
 ### Changed
 - On Android 13 and newer, the back gesture now shows the system preview animation on the search, inbox and print screens. In search with files selected, Back still clears the selection first.
