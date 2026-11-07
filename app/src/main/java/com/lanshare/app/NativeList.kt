@@ -340,7 +340,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         nameP.color = if (isSel) pl.onsel else pl.fg
         smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var dupW = 0f
-        if (r.dup) { dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown); dupW = dupP.measureText("duplicate?") + 12f * d }
+        if (r.dup) { dupP.color = nlLm(context).onWarning; dupW = dupP.measureText("duplicate?") + 12f * d }   // text on the warning pill (contrast-tested slot; was a fixed brown)
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
         if (c) {
             // compact: one line  [name .......... small]   (name flex 1, small flex none, gap 10)
@@ -566,7 +566,8 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         val dw = dupP.measureText("duplicate?") + 12f * d
         fun pill(x: Float, mid: Float) {
             p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - 7.7f * d, x + dw, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
-            dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown); val fd = dupP.fontMetrics
+            dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown)
+            val fd = dupP.fontMetrics
             cv.drawText("duplicate?", x + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
         for ((i, ln) in lines.withIndex()) {
