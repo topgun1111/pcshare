@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Smoother folder changes and selection bar
+### Changed
+- Opening a folder or going up: the old list now moves a little and dims behind the new one.
+- The selection bar at the bottom slides down and fades when you clear the selection, instead of vanishing. Off with "Reduce motion".
+
 ## 2026-11-07 - Pictures and videos shrink back
 ### Changed
 - Closing a picture or video you opened from the file list now shrinks it back into its thumbnail. If you swiped to another picture first, it fades away as before. Off when "Reduce motion" is on.

@@ -878,13 +878,33 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
     /** M2: a folder one level deeper slides in from the right, one level up from the left (24 dp + fade, the page `.lm-push`). */
     private fun depthOf(k: String): Int { val p = k.substringAfter('|', "").substringAfter('|', ""); return if (p.isEmpty() || p == "/") 0 else p.count { it == '/' } }
-    private fun push(prev: String, next: String) {
-        if (prev.isEmpty() || LumenPrefs.reduceMotion(act) || prev.substringBefore('|') != next.substringBefore('|')) return
+    private fun pushWanted(prev: String, next: String): Boolean =
+        prev.isNotEmpty() && !LumenPrefs.reduceMotion(act) && prev.substringBefore('|') == next.substringBefore('|') && depthOf(prev) != depthOf(next)
+
+    /** M2 (spec 13.3): picture of the outgoing list, taken BEFORE the rows are swapped; null when no push will run. */
+    private fun outgoingSnap(prev: String, next: String): Bitmap? {
+        if (!pushWanted(prev, next) || rv.width <= 0 || rv.height <= 0) return null
+        return try { Bitmap.createBitmap(rv.width, rv.height, Bitmap.Config.ARGB_8888).also { rv.draw(Canvas(it)) } } catch (_: Throwable) { null }
+    }
+
+    private fun push(prev: String, next: String, out: Bitmap? = null) {
+        if (!pushWanted(prev, next)) { out?.recycle(); return }
         val a = depthOf(prev); val b = depthOf(next)
-        if (a == b) return
         rv.animate().cancel()
         rv.translationX = (if (b > a) 24f else -24f) * d; rv.alpha = 0f
         rv.animate().translationX(0f).alpha(1f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.EMPH).start()
+        if (out == null) return
+        // the old screen stays UNDER the incoming list (which fades in), shifts 8 dp the other way and dims 8 %, then goes away
+        try {
+            val iv = android.widget.ImageView(act).apply { setImageBitmap(out); scaleType = android.widget.ImageView.ScaleType.FIT_XY; isClickable = false }
+            val slp = srl.layoutParams as FrameLayout.LayoutParams
+            overlay.addView(iv, overlay.indexOfChild(srl), FrameLayout.LayoutParams(slp.width, slp.height).apply { leftMargin = slp.leftMargin; topMargin = slp.topMargin })
+            val dim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply { duration = LumenMotion.MED; interpolator = LumenMotion.EMPH }
+            dim.addUpdateListener { x -> iv.setColorFilter(android.graphics.PorterDuffColorFilter(((x.animatedValue as Float) * 0.08f * 255f).toInt() shl 24, android.graphics.PorterDuff.Mode.SRC_ATOP)) }
+            val end = Runnable { try { overlay.removeView(iv) } catch (_: Throwable) { }; out.recycle() }
+            iv.animate().translationX((if (b > a) -8f else 8f) * d).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.EMPH).withEndAction(end).start()
+            dim.start()
+        } catch (_: Throwable) { out.recycle() }
     }
 
     private class VH(val v: View) : RecyclerView.ViewHolder(v) {
@@ -1317,13 +1337,14 @@ class NativeList(private val act: Activity, private val web: WebView) {
         sel = selected
         if (key != curKey) {
             val prevKey = curKey
+            val outSnap = outgoingSnap(prevKey, key)   // M2: before the rows change
             lm.onSaveInstanceState()?.let { states[curKey] = it; if (states.size > 40) states.remove(states.keys.first()) }
             rows = list; calcGal(); curKey = key; curSig = sig
             ensureMgr(key.split('|').getOrNull(1) == "grid")
             ad.notifyDataSetChanged()
             val st = states[key]
             if (st != null) lm.onRestoreInstanceState(st) else lm.scrollToPositionWithOffset(0, 0)
-            push(prevKey, key)
+            push(prevKey, key, outSnap)
         } else {
             val plan = removalPlan(rows, list, oldSel, selected)
             rows = list; calcGal(); curSig = sig

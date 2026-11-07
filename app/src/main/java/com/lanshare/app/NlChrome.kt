@@ -432,6 +432,19 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
         rebuild(); invalidate()
     }
 
+    private var leaving = false
+    /** Spec 13.3 bar slide, exit half: slides down 24 dp + fades (140 ms accelerate) instead of vanishing; [NlChrome.set] calls it when the page drops the dock. */
+    fun leave() {
+        if (visibility != VISIBLE || leaving) return
+        if (LumenPrefs.reduceMotion(context)) { visibility = GONE; return }
+        leaving = true; animate().cancel()
+        animate().translationY(24f * d).alpha(0f).setDuration(140).setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction { leaving = false; if (alpha == 0f) visibility = GONE; translationY = 0f; alpha = 1f }.start()
+    }
+    /** True while [leave] runs; a dock that comes back mid-exit is brought in again by [enter]. */
+    val isLeaving: Boolean get() = leaving
+    fun cancelLeave() { if (leaving) { leaving = false; animate().cancel(); translationY = 0f; alpha = 1f } }
+
     /** Slide-up + fade when the bar appears (220 ms, decelerate); skipped with Reduce motion (spec 13.4: 120 ms fade only). */
     fun enter() {
         animate().cancel()
@@ -777,8 +790,12 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
         }
 
         val k = j.optJSONObject("dock")
-        val dockWas = dock.visibility == View.VISIBLE
-        if (place(dock, k?.optJSONArray("r"), Math.round(dock.inset)) && k != null) {
+        val dockWas = dock.visibility == View.VISIBLE && !dock.isLeaving
+        val dockRect = k?.optJSONArray("r")
+        if (dockRect == null || dockRect.length() < 4) {
+            if (dock.visibility == View.VISIBLE) dock.leave()   // Lumen M2: the dock slides away, it does not vanish
+        } else if (dock.isLeaving) dock.cancelLeave()
+        if ((dockRect != null && dockRect.length() >= 4 || !dock.isLeaving) && place(dock, dockRect, Math.round(dock.inset)) && k != null) {
             if (!dockWas) dock.enter()
             val a = k.optJSONArray("a"); val acts = ArrayList<NlDockView.Act>()
             if (a != null) for (i in 0 until a.length()) { val o = a.getJSONObject(i); acts.add(NlDockView.Act(o.optString("k"), o.optString("l"), o.optString("c"))) }
