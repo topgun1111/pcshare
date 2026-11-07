@@ -987,7 +987,7 @@ class PdfViewerActivity : Activity() {
         val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen); Lm.track(d)
         val cellW = (resources.displayMetrics.widthPixels - dp(8) * 2) / cols
         val boxH = (cellW * 1.35f).toInt()
-        val acc = 0xFFFFB77C.toInt()
+        val acc = LumenGrad.onDark(Lumen.of(this))   // theme primary on the dark picker (was fixed Ember orange)
         val sel = java.util.TreeSet<Int>()                       // pages picked with a long press
         var adapterRef: RecyclerView.Adapter<*>? = null
         val grid = RecyclerView(this).apply {
@@ -1033,7 +1033,7 @@ class PdfViewerActivity : Activity() {
                 h.num.text = if (on) "\u2713 ${position + 1}" else (position + 1).toString()
                 h.num.setTextColor(if (on) acc else Color.WHITE)
                 h.box.background = when {
-                    on -> GradientDrawable().apply { setStroke(dp(3), acc); setColor(0x55FFB77C); cornerRadius = dp(8).toFloat() }
+                    on -> GradientDrawable().apply { setStroke(dp(3), acc); setColor((acc and 0x00FFFFFF) or 0x55000000); cornerRadius = dp(8).toFloat() }
                     position == curPage -> GradientDrawable().apply { setStroke(dp(2), 0xAAFFFFFF.toInt()); cornerRadius = dp(8).toFloat() }
                     else -> null
                 }
@@ -1504,7 +1504,7 @@ internal class PdfScrollBar(c: Context) : View(c) {
         private set
     private val d = resources.displayMetrics.density
     private val th = 52f * d
-    private val thumbP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xE6FFB77C.toInt() }
+    private val thumbP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (LumenGrad.onDark(Lumen.of(c)) and 0x00FFFFFF) or 0xE6000000.toInt() }   // theme primary (was fixed Ember orange)
     private val bubP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2000000.toInt() }
     private val txtP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 14f * d; textAlign = Paint.Align.CENTER }
     private val rect = RectF()

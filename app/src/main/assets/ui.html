@@ -1916,7 +1916,7 @@ async function loadMain(){
     if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
       S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
     else{S.err='';S.items=[];render();
-      if(/Google Drive needs you to sign in again/.test(e.message||'')){dlg({title:'Google Drive',msg:'Google needs you to sign in again for this account.',ok:'Reconnect'}).then(v=>{if(v)openGdrive()}).catch(()=>{})}
+      if(/Google Drive needs you to sign in again/.test(e.message||'')){dlg({kind:'info',title:'Google Drive',msg:'Google needs you to sign in again for this account.',ok:'Reconnect'}).then(v=>{if(v)openGdrive()}).catch(()=>{})}
       else toast('⚠ '+e.message,4500)}}}
 /* ---- native file list (Android app only; Kotlin: NativeList.kt). The folder rows are drawn by a RecyclerView laid over the page.
    Used for every device (this phone, other LANShare devices, SMB shares) in list / compact / grid / large thumbnails, newest mode, archives, subfolder-search hits and the video gallery.
@@ -2498,7 +2498,7 @@ function isView(sdir,sname,m0){
         if(!(ST.indexed>0)||(tot>0&&dn<tot))card.append(E('small','',(ST.indexed>0?'Scan not finished.':'Pictures are not scanned yet. The first scan can take a while: keep the phone charging.')));
         addBtn((ST.indexed>0)?'Scan new pictures':(sdir?'Scan this album':'Scan pictures'),()=>act('start',{ocr:mode==='t',force:false,dir:sdir||''}),!(ST.indexed>0));
         if(ST.indexed>0&&mode==='t')addBtn('Read text',()=>act('start',{ocr:true,force:false,dir:sdir||''}));   // text reading is the slow part: only on request
-        if(ST.indexed>0&&!sdir)addBtn('Rescan all',async()=>{if(await dlg({title:'Rescan all pictures?',msg:'Starts from scratch. This can take a long time.',ok:'Rescan'})){await api('POST','/api/imgs',{op:'clear'}).catch(()=>{});act('start',{ocr:mode==='t',force:true})}});
+        if(ST.indexed>0&&!sdir)addBtn('Rescan all',async()=>{if(await dlg({kind:'warn',title:'Rescan all pictures?',msg:'Starts from scratch. This can take a long time.',ok:'Rescan'})){await api('POST','/api/imgs',{op:'clear'}).catch(()=>{});act('start',{ocr:mode==='t',force:true})}});
         card.append(btnRow)}
     }
     if(wasInst&&!m.installing&&m.installed&&ST.state!=='running'&&!(ST.indexed>0)){wasInst=false;act('start',{ocr:mode==='t',force:false,dir:sdir||''})}   // model just arrived: start the first scan by itself
@@ -3367,7 +3367,7 @@ function openPdfCache(){
   bM.onclick=()=>R&&post({op:'min',mb:nxt([5,10,20,50,0],R.minMb)});
   bQ.onclick=()=>R&&post({op:'quality',q:nxt([60,70,78,85,92],R.quality)});
   bC.onclick=()=>R&&post({op:'cap',mb:nxt([512,1024,2048,4096,0],R.capMb)});
-  bX.onclick=async()=>{if(!await dlg({title:'Clear all PDF caches?',msg:'The page pictures are deleted. Each PDF is prepared again the next time it is opened.',ok:'Clear'}))return;post({op:'clear'})};
+  bX.onclick=async()=>{if(!await dlg({kind:'warn',title:'Clear all PDF caches?',msg:'The page pictures are deleted. Each PDF is prepared again the next time it is opened.',ok:'Clear'}))return;post({op:'clear'})};
   api('GET','/api/pdfcache').then(draw).catch(()=>{});
   const d=E('button','tbtn fill','Done');d.style.cssText='align-self:flex-end;margin-top:var(--sp-2)';d.onclick=close;card.append(d);o.append(card)}
 function openUsSettings(){
@@ -3391,7 +3391,7 @@ function openUsSettings(){
   bO.onclick=()=>R&&post({op:'on',on:!R.enabled});
   bC.onclick=()=>R&&post({op:'charging',on:!R.charge});
   bP.onclick=()=>R&&post({op:'pause',on:!R.paused});
-  bR.onclick=async()=>{if(!await dlg({title:'Rescan the whole phone?',msg:'The list is built again. Search keeps working with the old list until the new one is ready.',ok:'Rescan'}))return;post({op:'rescan'})};
+  bR.onclick=async()=>{if(!await dlg({kind:'info',title:'Rescan the whole phone?',msg:'The list is built again. Search keeps working with the old list until the new one is ready.',ok:'Rescan'}))return;post({op:'rescan'})};
   bF.onclick=()=>{close();openUsFolders()};
   const nxt=(l,v)=>l[(l.indexOf(v)+1)%l.length]||l[0];
   bT.onclick=()=>R&&post({op:'content',on:!(R.content&&R.content.on)});
@@ -3577,7 +3577,7 @@ async function openUsb(){
     r.drives.forEach(x=>{const row=E('div','smr'),av=E('div','sma'),t=E('div','smb2'),ej=E('button','smx');av.append(ic('usb'));
       t.append(E('b','',x.name),E('small','',x.ok?(x.total>0?fmt(x.free)+' free of '+fmt(x.total):'Ready'):(x.why||'Cannot be read')));
       ej.textContent='Eject';ej.onclick=async e=>{e.stopPropagation();
-        if(!await dlg({title:'Eject '+x.name+'?',msg:'Wait until no copy to or from the drive is running. Android\u2019s storage screen opens: tap the eject button next to the drive there.',ok:'Open'}))return;
+        if(!await dlg({kind:'info',title:'Eject '+x.name+'?',msg:'Wait until no copy to or from the drive is running. Android\u2019s storage screen opens: tap the eject button next to the drive there.',ok:'Open'}))return;
         if(S.dev===x.id)openDev('local');close();
         try{LSAndroid.openUsbSettings()}catch(er){toast('Open Android Settings > Storage and eject the drive there',5000)}};
       row.append(av,t,ej);list.append(row)})};
@@ -4044,7 +4044,7 @@ function wifiOptions(pr,files,pre){return new Promise(res=>{
       add('','Automatic');
       tl.forEach(t=>add(t.id,t.name+(t.size?' \u00b7 '+t.size:'')+(t.loaded===false?' \u00b7 empty':t.level>0&&t.level<=100?' \u00b7 '+t.level+'%':'')));
       trNote.textContent=tl.length?'The printer chooses the tray itself unless you pick one. Some printers ignore the choice.':'This printer does not list its trays.';
-      if(r.trayinfo){const d=E('button','chip','Tray details');d.style.marginTop='6px';d.onclick=()=>{dlg({title:'What the printer reports',msg:r.trayinfo,ok:'Close'});const pp=$('#dlg .dcard p');if(pp){pp.style.cssText+=';white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-12);max-height:55vh;overflow:auto;text-align:left'}};trSec.append(d)}
+      if(r.trayinfo){const d=E('button','chip','Tray details');d.style.marginTop='6px';d.onclick=()=>{dlg({kind:'info',title:'What the printer reports',msg:r.trayinfo,ok:'Close'});const pp=$('#dlg .dcard p');if(pp){pp.style.cssText+=';white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-12);max-height:55vh;overflow:auto;text-align:left'}};trSec.append(d)}
       redraw.forEach(f=>f())
     }
   }).catch(()=>{info.textContent='Printer status unavailable'})})}
@@ -4412,7 +4412,7 @@ async function pssEdit(sid){
 async function pssAgain(sid,soft){
   let s;try{const g=await api('POST','/api/pssess',{op:'get',sid});s=g&&g.session;if(!s)throw new Error('Session not found')}catch(e){if(soft)return false;toast('\u26a0 '+e.message,5000);return}
   let P;try{P=await api('POST','/api/pssess',{op:'pdf',sid})}catch(e){
-    if(await dlg({title:'Stored PDF not found',msg:'Open the layout in the editor instead?',ok:'Edit'}))pssEdit(sid);return}
+    if(await dlg({kind:'warn',title:'Stored PDF not found',msg:'Open the layout in the editor instead?',ok:'Edit'}))pssEdit(sid);return}
   try{
     const ps={spec:s.spec,plan:s.plan,mode:s.mode,only:s.only||'',rev:!!s.rev};
     if(!s.to)return doPrint(null,{items:[{name:P.name,p:P.path,size:0}],dev:'local',full:1,path:'/',opts:s.opts,ps,done(){}});
@@ -4806,7 +4806,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
   const custom=async()=>{const v=await dlg({title:'Pictures per sheet',msg:'Columns x rows, e.g. 3x4 (1 to 8 each)',input:{value:SP.cols+'x'+SP.rows,label:'3x4'},ok:'Apply'});
     if(!v||v===true)return;const m=/^\s*(\d+)\s*[x\u00d7*]\s*(\d+)\s*$/i.exec(v);
     if(!m||+m[1]<1||+m[1]>8||+m[2]<1||+m[2]>8)return toast('Use columns x rows, e.g. 3x4',3500);setSpec({cols:+m[1],rows:+m[2]},'reflow')};
-  const fillMode=async v=>{if(Object.keys(PLACED).length&&!await dlg({title:'Auto-fill all sheets?',msg:'This replaces the current arrangement.',ok:'Auto-fill'}))return;
+  const fillMode=async v=>{if(Object.keys(PLACED).length&&!await dlg({kind:'warn',title:'Auto-fill all sheets?',msg:'This replaces the current arrangement.',ok:'Auto-fill'}))return;
     MODE=v;selSlot=null;sheet=0;side='front';fsel=-1;await call({op:'fill',mode:v});if(SP.free)await call({op:'tofree'})};   // free: arrange in the grid first, then let go of the grid
   /* part 8: saved layouts - tap = use (arranges the pictures again), "Remove..." then tap = delete */
   let pDel=false;
@@ -4820,7 +4820,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
     if(SP.free){e.spec.free=true;if(q0){const t=l=>(l||[]).map(f=>({cx:f.cx,cy:f.cy,w:f.w,rot:f.rot||0,st:f.st||1}));e.tpl={f:t(q0.ff),b:t(q0.fb)}}}
     if(i>=0)a[i]=e;else a.push(e);psPresetsSave(a);toast('Layout \u201c'+name+'\u201d saved',2500);dSet()}
   async function usePreset(q){
-    if(Object.keys(PLACED).length&&!await dlg({title:'Use \u201c'+q.name+'\u201d?',msg:'All sheets are filled again with the pictures.',ok:'Use layout'}))return;
+    if(Object.keys(PLACED).length&&!await dlg({kind:'warn',title:'Use \u201c'+q.name+'\u201d?',msg:'All sheets are filled again with the pictures.',ok:'Use layout'}))return;
     MODE=q.mode||'front';sheet=0;side='front';selSlot=null;FU.length=FR.length=0;await setSpec(Object.assign({},q.spec),'fill');
     if(q.spec.free){await call({op:'tofree'});if(q.tpl&&q.tpl.f&&q.tpl.f.length)await applyTpl(q.tpl)}}
   /* Part 12a: a saved FREE layout keeps the positions of one sheet (no pictures). Applied: pictures are dealt onto the sheets in order, n per sheet (n = items of the template front), the back items get the template back positions by index. */
@@ -5036,14 +5036,14 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
       const edge=SP.flip==='short'?'short':'long',two=hasBack();
       let hand=false;
       if(two){   // pictures on the back: a duplex printer does both sides itself; any other printer needs the sheets turned over by hand
-        const c=await dlg({title:'Two-sided sheets',msg:'These sheets have pictures on the back. Does the printer print on both sides by itself?',ok:'Yes, both sides',alt:'No, one side at a time'});
+        const c=await dlg({kind:'info',title:'Two-sided sheets',msg:'These sheets have pictures on the back. Does the printer print on both sides by itself?',ok:'Yes, both sides',alt:'No, one side at a time'});
         if(!c)return;hand=c==='alt'}
       if(!hand){const R=await sheetsPdf('',false);if(!R)return;
         await doPrint(null,sheetCx(R,two?edge:'off','',false));return}   // Sides preset to the layout's flip edge
       /* by hand: fronts first (one-sided), then - after the paper is back in the tray - the backs, upside down when the sheets are turned over the horizontal axis */
       const F=await sheetsPdf('front',false);if(!F)return;
       const to=await doPrint(null,sheetCx(F,'off','front',false));if(!to)return;   // the same printer is used for the backs
-      const c=await dlg({title:'Now the backs',msg:'Wait until all fronts are printed. Put the sheets back in the tray so the empty side gets printed - turned over along the '+edge+' edge. If the backs come out in the wrong order, use \u201cLast sheet first\u201d.',ok:'Print the backs',alt:'Last sheet first'});
+      const c=await dlg({kind:'info',title:'Now the backs',msg:'Wait until all fronts are printed. Put the sheets back in the tray so the empty side gets printed - turned over along the '+edge+' edge. If the backs come out in the wrong order, use \u201cLast sheet first\u201d.',ok:'Print the backs',alt:'Last sheet first'});
       if(!c)return;
       const B=await sheetsPdf('back',c==='alt');if(!B)return;
       await doPrint(to,sheetCx(B,'off','back',c==='alt'))}
@@ -5191,7 +5191,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
     if(!on){await setSpec({keep:false},'view');return}
     await setSpec({keep:true},'view');if(!live()||SP.keep===false)return;
     const g=fGapPt(),bad=fSides().filter(s=>fPairs(s.L,LY.sw,LY.sh,g).length);if(!bad.length)return;
-    const c=await dlg({title:'Keep pictures apart',msg:'Some pictures overlap on '+bad.length+' sheet side'+(bad.length>1?'s':'')+'. Spread them apart? They are made a little smaller when they do not fit.',ok:'Spread them',alt:'Keep as they are'});
+    const c=await dlg({kind:'warn',title:'Keep pictures apart',msg:'Some pictures overlap on '+bad.length+' sheet side'+(bad.length>1?'s':'')+'. Spread them apart? They are made a little smaller when they do not fit.',ok:'Spread them',alt:'Keep as they are'});
     if(!c||c==='alt')return;
     for(const s of bad){const pk=fPack(s.L,s.L.map(f=>pic(f.id)),fSafeNow(),LY.sw,LY.sh,g);
       if(!pk){toast('Sheet '+(s.sheet+1)+' ('+s.side+'): too many pictures to fit \u2013 remove some or use a smaller gap',4500);continue}
@@ -5486,7 +5486,7 @@ async function openFreeUp(){
       Object.assign(E('small'),{textContent:pc+'% used \u00b7 '+fmt(R.free)+' free of '+fmt(R.total),style:'color:var(--mut)'}));
     const qp=R.junk.items.map(i=>i.path);
     if(qp.length){const qc=E('button','tbtn fill','Clean junk \u00b7 '+fmt(R.junk.bytes));qc.style.alignSelf='flex-start';
-      qc.onclick=async()=>{if(!await dlg({title:'Clean junk files?',msg:'Moves '+plural(R.junk.items.length,'junk file')+' ('+fmt(R.junk.bytes)+') to the Recycle bin.',ok:'Clean'}))return;
+      qc.onclick=async()=>{if(!await dlg({kind:'warn',title:'Clean junk files?',msg:'Moves '+plural(R.junk.items.length,'junk file')+' ('+fmt(R.junk.bytes)+') to the Recycle bin.',ok:'Clean'}))return;
         try{const r=await api('POST','/api/rm',{dev:'local',paths:qp});watchJob(r.job);toast('Cleaning\u2026',0,0);await track(r.job)}catch(e){toast('\u26a0 '+e.message,5000)}
         if(live())start()};hero.append(qc)}
     body.append(hero);
@@ -5559,7 +5559,7 @@ const ARCW={};   /* archives already warned about in this session (key -> proble
 function arcWarn(r,key,root){
   const ck=r&&r.check;if(!ck||(ck.state!=='bad'&&ck.state!=='warn'))return;
   const sig=ck.state+'|'+(ck.msg||'');if(ARCW[key]===sig)return;ARCW[key]=sig;
-  dlg({title:ck.state==='bad'?'\u26a0 This archive is damaged':'\u26a0 This archive may be damaged',
+  dlg({kind:'warn',title:ck.state==='bad'?'This archive is damaged':'This archive may be damaged',
     msg:(ck.msg||'The quick check found a problem.')+' Some files may not open or extract correctly. Copy the original again if you can.',ok:'Details'})
     .then(v=>{if(v&&inArc()&&arcRoot()===root)doArcInfo()}).catch(()=>{})}
 const arcLabel=r=>(r.label||'Archive')+(r.ext&&r.label&&r.ext.toUpperCase()!==String(r.label).split(' ')[0].toUpperCase()?' (.'+r.ext+')':'');
@@ -6252,7 +6252,7 @@ function openPhoneExplorer(){
     if(st.run){B.peStop();wait=0;st.run=false;upd();return}
     wait=6;if(!B.peStart())wait=0;upd()};
   cp.onclick=()=>{if(st.ip)peCopy(url())};
-  np.onclick=async()=>{if(!await dlg({title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd()};
+  np.onclick=async()=>{if(!await dlg({kind:'warn',title:'New PIN?',msg:'The PC must use the new PIN from now on. Current connections end when they next sign in.',ok:'New PIN'}))return;B.peNewPin();st=JSON.parse(B.peState());upd()};
   o.append(card);upd();
   tm=setInterval(()=>{if(!card.isConnected||o.style.display==='none'){clearInterval(tm);return}try{st=JSON.parse(B.peState());if(wait>0&&!st.run)wait--;upd()}catch(e){}},1000)}
 /* ---- Remote shell: the REAL cmd / PowerShell of a PC running phone_explorer.py, shown with xterm.js (files: assets/xterm, served as /xterm/*, loaded only when this screen opens).
@@ -6567,7 +6567,7 @@ function openRemoteShell(){
       finally{go.disabled=false;go.textContent='Connect'}}};
   shb.onclick=async()=>{if(runMode){stopRun();return}if(!cfg.ip||!RSH_PW){openConn();return}
     const to=cfg.sh==='ps'?'cmd':'ps';
-    if(!await dlg({title:'Switch to '+(to==='ps'?'PowerShell':'cmd')+'?',msg:'The shell that is open now is closed and a new one starts.',ok:'Switch'}))return;
+    if(!await dlg({kind:'warn',title:'Switch to '+(to==='ps'?'PowerShell':'cmd')+'?',msg:'The shell that is open now is closed and a new one starts.',ok:'Switch'}))return;
     if(RSH_S){try{await call('close',{},10000)}catch(e){}RSH_S=null;saveSess()}
     cfg.sh=to;saveCfg();paintSh();
     try{await start(cfg,RSH_PW)}catch(e){toast(e.message,4000)}};
@@ -6598,7 +6598,7 @@ function openRemoteShell(){
   const openRunHome=async()=>{if(!cfg.ip||!RSH_PW){openConn();return}
     try{const j=await pcx(cfg,'list','listlist',{},15000);openRunSheet(cfg,j.runs||[])}catch(e){toast(e.message,4000)}};
   const stopRun=async()=>{if(!RSH_S||!RSH_S.run){openRunHome();return}
-    if(!await dlg({title:'Stop this program?',msg:'It, and everything it started, is closed on the PC.',ok:'Stop'}))return;
+    if(!await dlg({kind:'warn',title:'Stop this program?',msg:'It, and everything it started, is closed on the PC.',ok:'Stop'}))return;
     try{await call('close',{},15000)}catch(e){toast(e.message,3500);return}
     note('stopped');RSH_S=null;rshSync();lg++;stat('')};
   const openRunSheet=(tgt,runs0)=>{
@@ -6699,7 +6699,7 @@ function drawerRender(){
           if(dup){toast('Already in the list',1800);return}
           QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);
-      bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({title:'Reset shortcuts?',msg:'Removes all quick folders.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
+      bd.append(dItem({lead:ic('refresh','s24'),title:'Reset to default',onclick:async()=>{if(await dlg({kind:'warn',title:'Reset shortcuts?',msg:'Removes all quick folders.',ok:'Reset'})){QF=QF0();qfSave();drawerRender()}}}))}
     bd.append(E('div','dsep'));
     drawerPrinters(bd);
     bd.append(dItem({lead:ic('pc','s24'),title:'PC screen',sub:LASTPC&&LASTPC.name?LASTPC.name:'Output window of a PC',onclick:()=>{drawerClose();openPcScreen(null)}}));
@@ -7152,14 +7152,14 @@ addEventListener('pointerdown',e=>{const r=e.target.closest&&e.target.closest('#
   dn={r,x:e.clientX,y:e.clientY,on:false,go:0,lay:null}},true);
 addEventListener('pointermove',e=>{if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
   if(!dn.on){if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5){if(Math.abs(dy)>10)dn=null;return}
-    dn.on=true;const r=dn.r;r.classList.add('lm-swp');r.classList.remove('lm-back');
+    dn.on=true;try{LSAndroid.rowSwipe(true)}catch(_){}const r=dn.r;r.classList.add('lm-swp');r.classList.remove('lm-back');
     const lay=E('div','lm-sab');dn.lay=lay;r.append(lay)}
   const r=dn.r,x=Math.max(-160,Math.min(160,dx));r.style.setProperty('--lmx',x+'px');
   const lay=dn.lay;lay.className='lm-sab'+(x<0?' del':'');lay.textContent='';
   const sp=E('span','s');sp.append(ic(x<0?'del':'share'),document.createTextNode(x<0?'Delete':'Share'));
   if(x<0){lay.style.justifyContent='flex-end'}else lay.style.justifyContent='flex-start';lay.append(sp);
   const go=Math.abs(x)>=TH?1:0;if(go&&!dn.go)hp('tick');dn.go=go;lay.classList.toggle('go',!!go)},{passive:true});
-const swEnd=e=>{if(!dn)return;const d=dn;dn=null;if(!d.on)return;const r=d.r,x=parseFloat(r.style.getPropertyValue('--lmx'))||0;r._lp=true;setTimeout(()=>{r._lp=false},400);
+const swEnd=e=>{if(!dn)return;const d=dn;dn=null;if(!d.on)return;try{LSAndroid.rowSwipe(false)}catch(_){}const r=d.r,x=parseFloat(r.style.getPropertyValue('--lmx'))||0;r._lp=true;setTimeout(()=>{r._lp=false},400);
   r.classList.add('lm-back');r.style.setProperty('--lmx','0px');
   setTimeout(()=>{r.classList.remove('lm-swp','lm-back');r.style.removeProperty('--lmx');if(d.lay)d.lay.remove()},rm()?0:200);
   if(e.type==='pointerup'&&d.go){const nm=r.dataset.n;S.sel.clear();S.sel.add(nm);try{renderBar()}catch(_){}

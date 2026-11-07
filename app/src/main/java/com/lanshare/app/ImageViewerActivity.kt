@@ -687,7 +687,7 @@ class ImageViewerActivity : Activity() {
         val ov = holder(pager.currentItem)?.ov
         val on = pager.currentItem in ocrOn && ov != null && ov.hasLines()
         selBar.visibility = View.GONE   // bottom bar removed: the floating Copy / Search / Share bubble is the only menu
-        ocrBtn.tint = if (on) 0xFF8AB4F8.toInt() else Color.WHITE
+        ocrBtn.tint = if (on) LumenGrad.onDark(Lumen.of(this)) else Color.WHITE   // theme primary on the black stage (was fixed blue)
         val cp = pager.currentItem
         ocrBtn.alpha = when {                                   // T: bright = text found / layer on, dim = no text, half = reading
             cp in ocrOn -> 1f

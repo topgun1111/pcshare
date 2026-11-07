@@ -190,6 +190,10 @@ class NlSwipe(
     private val allowed: (Int) -> Boolean,
     private val fire: (Int, Boolean) -> Unit
 ) : RecyclerView.OnItemTouchListener {
+    companion object {
+        /** True while a row swipe (native or page) is in progress: MainActivity's Main-menu swipe must stay out of its way (it fires at 72 dp, before the 96 dp row threshold). */
+        @Volatile @JvmField var active = false
+    }
     private val slop = Math.max(ViewConfiguration.get(rv.context).scaledTouchSlop.toFloat(), 12f * d)
     private val maxX = 160f * d
     private val th = 96f * d
@@ -212,7 +216,7 @@ class NlSwipe(
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 cur?.let { it.animate().cancel(); it.translationX = 0f }
-                cur = null; on = false; go = false; down = null
+                cur = null; on = false; go = false; down = null; active = false
                 if (e.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE || e.x < edge || e.x > r.width - edge) return false
                 val c = r.findChildViewUnder(e.x, e.y) ?: return false
                 val pos = r.getChildAdapterPosition(c)
@@ -223,7 +227,7 @@ class NlSwipe(
                 val c = down ?: return on
                 val dx = e.x - x0; val dy = e.y - y0
                 if (Math.abs(dx) < slop || Math.abs(dx) < Math.abs(dy) * 1.5f) { if (Math.abs(dy) > slop) down = null; return false }
-                on = true; cur = c; go = false; down = null
+                on = true; cur = c; go = false; down = null; active = true
                 r.parent?.requestDisallowInterceptTouchEvent(true)
                 return true
             }
@@ -252,7 +256,7 @@ class NlSwipe(
         val c = cur ?: return
         val t = c.translationX
         val doIt = up && go
-        on = false; go = false; down = null
+        on = false; go = false; down = null; active = false
         val pos = r.getChildAdapterPosition(c)
         c.animate().cancel()
         if (LumenPrefs.reduceMotion(r.context)) { c.translationX = 0f; cur = null; r.invalidate() }

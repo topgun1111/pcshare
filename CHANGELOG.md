@@ -5,6 +5,18 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-07 - Clearer question and notice dialogs
+### Changed
+- Dialogs that warn about replacing, clearing or stopping something now show a warning symbol, and plain notices show an info symbol.
+
+## 2026-11-07 - Viewer accents follow your theme
+### Changed
+- The PDF viewer (scroll handle, page picker highlight) and the picture viewer's text-recognition button now use your theme colour instead of a fixed orange or blue.
+
+## 2026-11-10 - Swiping a file or folder to Share / Delete
+### Fixed
+- Sliding a file or folder sideways now follows your finger and gives Share / Delete; before, the slide was taken by the Main menu switch before it could finish.
+
 ## 2026-11-10 - Dialog types on every screen, default folder colour
 ### Added
 - Dialogs outside the file list (Details, "File changed", rescan, update failed / done and others) now show the coloured icon tile for information, warning or success, and can show a details list and an "Apply to all" switch.

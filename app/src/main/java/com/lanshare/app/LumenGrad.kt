@@ -31,6 +31,17 @@ object LumenGrad {
     /** 180 degrees: top to bottom. */
     fun vert(top: Int, bottom: Int, t: Float, b: Float): Shader = LinearGradient(0f, t, 0f, b, top, bottom, Shader.TileMode.CLAMP)
 
+    /**
+     * Accent for the always-dark viewer stage (L7 black, spec 12.22): the theme primary, lifted towards white until it is bright
+     * enough on black (light themes have a dark primary, e.g. Ember light #B84D00 -> about #D9792F; dark themes stay as they are).
+     */
+    fun onDark(lm: Lumen): Int {
+        val c = lm.primary
+        val lum = (0.2126f * ((c shr 16) and 0xFF) + 0.7152f * ((c shr 8) and 0xFF) + 0.0722f * (c and 0xFF)) / 255f
+        val col = if (lum >= 0.5f) c else LumenCategory.mix(c, WHITE, (0.5f - lum) / (1f - lum))
+        return col or 0xFF000000.toInt()
+    }
+
     /** gSurface: cards (surfaceHi at the top, surface at the bottom). */
     fun surface(lm: Lumen, t: Float, b: Float): Shader = vert(lm.surfaceHi, lm.surface, t, b)
 
