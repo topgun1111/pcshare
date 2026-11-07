@@ -51,7 +51,7 @@ class NlRpl(private val v: View) {
         fill.color = (color and 0x00FFFFFF) or (Math.round(255f * 0.14f * a) shl 24)
         cv.drawCircle(x, y, far * e, fill)
         cv.restore()
-        if (!rm || end != 0L) v.postInvalidateOnAnimation()
+        if (end != 0L || (!rm && grow < 1f)) v.postInvalidateOnAnimation()   // 4g: stop once fully grown while held
     }
 }
 

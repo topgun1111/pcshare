@@ -37,7 +37,11 @@ object NlBackdrop {
     private val users = ArrayList<java.lang.ref.WeakReference<View>>()
 
     fun register(v: View) { users.add(java.lang.ref.WeakReference(v)) }
+    @Volatile private var busy = false   // a blur being recorded must not start another one (the drawer's backdrop contains the bar and the dock)
+
     fun invalidateAll() {
+        val c0 = users.firstOrNull()?.get()?.context
+        if (c0 == null || !wanted(c0)) return   // F2 / F3, API < 31, low-end F1: nothing to repaint, scrolling costs what it did before 4f
         val it = users.iterator()
         while (it.hasNext()) { val v = it.next().get(); if (v == null) it.remove() else if (v.visibility == View.VISIBLE && v.isAttachedToWindow) v.invalidate() }
     }
@@ -55,11 +59,12 @@ object NlBackdrop {
      * [below] = the child of the root FrameLayout that the chrome sits in (everything before it is the backdrop). [round] = corner radius px to clip to (0 = rectangle).
      */
     fun draw(cv: Canvas, target: View, below: View?, round: Float): Boolean {
-        if (below == null || !wanted(target.context) || !cv.isHardwareAccelerated) return false
+        if (busy || below == null || !wanted(target.context) || !cv.isHardwareAccelerated) return false
         val w = target.width; val h = target.height
         if (w <= 0 || h <= 0) return false
         if (Build.VERSION.SDK_INT < 31) return false
-        return try { drawImpl(cv, target, below, round) } catch (_: Throwable) { broken = true; false }
+        busy = true
+        return try { drawImpl(cv, target, below, round) } catch (_: Throwable) { broken = true; false } finally { busy = false }
     }
 
     @RequiresApi(31)

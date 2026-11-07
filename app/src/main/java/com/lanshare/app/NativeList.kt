@@ -615,7 +615,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             n.isSelected = (first + i) in sel
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
-            n.setBoundsInParent(Rect(x.toInt(), y.toInt(), (x + cs).toInt(), (y + cs).toInt()))
+            n.setBoundsInParent(Rect(x.toInt(), y.toInt(), Math.max(x.toInt() + 1, (x + cs).toInt()), Math.max(y.toInt() + 1, (y + cs).toInt())))   // never empty (TalkBack throws)
         }
         override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
             if (i !in cells.indices) return false
@@ -763,9 +763,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val srl = SwipeRefreshLayout(act)
     private val rv = RecyclerView(act)
     private val skel = NlSkelView(act, UiScale.dens(act))   // Lumen 4d M7 a: placeholder rows while a tapped folder is still being built
-    private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.visibility = View.VISIBLE; skel.invalidate(); skel.postDelayed({ skelOff() }, 4000) } }
+    private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.visibility = View.VISIBLE; skel.invalidate(); skel.removeCallbacks(skelOffRun); skel.postDelayed(skelOffRun, 4000) } }
+    private val skelOffRun = Runnable { skelOff() }   // one removable 4 s timeout: an old one must not hide the skeleton of a later folder
     private fun skelArm() { rv.removeCallbacks(skelRun); rv.postDelayed(skelRun, 180) }      // instant entries never flash it
-    private fun skelOff() { rv.removeCallbacks(skelRun); if (skel.visibility != View.GONE) skel.visibility = View.GONE }
+    private fun skelOff() { rv.removeCallbacks(skelRun); skel.removeCallbacks(skelOffRun); if (skel.visibility != View.GONE) skel.visibility = View.GONE }
     /** Lumen 4d N10: hold-menu lift, 1.02 and back (the page menu has no close event to hang a longer hold on). */
     private fun lift(v: View) {
         if (LumenPrefs.reduceMotion(act)) return

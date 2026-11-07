@@ -66,7 +66,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
             n.contentDescription = labelOf(h.id) ?: ""
             n.className = "android.widget.Button"
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
-            val r = android.graphics.Rect(); h.r.roundOut(r); n.setBoundsInParent(r)
+            val r = android.graphics.Rect(); h.r.roundOut(r); if (r.isEmpty) r.set(0, 0, 1, 1); n.setBoundsInParent(r)   // TalkBack throws on empty bounds
         }
         override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
             val h = hits.getOrNull(i) ?: return false
@@ -97,7 +97,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     private val rpReduce = LumenPrefs.reduceMotion(c)
 
     private fun rpStart(id: String, x: Float, y: Float) { rpId = id; rpX = x; rpY = y; rpT0 = SystemClock.uptimeMillis(); rpEnd = 0L }
-    private fun rpRelease() { if (rpId != null && rpEnd == 0L) rpEnd = SystemClock.uptimeMillis() }
+    private fun rpRelease() { if (rpId != null && rpEnd == 0L) { rpEnd = SystemClock.uptimeMillis(); invalidate() } }
 
     /** Paint the ripple of target [id] clipped to [shape] (corner radius [rad]) in [color] (alpha is applied here). Call it after the target's fill, before its glyph. */
     protected fun ripple(cv: Canvas, id: String, shape: RectF, rad: Float, color: Int) {
@@ -115,7 +115,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
         fillP.color = (color and 0x00FFFFFF) or (Math.round(255f * 0.14f * a) shl 24)
         cv.drawCircle(rpX, rpY, far * e, fillP)
         cv.restore()
-        postInvalidateOnAnimation()
+        if (rpEnd != 0L || grow < 1f) postInvalidateOnAnimation()   // held and fully grown: no redraw loop
     }
 
     protected val med: Typeface = Fnt.med()

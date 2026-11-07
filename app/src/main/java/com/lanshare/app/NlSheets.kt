@@ -68,7 +68,8 @@ private class SwipeSheet(c: Context, private val scroll: ScrollView, private val
     private val slop = ViewConfiguration.get(c).scaledTouchSlop
     init { orientation = VERTICAL }
 
-    private fun track(e: MotionEvent) { vt?.addMovement(e) }
+    /** The sheet moves with the finger, so local y barely changes: feed the tracker raw (screen) coordinates or a fling is never seen. */
+    private fun track(e: MotionEvent) { val t = vt ?: return; val m = MotionEvent.obtain(e); m.setLocation(e.rawX, e.rawY); t.addMovement(m); m.recycle() }
 
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
