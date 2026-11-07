@@ -318,6 +318,75 @@ object Lm {
         return false
     }
 
+    /** Dialog extras (Lumen A8, same as page dlg(): o.kind / o.details / o.applyAll). */
+    class Opts(val kind: String?, val details: List<Pair<String, String>>?, val applyAllLabel: String?, val onApplyAll: ((Boolean) -> Unit)?)
+
+    /** Hero tile for info / warn / perm / ok: filled disc in the kind's slot colour, Lumen glyph (info / warn / lock / check) in its on-colour. */
+    private class KindHero(c: Context, private val bg: Int, private val fg: Int, private val glyph: String) : View(c) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        override fun onDraw(cv: Canvas) {
+            val w = width.toFloat(); val h = height.toFloat()
+            if (w <= 0f || h <= 0f) return
+            p.style = Paint.Style.FILL; p.color = bg
+            cv.drawCircle(w / 2f, h / 2f, Math.min(w, h) / 2f, p)
+            val s = Math.min(w, h) * 0.5f
+            NlIcons.draw(cv, p, glyph, (w - s) / 2f, (h - s) / 2f, s, fg)
+        }
+    }
+
+    /** Details block ("label  value" rows on a quiet tile) and the Apply-to-all switch row, added above the button row. */
+    private fun addExtras(d: AlertDialog, c: Context, lm: Lumen, o: Opts) {
+        val rows = o.details
+        val hasRows = rows != null && rows.isNotEmpty()
+        val hasAll = !o.applyAllLabel.isNullOrEmpty()
+        if (!hasRows && !hasAll) return
+        val btnPanel = d.findViewById<View>(c.resources.getIdentifier("buttonPanel", "id", "android"))
+        val host = (btnPanel?.parent ?: d.findViewById<View>(c.resources.getIdentifier("contentPanel", "id", "android"))?.parent) as? LinearLayout ?: return
+        val box = LinearLayout(c)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(c, 24f), dp(c, 8f), dp(c, 24f), dp(c, 8f))
+        if (hasRows) {
+            val tile = LinearLayout(c)
+            tile.orientation = LinearLayout.VERTICAL
+            tile.background = shape(withAlpha(lm.ink, 0.06f), dp(c, 16f).toFloat())
+            tile.setPadding(dp(c, 16f), dp(c, 12f), dp(c, 16f), dp(c, 12f))
+            for ((i, r) in rows!!.withIndex()) {
+                val row = LinearLayout(c)
+                row.orientation = LinearLayout.HORIZONTAL
+                val l = TextView(c); l.text = r.first; l.setTextColor(lm.inkMut); l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                val v = TextView(c); v.text = r.second; v.setTextColor(lm.ink); v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                v.maxLines = 2; v.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; v.gravity = Gravity.END
+                row.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.38f))
+                row.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.62f))
+                tile.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also { if (i > 0) it.topMargin = dp(c, 8f) })
+            }
+            box.addView(tile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        if (hasAll) {
+            val row = LinearLayout(c)
+            row.orientation = LinearLayout.HORIZONTAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            row.minimumHeight = dp(c, 48f)
+            val t = TextView(c); t.text = o.applyAllLabel; t.setTextColor(lm.ink); t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            val sw = android.widget.Switch(c)
+            sw.contentDescription = o.applyAllLabel
+            try {
+                val on = intArrayOf(android.R.attr.state_checked)
+                val st = arrayOf(on, intArrayOf())
+                sw.thumbTintList = ColorStateList(st, intArrayOf(lm.onPrimary, lm.inkMut))
+                sw.trackTintList = ColorStateList(st, intArrayOf(lm.primary, withAlpha(lm.ink, 0.22f)))
+            } catch (_: Throwable) { }
+            sw.setOnCheckedChangeListener { _, v -> o.onApplyAll?.invoke(v) }
+            row.setOnClickListener { sw.toggle() }
+            row.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also { if (hasRows) it.topMargin = dp(c, 4f) })
+        }
+        val at = if (btnPanel != null) host.indexOfChild(btnPanel) else -1
+        if (at >= 0) host.addView(box, at, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        else host.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
     /** Trash tile for destructive dialogs: errorCont disc, onErrorCont glyph. */
     private class HeroView(c: Context, private val bg: Int, private val fg: Int) : View(c) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -371,7 +440,7 @@ object Lm {
     }
 
     /** Called by AppPal.dlg from the dialog's OnShowListener: everything is optional, any failure leaves the stock dialog as it was. */
-    fun restyle(d: AlertDialog, c: Context) {
+    fun restyle(d: AlertDialog, c: Context, o: Opts? = null) {
         val lm = Lumen.of(c)
         val night = AppPal.night(c)
         try { d.window?.setDimAmount(if (night) 0.56f else 0.32f) } catch (_: Throwable) { }
@@ -390,7 +459,7 @@ object Lm {
             if (tid != 0) title = d.findViewById<TextView>(tid)?.text
         } catch (_: Throwable) { }
 
-        val danger = pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title)
+        val danger = o?.kind == "danger" || (o?.kind == null && pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))
         try {
             if (pos != null && pos.visibility == View.VISIBLE) {
                 if (danger) styleButton(pos, lm.errorCont, lm.onErrorCont, c) else styleButton(pos, lm.primary, lm.onPrimary, c)
@@ -423,11 +492,18 @@ object Lm {
 
         // destructive: hero tile above a centred title
         try {
-            if (danger && title != null && title.isNotEmpty()) {
+            val k = o?.kind
+            if ((danger || k == "info" || k == "warn" || k == "perm" || k == "ok") && title != null && title.isNotEmpty()) {
                 val top = d.findViewById<View>(c.resources.getIdentifier("topPanel", "id", "android")) as? LinearLayout
                 val tid = c.resources.getIdentifier("alertTitle", "id", "android")
                 if (top != null && top.visibility == View.VISIBLE) {
-                    val hero = HeroView(c, lm.errorCont, lm.onErrorCont)
+                    val hero: View = when {
+                        danger -> HeroView(c, lm.errorCont, lm.onErrorCont)
+                        k == "warn" -> KindHero(c, lm.warning, lm.onWarning, "warn")
+                        k == "perm" -> KindHero(c, lm.primary, lm.onPrimary, "lock")
+                        k == "ok" -> KindHero(c, lm.success, lm.onSuccess, "check")
+                        else -> KindHero(c, lm.info, lm.onInfo, "info")
+                    }
                     hero.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     val lp = LinearLayout.LayoutParams(dp(c, 56f), dp(c, 56f))
                     lp.gravity = Gravity.CENTER_HORIZONTAL
@@ -438,6 +514,8 @@ object Lm {
                 }
             }
         } catch (_: Throwable) { }
+
+        if (o != null) try { addExtras(d, c, lm, o) } catch (_: Throwable) { }
 
         // M1 (native): dialog exit 140 ms accelerate (window exit animation; 120 ms fade with Reduce motion). A1: the window is announced with the dialog title.
         try {

@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun hapticPattern(csv: String) { Haptics.pattern(csv.split(',').mapNotNull { it.trim().toLongOrNull() }.toLongArray()) }
         /** Lumen Part 15 / 16: device facts for the glass ladder, and the in-app Reduce motion / Haptic feedback switches. */
         @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
-        @JavascriptInterface fun folderColor(): String = if (BuildConfig.LITE) "#9b63d8" else "#d2590a"   // default folder colour = app icon colour
+        @JavascriptInterface fun folderColor(): String = if (BuildConfig.LITE) "#9b63d8" else ""   // default folder colour = app icon colour
         /** Lumen Part 4a (N1 a): the glass step the page picked (f0..f3), so native dialogs / sheets use the same blur / tint step. */
         @JavascriptInterface fun glassStepSet(step: String) { LumenGlass.setStep(this@MainActivity, step) }
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
@@ -370,7 +370,7 @@ class MainActivity : Activity() {
                 } catch (_: Throwable) { }
             }
         }
-        @JavascriptInterface fun nlPalette(json: String) { try { AppPal.save(applicationContext, json) } catch (_: Throwable) { }; runOnUiThread { nl.setPalette(json) } }
+        @JavascriptInterface fun nlPalette(json: String) { try { AppPal.save(applicationContext, json); NlClassicFolder.themeDefault = Lumen.of(applicationContext).primary } catch (_: Throwable) { }; runOnUiThread { nl.setPalette(json) } }
         /** key = "dev|path", items = JSON rows, sel = JSON array of selected row indexes. Parsed here (bridge thread), applied on the UI thread. */
         @JavascriptInterface fun nlItems(key: String, items: String, sel: String) {
             splash.noteItems(key, items)

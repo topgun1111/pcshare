@@ -922,7 +922,7 @@ class UsActivity : Activity() {
             val files = ps.count { !it.dir }; val dirs = ps.size - files; val bytes = ps.filter { !it.dir }.sumOf { it.size }
             msg = ps.size.toString() + " items\n" + files + " files, " + dirs + " folders\n" + NlModel.fmt(bytes) + " (files only)"
         }
-        AppPal.dlg(this).setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
     }
 
     private fun actFolder() {
@@ -997,7 +997,7 @@ class UsActivity : Activity() {
             ui.post {
                 try { dlg.dismiss() } catch (_: Throwable) {}
                 if (fails.isEmpty()) toast((if (cancel.get() && moved < n) "Cancelled \u2013 " else "") + moved + (if (moved == 1) " item" else " items") + " moved to the recycle bin" + (if (totalBytes > 0 && !cancel.get()) " (" + NlModel.fmt(bytes) + ")" else ""))
-                else AppPal.dlg(this).setTitle(fails.size.toString() + " could not be moved")
+                else AppPal.dlg(this).kind("warn").setTitle(fails.size.toString() + " could not be moved")
                     .setMessage(moved.toString() + " moved, " + fails.size + " failed:\n\n" + fails.take(8).joinToString("\n") + (if (fails.size > 8) "\n+ " + (fails.size - 8) + " more" else ""))
                     .setPositiveButton("OK", null).show()
                 // the moved items vanish from the list at once; the index catches up a moment later and the banner tick re-runs the query

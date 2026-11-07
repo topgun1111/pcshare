@@ -243,7 +243,7 @@ object UpdateCheck {
                 when {
                     e == null -> offerInstall(a, out, tag)
                     e == "cancel" -> { }
-                    else -> AppPal.dlg(a).setTitle("İndirme başarısız").setMessage(e)
+                    else -> AppPal.dlg(a).kind("warn").setTitle("İndirme başarısız").setMessage(e)
                         .setPositiveButton("Tarayıcıda aç") { _, _ -> openInBrowser(a, url) }
                         .setNegativeButton("Kapat", null).show()
                 }
@@ -252,7 +252,7 @@ object UpdateCheck {
     }
 
     private fun offerInstall(a: Activity, f: File, tag: String) {
-        AppPal.dlg(a).setTitle("İndirme tamamlandı")
+        AppPal.dlg(a).kind("ok").setTitle("İndirme tamamlandı")
             .setMessage("$tag indirildi (${mb(f.length())}). Kurulumu başlatmak için Kur'a bas.")
             .setPositiveButton("Kur") { _, _ -> install(a, f, tag) }
             .setNegativeButton("Kapat", null).show()

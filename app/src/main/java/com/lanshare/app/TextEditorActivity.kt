@@ -923,7 +923,7 @@ class TextEditorActivity : Activity() {
                             ui.post {
                                 saving = false; busy(false)
                                 if (isDestroyed || auto) return@post
-                                AppPal.dlg(this).setTitle("File changed").setMessage("\"$origName\" was changed somewhere else after you opened it. Overwrite it with your version?")
+                                AppPal.dlg(this).kind("warn").setTitle("File changed").setMessage("\"$origName\" was changed somewhere else after you opened it. Overwrite it with your version?")
                                     .setPositiveButton("Overwrite") { _, _ -> save(false, true, then) }
                                     .setNegativeButton("Cancel", null)
                                     .setNeutralButton("Discard mine") { _, _ -> dirty = false; finish() }
@@ -1105,7 +1105,7 @@ class TextEditorActivity : Activity() {
         val mt = if (diskMtime > 0) DateFormat.getDateTimeInstance().format(Date(diskMtime * 1000)) else "-"
         val enc = cs.name() + (if (bom.isNotEmpty()) " (BOM)" else "")
         val msg = "Device: ${devName.ifEmpty { dev }}\nPath: ${path ?: "(new note in $dir)"}\nSize: $sz\nModified: $mt\nEncoding: $enc\nLine endings: ${if (crlf) "CRLF (Windows)" else "LF"}"
-        AppPal.dlg(this).setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
+        AppPal.dlg(this).kind("info").setTitle("Details").setMessage(msg).setPositiveButton("OK", null).show()
     }
 
     private fun humanSize(n: Long): String {

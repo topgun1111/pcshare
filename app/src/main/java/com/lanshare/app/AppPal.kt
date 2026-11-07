@@ -63,9 +63,19 @@ object AppPal {
     fun pal(c: Context): P = load(c) ?: Lumen.of(c).let { P(it.canvas, it.surfaceHi, it.ink, it.inkMut, it.edge, it.primary, it.onPrimary) }
 
     /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours. */
-    fun dlg(c: Context): AlertDialog.Builder = Dlg(c)
+    fun dlg(c: Context): Dlg = Dlg(c)
 
-    private class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
+    /** Dialog with the page `dlg()` kinds (Lumen A8): kind = info / warn / perm / ok / danger, details rows, "Apply to all" switch. */
+    class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
+        var kind: String? = null
+        var detailRows: List<Pair<String, String>>? = null
+        var applyAllLabel: String? = null
+        /** State of the Apply-to-all switch; read it in the button listener. */
+        @Volatile var applyAllChecked = false
+        private var applyAllCb: ((Boolean) -> Unit)? = null
+        fun kind(k: String?): Dlg { kind = k; return this }
+        fun details(rows: List<Pair<String, String>>): Dlg { detailRows = rows; return this }
+        fun applyAll(label: String, onChange: ((Boolean) -> Unit)? = null): Dlg { applyAllLabel = label; applyAllCb = onChange; return this }
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
@@ -83,7 +93,7 @@ object AppPal {
                     val t = c.resources.getIdentifier("alertTitle", "id", "android")
                     if (t != 0) d.findViewById<android.widget.TextView>(t)?.setTextColor(p.fg)
                 } catch (_: Throwable) { }
-                Lm.restyle(d, c)   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
+                Lm.restyle(d, c, Lm.Opts(kind, detailRows, applyAllLabel) { v -> applyAllChecked = v; applyAllCb?.invoke(v) })   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
             }
             return d
         }

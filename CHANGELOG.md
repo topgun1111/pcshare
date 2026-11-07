@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-10 - Dialog types on every screen, default folder colour
+### Added
+- Dialogs outside the file list (Details, "File changed", rescan, update failed / done and others) now show the coloured icon tile for information, warning or success, and can show a details list and an "Apply to all" switch.
+### Changed
+- Folders without their own colour now use the theme colour instead of a fixed orange.
+- Warning and success colours in the default themes follow the design spec (a darker amber in light, softer green and amber in dark).
+
 ## 2026-11-09 - Top bar no longer garbled while scrolling
 ### Fixed
 - While you scroll a folder, the title and icons on the top bar no longer look doubled or smeared.

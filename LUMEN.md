@@ -6,7 +6,7 @@ One file (merged 2026-11-08 from `LUMEN.md`, `LUMEN.md`, `LUMEN.md`; those three
 2. **Part 2: what is done** (status line, session rules, done table, plan parts, session log, fixes from the audit).
 3. **Part 3: what is missing in the code** (current open list, decisions, owner checks, item IDs).
 
-**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes 2026-11-08 | Next: owner compile + device pass (V2-V5, check 4f first), then the open list in Part 3 | Last session: 2026-11-09 (native twins of P1 / M3 / M2 in `NativeList`). Kotlin from 4a-4f, the 2026-11-08 edits and the 2026-11-09 edits is NOT compiled.
+**Status line (edit this first in every session):** Done: spec Parts 1-18 + Round 2 A / B / C(partial) + V1 + plan Parts 1-3, 4a-4f, 4g (semantic slots) + audit fixes 2026-11-08 | Next: owner compile + device pass (V2-V5, check 4f first), then the open list in Part 3 | Last session: 2026-11-10 (native dialog kinds A8, spec decisions 3.1 items 1-3). Owner reports CI compile OK 2026-11-07..09 pushes; device testing in progress. Kotlin from 4a-4f, the 2026-11-08 edits and the 2026-11-09 edits is NOT compiled.
 
 **Rule:** after every change, update this file (status line, Part 2 log, Part 3 list), `HANDOVER_READ_BEFORE_CODE.md` and `CHANGELOG.md` (user-visible only).
 
@@ -109,7 +109,7 @@ Accent ramp (hue about 24):
 | T10 | #3A1A00 | on-container text (light) |
 | T20 | #5E2900 | |
 | T30 | #8F3E00 | |
-| T40 | #C25100 | Primary (light) , equals today's accent |
+| T40 | #B84D00 | Primary (light), corrected 2026-11-10: #C25100 failed the gradient-end contrast test (4.28:1 against white, needs 4.5) |
 | T50 | #E4690F | |
 | T60 | #FF8A3D | |
 | T70 | #FFA566 | |
@@ -134,7 +134,7 @@ Neutral ramp (warm, hue 28, chroma about 4): N10 #1F1A16, N20 #342E29, N30 #4B44
 | `ink` | primary text | #1F1A16 | #EFE5DB |
 | `inkMut` | secondary text, icons at rest | #5A5047 | #C9BBAD |
 | `inkDim` | disabled, hints (never for needed info) | #8C8176 | #8E8174 |
-| `primary` | accent for fills, links, active icons | #C25100 | #FFB77C |
+| `primary` | accent for fills, links, active icons | #B84D00 | #FFB77C |
 | `onPrimary` | text / icon on primary | #FFFFFF | #4A2800 |
 | `primaryCont` | selected state, chips on, tonal buttons | #FFDCC2 | #7A3E00 |
 | `onPrimaryCont` | | #3A1A00 | #FFDCC2 |
@@ -1094,6 +1094,7 @@ Status values: `NEXT`, `TODO`, `IN PROGRESS`, `DONE (date)`, `PARTLY (date, what
 | 2026-11-09 | (one more 3) | Grid folder category badge plate = `surfaceHi` + `edge` (was fixed white / `#D0D0D0`; dark-theme pastel glyphs were low contrast). | A4 | player / viewer literals, `LumenGrad.glow / scrim*` callers | yes (`NativeList.kt`) | check next compile: folder with a badge in a dark theme |
 | 2026-11-09 | (big one: A8 dialog kinds, page) | `dlg(o)` gets `o.kind` = info / warn / perm / ok (hero tile on slots `info`+`onInfo`, `warning`+`onWarning`, `primary`+`onPrimary`, `success`+`onSuccess`; icons info / warn / lock / check; danger keeps the red tile), `o.details` = `[[label, value]]` rows (`.ddet`), `o.applyAll` = label (switch row `.dall`, state in `window.lmApplyAll`, false when cancelled). New icon `warn` (`icons.json`, regenerated `LumenIcons.kt`). CSS block `/*LUMEN-UI19*/` (hand-written, after UI18) also fixes `.dhero svg` (the `svg.li` class matched the list row `.li{min-height:56px}` so the glyph was 12 px). Callers: zip "already exists" (warn + details), Replace layout (warn), root access (perm). Tested in headless Chromium: 4 kinds colours, details rows, switch result true, hero svg 28 x 28; `gen.py --check`, `node --check` 8 scripts, CSS braces balanced, lint unchanged. | A8 page half | native `Lm` dialogs (`AlertDialog`) have no info / warn / perm heroes, details row or Apply-to-all row; the other 55 `dlg()` callers still pick no kind (add `kind:` where it fits); no caller uses `applyAll` yet (multi-file conflict loops) | yes (`LumenIcons.kt` regenerated) | check next compile; open a conflict dialog on the phone |
 | 2026-11-09 | (bug: garbled top bar while scrolling) | Cause: the page's own `#top` title + icons stay under the native `NlBarView` ("HTML elements stay underneath"); since 4c / 4f the native bar is transparent at the list top and a translucent glass fill (F0 88 % / F1 92 %, blurred) once scrolled, so the page copy showed through (and was blurred into `NlBackdrop`). Fix (page only): `nlChPush` toggles `html.nlcbar` when it sends `o.bar` (removed when the native chrome is hidden: modal / full screens / no bar rect); CSS in `/*LUMEN-UI19*/`: `html.nlcbar #top .mainb>*, #top .selb>*{opacity:0!important}` (opacity only: layout, rect and click twins unchanged). Not testable in a browser (needs the native bridge); `gen.py --check`, `node --check` 8 scripts, braces ok. | bug | if it still garbles: check `NlBarView.onDraw` draws title / icons once (compare the 2026-11-07 "drawn twice" fix) and that `lsNlResync` re-pushes after a theme change | none | no | check on the phone: scroll a long folder, top bar crisp in F0 / F1 / Reduce transparency |
+| 2026-11-10 | (A8 native + spec decisions) | Native dialog kinds: `AppPal.dlg(c).kind("info"/"warn"/"perm"/"ok"/"danger").details(listOf(a to b)).applyAll(label)`; `applyAllChecked` read in the button listener; hero tiles on slots info / warning / primary / success (glyphs info / warn / lock / check), details tile, switch row above the buttons. Ember: warning light / dark and success dark set to spec. Folder default = theme primary. Checks: `gen.py --check`, `contrast.py` 0 failing, `parity.py` 0 differences, lint unchanged. NOT compiled. | A8 native | other native dialogs pick no kind yet; no caller uses `applyAll` | yes (`AppPal.kt`, `Lm.kt`, `NativeList.kt`, `MainActivity.kt`, callers, regenerated `LumenTokens.kt`) | check next compile: open Details, "File changed", a download-failed dialog; folder colour in a dark and a light theme |
 | | | | | | | |
 
 
@@ -1192,9 +1193,9 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 
 ## 3.1 Decisions waiting for the owner
 
-1. **Ember values vs spec 4.2-4.4** (A1): light primary `#b84d00` (spec `#C25100`); warning light `#f9ab00` (spec `#A66300`), dark `#fdd663` (spec `#FFC15E`); success dark `#81c995` (spec `#7FD99A`). Spec wins or spec text is corrected. T1 passes either way.
-2. **Folder colour** (A3): code uses the fixed app-icon colour (`#D2590A` / Lite `#9B63D8`, `NlClassicFolder.DEFAULT`); spec 4.5 says theme `primary`.
-3. **FAB shape** (A7): code is a pill (Part 11); spec 8.2 says 56 dp rounded square, 20 dp radius, pill only for the extended FAB.
+1. **Ember values vs spec 4.2-4.4** (A1): DECIDED 2026-11-10 (spec wins): warning light `#a66300`, warning dark `#ffc15e`, success dark `#7fd99a` now in `tokens.json`. Light primary stays `#b84d00`: the spec value `#C25100` fails P7 (gradient end 4.28:1 against `onPrimary`), so the spec text was corrected.
+2. **Folder colour** (A3): DONE 2026-11-10: default = theme `primary` (page `--fcol` falls back to `var(--primary)`, native `NlClassicFolder.themeDefault`); Lite keeps its purple. A folder with its own Style colour is unchanged.
+3. **FAB shape** (A7): no change needed: the FAB always carries a label ("New folder", "Extract all" ...), so it is an extended FAB and the pill is what spec 8.2 asks for. A 56 dp square is only needed if an icon-only FAB is added (for example collapse on scroll).
 4. **16 presets with no Light / Dark partner** (mode switch leaves them as they are): solar, nord, dracula, cyber, matcha, coffee, midnight, tokyo, rosepine, catppuccin, vivaldi, opensuse, ubuntuorange, kali, popos, garuda. Pairing needs new theme designs.
 5. T1 regenerate presets or keep hex (kept so far); T3 OS font vs own font (default: only when font is Default); N13 older-Android splash logo or accept (accepted); N1 (c) blur policy (default taken in 4f; revisit if T8 fails).
 
@@ -1204,7 +1205,7 @@ Checked against the code on 2026-11-08 (`gen.py --check`, `parity.py`, `contrast
 - **Viewers ignore tokens** (A5): image / PDF viewer / player use literal black, white and alpha values; `PlayerWidgets` has its own light / dark set; scrims are hand-made. (Seek bar fill and the red "new" badge now read the theme: 2026-11-09.)
 - **`LumenGrad.glow / scrimTop / scrimBottom` have no caller** (A5 / N4 gGlow / gSkeleton / gScrim callers).
 - **Thumbnail radius** (A6, 8.2) is fixed 12 dp (15 dp bare) in `NlGridView` / `NlRowView`; spec: by column count (r.m up to 3, r.s at 4-5, r.xs at 6-8). (Selected-thumbnail 88 % shrink done in the grid: 2026-11-09; list rows not.)
-- **Dialogs** (A8, 12.12): page `dlg()` now has Info / Warning / Permission / Success heroes, a Details row and an "Apply to all" switch row (2026-11-09, `o.kind`, `o.details`, `o.applyAll`); native `Lm` dialogs still have hero tiles only for destructive ones and none of the rest; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
+- **Dialogs** (A8, 12.12): DONE natively 2026-11-10 (`AppPal.Dlg.kind / details / applyAll`, `Lm.Opts`, `KindHero`, `Lm.addExtras`); callers: Details x2, File changed, Rescan, could not be moved, update failed / done, dead model link. Page `dlg()` now has Info / Warning / Permission / Success heroes, a Details row and an "Apply to all" switch row (2026-11-09, `o.kind`, `o.details`, `o.applyAll`); native `Lm` dialogs still have hero tiles only for destructive ones and none of the rest; native dialogs still run on `AlertDialog` via `AppPal.dlg` / `Lm.restyle`. The new semantic slots are ready for them.
 - **Real glass only partly real** (A9): native bar / dock / drawer blur = `NlBackdrop` (API 31+, not compiled, not measured); the WebView is skipped in the blur, so page screens blur a flat canvas colour; page glass is CSS.
 - **Folder colour, FAB shape, Ember values**: see 3.1.
 

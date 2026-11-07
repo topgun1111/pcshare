@@ -187,7 +187,8 @@ object NlClassicFolder {
     const val W = 100f
     const val H = 87.7f
     /** Default folder colour = the app icon colour of the edition (full: orange, Lite: light purple); ui.html gets the same value from the bridge `folderColor()`. */
-    val DEFAULT: Int get() = if (BuildConfig.LITE) 0xFF9B63D8.toInt() else 0xFFD2590A.toInt()
+    @Volatile var themeDefault: Int = 0   // Lumen primary of the current theme (set from MainActivity.nlPalette); 0 = not known yet
+    val DEFAULT: Int get() = if (BuildConfig.LITE) 0xFF9B63D8.toInt() else if (themeDefault != 0) themeDefault else 0xFFD2590A.toInt()
 
     private fun shade(c: Int, f: Float): Int = Color.argb(255, (Color.red(c) * f).toInt().coerceIn(0, 255), (Color.green(c) * f).toInt().coerceIn(0, 255), (Color.blue(c) * f).toInt().coerceIn(0, 255))
 

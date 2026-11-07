@@ -271,7 +271,7 @@ class UsIndexActivity : Activity() {
         val act = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(14f), dp(8f), dp(14f), dp(10f)); setBackgroundColor(p.bg) }
         act.addView(button("Run everything now", true) { kick(true) }, LinearLayout.LayoutParams(0, dp(48f), 1.3f))
         act.addView(button("Full rescan", false) {
-            AppPal.dlg(this).setTitle("Rescan the whole phone?").setMessage("Re-reads every folder. It can take a few minutes; searching keeps working meanwhile.")
+            AppPal.dlg(this).kind("info").setTitle("Rescan the whole phone?").setMessage("Re-reads every folder. It can take a few minutes; searching keeps working meanwhile.")
                 .setPositiveButton("Rescan") { _, _ -> IndexManager.rescan(); kick(false); toast("Rescanning the phone") }.setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(10f) })
         root.addView(act)
