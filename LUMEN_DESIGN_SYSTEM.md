@@ -928,9 +928,9 @@ Dialog (12.12), Bottom sheet (12.11), Snackbar (12.14), Buttons (12.1), Chips (1
 
 Each part: update the handover chapter, `CHANGELOG.md`, and send back only changed files in `.tar.xz`.
 
-### 19.1a Status and decisions as built (updated 2026-11-07, after Part 4)
+### 19.1a Status and decisions as built (updated 2026-11-08)
 
-**Done: Parts 1-11 and 17 (page); Part 12 partly (bars, drawer, headings strip left). Round 2 (19.1b): Part A done.** Parts 13, 14 and 15 done on the page, Part 16 done except the leftovers named in its row. Part 18 done on the page (see the handover note). Next: device verification (T5 / T7 / T8 / T10, TalkBack); finish the Part 12 leftovers when touching `NlChrome` / `NlDrawer`.
+**The current status is the status line in `LUMEN_WORK_PLAN.md` (it also has Parts 4a-4f and the semantic slots of 4g); the audit of what differs from this spec is `LUMEN_AUDIT.md`.** Older text of this section (Parts 1-11 / 17 done, Round 2 A) is history. Numbering: spec Parts 1-18, Round 2 A-C and plan Parts 1-4g are three systems; the plan file maps them. Next: owner compile, device verification (T5 / T7 / T8 / T10, TalkBack).
 
 Tooling: `tools/lumen/tokens.json` is the single source (slots per theme, fresh slots, radius, space, type, font sizes, state opacities). `python3 tools/lumen/gen.py` writes the `/*LUMEN:BEGIN*/ ... /*LUMEN:END*/` block at the top of the `ui.html` `<style>` (`--check` verifies). `python3 tools/lumen/contrast.py` is acceptance test T1.
 
@@ -1010,14 +1010,14 @@ After Parts 1-18 the owner asked for these eleven items. Items 1-3, 9, 10 and 11
 Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (`[x]`) and date an item when it is built; add new leftovers here, not in the part notes. Order inside a group = suggested order.
 
 **V. Verification debt (do before building more)**
-- [ ] V1 Build the APK (CI) and fix compile errors. Never compiled: `LumenTokens.kt`, `Lm.kt`, `LumenPrefs.kt`, `NlChrome.kt` (dock, ripple, TalkBack `ExploreByTouchHelper`), `NlDrawer.kt`, `NlFileIcons.kt`, `NativeList.kt` changes, `NlClassicFolder`, launcher icon resources, `values-v31/themes.xml`.
+- [x] V1 (2026-11-07, owner compiled; 4f fixed a PixelCopy import after a CI failure) Build the APK (CI) and fix compile errors. Never compiled: `LumenTokens.kt`, `Lm.kt`, `LumenPrefs.kt`, `NlChrome.kt` (dock, ripple, TalkBack `ExploreByTouchHelper`), `NlDrawer.kt`, `NlFileIcons.kt`, `NativeList.kt` changes, `NlClassicFolder`, launcher icon resources, `values-v31/themes.xml`.
 - [ ] V2 Device pass: T5 parity screenshots, T6 glass ladder, T7 font scale 130 / 160 / 200 %, T8 gallery scroll frame budget (`lmFrameTest`), T10 native theme-switch flash.
 - [ ] V3 TalkBack run on the file browser, dialogs, top bar, dock, drawer, settings.
 - [ ] V4 `LumenPrefs.glassHint()` low-end guess (`isLowRamDevice`, `memoryClass <= 128`, <= 4 cores) check on the reference devices.
 - [ ] V5 Check the three static dark-theme selector lists (UI4 / UI5 / UI6, with `data-cdark`) after any new dark preset.
 
 **N. Native drawing (never done in native)**
-- [~] N1 Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer: stand-in done 2026-11-07, Part 4b, `LumenGlass.chromeFill`, tint-raised, NO blur; real in-window blur N1 (c) done 2026-11-07, Part 4f: `NlBackdrop.kt`, F0 / F1 on API 31+, stand-in kept for F2 / F3 and as fallback; not compiled)
+- [x] N1 (all parts 2026-11-07, not device-tested) Native glass for dialogs (`Lm.restyle`), sheets (`NlSheets`), chrome (G1 on top / selection / bottom bar, drawer); API 31+ blur with the F0-F3 ladder and a native F-step. (sheets done 2026-11-07, Part 4a: `LumenGlass.kt`, page reports its step via `LSAndroid.glassStepSet`; chrome / drawer: stand-in done 2026-11-07, Part 4b, `LumenGlass.chromeFill`, tint-raised, NO blur; real in-window blur N1 (c) done 2026-11-07, Part 4f: `NlBackdrop.kt`, F0 / F1 on API 31+, stand-in kept for F2 / F3 and as fallback; not compiled)
 - [x] N2 `NlSheets`: Lumen look, motion, drag handle, swipe-to-dismiss. (2026-11-07, Part 4a)
 - [x] N3 Category tiles in grid / gallery (`NlGridView`, `NlGalView`, 64-96 dp "Grid file"); realistic Word / Excel / PowerPoint tiles are only `drawLegacy` now. (2026-11-07, 4c: grid no-thumbnail page = category tile; gallery has no file tiles)
 - [~] N4 Native chrome FAB / buttons on gradients (`gPrimary`), `gSurface` on cards, `gChrome` everywhere, `gSuccess`, `gGlow`, `gSkeleton`, `gScrimTop / Bottom`, `shadowTint` as a real slot. (2026-11-07, Part 4b: `shadowTint` slot + `LumenGrad.kt`; FAB, dock pill, snackbar, tinted shadows done; `gGlow` / `gSkeleton` / `gScrim*` exist without callers: Parts 4c / 4d)
@@ -1038,7 +1038,7 @@ Collected from every "NOT done" note of Parts 5-18 and Round 2 A / B / C. Tick (
 - [x] M4 Aurora wallpaper drift (60 s) and drift off in battery saver. (done 2026-11-07, Part 2: `#home::before` drifts 60 s, off in f2 / f3 / Reduce motion / saver)
 - [x] M5 Undo countdown bar and merging of repeated snackbar numbers. (page done 2026-11-07, Part 1: merge + Undo bar; native Undo bar + number merge in `Lm.snack` 2026-11-07, Part 4a)
 - [x] M6 Sheet swipe-to-dismiss (page `#sheet`). (done 2026-11-07, Part 1: `/*LUMEN-UI13*/`)
-- [~] M7 (2026-11-07, 4d: (a) skeleton done, (b) container transform NOT) Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
+- [x] M7 (2026-11-07: (a) skeleton 4d, (b) container transform 4f snapshot overlay, gallery cells / page-started viewers keep the scale-up) Skeletons in native lists; true shared-element container transform for viewer / player launch (image continuous, chrome fades in after 120 ms).
 
 **P. Page leftovers**
 - [x] P1 Swipe actions on rows, fast-scroll scrubber, hold-menu lift (page twin of N10 / N11). (done 2026-11-07, Part 2: swipe rows 96 px, scrubber, hold lift)

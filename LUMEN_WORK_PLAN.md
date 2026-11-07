@@ -4,7 +4,7 @@ Companion to `LUMEN_DESIGN_SYSTEM.md` (spec + item list 19.1c). This file answer
 Created 2026-11-07. Item IDs (V / N / M / P / T / A) are the ones in 19.1c; every one of the 42 open items sits in exactly one part below.
 
 **Status line (edit this first in every session):**
-`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b, 4c (partly), 4d (partly), 4e and 4f of 8 | Next: owner compile + device pass (V2-V5, check 4f first); then leftovers | Open items: 9 (M1, M5 native exits elsewhere, P8, M2, P4 partly; N4 gGlow / gSkeleton / gScrim callers; 4f device check) | Last session: 2026-11-07`
+`Done: Parts 1-18 + Round 2 A / B / C(partial) + V1 + Parts 1-3, 4a, 4b, 4c (partly), 4d (partly), 4e 4f of 8 and 4g (semantic slots) | Next: owner compile + device pass (V2-V5, check 4f first); then leftovers | Open items: see `LUMEN_AUDIT.md` sections A and B (the old count of 9 was wrong) | Last session: 2026-11-07`
 
 ---
 

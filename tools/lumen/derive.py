@@ -113,6 +113,13 @@ def fresh(d, over=None):
     o["focus"] = f
     w = d.get("warning", "#f9ab00")
     o["onWarning"] = "#1f1400" if cr("#1f1400", w) >= cr("#ffffff", w) else "#ffffff"
+    on = lambda c: max(("#1f1400", "#ffffff", "#000000"), key=lambda k: cr(k, c))   # best of dark brown / white / black
+    er, su = d.get("error", "#f2b8b5" if dark else "#b3261e"), d.get("success", "#7fd99a" if dark else "#1e8e3e")
+    o["onError"], o["onSuccess"] = on(er), on(su)
+    o["info"] = snap("#a8c7fa" if dark else "#0b57d0", [d["canvas"], d["surface"]], 4.5, not dark)[0]   # Part 4g (A2): info family, blue, 4.5:1 on canvas and surface
+    o["onInfo"] = on(o["info"])
+    o["successCont"] = mix(d["surface"], su, .22 if dark else .14)
+    o["warningCont"] = mix(d["surface"], w, .22 if dark else .16)
     o["shadowTint"] = mix(d["primary"], "#000000", .65)   # Part 4b (N4): 35 % primary over black, the tint of every elevation shadow (page --shT used to compute this in CSS)
     if over: o.update(over)
     return o

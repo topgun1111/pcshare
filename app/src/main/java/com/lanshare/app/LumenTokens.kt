@@ -29,10 +29,16 @@ class Lumen(private val m: Map<String, Int>) {
     val focus: Int get() = m.getValue("focus")
     val onWarning: Int get() = m.getValue("onWarning")
     val shadowTint: Int get() = m.getValue("shadowTint")
+    val onError: Int get() = m.getValue("onError")
+    val onSuccess: Int get() = m.getValue("onSuccess")
+    val info: Int get() = m.getValue("info")
+    val onInfo: Int get() = m.getValue("onInfo")
+    val successCont: Int get() = m.getValue("successCont")
+    val warningCont: Int get() = m.getValue("warningCont")
     operator fun get(n: String): Int = m[n] ?: 0
 
     companion object {
-        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning", "shadowTint")
+        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning", "shadowTint", "onError", "onSuccess", "info", "onInfo", "successCont", "warningCont")
         private val LIGHT = mapOf(
             "canvas" to 0xFFFFF8F2.toInt(),
             "ink" to 0xFF1F1A16.toInt(),
@@ -58,7 +64,13 @@ class Lumen(private val m: Map<String, Int>) {
             "glassTint" to 0xFFFFF8F2.toInt(),
             "focus" to 0xFF0B5FFF.toInt(),
             "onWarning" to 0xFF1F1400.toInt(),
-            "shadowTint" to 0xFF401B00.toInt()
+            "shadowTint" to 0xFF401B00.toInt(),
+            "onError" to 0xFFFFFFFF.toInt(),
+            "onSuccess" to 0xFF000000.toInt(),
+            "info" to 0xFF0B57D0.toInt(),
+            "onInfo" to 0xFFFFFFFF.toInt(),
+            "successCont" to 0xFFE0EFE4.toInt(),
+            "warningCont" to 0xFFFEF2D6.toInt()
         )
         private val DARK = mapOf(
             "canvas" to 0xFF17110C.toInt(),
@@ -85,7 +97,13 @@ class Lumen(private val m: Map<String, Int>) {
             "glassTint" to 0xFF1E1610.toInt(),
             "focus" to 0xFF8AB4FF.toInt(),
             "onWarning" to 0xFF1F1400.toInt(),
-            "shadowTint" to 0xFF59402B.toInt()
+            "shadowTint" to 0xFF59402B.toInt(),
+            "onError" to 0xFF000000.toInt(),
+            "onSuccess" to 0xFF000000.toInt(),
+            "info" to 0xFFA8C7FA.toInt(),
+            "onInfo" to 0xFF000000.toInt(),
+            "successCont" to 0xFF384130.toInt(),
+            "warningCont" to 0xFF534425.toInt()
         )
 
         fun of(c: android.content.Context): Lumen {

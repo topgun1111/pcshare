@@ -40,6 +40,9 @@ function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1
   var f=dark?'#8ab4ff':'#0b5fff',cs=[f,'#0b5fff','#8ab4ff','#ffb000','#ffffff','#000000'];
   for(var i=0;i<cs.length;i++){if(lmCr(cs[i],d.canvas)>=3&&lmCr(cs[i],d.surface)>=3){f=cs[i];break}}
   var w=d.warning||'#f9ab00';o.onWarning=lmCr('#1f1400',w)>=lmCr('#ffffff',w)?'#1f1400':'#ffffff';
+  var on=function(c){var b='#1f1400',k=['#ffffff','#000000'];for(var i=0;i<2;i++){if(lmCr(k[i],c)>lmCr(b,c))b=k[i]}return b},er=d.error||(dark?'#f2b8b5':'#b3261e'),su=d.success||(dark?'#7fd99a':'#1e8e3e');
+  o.onError=on(er);o.onSuccess=on(su);o.info=lmSnap(dark?'#a8c7fa':'#0b57d0',[d.canvas,d.surface],4.5,!dark)[0];o.onInfo=on(o.info);
+  o.successCont=lmMix(d.surface,su,dark?0.22:0.14);o.warningCont=lmMix(d.surface,w,dark?0.22:0.16);
   o.shadowTint=lmMix(d.primary,'#000000',0.65);
   o.focus=f;return o}
 /* function, not var: the boot call runs before a later `var` line would have been assigned */

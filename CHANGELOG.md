@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
 
+## 2026-11-08 - Theme picker colours
+### Fixed
+- The Light, Dark and Follow system chips in the theme picker now show the real colours of those themes.
+
 ## 2026-11-07 - Frosted bars and a smoother picture opening
 ### Added
 - On Android 12 and newer the top bar, the action buttons at the bottom and the side menu now blur the files behind them (Glass quality Full or Auto; Light and Reduce transparency keep them solid).
