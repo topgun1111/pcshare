@@ -1957,6 +1957,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const holes=[];let dm=0,ps=0;
   ['#fab','#toast','#dlw','#jb','#jp','#ubn'].forEach(q=>{if(NLCH&&NLCHJ!=='0'&&(q==='#fab'||q==='#toast'||q==='#dlw'))return;const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg','#pcs','#pq'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
+  {const dc=$('.dsc'),dmn=dc&&vis(dc)?dc.querySelector('.dmn'):null;if(dmn){const b=dmn.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])}}   // dock "More" popup: the native list would otherwise cover it
   const sc=$('#dscrim');if(sc&&vis(sc)){const o=parseFloat(getComputedStyle(sc).opacity)||0;dm=Math.max(dm,o);ps=1;const w=$('#dwr');if(w){const b=w.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}
   let hd=null;                                                         // native path bar + tool row sit exactly on top of these two rows
   if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
