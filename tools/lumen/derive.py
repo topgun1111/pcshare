@@ -91,6 +91,14 @@ def neutral(hue, tint, l):
 def hexa(h, a):
     return h + "%02x" % int(math.floor(a * 255 + 0.5))
 
+# Spec 4.4: one hue per semantic colour in every theme. colour -> (fill, on-fill, container, on-container); light / dark.
+SPEC_SEM = {
+    False: {"success": ("#1e8e3e", "#ffffff", "#d7f2dd", "#0b3d1c"), "warning": ("#a66300", "#ffffff", "#ffe7bf", "#3d2300"),
+            "error": ("#b3261e", "#ffffff", None, None), "info": ("#0b6bcb", "#ffffff", "#d6e8fb", "#0a2f5c")},
+    True: {"success": ("#7fd99a", "#00391a", "#14502a", "#d7f2dd"), "warning": ("#ffc15e", "#3d2300", "#5c3a00", "#ffe7bf"),
+           "error": ("#f2b8b5", "#601410", None, None), "info": ("#9cc8ff", "#00315f", "#174a80", "#d6e8fb")},
+}
+
 def fresh(d, over=None):
     """The 8 slots a preset does not list, derived from its own slots."""
     dark = is_dark(d["canvas"])
@@ -111,20 +119,27 @@ def fresh(d, over=None):
             f = c
             break
     o["focus"] = f
-    w = d.get("warning", "#f9ab00")
-    o["onWarning"] = "#1f1400" if cr("#1f1400", w) >= cr("#ffffff", w) else "#ffffff"
-    on = lambda c: max(("#1f1400", "#ffffff", "#000000"), key=lambda k: cr(k, c))   # best of dark brown / white / black
-    er, su = d.get("error", "#f2b8b5" if dark else "#b3261e"), d.get("success", "#7fd99a" if dark else "#1e8e3e")
-    o["onError"], o["onSuccess"] = on(er), on(su)
-    o["info"] = snap("#a8c7fa" if dark else "#0b57d0", [d["canvas"], d["surface"]], 4.5, not dark)[0]   # Part 4g (A2): info family, blue, 4.5:1 on canvas and surface
-    o["onInfo"] = on(o["info"])
-    o["successCont"] = mix(d["surface"], su, .22 if dark else .14)
-    o["warningCont"] = mix(d["surface"], w, .22 if dark else .16)
+    on = lambda c: max(("#1f1400", "#ffffff", "#000000"), key=lambda k: cr(k, c))   # best of dark brown / white / black (fallback for colours that are not the spec's)
+    S = SPEC_SEM[dark]
+    def sem(key, c, wt):
+        """(on-colour, container, on-container) of one semantic colour: the spec's (4.4) when c is the spec colour, else derived."""
+        s = S[key]
+        if c.lower() == s[0]: return (s[1] if cr(s[1], c) >= 4.5 else on(c)), s[2], s[3]   # spec white on #1E8E3E is 4.21:1 (< AA): that one pair keeps the best of dark / white / black
+        ct = mix(d["surface"], c, wt)
+        return on(c), ct, on(ct)
+    w = d.get("warning", S["warning"][0])
+    er, su = d.get("error", S["error"][0]), d.get("success", S["success"][0])
+    inf = snap(S["info"][0], [d["canvas"], d["surface"]], 4.5, not dark)[0]   # Part 4g (A2): info family, blue, 4.5:1 on canvas and surface
+    o["info"] = inf
+    o["onError"] = sem("error", er, .22 if dark else .14)[0]
+    o["onSuccess"], o["successCont"], o["onSuccessCont"] = sem("success", su, .22 if dark else .14)
+    o["onWarning"], o["warningCont"], o["onWarningCont"] = sem("warning", w, .22 if dark else .16)
+    o["onInfo"], o["infoCont"], o["onInfoCont"] = sem("info", inf, .22 if dark else .14)
     o["shadowTint"] = mix(d["primary"], "#000000", .65)   # Part 4b (N4): 35 % primary over black, the tint of every elevation shadow (page --shT used to compute this in CSS)
     if over: o.update(over)
     return o
 
-SEM_LIGHT = dict(errorCont="#f9dedc", onErrorCont="#410e0b", error="#b3261e", success="#1e8e3e", warning="#f9ab00")
+SEM_LIGHT = dict(errorCont="#f9dedc", onErrorCont="#410e0b", error="#b3261e", success="#1e8e3e", warning="#a66300")
 SEM_DARK = dict(errorCont="#8c1d18", onErrorCont="#f9dedc", error="#f2b8b5", success="#7fd99a", warning="#ffc15e")
 
 def from_inputs(hue, tint, mode):

@@ -29,6 +29,8 @@ function lmSnapGradc(pc,p,lab,darker){if(lmGradcOk(pc,p,lab))return[pc,false];va
   return[pc,false]}
 function lmNeutral(hue,tint,l){var k=1-Math.abs(2*l-1),s=k<1e-6?0:Math.min(1,(tint/100)/k);return lmHsl(hue,s,l)}
 function lmHexa(h,a){return h+('0'+Math.floor(a*255+0.5).toString(16)).slice(-2)}
+/* spec 4.4: one hue per semantic colour in every theme. colour -> [fill, on-fill, container, on-container]; index 0 light, 1 dark (mirror of derive.SPEC_SEM) */
+var LM_SEMSPEC=[{success:['#1e8e3e','#ffffff','#d7f2dd','#0b3d1c'],warning:['#a66300','#ffffff','#ffe7bf','#3d2300'],error:['#b3261e','#ffffff'],info:['#0b6bcb','#ffffff','#d6e8fb','#0a2f5c']},{success:['#7fd99a','#00391a','#14502a','#d7f2dd'],warning:['#ffc15e','#3d2300','#5c3a00','#ffe7bf'],error:['#f2b8b5','#601410'],info:['#9cc8ff','#00315f','#174a80','#d6e8fb']}];
 function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1]<0.1?0.08:0.28,L=dark?0.78:0.40,o={};
   o.surfaceLo=dark?lmMix(d.canvas,'#000000',0.35):lmMix(d.canvas,d.ink,0.06);
   o.edgeHi=dark?'#ffffff29':'#ffffffb3';
@@ -39,14 +41,17 @@ function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1
   o.glassTint=dark?lmMix(d.canvas,d.surface,0.5):d.canvas;
   var f=dark?'#8ab4ff':'#0b5fff',cs=[f,'#0b5fff','#8ab4ff','#ffb000','#ffffff','#000000'];
   for(var i=0;i<cs.length;i++){if(lmCr(cs[i],d.canvas)>=3&&lmCr(cs[i],d.surface)>=3){f=cs[i];break}}
-  var w=d.warning||'#f9ab00';o.onWarning=lmCr('#1f1400',w)>=lmCr('#ffffff',w)?'#1f1400':'#ffffff';
-  var on=function(c){var b='#1f1400',k=['#ffffff','#000000'];for(var i=0;i<2;i++){if(lmCr(k[i],c)>lmCr(b,c))b=k[i]}return b},er=d.error||(dark?'#f2b8b5':'#b3261e'),su=d.success||(dark?'#7fd99a':'#1e8e3e');
-  o.onError=on(er);o.onSuccess=on(su);o.info=lmSnap(dark?'#a8c7fa':'#0b57d0',[d.canvas,d.surface],4.5,!dark)[0];o.onInfo=on(o.info);
-  o.successCont=lmMix(d.surface,su,dark?0.22:0.14);o.warningCont=lmMix(d.surface,w,dark?0.22:0.16);
+  var S=LM_SEMSPEC[dark?1:0],on=function(c){var b='#1f1400',k=['#ffffff','#000000'];for(var i=0;i<2;i++){if(lmCr(k[i],c)>lmCr(b,c))b=k[i]}return b},
+    sem=function(k,c,wt){var q=S[k];if(String(c).toLowerCase()===q[0])return[lmCr(q[1],c)>=4.5?q[1]:on(c),q[2],q[3]];var ct=lmMix(d.surface,c,wt);return[on(c),ct,on(ct)]},
+    w=d.warning||S.warning[0],er=d.error||S.error[0],su=d.success||S.success[0],inf=lmSnap(S.info[0],[d.canvas,d.surface],4.5,!dark)[0],t;
+  o.info=inf;o.onError=sem('error',er,dark?0.22:0.14)[0];
+  t=sem('success',su,dark?0.22:0.14);o.onSuccess=t[0];o.successCont=t[1];o.onSuccessCont=t[2];
+  t=sem('warning',w,dark?0.22:0.16);o.onWarning=t[0];o.warningCont=t[1];o.onWarningCont=t[2];
+  t=sem('info',inf,dark?0.22:0.14);o.onInfo=t[0];o.infoCont=t[1];o.onInfoCont=t[2];
   o.shadowTint=lmMix(d.primary,'#000000',0.65);
   o.focus=f;return o}
 /* function, not var: the boot call runs before a later `var` line would have been assigned */
-function lmSem(dark){return dark?{errorCont:'#8c1d18',onErrorCont:'#f9dedc',error:'#f2b8b5',success:'#7fd99a',warning:'#ffc15e'}:{errorCont:'#f9dedc',onErrorCont:'#410e0b',error:'#b3261e',success:'#1e8e3e',warning:'#f9ab00'}}
+function lmSem(dark){return dark?{errorCont:'#8c1d18',onErrorCont:'#f9dedc',error:'#f2b8b5',success:'#7fd99a',warning:'#ffc15e'}:{errorCont:'#f9dedc',onErrorCont:'#410e0b',error:'#b3261e',success:'#1e8e3e',warning:'#a66300'}}
 function lmFromInputs(hue,tint,mode){hue=lmMod(+hue,360);tint=Math.max(0,Math.min(8,+tint));var dark=mode==='dark'||mode==='amoled',
   N=function(l){return lmNeutral(hue,tint,l)},A=function(l){return lmHsl(hue,0.9,l)},sn=false,d={},t;
   if(!dark){d.canvas=N(0.975);d.surface='#ffffff';d.surfaceHi=N(0.94);d.surfaceLo=N(0.91);d.edge=N(0.88);d.ink=N(0.10)}
