@@ -358,7 +358,13 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         fillP.color = fp.fab
         val fr = bh / 2f   // pill (extended FAB)
         rf.set(0f, 0f, bw, bh)
+        // gGlow: a restrained theme-accent halo, kept outside the pill so it reads as light rather than a colour wash.
+        if (LumenGlass.chromeGradient(context) && !LumenPrefs.reduceMotion(context)) {
+            fillP.shader = LumenGrad.glow(lumen(), bw * .5f, bh * .5f, Math.max(bw, bh) * .78f, AppPal.night(context))
+            cv.drawRoundRect(-8f * d, -8f * d, bw + 8f * d, bh + 8f * d, fr + 8f * d, fr + 8f * d, fillP)
+        }
         if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), 0f, 0f, bw, bh)   // gFab (flat at F3)
+        else fillP.shader = null
         cv.drawRoundRect(rf, fr, fr, fillP)
         fillP.shader = null
         ripple(cv, "fab", rf, fr, fp.onfab)

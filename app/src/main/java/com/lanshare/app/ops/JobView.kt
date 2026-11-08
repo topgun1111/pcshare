@@ -17,7 +17,7 @@ object JobView {
         val cancellable: Boolean
     )
 
-    private const val LINGER_OK_MS = 4_000L   // Lumen 12.16: a finished job stays 4 s (check pops), then the card / bubble leaves
+    private const val LINGER_OK_MS = 5_000L   // Lumen 12.16: a finished job stays 5 s so the expanded card can collapse at 4 s and the success bubble remains briefly
     private const val LINGER_ERR_MS = 10_000L
 
     private val order = HashMap<String, Int>()      // first-seen order (the job map has none)

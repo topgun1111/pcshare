@@ -73,7 +73,7 @@ class ImageViewerActivity : Activity() {
         fun consumeChanged(): Boolean { val c = changed; changed = false; return c }
     }
 
-    private class Item(val name: String, val url: String, val size: Long, val mtime: Long = 0L)
+    private class Item(val name: String, val url: String, val size: Long, val mtime: Long = 0L, val key: String = "")
 
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "img-load").also { it.isDaemon = true } }
@@ -128,7 +128,7 @@ class ImageViewerActivity : Activity() {
     private var heroClosing = false
     override fun finish() {
         if (!heroClosing) { val cur = try { pager.currentItem } catch (_: Throwable) { -1 }
-            if (NlHero.close(this, cur, heroIdx) { heroClosing = true; finish() }) return }   // Lumen M7 return: shrink into the thumbnail
+            if (NlHero.close(this, cur, heroIdx, try { items.getOrNull(cur)?.key } catch (_: Throwable) { null }) { heroClosing = true; finish() }) return }   // Lumen M7 return: shrink into the thumbnail
         super.finish()
         if (heroClosing) overridePendingTransition(0, 0) else LumenPrefs.closeAnim(this)
     }
@@ -363,7 +363,7 @@ class ImageViewerActivity : Activity() {
             val it = arr.getJSONObject(i)
             val url = it.getString("url")
             if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))   // only the app's own server
-                out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optLong("size", 0L), it.optLong("mtime", 0L)))
+                out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optLong("size", 0L), it.optLong("mtime", 0L), it.optString("key", "")))
         }
         return out to o.optInt("start", 0).coerceIn(0, maxOf(out.size - 1, 0))
     }

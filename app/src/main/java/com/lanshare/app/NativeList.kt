@@ -126,7 +126,7 @@ class NlRow(
 
 class NlPal(private val j: JSONObject) {
     private fun c(n: String) = j.optLong(n).toInt()
-    val card = c("card"); val bg = c("bg"); val fg = c("fg"); val mut = c("mut"); val bd = c("bd"); val sel = c("sel")
+    val card = c("card"); val bg = c("bg"); val fg = c("fg"); val mut = c("mut"); val dim = c("dim"); val bd = c("bd"); val sel = c("sel")
     val onsel = c("onsel"); val hov = c("hov"); val ac = c("ac"); val onac = c("onac"); val warn = c("warn"); val cont = c("cont"); val tl = c("tl")
     // gradient themes only (0 = flat theme): list bg, surfaces (sheets / drawer / dialogs), selection, header; highlight + dark divider line
     val gt = c("gt"); val gb = c("gb"); val ct = c("ct"); val cb = c("cb"); val st = c("st"); val sb = c("sb"); val ht = c("ht"); val hb = c("hb"); val hl = c("hl"); val dv = c("dv")
@@ -657,6 +657,16 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
 
     fun setThumb(k: Int, bm: Bitmap, dur: String?) { if (k in th.indices) { th[k] = bm; du[k] = dur; invalidate() } }
 
+    /** Lumen M7: exact on-screen cell geometry + bitmap for a video opened from the multi-cell gallery row. */
+    fun heroSource(index: Int): Pair<Bitmap, RectF>? {
+        val k = index - first
+        val bm = th.getOrNull(k) ?: return null
+        if (bm.isRecycled || k !in cells.indices || width <= 0) return null
+        val cs = cell(width.toFloat())
+        val x = 4f * d + k * (cs + 4f * d); val y = 4f * d
+        return bm to RectF(x, y, x + cs, y + cs)
+    }
+
     private fun cell(w: Float) = (w - 8f * d - 4f * d * (cols - 1)) / cols
 
     private fun hit(x: Float, y: Float): Int {
@@ -1001,16 +1011,40 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private fun growFrom(): android.os.Bundle? = LumenPrefs.growFrom(act)   // Lumen Part 16: viewer grows out of the tapped thumbnail
 
     /** Lumen 4f (M7 b): start a viewer / player from row [i] as a container transform (NlHero) when that row is on screen with a drawn thumbnail; else the Part 16 scale-up. */
-    private fun launchHero(i: Int, it: Intent) {
+    private fun launchHero(i: Int, it: Intent, returnKey: String? = null) {
         try {
-            val v = rv.findViewHolderForAdapterPosition(i)?.itemView
+            val v = rv.findViewHolderForAdapterPosition(posOf(i))?.itemView
             val bm: Bitmap?; val tr: RectF?; val rad: Float
             when (v) {
                 is NlRowView -> { bm = v.thumb; tr = v.thumbR; rad = v.thumbRad }
                 is NlGridView -> { bm = v.thumb; tr = v.thumbR; rad = v.thumbRad }
+                is NlGalView -> { val src = v.heroSource(i); bm = src?.first; tr = src?.second; rad = 14f * d }
                 else -> { bm = null; tr = null; rad = 0f }
             }
-            if (v != null && bm != null && tr != null && !tr.isEmpty) { NlHero.launch(act, v, tr, rad, bm, it); return }
+            if (v != null && bm != null && tr != null && !tr.isEmpty) {
+                val resolver: (String) -> NlHero.Target? = { k ->
+                    val a = k.split('|', limit = 3)
+                    if (a.size == 3) {
+                        val nm = a[1].substringAfterLast('/')
+                        val sz = a[2].toLongOrNull()
+                        val ix = rows.indexOfFirst { !it.dir && it.nm == nm && (sz == null || it.size == sz) }
+                        if (ix >= 0) {
+                            val tv = rv.findViewHolderForAdapterPosition(posOf(ix))?.itemView
+                            var tb: Bitmap? = null; var rr: RectF? = null; var cr = 0f
+                            when (tv) {
+                                is NlRowView -> { tb = tv.thumb; rr = tv.thumbR; cr = tv.thumbRad }
+                                is NlGridView -> { tb = tv.thumb; rr = tv.thumbR; cr = tv.thumbRad }
+                                is NlGalView -> { val q = tv.heroSource(ix); tb = q?.first; rr = q?.second; cr = 14f * d }
+                            }
+                            val targetRect = rr
+                            val targetBitmap = tb
+                            if (tv != null && targetRect != null && targetBitmap != null && !targetRect.isEmpty && !targetBitmap.isRecycled)
+                                NlHero.Target(tv, RectF(targetRect), cr, targetBitmap) else null
+                        } else null
+                    } else null
+                }
+                NlHero.launch(act, v, tr, rad, bm, it, returnKey, resolver); return
+            }
         } catch (_: Throwable) { }
         act.startActivity(it, growFrom())
     }
@@ -1040,7 +1074,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     }
                     val at = Math.max(0, v.indexOfFirst { it.nm == r.nm })
                     PlayerActivity.pending = JSONObject().put("start", at).put("items", items).toString()
-                    launchHero(i, Intent(act, PlayerActivity::class.java))
+                    launchHero(i, Intent(act, PlayerActivity::class.java), key(r.nm, r.size))
                 }
                 "img" -> {
                     val heicOk = Build.VERSION.SDK_INT >= 28
@@ -1048,13 +1082,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
                     if (!ok(r)) return false
                     val v = files.filter(ok)
                     val items = JSONArray()
-                    for (m in v) items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("size", m.size))
+                    for (m in v) items.put(JSONObject().put("name", m.nm).put("url", url(m.nm)).put("size", m.size).put("key", key(m.nm, m.size)))
                     ImageViewerActivity.pending = JSONObject().put("start", Math.max(0, v.indexOfFirst { it.nm == r.nm })).put("items", items).toString()
-                    launchHero(i, Intent(act, ImageViewerActivity::class.java))
+                    launchHero(i, Intent(act, ImageViewerActivity::class.java), key(r.nm, r.size))
                 }
                 "pdf" -> {
                     PdfViewerActivity.pending = JSONObject().put("name", r.nm).put("url", url(r.nm)).put("size", r.size).put("key", key(r.nm, r.size)).toString()
-                    act.startActivity(Intent(act, PdfViewerActivity::class.java), LumenPrefs.fadeIn(act))
+                    launchHero(i, Intent(act, PdfViewerActivity::class.java), key(r.nm, r.size))
                 }
                 else -> return false
             }
@@ -1295,13 +1329,16 @@ class NativeList(private val act: Activity, private val web: WebView) {
     fun setPalette(json: String) {
         if (json == palJson) return
         palJson = json; val p = NlPal(JSONObject(json)); pal = p; head.pal = p
-        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card); srl.setProgressBackgroundColorSchemeColor((p.cont and 0x00FFFFFF) or (0xD6 shl 24))   /* Lumen 12.18: 40 dp circle, glass tint (84 % of the container colour) */; srl.setColorSchemeColors(p.ac); sb.setThumbColor(p.ac); sticky.fill = p.cont; sticky.ink = p.fg; sticky.edge = p.bd
+        if (p.gt != 0) rv.background = NlTex.layered(rv.context, p.gt, p.gb) else rv.setBackgroundColor(p.card)
+        srl.setPalette(LumenGlass.withAlpha(p.cont, 0.84f), p.ac, LumenGlass.withAlpha(p.bd, 0.35f))
+        sb.setThumbColor(p.ac); sb.setIdleColor(p.dim); sticky.fill = p.cont; sticky.ink = p.fg; sticky.edge = p.bd
         ad.notifyDataSetChanged()
     }
 
     /** List = LinearLayoutManager; grid view = GridLayoutManager (5 columns, 2 in picture folders, 4 / 3 from 600 dp), cards 2 dp apart (item offset 1 each side), 3 dp from the screen edge (rv padding 2 + offset 1). */
     private fun ensureMgr(grid: Boolean) {
-        val span = if (grid) (if (gcols in 2..8) gcols else if (web.width / d >= 600f) (if (imgMode) 3 else 4) else (if (imgMode) 2 else 5)) else 1
+        val contentDp = (if (overlay.listRect.width() > 0f) overlay.listRect.width() else web.width.toFloat()) / d
+        val span = if (grid) (if (gcols in 2..8) gcols else if (contentDp >= 600f) (if (imgMode) 3 else 4) else (if (imgMode) 2 else 5)) else 1
         if (grid == gridOn && span == spanN && rv.layoutManager === lm) return
         gridOn = grid; spanN = span
         rv.removeItemDecoration(gap)

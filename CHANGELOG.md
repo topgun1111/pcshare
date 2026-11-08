@@ -3,7 +3,24 @@
 <!-- USER-FACING list. The app's update dialog shows it BEFORE the download button; CI publishes the TOP "## " section below as the GitHub release body. -->
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
+
+## 2026-11-08 - Lumen completion pass
+### Changed
+- Native dialogs now follow the same 360 dp simple / 560 dp rich width limits as page dialogs, including fold and unfold changes.
+- Video and image viewers now return to the thumbnail of the item currently shown when that thumbnail is visible in the underlying list.
+- PDF files opened from the native list now use the same thumbnail-to-viewer transition.
+- The video controls use a soft bottom fade, and the New button gets a restrained theme-colour halo.
+- On wide windows, native view-options sheets float in the centre; grid columns now respond to the space left beside the permanent drawer.
+- Native pull-to-refresh now uses a custom Lumen circle that grows with the pull and spins while refreshing.
+- Button press, focus, hover, drag and disabled states now use the shared Lumen state tokens.
 <!-- The developer-level detail goes to HANDOVER.md section 14; this file is only what the owner sees on the phone. -->
+
+## 2026-11-08 - Lumen finishing pass: scrollbars and job cards
+### Changed
+- Simple dialogs are narrower; dialogs with extra details or choices have more room.
+- Scrollbars are thin and quiet, appear while scrolling, then fade away. Long lists remain fast-scrollable.
+- A completed job keeps its details briefly, then folds into the small success bubble.
+- Opening a video from the video gallery now grows it out of the tapped thumbnail.
 
 ## 2026-11-08 - Tar archives with any name
 ### Fixed
@@ -99,44 +116,44 @@
 - The Details dialogs for files and text notes show a neat list of rows (path, size, date, encoding).
 - The picture editor percentage and labels follow the theme colour; the text editor colour picker ring and search highlights follow the theme.
 
-## 2026-11-09 - Top bar no longer garbled while scrolling
+## 2026-11-08 - Top bar no longer garbled while scrolling
 ### Fixed
 - While you scroll a folder, the title and icons on the top bar no longer look doubled or smeared.
 
-## 2026-11-09 - Dialog types: info, warning, permission, success
+## 2026-11-08 - Dialog types: info, warning, permission, success
 ### Added
 - Dialogs can now show a coloured icon tile for information (blue), warning (amber), permission (theme colour) and success (green), with a small details list and an "Apply to all" switch.
 - The "already exists" and "Replace layout" questions use the warning look and show the name and folder; the root access question uses the lock icon.
 ### Fixed
 - The icon at the top of the Delete question was squeezed to a tiny size; it is full size again.
 
-## 2026-11-09 - Folder badges in dark themes
+## 2026-11-08 - Folder badges in dark themes
 ### Fixed
 - The small type badge on folders in the grid now uses the theme's card colour, so its icon is visible in dark themes (it sat on a fixed white plate).
 
-## 2026-11-09 - Readable "duplicate?" label
+## 2026-11-08 - Readable "duplicate?" label
 ### Fixed
 - The "duplicate?" label on files now uses the theme's warning text colour, so it stays readable on every theme.
 
-## 2026-11-09 - Selected thumbnails shrink
+## 2026-11-08 - Selected thumbnails shrink
 ### Changed
 - In the grid, a selected picture thumbnail now shrinks a little so the selection colour shows around it.
 
-## 2026-11-09 - Dock icons and thumbnail corners
+## 2026-11-08 - Dock icons and thumbnail corners
 ### Changed
 - The coloured icons in the bottom action bar now follow the theme and look right in dark themes too.
 - Picture thumbnails in the grid have smaller corners when there are more columns.
 
-## 2026-11-09 - Download cards follow the theme
+## 2026-11-08 - Download cards follow the theme
 ### Changed
 - The download progress cards now use your theme's card, text and accent colours instead of a fixed dark grey and orange, so they match light and dark themes.
 
-## 2026-11-09 - Theme colours in the player and the new-file dot
+## 2026-11-08 - Theme colours in the player and the new-file dot
 ### Fixed
 - The video player's progress bar now uses the colour of your theme instead of a fixed blue.
 - The red dot on files that are less than a minute old now follows the theme's error colour.
 
-## 2026-11-09 - Swipe rows, folder slide
+## 2026-11-08 - Swipe rows, folder slide
 ### Added
 - In the file list, swipe a row right to share it or left to delete it (the usual Delete question still appears).
 - Deleted files now fade out and the rows below slide up.

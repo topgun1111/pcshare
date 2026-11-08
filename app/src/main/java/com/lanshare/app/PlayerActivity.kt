@@ -12,6 +12,11 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
@@ -89,6 +94,21 @@ import java.util.Locale
  * Subtitle files next to a video (same name: .srt .vtt .ass .ssa) are picked up automatically; their text is converted to UTF-8
  * first (old Turkish files are windows-1254), so ğ ş ı İ ö ü ç show correctly.
  */
+/** Theme-independent black fade at the bottom of video; uses the shared Lumen gScrimBottom shader. */
+private class PlayerBottomScrim : Drawable() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        if (b.isEmpty) return
+        paint.shader = LumenGrad.scrimBottom(b.top.toFloat(), b.bottom.toFloat())
+        canvas.drawRect(b, paint)
+        paint.shader = null
+    }
+    override fun setAlpha(alpha: Int) { paint.alpha = alpha; invalidateSelf() }
+    override fun setColorFilter(colorFilter: ColorFilter?) { paint.colorFilter = colorFilter; invalidateSelf() }
+    @Suppress("DEPRECATION") override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : Activity() {
     companion object {
@@ -169,7 +189,7 @@ class PlayerActivity : Activity() {
     /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
     private var heroClosing = false
     override fun finish() {
-        if (!heroClosing && NlHero.close(this, try { curIndex() } catch (_: Throwable) { -1 }, startIdx) { heroClosing = true; finish() }) return   // Lumen M7 return: shrink into the thumbnail
+        if (!heroClosing && NlHero.close(this, try { curIndex() } catch (_: Throwable) { -1 }, startIdx, try { items.getOrNull(curIndex())?.key } catch (_: Throwable) { null }) { heroClosing = true; finish() }) return   // Lumen M7 return: shrink into the thumbnail
         super.finish()
         if (heroClosing) overridePendingTransition(0, 0) else LumenPrefs.closeAnim(this)
     }
@@ -262,7 +282,11 @@ class PlayerActivity : Activity() {
         root.addView(header, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
 
         // ---- bottom: seek pill + play/pause (+ previous / next), then the row of round buttons
-        bottom = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        bottom = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            // gScrimBottom: controls remain legible over bright footage without a hard black footer.
+            background = PlayerBottomScrim()
+        }
         row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         pill = SeekPill(this)
         playBtn = RoundBtn(this, PIc.PLAY).apply { contentDescription = "Play / pause"; setOnClickListener { togglePlay() } }
@@ -550,6 +574,7 @@ class PlayerActivity : Activity() {
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 val p = player ?: return true
+                Haptics.play("double")
                 val f = e.x / maxOf(touch.width, 1)
                 if (f < 0.33f) { p.seekTo(maxOf(0L, p.currentPosition - 10_000)); showHud("-10 s") }
                 else if (f > 0.67f) { p.seekTo(p.currentPosition + 10_000); showHud("+10 s") }

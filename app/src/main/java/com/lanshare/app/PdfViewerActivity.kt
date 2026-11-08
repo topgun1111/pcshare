@@ -191,13 +191,19 @@ class PdfViewerActivity : Activity() {
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
     private fun gap() = dp(GAP_DP)
     private fun bgColor() = if (night) 0xFF1A1A1A.toInt() else 0xFF3C3C3C.toInt()
 
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
-    /** Lumen M7: return transition (fade + 94 % scale, 200 ms) over the screen that is already underneath. */
-    override fun finish() { super.finish(); LumenPrefs.closeAnim(this) }
+    /** Lumen M7: reverse the PDF thumbnail hero when this reader was launched from a visible native list cell. */
+    private var heroClosing = false
+    override fun finish() {
+        if (!heroClosing && NlHero.close(this, 0, 0) { heroClosing = true; finish() }) return
+        super.finish()
+        if (heroClosing) overridePendingTransition(0, 0) else LumenPrefs.closeAnim(this)
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -353,6 +359,7 @@ class PdfViewerActivity : Activity() {
             insets
         }
         setContentView(root)
+        NlHero.play(this, root, listOf(top, pill)) { ready || stateBox.visibility == View.VISIBLE }
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
     }
 
@@ -1338,6 +1345,7 @@ class PdfViewerActivity : Activity() {
     override fun onResume() { super.onResume(); ModelLinks.showIfAny(this); armAutoHide() }
 
     override fun onDestroy() {
+        NlHero.release(this)
         gen++; rgen++
         ui.removeCallbacksAndMessages(null)
         savePos()
@@ -1513,16 +1521,18 @@ internal class PdfScrollBar(c: Context) : View(c) {
         private set
     private val d = resources.displayMetrics.density
     private val th = 52f * d
-    private val thumbP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (LumenGrad.onDark(Lumen.of(c)) and 0x00FFFFFF) or 0xE6000000.toInt() }   // theme primary (was fixed Ember orange)
+    private val thumbP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (LumenGrad.onDark(Lumen.of(c)) and 0x00FFFFFF) or 0xE6000000.toInt() }   // primary while actively dragging
+    private val idleP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66808080 }   // Lumen 12.19: inkDim at 40% while scrolling
     private val bubP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2000000.toInt() }
     private val txtP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 14f * d; textAlign = Paint.Align.CENTER }
     private val rect = RectF()
-    private val hide = Runnable { if (!dragging) animate().alpha(0f).setDuration(250).start() }
+    private val hide = Runnable { if (!dragging) animate().alpha(0f).setDuration(140).start() }
 
     init { alpha = 0f }
 
     /** Thumb colour (ARGB; the alpha is forced to ~90 %). */
     fun setThumbColor(c: Int) { thumbP.color = (c and 0x00FFFFFF) or 0xE6000000.toInt(); invalidate() }
+    fun setIdleColor(c: Int) { idleP.color = (c and 0x00FFFFFF) or 0x66000000; invalidate() }
 
     private fun travel() = maxOf(1f, height - padT - padB - th)
     private fun thumbTop() = padT + fraction * travel()
@@ -1530,14 +1540,14 @@ internal class PdfScrollBar(c: Context) : View(c) {
     /** Show the scroller for a moment (called while the list scrolls). */
     fun flash() {
         animate().cancel(); alpha = 1f
-        removeCallbacks(hide); postDelayed(hide, 1300)
+        removeCallbacks(hide); postDelayed(hide, 600)
     }
 
     override fun onDraw(canvas: Canvas) {
         val t = thumbTop()
-        val w = if (dragging) 8f * d else 5f * d
+        val w = if (dragging) 5f * d else 3f * d
         rect.set(width - w - 3f * d, t, width - 3f * d, t + th)
-        canvas.drawRoundRect(rect, w / 2, w / 2, thumbP)
+        canvas.drawRoundRect(rect, w / 2, w / 2, if (dragging) thumbP else idleP)
         if (dragging && label.isNotEmpty()) {
             val bw = txtP.measureText(label) + 28f * d
             val bh = 34f * d
@@ -1562,7 +1572,7 @@ internal class PdfScrollBar(c: Context) : View(c) {
             }
             MotionEvent.ACTION_MOVE -> { if (dragging) move(e.y); return dragging }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (dragging) { dragging = false; invalidate(); removeCallbacks(hide); postDelayed(hide, 900) }
+                if (dragging) { dragging = false; invalidate(); removeCallbacks(hide); postDelayed(hide, 600) }
                 return true
             }
         }

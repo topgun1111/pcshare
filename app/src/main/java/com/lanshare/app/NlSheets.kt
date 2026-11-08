@@ -62,6 +62,7 @@ private class NlRadio(c: Context, private val on: Boolean, private val ring: Int
  * moves the sheet with the finger; letting go past 30 % of its height or with a fast fling slides it out (t.exit, accelerate), otherwise it settles back (t.base, decelerate).
  */
 private class SwipeSheet(c: Context, private val scroll: ScrollView, private val onDismiss: () -> Unit) : LinearLayout(c) {
+    var floating = false
     private var y0 = 0f
     private var drag = false
     private var vt: VelocityTracker? = null
@@ -110,8 +111,13 @@ private class SwipeSheet(c: Context, private val scroll: ScrollView, private val
     /** Slide up from the bottom edge (t.med decelerate); Reduce motion = 120 ms fade. */
     fun enter() {
         if (LumenPrefs.reduceMotion(context)) { translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start(); return }
-        alpha = 1f; translationY = height.toFloat()
-        animate().translationY(0f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.DECEL).start()
+        if (floating) {
+            translationY = 0f; alpha = 0f; scaleX = 0.98f; scaleY = 0.98f
+            animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start()
+        } else {
+            alpha = 1f; translationY = height.toFloat()
+            animate().translationY(0f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.DECEL).start()
+        }
     }
 }
 
@@ -165,12 +171,15 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val dl = Dialog(act)
         dl.requestWindowFeature(Window.FEATURE_NO_TITLE)
         fill = LumenGlass.apply(dl.window, act)
+        val wideSheet = bottom && act.resources.configuration.screenWidthDp >= 600
+        val windowDp = act.resources.configuration.screenWidthDp.coerceAtLeast(1)
+        val sheetWidth = dp(minOf(560f, windowDp * 0.9f))
         dl.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setDimAmount(if (AppPal.night(act)) 0.56f else 0.32f)   // Lumen scrim: 32 % light / 56 % dark (same as Lm.restyle)
-            setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (bottom) R.style.LmSheetExit else R.style.LmDialogExit)
-            setGravity(if (bottom) Gravity.BOTTOM else Gravity.CENTER)
-            setLayout(if (bottom) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (bottom && !wideSheet) R.style.LmSheetExit else R.style.LmDialogExit)
+            setGravity(if (bottom && !wideSheet) Gravity.BOTTOM else Gravity.CENTER)
+            setLayout(if (bottom && !wideSheet) ViewGroup.LayoutParams.MATCH_PARENT else if (bottom) sheetWidth else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         dl.setCanceledOnTouchOutside(true)
         return dl
@@ -238,7 +247,9 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
         // Lumen sheet: glass panel with r-xxl top corners + edge hairline, drag handle, swipe-to-dismiss (textured themes keep their own texture)
         val sheet = SwipeSheet(act, scroll) { dl.window?.setWindowAnimations(0); dl.dismiss() }
-        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), true)   // N6: same r-xxl as the page's #sheet (32 dp, Windows 11 = 24)
+        val wideSheet = act.resources.configuration.screenWidthDp >= 600
+        sheet.floating = wideSheet
+        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), !wideSheet)   // wide windows float with all corners; phones keep top-only corners
         val handle = View(act).apply { background = round(LumenGlass.withAlpha(p.mut, 0.5f), 2f); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         sheet.addView(handle, LinearLayout.LayoutParams(dp(32f), dp(4f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12f); bottomMargin = dp(4f) })
         sheet.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -328,6 +339,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         dlg = dl
         dl.setOnShowListener { sheet.post { sheet.enter() } }
         dl.show()
-        dl.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        val sheetWidth = dp(minOf(560f, act.resources.configuration.screenWidthDp.coerceAtLeast(1) * 0.9f))
+        dl.window?.setLayout(if (wideSheet) sheetWidth else ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 }

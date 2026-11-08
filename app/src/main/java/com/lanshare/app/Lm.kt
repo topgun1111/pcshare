@@ -317,8 +317,8 @@ object Lm {
         return false
     }
 
-    /** Dialog extras (Lumen A8, same as page dlg(): o.kind / o.details / o.applyAll). */
-    class Opts(val kind: String?, val details: List<Pair<String, String>>?, val applyAllLabel: String?, val onApplyAll: ((Boolean) -> Unit)?)
+    /** Dialog extras (Lumen A8): semantic hero kind and optional read-only detail rows. */
+    class Opts(val kind: String?, val details: List<Pair<String, String>>?)
 
     /** Hero tile for info / warn / perm / ok: filled disc in the kind's slot colour, Lumen glyph (info / warn / lock / check) in its on-colour. */
     private class KindHero(c: Context, private val bg: Int, private val fg: Int, private val glyph: String) : View(c) {
@@ -333,12 +333,11 @@ object Lm {
         }
     }
 
-    /** Details block ("label  value" rows on a quiet tile) and the Apply-to-all switch row, added above the button row. */
+    /** Optional read-only details block ("label  value" rows on a quiet tile), added above the button row. */
     private fun addExtras(d: AlertDialog, c: Context, lm: Lumen, o: Opts) {
         val rows = o.details
         val hasRows = rows != null && rows.isNotEmpty()
-        val hasAll = !o.applyAllLabel.isNullOrEmpty()
-        if (!hasRows && !hasAll) return
+        if (!hasRows) return
         val btnPanel = d.findViewById<View>(c.resources.getIdentifier("buttonPanel", "id", "android"))
         val host = (btnPanel?.parent ?: d.findViewById<View>(c.resources.getIdentifier("contentPanel", "id", "android"))?.parent) as? LinearLayout ?: return
         val box = LinearLayout(c)
@@ -360,26 +359,6 @@ object Lm {
                 tile.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also { if (i > 0) it.topMargin = dp(c, 8f) })
             }
             box.addView(tile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        if (hasAll) {
-            val row = LinearLayout(c)
-            row.orientation = LinearLayout.HORIZONTAL
-            row.gravity = Gravity.CENTER_VERTICAL
-            row.minimumHeight = dp(c, 48f)
-            val t = TextView(c); t.text = o.applyAllLabel; t.setTextColor(lm.ink); LumenTypography.apply(t, LumenTypography.BODY_M)
-            val sw = android.widget.Switch(c)
-            sw.contentDescription = o.applyAllLabel
-            try {
-                val on = intArrayOf(android.R.attr.state_checked)
-                val st = arrayOf(on, intArrayOf())
-                sw.thumbTintList = ColorStateList(st, intArrayOf(lm.onPrimary, lm.inkMut))
-                sw.trackTintList = ColorStateList(st, intArrayOf(lm.primary, withAlpha(lm.ink, 0.22f)))
-            } catch (_: Throwable) { }
-            sw.setOnCheckedChangeListener { _, v -> o.onApplyAll?.invoke(v) }
-            row.setOnClickListener { sw.toggle() }
-            row.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also { if (hasRows) it.topMargin = dp(c, 4f) })
         }
         val at = if (btnPanel != null) host.indexOfChild(btnPanel) else -1
         if (at >= 0) host.addView(box, at, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

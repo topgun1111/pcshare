@@ -2,6 +2,7 @@ package com.lanshare.app
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -177,34 +178,82 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
 }
 
 /**
- * Lumen 12.18 / 13.5 (native twin of the page `#ptr`): SwipeRefreshLayout (its 40 dp circle, glass tint and primary ring are set in
- * `NativeList.setPalette`) with the trigger distance fixed at 70 dp (spec) and a haptic tick the moment the pull PASSES the threshold,
+ * Lumen 12.18 / 13.5 (native twin of the page `#ptr`): a custom 40 dp Lumen circle / progress ring painted over a transparent SwipeRefreshLayout driver,
+ * with the trigger distance fixed at 70 dp (spec), scale 0.6 -> 1, and a haptic tick the moment the pull PASSES the threshold,
  * not when the refresh starts (SwipeRefreshLayout has no such callback). SwipeRefreshLayout moves the circle by 0.5 x the finger travel, so the
  * same maths is applied to the raw touches here. One tick per crossing; a pull that goes back under the threshold re-arms it.
  * NOT compiled in the Lumen environment (owner compile).
  */
-class NlPullLayout(c: android.content.Context, d: Float) : androidx.swiperefreshlayout.widget.SwipeRefreshLayout(c) {
+class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.swiperefreshlayout.widget.SwipeRefreshLayout(c) {
     private val trigger = 70f * d
     private var y0 = 0f
     private var armed = false
     private var crossed = false
+    private var pull = 0f
+    private var bg = Color.TRANSPARENT
+    private var ring = Color.WHITE
+    private var track = 0x66FFFFFF
+    private val circleP = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val trackP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val arcP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val ringRect = RectF()
     var onThreshold: (() -> Unit)? = null
 
-    init { setDistanceToTriggerSync(Math.round(trigger)) }
+    init {
+        setDistanceToTriggerSync(Math.round(trigger))
+        // The stock CircleImageView remains the gesture / refresh driver, but its paint is transparent.
+        // NlPullLayout draws the Lumen 40 dp indicator itself, so it can scale from 0.6 and use the exact palette.
+        setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
+        setColorSchemeColors(Color.TRANSPARENT)
+        setWillNotDraw(false)
+    }
+
+    fun setPalette(background: Int, accent: Int, trackColor: Int) {
+        bg = background; ring = accent; track = trackColor
+        invalidate()
+    }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> { y0 = ev.y; armed = !isRefreshing && !canChildScrollUp(); crossed = false }
+            android.view.MotionEvent.ACTION_DOWN -> { y0 = ev.y; armed = !isRefreshing && !canChildScrollUp(); crossed = false; pull = 0f }
             android.view.MotionEvent.ACTION_MOVE -> if (armed && ev.pointerCount == 1) {
-                if (canChildScrollUp() || isRefreshing) armed = false
+                if (canChildScrollUp() || isRefreshing) { armed = false; pull = 0f }
                 else {
-                    val over = (ev.y - y0) * 0.5f
+                    val over = Math.max(0f, (ev.y - y0) * 0.5f)
+                    pull = Math.min(trigger, over)
                     if (!crossed && over >= trigger) { crossed = true; onThreshold?.invoke() }
                     else if (crossed && over < trigger * 0.9f) crossed = false   // small hysteresis so a jittering finger does not tick twice
+                    invalidate()
                 }
             }
-            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { armed = false; crossed = false }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { armed = false; crossed = false; pull = 0f; invalidate() }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        val refreshing = isRefreshing
+        if (!refreshing && pull <= 0f) return
+        val rm = LumenPrefs.reduceMotion(context)
+        val fraction = if (refreshing) 1f else (pull / trigger).coerceIn(0f, 1f)
+        val scale = if (rm) 1f else 0.6f + 0.4f * fraction
+        val cx = width * 0.5f
+        val cy = (24f * d) + if (refreshing) trigger else pull
+        val radius = 20f * d
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.scale(scale, scale)
+        circleP.style = Paint.Style.FILL; circleP.color = bg
+        canvas.drawCircle(0f, 0f, radius, circleP)
+        trackP.color = track; trackP.strokeWidth = 2.5f * d
+        ringRect.set(-14f * d, -14f * d, 14f * d, 14f * d)
+        canvas.drawArc(ringRect, 0f, 360f, false, trackP)
+        arcP.color = ring; arcP.strokeWidth = 2.5f * d
+        val start = if (refreshing && !rm) ((android.os.SystemClock.uptimeMillis() % 900L) / 900f) * 360f - 90f else -90f
+        val sweep = if (refreshing) 270f else 360f * fraction
+        canvas.drawArc(ringRect, start, sweep, false, arcP)
+        canvas.restore()
+        if (refreshing && !rm) postInvalidateOnAnimation()
     }
 }

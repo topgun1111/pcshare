@@ -62,20 +62,15 @@ object AppPal {
     /** Palette as ARGB ints, with the built-in light / dark defaults when the page sent none. */
     fun pal(c: Context): P = load(c) ?: Lumen.of(c).let { P(it.canvas, it.surfaceHi, it.ink, it.inkMut, it.edge, it.primary, it.onPrimary) }
 
-    /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours. */
+    /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours and 360 / 560 dp responsive width caps. */
     fun dlg(c: Context): Dlg = Dlg(c)
 
-    /** Dialog with the page `dlg()` kinds (Lumen A8): kind = info / warn / perm / ok / danger, details rows, "Apply to all" switch. */
+    /** Dialog with the page `dlg()` kinds (Lumen A8): kind = info / warn / perm / ok / danger, optional read-only details rows. */
     class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
         var kind: String? = null
         var detailRows: List<Pair<String, String>>? = null
-        var applyAllLabel: String? = null
-        /** State of the Apply-to-all switch; read it in the button listener. */
-        @Volatile var applyAllChecked = false
-        private var applyAllCb: ((Boolean) -> Unit)? = null
         fun kind(k: String?): Dlg { kind = k; return this }
         fun details(rows: List<Pair<String, String>>): Dlg { detailRows = rows; return this }
-        fun applyAll(label: String, onChange: ((Boolean) -> Unit)? = null): Dlg { applyAllLabel = label; applyAllCb = onChange; return this }
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
@@ -84,16 +79,16 @@ object AppPal {
             d.window?.setBackgroundDrawable(if (sf != null) NlTex.card(sf[0], sf[1], r, p.bd, Math.max(1, Math.round(c.resources.displayMetrics.density)))
                 else android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
             val act = actOf(c)
-            if (act != null) fit(d, act)   // right width for the CURRENT screen before the first frame (folded / unfolded)
+            if (act != null) fit(d, act, kind != null || !detailRows.isNullOrEmpty())   // 360 dp simple / 560 dp rich, always constrained to the current window
             d.setOnShowListener {
-                if (act != null) trackFold(d, act)
+                if (act != null) trackFold(d, act, kind != null || !detailRows.isNullOrEmpty())
                 try {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)
                     d.findViewById<android.widget.TextView>(android.R.id.message)?.setTextColor(p.fg)
                     val t = c.resources.getIdentifier("alertTitle", "id", "android")
                     if (t != 0) d.findViewById<android.widget.TextView>(t)?.setTextColor(p.fg)
                 } catch (_: Throwable) { }
-                Lm.restyle(d, c, Lm.Opts(kind, detailRows, applyAllLabel) { v -> applyAllChecked = v; applyAllCb?.invoke(v) })   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
+                Lm.restyle(d, c, Lm.Opts(kind, detailRows))   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
             }
             return d
         }
@@ -112,26 +107,26 @@ object AppPal {
     } catch (_: Throwable) { a.resources.displayMetrics.let { it.widthPixels to it.heightPixels } }
 
     /**
-     * Sizes the dialog window from the CURRENT screen, the app's uniform rule: 90 % of the width in portrait, 400 dp otherwise (never wider
-     * than 90 %). Without this a dialog that was measured in the other fold state stayed too wide on the cover screen (cut off at the right
-     * edge) or too narrow on the inner one.
+     * Sizes the dialog window from the CURRENT app window: simple notices cap at 360 dp, rich notices at 560 dp, and either stays within 90 %
+     * of the available width. Re-fit after fold / unfold so the dialog never remains sized for the previous display state.
      */
-    private fun fit(d: AlertDialog, a: Activity) {
+    private fun fit(d: AlertDialog, a: Activity, rich: Boolean) {
         val w = d.window ?: return
-        val (sw, sh) = winSize(a)
+        val (sw, _) = winSize(a)
         if (sw <= 0) return
-        val dp = a.resources.displayMetrics.density
-        val target = if (sh > sw) (sw * 0.9f).toInt() else minOf((400 * dp).toInt(), (sw * 0.9f).toInt())
+        val density = a.resources.displayMetrics.density
+        val cap = (if (rich) 560f else 360f) * density
+        val target = minOf(cap.toInt(), (sw * 0.9f).toInt())
         val lp = w.attributes
         if (lp.width != target) w.setLayout(target, lp.height)
     }
 
     /** The activity handles fold / unfold itself (configChanges), so a showing dialog is told to re-fit; the fold animation takes a moment, hence the repeats. */
-    private fun trackFold(d: AlertDialog, a: Activity) {
+    private fun trackFold(d: AlertDialog, a: Activity, rich: Boolean) {
         val h = d.window?.decorView ?: return
         val cb = object : ComponentCallbacks {
             override fun onConfigurationChanged(n: Configuration) {
-                for (t in longArrayOf(0, 120, 350, 800)) h.postDelayed({ if (d.isShowing) fit(d, a) }, t)
+                for (t in longArrayOf(0, 120, 350, 800)) h.postDelayed({ if (d.isShowing) fit(d, a, rich) }, t)
             }
             override fun onLowMemory() {}
         }
@@ -140,6 +135,6 @@ object AppPal {
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) { try { a.unregisterComponentCallbacks(cb) } catch (_: Throwable) {} }
         })
-        fit(d, a)
+        fit(d, a, rich)
     }
 }

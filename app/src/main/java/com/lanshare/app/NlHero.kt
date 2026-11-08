@@ -33,16 +33,26 @@ import android.widget.ImageView
  * Anything missing (Reduce motion, no thumbnail yet, API < 26, copy failed) falls back to the Part 16 platform scale-up ([LumenPrefs.growFrom]) or a plain start.
  */
 object NlHero {
-    private class Src(val rect: RectF, val radius: Float, val thumb: Bitmap, val snap: Bitmap?, val at: Long)
+    private class Src(val rect: RectF, val radius: Float, val thumb: Bitmap, val snap: Bitmap?, val at: Long,
+                      val launchKey: String? = null, val resolve: ((String) -> Target?)? = null)
+    /** A currently visible list cell that can receive the reverse hero after paging to another item. */
+    class Target(val view: View, val rect: RectF, val radius: Float, val thumb: Bitmap)
     @Volatile private var src: Src? = null
-    /** Lumen session 7 (M7 return): what the open transition used, kept so the viewer can run it backwards. Owner = the viewer Activity that played it. */
-    private class Ret(val owner: Activity, val s: Src) { var busy = false }
+    /** Lumen session 7 (M7 return): open snapshot + a resolver for the currently paged-to list cell. */
+    private class Ret(val owner: Activity, val s: Src, val launchKey: String?, val resolve: ((String) -> Target?)?) { var busy = false }
     @Volatile private var ret: Ret? = null
 
-    private fun take(): Src? { val s = src; src = null; return if (s != null && SystemClock.uptimeMillis() - s.at < 4000L) s else null }
+    private fun take(): Src? {
+        val s = src; src = null
+        if (s == null) return null
+        if (SystemClock.uptimeMillis() - s.at < 4000L) return s
+        try { s.snap?.recycle() } catch (_: Throwable) {}
+        return null
+    }
 
     /** [tr] = the thumbnail rect in [v]'s own coordinates, [radius] px. */
-    fun launch(act: Activity, v: View, tr: RectF, radius: Float, thumb: Bitmap, it: Intent) {
+    fun launch(act: Activity, v: View, tr: RectF, radius: Float, thumb: Bitmap, it: Intent,
+               returnKey: String? = null, resolve: ((String) -> Target?)? = null) {
         if (Build.VERSION.SDK_INT < 26 || LumenPrefs.reduceMotion(act) || tr.isEmpty || thumb.isRecycled) { act.startActivity(it, LumenPrefs.growFrom(act)); return }
         try {
             val loc = IntArray(2); v.getLocationOnScreen(loc)
@@ -51,17 +61,31 @@ object NlHero {
             if (dv.width <= 0 || dv.height <= 0) { act.startActivity(it, LumenPrefs.growFrom(act)); return }
             val snap = Bitmap.createBitmap(dv.width, dv.height, Bitmap.Config.ARGB_8888)
             var done = false
-            val go = { ok: Boolean ->
+            var timedOut = false
+            val h = Handler(Looper.getMainLooper())
+            PixelCopy.request(act.window, snap, { res ->
                 if (!done) {
                     done = true
-                    src = Src(rect, radius, thumb, if (ok) snap else null, SystemClock.uptimeMillis())
-                    act.startActivity(it, ActivityOptions.makeCustomAnimation(act, 0, 0).toBundle())
+                    if (res == PixelCopy.SUCCESS) {
+                        src = Src(rect, radius, thumb, snap, SystemClock.uptimeMillis(), returnKey, resolve)
+                        act.startActivity(it, ActivityOptions.makeCustomAnimation(act, 0, 0).toBundle())
+                    } else {
+                        src = null
+                        try { snap.recycle() } catch (_: Throwable) {}
+                        act.startActivity(it, LumenPrefs.growFrom(act))
+                    }
+                } else if (timedOut) {
+                    // PixelCopy answered after the 250 ms launch fallback; release its now-unused bitmap.
+                    try { snap.recycle() } catch (_: Throwable) {}
                 }
-            }
-            val h = Handler(Looper.getMainLooper())
-            PixelCopy.request(act.window, snap, { res -> go(res == PixelCopy.SUCCESS) }, h)
-            h.postDelayed({ go(false) }, 250L)   // the copy never answered: start anyway
-        } catch (_: Throwable) { act.startActivity(it, LumenPrefs.growFrom(act)) }
+            }, h)
+            h.postDelayed({
+                if (!done) {
+                    done = true; timedOut = true; src = null
+                    act.startActivity(it, LumenPrefs.growFrom(act))
+                }
+            }, 250L)   // if PixelCopy stalls, start with the normal platform scale-up; late callback frees the bitmap
+        } catch (_: Throwable) { src = null; act.startActivity(it, LumenPrefs.growFrom(act)) }
     }
 
     /** Called by the viewer / player in onCreate after setContentView. [chrome] = bars that fade in after 120 ms; [ready] = true once the real picture is on screen. No-op when [launch] did not prepare a transition. */
@@ -79,36 +103,51 @@ object NlHero {
             val a = ValueAnimator.ofFloat(0f, 1f).apply { duration = LumenMotion.SLOW; interpolator = LumenMotion.EMPH }
             a.addUpdateListener { x -> val t = x.animatedValue as Float; hero.t = t; hero.invalidate(); if (s.snap != null) scrim.alpha = t }
             val t0 = SystemClock.uptimeMillis()
-            if (ctx is Activity && s.snap != null) { ret?.s?.snap?.recycle(); ret = Ret(ctx, s) }   // the snapshot stays alive for the return ([close]); [release] frees it
+            if (ctx is Activity && s.snap != null) { ret?.s?.snap?.recycle(); ret = Ret(ctx, s, s.launchKey, s.resolve) }
             fun finish() { ov.animate().alpha(0f).setDuration(LumenMotion.FAST).withEndAction { try { root.removeView(ov) } catch (_: Throwable) { }; if (ret?.s !== s) s.snap?.recycle() }.start() }
             fun waitReady() { if (ready() || SystemClock.uptimeMillis() - t0 > 1500L) finish() else ov.postDelayed({ waitReady() }, 50L) }
             a.addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(an: android.animation.Animator) { waitReady() } })
             a.start()
             ov.postDelayed({ for (v in chrome) v.animate().alpha(1f).setDuration(LumenMotion.BASE).start() }, 120L)
-        } catch (_: Throwable) { for (v in chrome) v.alpha = 1f }
+        } catch (_: Throwable) {
+            for (v in chrome) v.alpha = 1f
+            if (ret?.s === s) ret = null
+            try { s.snap?.recycle() } catch (_: Throwable) {}
+        }
     }
 
     /**
      * Lumen session 7 (M7 return): shrink back into the launching thumbnail. Called from the viewer's `finish()`.
-     * Runs only when this Activity played the open transition, the viewer is still on the item it was opened on ([idxNow] == [idx0], a viewer that
-     * paged elsewhere keeps the fade + scale of [LumenPrefs.closeAnim]) and Reduce motion is off. The overlay shows the list snapshot taken at launch
-     * (so the list looks as it did), the thumbnail bitmap shrinks from the fitted picture to its old rect (rounded again) while the black scrim fades
+     * Runs only when this Activity played the open transition and Reduce motion is off. If the viewer paged to another item, [resolve] supplies that
+     * item's currently visible list cell; if it is off-screen or the window changed size, the caller uses the safe fade + scale fallback. The overlay
+     * shows the list snapshot taken at launch (so the list looks as it did), the thumbnail bitmap shrinks from the fitted picture to its cell while the black scrim fades
      * out; 280 ms accelerate. [done] then really finishes the Activity (no platform animation). Returns true = [done] will be called, the caller returns.
      */
-    fun close(act: Activity, idxNow: Int, idx0: Int, done: () -> Unit): Boolean {
+    fun close(act: Activity, idxNow: Int, idx0: Int, keyNow: String? = null, done: () -> Unit): Boolean {
         val r = ret ?: return false
         if (r.owner !== act) return false
         if (r.busy) return true
         val snap = r.s.snap
-        if (idxNow != idx0 || snap == null || snap.isRecycled || r.s.thumb.isRecycled || LumenPrefs.reduceMotion(act)) return false
+        if (snap == null || snap.isRecycled || LumenPrefs.reduceMotion(act)) return false
+        val source = if (idxNow == idx0 || keyNow == r.launchKey) r.s else {
+            if (keyNow.isNullOrEmpty()) return false
+            val target = try { r.resolve?.invoke(keyNow) } catch (_: Throwable) { null } ?: return false
+            if (target.thumb.isRecycled || target.rect.isEmpty) return false
+            val loc = IntArray(2); target.view.getLocationOnScreen(loc)
+            val rect = RectF(target.rect); rect.offset(loc[0].toFloat(), loc[1].toFloat())
+            Src(rect, target.radius, target.thumb, snap, r.s.at, keyNow, r.resolve)
+        }
+        if (source.thumb.isRecycled) return false
         try {
             val root = act.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? FrameLayout ?: return false
             if (root.width <= 0 || root.height <= 0) return false
+            val tol = (8f * act.resources.displayMetrics.density).toInt()
+            if (kotlin.math.abs(snap.width - root.width) > tol || kotlin.math.abs(snap.height - root.height) > tol) return false
             r.busy = true
             val ov = FrameLayout(act)
             val bgv = ImageView(act).apply { scaleType = ImageView.ScaleType.FIT_XY; setImageBitmap(snap) }
             val scrim = View(act).apply { setBackgroundColor(Color.BLACK); alpha = 1f }
-            val hero = HeroView(act, r.s).apply { t = 1f }
+            val hero = HeroView(act, source).apply { t = 1f }
             val mp = ViewGroup.LayoutParams.MATCH_PARENT
             ov.addView(bgv, FrameLayout.LayoutParams(mp, mp)); ov.addView(scrim, FrameLayout.LayoutParams(mp, mp)); ov.addView(hero, FrameLayout.LayoutParams(mp, mp))
             root.addView(ov, FrameLayout.LayoutParams(mp, mp))

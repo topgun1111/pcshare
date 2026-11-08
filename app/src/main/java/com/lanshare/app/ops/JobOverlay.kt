@@ -40,6 +40,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
 
     private var pal = Palette.of(act)
     private var expanded = false
+    private var allDoneSince = 0L
     private var corner = prefs.getInt("corner", CORNER_BOTTOM_END)
     private var rows: List<JobView.Row> = emptyList()
     private val holders = LinkedHashMap<String, RowHolder>()
@@ -127,6 +128,11 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         ui.removeCallbacks(tick)
         val pip = try { act.isInPictureInPictureMode } catch (_: Throwable) { false }
         rows = if (pip) emptyList() else try { JobView.rows().let { r -> hidePrefix?.let { p -> r.filter { !it.id.startsWith(p) } } ?: r } } catch (_: Throwable) { emptyList() }
+        val now = System.currentTimeMillis()
+        if (rows.isNotEmpty() && rows.all { it.state == "done" }) {
+            if (allDoneSince == 0L) allDoneSince = now
+            if (expanded && now - allDoneSince >= 4_000L) setExpanded(false)  // Lumen 12.16: completed detail card collapses to its success bubble after 4 s
+        } else allDoneSince = 0L
         render(rows)
         if (again) ui.postDelayed(tick, if (rows.isEmpty()) 800L else 400L)
     }
