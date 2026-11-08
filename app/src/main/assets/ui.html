@@ -889,6 +889,13 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 .dact.stk{flex-direction:column;align-items:stretch}.dact.stk .tbtn{width:100%;height:48px}
 .dact .tbtn.lmp{background:var(--ac);color:var(--onac)}
 .dact .tbtn.dng{background:var(--errc);color:var(--onerr)}
+/* "Print on…" device cards: compact (icon inline with name + chips, small wrapping printer buttons) */
+#sheet .pdv>div:first-child{gap:6px!important}
+#sheet .pdv svg.li{display:block;width:20px;height:20px;min-height:0;padding:0;flex:none}
+#sheet .pdv b{font-size:var(--fs-14);font-weight:600}
+#sheet .pdv .tbtn{height:auto;min-height:34px;min-width:0;padding:5px 12px;margin:6px 6px 0 0!important;line-height:1.25;font-size:13px;white-space:normal;text-align:left;justify-content:flex-start}
+#sheet .pdv .tbtn em{display:inline}
+#sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs)>.handle{display:none}   /* the ::before below is the handle; the JS-added .handle div made it double */
 #sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs)::before{content:'';flex:none;align-self:center;width:32px;height:4px;border-radius:var(--r-full);background:var(--inkDim);margin:0 0 var(--sp-2)}
 #sheet .card.sz-peek{max-height:40vh}#sheet .card.sz-half{max-height:60vh}#sheet .card.sz-tall{max-height:90vh}
 @media(min-width:600px){#sheet{align-items:center;justify-content:center}#sheet .card:not(.fu):not(.pfull):not(.pfx){max-width:640px;max-height:80vh;border-radius:var(--r-xxl);animation:lmpop var(--d-base) cubic-bezier(.2,0,0,1)}}
@@ -3888,7 +3895,7 @@ function pickPrinter(here,wifi,peers,busy){return new Promise(res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');let shut=false;
   const fin=v=>{shut=true;o.style.display='none';o.onclick=null;res(v)};o.onclick=e=>{if(e.target===o)fin(null)};
   const last=localStorage.getItem('printTo');
-  const dev=(name,conn,kind)=>{const box=E('div','');box.style.cssText='border:1px solid rgba(128,128,128,.28);border-radius:var(--r-m);padding:var(--sp-2) var(--sp-2);margin:var(--sp-1) 0';
+  const dev=(name,conn,kind)=>{const box=E('div','pdv');box.style.cssText='border:1px solid rgba(128,128,128,.28);border-radius:var(--r-m);padding:6px 10px 8px;margin:2px 0';
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap';const acc=E('span','');hd.append(ic('phone'),E('b','',name),chip(conn,kind),acc);box.append(hd);card.append(box);return{box,acc,n:0}};
   const acc=(d,t,k)=>{d.acc.textContent='';d.acc.append(chip(t,k))};
   const add=(d,t,label,tag)=>{d.n++;const b=E('button','tbtn'+(t.id===last?' fill':''));b.textContent=label;if(tag){const g=E('em','',' · '+tag);g.style.cssText='font-style:normal;font-size:var(--fs-11);opacity:.75';b.append(g)}
