@@ -2028,7 +2028,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
   const dt=i=>i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(CP?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
   const a=LIST.map((i,x)=>{if(i._hd)return{n:i.name,k:'hdr',a:'',b:''};if(i._h){const o={n:i.name,k:kind(i),d:i.dir?1:0,a:i.path.slice(0,i.path.lastIndexOf('/'))||'/',b:'',h:1},k=o.k;
       /* subfolder-search hits get previews too (full path + size + date = thumbnail key), same rules as ordinary rows */
-      if(!i.dir&&!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=i.path;o.s=i.size||0;o.t=i.mtime||0}
+      if(!i.dir&&(inArc()?(k==='img'&&!NOTH.test(i.name)&&(i.size||0)>0&&(i.size||0)<30e6):(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i)))){o.p=i.path;o.s=i.size||0;o.t=i.mtime||0}
       return o};
     const k=kind(i),o={n:i.name,k:k,a:nlA(i,CP),b:CP?'':dt(i)};
     if(x>=GN)o.v=1;
@@ -2036,7 +2036,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
     if(isHid(i))o.x=1;
     if(i.dir){o.d=1;const bd=BADGE[i.name.toLowerCase()];if(bd){o.g=bd[0];o.gc=nlCol(bd[1])}const fs=FSTY[S.dev+'|'+jn(P0,i.name)];if(fs){if(fs.c)o.fc=nlCol(fs.c);if(fs.i){o.g=fs.i;o.gc=nlCol(fsIc(fs))}}}
     else{o.s=i.size||0;if(DUPS.has(i.name))o.u=1;
-      if(!inArc()&&(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
+      if(inArc()?(k==='img'&&!NOTH.test(i.name)&&i.size>0&&i.size<30e6):(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
 const nlCfg=()=>[S.sort,S.asc?1:0,showHid()?1:0,S.gal?1:0,S.view,S.thumb].join(',');
@@ -2801,7 +2801,8 @@ function render(){
     r.dataset.n=i.name;const lead=E('div','lead k-'+k);
     if(i.dir){const fs=fsGet(jn(S.path,i.name));lead.append(raw(fs&&fs.c?foldSvg(fs.c):FOLD,'fold'));let bd=BADGE[i.name.toLowerCase()];if(fs&&fs.i)bd=[fs.i,fsIc(fs)];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
-      if(!AR&&(k==='img'||k==='vid'||(k==='office'&&S.dev==='local'))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){
+      if((AR?k==='img'&&i.size>0:(k==='img'||k==='vid'||(k==='office'&&S.dev==='local')))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){   // inside an archive: pictures only (server extracts + caches the thumbnail)
+       
         const key=thKey(i),pth0=jn(S.path,i.name);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
@@ -3818,7 +3819,7 @@ function renderSR(l){
   items.forEach(i=>{
     const k=kind(i),r=E('div','row'),lead=E('div','lead k-'+k);
     if(i.dir)lead.append(raw(FOLD,'fold'));else{lead.append(ic(k,'kd'));
-      if(!inArc()&&(k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6)){   // previews for hits, same rules as ordinary rows
+      if((inArc()?k==='img':(k==='img'||k==='vid'))&&!NOTH.test(i.name)&&(k==='vid'||(i.size||0)<30e6)){   // previews for hits, same rules as ordinary rows
         const key='v3|'+S.dev+'|'+i.path+'|'+(i.size||0)+'|'+(i.mtime||0);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};

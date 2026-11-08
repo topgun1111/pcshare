@@ -4,6 +4,10 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-09 - Picture previews inside archives
+### Fixed
+- Pictures inside ZIP, RAR, 7z and TAR archives now show a small preview in the list instead of a plain PNG / JPG tile.
+
 ## 2026-11-08 - Original app icon back
 ### Changed
 - The app icon is the original white L with signal arcs again: orange for the full app, light purple for Lite.
