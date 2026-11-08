@@ -452,13 +452,13 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     val isLeaving: Boolean get() = leaving
     fun cancelLeave() { if (leaving) { leaving = false; animate().cancel(); translationY = 0f; alpha = 1f } }
 
-    /** Slide-up + fade when the bar appears (220 ms, decelerate); skipped with Reduce motion (spec 13.4: 120 ms fade only). */
+    /** Slide-up + fade when the bar appears (280 ms = LumenMotion.MED, decelerate; same as the page lmdock); skipped with Reduce motion (spec 13.4: 120 ms fade only). */
     fun enter() {
         animate().cancel()
         if (LumenPrefs.reduceMotion(context)) { shownAt = 0L; translationY = 0f; alpha = 0f; animate().alpha(1f).setDuration(120).start(); return }
         shownAt = SystemClock.uptimeMillis(); invalidate()   // Lumen 4e N10: the action cells stagger in 20 ms apart after the bar
         translationY = 24f * d; alpha = 0f
-        animate().translationY(0f).alpha(1f).setDuration(220).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        animate().translationY(0f).alpha(1f).setDuration(LumenMotion.MED).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
     }
 
     private fun rebuild() {

@@ -129,7 +129,7 @@ class PdfPagesView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
             val from = z
             zoomAnim?.cancel()
             zoomAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 220
+                duration = LumenMotion.BASE
                 addUpdateListener { zoomAt(from + (target - from) * (it.animatedValue as Float), e.x, e.y) }
                 start()
             }

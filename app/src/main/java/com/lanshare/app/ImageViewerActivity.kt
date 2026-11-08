@@ -199,7 +199,7 @@ class ImageViewerActivity : Activity() {
         titleTv = NlViewerBar.title(this)   // Lumen N7: shared viewer-bar title / subtitle / column (NlViewerBar.kt)
         subTv = NlViewerBar.subtitle(this)
         val col = NlViewerBar.textColumn(this, titleTv, subTv)
-        ocrBtn = icon(IconBtn.TEXT, "Text on this picture") { toggleOcr() }
+        ocrBtn = icon(IconBtn.SCAN, "Text on this picture") { toggleOcr() }
         val edit = icon(IconBtn.EDIT, "Edit") { edit() }
         val print = icon(IconBtn.PRINT, "Print") { printCurrent() }
         val share = icon(IconBtn.SHARE, "Share") { share() }
@@ -955,11 +955,16 @@ internal class IconBtn(c: Context, d: String) : View(c) {
         const val EDIT = "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
         const val MORE = "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
         const val TEXT = "M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"
+        /** Lumen Icons "scan" (outline, 24 grid, 1.75 stroke): the "S:" prefix draws the path as a stroke instead of a fill. */
+        val SCAN: String = "S:" + (LumenIcons.D["scan"] ?: "")
         const val PRINT = "M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"
     }
     private val dn = resources.displayMetrics.density
-    private val path: Path = PathParser.createPathFromPathData(d) ?: Path()
-    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val stroked = d.startsWith("S:")
+    private val path: Path = PathParser.createPathFromPathData(d.removePrefix("S:")) ?: Path()
+    private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        if (stroked) { style = Paint.Style.STROKE; strokeWidth = LumenIcons.SW; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND } else style = Paint.Style.FILL
+    }
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFFFFF }
     var tint = Color.WHITE
         set(v) { if (v != field) { field = v; invalidate() } }

@@ -1,7 +1,9 @@
 <resources>
-    <color name="brand">#E65100</color>
+    <color name="brand">#C25100</color>   <!-- Lumen Ember primary (spec 4.3); same as accent -->
     <color name="accent">#C25100</color>
     <color name="bar">#FFFFFF</color>
     <color name="canvas">#FFF8F2</color>   <!-- Lumen Ember canvas: window background before the first frame (spec 15.3) -->
+    <color name="surface">#FFFFFF</color>   <!-- Ember light surface (dialog fallback before the palette card replaces it) -->
+    <color name="surface_dark">#231B14</color>   <!-- Ember dark surface -->
     <color name="white">#FFFFFF</color>
 </resources>

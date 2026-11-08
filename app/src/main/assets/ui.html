@@ -2371,7 +2371,7 @@ function galView(a){
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
   const pcv=+LD('ls_galpc','')||0;if(pcv)gg.style.setProperty('--pc',pcv);
   const tn=E('button','ibtn');tn.append(ic('tune'));tn.setAttribute('aria-label','Size and sort');tn.onclick=()=>galOpts(gg,()=>{if(o._redraw)o._redraw()});
-  tw.append(tt,sb);hd.append(bk,tw);if(rem&&!a.v&&!isPc(D)){const rs=E('button','ibtn');rs.append(ic('search'));rs.setAttribute('aria-label','AI search');rs.onclick=()=>risView(D,devName(D),a.path,a.name);hd.append(rs)}hd.append(tn);sc.append(gg);
+  tw.append(tt,sb);hd.append(bk,tw);if(rem&&!a.v&&!isPc(D)){const rs=E('button','ibtn');rs.append(ic('sparkle'));rs.setAttribute('aria-label','AI search');rs.onclick=()=>risView(D,devName(D),a.path,a.name);hd.append(rs)}hd.append(tn);sc.append(gg);
   // press-and-hold selection, same scheme as the file browser: header turns into a count bar, actions sit in a bottom bar
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=lmLive(E('h2')),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
@@ -2704,7 +2704,7 @@ function mkAlbumR(a){
     c.addEventListener('touchstart',()=>{lp=false;cl();tm=setTimeout(()=>{tm=0;lp=true;
       const old=cv.querySelector('.asb');
       document.querySelectorAll('.alb .asb').forEach(x=>x.remove());
-      if(!old){const b=E('button','asb');b.setAttribute('aria-label','Search this album');b.append(ic('search'));
+      if(!old){const b=E('button','asb');b.setAttribute('aria-label','Search this album');b.append(ic('sparkle'));
         b.onclick=e=>{e.stopPropagation();risView(dev,devName(dev),a.path,a.name)};cv.append(b)}
       try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}},450)},{passive:true});
     c.addEventListener('touchmove',cl,{passive:true});c.addEventListener('touchend',cl);c.addEventListener('touchcancel',cl);
@@ -7244,6 +7244,7 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 .es .es-t svg{position:relative;width:64px;height:64px;margin:0;padding:var(--sp-4);border-radius:var(--r-full);background:var(--es-b,var(--primaryCont));color:var(--es-c,var(--primary))}
 .es.es-err{--es-c:var(--error);--es-b:var(--errorCont)}
 .es.es-warn{--es-c:var(--warning);--es-b:var(--warningCont)}
+.es.es-info{--es-c:var(--info);--es-b:var(--infoCont)}
 .es.es-neutral{--es-c:var(--inkMut);--es-b:var(--cont)}
 .es .es-h{margin:0;font-size:var(--t-titleM-size);line-height:var(--t-titleM-lh);font-weight:var(--t-titleM-w);letter-spacing:var(--t-titleM-tr);color:var(--ink)}
 .es .es-p{margin:0;max-width:28ch;font-size:var(--t-bodyM-size);line-height:var(--t-bodyM-lh);letter-spacing:var(--t-bodyM-tr);color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -7253,7 +7254,7 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 #banner{display:none;align-items:center;gap:var(--sp-3);background:var(--errorCont);color:var(--onErrorCont)}
 #banner.on{display:flex}
 #banner.bn-warn{background:var(--warningCont);color:var(--onWarning)}
-#banner.bn-info{background:var(--primaryCont);color:var(--onPrimaryCont)}
+#banner.bn-info{background:var(--infoCont);color:var(--onInfoCont)}
 #banner svg{flex:none;width:24px;height:24px;margin:0;padding:0}
 #banner .bn-x{flex:1;min-width:0}
 #banner .bn-a{flex:none;background:none;border:0;color:inherit;font-size:var(--t-labelL-size);font-weight:var(--t-labelL-w);padding:var(--sp-2);min-height:40px;border-radius:var(--r-m);cursor:pointer}

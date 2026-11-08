@@ -32,7 +32,7 @@ import org.json.JSONObject
  * the page then click()s the very same HTML element. So the look and the behaviour cannot drift from the HTML drawer.
  *
  * States pushed by ui.html: "0" = drawer closed (slide out), "h" = a page dialog / sheet is on top of the drawer (hide at once), else a JSON model {v,w,pt,pb,p,tabs,rows,foot}.
- * Slide-in / slide-out is animated here (220 ms, same as the CSS); the HTML drawer slides underneath at the same time.
+ * Slide-in / slide-out is animated here (LumenMotion.BASE = 200 ms, same as the CSS --d-base); the HTML drawer slides underneath at the same time.
  * Kill switches: NlDrawer.ENABLED = false  /  localStorage ls_nld='0'.   NOT compiled / NOT device-tested.
  */
 
@@ -415,7 +415,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
             open = false
             dp.animate().cancel()
             if (dp.visibility == View.VISIBLE)
-                dp.animate().translationX(-wpx.toFloat()).setDuration(220).setInterpolator(DecelerateInterpolator())
+                dp.animate().translationX(-wpx.toFloat()).setDuration(LumenMotion.BASE).setInterpolator(DecelerateInterpolator())
                     .withEndAction { if (!open) dp.visibility = View.GONE }.start()
             return
         }
@@ -476,6 +476,6 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         }
         if (pm) { dp.translationX = 0f; return }
         if (dp.translationX != 0f)
-            dp.animate().translationX(0f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+            dp.animate().translationX(0f).setDuration(LumenMotion.BASE).setInterpolator(DecelerateInterpolator()).start()
     }
 }

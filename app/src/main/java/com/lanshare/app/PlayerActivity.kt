@@ -511,7 +511,7 @@ class PlayerActivity : Activity() {
         val r0 = view.rotation; val s0 = view.scaleX
         val an = ValueAnimator.ofFloat(0f, 1f)
         var cancelled = false
-        an.duration = 240
+        an.duration = LumenMotion.MED
         an.interpolator = DecelerateInterpolator()
         an.addUpdateListener { a -> val t = a.animatedFraction; setXform(r0 + (r1 - r0) * t, s0 + (s1 - s0) * t) }
         an.addListener(object : AnimatorListenerAdapter() {
