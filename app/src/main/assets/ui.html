@@ -1115,9 +1115,9 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 :root:root[data-glass=f2] #dock{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassTint) var(--gF),transparent)}
 :root:root[data-glass=f3] #dock{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}}
 #dock #bar{gap:0}
-#dock #bar .ib{height:72px;justify-content:center;gap:var(--sp-1);padding:0;border:0!important;border-radius:0;font-size:var(--fs-12)}
-#dock #bar .ib .ii{width:56px;height:32px;border-radius:var(--r-full)}
-#dock #bar .ib .ii svg{width:24px;height:24px;min-height:0;padding:0}   /* svg.li also matches the list-row class .li (min-height 56): reset */
+#dock #bar .ib{height:96px;justify-content:center;gap:6px;padding:0;border:0!important;border-radius:0;font-size:var(--fs-14)}
+#dock #bar .ib .ii{width:64px;height:40px;border-radius:var(--r-full)}
+#dock #bar .ib .ii svg{width:30px;height:30px;min-height:0;padding:0}   /* svg.li also matches the list-row class .li (min-height 56): reset */
 #dock #clip{margin:var(--sp-2) var(--sp-2) 0}
 @keyframes lmdock{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 #dock.lm-in{animation:lmdock var(--d-med,var(--d-base)) var(--ease-decel,cubic-bezier(.2,0,0,1)) both}
@@ -3812,7 +3812,7 @@ function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above
   sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);
   const dr=$('#dock').getBoundingClientRect();m.style.right='12px';
   /* native dock: the page #dock is hidden (0 x 0), so the menu would sit below the screen; use the native dock height (about 96 px + inset) instead */
-  m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(104px + env(safe-area-inset-bottom))'}
+  m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(128px + env(safe-area-inset-bottom))'}
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];

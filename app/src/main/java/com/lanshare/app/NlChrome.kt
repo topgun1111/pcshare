@@ -399,7 +399,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
-    private val lbP = tp(12f, semi)
+    private val lbP = tp(14f, semi)
     private var shownAt = 0L
 
     init {
@@ -548,18 +548,18 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
             val col = if (dng) lm.error else p.fg
             val icol = if (dng) lm.error else iconColor(a2.k, p.fg, lm)   // colourful icon; label keeps the theme colour
-            val top = r.top + Math.max(0f, (r.height() - (32f + 4f + 14f) * d) / 2f)
-            val pill = RectF(r.centerX() - 28f * d, top, r.centerX() + 28f * d, top + 32f * d)
+            val top = r.top + Math.max(0f, (r.height() - (40f + 6f + 17f) * d) / 2f)
+            val pill = RectF(r.centerX() - 32f * d, top, r.centerX() + 32f * d, top + 40f * d)
             if (pri) {
                 // gPrimary: 135 degrees, 2 % white start to 12 % black end (same as Lm.styleButton)
                 fillP.shader = LumenGrad.diag(intArrayOf(LumenCategory.mix(p.ac, 0xFFFFFFFF.toInt(), 0.02f), LumenCategory.mix(p.ac, 0xFF000000.toInt(), 0.12f)), pill.left, pill.top, pill.right, pill.bottom)
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
-            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 24f, if (pri) p.onac else icol)
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
-            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + 7f * d, lbP), lbP)
+            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 8.5f * d, lbP), lbP)
             if (lay >= 0) cv.restoreToCount(lay)
         }
         if (moving) postInvalidateOnAnimation() else shownAt = 0L
