@@ -665,7 +665,7 @@ body.kid #fab svg{width:20px;height:20px}
 #newb{flex:none;height:28px;padding:0 var(--sp-2);border:1px solid var(--bd);border-radius:var(--r-l);font-size:var(--fs-12);margin-right:var(--sp-1)}#newb.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 
 /* side drawer (hamburger, top left) */
-#menub svg{width:32px;height:32px}.bar.mainb{padding-left:var(--sp-1)}.bar.mainb .ttl{margin-left:2px}
+#menub svg{width:32px;height:32px}.bar.mainb{padding-left:var(--sp-1)}.bar.mainb .ttl{margin-left:2px}.bar.mainb .ttl{justify-content:flex-end;padding-right:var(--sp-1)}
 #dscrim{position:fixed;inset:0;z-index:13;background:#000;opacity:0;visibility:hidden;transition:opacity var(--d-base),visibility 0s .22s}
 #dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(84vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform var(--d-base) ease-out,visibility 0s .22s;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity var(--d-base)}
@@ -1346,7 +1346,7 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
 /*LUMEN-UI21:END*/
 </style></head><body>
 <header id=top>
-  <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main storage</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
+  <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=scont aria-label="Search inside Word / Excel / PowerPoint files" title="Search inside Word / Excel / PowerPoint files" style="font:600 12px sans-serif;width:auto;padding:0 var(--sp-2)">In files</button><button class=ibtn id=suall aria-label="Search the whole phone" title="Search the whole phone" style="font:600 12px sans-serif;width:auto;padding:0 var(--sp-2)">Phone</button><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
@@ -2742,7 +2742,7 @@ function render(){
   let acc='';segs.forEach((seg,n)=>{acc+='/'+seg;const p=acc;cr.append(ic('chev'));const b=E('button','crumb'+(n===segs.length-1?' cur':''),binLbl(segs.map(x=>x.replace(/!$/,'')))[n]);b.onclick=()=>go(p);cr.append(b)});
   const gm=!AR&&!S.q&&!S.newest&&galRoot();   // Gallery / Videos: albums come from the whole phone, so no folder path, device chips or storage line
   document.body.classList.toggle('galm',!!gm);
-  $('#ht').textContent=gm?(galVid()?'Videos':'Gallery'):S.dev==='local'?'Main storage':devName(S.dev);
+  $('#ht').textContent=gm?(galVid()?'Videos':'Gallery'):S.dev==='local'?'Main':devName(S.dev);
   pillSet();
   cr.scrollLeft=cr.scrollWidth;
   const l=$('#list');l.textContent='';l.className='v-'+S.view+(S.thumb==='l'?' t-lg':'');
@@ -7319,7 +7319,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     window.lgNative=x=>{const y=x>=999?999:x/(window.devicePixelRatio||1);if(setLg(Math.max(0,1-y/34))){try{nlLay()}catch(e){}try{nlChPush()}catch(e){}}};
     window.lgBig=()=>document.documentElement.classList.contains('lgbar')&&!document.body.classList.contains('selm')&&!document.body.classList.contains('srch')&&(parseFloat(document.documentElement.style.getPropertyValue('--lg'))||0)>0.6;
     addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
-    document.documentElement.classList.add('lgbar')})();
+    /* large title row disabled: the title lives in the top bar, right next to Search */})();
   /* Responsive drawer sync: re-evaluate on resize / fold and on split-screen body-class changes. */
   (function(){const f=()=>{if(window.lmPermSync)window.lmPermSync()};f();addEventListener('resize',f);new MutationObserver(f).observe(document.body,{attributes:true,attributeFilter:['class']})})();
   /* pull to refresh: ring progress from the bubble height; spinner while refreshing */

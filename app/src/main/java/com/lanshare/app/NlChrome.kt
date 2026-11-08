@@ -243,8 +243,8 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         val tw = Math.max(0f, r0 - l0)
         val nmWd = 0f   // the device name was removed from the top bar (rename it in Settings)
         val gap = 0f
-        tX = l0
         tW = Math.min(ttlP.measureText(ttl), Math.max(0f, tw - nmWd - gap))
+        tX = Math.max(l0, r0 - 4f * d - tW)   // title sits right next to the Search button (right-aligned in its slot)
         nX = tX + tW + gap
         nW = nmWd
     }
