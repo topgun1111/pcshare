@@ -82,7 +82,7 @@ class StorageActivity : Activity() {
     /** System bars + window in the colour of the shown screen (the WizTree view has its own themes); [darkIcons] = light background. */
     private fun paintBars(bg: Int, darkIcons: Boolean) {
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        window.statusBarColor = bg; window.navigationBarColor = bg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (::rootView.isInitialized) rootView.setBackgroundColor(bg)
         if (Build.VERSION.SDK_INT >= 23) {
             var f = window.decorView.systemUiVisibility
@@ -205,14 +205,15 @@ class StorageActivity : Activity() {
         if (dev == "local" && vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
         applyTheme()
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(cBg))
-        window.statusBarColor = cBg
-        window.navigationBarColor = cBg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (!night && Build.VERSION.SDK_INT >= 23) {
             var f = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
             if (Build.VERSION.SDK_INT >= 26) f = f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
             window.decorView.systemUiVisibility = f
         }
         buildUi()
+        LumenNativeTheme.edgeToEdge(this, rootView)
         setContentView(rootView)
         JobOverlay.install(this, StorageScan.JOB_PREFIX)    // the scan's own bubble is hidden here: this screen shows the progress itself
         paintAccess()
@@ -276,7 +277,7 @@ class StorageActivity : Activity() {
         // volume card: used bar + Used / Free / Total (moved here from the old spaceInfo sheet)
         val vol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = rounded(cCard, 16f) }
         volBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progress = 0; progressDrawable = barDrawable(cAcc, cLine) }
-        vol.addView(volBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)))
+        vol.addView(volBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)))
         volTv = TextView(this).apply { LumenTypography.fit(this, 14f); setTextColor(cFg); setPadding(0, dp(8), 0, 0) }
         vol.addView(volTv)
         // volume card (Used / Free / Total) intentionally not attached to the screen; the views stay alive so the fill / visibility code keeps working
@@ -509,7 +510,7 @@ class StorageActivity : Activity() {
         pTitle = TextView(this).apply { LumenTypography.fit(this, 18f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); text = "Scanning…" }
         col.addView(pTitle)
         pBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; progressDrawable = barDrawable(cAcc, cLine) }
-        col.addView(pBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)).apply { topMargin = dp(16) })
+        col.addView(pBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(16) })
         pCount = TextView(this).apply { LumenTypography.fit(this, 15f); LumenTypography.tabular(this); setTextColor(cFg); gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }
         col.addView(pCount)
         pCur = TextView(this).apply { LumenTypography.fit(this, 12f); setTextColor(cDim); gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setPadding(0, dp(8), 0, 0) }
@@ -931,7 +932,7 @@ class StorageActivity : Activity() {
         fun act(label: String, color: Int = cAcc, fn: () -> Unit) {
             box.addView(TextView(this).apply {
                 text = label; LumenTypography.fit(this, 15f); setTextColor(color); setTypeface(typeface, Typeface.BOLD); isClickable = true
-                minimumHeight = dp(44); gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL
                 setOnClickListener { dlg.dismiss(); fn() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }

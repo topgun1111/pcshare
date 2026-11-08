@@ -287,7 +287,7 @@ class TextEditorActivity : Activity() {
     // ---------------------------------------------------------------- UI (built in code, like the other viewers)
     private fun tvBtn(txt: String, sp: Float = 20f): TextView = TextView(this).apply {
         text = txt; LumenTypography.fit(this, sp); gravity = Gravity.CENTER
-        minWidth = dp(44); minimumHeight = dp(44); setPadding(dp(8), 0, dp(8), 0); typeface = Fnt.med()
+        minWidth = dp(48); minimumHeight = dp(48); setPadding(dp(8), 0, dp(8), 0); typeface = Fnt.med()
     }
 
     private fun buildUi() {
@@ -298,7 +298,7 @@ class TextEditorActivity : Activity() {
         saveBtn = tvBtn("✓", 24f).apply { setOnClickListener { save(auto = false) }; visibility = View.GONE }
         printBtn = tvBtn("\uD83D\uDDA8", 20f).apply { setOnClickListener { printFile() }; visibility = View.GONE }
         moreBtn = tvBtn("⋮", 24f).apply { setOnClickListener { showMenu(it) } }
-        spin = ProgressBar(this).apply { isIndeterminate = true; layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { rightMargin = dp(8) }; visibility = View.GONE }
+        spin = ProgressBar(this).apply { isIndeterminate = true; layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply { rightMargin = dp(8) }; visibility = View.GONE }
         linesTv = TextView(this).apply {
             LumenTypography.fit(this, 14f); typeface = Fnt.semi(); gravity = Gravity.CENTER_VERTICAL or Gravity.START
             maxLines = 1; setPadding(dp(8), 0, dp(8), 0)
@@ -423,6 +423,7 @@ class TextEditorActivity : Activity() {
             addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
         applyTypography()
@@ -673,7 +674,7 @@ class TextEditorActivity : Activity() {
         val sub = ColorUtils.setAlphaComponent(textColor, 150)
         val hint = ColorUtils.setAlphaComponent(textColor, 110)
         root.setBackgroundColor(bg)
-        window.statusBarColor = bg; window.navigationBarColor = bg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
         val light = ColorUtils.calculateLuminance(bg) > 0.5
         WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         for (t in listOf(back, saveBtn, printBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)

@@ -121,7 +121,7 @@ object UpdateCheck {
         box.addView(TextView(a).apply {
             setTextColor(p.mut); LumenTypography.fit(this, 14f)
             text = "Mevcut sürüm: $cur"
-            setPadding(0, 0, 0, (10 * d).toInt())
+            setPadding(0, 0, 0, (8 * d).toInt())
         })
         val lmA = Lumen.of(a)
         val greenFill = androidx.core.graphics.ColorUtils.setAlphaComponent(lmA.success, if (night) 0x33 else 0x26)
@@ -134,7 +134,7 @@ object UpdateCheck {
                 orientation = LinearLayout.VERTICAL
                 val q = (12 * d).toInt(); setPadding(q, q, q, q)
                 if (latest) background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(greenFill); setStroke((1.5f * d).toInt(), greenLine); cornerRadius = 10 * d
+                    setColor(greenFill); setStroke((1.5f * d).toInt(), greenLine); cornerRadius = 8 * d
                 }
             }
             card.addView(TextView(a).apply {
@@ -148,7 +148,7 @@ object UpdateCheck {
                 }
             })
             card.addView(TextView(a).apply { setTextColor(p.fg); LumenTypography.fit(this, 14f); text = notesText(a, o) })
-            box.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (10 * d).toInt() })
+            box.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (8 * d).toInt() })
         }
         if (rels.isEmpty()) box.addView(TextView(a).apply { setTextColor(p.mut); text = "(not listed)" })
         return ScrollView(a).apply { setPadding(pad, pad / 2, pad, 0); addView(box) }

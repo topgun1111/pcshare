@@ -690,14 +690,14 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
 
     /** Rounded chip button (min 44 dp touch height). */
     private fun btn(t: String, fn: () -> Unit) = TextView(act).apply {
-        text = t; LumenTypography.fit(this, 14f); setTextColor(cFg); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
+        text = t; LumenTypography.fit(this, 14f); setTextColor(cFg); gravity = Gravity.CENTER; minimumHeight = dp(48); minimumWidth = dp(48)
         setPadding(dp(16), dp(8), dp(16), dp(8)); background = round(cHdr, 24)
         isClickable = true; setOnClickListener { fn() }
     }
 
     /** Text-only toolbar button (treemap bar), 44 dp touch target. */
     private fun tbtn(t: String, sp: Float, fn: () -> Unit) = TextView(act).apply {
-        text = t; LumenTypography.fit(this, sp); setTextColor(cAcc); gravity = Gravity.CENTER; minimumHeight = dp(44); minimumWidth = dp(44)
+        text = t; LumenTypography.fit(this, sp); setTextColor(cAcc); gravity = Gravity.CENTER; minimumHeight = dp(48); minimumWidth = dp(48)
         setPadding(dp(8), 0, dp(8), 0); isClickable = true; setOnClickListener { fn() }
     }
 
@@ -797,7 +797,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                 legend.append(names[i.coerceIn(0, names.size - 1)] + " " + NlModel.fmt(cats[i]) + "     ")
             }
         }
-        hd.addView(seg, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(12); rightMargin = dp(8) })
+        hd.addView(seg, LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(12); rightMargin = dp(8) })
         if (legend.isNotEmpty()) hd.addView(TextView(act).apply { text = legend; LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 2 }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         val sp = if (known) NlModel.fmt(v!![0]) + " used of " + NlModel.fmt(v[2]) + "  ·  " + NlModel.fmt(v[1]) + " free" else "Scanned: " + NlModel.fmt(root.size) + "  ·  " + root.folders + " folders"
         hd.addView(txt(sp, 13f, cDim), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
@@ -810,7 +810,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val names = arrayOf("Folders", "Files", "Types", "Treemap", "Apps")
         for (i in 0..(if (host.appsOk()) 4 else 3)) {
             val t = TextView(act).apply {
-                text = names[i]; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; minimumHeight = dp(44); maxLines = 1; isClickable = true
+                text = names[i]; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; minimumHeight = dp(48); maxLines = 1; isClickable = true
                 setOnClickListener { showTab(i) }
             }
             tabV[i] = t
@@ -1113,7 +1113,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(72) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
-            right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(8) })
+            right.addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(8) })
             addView(right, LinearLayout.LayoutParams(dp(72), -2).apply { leftMargin = dp(8) })
             tog.setOnClickListener { if (pos in rowN.indices) { toggleExpand(rowN[pos]); treeAdapter.notifyDataSetChanged() } }
         }
@@ -1127,7 +1127,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
             val v = (cv as? TreeRow) ?: TreeRow(act)
             val n = rowN[p]
             v.pos = p
-            v.indent.layoutParams = LinearLayout.LayoutParams(dp(7) * minOf(rowD[p], 8), 1)   // narrow steps, capped: deep levels keep room for the names
+            v.indent.layoutParams = LinearLayout.LayoutParams(dp(8) * minOf(rowD[p], 8), 1)   // narrow steps, capped: deep levels keep room for the names
             v.tog.text = if (n.dir && n.kids.isNotEmpty() && !n.agg) (if (expanded.contains(n)) "−" else "+") else ""
             if (n.agg) v.sw.set(1, WizUtil.GRAY, "…") else if (n.dir) v.sw.set(0, WizUtil.FOLDER) else setFileGlyph(v.sw, n)
             v.name.text = if (n.agg) "<" + n.files + " small files>" else if (n.parent == null) host.label else n.name
@@ -1153,13 +1153,13 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(64)
-            addView(sw, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(16) })
+            addView(sw, LinearLayout.LayoutParams(dp(48), dp(48)).apply { rightMargin = dp(16) })
             val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             mid.addView(ext); mid.addView(meta)
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
-            right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(8) })
+            right.addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(8) })
             addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
         }
     }
@@ -1362,13 +1362,13 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
         val bar = WizBar(c).apply { fillCol = cAcc; fillCol2 = mix(cAcc, Color.WHITE, 0.38f); trackCol = mix(cBg, cFg, 0.16f) }
         init {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)); minimumHeight = dp(68)
-            addView(icon, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(16) })
+            addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)).apply { rightMargin = dp(16) })
             val mid = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
             mid.addView(name); mid.addView(meta)
             addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
             val right = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END; minimumWidth = dp(84) }
             right.addView(size, LinearLayout.LayoutParams(-1, -2))
-            right.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { topMargin = dp(8) })
+            right.addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(8) })
             addView(right, LinearLayout.LayoutParams(dp(84), -2).apply { leftMargin = dp(12) })
         }
     }

@@ -133,7 +133,7 @@ class OfficeViewerActivity : Activity() {
         fun dp(v: Int) = (v * d).toInt()
         val pal = AppPal.pal(this); palSig = AppPal.json(this)
         val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
-        window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         fun btn(txt: String, desc: String, click: (android.view.View) -> Unit) = android.widget.TextView(this).apply {
@@ -153,7 +153,7 @@ class OfficeViewerActivity : Activity() {
         val fr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0); visibility = android.view.View.GONE; setBackgroundColor(pal.cont) }
         val et = android.widget.EditText(this).apply {
             hint = "Find in document"; setTextColor(pal.fg); setHintTextColor(pal.mut); setSingleLine(); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-            layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(44), 1f)
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(48), 1f)
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(e: android.text.Editable?) { val q = e?.toString().orEmpty(); if (q.isEmpty()) web.clearMatches() else web.findAllAsync(q) }
                 override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d2: Int) {}
@@ -181,8 +181,9 @@ class OfficeViewerActivity : Activity() {
             text = "Tap a cell to see its formula"
         }
         fbar = fx
-        root.addView(fx, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        root.addView(fx, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         root.addView(web, android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs while this screen is open
     }

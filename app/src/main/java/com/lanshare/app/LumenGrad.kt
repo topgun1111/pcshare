@@ -16,6 +16,14 @@ import org.json.JSONObject
  * First callers: NlFabView (gFab), NlToastView / NlDlView (progress gPrimary, done gSuccess, card gSurface), NlDockView (pill gPrimary).
  * gGlow, gSkeleton, gScrimTop / gScrimBottom have no caller yet: tiles / splash (Part 4c), skeleton rows (Part 4d), viewer bars (Part 4c).
  */
+/** Spec 4.6 / 5.2 alpha tokens for black overlays drawn natively: modal scrim 32 % / 56 %, caption plate = gScrimBottom start (55 %), soft shadow = 18 %. */
+object LumenScrim {
+    const val LIGHT: Int = 0x52000000
+    const val DARK: Int = 0x8F000000.toInt()
+    const val CAPTION: Int = 0x8C000000.toInt()
+    const val SHADOW: Int = 0x2E000000
+}
+
 object LumenGrad {
     private const val WHITE = 0xFFFFFFFF.toInt()
     private const val BLACK = 0xFF000000.toInt()

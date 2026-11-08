@@ -111,7 +111,7 @@ class ImageEditActivity : Activity() {
     private fun buildUi() {
         fun btn(txt: String, sp: Float) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48)
         }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
 

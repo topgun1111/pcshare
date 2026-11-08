@@ -442,7 +442,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         else if (!pm && NlBackdrop.wanted(act) && (card ushr 24) == 0xFF) {   // 4f N1 (c): real blur under the panel (F0 / F1)
             dp.setBackgroundColor(Color.TRANSPARENT); dp.blurFill = LumenGlass.blurFill(act, card); dp.fallback = LumenGlass.chromeFill(act, card); dp.invalidate()
         } else { dp.blurFill = 0; dp.setBackgroundColor(LumenGlass.chromeFill(act, card)) }
-        if (android.os.Build.VERSION.SDK_INT >= 28) { dp.outlineSpotShadowColor = (Lumen.of(act).shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); dp.outlineAmbientShadowColor = 0x33000000 }   // N4
+        if (android.os.Build.VERSION.SDK_INT >= 28) { dp.outlineSpotShadowColor = (Lumen.of(act).shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); dp.outlineAmbientShadowColor = LumenScrim.SHADOW }   // N4
         dp.elevation = (if (pm) 2f else 8f) * d
         wpx = Math.round(j.optDouble("w", 280.0).toFloat() * d)
         dp.rx = j.optDouble("rx", 0.0).toFloat() * d

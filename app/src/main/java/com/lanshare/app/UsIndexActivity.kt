@@ -45,9 +45,10 @@ class UsIndexActivity : Activity() {
     private var detailSig = ""
     @Volatile private var polling = false
 
-    private val green = 0xFF2E9E5B.toInt()
-    private val amber = 0xFFE0A000.toInt()
-    private val red = 0xFFD64545.toInt()
+    private val lm by lazy { Lumen.of(this) }   // semantic slots instead of fixed hexes (spec 4.4)
+    private val green get() = lm.success
+    private val amber get() = lm.warning
+    private val red get() = lm.error
 
     private fun dp(v: Float) = Math.round(v * d)
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
@@ -163,7 +164,7 @@ class UsIndexActivity : Activity() {
             val w = width.toFloat(); val s = w * 0.09f
             val r = RectF(s, s, w - s, w - s)
             pa.strokeWidth = s
-            pa.color = (tint and 0x00FFFFFF) or 0x30000000; cv.drawArc(r, 0f, 360f, false, pa)
+            pa.color = (tint and 0x00FFFFFF) or 0x2E000000; cv.drawArc(r, 0f, 360f, false, pa)
             pa.color = tint
             if (mode == "run") {
                 if (frac < 0f) { val a = (SystemClock.uptimeMillis() % 1100) / 1100f * 360f; cv.drawArc(r, a, 100f, false, pa); postInvalidateOnAnimation() }
@@ -208,7 +209,7 @@ class UsIndexActivity : Activity() {
         val ring = Ring(this@UsIndexActivity)
         val count = tv(17f, p.fg, true)
         val line = tv(12.5f, p.mut, false, 2)
-        val bar = Bar(this@UsIndexActivity).apply { track = (p.mut and 0x00FFFFFF) or 0x30000000 }
+        val bar = Bar(this@UsIndexActivity).apply { track = (p.mut and 0x00FFFFFF) or 0x2E000000 }
         init {
             root.addView(ring, LinearLayout.LayoutParams(dp(54f), dp(54f)))
             val col = LinearLayout(this@UsIndexActivity).apply { orientation = LinearLayout.VERTICAL }
@@ -238,7 +239,7 @@ class UsIndexActivity : Activity() {
     }
 
     private fun build() {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg); fitsSystemWindows = true }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg) }
         // top bar
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), dp(4f), dp(16f), dp(4f)) }
         val back = object : View(this) {
@@ -255,7 +256,7 @@ class UsIndexActivity : Activity() {
         // hero
         val hero = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = card(p.ac, 28f); setPadding(dp(20f), dp(18f), dp(20f), dp(18f)) }
         heroTitle = NlA11y.heading(tv(21f, p.onac, true)); heroSub = tv(13f, p.onac, false, 3).apply { setPadding(0, dp(4f), 0, 0) }
-        heroBar = Bar(this).apply { tint = p.onac; track = (p.onac and 0x00FFFFFF) or 0x40000000 }
+        heroBar = Bar(this).apply { tint = p.onac; track = (p.onac and 0x00FFFFFF) or 0x2E000000 }
         hero.addView(heroTitle); hero.addView(heroSub); hero.addView(heroBar, LinearLayout.LayoutParams(-1, dp(6f)).apply { topMargin = dp(14f) })
         col.addView(hero)
         // the four jobs
@@ -275,6 +276,7 @@ class UsIndexActivity : Activity() {
                 .setPositiveButton("Rescan") { _, _ -> IndexManager.rescan(); kick(false); toast("Rescanning the phone") }.setNegativeButton("Cancel", null).show()
         }, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(10f) })
         root.addView(act)
+        LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
     }
 
@@ -342,7 +344,7 @@ class UsIndexActivity : Activity() {
         Fnt.init(applicationContext)
         p = AppPal.pal(this); night = AppPal.night(this)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(p.bg))
-        window.statusBarColor = p.bg; window.navigationBarColor = p.bg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
         if (Build.VERSION.SDK_INT >= 23) {
             var f = window.decorView.systemUiVisibility
             f = if (!night) f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()

@@ -150,7 +150,7 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
     private fun fade(to: Float) {
         animate().cancel()
         if (LumenPrefs.reduceMotion(context)) { alpha = to; return }
-        animate().alpha(to).setDuration(if (to > 0f) 120L else 160L).start()
+        animate().alpha(to).setDuration(if (to > 0f) LumenMotion.REDUCE_FADE else LumenMotion.FAST).start()
     }
 
     /** [label] of the first visible row; empty hides the strip. Call on every scroll step. */
@@ -240,7 +240,7 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
         val scale = if (rm) 1f else 0.6f + 0.4f * fraction
         val cx = width * 0.5f
         val cy = (24f * d) + if (refreshing) trigger else pull
-        val radius = 20f * d
+        val radius = 24f * d
         canvas.save()
         canvas.translate(cx, cy)
         canvas.scale(scale, scale)

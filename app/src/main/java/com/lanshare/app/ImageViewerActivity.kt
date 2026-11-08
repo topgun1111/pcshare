@@ -193,7 +193,7 @@ class ImageViewerActivity : Activity() {
         }
         fun icon(path: String, desc: String, act: () -> Unit) = IconBtn(this, path).apply {
             contentDescription = desc; setOnClickListener { act() }
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(2) }
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
         }
         val back = icon(IconBtn.BACK, "Back") { finish() }.apply { layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)) }
         titleTv = NlViewerBar.title(this)   // Lumen N7: shared viewer-bar title / subtitle / column (NlViewerBar.kt)
@@ -240,7 +240,7 @@ class ImageViewerActivity : Activity() {
 
         fun tv(txt: String, sp: Float) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48)
         }
         // bar shown while a picture's text layer is on: Copy (selection, else all text) / Select all / Share / Close
         fun barBtn(txt: String, act: () -> Unit) = tv(txt, 15f).apply { setOnClickListener { act() } }

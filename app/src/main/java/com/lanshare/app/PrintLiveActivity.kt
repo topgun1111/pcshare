@@ -106,7 +106,7 @@ class PrintLiveActivity : Activity() {
         val steps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(8), dp(8), dp(8)); background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(8).toFloat() } }
         for (lab in LABELS) {
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(4)) }
-            val sym = tv("\u25cb", 14f, DIM, Typeface.DEFAULT).also { it.minWidth = dp(26) }
+            val sym = tv("\u25cb", 14f, DIM, Typeface.DEFAULT).also { it.minWidth = dp(24) }
             val l = tv(lab, 14f, FG, Fnt.med())
             val d = tv("", 12f, DIM, Fnt.med()).also { it.setPadding(dp(8), 0, 0, 0) }
             r.addView(sym); r.addView(l); r.addView(d, LinearLayout.LayoutParams(0, -2, 1f))

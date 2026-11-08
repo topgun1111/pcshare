@@ -272,7 +272,7 @@ class PlayerActivity : Activity() {
         texts.addView(titleTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val sub = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         calIcon = IconView(this, PIc.CAL)
-        sub.addView(calIcon, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(8) })
+        sub.addView(calIcon, LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginEnd = dp(8) })
         dateTv = label(14f, false)
         sub.addView(dateTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         resTv = label(14f, false)

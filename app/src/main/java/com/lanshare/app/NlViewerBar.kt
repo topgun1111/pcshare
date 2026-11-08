@@ -37,14 +37,14 @@ object NlViewerBar {
         NlA11y.heading(this); setTextColor(Color.WHITE); LumenTypography.fit(this, 16f)
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
-        setShadowLayer(dp(a, 3).toFloat(), 0f, dp(a, 1).toFloat(), 0x99000000.toInt())
+        setShadowLayer(dp(a, 3).toFloat(), 0f, dp(a, 1).toFloat(), LumenScrim.CAPTION)
     }
 
     /** Label (12 sp, white 70 %, same shadow). */
     fun subtitle(a: Activity): TextView = TextView(a).apply {
         setTextColor(0xB3FFFFFF.toInt()); LumenTypography.fit(this, 12f)
         maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-        setShadowLayer(dp(a, 3).toFloat(), 0f, dp(a, 1).toFloat(), 0x99000000.toInt()); setPadding(0, dp(a, 1), 0, 0)
+        setShadowLayer(dp(a, 3).toFloat(), 0f, dp(a, 1).toFloat(), LumenScrim.CAPTION); setPadding(0, dp(a, 1), 0, 0)
     }
 
     /** Title + subtitle column (6 dp / 8 dp side padding), as in the viewers' bars. */

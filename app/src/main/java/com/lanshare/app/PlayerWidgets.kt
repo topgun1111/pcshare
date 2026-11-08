@@ -10,7 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 
 /** Colours of the player screen. Light = white page with dark text (like the system gallery), dark = black page. */
-class PlayerPal(val light: Boolean, primary: Int = 0xFF4F63FF.toInt()) {
+class PlayerPal(val light: Boolean, primary: Int = 0xFFC25100.toInt()) {
     val bg = if (light) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
     val text = if (light) 0xFF111111.toInt() else 0xFFFFFFFF.toInt()
     val icon = if (light) 0xFF1B1B1B.toInt() else 0xFFFFFFFF.toInt()

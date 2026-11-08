@@ -281,7 +281,7 @@ class PdfViewerActivity : Activity() {
 
         fun tv(txt: String, sp: Float) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(44)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48)
         }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL

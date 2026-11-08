@@ -167,7 +167,7 @@ class UsActivity : Activity() {
 
     private fun paintBars() {
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(p.bg))
-        window.statusBarColor = p.bg; window.navigationBarColor = p.bg
+        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
         if (Build.VERSION.SDK_INT >= 23) {
             var f = window.decorView.systemUiVisibility
             f = if (!night) f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
@@ -189,12 +189,12 @@ class UsActivity : Activity() {
 
     /** Rounded press highlight for the selection dock cells. */
     private fun pressBg(r: Int): android.graphics.drawable.StateListDrawable = android.graphics.drawable.StateListDrawable().apply {
-        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { cornerRadius = r.toFloat(); setColor((p.ac and 0x00FFFFFF) or 0x33000000) })
+        addState(intArrayOf(android.R.attr.state_pressed), GradientDrawable().apply { cornerRadius = r.toFloat(); setColor((p.ac and 0x00FFFFFF) or 0x2E000000) })
         addState(intArrayOf(), GradientDrawable().apply { cornerRadius = r.toFloat(); setColor(Color.TRANSPARENT) })
     }
 
     private fun build() {
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg); fitsSystemWindows = true }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(p.bg) }
         // search row
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(4f), dp(4f)) }
         val box = LinearLayout(this).apply {
@@ -302,6 +302,7 @@ class UsActivity : Activity() {
         }
         selBar.addView(row)
         root.addView(selBar)
+        LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
     }
 
@@ -625,7 +626,7 @@ class UsActivity : Activity() {
 
         fun bind(r: UsSearch.Row, i: Int) {
             val picked = sel.contains(r.id)
-            root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x33000000 else Color.TRANSPARENT)
+            root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x2E000000 else Color.TRANSPARENT)
             val compact = vmode == "compact"
             val side = dp(if (compact) 30f else if (vthumb == "l") 72f else 40f)
             if (ico.sz != side) {
@@ -692,7 +693,7 @@ class UsActivity : Activity() {
         fun bind(r: UsSearch.Row, i: Int) {
             root.visibility = View.VISIBLE; idx = i; key = r.path
             val picked = sel.contains(r.id)
-            root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x33000000 else Color.TRANSPARENT)
+            root.setBackgroundColor(if (picked) (p.ac and 0x00FFFFFF) or 0x2E000000 else Color.TRANSPARENT)
             nameTv.text = hl(r.name)
             ico.name = r.name; ico.dir = r.dir; ico.ticked = picked; ico.invalidate()
             val k = if (r.dir) "" else kindOfName(r.name)

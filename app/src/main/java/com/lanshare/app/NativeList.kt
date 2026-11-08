@@ -303,7 +303,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
             r.badge?.let { g ->
                 val bs = (if (c) 15f else 24f) * d; val bi = (if (c) 11f else 16f) * d
                 val bottom = cy + leadB + (if (c) 2f else 1f) * d; val top = bottom - bs
-                p.color = 0x33000000; rf.set(lcx - bs / 2f - d, top - d, lcx + bs / 2f + d, bottom + d); cv.drawRoundRect(rf, (if (c) 5f else 6f) * d, (if (c) 5f else 6f) * d, p)
+                p.color = LumenScrim.SHADOW; rf.set(lcx - bs / 2f - d, top - d, lcx + bs / 2f + d, bottom + d); cv.drawRoundRect(rf, (if (c) 5f else 6f) * d, (if (c) 5f else 6f) * d, p)
                 p.color = Color.WHITE; rf.set(lcx - bs / 2f, top, lcx + bs / 2f, bottom); cv.drawRoundRect(rf, (if (c) 4f else 5f) * d, (if (c) 4f else 5f) * d, p)
                 icon(g, lcx - bi / 2f, top + (bs - bi) / 2f, bi, r.badgeCol, cv)
             }
@@ -322,7 +322,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
                     val right = lcx + leadR - 3f * d; val bottom = cy + leadB - 3f * d
-                    p.color = 0x99000000.toInt(); rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
+                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
                     dubP.color = Color.WHITE
                     val fm = dubP.fontMetrics
                     cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
@@ -532,7 +532,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
                     val right = lx + s - 3f * d; val bottom = ly + sh - 3f * d
-                    p.color = 0x99000000.toInt(); rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
+                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
                     dubP.color = Color.WHITE
                     val fm = dubP.fontMetrics
                     cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
@@ -553,7 +553,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
             p.color = pl.ac; cv.drawCircle(kx, ky, 12f * d, p)
             icon("check", kx - 8f * d, ky - 8f * d, 16f * d, pl.onac, cv)
         } else if (selMode) {
-            p.style = Paint.Style.FILL; p.color = 0x33000000; cv.drawCircle(kx, ky, 12f * d, p)
+            p.style = Paint.Style.FILL; p.color = LumenScrim.SHADOW; cv.drawCircle(kx, ky, 12f * d, p)
             p.style = Paint.Style.STROKE; p.strokeWidth = 2f * d; p.color = Color.WHITE; cv.drawCircle(kx, ky, 11f * d, p)
             p.style = Paint.Style.FILL
         }
@@ -721,7 +721,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
                 icon("vid", x + cs / 2f - 18f * d, y + cs / 2f - 18f * d, 36f * d, col, cv)
             }
             // name on a top gradient: padding 14 6 4, line 14
-            p.shader = LinearGradient(0f, y, 0f, y + 32f * d, 0x99000000.toInt(), 0x00000000, Shader.TileMode.CLAMP)
+            p.shader = LinearGradient(0f, y, 0f, y + 32f * d, LumenScrim.CAPTION, 0x00000000, Shader.TileMode.CLAMP)
             rf.set(x, y, x + cs, y + 32f * d); cv.drawRect(rf, p); p.shader = null
             nameP.color = Color.WHITE
             val tw = cs - (if (r.fresh) 18f else 6f) * d - (if (selMode) 34f else 6f) * d
@@ -730,14 +730,14 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + 7f * d - (fm.ascent + fm.descent) / 2f, nameP)
             if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d, nlErr(context))
             // play dot
-            p.style = Paint.Style.FILL; p.color = 0x99000000.toInt()
+            p.style = Paint.Style.FILL; p.color = LumenScrim.CAPTION
             cv.drawCircle(x + 6f * d + 11f * d, y + cs - 6f * d - 11f * d, 11f * d, p)
             icon("play", x + 6f * d + 11f * d - 8f * d, y + cs - 6f * d - 11f * d - 8f * d, 16f * d, Color.WHITE, cv)
             // duration pill
             du[k]?.let { t ->
                 val tw2 = dubP.measureText(t) + 12f * d
                 val right = x + cs - 6f * d; val bottom = y + cs - 6f * d
-                p.color = 0x99000000.toInt(); rf.set(right - tw2, bottom - 15f * d, right, bottom); cv.drawRoundRect(rf, 10f * d, 10f * d, p)
+                p.color = LumenScrim.CAPTION; rf.set(right - tw2, bottom - 15f * d, right, bottom); cv.drawRoundRect(rf, 10f * d, 10f * d, p)
                 dubP.color = Color.WHITE
                 val f2 = dubP.fontMetrics
                 cv.drawText(t, right - tw2 + 6f * d, bottom - 7.5f * d - (f2.ascent + f2.descent) / 2f, dubP)
@@ -753,7 +753,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
                 p.color = pl.ac; cv.drawCircle(kx, ky, 12f * d, p)
                 icon("check", kx - 8f * d, ky - 8f * d, 16f * d, pl.onac, cv)
             } else if (selMode) {
-                p.style = Paint.Style.FILL; p.color = 0x33000000; cv.drawCircle(kx, ky, 12f * d, p)
+                p.style = Paint.Style.FILL; p.color = LumenScrim.SHADOW; cv.drawCircle(kx, ky, 12f * d, p)
                 p.style = Paint.Style.STROKE; p.strokeWidth = 2f * d; p.color = Color.WHITE; cv.drawCircle(kx, ky, 11f * d, p)
                 p.style = Paint.Style.FILL
             }
