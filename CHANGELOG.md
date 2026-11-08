@@ -4,9 +4,13 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
-## 2026-11-09 - Picture previews inside archives
+## 2026-11-09 - Pictures from archives
+### Added
+- Pictures and PDFs inside ZIP, RAR, 7z and TAR archives can now be added to Print space (select them, tap To Print space; also from the picture viewer's More menu).
+### Changed
+- Turning a picture with the finger in Free placement now steps in multiples of 90° (corner dot and two-finger turn).
 ### Fixed
-- Pictures inside ZIP, RAR, 7z and TAR archives now show a small preview in the list instead of a plain PNG / JPG tile.
+- Pictures inside archives now show a small preview in the list instead of a plain PNG / JPG tile.
 
 ## 2026-11-08 - Original app icon back
 ### Changed

@@ -223,12 +223,14 @@ object PrintSpace {
             try {
                 if (items.size >= MAX_ITEMS) { skip(nm, "print space is full ($MAX_ITEMS pictures)"); continue }
                 if (!remote && (inSpace(v) || Bin.inBin(v))) { skip(nm, "already in the print space or in the recycle bin"); continue }
-                if (!remote && arcSplit(v) != null) { skip(nm, "inside an archive"); continue }
+                val arc = arcSplit(v) != null   // a picture / PDF INSIDE an archive (a.zip!/x.jpg): streamed out of it like a file of another device
+                val stream = remote || arc
+                val sEp: Endpoint? = if (remote) ep else if (arc) Jobs.ep("local") else null
                 val pdf = isPdf(nm)
                 if (!pdf && !isPicture(nm)) { skip(nm, "not a picture or PDF"); continue }
                 var srcLen = 0L
                 var src: File? = null
-                if (!remote) {
+                if (!stream) {
                     val f = Core.local.real(v)
                     if (!f.exists()) { skip(nm, "not found"); continue }
                     if (f.isDirectory) { skip(nm, "folder (select pictures)"); continue }
@@ -236,14 +238,14 @@ object PrintSpace {
                     srcLen = f.length()
                 } else {
                     try {
-                        val st = ep!!.stat(v)
+                        val st = sEp!!.stat(v)
                         if (st.optBoolean("dir")) { skip(nm, "folder (select pictures)"); continue }
                         srcLen = st.optLong("size", 0L)
                     } catch (e: Exception) { skip(nm, errText(e).take(120)); continue }
-                    if (srcLen > MAX_REMOTE) { skip(nm, "too big to take from another device (max ${MAX_REMOTE / 1048576} MB)"); continue }
+                    if (srcLen > MAX_REMOTE) { skip(nm, "too big to take from " + (if (remote) "another device" else "an archive") + " (max ${MAX_REMOTE / 1048576} MB)"); continue }
                 }
                 if (mb > 0 && items.sumOf { x -> x.size } + srcLen > mb * 1024L * 1024L) { skip(nm, "storage limit reached ($mb MB)"); continue }
-                if (pdf) { addPdf(if (remote) "$dev:$v" else v, nm, src, if (remote) ep else null, v, added, skipped); continue }
+                if (pdf) { addPdf(if (remote) "$dev:$v" else v, nm, src, if (stream) sEp else null, v, added, skipped); continue }
                 val id = System.currentTimeMillis().toString(36) + UUID.randomUUID().toString().replace("-", "").take(4)
                 val box = File(root(), id)
                 if (!box.mkdirs()) { skip(nm, "could not create the folder"); continue }
@@ -252,7 +254,7 @@ object PrintSpace {
                 val part = File(box, "$fname.part")
                 try {
                     if (src != null) src.copyTo(part, overwrite = true)
-                    else ep!!.open(v).use { ins -> part.outputStream().use { out -> ins.copyTo(out) } }
+                    else sEp!!.open(v).use { ins -> part.outputStream().use { out -> ins.copyTo(out) } }
                     if (!part.renameTo(dst)) throw IOException("could not store the copy")
                 } catch (e: Exception) {
                     try { box.deleteRecursively() } catch (_: Exception) {}

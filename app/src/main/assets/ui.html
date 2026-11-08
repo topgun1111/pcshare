@@ -3868,7 +3868,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zip','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
     if(files&&it.every(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());   // only when EVERY selected file can be printed (a zip next to a .py used to show it)
-    if(!A&&files&&psOK(it.map(i=>i.name),1))btn('add','To Print space',()=>{const ps=it.filter(i=>!i.dir&&psPic(i.name)).map(i=>jn(S.path,i.name));S.sel.clear();render();psAdd(S.dev,ps)});
+    if(files&&psOK(it.map(i=>i.name),1))btn('add','To Print space',()=>{const ps=it.filter(i=>!i.dir&&psPic(i.name)).map(i=>jn(S.path,i.name));S.sel.clear();render();psAdd(S.dev,ps)});
     if(S.sel.size===1&&!A)btn('edit','Rename',doRename);
     if(S.sel.size===1)btn('info','Details',()=>doDetails());
     if(S.sel.size===1&&files)btn('openw','Open with',doOpenWith);
@@ -5332,10 +5332,11 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
       else if(fg.mode==='c'){fg.tap=false;const k=fCorner(fg.f0,pic(fg.f0.id),fg.k,(e.clientX-r.left-fg.ox)/r.width,(e.clientY-r.top-fg.oy)/r.height,R,r.width,r.height);f.w=k.w;f.cx=k.cx;f.cy=k.cy}
       else if(fg.mode==='s'){fg.tap=false;const k=fSide(fg.f0,pic(fg.f0.id),fg.k,(e.clientX-r.left-fg.ox)/r.width,(e.clientY-r.top-fg.oy)/r.height,R,r.width,r.height);f.w=k.w;f.a=k.a;f.cx=k.cx;f.cy=k.cy}
       else if(fg.mode==='r'){const vx=e.clientX-fg.c.x,vy=e.clientY-fg.c.y;fg.tap=false;
-        let a=fnorm(fg.f0.rot+(Math.atan2(vy,vx)-fg.a0)*180/Math.PI);const q=Math.round(a/15)*15;if(Math.abs(a-q)<3)a=fnorm(q);
+        let a=fnorm(Math.round((fg.f0.rot+(Math.atan2(vy,vx)-fg.a0)*180/Math.PI)/90)*90);   // finger turn locks to multiples of 90 deg (0 / 90 / 180 / 270)
+       
         f.w=fg.f0.w;f.cx=fg.f0.cx;f.cy=fg.f0.cy;f.rot=a;fClamp(f,pic(f.id),R)}   // always from the start state, so turning back restores the size
       else if(fg.mode==='p'){if(P.size<2)return;const [a,b]=[...P.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,an=Math.atan2(b.y-a.y,b.x-a.x),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
-        f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(fg.f0.rot+(an-fg.an0)*180/Math.PI);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height;fClamp(f,pic(f.id),R)}
+        f.w=Math.max(.03,Math.min(3,fg.f0.w*d/fg.d0));f.rot=fnorm(Math.round((fg.f0.rot+(an-fg.an0)*180/Math.PI)/90)*90);f.cx=fg.f0.cx+(mx-fg.m0.x)/r.width;f.cy=fg.f0.cy+(my-fg.m0.y)/r.height;fClamp(f,pic(f.id),R)}
       kLim(fg,i,f);if(fg.mode==='s')f.st=Math.max(.2,Math.min(5,(fg.f0.st||1)*fg.f0.a/f.a));fPlace(i);fKnob(i,r.width,r.height)};
     const up=e=>{P.delete(e.pointerId);if(!fg)return;
       if(P.size===1&&fg.mode==='p'){fg.mode='x';fg.tap=false}   // one finger left after a pinch: ignore it until all are up
