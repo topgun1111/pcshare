@@ -39,10 +39,12 @@ class Lumen(private val m: Map<String, Int>) {
     val onSuccessCont: Int get() = m.getValue("onSuccessCont")
     val onWarningCont: Int get() = m.getValue("onWarningCont")
     val onInfoCont: Int get() = m.getValue("onInfoCont")
+    val gradFrom: Int get() = m.getValue("gradFrom")
+    val gradTo: Int get() = m.getValue("gradTo")
     operator fun get(n: String): Int = m[n] ?: 0
 
     companion object {
-        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning", "shadowTint", "onError", "onSuccess", "info", "onInfo", "successCont", "warningCont", "infoCont", "onSuccessCont", "onWarningCont", "onInfoCont")
+        val SLOTS = listOf("canvas", "ink", "surface", "surfaceHi", "primary", "onPrimary", "inkMut", "edge", "primaryCont", "onPrimaryCont", "errorCont", "onErrorCont", "error", "success", "warning", "surfaceLo", "edgeHi", "inkDim", "secondary", "tertiary", "scrim", "glassTint", "focus", "onWarning", "shadowTint", "onError", "onSuccess", "info", "onInfo", "successCont", "warningCont", "infoCont", "onSuccessCont", "onWarningCont", "onInfoCont", "gradFrom", "gradTo")
         private val LIGHT = mapOf(
             "canvas" to 0xFFFFF8F2.toInt(),
             "ink" to 0xFF1F1A16.toInt(),
@@ -78,7 +80,9 @@ class Lumen(private val m: Map<String, Int>) {
             "infoCont" to 0xFFD6E8FB.toInt(),
             "onSuccessCont" to 0xFF0B3D1C.toInt(),
             "onWarningCont" to 0xFF3D2300.toInt(),
-            "onInfoCont" to 0xFF0A2F5C.toInt()
+            "onInfoCont" to 0xFF0A2F5C.toInt(),
+            "gradFrom" to 0xFFC35309.toInt(),
+            "gradTo" to 0xFFA93F00.toInt()
         )
         private val DARK = mapOf(
             "canvas" to 0xFF17110C.toInt(),
@@ -115,7 +119,9 @@ class Lumen(private val m: Map<String, Int>) {
             "infoCont" to 0xFF174A80.toInt(),
             "onSuccessCont" to 0xFFD7F2DD.toInt(),
             "onWarningCont" to 0xFFFFE7BF.toInt(),
-            "onInfoCont" to 0xFFD6E8FB.toInt()
+            "onInfoCont" to 0xFFD6E8FB.toInt(),
+            "gradFrom" to 0xFFFFB77C.toInt(),
+            "gradTo" to 0xFFFF9A4D.toInt()
         )
 
         fun of(c: android.content.Context): Lumen {

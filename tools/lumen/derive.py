@@ -99,6 +99,29 @@ SPEC_SEM = {
            "error": ("#f2b8b5", "#601410", None, None), "info": ("#9cc8ff", "#00315f", "#174a80", "#d6e8fb")},
 }
 
+# Spec 5.2: gPrimary stops. Ember's own are the spec's (light #D2590A -> #A93F00, dark #FFB77C -> #FF9A4D); any other primary gets the same shape
+# (light: 5 % lighter -> 5 % darker, dark: the primary -> 9 % darker). An end whose label (onPrimary) is under 4.5:1 is moved in 1 % lightness steps until it passes (P7).
+GRAD_SPEC = {False: ("#c25100", ("#d2590a", "#a93f00")), True: ("#ffb77c", ("#ffb77c", "#ff9a4d"))}
+
+def grad_stops(prim, lab, dark):
+    prim, lab = prim[:7], lab[:7]
+    sp = GRAD_SPEC[dark]
+    if prim.lower() == sp[0]: ends = list(sp[1])
+    else:
+        h, s, l = to_hsl(prim)
+        ends = [prim, hsl(h, s, l - .09)] if dark else [hsl(h, s, l + .05), hsl(h, s, l - .05)]
+    lighter = lum(lab) < .5
+    out = []
+    for e in ends:
+        h, s, l = to_hsl(e)
+        for _ in range(100):
+            if cr(lab, e) >= 4.5: break
+            l += .01 if lighter else -.01
+            if l <= 0 or l >= 1: break
+            e = hsl(h, s, l)
+        out.append(e)
+    return out
+
 def fresh(d, over=None):
     """The 8 slots a preset does not list, derived from its own slots."""
     dark = is_dark(d["canvas"])
@@ -135,6 +158,7 @@ def fresh(d, over=None):
     o["onSuccess"], o["successCont"], o["onSuccessCont"] = sem("success", su, .22 if dark else .14)
     o["onWarning"], o["warningCont"], o["onWarningCont"] = sem("warning", w, .22 if dark else .16)
     o["onInfo"], o["infoCont"], o["onInfoCont"] = sem("info", inf, .22 if dark else .14)
+    o["gradFrom"], o["gradTo"] = grad_stops(d["primary"], d["onPrimary"], dark)
     o["shadowTint"] = mix(d["primary"], "#000000", .65)   # Part 4b (N4): 35 % primary over black, the tint of every elevation shadow (page --shT used to compute this in CSS)
     if over: o.update(over)
     return o

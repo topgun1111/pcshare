@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /**
  * Lumen Part 4b (N4): the named gradients of spec 5.2 as native shaders, derived from the same slots as the page (ui.html block LUMEN-UI4):
- *  gPrimary  primary 6 % white  -> 12 % black   (135 deg)   gFab    fab 6 % white -> 10 % black
+ *  gPrimary  gradFrom -> gradTo slots   (135 deg)   gFab    fab 6 % white -> 10 % black
  *  gDanger   error   6 % white  -> 14 % black   (135 deg)   gSuccess success 8 % white -> 15 % black
  *  gSurface  surfaceHi -> surface (180 deg)                    gGlow   primary 28 % centre -> 0 % edge (radial)
  *  gSkeleton surfaceLo -> surfaceHi -> surfaceLo (90 deg, moving)       gScrimTop / gScrimBottom  black 55 % -> 0 %
@@ -20,7 +20,8 @@ object LumenGrad {
     private const val WHITE = 0xFFFFFFFF.toInt()
     private const val BLACK = 0xFF000000.toInt()
 
-    fun primary(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.primary, WHITE, 0.02f), LumenCategory.mix(lm.primary, BLACK, 0.12f))
+    /** gPrimary stops (spec 5.2): the theme's gradFrom -> gradTo slots (Ember = the spec's #D2590A -> #A93F00 light, #FFB77C -> #FF9A4D dark, derived for the other themes). */
+    fun primary(lm: Lumen): IntArray = intArrayOf(lm.gradFrom, lm.gradTo)
     fun fab(fab: Int): IntArray = intArrayOf(LumenCategory.mix(fab, WHITE, 0.06f), LumenCategory.mix(fab, BLACK, 0.10f))
     fun danger(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.error, WHITE, 0.06f), LumenCategory.mix(lm.error, BLACK, 0.14f))
     fun success(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.success, WHITE, 0.08f), LumenCategory.mix(lm.success, BLACK, 0.15f))

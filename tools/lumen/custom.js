@@ -31,6 +31,12 @@ function lmNeutral(hue,tint,l){var k=1-Math.abs(2*l-1),s=k<1e-6?0:Math.min(1,(ti
 function lmHexa(h,a){return h+('0'+Math.floor(a*255+0.5).toString(16)).slice(-2)}
 /* spec 4.4: one hue per semantic colour in every theme. colour -> [fill, on-fill, container, on-container]; index 0 light, 1 dark (mirror of derive.SPEC_SEM) */
 var LM_SEMSPEC=[{success:['#1e8e3e','#ffffff','#d7f2dd','#0b3d1c'],warning:['#a66300','#ffffff','#ffe7bf','#3d2300'],error:['#b3261e','#ffffff'],info:['#0b6bcb','#ffffff','#d6e8fb','#0a2f5c']},{success:['#7fd99a','#00391a','#14502a','#d7f2dd'],warning:['#ffc15e','#3d2300','#5c3a00','#ffe7bf'],error:['#f2b8b5','#601410'],info:['#9cc8ff','#00315f','#174a80','#d6e8fb']}];
+/* spec 5.2 gPrimary stops (mirror of derive.grad_stops) */
+var LM_GSPEC=[['#c25100',['#d2590a','#a93f00']],['#ffb77c',['#ffb77c','#ff9a4d']]];
+function lmGradStops(prim,lab,dark){prim=prim.slice(0,7);lab=lab.slice(0,7);var sp=LM_GSPEC[dark?1:0],ends;
+  if(prim.toLowerCase()===sp[0])ends=sp[1].slice();else{var q=lmToHsl(prim);ends=dark?[prim,lmHsl(q[0],q[1],q[2]-0.09)]:[lmHsl(q[0],q[1],q[2]+0.05),lmHsl(q[0],q[1],q[2]-0.05)]}
+  var lighter=lmLum(lab)<0.5;
+  return ends.map(function(e){var q=lmToHsl(e),l=q[2];for(var i=0;i<100;i++){if(lmCr(lab,e)>=4.5)break;l+=lighter?0.01:-0.01;if(l<=0||l>=1)break;e=lmHsl(q[0],q[1],l)}return e})}
 function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1]<0.1?0.08:0.28,L=dark?0.78:0.40,o={};
   o.surfaceLo=dark?lmMix(d.canvas,'#000000',0.35):lmMix(d.canvas,d.ink,0.06);
   o.edgeHi=dark?'#ffffff29':'#ffffffb3';
@@ -48,6 +54,7 @@ function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1
   t=sem('success',su,dark?0.22:0.14);o.onSuccess=t[0];o.successCont=t[1];o.onSuccessCont=t[2];
   t=sem('warning',w,dark?0.22:0.16);o.onWarning=t[0];o.warningCont=t[1];o.onWarningCont=t[2];
   t=sem('info',inf,dark?0.22:0.14);o.onInfo=t[0];o.infoCont=t[1];o.onInfoCont=t[2];
+  t=lmGradStops(d.primary,d.onPrimary,dark);o.gradFrom=t[0];o.gradTo=t[1];
   o.shadowTint=lmMix(d.primary,'#000000',0.65);
   o.focus=f;return o}
 /* function, not var: the boot call runs before a later `var` line would have been assigned */
