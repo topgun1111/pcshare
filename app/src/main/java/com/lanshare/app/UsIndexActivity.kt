@@ -254,7 +254,7 @@ class UsIndexActivity : Activity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14f), dp(4f), dp(14f), dp(16f)) }
         // hero
         val hero = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = card(p.ac, 28f); setPadding(dp(20f), dp(18f), dp(20f), dp(18f)) }
-        heroTitle = tv(21f, p.onac, true); heroSub = tv(13f, p.onac, false, 3).apply { setPadding(0, dp(4f), 0, 0) }
+        heroTitle = NlA11y.heading(tv(21f, p.onac, true)); heroSub = tv(13f, p.onac, false, 3).apply { setPadding(0, dp(4f), 0, 0) }
         heroBar = Bar(this).apply { tint = p.onac; track = (p.onac and 0x00FFFFFF) or 0x40000000 }
         hero.addView(heroTitle); hero.addView(heroSub); hero.addView(heroBar, LinearLayout.LayoutParams(-1, dp(6f)).apply { topMargin = dp(14f) })
         col.addView(hero)

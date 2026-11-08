@@ -320,7 +320,7 @@ class PdfViewerActivity : Activity() {
 
         pill = TextView(this).apply {
             setTextColor(Color.WHITE); LumenTypography.fit(this, 13f); gravity = Gravity.CENTER
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setPadding(dp(16), dp(8), dp(16), dp(8))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0xCC000000.toInt()) }
             visibility = View.GONE
             setOnClickListener { askPage() }

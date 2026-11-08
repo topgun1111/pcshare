@@ -79,9 +79,9 @@ class PrintLogActivity : Activity() {
         simple = try { getSharedPreferences("logs_ui", MODE_PRIVATE).getBoolean("simple", true) } catch (_: Throwable) { true }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
-        root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
+        LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
         root.addView(TextView(this).apply { NlA11y.heading(this); text = "Logs"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); typeface = Fnt.semi(); setPadding(dp(16), dp(12), dp(16), dp(2)) })
-        info = TextView(this).apply { typeface = Fnt.med(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
+        info = TextView(this).apply { typeface = Fnt.reg(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(8)) }
         root.addView(info)
 
         // --- tabs: Phone log | PC log
@@ -89,7 +89,7 @@ class PrintLogActivity : Activity() {
         fun tabBtn(i: Int, label: String): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            val t = TextView(this@PrintLogActivity).apply { text = label; LumenTypography.fit(this, 15f); gravity = Gravity.CENTER; typeface = Fnt.semi(); setPadding(0, dp(10), 0, dp(10)) }
+            val t = TextView(this@PrintLogActivity).apply { text = label; LumenTypography.fit(this, 15f); gravity = Gravity.CENTER; typeface = Fnt.semi(); setPadding(0, dp(12), 0, dp(12)) }
             val ind = View(this@PrintLogActivity)
             tabTxt[i] = t; tabInd[i] = ind
             addView(t, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -100,11 +100,11 @@ class PrintLogActivity : Activity() {
         root.addView(tabs)
         root.addView(View(this).apply { setBackgroundColor(pal.bd) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
 
-        info = TextView(this).apply { typeface = Fnt.med(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), dp(8), dp(16), dp(4)) }
+        info = TextView(this).apply { typeface = Fnt.reg(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), dp(8), dp(16), dp(4)) }
         root.addView(info)
 
         // --- one row: Refresh, Export, [x] Advanced
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(2), dp(12), dp(6)) }
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), dp(2), dp(12), dp(8)) }
         bar.addView(chip("Refresh") { refresh() })
         bar.addView(chip("Export") { export() })
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
@@ -122,13 +122,13 @@ class PrintLogActivity : Activity() {
 
         if (jids.isNotEmpty()) root.addView(android.widget.CheckBox(this).apply {
             text = "Only this job (" + jids.joinToString(" ") + ")"; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg)
-            isChecked = onlyJobs; setPadding(dp(12), 0, dp(12), dp(6))
+            isChecked = onlyJobs; setPadding(dp(12), 0, dp(12), dp(8))
             setOnCheckedChangeListener { _, v -> onlyJobs = v; render() }
         })
 
         // --- Advanced only: the less used tools
         extra = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-        val ex = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), dp(6)) }
+        val ex = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), dp(8)) }
         ex.addView(chip("Copy") { copy() })
         ex.addView(chip("Open folder") { openFolder() })
         ex.addView(chip("Clear phone log") { clear() })
@@ -160,8 +160,8 @@ class PrintLogActivity : Activity() {
 
     private fun chip(t: String, f: () -> Unit) = TextView(this).apply {
         text = t; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg); gravity = Gravity.CENTER
-        setPadding(dp(14), dp(8), dp(14), dp(8))
-        background = GradientDrawable().apply { setColor(pal.cont); cornerRadius = dp(18).toFloat(); setStroke(dp(1), pal.bd) }
+        setPadding(dp(16), dp(8), dp(16), dp(8))
+        background = GradientDrawable().apply { setColor(pal.cont); cornerRadius = dp(16).toFloat(); setStroke(dp(1), pal.bd) }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
         setOnClickListener { try { f() } catch (e: Throwable) { toast("Failed: " + (e.message ?: e.javaClass.simpleName)) } }
     }

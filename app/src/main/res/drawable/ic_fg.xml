@@ -1,9 +1,15 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Lumen mark: L with two signal arcs, white, inside the 66dp adaptive safe zone (same for full and Lite) -->
-    <group android:scaleX="1.15" android:scaleY="1.15" android:translateX="-4" android:translateY="4.5">
-        <path android:strokeColor="#FFFFFF" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M30,22V62H58"/>
-        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.75" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,34Q62,34 62,44"/>
-        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.75" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,24Q72,24 72,44"/>
+    <!-- Lumen mark (spec 11.8): "L" inside two stacked rounded squares (file + glass); inside the 66dp adaptive safe zone (same for full and Lite) -->
+    <group android:translateX="2" android:translateY="2">
+        <!-- back square: the file -->
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.5"
+            android:pathData="M36,26H56a8,8 0 0 1 8,8V54a8,8 0 0 1 -8,8H36a8,8 0 0 1 -8,-8V34a8,8 0 0 1 8,-8Z"/>
+        <!-- front square: the glass -->
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M48,40H68a8,8 0 0 1 8,8V68a8,8 0 0 1 -8,8H48a8,8 0 0 1 -8,-8V48a8,8 0 0 1 8,-8Z"/>
+        <!-- L, Ember primary -->
+        <path android:strokeColor="#C25100" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M52,51V65H65"/>
     </group>
 </vector>

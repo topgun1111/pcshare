@@ -12,6 +12,7 @@ import android.os.Build
 object Fnt {
     @Volatile private var m: Typeface? = null
     @Volatile private var s: Typeface? = null
+    @Volatile private var r: Typeface? = null   // regular 400: body text (spec 7)
     @Volatile private var cur: String = ""
 
     private val ALL: List<Pair<String, String>> = listOf(
@@ -78,19 +79,20 @@ object Fnt {
     fun reload(c: Context) { load(c, UiScale.font(c).let { if (valid(it)) it else "figtree" }) }
 
     private fun load(c: Context, id: String) {
-        var mm: Typeface? = null; var ss: Typeface? = null
+        var mm: Typeface? = null; var ss: Typeface? = null; var rr: Typeface? = null
         when (id) {
             "figtree" -> {
                 try { mm = Typeface.createFromAsset(c.assets, "fonts/figtree-medium.ttf") } catch (_: Throwable) { }
                 try { ss = Typeface.createFromAsset(c.assets, "fonts/figtree-semibold.ttf") } catch (_: Throwable) { }
+                try { rr = Typeface.createFromAsset(c.assets, "fonts/figtree-regular.ttf") } catch (_: Throwable) { }
             }
-            "system" -> { mm = Typeface.create("sans-serif-medium", Typeface.NORMAL); ss = Typeface.create("sans-serif", Typeface.BOLD) }
+            "system" -> { mm = Typeface.create("sans-serif-medium", Typeface.NORMAL); ss = Typeface.create("sans-serif", Typeface.BOLD); rr = Typeface.create("sans-serif", Typeface.NORMAL) }
             else -> {
                 val path = "fonts/ff_" + id + ".ttf"
-                mm = weight(c, path, 500); ss = weight(c, path, 600)
+                mm = weight(c, path, 500); ss = weight(c, path, 600); rr = weight(c, path, 400)
             }
         }
-        m = mm; s = ss; cur = id
+        m = mm; s = ss; r = rr; cur = id
     }
 
     private fun weight(c: Context, path: String, w: Int): Typeface? {
@@ -106,6 +108,8 @@ object Fnt {
         } catch (_: Throwable) { null }
     }
 
+    /** Body weight (400). Falls back to the medium face when the regular one did not load. */
+    fun reg(): Typeface = r ?: m ?: Typeface.create("sans-serif", Typeface.NORMAL)
     fun med(): Typeface = m ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
     fun semi(): Typeface = s ?: Typeface.create("sans-serif", Typeface.BOLD)
 }

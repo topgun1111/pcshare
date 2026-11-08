@@ -247,7 +247,7 @@ class ImageEditActivity : Activity() {
         for (pc in intArrayOf(100, 75, 50, 25)) {
             chips.addView(TextView(this).apply {
                 text = "$pc%"; LumenTypography.fit(this, 15f); setTextColor(accent); gravity = Gravity.CENTER
-                setPadding(dp(14), dp(10), dp(14), dp(10))
+                setPadding(dp(16), dp(12), dp(16), dp(12))
                 setOnClickListener { wEt.setText(max(1, (cw * pc / 100.0).roundToInt()).toString()) }
             })
         }

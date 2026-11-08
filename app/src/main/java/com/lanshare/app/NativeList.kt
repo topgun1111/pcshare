@@ -220,9 +220,9 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(16f) * d * UiScale.tf }
-    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(13f) * d * UiScale.tf }
+    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(13f) * d * UiScale.tf }   // sizes / dates / counts: tabular figures (spec 7)
     private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(10f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(10f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -410,7 +410,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(17f) * d * UiScale.tf }
     private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(10f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(10f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -605,7 +605,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     private var pressed = -1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(11f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()

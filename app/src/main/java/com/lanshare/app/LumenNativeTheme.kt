@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /** Applies the shared Lumen surface language to native Activity chrome without
@@ -34,11 +35,35 @@ object LumenNativeTheme {
         window.navigationBarColor = canvas
     }
 
+    /** Screens that draw edge to edge (spec 9.4 / 15.3): [edgeToEdge] registers them, [applySystemBars] then keeps their bars transparent. */
+    private val edge = java.util.WeakHashMap<Activity, Boolean>()
+
+    /** Spec 9.4 / 15.3: transparent status and navigation bars, the screen draws under them and pads [root] by the bar / cutout insets
+     * (and by the keyboard, because an edge-to-edge window is no longer resized by adjustResize). [root] must paint its own background. */
+    fun edgeToEdge(activity: Activity, root: View) {
+        val window = activity.window
+        edge[activity] = true
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, ins ->
+            val b = ins.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val ime = ins.getInsets(WindowInsetsCompat.Type.ime()).bottom   // AndroidX derives this back to API 21 with adjustResize
+            v.setPadding(b.left, b.top, b.right, maxOf(b.bottom, ime))
+            ins
+        }
+        ViewCompat.requestApplyInsets(root)
+    }
+
     fun apply(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
         val lm = Lumen.of(activity)
         val window = activity.window
-        applySystemBars(window, lm)
+        applySystemBars(window, lm, edge.containsKey(activity))
         val decor = window.decorView
         val content = decor.findViewById<ViewGroup>(android.R.id.content) ?: return
         if (content.childCount == 0) return
@@ -50,9 +75,9 @@ object LumenNativeTheme {
         if (activity !is MainActivity) try { NlA11y.polish(root) } catch (_: Throwable) { }   // MainActivity: the native list / bars / drawer describe themselves
     }
 
-    private fun applySystemBars(window: Window, lm: Lumen) {
-        window.statusBarColor = lm.canvas
-        window.navigationBarColor = lm.canvas
+    private fun applySystemBars(window: Window, lm: Lumen, transparent: Boolean) {
+        window.statusBarColor = if (transparent) Color.TRANSPARENT else lm.canvas
+        window.navigationBarColor = if (transparent) Color.TRANSPARENT else lm.canvas
         if (Build.VERSION.SDK_INT >= 29) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false

@@ -81,51 +81,51 @@ class PrintLiveActivity : Activity() {
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { val light = androidx.core.graphics.ColorUtils.calculateLuminance(BG) > 0.5; isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG) }
-        root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
+        LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
 
         // header: big icon + title + sub line
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(2)) }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(2)) }
         icon = tv(ICON["idle"]!!, 30f, DIM, Typeface.DEFAULT)
-        val hb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
+        val hb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
         title = NlA11y.heading(tv("...", 20f, FG, Fnt.semi()))
         sub = tv("", 12f, DIM, Fnt.med())
         hb.addView(title); hb.addView(sub)
         head.addView(icon); head.addView(hb, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(head)
 
-        nameL = tv("", 15f, FG, Fnt.semi()).also { it.setPadding(dp(14), dp(8), dp(14), 0) }
-        meta = tv("", 12f, DIM, Fnt.med()).also { it.setPadding(dp(14), 0, dp(14), 0) }
+        nameL = tv("", 15f, FG, Fnt.semi()).also { it.setPadding(dp(16), dp(8), dp(16), 0) }
+        meta = tv("", 12f, DIM, Fnt.reg()).also { it.setPadding(dp(16), 0, dp(16), 0) }
         root.addView(nameL); root.addView(meta)
 
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = true; progressBackgroundTintList = ColorStateList.valueOf(CARD) }
-        root.addView(bar, LinearLayout.LayoutParams(-1, dp(8)).apply { setMargins(dp(14), dp(10), dp(14), dp(2)) })
-        prog = tv("", 12f, FG, Fnt.med()).also { it.setPadding(dp(14), 0, dp(14), 0) }
+        root.addView(bar, LinearLayout.LayoutParams(-1, dp(8)).apply { setMargins(dp(16), dp(12), dp(16), dp(2)) })
+        prog = tv("", 12f, FG, Fnt.reg()).also { it.setPadding(dp(16), 0, dp(16), 0); LumenTypography.tabular(it) }
         root.addView(prog)
 
         // the five steps in a card
-        val steps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(6)); background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(8).toFloat() } }
+        val steps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(8), dp(8), dp(8)); background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(8).toFloat() } }
         for (lab in LABELS) {
-            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3)) }
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(4)) }
             val sym = tv("\u25cb", 14f, DIM, Typeface.DEFAULT).also { it.minWidth = dp(26) }
             val l = tv(lab, 14f, FG, Fnt.med())
             val d = tv("", 12f, DIM, Fnt.med()).also { it.setPadding(dp(8), 0, 0, 0) }
             r.addView(sym); r.addView(l); r.addView(d, LinearLayout.LayoutParams(0, -2, 1f))
             steps.addView(r); srows.add(Triple(sym, l, d))
         }
-        root.addView(steps, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(14), dp(8), dp(14), dp(8)) })
+        root.addView(steps, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
 
-        pline = tv("", 12f, DIM, Fnt.med()).also { it.setPadding(dp(14), 0, dp(14), 0) }
-        waitL = tv("", 12f, DIM, Fnt.med()).also { it.setPadding(dp(14), 0, dp(14), 0) }
-        result = tv("", 14f, FG, Fnt.semi()).also { it.setPadding(dp(14), dp(4), dp(14), 0) }
+        pline = tv("", 12f, DIM, Fnt.reg()).also { it.setPadding(dp(16), 0, dp(16), 0); LumenTypography.tabular(it) }
+        waitL = tv("", 12f, DIM, Fnt.reg()).also { it.setPadding(dp(16), 0, dp(16), 0) }
+        result = tv("", 14f, FG, Fnt.semi()).also { it.setPadding(dp(16), dp(4), dp(16), 0) }
         root.addView(pline); root.addView(waitL); root.addView(result)
 
         // live log (black box, monospace)
-        logTv = tv("", 11f, FG, Typeface.MONOSPACE).also { it.setPadding(dp(8), dp(6), dp(8), dp(6)); it.setTextIsSelectable(true) }
+        logTv = tv("", 11f, FG, Typeface.MONOSPACE).also { it.setPadding(dp(8), dp(8), dp(8), dp(8)); it.setTextIsSelectable(true) }
         logSv = ScrollView(this).apply { setBackgroundColor(LOGBG); addView(logTv) }
-        root.addView(logSv, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(dp(14), dp(6), dp(14), dp(4)) })
+        root.addView(logSv, LinearLayout.LayoutParams(-1, 0, 1f).apply { setMargins(dp(16), dp(8), dp(16), dp(4)) })
 
         // bottom row: tick box left, buttons right
-        val bot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)) }
+        val bot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), 0, dp(16), dp(12)) }
         val cb = CheckBox(this).apply {
             text = "Don't open automatically"; setTextColor(FG); LumenTypography.fit(this, 12f); typeface = Fnt.med(); buttonTintList = ColorStateList.valueOf(DIM)
             isChecked = noAuto(this@PrintLiveActivity)
@@ -142,9 +142,9 @@ class PrintLiveActivity : Activity() {
     private fun tv(t: String, sp: Float, c: Int, tf: Typeface) = TextView(this).apply { text = t; LumenTypography.fit(this, sp); setTextColor(c); typeface = tf }
     private fun btn(t: String, f: () -> Unit) = Button(this).apply {
         text = t; isAllCaps = false; LumenTypography.fit(this, 12f); setTextColor(FG); typeface = Fnt.med(); minWidth = 0; minimumWidth = 0
-        background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
+        background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(8).toFloat() }
         setPadding(dp(12), 0, dp(12), 0); setOnClickListener { try { f() } catch (_: Throwable) {} }
-    }.also { it.layoutParams = LinearLayout.LayoutParams(-2, dp(36)).apply { leftMargin = dp(6) } }
+    }.also { it.layoutParams = LinearLayout.LayoutParams(-2, dp(36)).apply { leftMargin = dp(8) } }
 
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); i.getStringExtra(X_DEV)?.takeIf { it.isNotEmpty() }?.let { dev = it } }
 

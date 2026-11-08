@@ -148,7 +148,7 @@ class SeekPill(c: Context) : View(c) {
 
     private val d = resources.displayMetrics.density
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL) }
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL); fontFeatureSettings = "tnum" }   // times: tabular figures (spec 7)
     private val rf = RectF()
     private var drag = false
     private var dragFrac = 0f

@@ -245,7 +245,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
         val root = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(6), 0, px(6)) }
         private val title = TextView(act).apply { setTextColor(pal.text); LumenTypography.fit(this, 14f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         private val bar = GradBarView(act)   // Lumen 12.16: 8 dp linear bar, gPrimary fill, gSuccess when done, gDanger on error, sweeping bar when the length is unknown
-        private val detail = TextView(act).apply { setTextColor(pal.subtext); LumenTypography.fit(this, 11f); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+        private val detail = TextView(act).apply { setTextColor(pal.subtext); LumenTypography.fit(this, 11f); LumenTypography.tabular(this); maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
         private val action = TextView(act).apply { LumenTypography.fit(this, 20f); gravity = Gravity.CENTER }
         private var id = ""
         private var popped = false
@@ -319,7 +319,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
                 pct >= 0 -> { p.color = pal.accent; c.drawArc(rect, -90f, 360f * pct / 100f, false, p) }
                 else -> { p.color = pal.accent; c.drawArc(rect, (System.currentTimeMillis() % 1200L) * 0.3f, 100f, false, p); postInvalidateOnAnimation() }
             }
-            p.style = Paint.Style.FILL; p.textAlign = Paint.Align.CENTER; p.color = pal.text; p.textSize = s * 0.38f; p.typeface = Typeface.DEFAULT_BOLD
+            p.style = Paint.Style.FILL; p.textAlign = Paint.Align.CENTER; p.color = pal.text; p.textSize = s * 0.38f; p.typeface = Typeface.DEFAULT_BOLD; p.fontFeatureSettings = "tnum"
             val t = if (failed) "!" else if (done) "\u2713" else n.toString()
             c.drawText(t, width / 2f, height / 2f - (p.descent() + p.ascent()) / 2f, p)
         }

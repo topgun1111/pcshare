@@ -144,7 +144,7 @@ class OfficeViewerActivity : Activity() {
         val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(pal.bg) }
         top.addView(btn("\u2190", "Back") { finish() })
         top.addView(android.widget.TextView(this).apply {
-            id = android.R.id.title; text = title; LumenTypography.fit(this, 16f); setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            id = android.R.id.title; com.lanshare.app.NlA11y.heading(this); text = title; LumenTypography.fit(this, 16f); setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         top.addView(btn("\uD83D\uDD0D", "Find") { toggleFind() })

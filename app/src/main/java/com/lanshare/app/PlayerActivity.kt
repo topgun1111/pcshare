@@ -266,9 +266,9 @@ class PlayerActivity : Activity() {
         // ---- header: back, "n/total . name", date + size
         header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         backBtn = RoundBtn(this, PIc.BACK).apply { contentDescription = "Back"; setOnClickListener { finish() } }
-        header.addView(backBtn, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) })
+        header.addView(backBtn, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) })
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleTv = label(17f, true)
+        titleTv = NlA11y.heading(label(17f, true))
         texts.addView(titleTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val sub = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         calIcon = IconView(this, PIc.CAL)
@@ -277,7 +277,7 @@ class PlayerActivity : Activity() {
         sub.addView(dateTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         resTv = label(14f, false)
         sub.addView(resTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12) })
-        texts.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        texts.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         header.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(header, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
 
@@ -302,7 +302,7 @@ class PlayerActivity : Activity() {
         row2.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         for (b in listOf(shareBtn, delBtn, moreBtn)) row2.addView(b)
         bottom.addView(row1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        bottom.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        bottom.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         root.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         pill.onSeek = { f, preview ->
             val d = player?.duration ?: C.TIME_UNSET
@@ -315,8 +315,8 @@ class PlayerActivity : Activity() {
 
         hud = TextView(this).apply {
             setTextColor(Color.WHITE); LumenTypography.fit(this, 18f); gravity = Gravity.CENTER
-            setPadding(dp(18), dp(10), dp(18), dp(10)); visibility = View.GONE
-            background = GradientDrawable().apply { setColor(0xAA000000.toInt()); cornerRadius = dp(20).toFloat() }
+            setPadding(dp(20), dp(12), dp(20), dp(12)); visibility = View.GONE
+            background = GradientDrawable().apply { setColor(0xAA000000.toInt()); cornerRadius = dp(24).toFloat() }
         }
         root.addView(hud, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
 
@@ -349,8 +349,8 @@ class PlayerActivity : Activity() {
     /** Paddings from the system bars, and the size of the round buttons (48 dp, smaller when the row would not fit). */
     private fun layoutBars() {
         val m = dp(8); val gap = dp(8)
-        header.setPadding(insL + dp(10), insT + dp(8), insR + dp(12), dp(22))
-        bottom.setPadding(insL + m, 0, insR + m, insB + dp(10))
+        header.setPadding(insL + dp(12), insT + dp(8), insR + dp(12), dp(24))
+        bottom.setPadding(insL + m, 0, insR + m, insB + dp(12))
         val innerW = root.width - insL - insR - 2 * m
         val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 4 * gap) / 5).coerceAtLeast(dp(30))
         if (bs != lastBs) {

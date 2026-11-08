@@ -177,7 +177,7 @@ class ImageViewerActivity : Activity() {
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = NlViewerBar.scrim()
-            setPadding(dp(4), dp(6), dp(4), dp(28))
+            setPadding(dp(4), dp(8), dp(4), dp(32))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         // details band: sits right under the top bar and spans the full width, so nothing is cut off with "..." (the dark space around the picture is used for it)
@@ -218,7 +218,7 @@ class ImageViewerActivity : Activity() {
         top.addView(ocrBtn); top.addView(edit); top.addView(print); top.addView(share); top.addView(more)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(4) + b.left, dp(6) + b.top, dp(4) + b.right, dp(28))
+            v.setPadding(dp(4) + b.left, dp(8) + b.top, dp(4) + b.right, dp(32))
             infoTv.setPadding(dp(16) + b.left, dp(8), dp(16) + b.right, dp(8))
             insets
         }
@@ -226,7 +226,7 @@ class ImageViewerActivity : Activity() {
 
         countPill = TextView(this).apply {
             setTextColor(Color.WHITE); LumenTypography.fit(this, 13f); gravity = Gravity.CENTER
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setPadding(dp(16), dp(8), dp(16), dp(8))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(0x99000000.toInt()) }
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(20) }
         }
@@ -247,7 +247,7 @@ class ImageViewerActivity : Activity() {
         copyBtn = barBtn("Copy all") { copyOcr() }
         selBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            background = GradientDrawable().apply { setColor(0xE6202124.toInt()); cornerRadius = dp(20).toFloat() }
+            background = GradientDrawable().apply { setColor(0xE6202124.toInt()); cornerRadius = dp(24).toFloat() }
             setPadding(dp(8), dp(2), dp(8), dp(2))
             visibility = View.GONE
             addView(copyBtn)

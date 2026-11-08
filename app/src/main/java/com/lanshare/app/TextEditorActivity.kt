@@ -287,7 +287,7 @@ class TextEditorActivity : Activity() {
     // ---------------------------------------------------------------- UI (built in code, like the other viewers)
     private fun tvBtn(txt: String, sp: Float = 20f): TextView = TextView(this).apply {
         text = txt; LumenTypography.fit(this, sp); gravity = Gravity.CENTER
-        minWidth = dp(44); minimumHeight = dp(44); setPadding(dp(6), 0, dp(6), 0); typeface = Fnt.med()
+        minWidth = dp(44); minimumHeight = dp(44); setPadding(dp(8), 0, dp(8), 0); typeface = Fnt.med()
     }
 
     private fun buildUi() {
@@ -323,7 +323,7 @@ class TextEditorActivity : Activity() {
             setOnEditorActionListener { _, _, _ -> stepFind(1); true }
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
         }
-        findCount = TextView(this).apply { LumenTypography.fit(this, 13f); setPadding(dp(6), 0, dp(6), 0); typeface = Fnt.med() }
+        findCount = TextView(this).apply { LumenTypography.fit(this, 13f); setPadding(dp(8), 0, dp(8), 0); typeface = Fnt.med() }
         val fPrev = tvBtn("▲", 15f).apply { setOnClickListener { stepFind(-1) } }
         val fNext = tvBtn("▼", 15f).apply { setOnClickListener { stepFind(1) } }
         val fClose = tvBtn("✕", 16f).apply { setOnClickListener { hideFind() } }
@@ -351,7 +351,7 @@ class TextEditorActivity : Activity() {
         root.addView(findBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         banner = TextView(this).apply {
-            LumenTypography.fit(this, 13f); typeface = Fnt.med(); setPadding(dp(20), dp(6), dp(20), dp(6)); visibility = View.GONE
+            LumenTypography.fit(this, 13f); typeface = Fnt.med(); setPadding(dp(20), dp(8), dp(20), dp(8)); visibility = View.GONE
         }
         root.addView(banner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -586,7 +586,7 @@ class TextEditorActivity : Activity() {
                 val tv = TextView(this).apply {
                     text = t; setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp * 0.92f); setTextColor(textColor)
                     typeface = if (head) Fnt.semi() else pvFace()
-                    setPadding(dp(10), dp(6), dp(10), dp(6)); maxWidth = dp(280)
+                    setPadding(dp(12), dp(8), dp(12), dp(8)); maxWidth = dp(280)
                     gravity = when (b.align.getOrElse(k) { 0 }) { 1 -> Gravity.CENTER_HORIZONTAL; 2 -> Gravity.END; else -> Gravity.START }
                     setBackgroundColor(if (head) headBg else bgColor)
                 }
@@ -614,7 +614,7 @@ class TextEditorActivity : Activity() {
                 is MdRender.Block.Code -> codeCard(bl)
                 is MdRender.Block.Table -> tableView(bl)
             }
-            previewBox.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (!first) topMargin = dp(10) })
+            previewBox.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (!first) topMargin = dp(12) })
             first = false
         }
         if (keep) scroll.post { scroll.scrollTo(0, sy) }
@@ -1065,7 +1065,7 @@ class TextEditorActivity : Activity() {
                 gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
                 LumenTypography.fit(this, 16f)
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) Lumen.of(this@TextEditorActivity).primary else 0x33000000) }
-                layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(6), dp(6), dp(6), dp(6)) }
+                layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(8), dp(8), dp(8), dp(8)) }
                 setOnClickListener { color = i; prefs.edit().putInt("color", i).apply(); applyTheme(); dlg.dismiss() }
             }
             grid.addView(v)

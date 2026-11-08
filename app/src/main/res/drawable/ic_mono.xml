@@ -1,9 +1,11 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp"
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- themed (monochrome) launcher layer: same monogram, one colour -->
-    <group android:scaleX="1.15" android:scaleY="1.15" android:translateX="-4" android:translateY="4.5">
-        <path android:strokeColor="#FFFFFF" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M30,22V62H58"/>
-        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.7" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,34Q62,34 62,44"/>
-        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.7" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M52,24Q72,24 72,44"/>
+    <!-- themed (monochrome) launcher layer: same mark, one colour; the L is cut out of the front square -->
+    <group android:translateX="2" android:translateY="2">
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.5"
+            android:pathData="M36,26H56a8,8 0 0 1 8,8V54a8,8 0 0 1 -8,8H36a8,8 0 0 1 -8,-8V34a8,8 0 0 1 8,-8Z"/>
+        <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+            android:pathData="M48,40H68a8,8 0 0 1 8,8V68a8,8 0 0 1 -8,8H48a8,8 0 0 1 -8,-8V48a8,8 0 0 1 8,-8ZM50,49H55V62H66V67H50Z"/>
     </group>
 </vector>

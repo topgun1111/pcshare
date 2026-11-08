@@ -54,14 +54,15 @@ class InboxActivity : Activity() {
         window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
+        LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
 
         // header: title + menu
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(6)) }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(12), dp(8), dp(8)) }
         head.addView(TextView(this).apply { NlA11y.heading(this); text = "Text inbox"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(TextView(this).apply {
             text = "⋮"; LumenTypography.fit(this, 24f); setTextColor(pal.fg); gravity = Gravity.CENTER
-            setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { menu() }
+            setPadding(dp(16), dp(4), dp(16), dp(4)); setOnClickListener { menu() }
             contentDescription = "More options"
         })
         root.addView(head)
@@ -69,7 +70,7 @@ class InboxActivity : Activity() {
         // target line
         toLine = TextView(this).apply {
             LumenTypography.fit(this, 14f); setTextColor(pal.mut); setBackgroundColor(pal.cont)
-            setPadding(dp(16), dp(10), dp(16), dp(10)); setOnClickListener { chooseTarget(null) }
+            setPadding(dp(16), dp(12), dp(16), dp(12)); setOnClickListener { chooseTarget(null) }
         }
         root.addView(toLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -85,7 +86,7 @@ class InboxActivity : Activity() {
         root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // input row
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(8), dp(6), dp(8), dp(8)) }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(8), dp(8), dp(8), dp(8)) }
         input = EditText(this).apply {
             setTextColor(pal.fg); setHintTextColor(pal.mut)
             hint = "Type or paste text"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -240,12 +241,12 @@ class InboxActivity : Activity() {
             val root = LinearLayout(this@InboxActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = if (n.out) Gravity.END else Gravity.START
-                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setPadding(dp(12), dp(4), dp(12), dp(4))
             }
             val bubble = LinearLayout(this@InboxActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = GradientDrawable().apply { setColor(if (n.out) androidx.core.graphics.ColorUtils.blendARGB(pal.bg, pal.ac, 0.22f) else pal.cont); cornerRadius = dp(14).toFloat() }
+                background = GradientDrawable().apply { setColor(if (n.out) androidx.core.graphics.ColorUtils.blendARGB(pal.bg, pal.ac, 0.22f) else pal.cont); cornerRadius = dp(12).toFloat() }
                 setOnClickListener { copy(n.text) }
                 setOnLongClickListener { actions(n); true }
             }
