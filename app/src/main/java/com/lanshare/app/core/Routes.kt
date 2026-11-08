@@ -320,8 +320,14 @@ object Routes {
                 return sendFile(ex, Jobs.ep(ex.q("dev")).open(p), vbase(p), q["dl"] != "1")
             }
             "thumb" -> {
+                if (arcSplit(ex.q("path")) != null) {   // a picture inside an archive (a.zip!/x.jpg): read through the archive endpoint, cached on disk
+                    val ap = vnorm(ex.q("path")); val adev = ex.q("dev")
+                    val ast = Jobs.ep(adev).stat(ap)
+                    val (adata, _) = RemoteThumbs.make(adev, ap, ast.optLong("size"), ast.optLong("mtime"), false)
+                    return ex.reply(200, adata, "image/jpeg", mapOf("Cache-Control" to "private, max-age=86400"))
+                }
                 val e = Jobs.ep(ex.q("dev")).let { (it as? ArcEp)?.base ?: it }
-                if (e !is LocalFs || arcSplit(ex.q("path")) != null) throw BadReq("thumbnails only for this device's own files")
+                if (e !is LocalFs) throw BadReq("thumbnails only for this device's own files")
                 val rf = e.real(vnorm(ex.q("path")))
                 if (com.lanshare.app.core.office.OfficeExport.isOffice(rf.name)) {   // office files: the preview image embedded by the producing app, else 404 (ui falls back to the icon)
                     val eb = com.lanshare.app.core.office.OfficeThumb.embedded(rf) ?: throw NotFound("No embedded thumbnail")

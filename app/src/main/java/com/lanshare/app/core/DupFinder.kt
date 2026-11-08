@@ -184,6 +184,25 @@ object DupFinder {
             l
         }
         fun added(dir: String, path: String, size: Long) { dirs[dir]?.add(Ent(path, size)) }
+        /** The first source picture used to read EVERY destination picture one after the other (minutes in a big album before anything moved): read them side by side, once. */
+        private fun warm(list: ArrayList<Ent>, job: Job) {
+            val todo = list.filter { it.sig == null && !it.bad && ext(it.path) in IMG_EXT && it.size <= MAX_IMG }
+            if (todo.size < 2) return
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(4) { r -> Thread(r, "simwarm").also { it.isDaemon = true } }
+            val cnt = java.util.concurrent.atomic.AtomicInteger()
+            try {
+                val fut = todo.map { d ->
+                    pool.submit(Runnable {
+                        if (!job.cancel) {
+                            try { d.sig = sig(dst, F(d.path, d.size)) } catch (_: Throwable) {}
+                            if (d.sig == null) d.bad = true
+                            job.cur = "Reading destination pictures " + cnt.incrementAndGet() + "/" + todo.size
+                        }
+                    })
+                }
+                for (x in fut) { x.get(); if (job.cancel) throw Cancelled() }
+            } finally { pool.shutdownNow(); job.cur = "" }
+        }
         fun match(src: Endpoint, sp: String, size: Long, dir: String, job: Job): Boolean {
             try {
                 val list = ents(dir)
@@ -191,6 +210,7 @@ object DupFinder {
                 val img = ext(sp) in IMG_EXT && size <= MAX_IMG
                 val ss = if (img) sig(src, F(sp, size)) else null
                 if (ss != null) {
+                    warm(list, job)
                     for (d in list) {
                         if (job.cancel) throw Cancelled()
                         if (d.bad || ext(d.path) !in IMG_EXT || d.size > MAX_IMG) continue

@@ -1751,7 +1751,7 @@ def send_pdf(pdf, o, pr, sm, notes):
     live_stage("send", os.path.basename(pdf))
     _np = pdf_pages(pdf)
     if _np:
-        live_set(pages_total=_np * max(1, o["copies"]))
+        live_set(pages_total=_np)   # Windows PagesPrinted counts the pages of ONE copy (the driver repeats the copies), so the total must not be multiplied by copies
     try: dlog("send-pdf", pdf=pdf, size=os.path.getsize(pdf), printer=pr, sumatra=sm, copies=o["copies"], duplex=o["duplex"], color=o["color"], fit=o["fit"], paper=o["paper"], tray=o.get("tray"))
     except OSError as e: dlog_exc("send-pdf-missing", e, pdf=pdf)
     if not WIN:

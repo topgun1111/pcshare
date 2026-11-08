@@ -1532,7 +1532,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
         val th: Th? = try {
-            if (r.dev != "local") {   // other LANShare device / SMB share: through the endpoint (disk cached), see RemoteThumbs
+            if (r.dev != "local" || (r.k == "img" && r.path != null && com.lanshare.app.core.arcSplit(r.path!!) != null)) {   // other LANShare device / SMB share, or a picture INSIDE a zip/rar/7z (a.zip!/x.jpg): through the endpoint (disk cached), see RemoteThumbs
                 val (data, ms) = RemoteThumbs.make(r.dev, r.path!!, r.size, r.mtime, r.k == "vid")
                 BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) }
             }

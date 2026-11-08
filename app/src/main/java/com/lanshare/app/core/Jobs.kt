@@ -993,13 +993,33 @@ object Jobs {
             job.dest = dst.name + " \u203a " + ddirN
             job.cur = "Reading the file list\u2026"   // shown on the card, so a slow / stuck first step is visible instead of a silent 0%
             val plan = ArrayList<Pair<String, List<WalkItem>?>>()
+            val todo = ArrayList<String>()
             for (p0 in paths) {
                 if (job.cancel) throw Cancelled()
                 val p = vnorm(p0)
                 if (p == "/") throw Denied("cannot copy the root")
                 if (same && (ddirN == p || ddirN.startsWith("$p/"))) throw BadReq("cannot put a folder inside itself")
                 if (same && cut && vdir(p) == ddirN) continue   // moving into the same folder: nothing to do
-                try { plan.add(p to (if (lite) null else src.walk(p))) }
+                todo.add(p)
+            }
+            // Another LANShare phone answers one request per item: walking 100+ pictures one after the other took minutes before the first byte moved.
+            // Several walks run side by side (results are used in the original order).
+            val walks = arrayOfNulls<Any>(todo.size)
+            if (!lite && todo.size > 2 && (src as? ArcEp)?.base is RemoteFs) {
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+                try {
+                    val fs = todo.map { tp -> pool.submit(java.util.concurrent.Callable<Any> { try { if (job.cancel) throw Cancelled(); src.walk(tp) } catch (x: Throwable) { x } }) }
+                    for ((i, f) in fs.withIndex()) walks[i] = f.get()
+                } finally { pool.shutdownNow() }
+            }
+            for ((i, p) in todo.withIndex()) {
+                if (job.cancel) throw Cancelled()
+                try {
+                    val r = walks[i]
+                    @Suppress("UNCHECKED_CAST")
+                    val w: List<WalkItem>? = if (lite) null else if (r is Throwable) throw r else if (r == null) src.walk(p) else r as List<WalkItem>
+                    plan.add(p to w)
+                }
                 catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }   // one unreadable item must not stop the others
             }
             planned = plan.map { it.first }
