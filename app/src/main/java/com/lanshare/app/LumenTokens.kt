@@ -63,14 +63,14 @@ class Lumen(private val m: Map<String, Int>) {
             "scrim" to 0x521A0F05.toInt(),
             "glassTint" to 0xFFFFF8F2.toInt(),
             "focus" to 0xFF0B5FFF.toInt(),
-            "onWarning" to 0xFF1F1400.toInt(),
+            "onWarning" to 0xFFFFFFFF.toInt(),
             "shadowTint" to 0xFF401B00.toInt(),
             "onError" to 0xFFFFFFFF.toInt(),
             "onSuccess" to 0xFF000000.toInt(),
-            "info" to 0xFF0B57D0.toInt(),
+            "info" to 0xFF0B6BCB.toInt(),
             "onInfo" to 0xFFFFFFFF.toInt(),
-            "successCont" to 0xFFE0EFE4.toInt(),
-            "warningCont" to 0xFFFEF2D6.toInt()
+            "successCont" to 0xFFD7F2DD.toInt(),
+            "warningCont" to 0xFFFFE7BF.toInt()
         )
         private val DARK = mapOf(
             "canvas" to 0xFF17110C.toInt(),
@@ -96,14 +96,14 @@ class Lumen(private val m: Map<String, Int>) {
             "scrim" to 0x8F000000.toInt(),
             "glassTint" to 0xFF1E1610.toInt(),
             "focus" to 0xFF8AB4FF.toInt(),
-            "onWarning" to 0xFF1F1400.toInt(),
+            "onWarning" to 0xFF3D2300.toInt(),
             "shadowTint" to 0xFF59402B.toInt(),
-            "onError" to 0xFF000000.toInt(),
-            "onSuccess" to 0xFF000000.toInt(),
-            "info" to 0xFFA8C7FA.toInt(),
-            "onInfo" to 0xFF000000.toInt(),
-            "successCont" to 0xFF384130.toInt(),
-            "warningCont" to 0xFF534425.toInt()
+            "onError" to 0xFF601410.toInt(),
+            "onSuccess" to 0xFF00391A.toInt(),
+            "info" to 0xFF9CC8FF.toInt(),
+            "onInfo" to 0xFF00315F.toInt(),
+            "successCont" to 0xFF14502A.toInt(),
+            "warningCont" to 0xFF5C3A00.toInt()
         )
 
         fun of(c: android.content.Context): Lumen {

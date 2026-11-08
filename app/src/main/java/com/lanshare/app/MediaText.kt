@@ -33,7 +33,7 @@ object MediaText {
     fun format(o: JSONObject?): String {
         if (o == null) return ""
         val sb = StringBuilder()
-        fun sec(t: String) { if (sb.isNotEmpty()) sb.append('\n'); sb.append('\n').append(t.uppercase(Locale.getDefault())).append('\n') }
+        fun sec(t: String) { if (sb.isNotEmpty()) sb.append('\n'); sb.append('\n').append(t.uppercase(Locale.US)).append('\n') }   // English headings: Locale.getDefault() gave VİDEO / CONTAİNER on a Turkish phone
         fun row(k: String, v: String?) { if (!v.isNullOrBlank()) sb.append(k).append(": ").append(v).append('\n') }
         val taken = o.optString("taken")
         if (taken.isNotEmpty()) { sb.append('\n'); row("Date taken", taken) }

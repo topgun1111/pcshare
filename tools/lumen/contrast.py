@@ -16,7 +16,7 @@ def check(d):
 bad = 0
 for name, d in T["themes"].items():
     full = dict(d)
-    full.update(T["fresh"]["dark"] if name == "dark" else derive.fresh(d, T.get("freshOverride", {}).get(name)))
+    full.update(T["fresh"]["dark"] if name == "dark" else T["fresh"]["light"] if name == "ember" else derive.fresh(d, T.get("freshOverride", {}).get(name)))   # ember / dark: the tables the app ships
     fails = check(full)
     bad += len(fails)
     if fails: print(f"{name}: " + "; ".join(fails))
@@ -65,7 +65,7 @@ def glass_floor(d):
     return 101
 gbad = fl = 0; worst = (0, "")
 for name, d in T["themes"].items():
-    full = dict(d); full.update(T["fresh"]["dark"] if name == "dark" else derive.fresh(d, T.get("freshOverride", {}).get(name)))
+    full = dict(d); full.update(T["fresh"]["dark"] if name == "dark" else T["fresh"]["light"] if name == "ember" else derive.fresh(d, T.get("freshOverride", {}).get(name)))   # ember / dark: the tables the app ships
     g = grad_check(full); gbad += len(g)
     if g: print(f"{name}: " + "; ".join(g))
     f = glass_floor(full)
