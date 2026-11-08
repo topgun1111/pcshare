@@ -6,7 +6,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -59,6 +58,17 @@ class PrintLiveActivity : Activity() {
     private lateinit var logSv: ScrollView
     private val srows = ArrayList<Triple<TextView, TextView, TextView>>()
 
+    // Colours follow the app theme (Lumen slots), like every other native screen; read after the context is attached, hence lazy
+    private val lm by lazy { Lumen.of(this) }
+    private val BG get() = lm.canvas
+    private val CARD get() = lm.surfaceHi
+    private val FG get() = lm.ink
+    private val DIM get() = lm.inkMut
+    private val LOGBG get() = lm.surfaceLo
+    private val COL by lazy { mapOf("queued" to lm.warning, "running" to lm.info, "done" to lm.success, "warning" to lm.warning, "failed" to lm.error, "idle" to lm.inkMut) }
+    private val STEP by lazy { mapOf("pending" to ("\u25cb" to DIM), "active" to ("\u25cf" to COL["running"]!!), "done" to ("\u2714" to COL["done"]!!),
+        "fail" to ("\u2716" to COL["failed"]!!), "warn" to ("\u26a0" to COL["warning"]!!)) }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
 
@@ -68,7 +78,7 @@ class PrintLiveActivity : Activity() {
         dev = intent.getStringExtra(X_DEV) ?: ""
         window.statusBarColor = BG; window.navigationBarColor = BG
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = false; isAppearanceLightNavigationBars = false }
+        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { val light = androidx.core.graphics.ColorUtils.calculateLuminance(BG) > 0.5; isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG) }
         root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
@@ -77,7 +87,7 @@ class PrintLiveActivity : Activity() {
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(2)) }
         icon = tv(ICON["idle"]!!, 30f, DIM, Typeface.DEFAULT)
         val hb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
-        title = tv("...", 20f, FG, Fnt.semi())
+        title = NlA11y.heading(tv("...", 20f, FG, Fnt.semi()))
         sub = tv("", 12f, DIM, Fnt.med())
         hb.addView(title); hb.addView(sub)
         head.addView(icon); head.addView(hb, LinearLayout.LayoutParams(0, -2, 1f))
@@ -276,16 +286,10 @@ class PrintLiveActivity : Activity() {
         const val X_DEV = "dev"
         private const val PREFS = "print_live"
         @Volatile private var cur: PrintLiveActivity? = null
-        // same palette / words as the Tk popup in pcprint.py
-        private val BG = Color.parseColor("#10151f"); private val CARD = Color.parseColor("#1b2433"); private val FG = Color.parseColor("#d7dde8")
-        private val DIM = Color.parseColor("#8b97ab"); private val LOGBG = Color.parseColor("#0b0f17")
-        private val COL = mapOf("queued" to Color.parseColor("#fbbf24"), "running" to Color.parseColor("#60a5fa"), "done" to Color.parseColor("#4ade80"),
-            "warning" to Color.parseColor("#fbbf24"), "failed" to Color.parseColor("#f87171"), "idle" to Color.parseColor("#8b97ab"))
+        // same words as the Tk popup in pcprint.py (the colours now come from the app theme, see the instance palette above)
         private val ICON = mapOf("queued" to "\u23f3", "running" to "\u25b6", "done" to "\u2714", "warning" to "\u26a0", "failed" to "\u2716", "idle" to "\u25cf")
         private val TITLE = mapOf("queued" to "Print job received", "running" to "Printing...", "done" to "Printed successfully", "warning" to "Sent - printer needs attention",
             "failed" to "Print FAILED", "idle" to "Waiting for a print job")
-        private val STEP = mapOf("pending" to ("\u25cb" to DIM), "active" to ("\u25cf" to COL["running"]!!), "done" to ("\u2714" to COL["done"]!!),
-            "fail" to ("\u2716" to COL["failed"]!!), "warn" to ("\u26a0" to COL["warning"]!!))
         private val LABELS = listOf("Received", "Preparing pages", "Sending to printer", "Printer is printing", "Finished")
 
         fun noAuto(c: Context) = try { c.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("noauto", false) } catch (_: Throwable) { false }

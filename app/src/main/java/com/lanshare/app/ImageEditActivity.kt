@@ -117,7 +117,7 @@ class ImageEditActivity : Activity() {
 
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)) }
         val close = btn("✕", 20f).apply { setOnClickListener { finish() } }
-        val titleTv = TextView(this).apply { text = name; setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        val titleTv = TextView(this).apply { NlA11y.heading(this); text = name; setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); LumenTypography.fit(this, 12f); maxLines = 1 }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val save = btn("Save", 15f).apply {
@@ -136,6 +136,7 @@ class ImageEditActivity : Activity() {
 
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(dp(4), dp(4), dp(4), dp(4)) }
         fun tool(icon: String, label: String, act: () -> Unit) = btn("$icon\n$label", 12f).apply {
+            contentDescription = label   // the symbol line is decoration: TalkBack says only the tool name
             setOnClickListener { if (base != null && !saving) act() }
         }
         val lp = { LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }

@@ -80,7 +80,7 @@ class PrintLogActivity : Activity() {
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         root.setOnApplyWindowInsetsListener { v, ins -> v.setPadding(0, ins.systemWindowInsetTop, 0, ins.systemWindowInsetBottom); ins }
-        root.addView(TextView(this).apply { text = "Logs"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); typeface = Fnt.semi(); setPadding(dp(16), dp(12), dp(16), dp(2)) })
+        root.addView(TextView(this).apply { NlA11y.heading(this); text = "Logs"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); typeface = Fnt.semi(); setPadding(dp(16), dp(12), dp(16), dp(2)) })
         info = TextView(this).apply { typeface = Fnt.med(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(6)) }
         root.addView(info)
 

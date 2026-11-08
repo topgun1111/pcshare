@@ -19,6 +19,21 @@ import androidx.core.view.WindowInsetsControllerCompat
 /** Applies the shared Lumen surface language to native Activity chrome without
  * overwriting feature-specific artwork, viewer stages, or explicitly styled controls. */
 object LumenNativeTheme {
+    /** Called from Activity.onCreate, before the first frame: the window background (and the bar colours) take the saved app theme right away,
+     * so a dark theme never flashes the light canvas of Theme.LANShare. Only screens whose theme background is that canvas are touched:
+     * viewers keep their black stage and the one-shot Clear activities stay transparent. Does not touch the decor view (no feature-order side effects). */
+    fun early(activity: Activity) {
+        val tv = android.util.TypedValue()
+        if (!activity.theme.resolveAttribute(android.R.attr.windowBackground, tv, true)) return
+        if (tv.type < android.util.TypedValue.TYPE_FIRST_COLOR_INT || tv.type > android.util.TypedValue.TYPE_LAST_COLOR_INT) return
+        if (tv.data != activity.resources.getColor(R.color.canvas, activity.theme)) return
+        val canvas = Lumen.of(activity).canvas
+        val window = activity.window
+        window.setBackgroundDrawable(ColorDrawable(canvas))
+        window.statusBarColor = canvas
+        window.navigationBarColor = canvas
+    }
+
     fun apply(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
         val lm = Lumen.of(activity)
@@ -32,6 +47,7 @@ object LumenNativeTheme {
             root.setBackgroundColor(lm.canvas)
         }
         styleTree(root, lm)
+        if (activity !is MainActivity) try { NlA11y.polish(root) } catch (_: Throwable) { }   // MainActivity: the native list / bars / drawer describe themselves
     }
 
     private fun applySystemBars(window: Window, lm: Lumen) {

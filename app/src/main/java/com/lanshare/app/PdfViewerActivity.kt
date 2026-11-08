@@ -294,7 +294,7 @@ class PdfViewerActivity : Activity() {
         subTv = NlViewerBar.subtitle(this).apply { setOnClickListener { askPage() } }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val thumbsBtn = tv("\u25A6", 20f).apply { setOnClickListener { showThumbs() } }
-        val textBtn = tv("T", 18f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD); setOnClickListener { pageText() } }
+        val textBtn = tv("T", 18f).apply { contentDescription = "Page text"; setTypeface(typeface, android.graphics.Typeface.BOLD); setOnClickListener { pageText() } }
         nightBtn = tv("\u263E", 20f).apply { setOnClickListener { setNight(!night) } }
         val openWith = tv("\u2197", 20f).apply { setOnClickListener { openWith() } }
         val share = tv("\u2934", 20f).apply { setOnClickListener { share() } }

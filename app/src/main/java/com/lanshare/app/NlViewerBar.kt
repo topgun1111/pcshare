@@ -34,7 +34,7 @@ object NlViewerBar {
 
     /** Title M (16 sp medium, white, soft shadow, middle ellipsis like a file name). */
     fun title(a: Activity): TextView = TextView(a).apply {
-        setTextColor(Color.WHITE); LumenTypography.fit(this, 16f)
+        NlA11y.heading(this); setTextColor(Color.WHITE); LumenTypography.fit(this, 16f)
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
         setShadowLayer(dp(a, 3).toFloat(), 0f, dp(a, 1).toFloat(), 0x99000000.toInt())

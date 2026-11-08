@@ -86,7 +86,7 @@ object AppPal {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)
                     d.findViewById<android.widget.TextView>(android.R.id.message)?.setTextColor(p.fg)
                     val t = c.resources.getIdentifier("alertTitle", "id", "android")
-                    if (t != 0) d.findViewById<android.widget.TextView>(t)?.setTextColor(p.fg)
+                    if (t != 0) d.findViewById<android.widget.TextView>(t)?.let { it.setTextColor(p.fg); NlA11y.heading(it) }
                 } catch (_: Throwable) { }
                 Lm.restyle(d, c, Lm.Opts(kind, detailRows))   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
             }

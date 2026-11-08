@@ -57,12 +57,12 @@ class InboxActivity : Activity() {
 
         // header: title + menu
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(10), dp(8), dp(6)) }
-        head.addView(TextView(this).apply { text = "Text inbox"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
+        head.addView(TextView(this).apply { NlA11y.heading(this); text = "Text inbox"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(TextView(this).apply {
             text = "⋮"; LumenTypography.fit(this, 24f); setTextColor(pal.fg); gravity = Gravity.CENTER
             setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { menu() }
-            contentDescription = "Menu"
+            contentDescription = "More options"
         })
         root.addView(head)
 

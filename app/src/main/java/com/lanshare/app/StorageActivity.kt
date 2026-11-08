@@ -251,7 +251,7 @@ class StorageActivity : Activity() {
             setPadding(dp(14), dp(4), dp(14), dp(4)); setOnClickListener { onBackPressed() }
         })
         val tcol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleTv = TextView(this).apply { LumenTypography.fit(this, 20f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        titleTv = TextView(this).apply { NlA11y.heading(this); LumenTypography.fit(this, 20f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         subTv = TextView(this).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
         tcol.addView(titleTv); tcol.addView(subTv)
         head.addView(tcol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))

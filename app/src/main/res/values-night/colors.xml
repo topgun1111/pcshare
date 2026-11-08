@@ -1,0 +1,6 @@
+<resources>
+    <!-- system dark mode: Lumen Ember dark canvas as window background / splash / bars before the first frame (spec 15.3).
+         A dark app theme on a light phone (or the reverse) is handled in code: LumenNativeTheme.early() -->
+    <color name="canvas">#17110C</color>
+    <color name="bar">#17110C</color>
+</resources>
