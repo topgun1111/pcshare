@@ -7234,8 +7234,8 @@ window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn f
 #banner .bn-a:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
 
 /* 12.7 Large top bar (page screens only: the native bar draws its own copy when html.nlcbar is set). --lg 1 = large (112), 0 = small (52 + 0). */
-#lgrow{display:none;overflow:hidden;height:calc(var(--lg,1)*60px);padding:0 var(--gut,var(--sp-4));background:var(--bar);color:var(--onbar);align-items:flex-end}
-#lgrow h1{margin:0;padding-bottom:var(--sp-3);font-size:calc(var(--t-titleM-size) + var(--lg,1)*(var(--t-headlineM-size) - var(--t-titleM-size)));line-height:1.15;font-weight:var(--t-headlineM-w);letter-spacing:var(--t-headlineM-tr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:var(--lg,1)}
+#lgrow{display:none;overflow:hidden;height:calc(var(--lg,1)*34px);padding:0 var(--gut,var(--sp-4));background:var(--bar);color:var(--onbar);align-items:flex-end}
+#lgrow h1{margin:0;padding-bottom:var(--sp-1);font-size:calc(var(--t-titleM-size) + var(--lg,1)*4px);line-height:1.15;font-weight:var(--t-headlineM-w);letter-spacing:var(--t-headlineM-tr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:var(--lg,1)}
 html.lgbar body:not(.selm):not(.srch) #lgrow{display:flex}
 html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{opacity:calc(1 - var(--lg,1))}
 /* 12.15 collapsed notices */
@@ -7309,14 +7309,14 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     if(BN.length===1){b.append(E('span','bn-x',BN[0].txt));if(BN[0].act&&BN[0].fn){const a=E('button','bn-a',BN[0].act);a.onclick=BN[0].fn;b.append(a)}}
     else{const n=E('span','bn-n',BN.length+' notices'),a=E('button','bn-a',open?'Hide':'Show');a.onclick=()=>{b.classList.toggle('open');a.textContent=b.classList.contains('open')?'Hide':'Show'};
       const ul=E('ul','bn-l');BN.forEach(x=>ul.append(E('li','',x.txt)));b.append(n,a,ul);if(open){b.classList.add('open');a.textContent='Hide'}}};
-  /* large top bar: a title row under the small bar; --lg goes 1 to 0 over the first 56 px of scroll */
+  /* large top bar: a title row under the small bar; --lg goes 1 to 0 over the first 34 px of scroll */
   (function(){const top=$('#top'),mainb=top&&top.querySelector('.mainb'),ht=$('#ht');if(!top||!mainb||!ht)return;
     const row=E('div');row.id='lgrow';row.setAttribute('aria-hidden','true');const h=E('h1');row.append(h);mainb.after(row);
     const sync=()=>{h.textContent=ht.textContent};sync();new MutationObserver(sync).observe(ht,{childList:true,characterData:true,subtree:true});
     const setLg=lg=>{const v=lg.toFixed(3);if(document.documentElement.style.getPropertyValue('--lg')===v)return false;document.documentElement.style.setProperty('--lg',v);document.body.classList.toggle('lg0',lg<=0.01);return true};
-    let raf=0;const upd=()=>{raf=0;if(typeof NLL!=='undefined'&&NLL)return;setLg(Math.max(0,1-Math.max(0,window.scrollY||0)/56))};
+    let raf=0;const upd=()=>{raf=0;if(typeof NLL!=='undefined'&&NLL)return;setLg(Math.max(0,1-Math.max(0,window.scrollY||0)/34))};
     /* native list scroll offset (device px, 999 = past the collapse range): the page row follows and the native layers are told the new rects */
-    window.lgNative=x=>{const y=x>=999?999:x/(window.devicePixelRatio||1);if(setLg(Math.max(0,1-y/56))){try{nlLay()}catch(e){}try{nlChPush()}catch(e){}}};
+    window.lgNative=x=>{const y=x>=999?999:x/(window.devicePixelRatio||1);if(setLg(Math.max(0,1-y/34))){try{nlLay()}catch(e){}try{nlChPush()}catch(e){}}};
     window.lgBig=()=>document.documentElement.classList.contains('lgbar')&&!document.body.classList.contains('selm')&&!document.body.classList.contains('srch')&&(parseFloat(document.documentElement.style.getPropertyValue('--lg'))||0)>0.6;
     addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
     document.documentElement.classList.add('lgbar')})();
