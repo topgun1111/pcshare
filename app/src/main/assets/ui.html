@@ -1132,6 +1132,16 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 #dock #bar .ib .ii{width:64px;height:40px;border-radius:var(--r-full)}
 #dock #bar .ib .ii svg{width:30px;height:30px;min-height:0;padding:0}   /* svg.li also matches the list-row class .li (min-height 56): reset */
 #dock #clip{margin:var(--sp-2) var(--sp-2) 0}
+/* selection bars of Print space and the galleries = the same anatomy as the file-browser dock: 96 px cells, 64 x 40 pill, 30 px glyph, Label 14, glass fill */
+#gal .gb{margin:var(--sp-3) var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-bottom));padding:0;gap:0;overflow:hidden;border:0;border-radius:var(--r-xl);background:var(--cont);box-shadow:0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e3)}
+@supports(background:color-mix(in srgb,red 50%,blue)){
+#gal .gb{-webkit-backdrop-filter:blur(var(--gb2,32px)) saturate(var(--gs2,1.45));backdrop-filter:blur(var(--gb2,32px)) saturate(var(--gs2,1.45));background:color-mix(in srgb,var(--glassTint) var(--gA2),transparent)}
+:root[data-glass=f2] #gal .gb{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassTint) var(--gF),transparent)}
+:root[data-glass=f3] #gal .gb{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}}
+#gal .gb .ib{height:96px;justify-content:center;gap:var(--sp-2);padding:0;border:0;border-radius:0;font-size:var(--fs-14)}
+#gal .gb .ib .ii{width:64px;height:40px;border-radius:var(--r-full);background:transparent}
+#gal .gb .ib:active .ii{background:var(--hov)}
+#gal .gb .ib .ii svg{width:30px;height:30px;min-height:0;padding:0}
 @keyframes lmdock{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 #dock.lm-in{animation:lmdock var(--d-med,var(--d-base)) var(--ease-decel,cubic-bezier(.2,0,0,1)) both}
 :root[data-rm] #dock.lm-in{animation:lmrmfade var(--d-rm,var(--d-fast)) linear}

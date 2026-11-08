@@ -6,6 +6,7 @@
 
 ## 2026-11-08 - Lumen native clean-up
 ### Changed
+- The action bar in Print space and the galleries now has the same larger buttons and spacing as the file browser's bottom bar.
 - Office viewer, text editor, Storage analyzer and the search screens now draw edge to edge under transparent system bars.
 - Overlays, shadows and status colours in native screens use the shared Lumen tokens; spacing and touch targets sit on the 4 dp grid.
 - The Lite app icon now uses the warm secondary gradient, so both apps look like siblings.
