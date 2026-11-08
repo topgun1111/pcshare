@@ -4,12 +4,15 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-08 - Original app icon back
+### Changed
+- The app icon is the original white L with signal arcs again: orange for the full app, light purple for Lite.
+
 ## 2026-11-08 - Lumen native clean-up
 ### Changed
 - The action bar in Print space and the galleries now has the same larger buttons and spacing as the file browser's bottom bar.
 - Office viewer, text editor, Storage analyzer and the search screens now draw edge to edge under transparent system bars.
 - Overlays, shadows and status colours in native screens use the shared Lumen tokens; spacing and touch targets sit on the 4 dp grid.
-- The Lite app icon now uses the warm secondary gradient, so both apps look like siblings.
 
 ## 2026-11-08 - Lumen completion pass
 ### Changed
