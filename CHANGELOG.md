@@ -9,6 +9,8 @@
 - Pictures and PDFs inside ZIP, RAR, 7z and TAR archives can now be added to Print space (select them, tap To Print space; also from the picture viewer's More menu).
 ### Changed
 - Turning a picture with the finger in Free placement now steps in multiples of 90° (corner dot and two-finger turn).
+- Print space: ↺ 90° and 90° ↻ buttons are always shown first in Free placement (they also turn several marked pictures at once) and next to every picture or slot in the normal grid.
+- Picture viewer (gallery): new ↻ button in the top bar and Rotate left / right 90° in the More menu; a two-finger twist turns the picture too and snaps to the nearest 90° when you let go. The turn is for viewing only, the file is not changed.
 ### Fixed
 - Pictures inside archives now show a small preview in the list instead of a plain PNG / JPG tile.
 

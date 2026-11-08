@@ -98,6 +98,7 @@ class ImageViewerActivity : Activity() {
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
     private val ocr by lazy { AutoOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Lm.snack(this, m, Toast.LENGTH_SHORT) } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
+    private val turned = HashMap<Int, Int>()               // page -> quarter turns (0..3) set with the rotate buttons / two-finger twist (view only, the file is not changed)
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
     private val ocrBad = HashSet<Int>()                  // pages where recognition failed (auto mode skips them; pressing T retries)
@@ -202,20 +203,23 @@ class ImageViewerActivity : Activity() {
         ocrBtn = icon(IconBtn.SCAN, "Text on this picture") { toggleOcr() }
         val edit = icon(IconBtn.EDIT, "Edit") { edit() }
         val print = icon(IconBtn.PRINT, "Print") { printCurrent() }
+        val turn = icon(IconBtn.ROTATE, "Rotate 90\u00b0") { turnCurrent(1) }
         val share = icon(IconBtn.SHARE, "Share") { share() }
         lateinit var more: IconBtn
         more = icon(IconBtn.MORE, "More") {
             PopupMenu(this, more).apply {
                 menu.add(0, 1, 0, if (slide) "Stop slideshow" else "Slideshow")
                 menu.add(0, 2, 1, "Details")
+                menu.add(0, 5, 1, "Rotate left 90\u00b0")
+                menu.add(0, 6, 1, "Rotate right 90\u00b0")
                 menu.add(0, 4, 2, "To Print space")
                 menu.add(0, 3, 3, "Delete")
-                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; else -> false } }
+                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; 5 -> { turnCurrent(-1); true }; 6 -> { turnCurrent(1); true }; else -> false } }
             }.show()
         }
         top.addView(back)
         top.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(ocrBtn); top.addView(edit); top.addView(print); top.addView(share); top.addView(more)
+        top.addView(ocrBtn); top.addView(turn); top.addView(edit); top.addView(print); top.addView(share); top.addView(more)
         ViewCompat.setOnApplyWindowInsetsListener(top) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             v.setPadding(dp(4) + b.left, dp(8) + b.top, dp(4) + b.right, dp(32))
@@ -343,7 +347,7 @@ class ImageViewerActivity : Activity() {
     /** Shows [list] from page [start]: every per-page cache is dropped first (they are keyed by page number). */
     private fun install(list: List<Item>, start: Int) {
         gen++
-        loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); ocrOn.clear(); ocrNone.clear(); ocrBad.clear(); ocrWork = -1; ocrWant = -1; ocrFails = 0
+        loading.clear(); failed.clear(); dims.clear(); cache.evictAll(); ocrRes.clear(); turned.clear(); ocrOn.clear(); ocrNone.clear(); ocrBad.clear(); ocrWork = -1; ocrWant = -1; ocrFails = 0
         ui.removeCallbacks(autoRun)
         selBar.visibility = View.GONE
         File(cacheDir, "img").deleteRecursively()
@@ -492,6 +496,9 @@ class ImageViewerActivity : Activity() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         } catch (e: Exception) { Lm.snack(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
+
+    /** Rotate the picture on screen by [q] quarter turns (view only; the text layer is hidden while turned because its boxes belong to the unturned picture). */
+    private fun turnCurrent(q: Int) { holder(pager.currentItem)?.iv?.rotateBy(q) }
 
     /** More > To Print space (HANDOVER 9.7 part 3b): stores a copy of the picture on screen in the Print space (this phone, other devices and shares alike). */
     private fun addToPrintSpace() {
@@ -771,7 +778,7 @@ class ImageViewerActivity : Activity() {
             if (p != pos) return
             val bm = cache.get(p)
             val e = failed[p]
-            if (bm != null) iv.setBmp(bm) else if (e != null) iv.setBmp(null)   // evicted from the cache but still on screen: keep showing it
+            if (bm != null) { iv.setBmp(bm); val tq = turned[p] ?: 0; if (tq != iv.quarter) iv.setQuarter(tq); ov.visibility = if (tq == 0) View.VISIBLE else View.INVISIBLE } else if (e != null) iv.setBmp(null)   // evicted from the cache but still on screen: keep showing it
             if (bm != null && p in ocrOn && !ov.hasLines()) ocrRes[p]?.let { applyOcr(it) }   // page came back from the recycler: restore its text layer
             val wait = !iv.hasBmp() && e == null
             spin.visibility = if (wait) View.VISIBLE else View.GONE
@@ -790,6 +797,7 @@ class ImageViewerActivity : Activity() {
             val ov = OcrOverlayView(c)
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
+            iv.onRotated = { q -> val hp = holder(pager.currentItem); if (hp?.iv === iv) { turned[hp.pos] = q; ov.visibility = if (q == 0) View.VISIBLE else View.INVISIBLE } }
             iv.onHold = { x, y ->   // long press works without the T button: the text read in the background is switched on by the press itself
                 val p = pager.currentItem
                 var opened = false
@@ -859,11 +867,51 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     private var cur: Bitmap? = null
     fun hasBmp() = cur != null
 
+    private var orig: Bitmap? = null        // the picture as decoded; [cur] is its turned copy while [quarter] != 0
+    /** Quarter turns (0..3, clockwise) applied for viewing. */
+    var quarter = 0; private set
+    /** Fired after the user turned the picture (buttons or two-finger twist), with the new [quarter]. */
+    var onRotated: ((Int) -> Unit)? = null
+
     fun setBmp(b: Bitmap?) {
-        if (b === cur) return                   // same picture again: keep the current zoom
-        cur = b
+        if (b != null && b === orig) return     // same picture again: keep the current zoom and turn
+        orig = b; quarter = 0; cur = b
         if (b == null) { setImageDrawable(null); bw = 0; bh = 0; return }
         setImageBitmap(b); bw = b.width; bh = b.height; reset()
+    }
+
+    /** Shows the picture turned to [q] quarter turns (no callback). */
+    fun setQuarter(q: Int) {
+        val o = orig ?: return
+        val n = ((q % 4) + 4) % 4
+        if (n == quarter) return
+        val b = if (n == 0) o else try { Bitmap.createBitmap(o, 0, 0, o.width, o.height, Matrix().apply { postRotate(n * 90f) }, true) } catch (_: OutOfMemoryError) { return }
+        quarter = n; cur = b
+        setImageBitmap(b); bw = b.width; bh = b.height; reset()
+    }
+
+    fun rotateBy(d: Int) { if (orig == null) return; setQuarter(quarter + d); onRotated?.invoke(quarter) }
+
+    // two-finger twist: the picture follows the fingers, on release it snaps to the nearest multiple of 90 degrees
+    private var twLast = 0f
+    private var twist = 0f
+    private var twOn = false
+    private fun twAngle(e: MotionEvent) = Math.toDegrees(Math.atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
+    private fun twistEvent(e: MotionEvent) {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> if (e.pointerCount == 2) { twOn = true; twist = 0f; twLast = twAngle(e) }
+            MotionEvent.ACTION_MOVE -> if (twOn && e.pointerCount == 2) {
+                val a = twAngle(e); var d = a - twLast
+                if (d > 180f) d -= 360f else if (d < -180f) d += 360f
+                twLast = a; twist += d
+                rotation = if (Math.abs(twist) > 15f) twist else 0f      // small twitches of a pinch do not turn it
+            }
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (twOn) {
+                twOn = false
+                val q = Math.round(twist / 90f); twist = 0f
+                if (rotation != 0f || q != 0) animate().rotation(q * 90f).setDuration(140).withEndAction { rotation = 0f; if (q != 0) rotateBy(q) }.start()
+            }
+        }
     }
 
     private fun reset() {
@@ -938,6 +986,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (bw == 0) return super.onTouchEvent(e)
+        twistEvent(e)
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
         if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
@@ -957,6 +1006,7 @@ internal class IconBtn(c: Context, d: String) : View(c) {
         const val TEXT = "M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"
         /** Lumen Icons "scan" (outline, 24 grid, 1.75 stroke): the "S:" prefix draws the path as a stroke instead of a fill. */
         val SCAN: String = "S:" + (LumenIcons.D["scan"] ?: "")
+        const val ROTATE = "M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.72 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z"
         const val PRINT = "M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"
     }
     private val dn = resources.displayMetrics.density

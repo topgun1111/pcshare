@@ -4993,7 +4993,7 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
     bxTray.replaceChildren(f)}
   function dCtl(){
     const f=document.createDocumentFragment(),mk=(lbl,fn,ico,cls)=>{const b=E('button','tbtn'+(cls?' '+cls:''));if(ico)b.append(ic(ico));b.append(document.createTextNode(lbl));b.onclick=fn;return b},
-      m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
+      m=selPic?pic(selPic):(selSlot&&selSlot.id?pic(selSlot.id):null),turn=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+90)%360})},turnL=()=>{if(m)setPic({id:m.id,rot:((m.rot||0)+270)%360})},cp=d=>{if(m)setPic({id:m.id,copies:Math.max(1,Math.min(99,(m.copies||1)+d))})};
     if(RM){   // remove mode: pick single pictures in the tray, then delete the copies held in Print space
       const n=RM.size;f.append(E('b','',n?n+' picture'+(n===1?'':'s')+' marked':'Tap pictures below to mark them'),
         mk('All',()=>{if(RM.size>=PICS.length)RM.clear();else PICS.forEach(q=>RM.add(q.id));dTray();dCtl()},'selall'));
@@ -5001,20 +5001,22 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
       bxCtl.replaceChildren(f);return}
     if(SP.free){
       const q=fsel>=0&&FRL&&FRL[fsel]?FRL[fsel]:null,fm=q?pic(q.id):null,ub=mk('Undo',()=>fundo(false)),rb=mk('Redo',()=>fundo(true));
-      ub.disabled=!FU.length;rb.disabled=!FR.length;f.append(ub,rb,mk(fmm?'Multi: on':'Multi',()=>{fmm=!fmm;fms.clear();if(fmm&&fsel>=0)fms.add(fsel);fmClass()}));
+      ub.disabled=!FU.length;rb.disabled=!FR.length;
+      const rot90=d=>{if(fms.size>1&&fmIdx().length>1)fmedit(xs=>xs.forEach(x=>{x.rot=fnorm(Math.round((x.rot+d)/90)*90)}));else if(fsel>=0&&FRL&&FRL[fsel])fedit(x=>{x.rot=fnorm(Math.round((x.rot+d)/90)*90)});else toast('Tap a picture on the sheet first, then turn it',2400)};   // always shown: no need to find the knob
+      f.append(mk('\u21ba 90\u00b0',()=>rot90(-90)),mk('90\u00b0 \u21bb',()=>rot90(90),'rotr'),ub,rb,mk(fmm?'Multi: on':'Multi',()=>{fmm=!fmm;fms.clear();if(fmm&&fsel>=0)fms.add(fsel);fmClass()}));
       if(fms.size>1&&fmIdx().length>1){const n=fmIdx().length;f.append(E('b','',n+' selected'),
         ...[['\u21e4 Left','l'],['Centre \u2194','c'],['Right \u21e5','r'],['\u21e5 Top','t'],['Middle \u2195','m'],['Bottom','b']].map(a=>mk(a[0],()=>fmedit((xs,ms)=>fAlignG(xs,ms,a[1])))),
         mk('Spread \u2194',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'h'))}),mk('Spread \u2195',()=>{if(n<3)toast('Pick 3 or more to spread',2200);else fmedit((xs,ms)=>fDist(xs,ms,'v'))}),
         mk('Delete',()=>{const ix=new Set(fmIdx());FRL=FRL.filter((_,i)=>!ix.has(i));fms.clear();fsel=-1;fCommit()},'del'))}
-      else if(fm){f.append(E('b','',fm.name),mk('\u21ba 90',()=>fedit(x=>{x.rot=fnorm(x.rot-90)})),mk('90',()=>fedit(x=>{x.rot=fnorm(x.rot+90)}),'rotr'),
+      else if(fm){f.append(E('b','',fm.name),
         mk('Fit page',()=>fedit(x=>fFit(x,fm))),mk('Fit width',()=>fedit(x=>fFitW(x,fm))),
         mk('Delete',()=>{FRL.splice(fsel,1);fsel=-1;fms.clear();fCommit()},'del'))}
       else f.append(E('span','','Tap a picture below to put it on this side \u00b7 drag to move \u00b7 drag a corner dot to resize \u00b7 drag the \u21bb knob (or pinch) to turn \u00b7 pictures stay inside the dashed frame'))}
     else if(selPic&&m){
-      f.append(E('b','',m.name),E('span','',(PLACED[m.id]||0)+' of '+(m.copies||1)+' placed \u00b7 tap a slot'),mk('\u2212',()=>cp(-1)),E('span','','\u00d7'+(m.copies||1)),mk('+',()=>cp(1)),mk('Turn',turn,'rotr'))}
+      f.append(E('b','',m.name),E('span','',(PLACED[m.id]||0)+' of '+(m.copies||1)+' placed \u00b7 tap a slot'),mk('\u2212',()=>cp(-1)),E('span','','\u00d7'+(m.copies||1)),mk('+',()=>cp(1)),mk('\u21ba 90\u00b0',turnL),mk('90\u00b0 \u21bb',turn,'rotr'))}
     else if(selSlot){
       if(m)f.append(E('b','',m.name));else f.append(E('span','','Empty slot \u00b7 tap a picture below'));
-      if(m){f.append(mk('Clear',()=>{const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,null)},'del'),mk('Turn',turn,'rotr'))}
+      if(m){f.append(mk('Clear',()=>{const a=selSlot;selSlot=null;assign(a.sheet,a.side,a.slot,null)},'del'),mk('\u21ba 90\u00b0',turnL),mk('90\u00b0 \u21bb',turn,'rotr'))}
       if(side==='front'&&LY&&LY.behind[selSlot.slot]!=null){const b2=LY.behind[selSlot.slot];
         f.append(mk('Back side',()=>{const c2=cellAt(sheet,'back',b2);side='back';selSlot={sheet,side:'back',slot:b2,id:c2?c2.id:null};dTab();dPage();dCtl()},'sort'))}}
     else f.append(E('span','','Tap a picture, then a slot \u00b7 hold and drag to move or swap'));
