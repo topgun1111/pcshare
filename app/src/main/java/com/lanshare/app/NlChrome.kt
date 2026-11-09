@@ -182,7 +182,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     }
 }
 
-/** #top .mainb (menu, title, device name, search, view options, refresh, split screen, settings) and #top .selb (cancel, count, select all). 52 dp. */
+/** #top .mainb (menu, title, device name, search, view options, refresh, split screen, settings) and #top .selb (cancel, count, select all). 44 dp. */
 class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     override fun labelOf(id: String): String? = when (id) {
         "menub" -> "Menu"; "cog" -> "Settings"; "dualb" -> "Split screen"; "scan" -> "Refresh"
@@ -222,7 +222,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
 
     private fun rebuild() {
         hits.clear(); btn.clear()
-        val s = 48f * d; val top = (bh - s) / 2f
+        val s = 40f * d; val top = (bh - s) / 2f
         fun add(id: String, l: Float) { val r = RectF(l, top, l + s, top + s); btn[id] = r; hits.add(Hit(id, r)) }
         if (sel) {
             add("xsel", 4f * d)
@@ -291,7 +291,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         }
         // press feedback: ripple inside the round 48 dp target
         val rpS = RectF()
-        for ((k, r) in btn) { rpS.set(r); ripple(cv, k, rpS, 24f * d, if (sel) p.onsel else p.onbar) }
+        for ((k, r) in btn) { rpS.set(r); ripple(cv, k, rpS, 20f * d, if (sel) p.onsel else p.onbar) }
         if (sel) {
             btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 24f, p.onsel) }
             btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 24f, p.onsel) }
@@ -302,19 +302,19 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             if (slid) cv.restore()
             return
         }
-        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 32f, ob) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
-        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 30f, ob) }
-        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 30f, ob) }
+        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 30f, ob) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
+        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 28f, ob) }
+        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 28f, ob) }
         btn["scan"]?.let {
             val t = SystemClock.uptimeMillis() - spinAt
             if (spinAt != 0L && t >= 0L && t < 800L) {
                 cv.save(); cv.rotate(360f * t / 800f, it.centerX(), it.centerY())
-                glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, ob)
+                glyph(cv, "refresh", it.centerX(), it.centerY(), 28f, ob)
                 cv.restore(); postInvalidateOnAnimation()
-            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 30f, ob)
+            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 28f, ob)
         }
-        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 30f, ob) }
-        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 30f, ob) }
+        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 28f, ob) }
+        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 28f, ob) }
         ttlP.color = ob
         cv.drawText(fit(ttl, ttlP, tW), tX, ty(bh / 2f, ttlP), ttlP)
     }

@@ -113,8 +113,8 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private fun maxScroll() = Math.max(0f, contentW - (areaR - areaL))
 
     private fun crumbW(c: Cr): Float = when (c.kind) {
-        0 -> (5f + 36f + 5f) * d   // home icon is 36 dp (drive icon 28 dp)
-        1 -> (5f + 28f + 5f) * d + (if (c.text.isNotEmpty()) 6f * d + (if (c.cur) curP else crumbP).measureText(c.text) else 0f)
+        0 -> (5f + 28f + 5f) * d   // home icon is 28 dp (drive icon 22 dp)
+        1 -> (5f + 22f + 5f) * d + (if (c.text.isNotEmpty()) 6f * d + (if (c.cur) curP else crumbP).measureText(c.text) else 0f)
         else -> 10f * d + (if (c.cur) curP else crumbP).measureText(c.text)
     }
 
@@ -138,9 +138,9 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
         // tool row, built from the right edge: Sort, (gap 4 + margin 6) Newest, (gap 4) summary
         val cy2 = hA + (hB - d) / 2f
         val sortW = 8f * d + 18f * d + 6f * d + sortP.measureText(dt.sortLabel) + (if (dt.sortDir != 0) 6f * d + 14f * d else 0f) + 8f * d
-        sortR.set(w - 2f * d - sortW, cy2 - 16f * d, w - 2f * d, cy2 + 16f * d)
+        sortR.set(w - 2f * d - sortW, cy2 - 13f * d, w - 2f * d, cy2 + 13f * d)
         val newW = 10f * d + newP.measureText("Newest") + 10f * d + 2f * d
-        newR.set(sortR.left - 10f * d - newW, cy2 - 14f * d, sortR.left - 10f * d, cy2 + 14f * d)
+        newR.set(sortR.left - 10f * d - newW, cy2 - 11f * d, sortR.left - 10f * d, cy2 + 11f * d)
         sx = if (pendingEnd) maxScroll() else Math.min(sx, maxScroll())
         pendingEnd = false
     }
@@ -157,8 +157,8 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     }
 
     private fun home(cv: Canvas, x: Float, cy: Float) {
-        val s = 36f * d / 32f
-        cv.save(); cv.translate(x, cy - 18f * d); cv.scale(s, s)
+        val s = 28f * d / 32f
+        cv.save(); cv.translate(x, cy - 14f * d); cv.scale(s, s)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFF5F5F5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.STROKE; fillP.strokeWidth = 1f; fillP.color = 0xFFB5B5B5.toInt(); cv.drawPath(hm1, fillP)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFE53935.toInt(); cv.drawPath(hm2, fillP)
@@ -167,8 +167,8 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     }
 
     private fun drive(cv: Canvas, x: Float, cy: Float) {
-        val s = 28f * d / 32f
-        cv.save(); cv.translate(x, cy - 14f * d); cv.scale(s, s)
+        val s = 22f * d / 32f
+        cv.save(); cv.translate(x, cy - 11f * d); cv.scale(s, s)
         fillP.style = Paint.Style.FILL; fillP.color = 0xFFC9C9C9.toInt(); cv.drawPath(dr1, fillP)
         fillP.color = 0xFFB2B2B2.toInt(); cv.drawPath(dr2, fillP)
         fillP.color = 0xFF4CAF50.toInt(); cv.drawCircle(9.5f, 24f, 1.4f, fillP)
@@ -201,12 +201,12 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
         for ((i, c) in crs.withIndex()) {
             val x = areaL + c.x - sx
             if (x + c.w >= areaL - 1f && x <= areaR + 1f) {
-                if (pressKind == 1 && pressIdx == i) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; rf.set(x, cy - 18f * d, x + c.w, cy + 18f * d); cv.drawRoundRect(rf, 6f * d, 6f * d, fillP) }
+                if (pressKind == 1 && pressIdx == i) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; rf.set(x, cy - 14f * d, x + c.w, cy + 14f * d); cv.drawRoundRect(rf, 6f * d, 6f * d, fillP) }
                 val tp = if (c.cur) curP else crumbP
                 tp.color = if (c.cur) p.fg else p.mut
                 when (c.kind) {
                     0 -> home(cv, x + 5f * d, cy)
-                    1 -> { drive(cv, x + 5f * d, cy); if (c.text.isNotEmpty()) cv.drawText(c.text, x + 5f * d + 28f * d + 6f * d, textY(cy, tp), tp) }
+                    1 -> { drive(cv, x + 5f * d, cy); if (c.text.isNotEmpty()) cv.drawText(c.text, x + 5f * d + 22f * d + 6f * d, textY(cy, tp), tp) }
                     else -> cv.drawText(c.text, x + 5f * d, textY(cy, tp), tp)
                 }
             }
@@ -216,9 +216,9 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
 
         if (dt.used >= 0) {
             val r = w - 8f * d; val l = r - pillW
-            rf.set(l + line / 2f, cy - 16f * d + line / 2f, r - line / 2f, cy + 16f * d - line / 2f)
+            rf.set(l + line / 2f, cy - 13f * d + line / 2f, r - line / 2f, cy + 13f * d - line / 2f)
             fillP.style = Paint.Style.STROKE; fillP.strokeWidth = line; fillP.color = p.mut
-            cv.drawRoundRect(rf, 16f * d, 16f * d, fillP)
+            cv.drawRoundRect(rf, 13f * d, 13f * d, fillP)
             val ccx = l + line + 10f * d + 8f * d
             fillP.style = Paint.Style.FILL; fillP.color = p.bd; cv.drawCircle(ccx, cy, 8f * d, fillP)
             fillP.color = p.fg; rf.set(ccx - 8f * d, cy - 8f * d, ccx + 8f * d, cy + 8f * d)
@@ -245,15 +245,15 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
             }
         }
         // Newest
-        if (dt.newest) { fillP.style = Paint.Style.FILL; fillP.color = p.sel; cv.drawRoundRect(newR, 14f * d, 14f * d, fillP); newP.color = p.onsel }
+        if (dt.newest) { fillP.style = Paint.Style.FILL; fillP.color = p.sel; cv.drawRoundRect(newR, 11f * d, 11f * d, fillP); newP.color = p.onsel }
         else {
             rf.set(newR.left + line / 2f, newR.top + line / 2f, newR.right - line / 2f, newR.bottom - line / 2f)
-            fillP.style = Paint.Style.STROKE; fillP.strokeWidth = line; fillP.color = p.bd; cv.drawRoundRect(rf, 14f * d - line / 2f, 14f * d - line / 2f, fillP)
+            fillP.style = Paint.Style.STROKE; fillP.strokeWidth = line; fillP.color = p.bd; cv.drawRoundRect(rf, 11f * d - line / 2f, 11f * d - line / 2f, fillP)
             newP.color = p.fg
         }
         cv.drawText("Newest", newR.left + 1f * d + 10f * d, textY(newR.centerY(), newP), newP)
         // Sort
-        if (pressKind == 3) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; cv.drawRoundRect(sortR, 16f * d, 16f * d, fillP) }
+        if (pressKind == 3) { fillP.style = Paint.Style.FILL; fillP.color = p.hov; cv.drawRoundRect(sortR, 13f * d, 13f * d, fillP) }
         var x = sortR.left + 8f * d
         ico(cv, icSort, x, sortR.centerY(), 18f, p.ac); x += 18f * d + 6f * d
         sortP.color = p.ac
@@ -265,7 +265,7 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
     private fun crumbAt(x: Float, y: Float): Int {
         if (x < areaL || x > areaR) return -1
         val cy = (hA - d) / 2f
-        if (Math.abs(y - cy) > 18f * d) return -1
+        if (Math.abs(y - cy) > 14f * d) return -1
         val cx = x - areaL + sx
         for ((i, c) in crs.withIndex()) if (cx >= c.x && cx <= c.x + c.w) return i
         return -1

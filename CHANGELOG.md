@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-09 - Tighter top bars
+### Changed
+- The top bar, the path row and the sort / summary row of the file list are shorter, so more of the screen is left for your folders.
+
+
 ## 2026-11-09 - White screen after unlock
 ### Fixed
 - Locking the phone while the app is open and unlocking it no longer sometimes shows a blank white screen until you touch it: the screen is redrawn as soon as the app comes back.
