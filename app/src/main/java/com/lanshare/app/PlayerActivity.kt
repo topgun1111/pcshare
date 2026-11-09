@@ -943,11 +943,17 @@ class PlayerActivity : Activity() {
         } catch (e: Exception) { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
 
+    /** Mirrors Jobs.removeUser: only this phone's own, non-archive files go to the bin; every other device / USB / archive entry is deleted for good. */
+    private fun toBin(it: Item): Boolean {
+        val u = android.net.Uri.parse(it.url)
+        return (u.getQueryParameter("dev") ?: "local") == "local" && com.lanshare.app.core.Bin.canTrash(com.lanshare.app.core.vnorm(u.getQueryParameter("path") ?: ""))
+    }
+
     /** Asks, then moves the video to the Recycle bin (this phone) / deletes it (other devices) and plays the next one. */
     private fun deleteCurrent() {
         val i = curIndex(); val it = items.getOrNull(i) ?: return
         dlg(AppPal.dlg(this).kind("danger").setTitle("Delete this video?")
-            .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
+            .setMessage(it.name + "\n\n" + (if (toBin(it)) "It goes to the Recycle bin (kept " + com.lanshare.app.core.Bin.KEEP_DAYS + " days)." else "It is deleted for good. This can't be undone."))
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->
                 val u = Uri.parse(it.url)

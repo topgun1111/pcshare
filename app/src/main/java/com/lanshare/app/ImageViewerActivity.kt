@@ -592,13 +592,19 @@ class ImageViewerActivity : Activity() {
         }.start()
     }
 
+    /** Mirrors Jobs.removeUser: only this phone's own, non-archive files go to the bin; every other device / USB / archive entry is deleted for good. */
+    private fun toBin(it: Item): Boolean {
+        val u = android.net.Uri.parse(it.url)
+        return (u.getQueryParameter("dev") ?: "local") == "local" && com.lanshare.app.core.Bin.canTrash(com.lanshare.app.core.vnorm(u.getQueryParameter("path") ?: ""))
+    }
+
     /** More > Delete: asks, then moves the picture to the Recycle bin (this phone) / deletes it (other devices) and shows the next picture. */
     private fun deleteCurrent() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         if (slide) setSlide(false)
         AppPal.dlg(this).kind("danger").setTitle("Delete this picture?")
-            .setMessage(it.name + "\n\nOn this phone it goes to the Recycle bin (kept 30 days).")
+            .setMessage(it.name + "\n\n" + (if (toBin(it)) "It goes to the Recycle bin (kept " + com.lanshare.app.core.Bin.KEEP_DAYS + " days)." else "It is deleted for good. This can't be undone."))
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Delete") { _, _ ->
                 val u = android.net.Uri.parse(it.url)

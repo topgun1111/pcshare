@@ -202,8 +202,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     private var elevAt = 0L
     fun setElevated(e: Boolean) {
         if (e == elev) return
-        elev = e; elevAt = SystemClock.uptimeMillis()
-        if (LumenPrefs.reduceMotion(context)) { elevK = if (e) 1f else 0f; elevAt = 0L }
+        elev = e   // no fade: the bar stays opaque in both states (see onDraw)
         invalidate()
     }
     private val btn = LinkedHashMap<String, RectF>()
@@ -258,11 +257,8 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         // Part 4b (N1 b): G1 chrome fill by glass step (tint-raised stand-in, opaque at F3)
         // transparent only where the page twin (#top) is transparent too: glass steps F0 / F1; F2 / F3 stay filled
         val goal = 1f   // 4d fix: the page's own #top bar (title + glyphs) sits under this view, so the fill must stay opaque or both get drawn on top of each other (garbled title)
-        if (elevAt != 0L) {
-            val t = Math.min(1f, (SystemClock.uptimeMillis() - elevAt) / 160f)
-            elevK = if (goal == 1f) t else 1f - t
-            if (t < 1f) postInvalidateOnAnimation() else elevAt = 0L
-        } else elevK = goal
+        // The fill is always opaque (goal = 1), so the elevation fade must not run: it restarted from 0 on every top <-> scrolled toggle (fast scrolling) and the bar flashed see-through over the page twin.
+        elevAt = 0L; elevK = goal
         val ek = elevK
         // text / glyph colour: the bar's own (on a filled bar) fades to the theme ink (on the transparent bar)
         val ob = if (sel) p.onbar else LumenCategory.mix(lumen().ink, p.onbar, ek)
