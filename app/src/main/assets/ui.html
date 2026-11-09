@@ -7297,7 +7297,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
 #ptr div::before{content:"";position:absolute;inset:7px;border-radius:var(--r-full);background:conic-gradient(var(--primary) calc(var(--p,0)*360deg),color-mix(in srgb,var(--ink) 14%,transparent) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),black calc(100% - 2px))}
 #ptr.spin div::before{background:conic-gradient(from 0deg,var(--primary) 25%,color-mix(in srgb,var(--ink) 14%,transparent) 0);animation:ptrSpin var(--d-slow) var(--ease-linear) infinite}
 @keyframes ptrSpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){#ptr.spin div::before{animation:none}}
+@media (prefers-reduced-motion:reduce){#ptr.spin div::before{animation-duration:2s}}   /* slower, never frozen: a static ring looks like a stuck refresh */
 /* 12.10 tabs: sliding 3 px indicator */
 .ptabs{position:relative}
 .ptabs .tabind{position:absolute;left:0;bottom:0;height:3px;border-radius:var(--r-full) var(--r-full) 0 0;background:var(--primary);transform:translateX(0);transition:transform var(--d-base) var(--ease-standard),width var(--d-base) var(--ease-standard);pointer-events:none}
