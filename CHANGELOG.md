@@ -4,6 +4,12 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-09 - Picture viewer: smooth, permanent turn
+### Fixed
+- Turning a picture with two fingers no longer flickers: it turns smoothly and settles on the nearest 90° without a jump.
+### Changed
+- A turn made in the picture viewer (↻ button, More menu or two-finger twist) is now saved to the picture itself, so the gallery and other apps show it turned too. JPEG and WebP are not re-encoded (no quality loss). Pictures on other devices, in archives or in unsupported formats are still turned for viewing only.
+
 ## 2026-11-09 - Pictures from archives
 ### Added
 - Pictures and PDFs inside ZIP, RAR, 7z and TAR archives can now be added to Print space (select them, tap To Print space; also from the picture viewer's More menu).

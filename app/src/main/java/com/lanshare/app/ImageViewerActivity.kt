@@ -45,6 +45,7 @@ import androidx.core.graphics.PathParser
 import androidx.exifinterface.media.ExifInterface
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.lanshare.app.core.Core
 import com.lanshare.app.core.mimeFor
 import org.json.JSONArray
 import org.json.JSONObject
@@ -98,7 +99,11 @@ class ImageViewerActivity : Activity() {
     // select text in the picture (OcrEngine.kt / OcrOverlayView.kt)
     private val ocr by lazy { AutoOcr(applicationContext).also { it.onStatus = { m -> if (ocrWant >= 0 && ocrWant == ocrWork) Lm.snack(this, m, Toast.LENGTH_SHORT) } } }   // toasts only while the user waits for T
     private val ocrRes = HashMap<Int, List<OcrLine>>()   // UI thread only: recognised lines per page (coordinates of the displayed bitmap)
-    private val turned = HashMap<Int, Int>()               // page -> quarter turns (0..3) set with the rotate buttons / two-finger twist (view only, the file is not changed)
+    private val turned = HashMap<Int, Int>()               // page -> quarter turns (0..3) set with the rotate buttons / two-finger twist, NOT yet written to the file (written 0.7 s later, see flushTurns)
+    private val saving = HashSet<Int>()                    // pages whose turn is being written right now (UI thread only)
+    private val noSave = HashSet<Int>()                    // pages whose turn cannot be written (not on this phone's storage, read only, unsupported type): the turn stays view only
+    private val savePool = Executors.newSingleThreadExecutor { r -> Thread(r, "img-turn").also { it.isDaemon = true } }
+    private val flushRun = Runnable { flushTurns() }
     private val ocrOn = HashSet<Int>()                   // pages whose text layer is switched on
     private val ocrNone = HashSet<Int>()                 // pages recognised with no text in them (T is dimmed)
     private val ocrBad = HashSet<Int>()                  // pages where recognition failed (auto mode skips them; pressing T retries)
@@ -168,7 +173,7 @@ class ImageViewerActivity : Activity() {
             offscreenPageLimit = 1
             adapter = Ad()
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) { updateTitle(position); holder(position)?.show(position); prefetch(position); ocrWant = -1; updateOcrBar(); scheduleAutoOcr() }
+                override fun onPageSelected(position: Int) { flushTurns(); updateTitle(position); holder(position)?.show(position); prefetch(position); ocrWant = -1; updateOcrBar(); scheduleAutoOcr() }
                 override fun onPageScrollStateChanged(state: Int) { if (state == ViewPager2.SCROLL_STATE_DRAGGING && slide) setSlide(false) }
             })
         }
@@ -500,6 +505,75 @@ class ImageViewerActivity : Activity() {
     /** Rotate the picture on screen by [q] quarter turns (view only; the text layer is hidden while turned because its boxes belong to the unturned picture). */
     private fun turnCurrent(q: Int) { holder(pager.currentItem)?.iv?.rotateBy(q) }
 
+    /** Writes every pending turn into its file: 0.7 s after the last turn, when another page is shown, and on pause. */
+    private fun flushTurns() {
+        ui.removeCallbacks(flushRun)
+        for (p in turned.keys.toList()) if ((turned[p] ?: 0) != 0) saveTurn(p)
+    }
+
+    /** Makes the turn of page [pos] permanent: JPEG / WebP = only the EXIF orientation changes (lossless, instant, the gallery thumbnails follow), PNG = pixels turned and saved again (lossless). */
+    private fun saveTurn(pos: Int) {
+        val q = turned[pos] ?: 0
+        if (q == 0 || pos in noSave || pos in saving) return
+        val item = items.getOrNull(pos) ?: return
+        val u = android.net.Uri.parse(item.url)
+        val dev = u.getQueryParameter("dev") ?: "local"
+        val path = u.getQueryParameter("path") ?: ""
+        if (dev != "local" || path.isEmpty() || path.contains('!')) {
+            noSave.add(pos)
+            Lm.snack(this, "Turn is for viewing only: this picture is not on this phone", Toast.LENGTH_SHORT)
+            return
+        }
+        saving.add(pos)
+        val own = loading.add(pos)       // keeps a reload of this page away while the file and the cached copy change
+        savePool.execute {
+            var done: File? = null
+            var err: String? = null
+            try {
+                Core.local.checkWritable()
+                val t = Core.local.real(path)
+                if (!t.isFile) throw IOException("The file is gone")
+                val m0 = t.lastModified()
+                ImgTurn.apply(t, q)
+                t.setLastModified(m0 + 1000L)   // thumbnails are keyed by time + size: a new time makes them redraw; +1 s keeps the picture in place in date order
+                val bin = File(File(cacheDir, "img"), "$pos.bin")
+                val tmp = File(bin.parentFile, "$pos.turn")
+                t.copyTo(tmp, true)             // the viewer's own copy follows the file (Edit reads it)
+                if (!tmp.renameTo(bin)) { tmp.copyTo(bin, true); tmp.delete() }
+                try { com.lanshare.app.core.IndexManager.changed(t) } catch (_: Throwable) {}
+                try { android.media.MediaScannerConnection.scanFile(applicationContext, arrayOf(t.path), null, null) } catch (_: Throwable) {}
+                done = t
+            } catch (e: OutOfMemoryError) { err = "Not enough memory"
+            } catch (e: Exception) { err = e.message ?: "error" }
+            val fe = done
+            val re = err
+            ui.post {
+                saving.remove(pos); if (own) loading.remove(pos)
+                if (isDestroyed) return@post
+                if (fe == null) { noSave.add(pos); Lm.snack(this, "Cannot save the turn: " + (re ?: "error"), Toast.LENGTH_LONG); return@post }
+                changed = true
+                items.getOrNull(pos)?.let { old -> items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, fe.length(), fe.lastModified() / 1000, old.key) } }
+                val h = holder(pos)?.takeIf { it.pos == pos }
+                val nb = h?.iv?.rebase(q)
+                if (h != null && nb != null) {      // on screen: what is shown stays as it is, only the base picture is now the turned one
+                    cache.put(pos, nb)
+                    val rest = h.iv.quarter
+                    if (rest == 0) turned.remove(pos) else { turned[pos] = rest; ui.postDelayed(flushRun, 700) }   // turned again while saving
+                    h.ov.visibility = if (rest == 0) View.VISIBLE else View.INVISIBLE
+                } else {                             // not on screen (or no memory): the page reloads from the turned file
+                    cache.remove(pos); turned.remove(pos)
+                    if (h != null) { h.iv.setBmp(null); h.show(pos) }
+                }
+                dims[pos]?.let { d -> val i = d.indexOf('\u00d7'); if (i > 0 && q % 2 != 0) dims[pos] = d.substring(i + 1) + "\u00d7" + d.substring(0, i) }
+                ocrRes.remove(pos); ocrOn.remove(pos); ocrNone.remove(pos); ocrBad.remove(pos)   // their boxes belong to the old orientation
+                h?.ov?.setLines(null)
+                updateOcrBar(); updateTitle(pos); scheduleAutoOcr()
+            }
+        }
+    }
+
+    override fun onPause() { flushTurns(); super.onPause() }
+
     /** More > To Print space (HANDOVER 9.7 part 3b): stores a copy of the picture on screen in the Print space (this phone, other devices and shares alike). */
     private fun addToPrintSpace() {
         val it = items.getOrNull(pager.currentItem) ?: return
@@ -743,6 +817,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         val src = File(File(cacheDir, "img"), "$pos.bin")
+        if (pos !in noSave && ((turned[pos] ?: 0) != 0 || pos in saving)) { flushTurns(); Lm.snack(this, "Saving the turn, try again in a moment", Toast.LENGTH_SHORT); return }
         if (!src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
         if (slide) setSlide(false)
         val u = android.net.Uri.parse(it.url)
@@ -763,6 +838,7 @@ class ImageViewerActivity : Activity() {
         val old = items.getOrNull(pos) ?: return
         items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
         File(File(cacheDir, "img"), "$pos.bin").delete()
+        turned.remove(pos)
         cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos); ocrRes.remove(pos); ocrOn.remove(pos); ocrNone.remove(pos); ocrBad.remove(pos)
         holder(pos)?.let { h -> h.ov.setLines(null); h.iv.setBmp(null); h.show(pos) }
         updateOcrBar()
@@ -797,7 +873,8 @@ class ImageViewerActivity : Activity() {
             val ov = OcrOverlayView(c)
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
-            iv.onRotated = { q -> val hp = holder(pager.currentItem); if (hp?.iv === iv) { turned[hp.pos] = q; ov.visibility = if (q == 0) View.VISIBLE else View.INVISIBLE } }
+            iv.onRotated = { q -> val hp = holder(pager.currentItem); if (hp?.iv === iv) { turned[hp.pos] = q; ov.visibility = if (q == 0) View.VISIBLE else View.INVISIBLE; ui.removeCallbacks(flushRun); ui.postDelayed(flushRun, 700) } }
+            iv.onTwist = { on -> if (on) ov.visibility = View.INVISIBLE else if (iv.quarter == 0) ov.visibility = View.VISIBLE }   // the text layer does not follow a free twist
             iv.onHold = { x, y ->   // long press works without the T button: the text read in the background is switched on by the press itself
                 val p = pager.currentItem
                 var opened = false
@@ -875,6 +952,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     fun setBmp(b: Bitmap?) {
         if (b != null && b === orig) return     // same picture again: keep the current zoom and turn
+        val g = snap; snap = null; animating = false; twOn = false; twDeg = 0f; g?.cancel()     // snap is cleared first: the end listener then does nothing
         orig = b; quarter = 0; cur = b
         if (b == null) { setImageDrawable(null); bw = 0; bh = 0; return }
         setImageBitmap(b); bw = b.width; bh = b.height; reset()
@@ -890,13 +968,34 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         setImageBitmap(b); bw = b.width; bh = b.height; reset()
     }
 
-    fun rotateBy(d: Int) { if (orig == null) return; setQuarter(quarter + d); onRotated?.invoke(quarter) }
+    fun rotateBy(d: Int) { if (orig == null || animating) return; setQuarter(quarter + d); onRotated?.invoke(quarter) }
 
-    // two-finger twist: the picture follows the fingers, on release it snaps to the nearest multiple of 90 degrees
+    /** The file was turned by [q] quarter turns: [orig] becomes the picture as the file now shows it. What is on screen (same pixels, same matrix) does not change, so nothing flickers. Returns the new base picture, null when it could not be made. */
+    fun rebase(q: Int): Bitmap? {
+        val o = orig ?: return null
+        val k = ((q % 4) + 4) % 4
+        if (k == 0) return o
+        val nb: Bitmap = if (k == quarter) (cur ?: return null)
+            else try { Bitmap.createBitmap(o, 0, 0, o.width, o.height, Matrix().apply { postRotate(k * 90f) }, true) } catch (_: OutOfMemoryError) { return null }
+        orig = nb; quarter = ((quarter - k) % 4 + 4) % 4
+        return nb
+    }
+
+    // two-finger twist: the picture follows the fingers INSIDE the image matrix (the view itself never turns: a turned full-screen view
+    // clipped the picture to a tilted rectangle and, when the finger lifted, jumped to the new bitmap = the flicker); on release it
+    // glides to the nearest multiple of 90 degrees AND to the fit of the turned picture, then the turned bitmap replaces it with the same matrix
     private var twLast = 0f
     private var twist = 0f
     private var twOn = false
+    private var twDeg = 0f                  // angle drawn on top of [mx], about the view centre
+    private var animating = false           // the release glide is running: touches are ignored
+    private var snap: ValueAnimator? = null
+    /** true when a twist starts showing, false when it is over (the text layer is hidden meanwhile). */
+    var onTwist: ((Boolean) -> Unit)? = null
     private fun twAngle(e: MotionEvent) = Math.toDegrees(Math.atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
+    /** Small twitches of a pinch do not turn it: 0 up to 15 degrees, then a smooth ramp that joins the finger angle at 30 (no jump). */
+    private fun twEase(t: Float): Float { val a = Math.abs(t); val e = if (a <= 15f) 0f else if (a <= 30f) (a - 15f) * 2f else a; return if (t < 0f) -e else e }
+    private fun push() { imageMatrix = if (twDeg == 0f) mx else Matrix(mx).apply { postRotate(twDeg, width / 2f, height / 2f) } }
     private fun twistEvent(e: MotionEvent) {
         when (e.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> if (e.pointerCount == 2) { twOn = true; twist = 0f; twLast = twAngle(e) }
@@ -904,13 +1003,63 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
                 val a = twAngle(e); var d = a - twLast
                 if (d > 180f) d -= 360f else if (d < -180f) d += 360f
                 twLast = a; twist += d
-                rotation = if (Math.abs(twist) > 15f) twist else 0f      // small twitches of a pinch do not turn it
+                val n = twEase(twist)
+                if (n != twDeg) { if (twDeg == 0f) onTwist?.invoke(true); twDeg = n; push() }
             }
             MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (twOn) {
                 twOn = false
                 val q = Math.round(twist / 90f); twist = 0f
-                if (rotation != 0f || q != 0) animate().rotation(q * 90f).setDuration(140).withEndAction { rotation = 0f; if (q != 0) rotateBy(q) }.start()
+                if (twDeg != 0f || q != 0) snapTo(q)
             }
+        }
+    }
+
+    private fun snapTo(q0: Int) {
+        val o = orig; val c0 = cur
+        if (o == null || c0 == null) { twDeg = 0f; push(); onTwist?.invoke(false); return }
+        var q = q0
+        val n = ((quarter + q) % 4 + 4) % 4
+        // the turned copy is made BEFORE the glide, so nothing heavy happens at its end
+        var nb: Bitmap? = null
+        if (q != 0) {
+            nb = if (n == 0) o else try { Bitmap.createBitmap(o, 0, 0, o.width, o.height, Matrix().apply { postRotate(n * 90f) }, true) } catch (_: OutOfMemoryError) { null }
+            if (nb == null) q = 0       // no memory: spring back instead
+        }
+        val cx = bw / 2f; val cy = bh / 2f
+        mx.getValues(v); val s0 = v[Matrix.MSCALE_X]
+        val a0 = twDeg
+        val p0 = floatArrayOf(cx, cy).also { Matrix(mx).apply { postRotate(twDeg, width / 2f, height / 2f) }.mapPoints(it) }
+        val a1: Float; val s1: Float; val x1: Float; val y1: Float
+        if (q == 0) { a1 = 0f; s1 = s0; val p1 = floatArrayOf(cx, cy).also { mx.mapPoints(it) }; x1 = p1[0]; y1 = p1[1] }
+        else { val b = nb!!; a1 = q * 90f; s1 = minOf(width / b.width.toFloat(), height / b.height.toFloat()); x1 = width / 2f; y1 = height / 2f }
+        val m = Matrix()
+        val qF = q; val nbF = nb
+        animating = true
+        val g = snap; snap = null; g?.cancel()
+        val anim = ValueAnimator.ofFloat(0f, 1f)
+        snap = anim      // set BEFORE start: with animations switched off start() ends at once
+        anim.apply {
+            duration = 180; interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { an ->
+                val f = an.animatedValue as Float
+                val s = s0 + (s1 - s0) * f
+                m.setTranslate(-cx, -cy); m.postScale(s, s); m.postRotate(a0 + (a1 - a0) * f)
+                m.postTranslate(p0[0] + (x1 - p0[0]) * f, p0[1] + (y1 - p0[1]) * f)
+                imageMatrix = m
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(an: android.animation.Animator) {
+                    if (snap == null) return      // cancelled from outside (new picture): nothing to finish
+                    snap = null; animating = false; twDeg = 0f
+                    if (qF != 0 && nbF != null) {      // same picture, same matrix as the last frame: the swap cannot be seen
+                        quarter = n; cur = nbF
+                        setImageBitmap(nbF); bw = nbF.width; bh = nbF.height; reset()
+                        onRotated?.invoke(quarter)
+                    } else { push(); onMatrixChanged?.invoke(mx) }
+                    onTwist?.invoke(false)
+                }
+            })
+            start()
         }
     }
 
@@ -919,6 +1068,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         fit = minOf(width / bw.toFloat(), height / bh.toFloat())
         mx.setScale(fit, fit)
         mx.postTranslate((width - bw * fit) / 2f, (height - bh * fit) / 2f)
+        twDeg = 0f
         imageMatrix = mx
         onMatrixChanged?.invoke(mx)
     }
@@ -935,7 +1085,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         v[Matrix.MTRANS_X] = if (iw <= width) (width - iw) / 2f else v[Matrix.MTRANS_X].coerceIn(width - iw, 0f)
         v[Matrix.MTRANS_Y] = if (ih <= height) (height - ih) / 2f else v[Matrix.MTRANS_Y].coerceIn(height - ih, 0f)
         mx.setValues(v)
-        imageMatrix = mx
+        push()
         onMatrixChanged?.invoke(mx)
     }
 
@@ -986,6 +1136,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (bw == 0) return super.onTouchEvent(e)
+        if (animating) return true
         twistEvent(e)
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
@@ -1033,5 +1184,53 @@ internal class IconBtn(c: Context, d: String) : View(c) {
         canvas.scale(dn, dn)
         canvas.drawPath(path, ink)
         canvas.restore()
+    }
+}
+
+/** Makes a picture turn permanent (viewer rotate): JPEG / WebP = EXIF orientation only (lossless, nothing is re-encoded), PNG = pixels turned and saved again losslessly. */
+internal object ImgTurn {
+    private fun rot(k: Int) = when (k and 3) { 0 -> intArrayOf(1, 0, 0, 1); 1 -> intArrayOf(0, -1, 1, 0); 2 -> intArrayOf(-1, 0, 0, -1); else -> intArrayOf(0, 1, -1, 0) }
+    private fun mul(a: IntArray, b: IntArray) = intArrayOf(a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3], a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3])   // a after b
+    private val flipX = intArrayOf(-1, 0, 0, 1)
+    /** Raw pixels -> display, as a 2 x 2 matrix, for the EXIF orientation values 1..8 (same table as the decoders use). */
+    private fun mat(o: Int) = when (o) {
+        2 -> flipX
+        3 -> rot(2)
+        4 -> mul(flipX, rot(2))
+        5 -> mul(flipX, rot(1))
+        6 -> rot(1)
+        7 -> mul(flipX, rot(3))
+        8 -> rot(3)
+        else -> rot(0)
+    }
+    /** The orientation value that shows the picture [n] clockwise quarter turns further than [o] does. */
+    fun compose(o: Int, n: Int): Int {
+        val t = mul(rot(n), mat(o))
+        for (c in 1..8) if (mat(c).contentEquals(t)) return c
+        return 1
+    }
+
+    fun apply(f: File, q: Int) {
+        val n = ((q % 4) + 4) % 4
+        if (n == 0) return
+        when (f.name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg", "webp" -> {
+                val ex = ExifInterface(f.path)
+                val o = ex.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                ex.setAttribute(ExifInterface.TAG_ORIENTATION, compose(o, n).toString())
+                ex.saveAttributes()
+            }
+            "png" -> {
+                val bm = BitmapFactory.decodeFile(f.path) ?: throw IOException("Cannot read the picture")
+                val r = Bitmap.createBitmap(bm, 0, 0, bm.width, bm.height, Matrix().apply { postRotate(n * 90f) }, true)
+                if (r !== bm) bm.recycle()
+                val tmp = File(f.parentFile, f.name + ".lspart")
+                try {
+                    tmp.outputStream().use { o -> if (!r.compress(Bitmap.CompressFormat.PNG, 100, o)) throw IOException("cannot encode the picture") }
+                } finally { r.recycle() }
+                if (!tmp.renameTo(f)) { tmp.copyTo(f, true); tmp.delete() }
+            }
+            else -> throw IOException("Turning is saved for JPEG, WebP and PNG pictures only")
+        }
     }
 }
