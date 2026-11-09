@@ -1,7 +1,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <!-- monogram, one colour: L with two signal arcs -->
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M7,5V18H14"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.75" android:strokeLineCap="round" android:pathData="M12,9Q15,9 15,12"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.75" android:strokeLineCap="round" android:pathData="M12,5Q19,5 19,12"/>
+    <!-- big L with signal arcs, one colour -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2.8" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M5.8,4.2V19.8H18.2"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:pathData="M10.2,12A3.9,3.9 0 0 1 14.2,15.9"/>
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:pathData="M10.2,8.1A7.8,7.8 0 0 1 18,15.9"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M10.2,14.5a1.4,1.4 0 1 1 0,2.8a1.4,1.4 0 1 1 0,-2.8z"/>
 </vector>
