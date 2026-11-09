@@ -4,6 +4,11 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+
+## 2026-11-09 - New archive icon
+### Changed
+- The Zip button and archive file icons now show a stack of three books tied with a strap, like WinRAR, instead of the plain archive box.
+
 ## 2026-11-09 - Picture viewer: smooth, permanent turn
 ### Fixed
 - Turning a picture with two fingers no longer flickers: it turns smoothly and settles on the nearest 90° without a jump.
