@@ -573,7 +573,23 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) tryClipSend() }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) { tryClipSend(); repaintSoon() } }
+
+    /** Screen locked and unlocked while the app was in front: the window surface is recreated and the WebView / native overlay sometimes keep a blank (white) frame until touched. Force a redraw of the whole view tree right away and again after the unlock animation. */
+    private fun repaintAll() {
+        try {
+            fun walk(v: android.view.View) { v.invalidate(); if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i)) }
+            walk(window.decorView)
+            if (::web.isInitialized) { web.onResume(); web.postInvalidateOnAnimation(); web.evaluateJavascript("document.body&&document.body.offsetHeight", null) }
+        } catch (_: Throwable) { }
+    }
+    private val repaintR = Runnable { repaintAll() }
+    private fun repaintSoon() {
+        val h = window.decorView.handler ?: return
+        h.removeCallbacks(repaintR)
+        repaintAll()
+        h.postDelayed(repaintR, 120); h.postDelayed(repaintR, 450); h.postDelayed(repaintR, 1000)
+    }
 
     /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
     override fun onDestroy() {
@@ -587,6 +603,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         ClipPush.front = this
+        repaintSoon()
         try { com.lanshare.app.core.IndexManager.onResume() } catch (_: Throwable) {}   // name index: look for changes other apps made
         ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
         if (::drawer.isInitialized) drawer.resync()
