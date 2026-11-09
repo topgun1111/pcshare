@@ -1443,9 +1443,9 @@ vlist:'M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM
 vcomp:'M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z',
 vgrid:'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'};
 /* Lumen two-plate folder (spec 11.5): back plate (darker, tab 40 % wide) + front plate + light band + rim light; no outline. Default colour = app icon colour (--fcol), Style colour = custom. Twin of native NlClassicFolder. */
-const foldMk=(f,k)=>'<svg viewBox="0 0 100 88"><path d="M0 11Q0 4 7 4L30 4Q34 4 37 7L40 10L93 10Q100 10 100 17L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+k+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 80.7Q100 87.7 93 87.7L7 87.7Q0 87.7 0 80.7Z" style="'+f+'"/><path d="M0 31Q0 24 7 24L93 24Q100 24 100 31L100 46L0 46Z" fill="#fff" fill-opacity=".16"/><path d="M8 25.2L92 25.2" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const foldMk=(f,k)=>'<svg viewBox="0 -3.5 100 88"><path d="M0 9Q0 0 9 0L34.5 0L42 8L89 8Q100 8 100 19L100 73Q100 81 92 81L8 81Q0 81 0 73Z" style="'+k+'"/><rect x="12.7" y="6.3" width="74.6" height="25.7" rx="2.5" fill="#E7D5C7"/><rect x="7.9" y="14" width="84.2" height="18" rx="2" fill="#FEF7ED"/><path d="M0 32Q0 26.7 5 26.7L95 26.7Q100 26.7 100 32L100 73Q100 81 92 81L8 81Q0 81 0 73Z" style="'+f+'"/></svg>';
 try{const fc=LSAndroid.folderColor();if(fc)document.documentElement.style.setProperty('--fcol',fc)}catch(e){}   // default folder colour = theme primary (spec 4.5), both editions
-const FOLD=foldMk('fill:var(--fcol,var(--primary,#c25100))','fill:var(--fcol,var(--primary,#c25100));filter:brightness(.74)');
+const FOLD=foldMk('fill:var(--fcol,var(--primary,#c25100))','fill:var(--fcol,var(--primary,#c25100));filter:brightness(.78)');
 const HOME='<svg viewBox="0 0 32 32" class="cico"><path d="M6 17l10-8.5L26 17v11H6z" fill="#f5f5f5" stroke="#b5b5b5"/><path d="M2 16L16 4l14 12-2 2.2L16 8 4 18.2z" fill="#e53935"/><path d="M13 20h6v8h-6z" fill="#fb8c00"/></svg>';
 const DRIVE='<svg viewBox="0 0 32 32" class="cico"><path d="M9 4h14l4 15v7a2 2 0 01-2 2H7a2 2 0 01-2-2v-7z" fill="#c9c9c9"/><path d="M5 19h22v7a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="#b2b2b2"/><circle cx="9.5" cy="24" r="1.4" fill="#4caf50"/></svg>';
 const raw=(h,c)=>{const e=document.createElement('span');e.className=c||'';e.innerHTML=h;return e.firstChild.nodeType===1&&!c?e.firstChild:e};
@@ -2278,7 +2278,7 @@ let FSTY={};try{FSTY=JSON.parse(localStorage.getItem('ls_fsty')||'{}')}catch(e){
 const FS_COLS=['#EF5350','#FB8C00','#FDD835','#66BB6A','#26A69A','#42A5F5','#5C6BC0','#AB47BC','#EC407A','#8D6E63','#90A4AE'];
 const FS_ICONS=['star','heart','home','work','school','games','lock','cloud','build','code','bookmark','place','flight','camera','aud','vid','img','doc','download','zip'];
 const shade=(h,f)=>{const n=parseInt(h.slice(1),16),r=Math.round((n>>16&255)*f),g=Math.round((n>>8&255)*f),b=Math.round((n&255)*f);return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)};
-const foldSvg=c=>c?foldMk('fill:'+c,'fill:'+shade(c,.74)):FOLD;
+const foldSvg=c=>c?foldMk('fill:'+c,'fill:'+shade(c,.78)):FOLD;
 const fsIc=f=>f&&f.c?shade(f.c,.62):'#555';
 const fsGet=p=>FSTY[S.dev+'|'+p]||null;
 function fsPush(){try{if(NL&&NL.nlFStyle){const o={};for(const k in FSTY){if(k.indexOf('local|')!==0)continue;const f=FSTY[k];o[k.slice(6)]=[f.c?nlCol(f.c):0,f.i||'',f.i?nlCol(fsIc(f)):0]}NL.nlFStyle(JSON.stringify(o))}}catch(e){}}

@@ -167,25 +167,26 @@ class NlOverlay(c: Context, private val web: WebView) : FrameLayout(c) {
 }
 
 /**
- * Lumen two-plate folder (spec 11.5) in a 100 x 87.7 unit box; shared by the grid cards and every list view.
- * Back plate (with a tab 40 % wide) = darker shade, front plate = the colour, a soft light band and a thin highlight on the front top edge.
- * `tint` = folder colour (ARGB): the user's Style colour, else DEFAULT (theme primary). Page twin: ui.html `foldSvg()`.
+ * "Paper peek" folder in a 100 x 81 unit box; shared by the grid cards and every list view.
+ * Back plate (with a tab, darker shade) -> two paper sheets peeking out (grey-cream, then cream) -> front plate = the colour.
+ * `tint` = folder colour (ARGB): the user's Style colour, else DEFAULT (theme primary). Page twin: ui.html `foldMk()`.
  */
 object NlClassicFolder {
     private val BACK = Path().apply {
-        moveTo(0f, 11f); quadTo(0f, 4f, 7f, 4f); lineTo(30f, 4f); quadTo(34f, 4f, 37f, 7f); lineTo(40f, 10f)
-        lineTo(93f, 10f); quadTo(100f, 10f, 100f, 17f); lineTo(100f, 80.7f); quadTo(100f, 87.7f, 93f, 87.7f)
-        lineTo(7f, 87.7f); quadTo(0f, 87.7f, 0f, 80.7f); close()
+        moveTo(0f, 9f); quadTo(0f, 0f, 9f, 0f); lineTo(34.5f, 0f); lineTo(42f, 8f)
+        lineTo(89f, 8f); quadTo(100f, 8f, 100f, 19f); lineTo(100f, 73f); quadTo(100f, 81f, 92f, 81f)
+        lineTo(8f, 81f); quadTo(0f, 81f, 0f, 73f); close()
     }
+    private val PAPER1 = Path().apply { addRoundRect(RectF(12.7f, 6.3f, 87.3f, 32f), 2.5f, 2.5f, Path.Direction.CW) }
+    private val PAPER2 = Path().apply { addRoundRect(RectF(7.9f, 14f, 92.1f, 32f), 2f, 2f, Path.Direction.CW) }
     private val FRONT = Path().apply {
-        moveTo(0f, 31f); quadTo(0f, 24f, 7f, 24f); lineTo(93f, 24f); quadTo(100f, 24f, 100f, 31f); lineTo(100f, 80.7f)
-        quadTo(100f, 87.7f, 93f, 87.7f); lineTo(7f, 87.7f); quadTo(0f, 87.7f, 0f, 80.7f); close()
-    }
-    private val BAND = Path().apply {
-        moveTo(0f, 31f); quadTo(0f, 24f, 7f, 24f); lineTo(93f, 24f); quadTo(100f, 24f, 100f, 31f); lineTo(100f, 46f); lineTo(0f, 46f); close()
+        moveTo(0f, 32f); quadTo(0f, 26.7f, 5f, 26.7f); lineTo(95f, 26.7f); quadTo(100f, 26.7f, 100f, 32f); lineTo(100f, 73f)
+        quadTo(100f, 81f, 92f, 81f); lineTo(8f, 81f); quadTo(0f, 81f, 0f, 73f); close()
     }
     const val W = 100f
-    const val H = 87.7f
+    const val H = 81f
+    private val PAPER_BACK = 0xFFE7D5C7.toInt()
+    private val PAPER_FRONT = 0xFFFEF7ED.toInt()
     /** Default folder colour = the theme primary (spec 4.5), in both editions; Ember light primary until the page has sent its palette. ui.html uses `var(--primary)` too. */
     @Volatile var themeDefault: Int = 0   // Lumen primary of the current theme (set from MainActivity.nlPalette); 0 = not known yet
     val DEFAULT: Int get() = if (themeDefault != 0) themeDefault else 0xFFC25100.toInt()
@@ -196,12 +197,11 @@ object NlClassicFolder {
     fun draw(cv: Canvas, p: Paint, rf: RectF, ox: Float, oy: Float, k: Float, tint: Int = 0) {
         val base = if (tint != 0) tint or (0xFF shl 24) else DEFAULT
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
-        p.style = Paint.Style.FILL; p.shader = null; p.color = shade(base, .74f); cv.drawPath(BACK, p)
+        p.style = Paint.Style.FILL; p.shader = null; p.strokeCap = Paint.Cap.BUTT
+        p.color = shade(base, .78f); cv.drawPath(BACK, p)
+        p.color = PAPER_BACK; cv.drawPath(PAPER1, p)
+        p.color = PAPER_FRONT; cv.drawPath(PAPER2, p)
         p.color = base; cv.drawPath(FRONT, p)
-        p.color = 0x29FFFFFF; cv.drawPath(BAND, p)                                   // light band over the upper front
-        p.style = Paint.Style.STROKE; p.strokeWidth = 1.2f; p.strokeCap = Paint.Cap.ROUND; p.color = 0x80FFFFFF.toInt()
-        cv.drawLine(8f, 25.2f, 92f, 25.2f, p)                                         // rim light on the front top edge
-        p.strokeCap = Paint.Cap.BUTT; p.style = Paint.Style.FILL
         cv.restore()
     }
 }
@@ -478,16 +478,16 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         NlIcons.draw(cv, p, if (NlIcons.path(k) != null) k else "file", x, y, size, color)
     }
 
-    /** Folder with paper sheets behind a tan front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
+    /** Paper-peek folder: paper sheets peeking over the front panel; `k` = canvas px per unit (folder is 100 units wide). The optional category badge hangs over the lower front. */
     private fun folder(cv: Canvas, ox: Float, oy: Float, k: Float, badge: String?, badgeCol: Int, tint: Int = 0) {
         NlClassicFolder.draw(cv, p, rf, ox, oy, k, tint)
         cv.save(); cv.translate(ox, oy); cv.scale(k, k)
         if (badge != null) {
-            rf.set(23f, 43f, 73.7f, 93.7f)
+            rf.set(23f, 41f, 73.7f, 91.7f)
             val lm = nlLm(context)   // badge plate = theme surfaceHi + edge (was fixed white / grey, pastel glyphs of dark themes vanished on white)
             p.style = Paint.Style.FILL; p.color = lm.surfaceHi; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
             p.style = Paint.Style.STROKE; p.strokeWidth = 0.5f; p.color = lm.edge; cv.drawRoundRect(rf, 5.5f, 5.5f, p)
-            icon(badge, 48.35f - 16.9f, 68.35f - 16.9f, 33.8f, badgeCol, cv)
+            icon(badge, 48.35f - 16.9f, 66.35f - 16.9f, 33.8f, badgeCol, cv)
         }
         cv.restore()
     }
@@ -517,7 +517,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
         // ---- lead ----
         if (r.dir) {
             val k = s / 100f
-            folder(cv, lx, cy - 44f * k, k, r.badge, r.badgeCol, if (r.fcol != 0) r.fcol else NlClassicFolder.DEFAULT)
+            folder(cv, lx, cy - (NlClassicFolder.H / 2f) * k, k, r.badge, r.badgeCol, if (r.fcol != 0) r.fcol else NlClassicFolder.DEFAULT)
         } else {
             val bm = thumb
             if (bm != null) {

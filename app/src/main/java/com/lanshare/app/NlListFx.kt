@@ -198,6 +198,7 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     private val arcP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val ringRect = RectF()
     var onThreshold: (() -> Unit)? = null
+    private var stockCircle: android.view.View? = null   // must be declared before init (property initialisers run in order)
 
     init {
         setDistanceToTriggerSync(Math.round(trigger))
@@ -206,7 +207,15 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
         setProgressBackgroundColorSchemeColor(Color.TRANSPARENT)
         setColorSchemeColors(Color.TRANSPARENT)
         setWillNotDraw(false)
+        // Double-spinner fix: a transparent fill still leaves the stock circle's elevation shadow (and its arc) visible under the Lumen ring.
+        // The stock CircleImageView is child 0 (added by the SwipeRefreshLayout constructor); it keeps driving the gesture but is never painted.
+        stockCircle = getChildAt(0)
+        stockCircle?.apply { alpha = 0f; elevation = 0f; translationZ = 0f; outlineProvider = null }
     }
+
+    /** The stock circle is never drawn (no shadow, no arc); only the Lumen ring from dispatchDraw shows. */
+    override fun drawChild(canvas: Canvas, child: android.view.View, drawingTime: Long): Boolean =
+        if (child === stockCircle) true else super.drawChild(canvas, child, drawingTime)
 
     fun setPalette(background: Int, accent: Int, trackColor: Int) {
         bg = background; ring = accent; track = trackColor
