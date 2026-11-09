@@ -293,8 +293,8 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
         val rpS = RectF()
         for ((k, r) in btn) { rpS.set(r); ripple(cv, k, rpS, 20f * d, if (sel) p.onsel else p.onbar) }
         if (sel) {
-            btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 24f, p.onsel) }
-            btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 24f, p.onsel) }
+            btn["xsel"]?.let { glyph(cv, "close", it.centerX(), it.centerY(), 30f, p.onsel) }
+            btn["allsel"]?.let { glyph(cv, "selall", it.centerX(), it.centerY(), 30f, p.onsel) }
             val x = 4f * d + 48f * d + 4f * d
             val right = (btn["allsel"]?.left ?: bw) - 4f * d
             cntP.color = p.onsel
@@ -302,19 +302,19 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
             if (slid) cv.restore()
             return
         }
-        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 30f, ob) }   // main menu icon: 32 dp (search / view / refresh / split / settings: 30 dp)
-        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 28f, ob) }
-        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 28f, ob) }
+        btn["menub"]?.let { glyph(cv, "menu", it.centerX(), it.centerY(), 36f, ob) }   // top bar icons (bar row 40 dp): menu 36 dp, search / view / refresh / split / settings 34 dp
+        btn["srch"]?.let { glyph(cv, "search", it.centerX(), it.centerY(), 34f, ob) }
+        btn["tune"]?.let { glyph(cv, "tune", it.centerX(), it.centerY(), 34f, ob) }
         btn["scan"]?.let {
             val t = SystemClock.uptimeMillis() - spinAt
             if (spinAt != 0L && t >= 0L && t < 800L) {
                 cv.save(); cv.rotate(360f * t / 800f, it.centerX(), it.centerY())
-                glyph(cv, "refresh", it.centerX(), it.centerY(), 28f, ob)
+                glyph(cv, "refresh", it.centerX(), it.centerY(), 34f, ob)
                 cv.restore(); postInvalidateOnAnimation()
-            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 28f, ob)
+            } else glyph(cv, "refresh", it.centerX(), it.centerY(), 34f, ob)
         }
-        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 28f, ob) }
-        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 28f, ob) }
+        btn["dualb"]?.let { glyph(cv, "vsplit", it.centerX(), it.centerY(), 34f, ob) }
+        btn["cog"]?.let { glyph(cv, "settings", it.centerX(), it.centerY(), 34f, ob) }
         ttlP.color = ob
         cv.drawText(fit(ttl, ttlP, tW), tX, ty(bh / 2f, ttlP), ttlP)
     }

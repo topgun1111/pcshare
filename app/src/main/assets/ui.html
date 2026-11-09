@@ -140,10 +140,10 @@ body{margin:0;font:500 var(--fs-14)/1.4 'Figtree LS',Figtree,system-ui,sans-seri
 #pathrow{display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-2) 0 var(--sp-1);background:var(--card);border-bottom:1px solid var(--bd)}
 .pill{cursor:pointer;display:none;align-items:center;gap:var(--sp-1);flex:none;height:26px;padding:0 var(--sp-2);border:1px solid var(--mut);border-radius:var(--r-l);font-weight:700;font-size:var(--fs-12);letter-spacing:.01em;}
 .pill i{width:16px;height:16px;border-radius:var(--r-full);background:conic-gradient(var(--fg) var(--p,0%),var(--bd) 0)}
-.bar{display:flex;align-items:center;gap:0;height:44px;padding:0 2px 0 var(--sp-3);background:var(--bar);color:var(--onbar)}
+.bar{display:flex;align-items:center;gap:0;height:40px;padding:0 2px 0 var(--sp-3);background:var(--bar);color:var(--onbar)}
 .selb{display:none;padding-left:var(--sp-1);background:var(--sel);color:var(--onsel)}
 body.selm .mainb{display:none}body.selm .selb{display:flex}
-.ttl{flex:1;min-width:0;display:flex;align-items:center;gap:var(--sp-2)}.bar .ibtn{width:40px;height:40px}.bar .ibtn svg{width:28px;height:28px}
+.ttl{flex:1;min-width:0;display:flex;align-items:center;gap:var(--sp-2)}.bar .ibtn{width:40px;height:40px}.bar .ibtn svg{width:34px;height:34px}
 .ttl h1{flex:0 1 auto;min-width:0;font-size:var(--fs-16);line-height:24px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #nm{display:none!important;align-items:center;gap:var(--sp-1);color:var(--barmut);font-size:var(--fs-12);line-height:16px;flex:0 1 auto;min-width:0;max-width:50%}
 #nm svg{width:12px;height:12px}#nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -180,10 +180,10 @@ body.selm .mainb{display:none}body.selm .selb{display:flex}
 #hint{padding:var(--sp-1) var(--sp-3);color:var(--mut);font-size:var(--fs-12);background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#hint:empty{display:none}
 /* breadcrumbs */
 #crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;color:var(--mut)}#crumbs::-webkit-scrollbar{display:none}
-.crumb{flex:none;display:flex;align-items:center;gap:var(--sp-1);height:28px;padding:0 var(--sp-1);border-radius:var(--r-s);font-size:var(--fs-16);color:var(--mut);transition:background var(--d-fast)}
-.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:22px;height:22px}#crumbs>.crumb:first-child svg.cico{width:28px;height:28px}
+.crumb{flex:none;display:flex;align-items:center;gap:var(--sp-1);height:36px;padding:0 var(--sp-1);border-radius:var(--r-s);font-size:var(--fs-16);color:var(--mut);transition:background var(--d-fast)}
+.crumb:active{background:var(--hov)}.crumb svg{width:18px;height:18px}.crumb svg.cico{width:28px;height:28px}#crumbs>.crumb:first-child svg.cico{width:34px;height:34px}
 .crumb.cur{color:var(--fg);font-weight:700}
-#crumbs>svg{width:20px;height:20px;opacity:.6}
+#crumbs>svg{width:24px;height:24px;min-height:0;opacity:.6}
 /* sort / view toolbar */
 #toolrow{display:flex;align-items:center;gap:var(--sp-1);min-height:28px;padding:0 2px 0 var(--sp-3);background:var(--card);border-bottom:1px solid var(--bd)}
 #sum{flex:1;min-width:0;line-height:1.25;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -665,7 +665,7 @@ body.kid #fab svg{width:20px;height:20px}
 #newb{flex:none;height:28px;padding:0 var(--sp-2);border:1px solid var(--bd);border-radius:var(--r-l);font-size:var(--fs-12);margin-right:var(--sp-1)}#newb.on{background:var(--sel);color:var(--onsel);border-color:transparent}
 
 /* side drawer (hamburger, top left) */
-#menub svg{width:30px;height:30px}.bar.mainb{padding-left:var(--sp-1)}.bar.mainb .ttl{margin-left:2px}.bar.mainb .ttl{justify-content:flex-end;padding-right:var(--sp-1)}
+#menub svg{width:36px;height:36px}.bar.mainb{padding-left:var(--sp-1)}.bar.mainb .ttl{margin-left:2px}.bar.mainb .ttl{justify-content:flex-end;padding-right:var(--sp-1)}
 #dscrim{position:fixed;inset:0;z-index:13;background:#000;opacity:0;visibility:hidden;transition:opacity var(--d-base),visibility 0s var(--d-base)}
 #dwr{position:fixed;left:0;top:0;bottom:0;z-index:14;width:min(84vw,320px);display:flex;flex-direction:column;background:var(--card);color:var(--fg);box-shadow:2px 0 12px #0005;transform:translateX(-102%);visibility:hidden;transition:transform var(--d-base) ease-out,visibility 0s var(--d-base);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 body.dopen #dscrim{opacity:.45;visibility:visible;transition:opacity var(--d-base)}
