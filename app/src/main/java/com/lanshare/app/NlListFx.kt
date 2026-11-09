@@ -198,6 +198,11 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     private val arcP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val ringRect = RectF()
     var onThreshold: (() -> Unit)? = null
+    // Watchdog: if the page never answers (page busy, NLL null, folder switched) the spinner must not stay forever.
+    private val watchdog = Runnable { if (isRefreshing) isRefreshing = false }
+    /** Call from the refresh listener (a finger-triggered refresh bypasses setRefreshing(), so it cannot be overridden). */
+    fun armWatchdog() { removeCallbacks(watchdog); postDelayed(watchdog, 12_000L) }
+    override fun onDetachedFromWindow() { removeCallbacks(watchdog); super.onDetachedFromWindow() }
     private var stockCircle: android.view.View? = null   // must be declared before init (property initialisers run in order)
 
     init {
@@ -259,10 +264,11 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
         ringRect.set(-14f * d, -14f * d, 14f * d, 14f * d)
         canvas.drawArc(ringRect, 0f, 360f, false, trackP)
         arcP.color = ring; arcP.strokeWidth = 2.5f * d
-        val start = if (refreshing && !rm) ((android.os.SystemClock.uptimeMillis() % 900L) / 900f) * 360f - 90f else -90f
+        // Always rotate while refreshing (reduce-motion / animations-off phones used to show a frozen ring that looked stuck); just slower there.
+        val start = if (refreshing) ((android.os.SystemClock.uptimeMillis() % (if (rm) 1800L else 900L)) / (if (rm) 1800f else 900f)) * 360f - 90f else -90f
         val sweep = if (refreshing) 270f else 360f * fraction
         canvas.drawArc(ringRect, start, sweep, false, arcP)
         canvas.restore()
-        if (refreshing && !rm) postInvalidateOnAnimation()
+        if (refreshing) postInvalidateOnAnimation()
     }
 }

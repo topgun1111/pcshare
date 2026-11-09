@@ -2103,7 +2103,10 @@ let NLB=0;
 function nlBurst(ms){if(!NL)return;const end=performance.now()+ms,go=!NLB;NLB=Math.max(NLB,end);if(!go)return;
   const f=()=>{if(NLL)nlLay();nlSrPush();nlChPush();if(performance.now()<NLB)requestAnimationFrame(f);else{NLB=0;if(NLL)nlLay()}};requestAnimationFrame(f)}
 if(NL){['click','pointerup','touchend','transitionrun','transitionend','animationstart','animationend'].forEach(ev=>document.addEventListener(ev,()=>nlBurst(500),true))}
-window.nlOn=(ev,x)=>{if(!NLL)return;
+window.nlOn=(ev,x)=>{
+  if(ev==='refresh'){(async()=>{const fin=()=>{try{NL.nlDone()}catch(e){}},cap=setTimeout(fin,8000);   // an offline device can keep /api/ls waiting for minutes: stop the spinner anyway
+    try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
+  if(!NLL)return;
   if(ev==='sy'){if(window.lgNative)lgNative(x);return}
   if(ev==='el'){$('#top').classList.toggle('el',x===1);return}     // list scrolled: header shadow like the page scroll handler
   if(ev==='crumb'){const sg=S.path.split('/').filter(Boolean);go(x<2?'/':'/'+sg.slice(0,x-1).join('/'));return}   // 0 root, 1 drive, 2.. folders: same targets as the HTML crumbs
@@ -2112,8 +2115,6 @@ window.nlOn=(ev,x)=>{if(!NLL)return;
   if(ev==='sort'){openSort();return}
   if(ev==='used'){pillTap();return}
   const i=NLL[x];
-  if(ev==='refresh'){(async()=>{const fin=()=>{try{NL.nlDone()}catch(e){}},cap=setTimeout(fin,8000);   // an offline device can keep /api/ls waiting for minutes: stop the spinner anyway
-    try{S.fresh=1;galForce();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers();await load();refreshClip()}catch(e){}clearTimeout(cap);fin()})();return}
   if(!i||i._hd)return;
   if(i._h){if(ev==='tap')i.dir?go(i.path):goFind(i.path.slice(0,i.path.lastIndexOf('/'))||'/',i.name);return}
   if(ev==='down'){if(i.dir)prefetch(S.dev,jn(NLP0,i.name));return}

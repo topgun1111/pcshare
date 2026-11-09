@@ -932,7 +932,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         rv.layoutManager = lm; rv.adapter = ad; rv.itemAnimator = null; rv.setHasFixedSize(true)
         srl.addView(rv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         srl.onThreshold = { Haptics.play("tick") }   // Lumen 13.5: tick when the pull passes the threshold (NlPullLayout), not when the refresh starts
-        srl.setOnRefreshListener { emit("refresh", 0) }
+        srl.setOnRefreshListener { srl.armWatchdog(); emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { run { val sy = r.computeVerticalScrollOffset(); val q = if (sy > 400) 999 else sy; if (q != lastSy) { lastSy = q; emit("sy", q) } }; val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
@@ -1496,7 +1496,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { srl.isRefreshing = false; skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {
