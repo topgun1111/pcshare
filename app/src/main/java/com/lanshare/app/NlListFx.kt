@@ -199,9 +199,10 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     private val ringRect = RectF()
     var onThreshold: (() -> Unit)? = null
     // Watchdog: if the page never answers (page busy, NLL null, folder switched) the spinner must not stay forever.
-    private val watchdog = Runnable { if (isRefreshing) isRefreshing = false }
-    /** Call from the refresh listener (a finger-triggered refresh bypasses setRefreshing(), so it cannot be overridden). */
-    fun armWatchdog() { removeCallbacks(watchdog); postDelayed(watchdog, 12_000L) }
+    private val watchdog = Runnable { wdArmed = false; if (isRefreshing) isRefreshing = false }
+    private var wdArmed = false
+    /** Kept for the listener; the real arming happens in dispatchDraw so it works even if the listener never runs. */
+    fun armWatchdog() { removeCallbacks(watchdog); wdArmed = true; postDelayed(watchdog, 12_000L) }
     override fun onDetachedFromWindow() { removeCallbacks(watchdog); super.onDetachedFromWindow() }
     private var stockCircle: android.view.View? = null   // must be declared before init (property initialisers run in order)
 
@@ -219,8 +220,17 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     }
 
     /** The stock circle is never drawn (no shadow, no arc); only the Lumen ring from dispatchDraw shows. */
-    override fun drawChild(canvas: Canvas, child: android.view.View, drawingTime: Long): Boolean =
-        if (child === stockCircle) true else super.drawChild(canvas, child, drawingTime)
+    // NEVER skip the stock circle's drawChild: SwipeRefreshLayout drives onRefresh() / reset() from that view's legacy Animation listeners, and a
+    // View's Animation only advances while it is drawn. Skipping it left isRefreshing=true with onRefresh() never fired (spinner stuck, no reload).
+    // So it is drawn into an empty clip instead: animation runs, nothing is painted.
+    override fun drawChild(canvas: Canvas, child: android.view.View, drawingTime: Long): Boolean {
+        if (child !== stockCircle) return super.drawChild(canvas, child, drawingTime)
+        canvas.save()
+        canvas.clipRect(0f, 0f, 0f, 0f)
+        val more = super.drawChild(canvas, child, drawingTime)
+        canvas.restore()
+        return more
+    }
 
     fun setPalette(background: Int, accent: Int, trackColor: Int) {
         bg = background; ring = accent; track = trackColor
@@ -248,6 +258,8 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
         val refreshing = isRefreshing
+        if (refreshing && !wdArmed) armWatchdog()
+        else if (!refreshing && wdArmed) { wdArmed = false; removeCallbacks(watchdog) }
         if (!refreshing && pull <= 0f) return
         val rm = LumenPrefs.reduceMotion(context)
         val fraction = if (refreshing) 1f else (pull / trigger).coerceIn(0f, 1f)
