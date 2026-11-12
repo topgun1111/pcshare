@@ -879,6 +879,12 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 #dlg .dcard.zdlg>*{flex:none}
 #dlg .dcard.zdlg>.zpan{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 #dlg .dcard.zdlg .dact{margin-top:var(--sp-3)}
+#dlg .dcard.zdlg .dact{flex-wrap:nowrap}
+#dlg .dcard.zdlg .dact .tbtn{flex:1 1 0;min-width:0;height:44px;border-radius:var(--r-xl);font-size:var(--fs-16)}
+#dlg .dcard.zdlg .dact .tbtn.zc{background:transparent;color:var(--ac);border:1.5px solid var(--ac)}
+#dlg .dcard.zdlg .dact .tbtn.zc:active{background:var(--hov)}
+#dlg .dcard.zdlg .dact .tbtn.zk{background:var(--ac);color:var(--onac);border:1.5px solid var(--ac)}
+#dlg .dcard.zdlg .dact .tbtn.zk:disabled{opacity:.4}
 @media (max-width:360px){#sheet .card.pj{border-radius:var(--dr) var(--dr) 0 0}}
 /*LUMEN-UI:BEGIN*/
 /* Lumen Part 7: dialog, sheet, snackbar (hand-written; tokens only) */
@@ -6838,7 +6844,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   const card=E('div','dcard zdlg');card.append(E('h3','','Create archive'),E('p','',msg));
   const sum=E('p','','Calculating size\u2026');sum.style.cssText='font-size:var(--fs-14);font-weight:600;margin:2px 2px var(--sp-2)';card.append(sum);
   const inp=E('input','tf');inp.value=base;inp.placeholder='File name';inp.autocomplete='off';card.append(inp);
-  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn','Create');
+  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn zc','Cancel'),k=E('button','tbtn lmp zk','Create');
   let alive=true,tot=null,fmt_=LD('ls_zipfmt','zip')==='xz'?'xz':'zip';const by={};
   const est=o=>fmt_==='xz'?(o.estx!=null?o.estx:o.est||0):(o.est||0);
   const upd=()=>{if(!tot)return;let s=tot.size,e=est(tot),f=tot.files;chk.forEach(p=>{const i=by[p];if(i){s-=i.size;e-=est(i);f-=i.files}});s=Math.max(s,0);e=Math.max(e,0);
