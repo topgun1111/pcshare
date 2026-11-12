@@ -392,6 +392,17 @@ object Lm {
         return Color.argb(Color.alpha(base), ch(Color.red(base), Color.red(with)), ch(Color.green(base), Color.green(with)), ch(Color.blue(base), Color.blue(with)))
     }
 
+    private fun opq(x: Int) = x or 0xFF000000.toInt()
+    /** Label colour for a filled button: [t] when it reads on [fill] (4.5:1), else black / white, whichever is stronger. */
+    private fun onFill(fill: Int, t: Int): Int {
+        val f = opq(fill)
+        if (androidx.core.graphics.ColorUtils.calculateContrast(opq(t), f) >= 4.5) return t
+        return if (androidx.core.graphics.ColorUtils.calculateContrast(0xFF000000.toInt(), f) >= androidx.core.graphics.ColorUtils.calculateContrast(0xFFFFFFFF.toInt(), f)) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+    }
+    /** Text colour on the dialog window: [t] when it reads on [bg] (3:1), else [fb]. */
+    private fun onWin(t: Int, bg: Int, fb: Int): Int =
+        if (androidx.core.graphics.ColorUtils.calculateContrast(opq(t), opq(bg)) >= 3.0) t else fb
+
     private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context) {
         b.setAllCaps(false)
         b.setTextColor(text)
@@ -446,10 +457,12 @@ object Lm {
         val danger = o?.kind == "danger" || (o?.kind == null && pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))
         try {
             if (pos != null && pos.visibility == View.VISIBLE) {
-                if (danger) styleButton(pos, lm.errorCont, lm.onErrorCont, c) else styleButton(pos, lm.primary, lm.onPrimary, c)
+                if (danger) styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c) else styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
             }
-            if (neu != null && neu.visibility == View.VISIBLE) styleButton(neu, 0, lm.primary, c)
-            if (neg != null && neg.visibility == View.VISIBLE) styleButton(neg, 0, if (danger) lm.ink else lm.primary, c)
+            // text buttons sit on the dialog window (page --bg): keep them readable on every theme, fall back to the page ink
+            val wbg = AppPal.pal(c).bg
+            if (neu != null && neu.visibility == View.VISIBLE) styleButton(neu, 0, onWin(lm.primary, wbg, AppPal.pal(c).fg), c)
+            if (neg != null && neg.visibility == View.VISIBLE) styleButton(neg, 0, onWin(if (danger) lm.ink else lm.primary, wbg, AppPal.pal(c).fg), c)
             if (danger && neg != null && neg.visibility == View.VISIBLE) neg.requestFocus()   // Cancel is the default in danger dialogs
         } catch (_: Throwable) { }
 

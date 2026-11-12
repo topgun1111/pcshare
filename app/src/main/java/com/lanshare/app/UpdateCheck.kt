@@ -138,7 +138,7 @@ object UpdateCheck {
                 }
             }
             card.addView(TextView(a).apply {
-                setTextColor(if (latest) greenLine else p.fg); LumenTypography.fit(this, 15f); setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (latest && androidx.core.graphics.ColorUtils.calculateContrast(greenLine or 0xFF000000.toInt(), androidx.core.graphics.ColorUtils.compositeColors(greenFill, p.bg)) >= 3.0) greenLine else p.fg); LumenTypography.fit(this, 15f); setTypeface(typeface, Typeface.BOLD)
                 val date = o.optString("published_at").take(10)
                 text = buildString {
                     append(tag)
@@ -158,8 +158,9 @@ object UpdateCheck {
     private fun notesText(a: Activity, o: JSONObject): CharSequence {
         val p = AppPal.pal(a); val night = AppPal.night(a)
         val lmN = Lumen.of(a)
-        val ok = lmN.success
-        val bad = lmN.error
+        fun rd(x: Int) = if (androidx.core.graphics.ColorUtils.calculateContrast(x or 0xFF000000.toInt(), p.bg or 0xFF000000.toInt()) >= 3.0) x else p.fg   // readable on the dialog window, else page ink
+        val ok = rd(lmN.success)
+        val bad = rd(lmN.error)
         val sb = SpannableStringBuilder()
         fun add(t: String, color: Int?, bold: Boolean) {
             val st = sb.length; sb.append(t)
@@ -173,7 +174,7 @@ object UpdateCheck {
             if (l.isEmpty() || l.startsWith("# ") || l.startsWith("## ")) continue
             if (l.startsWith("###")) {
                 val h = l.trimStart('#').trim()
-                add((if (any) "\n" else "") + h + "\n", when { h.startsWith("Added", true) -> ok; h.startsWith("Removed", true) -> bad; else -> p.ac }, true)
+                add((if (any) "\n" else "") + h + "\n", when { h.startsWith("Added", true) -> ok; h.startsWith("Removed", true) -> bad; else -> rd(p.ac) }, true)
             } else if (l.startsWith("- ") || l.startsWith("* ")) add("\u2022 " + l.drop(2).trim() + "\n", null, false)
             else add(l + "\n", null, false)
             any = true

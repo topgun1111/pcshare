@@ -2011,7 +2011,8 @@ document.addEventListener('scroll',e=>{const t=e.target===document?document.scro
   lmScrollTimers.set(t,setTimeout(()=>{t.classList.remove('lm-scroll-active');lmScrollTimers.delete(t)},600));
 },true);
 /* theme changed (picker or system dark/light): system bars + re-push every native palette at once; the native list / path bar only got it with the next nlRender, so they stayed in the old theme until a refresh */
-function nlTheme(){sysBars();try{if(!NL)return;if(NLL){const p=nlPal();NLPAL=p;NL.nlPalette(p)}NLSRJ='0';nlChPush();nlSrPush();if(NLL)nlLay(true)}catch(e){}}
+function nlTheme(){sysBars();try{if(!NL)return;{const p=nlPal();NLPAL=p;NL.nlPalette(p)}   /* always: native dialogs read this palette too, so it must follow the theme even when no native list is showing */
+  NLSRJ='0';nlChPush();nlSrPush();if(NLL)nlLay(true)}catch(e){}}
 function srRows(){  // subfolder-search hits as native rows: header + hits (same filter as renderSR)
   if(!S.q||S.q.length<2||!srOK())return null;
   const here=S.path==='/'?'/':S.path,par=p=>p.slice(0,p.lastIndexOf('/'))||'/';
