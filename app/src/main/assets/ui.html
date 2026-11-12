@@ -874,6 +874,11 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 #sheet .card.pj{overflow:hidden}
 #dlg .dcard,#dlg .dcard.sd{border-radius:var(--dr);max-width:360px;width:100%;box-sizing:border-box}
 #dlg .dcard.rich{max-width:560px}
+/* Create archive dialog: card never taller than the screen; only the tab panel scrolls, so the Cancel / Create buttons always stay visible (also with the keyboard open) */
+#dlg .dcard.zdlg{display:flex;flex-direction:column;max-height:100%;overflow:hidden}
+#dlg .dcard.zdlg>*{flex:none}
+#dlg .dcard.zdlg>.zpan{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+#dlg .dcard.zdlg .dact{margin-top:var(--sp-3)}
 @media (max-width:360px){#sheet .card.pj{border-radius:var(--dr) var(--dr) 0 0}}
 /*LUMEN-UI:BEGIN*/
 /* Lumen Part 7: dialog, sheet, snackbar (hand-written; tokens only) */
@@ -6829,7 +6834,7 @@ setInterval(async()=>{
 const zext=f=>f==='xz'?'.tar.xz':'.zip',zbase=n=>n.trim().replace(/\.(tar\.xz|txz|zip)$/i,'');
 function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   const d=$('#dlg');d.textContent='';d.style.display='flex';
-  const card=E('div','dcard');card.append(E('h3','','Create archive'),E('p','',msg));
+  const card=E('div','dcard zdlg');card.append(E('h3','','Create archive'),E('p','',msg));
   const sum=E('p','','Calculating size\u2026');sum.style.cssText='font-size:var(--fs-14);font-weight:600;margin:2px 2px var(--sp-2)';card.append(sum);
   const inp=E('input','tf');inp.value=base;inp.placeholder='File name';inp.autocomplete='off';card.append(inp);
   const chk=new Set(),row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn','Create');
@@ -6851,7 +6856,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   if(hasDir){
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:2px 0 2px';
     const lb=E('b','','Hidden and build folders (tick):');lb.style.fontSize='13.5px';all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
-    box=E('div');box.style.cssText='max-height:34vh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain';
+    box=E('div');box.style.cssText='overflow-x:hidden';
     st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:var(--fs-12);color:var(--mut);margin:var(--sp-1) 2px';box.append(st);
     p1.append(hd,box);k.disabled=true
   }else{const n=E('p','','Only folders can contain hidden entries \u2013 nothing to leave out for the selected files.');n.style.cssText='font-size:var(--fs-12);color:var(--mut);margin:var(--sp-1) 2px';p1.append(n)}
@@ -6876,7 +6881,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
       sw.append(cb,E('i'));lab.append(t,sw);box.append(lab)});
     all.onclick=()=>{const on=cbs.some(x=>!x[0].checked);cbs.forEach(x=>{x[0].checked=on;on?chk.add(x[1]):chk.delete(x[1])});all.textContent=on?'Untick all':'Tick all';upd();badge()}
   }).catch(e=>{if(!alive)return;sum.textContent='';if(hasDir){st.textContent='\u26a0 Could not list hidden folders: '+e.message;k.disabled=false}});
-  row.append(c,k);card.append(row);d.append(card);setTimeout(()=>{inp.focus();inp.select()},60)})}
+  row.append(c,k);card.append(row);d.append(card);if(!hasDir)setTimeout(()=>{inp.focus();inp.select()},60)})}   // with folders the list is what matters: no auto keyboard covering it
 async function doZip(){   // pack the selected files / folders into a new .zip / .tar.xz next to them (on whichever device is open)
   const it=selItems();if(!it.length||inArc())return;
   const base=it.length===1?(it[0].dir?(it[0].disp||it[0].name):it[0].name.replace(/\.[^.\/]+$/,'')):(S.path.split('/').filter(Boolean).pop()||'Archive');
