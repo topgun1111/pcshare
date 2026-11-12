@@ -31,6 +31,7 @@ import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -116,6 +117,7 @@ class PlayerActivity : Activity() {
         @Volatile var pending: String? = null
         private const val PREFS = "ls_player"
         private const val MAX_ITEMS = 500
+        private const val MAX_ZOOM = 8f
         private const val HIDE_MS = NlViewerBar.HIDE_MS   // Lumen N7: spec 12.7, 3 s (was 3.5 s)
         /** Set after a video was deleted here: MainActivity refreshes the file list when it comes back to the front. */
         @Volatile private var changed = false
@@ -144,6 +146,8 @@ class PlayerActivity : Activity() {
     private lateinit var playBtn: RoundBtn
     private lateinit var prevBtn: RoundBtn
     private lateinit var nextBtn: RoundBtn
+    private lateinit var rotLBtn: RoundBtn
+    private lateinit var rotRBtn: RoundBtn
     private lateinit var shareBtn: RoundBtn
     private lateinit var delBtn: RoundBtn
     private lateinit var moreBtn: RoundBtn
@@ -169,6 +173,9 @@ class PlayerActivity : Activity() {
     private var holds = 0                // >0 while a dialog is open or the seek pill is being dragged: controls stay
     private var rotTarget = 0            // video rotation chosen with the turn buttons, degrees clockwise (unbounded while turning, 0..359 at rest)
     private var rotAnim: ValueAnimator? = null
+    private var zoom = 1f                // pinch zoom on top of the fitted picture (1 = fitted, up to MAX_ZOOM)
+    private var panX = 0f; private var panY = 0f   // pan in window pixels while zoomed
+    private var baseS = 1f               // fit scale of the current video rotation (see fitScale)
     private val mtimes = HashMap<String, Long>()    // item url -> modified time (seconds), from the list or /api/stat
     private val sizes = HashMap<String, Long>()
     private val metaAsked = HashSet<String>()
@@ -239,7 +246,7 @@ class PlayerActivity : Activity() {
         titleTv.setTextColor(pal.text); dateTv.setTextColor(pal.text); resTv.setTextColor(pal.text)
         calIcon.pal = pal; pill.pal = pal
         spin.indeterminateTintList = android.content.res.ColorStateList.valueOf(pal.fill)
-        for (b in listOf(backBtn, playBtn, prevBtn, nextBtn, shareBtn, delBtn, moreBtn)) b.pal = pal
+        for (b in listOf(backBtn, playBtn, prevBtn, nextBtn, rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) b.pal = pal
     }
 
     // ---------------------------------------------------------------- UI (built in code; only the PlayerView comes from a tiny layout, see player_texture_view.xml)
@@ -294,13 +301,15 @@ class PlayerActivity : Activity() {
         nextBtn = RoundBtn(this, PIc.NEXT).apply { contentDescription = "Next video"; setOnClickListener { player?.seekToNextMediaItem() } }
         row1.addView(pill); row1.addView(playBtn)
         row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        rotLBtn = RoundBtn(this, PIc.ROT_L).apply { contentDescription = "Turn video left"; setOnClickListener { rotateVideo(-90) } }
+        rotRBtn = RoundBtn(this, PIc.ROT_R).apply { contentDescription = "Turn video right"; setOnClickListener { rotateVideo(90) } }
         shareBtn = RoundBtn(this, PIc.SHARE).apply { contentDescription = "Share"; setOnClickListener { shareCurrent() } }
         delBtn = RoundBtn(this, PIc.TRASH).apply { contentDescription = "Delete"; setOnClickListener { deleteCurrent() } }
         moreBtn = RoundBtn(this, PIc.MORE).apply { contentDescription = "More"; setOnClickListener { showMore() } }
-        // previous / next on the left, share / delete / more on the right (turn video and screen rotation live in the More menu)
+        // previous / next on the left, turn left / turn right / share / delete / more on the right (screen rotation lives in the More menu)
         row2.addView(prevBtn); row2.addView(nextBtn)
         row2.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        for (b in listOf(shareBtn, delBtn, moreBtn)) row2.addView(b)
+        for (b in listOf(rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) row2.addView(b)
         bottom.addView(row1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         bottom.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         root.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
@@ -352,7 +361,7 @@ class PlayerActivity : Activity() {
         header.setPadding(insL + dp(12), insT + dp(8), insR + dp(12), dp(24))
         bottom.setPadding(insL + m, 0, insR + m, insB + dp(12))
         val innerW = root.width - insL - insR - 2 * m
-        val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 4 * gap) / 5).coerceAtLeast(dp(30))
+        val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 6 * gap) / 7).coerceAtLeast(dp(30))
         if (bs != lastBs) {
             lastBs = bs
             fun lp(w: Int, h: Int, start: Int) = LinearLayout.LayoutParams(w, h).apply { marginStart = start }
@@ -360,7 +369,7 @@ class PlayerActivity : Activity() {
             playBtn.layoutParams = lp(bs, bs, gap)
             prevBtn.layoutParams = lp(bs, bs, 0)
             nextBtn.layoutParams = lp(bs, bs, gap)
-            for (b in listOf(shareBtn, delBtn, moreBtn)) b.layoutParams = lp(bs, bs, gap)
+            for (b in listOf(rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) b.layoutParams = lp(bs, bs, gap)
         }
         subtitlePadding()
     }
@@ -492,6 +501,7 @@ class PlayerActivity : Activity() {
 
     // ---------------------------------------------------------------- turning the VIDEO (not the screen)
     private fun rotateVideo(delta: Int) {
+        zoom = 1f; panX = 0f; panY = 0f
         rotTarget += delta
         applyVideoTransform(true)
         showHud(Math.floorMod(rotTarget, 360).toString() + "\u00B0")
@@ -508,7 +518,7 @@ class PlayerActivity : Activity() {
         val r1 = rotTarget.toFloat()
         val s1 = fitScale(rotTarget)
         if (!animate || stage.width == 0 || !view.isLaidOut) { setXform(r1, s1); normaliseRot(); return }
-        val r0 = view.rotation; val s0 = view.scaleX
+        val r0 = view.rotation; val s0 = baseS
         val an = ValueAnimator.ofFloat(0f, 1f)
         var cancelled = false
         an.duration = LumenMotion.MED
@@ -522,7 +532,38 @@ class PlayerActivity : Activity() {
         an.start()
     }
 
-    private fun setXform(rot: Float, s: Float) { view.rotation = rot; view.scaleX = s; view.scaleY = s }
+    private fun setXform(rot: Float, s: Float) { baseS = s; view.rotation = rot; applyZoom() }
+
+    /** Applies fit scale x pinch zoom and the pan; the pan is kept so that the picture always covers the window where it is bigger than it. */
+    private fun applyZoom() {
+        val w = stage.width.toFloat(); val h = stage.height.toFloat()
+        if (zoom <= 1.001f || w <= 0f || h <= 0f) { zoom = 1f; panX = 0f; panY = 0f }
+        else {
+            var fw = w; var fh = h
+            val v = player?.videoSize
+            if (resizeIdx == 0 && v != null && v.width > 0 && v.height > 0) { val a = v.width * v.pixelWidthHeightRatio / v.height; fw = minOf(w, h * a); fh = fw / a }
+            val q = Math.floorMod(rotTarget / 90, 2) == 1
+            val bw = (if (q) fh else fw) * baseS * zoom; val bh = (if (q) fw else fh) * baseS * zoom
+            val mx = maxOf(0f, (bw - w) / 2f); val my = maxOf(0f, (bh - h) / 2f)
+            panX = panX.coerceIn(-mx, mx); panY = panY.coerceIn(-my, my)
+        }
+        view.scaleX = baseS * zoom; view.scaleY = baseS * zoom
+        view.translationX = panX; view.translationY = panY
+    }
+
+    private fun resetZoom() { zoom = 1f; panX = 0f; panY = 0f; applyZoom() }
+
+    /** Pinch step: zoom by [k] around the finger centre ([fx], [fy]); [dx], [dy] = how far the centre moved (two-finger pan). */
+    private fun zoomBy(k: Float, fx: Float, fy: Float, dx: Float, dy: Float) {
+        val nz = (zoom * k).coerceIn(1f, MAX_ZOOM)
+        val kk = nz / zoom
+        val cx = stage.width / 2f; val cy = stage.height / 2f
+        panX = (fx - cx) - kk * ((fx - cx) - panX) + dx
+        panY = (fy - cy) - kk * ((fy - cy) - panY) + dy
+        zoom = nz
+        applyZoom()
+        showHud("${Math.round(zoom * 10) / 10f}\u00D7")
+    }
 
     private fun normaliseRot() {
         rotTarget = Math.floorMod(rotTarget, 360)
@@ -573,6 +614,7 @@ class PlayerActivity : Activity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (zoom > 1.001f) { resetZoom(); showHud("1\u00D7"); return true }   // zoomed: double tap = back to fitted
                 val p = player ?: return true
                 Haptics.play("double")
                 val f = e.x / maxOf(touch.width, 1)
@@ -582,6 +624,7 @@ class PlayerActivity : Activity() {
                 return true
             }
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+                if (zoom > 1.001f) { panX -= dx; panY -= dy; applyZoom(); return true }   // zoomed: one finger drags the picture
                 val s = e1 ?: return false
                 val ady = Math.abs(e2.y - s.y)
                 val adx = Math.abs(e2.x - s.x)
@@ -608,9 +651,25 @@ class PlayerActivity : Activity() {
                 return true
             }
         })
+        val sgd = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            var lfx = 0f; var lfy = 0f
+            override fun onScaleBegin(d: ScaleGestureDetector): Boolean { if (inPip) return false; lfx = d.focusX; lfy = d.focusY; return true }
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                zoomBy(d.scaleFactor, d.focusX, d.focusY, d.focusX - lfx, d.focusY - lfy)
+                lfx = d.focusX; lfy = d.focusY
+                return true
+            }
+        })
+        var multi = false     // a second finger came down: the single-finger detector is cancelled until all fingers are up
         touch.setOnTouchListener { _, e ->
-            gd.onTouchEvent(e)
-            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) gMode = 0
+            sgd.onTouchEvent(e)
+            val a = e.actionMasked
+            if (a == MotionEvent.ACTION_POINTER_DOWN && !multi) {
+                multi = true; gMode = -1
+                val c = MotionEvent.obtain(e); c.action = MotionEvent.ACTION_CANCEL; gd.onTouchEvent(c); c.recycle()
+            }
+            if (!multi) gd.onTouchEvent(e)
+            if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) { gMode = 0; multi = false }
             true
         }
     }
@@ -650,7 +709,7 @@ class PlayerActivity : Activity() {
         mtimes.clear(); sizes.clear(); metaAsked.clear()
         val my = ++gen
         errTv.visibility = View.GONE
-        rotTarget = 0; applyVideoTransform(false)
+        zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(false)
         updateInfo(); updateNav()
         if (items.none { it.subs.isNotEmpty() }) { start(emptyMap()); return }
         spin.visibility = View.VISIBLE
@@ -724,7 +783,7 @@ class PlayerActivity : Activity() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val i = p.currentMediaItemIndex
                 errTv.visibility = View.GONE
-                if (mediaItem != null) { rotTarget = 0; applyVideoTransform(false) }   // every video starts upright
+                if (mediaItem != null) { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(false) }   // every video starts upright
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
                     val pos = savedPos(i)
                     if (pos > 0) p.seekTo(pos)
@@ -808,7 +867,8 @@ class PlayerActivity : Activity() {
         labels += "Aspect ratio: " + names[resizeIdx]; acts += { cycleAspect() }
         labels += if (fullscreen) "Exit full screen" else "Full screen"; acts += { setFullscreen(!fullscreen) }
         if (Build.VERSION.SDK_INT >= 26) { labels += "Picture-in-picture"; acts += { enterPip() } }
-        if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { rotTarget = 0; applyVideoTransform(true); subtitlePadding() } }
+        if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(true); subtitlePadding() } }
+        if (zoom > 1.001f) { labels += "Reset zoom"; acts += { resetZoom() } }
         labels += "Details"; acts += { showDetails() }
         dlg(AppPal.dlg(this).setItems(labels.toTypedArray()) { _, i -> acts[i]() })
     }
@@ -1002,6 +1062,7 @@ class PlayerActivity : Activity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
+        if (inPip) resetZoom()
         if (inPip) setControls(false, false) else { applyBars(); setControls(true) }
     }
 

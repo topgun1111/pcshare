@@ -5,6 +5,11 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-12 - Video player: pinch zoom and turn buttons
+### Added
+- Pinch to zoom the video (up to 8x); drag with one finger to move it while zoomed, double tap to go back to fitted.
+- The "turn video left" and "turn video right" buttons are back on the control row.
+
 ## 2026-11-09 - Tighter top bars
 ### Changed
 - The top bar, the path row and the sort / summary row of the file list are shorter, so more of the screen is left for your folders.
