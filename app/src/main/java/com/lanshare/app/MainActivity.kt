@@ -591,6 +591,35 @@ class MainActivity : Activity() {
         h.postDelayed(repaintR, 120); h.postDelayed(repaintR, 450); h.postDelayed(repaintR, 1000)
     }
 
+    /**
+     * Returning from another app: Android had stopped the WebView's compositor and on some phones (Vivo / Funtouch ...) it does not produce a frame again until the first touch -> white screen.
+     * invalidate() is not enough for that, so: (1) resume the WebView and its JS timers, (2) hide + show the WebView in one pass (this re-sends the "visible" state to the renderer and re-attaches its surface),
+     * (3) change the page's opacity for one animation frame (forces a new compositor frame), (4) a 1 px scroll nudge, undone at once. Done at 0 / 150 / 500 ms: the window surface may not be ready at the first call.
+     * Only after onStop (real background trip), never on plain focus changes: hiding the WebView would drop the focus of an open page input / keyboard.
+     */
+    private val wakeR = Runnable { wakeWeb() }
+    private fun wakeWeb() {
+        if (!::web.isInitialized) return
+        try {
+            web.onResume(); web.resumeTimers()
+            if (web.isAttachedToWindow && web.width > 0) {
+                val hadFocus = web.hasFocus()
+                web.visibility = View.INVISIBLE; web.visibility = View.VISIBLE
+                if (hadFocus) web.requestFocus()
+            }
+            web.evaluateJavascript("(function(){var b=document.documentElement;if(!b)return;var o=b.style.opacity;b.style.opacity='0.999';requestAnimationFrame(function(){b.style.opacity=o;});})()", null)
+            web.scrollBy(0, 1); web.scrollBy(0, -1)
+            web.postInvalidateOnAnimation()
+            nl.overlay.invalidate()
+        } catch (_: Throwable) { }
+    }
+    private fun wakeWebSoon() {
+        val h = window.decorView.handler ?: return
+        h.removeCallbacks(wakeR)
+        wakeWeb()
+        h.postDelayed(wakeR, 150); h.postDelayed(wakeR, 500)
+    }
+
     /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
     override fun onDestroy() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
@@ -600,10 +629,15 @@ class MainActivity : Activity() {
 
     override fun onPause() { super.onPause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
+    private var wasStopped = false
+    /** The app went fully to the background (minimized / another app in front): on return the WebView's compositor can stay stalled = white screen until a touch. [wakeWeb] fixes that. */
+    override fun onStop() { super.onStop(); wasStopped = true }
+
     override fun onResume() {
         super.onResume()
         ClipPush.front = this
         repaintSoon()
+        if (wasStopped) { wasStopped = false; wakeWebSoon() }   // came back from the background: wake the WebView compositor (white screen until touched)
         try { com.lanshare.app.core.IndexManager.onResume() } catch (_: Throwable) {}   // name index: look for changes other apps made
         ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
         if (::drawer.isInitialized) drawer.resync()
