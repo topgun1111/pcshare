@@ -3905,7 +3905,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     else if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0){   // any file or folder of this phone: Hide (Unhide when "Show hidden files" is on and they are all hidden)
       const ps=selPaths(),un=ps.length>0&&ps.every(hidP);
       btn('hide',un?'Unhide':'Hide',()=>{S.sel.clear();galHideMany(ps,!un);toast(un?ps.length+' item(s) visible again':ps.length+' item(s) hidden - Settings > Gallery settings brings them back',un?2000:4000)})}
-    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','To vault',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultLock(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try To vault again',4000);else if(r==='bad')toast('Nothing to lock',2500);else{toast('Locking '+ps.length+' item(s)...',2500);if(String(r).indexOf('ok:')===0){const jid=String(r).slice(3);watchJob(jid);track(jid).then(()=>load(),()=>load())}}})   // Lockdown: encrypt into the vault (this phone only)
+    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','To vault',()=>vaultToVault(selPaths()))   // Lockdown: encrypt into the vault (this phone only)
     if(!A||zipEd())btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
@@ -6269,6 +6269,14 @@ function vaultTapOpen(i){
   return true}
 function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
 function vaultEnter(path){S.vimp=null;homeHide();drawerClose();S.newest=false;S.dev='vault';S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
+let VPEND=null,VPT=0;
+/* "To vault": when the vault is locked the unlock screen opens and the same selection is locked automatically once it is open (no second try). */
+function vaultToVault(ps){
+  S.sel.clear();render();let r='bad';try{r=String(LSAndroid.vaultLock(JSON.stringify(ps)))}catch(e){}
+  if(r==='locked'){VPEND=ps;VPT=Date.now();toast('Unlock the vault; your files will be locked right after',4000);return}
+  VPEND=null;
+  if(r==='bad')toast('Nothing to lock',2500);
+  else{toast('Locking '+ps.length+' item(s)...',2500);if(r.indexOf('ok:')===0){const jid=r.slice(3);watchJob(jid);track(jid).then(()=>load(),()=>load())}}}
 function vaultOpen(){
   if(!(window.LSAndroid&&LSAndroid.vaultState)){toast('Vault needs the Android app',3000);return}
   if(LSAndroid.vaultState()==='open'){vaultEnter();return}
@@ -6319,6 +6327,8 @@ function doVaultNew(){
   opt('info','Vault settings (password, fingerprint, recovery)',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}});
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
 setInterval(()=>{if(!(window.LSAndroid&&LSAndroid.vaultState))return;let st;try{st=LSAndroid.vaultState()}catch(e){return}
+  if(VPEND&&st==='open'){const q=VPEND;VPEND=null;vaultToVault(q);return}
+  if(VPEND&&!document.hidden&&Date.now()-VPT>2500)VPEND=null;   // unlock screen closed without unlocking
   if(VWANT&&st==='open'){VWANT=0;vaultEnter()}
   else if(VWANT&&!document.hidden&&Date.now()-VWT>2500)VWANT=0;   // the unlock screen was closed without unlocking
   else if(S.dev==='vault'&&st!=='open')vaultLeave('Vault locked')},700);
@@ -6894,7 +6904,7 @@ $('#dscrim').onclick=drawerClose;
     if(Math.abs(dy)>Math.abs(dx)*1.2&&Math.abs(dy)>14){mode=0;return}
     if(mode===1&&dx>50){mode=0;drawerOpen()}else if(mode===2&&dx<-50){mode=0;drawerClose()}},{passive:true});
   document.addEventListener('touchend',()=>{mode=0},{passive:true})})();
-$('#cog').onclick=openSettings;
+$('#cog').onclick=()=>{if(S.dev==='vault'&&window.LSAndroid&&LSAndroid.openVault){try{LSAndroid.openVault();return}catch(e){}}openSettings()};   // inside the vault the gear opens Vault settings
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');if(NLSR){nlSrPush();NL.nlSrFocus()}else setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};
 $('#srch').onclick=()=>{if(document.body.classList.contains('galm')){isView('','','n');setTimeout(()=>{const i=document.querySelector('#gal .isb input');if(i)i.focus()},150);return}   // Gallery / Videos: one search for names, picture content (AI) and text in pictures (OCR)

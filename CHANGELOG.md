@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-14 - To vault works when the vault is locked
+### Changed
+- Inside the vault the settings button now opens Vault settings
+- The vault folder is now also hidden and protected in Root mode, and whole storage folders can no longer be deleted or moved there
+### Fixed
+- "To vault" on a locked vault now opens the unlock screen and locks your selected files automatically afterwards; no need to select them again
+
 ## 2026-11-14 - Vault: add from other apps, restore, safer storage
 ### Added
 - Share sheet "Add to Vault": send files, many files or text from any app straight into the vault

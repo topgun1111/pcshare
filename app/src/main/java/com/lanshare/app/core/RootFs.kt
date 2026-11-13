@@ -27,7 +27,8 @@ class RootFs : Endpoint {
         return RootShell.exec(sh(script), secs)
     }
 
-    private fun real(v: String) = vnorm(v)
+    /** Lockdown: the vault (.lsv, any case / encoding) is never reachable through the root file system either. */
+    private fun real(v: String): String { val p = vnorm(v); if (com.lanshare.app.core.vault.VaultGuard.isVaultName(p)) throw Denied("not found"); return p }
     private fun rq(v: String) = RootShell.q(real(v))
 
     private fun failOf(o: RootShell.Out): Nothing {
@@ -55,7 +56,7 @@ class RootFs : Endpoint {
     }
 
     /** Skip the pseudo file systems when everything is walked from "/". */
-    private fun prune(base: String) = if (base == "/") "\\( -path /proc -o -path /sys -o -path /dev \\) -prune -o " else ""
+    private fun prune(base: String) = "\\( -iname .lsv" + (if (base == "/") " -o -path /proc -o -path /sys -o -path /dev" else "") + " \\) -prune -o "   // .lsv (the vault) is never walked / searched
 
     /** `b=<base without trailing slash>`: "§b/" then names the folder itself (also when it is a link to a folder) and "/" for the root. */
     private fun bvar(base: String) = "b=${RootShell.q(base)}; b=§{b%/}; "
@@ -112,7 +113,7 @@ class RootFs : Endpoint {
         val out = ArrayList<Item>(ents.size)
         for (e in ents) {
             val n = e.path.substringAfterLast('/')
-            if (n.isEmpty()) continue
+            if (n.isEmpty() || !com.lanshare.app.core.vault.VaultGuard.visible(n)) continue
             val dir = e.dir || (e.link && n in linkDirs)   // a link to a folder opens like a folder (/sdcard -> /storage/emulated/0)
             out.add(Item(n, dir, if (dir) 0L else e.size, e.mtime))
         }
@@ -120,7 +121,7 @@ class RootFs : Endpoint {
     }
 
     override fun names(v: String): MutableSet<String> = try {
-        run("d=${rq(v)}; ls -1A \"§d/\" 2>/dev/null; exit 0").out.split('\n').filter { it.isNotEmpty() }.toMutableSet()
+        run("d=${rq(v)}; ls -1A \"§d/\" 2>/dev/null; exit 0").out.split('\n').filter { it.isNotEmpty() && com.lanshare.app.core.vault.VaultGuard.visible(it) }.toMutableSet()
     } catch (_: IOException) { mutableSetOf() }
 
     /** Recursive name search below folder v (case-insensitive substring). Capped by count and time. */
@@ -134,7 +135,7 @@ class RootFs : Endpoint {
             val e = parseSt(l)
             if (e != null) {
                 val vp = vnorm(e.path)
-                if (vp != base) {
+                if (vp != base && !com.lanshare.app.core.vault.VaultGuard.isVaultName(vp)) {
                     val d = e.dir
                     out.add(Item(vp.substringAfterLast('/'), d, if (d) 0L else e.size, e.mtime, null, vp))
                 }
@@ -336,9 +337,12 @@ class RootFs : Endpoint {
         "/data/user_de", "/data/media", "/data/misc", "/data/system", "/proc", "/sys", "/dev", "/storage", "/sdcard", "/mnt", "/cache", "/metadata", "/config",
         "/acct", "/etc", "/bin", "/sbin", "/init", "/lib", "/linkerconfig", "/storage/emulated", "/storage/emulated/0")
 
+    /** Whole storage volumes (they hold the vault): never deleted or moved as a unit. */
+    private val volRoot = Regex("/storage/[^/]+|/mnt/media_rw/[^/]+|/data/media/\\d+|/storage/emulated/\\d+")
+
     override fun remove(v: String, progress: ((String) -> Unit)?) {
         val p = real(v)
-        if (p in protectedPaths) throw Denied("Refusing to delete a system folder as a whole - open it and delete what is inside")
+        if (p in protectedPaths || volRoot.matches(p)) throw Denied("Refusing to delete a system folder as a whole - open it and delete what is inside")
         val o = run("p=${RootShell.q(p)}; [ -e \"§p\" ] || [ -L \"§p\" ] || exit 2; rm -rf \"§p\" 2>&1; if [ -e \"§p\" ] || [ -L \"§p\" ]; then exit 5; fi; exit 0", 900)
         when (o.code) {
             0 -> progress?.invoke(vbase(p))
@@ -349,6 +353,7 @@ class RootFs : Endpoint {
     }
 
     override fun rename(v: String, newName: String) {
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultName(newName)) throw BadReq("invalid name")
         if (newName.isEmpty() || '/' in newName || '\\' in newName || newName == "." || newName == "..") throw BadReq("invalid name")
         val p = real(v)
         if (p == "/") throw Denied("cannot rename the root")
@@ -366,7 +371,7 @@ class RootFs : Endpoint {
     override fun move(v: String, toV: String) {
         val s = real(v)
         val d = real(toV)
-        if (s == "/") throw Denied("cannot move the root")
+        if (s == "/" || volRoot.matches(s)) throw Denied("cannot move the root")
         val o = run("s=${RootShell.q(s)}; d=${RootShell.q(d)}; [ -e \"§s\" ] || [ -L \"§s\" ] || exit 2; [ -d \"§d\" ] && d=\"§d/§(basename \"§s\")\"; " +
             "[ \"§s\" = \"§d\" ] && exit 0; case \"§d/\" in \"§s\"/*) exit 8;; esac; if [ -e \"§d\" ] || [ -L \"§d\" ]; then exit 9; fi; mv \"§s\" \"§d\"", 900)
         when (o.code) {
