@@ -54,7 +54,6 @@ class VaultActivity : FragmentActivity() {
     private val throttle by lazy { VaultThrottle(prefs) }
     private var forgotMsg: TextView? = null
     private var pendingKey: ByteArray? = null          // .lsrk bytes waiting for the save dialog
-    private val screenOff = object : BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { VaultSession.onScreenOff() } }
     private val lockListener: () -> Unit = { ui.post { if (!isFinishing) { cur = null; render() } } }
 
     private fun dp(v: Int) = Math.round(v * d)
@@ -67,13 +66,11 @@ class VaultActivity : FragmentActivity() {
         setContentView(root)
         VaultSession.autoLockSec = prefs.autoLockSec
         VaultSession.onLock(lockListener)
-        registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))   // Lockdown: lock when the screen turns off
         render()
     }
 
-    override fun onStart() { super.onStart(); VaultSession.onForeground(); render() }
-    override fun onStop() { super.onStop(); VaultSession.onBackground() }
-    override fun onDestroy() { super.onDestroy(); try { unregisterReceiver(screenOff) } catch (_: Exception) {}; pendingKey?.fill(0); pendingKey = null; exec.shutdown() }
+    override fun onStart() { super.onStart(); render() }   // auto-lock timing + screen-off are app-wide now (VaultAppHooks)
+    override fun onDestroy() { super.onDestroy(); pendingKey?.fill(0); pendingKey = null; exec.shutdown() }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {

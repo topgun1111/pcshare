@@ -52,6 +52,7 @@ object ClipSync {
     }
 
     private fun onChange(ctx: Context, m: ClipboardManager) {
+        if (com.lanshare.app.core.vault.VaultSession.unlocked) return   // Lockdown: nothing copied while the vault is open leaves the phone
         val c = try { m.primaryClip } catch (_: Throwable) { null } ?: return
         if (c.itemCount == 0) return
         val sensitive = try {

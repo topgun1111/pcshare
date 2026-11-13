@@ -5,6 +5,13 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-13 - Vault locks itself everywhere
+### Changed
+- The vault now locks when the screen turns off or when you leave LANShare, on every screen (not only inside the Vault).
+- Files you lock disappear from Gallery at once.
+- Text copied while the vault is open is never sent to your PC by clipboard sync.
+- Temporary decrypted files are wiped on lock and when the app starts.
+
 ## 2026-11-13 - Vault on the main menu
 ### Added
 - New Vault tile on the main menu: create a password, unlock, add files, make folders, rename, export or delete. Fingerprint comes later.

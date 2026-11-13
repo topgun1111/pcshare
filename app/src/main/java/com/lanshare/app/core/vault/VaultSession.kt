@@ -11,7 +11,9 @@ object VaultSession {
 
     fun onLock(l: () -> Unit) { listeners.add(l) }
     val unlocked get() = store?.isOpen == true
-    @Synchronized fun start(s: VaultStore) { store?.lock(); store = s; bgAt = 0 }
+    /** Set once by the app layer: runs for every newly unlocked store (e.g. wires MediaStore purge). */
+    @Volatile var onStarted: ((VaultStore) -> Unit)? = null
+    @Synchronized fun start(s: VaultStore) { store?.lock(); store = s; bgAt = 0; try { onStarted?.invoke(s) } catch (_: Exception) {} }
     @Synchronized fun lock() { val s = store; store = null; try { s?.lock() } finally { listeners.forEach { try { it() } catch (_: Exception) {} } } }
     fun onBackground() { bgAt = clock(); if (autoLockSec == 0) lock() }
     /** Call from onStart/onResume: locks if the background time exceeded the delay. */

@@ -24,6 +24,7 @@ class App : Application() {
         com.lanshare.app.core.FileInfo.ctx = applicationContext
         Haptics.init(this)
         try { ClipSync.install(this) } catch (_: Throwable) {}
+        try { VaultAppHooks.install(this) } catch (_: Throwable) {}   // Lockdown: app-wide auto-lock, cache sweep, MediaStore purge
         // a PDF page-cache build that was running when the app process died continues now (PdfPageCache keeps a small pending list)
         Thread({ try { Thread.sleep(4000); com.lanshare.app.core.PdfPageCache.resumePending(applicationContext) } catch (_: Throwable) { } }, "pdf-resume").also { it.isDaemon = true }.start()
     }
