@@ -4,7 +4,7 @@
 
 > **WARNING (owner, 2026-11-05) - TOKEN ECONOMY: always watch token use, never waste tokens (short replies, read only what is needed, no recaps). Obey this ALWAYS, unless there is a serious danger of a code error.**
 
-> **SLIM HANDOVER RULE (owner, 2026-11-13) - this file is small on purpose.** Read only sections 1-4 below. Open a chapter file from `docs/handover/` ONLY when the task touches that area, and then with grep / `sed -n` ranges, never whole. Do not read `LUMEN.md` unless the task is a Lumen part. Never open `docs/handover-full-2026-11-13.tar.xz` (backup of the old full file, git history also has it). Chapters 16, 17, 19b, 20 and 22 start with a state banner (Universal Search, Google Drive, PDF image viewer, Recycle bin, Lumen): read it before touching those areas.
+> **SLIM HANDOVER RULE (owner, 2026-11-13) - this file is small on purpose.** Read only sections 1-4 below. Open a chapter file from `docs/handover/` ONLY when the task touches that area, and then with grep / `sed -n` ranges, never whole. Do not read `docs/handover/LUMEN.md` (the Lumen spec, moved there from the project root 2026-11-13) unless the task is a Lumen part; wherever any file says `LUMEN.md`, that is its path. Never open `docs/handover-full-2026-11-13.tar.xz` (backup of the old full file, git history also has it). Chapters 16, 17, 19b, 20 and 22 start with a state banner (Universal Search, Google Drive, PDF image viewer, Recycle bin, Lumen): read it before touching those areas.
 
 > **READ FIRST - CHANGE LOG RULE (owner, 2026-10-26) - do this in EVERY session that changes the app, before you zip**
 > - The app's **update dialog shows a change log BEFORE the download button** (what was added / removed / changed, for every version the user skipped). It comes from **`CHANGELOG.md`** in the repo root: CI (`build-apk.yml`, step *Release notes*) publishes the **TOP `## ` section** of that file as the GitHub release body, and `UpdateCheck.kt` (`changeView` / `notesText`) renders it (green **Added**, red **Removed**, accent for Changed / Fixed).
@@ -45,6 +45,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 | `ch20-recycle-bin.md` | 20. Recycle bin folder view (multipart plan, 3 parts) | 10 |
 | `ch21-remote-shell-transport.md` | 21. Remote shell transport + Upload & run (merged 2026-11-05 from chapter 21, state of 2026-10-31) | 13 |
 | `ch22-lumen-completion-pass.md` | Lumen completion pass - 2026-11-08 | 40 |
+| `LUMEN.md` | Lumen design system spec (open only for Lumen parts) | 152 |
 
 ---
 

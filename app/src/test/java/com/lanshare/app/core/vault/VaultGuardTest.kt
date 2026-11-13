@@ -12,6 +12,12 @@ class VaultGuardTest {
         for (p in listOf("/s/lsv", "/s/a.lsv", "/s/.lsvx", "/s/x/.lsv2/y", "", "/"))
             assertFalse(p, VaultGuard.isVaultName(p))
     }
+    @Test fun fuzzVariants() {
+        for (p in listOf("/s/.LsV/h0", "/s/a/./b/../.lsv", "\\s\\.LSV \\h0", "/s/.LSV./d/ab/x", "/s/.lsv/", "/.lsv"))
+            assertTrue(p, VaultGuard.isVaultName(p))
+        for (p in listOf("/s/lsv.lsv", "/s/.lsv-old/x", "/s/my.lsvx/y", "/s/Lsv"))
+            assertFalse(p, VaultGuard.isVaultName(p))
+    }
     @Test fun symlinkAndCache() {
         val t = File.createTempFile("vg", "").also { it.delete(); it.mkdirs() }
         File(t, ".lsv").mkdirs()

@@ -136,6 +136,7 @@ class PeService : Service() {
         return b.setContentTitle(if (transferring) "Phone Explorer - transferring" else "Phone Explorer is sharing storage")
             .setContentText(text).setSmallIcon(R.drawable.ic_notification).setColor(NoteTint.lite(this)).setContentIntent(open)
             .setOngoing(true).setOnlyAlertOnce(true)
+            .setVisibility(if (com.lanshare.app.core.vault.VaultSession.unlocked) Notification.VISIBILITY_SECRET else Notification.VISIBILITY_PRIVATE)   // Lockdown row 12/13: file names never on the lock screen while the vault is open
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
     }
 
