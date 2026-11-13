@@ -10,7 +10,7 @@ import java.util.UUID
  *  The job text is neutral (no names / paths anywhere: label, cur, problems, error) so progress cards and notifications leak nothing. */
 object VaultLockJob {
     /** "ok:<jobId>" | "locked" (vault locked or missing: the UI opens the vault screen) | "bad" (nothing lockable). */
-    fun start(paths: List<String>): String {
+    fun start(paths: List<String>, removeOriginal: Boolean = true): String {
         val st = VaultSession.store
         if (st == null || !st.isOpen) return "locked"
         val files = ArrayList<java.io.File>()
@@ -25,11 +25,11 @@ object VaultLockJob {
         job.bytes = false
         job.total = files.size.toLong()
         Jobs.all[jid] = job
-        Thread({ work(job, files) }, "vlock-$jid").also { it.isDaemon = true }.start()
+        Thread({ work(job, files, removeOriginal) }, "vlock-$jid").also { it.isDaemon = true }.start()
         return "ok:$jid"
     }
 
-    private fun work(job: Job, files: List<java.io.File>) {
+    private fun work(job: Job, files: List<java.io.File>, removeOriginal: Boolean) {
         var failed = 0
         try {
             for ((i, f) in files.withIndex()) {
@@ -37,11 +37,11 @@ object VaultLockJob {
                 val st = VaultSession.store
                 if (st == null || !st.isOpen) { job.error = vt("Vault locked"); job.state = "error"; return }   // auto-lock mid-job: originals not yet handled stay untouched
                 try {
-                    if (f.isDirectory) st.lockFolder(f, null, true, { job.cancel }) else st.lockFile(f, null, true)
+                    if (f.isDirectory) st.lockFolder(f, null, removeOriginal, { job.cancel }) else st.lockFile(f, null, removeOriginal)
                 } catch (_: Exception) { failed++; job.addProblem(vt("An item could not be locked")) }
                 job.done = (i + 1).toLong(); job.failed = failed; job.files = i + 1 - failed
             }
-            if (failed == 0) job.state = "done" else { job.error = "$failed item(s) could not be locked; originals kept"; job.state = "error" }
+            if (failed == 0) job.state = "done" else { job.error = "$failed item(s) could not be locked" + (if (removeOriginal) "; originals kept" else ""); job.state = "error" }
         } catch (_: Throwable) {
             if (job.cancel) job.state = "cancel" else { job.error = vt("Locking stopped"); job.state = "error" }
         } finally {

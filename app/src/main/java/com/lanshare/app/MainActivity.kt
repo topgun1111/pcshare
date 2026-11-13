@@ -296,6 +296,13 @@ class MainActivity : Activity() {
             if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
             return r
         }
+        /** File manager "Copy to vault": like [vaultLock] but the originals stay where they are. */
+        @JavascriptInterface fun vaultCopy(json: String): String {
+            val ps = try { val a = org.json.JSONArray(json); (0 until a.length()).map { a.getString(it) } } catch (_: Exception) { return "bad" }
+            val r = com.lanshare.app.core.VaultLockJob.start(ps, false)
+            if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
+            return r
+        }
         /** Main menu Vault tile: opens the Vault screen (create / unlock / browse). */
         @JavascriptInterface fun openVault() {
             runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }

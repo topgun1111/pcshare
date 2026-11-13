@@ -173,6 +173,8 @@ class VaultActivity : FragmentActivity() {
         val act = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(8), dp(12), dp(8)) }
         act.addView(btn(vt("Add files"), true) { pickFiles() })
         act.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
+        act.addView(btn(vt("Add folder"), true) { pickFolder() })
+        act.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
         act.addView(btn(vt("New folder"), false) { ask(vt("New folder"), "") { n -> bg { st.mkdir(cur, n) } } })
         root.addView(act)
         // Gallery: photos and videos are square thumbnails (decoded in memory, VaultThumbs), folders / other files are full-width rows.
@@ -314,6 +316,35 @@ class VaultActivity : FragmentActivity() {
         startActivityForResult(i, REQ_ADD)
     }
 
+    private fun pickFolder() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_ADDDIR)
+    }
+
+    /** Recursively encrypts a SAF folder tree into the vault under [parent], keeping the structure. Merges by name; same name + size is skipped (resumable). Returns the number of failed files. */
+    private fun importTree(st: VaultStore, treeUri: android.net.Uri, docId: String, parent: String?, name: String): Int {
+        var failed = 0
+        val dir = synchronized(st) { st.list(parent).firstOrNull { it.dir && it.name == name } ?: st.mkdir(parent, name) }
+        val kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+        class K(val id: String, val name: String, val mime: String, val size: Long, val mtime: Long)
+        val list = ArrayList<K>()
+        contentResolver.query(kids, arrayOf(
+            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE,
+            android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
+            while (c.moveToNext()) list.add(K(c.getString(0), c.getString(1) ?: "file", c.getString(2) ?: "", if (c.isNull(3)) -1 else c.getLong(3), if (c.isNull(4)) 0 else c.getLong(4)))
+        }
+        for (k in list.sortedBy { it.name }) {
+            if (!VaultSession.unlocked) throw java.io.IOException(vt("Vault locked"))
+            if (k.mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) { failed += importTree(st, treeUri, k.id, dir.id, k.name); continue }
+            try {
+                if (k.size >= 0 && synchronized(st) { st.list(dir.id).any { !it.dir && it.name == k.name && it.size == k.size } }) continue
+                val u = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, k.id)
+                contentResolver.openInputStream(u)!!.use { st.addStream(it, dir.id, k.name, if (k.mtime > 0) k.mtime else System.currentTimeMillis(), k.mime) }
+            } catch (e: Exception) { failed++ }
+        }
+        return failed
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
@@ -325,6 +356,23 @@ class VaultActivity : FragmentActivity() {
         if (res != RESULT_OK || data == null) return
         if (req == REQ_KEYFILE) { keyFilePicked(data.data); return }
         if (req == REQ_SAVEKEY) { saveKeyTo(data.data); return }
+        if (req == REQ_ADDDIR) {
+            val tree = data.data ?: return
+            val st = VaultSession.store ?: return
+            val parent = cur
+            toast(vt("Importing folder..."))
+            exec.execute {
+                var failed = 0; var err: String? = null
+                try {
+                    val rootId = android.provider.DocumentsContract.getTreeDocumentId(tree)
+                    var nm = "Folder"
+                    contentResolver.query(android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, rootId), arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) nm = c.getString(0) ?: nm }
+                    failed = importTree(st, tree, rootId, parent, nm)
+                } catch (e: Exception) { err = e.message ?: e.javaClass.simpleName }
+                ui.post { toast(err ?: if (failed == 0) vt("Folder imported") else vf("%s file(s) could not be imported", failed)); render() }
+            }
+            return
+        }
         if (req != REQ_ADD) return
         val uris = ArrayList<android.net.Uri>()
         data.clipData?.let { c -> for (k in 0 until c.itemCount) uris.add(c.getItemAt(k).uri) } ?: data.data?.let { uris.add(it) }
@@ -628,6 +676,7 @@ class VaultActivity : FragmentActivity() {
 
     companion object {
         private const val REQ_ADD = 71
+        private const val REQ_ADDDIR = 74
         private const val REQ_KEYFILE = 72
         private const val REQ_SAVEKEY = 73
         fun intent(c: Context): Intent = Intent(c, VaultActivity::class.java)
