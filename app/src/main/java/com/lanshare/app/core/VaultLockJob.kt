@@ -12,7 +12,7 @@ object VaultLockJob {
         if (st == null || !st.isOpen) return "locked"
         val files = ArrayList<java.io.File>()
         for (p in paths) {
-            val f = try { LocalFs.real(p) } catch (_: Exception) { continue }   // vault paths / bad paths throw: skipped
+            val f = try { Core.local.real(p) } catch (_: Exception) { continue }   // vault paths / bad paths throw: skipped
             if (f.exists()) files.add(f)
         }
         if (files.isEmpty()) return "bad"
