@@ -342,7 +342,7 @@ class PrintLogActivity : Activity() {
     private fun shareText(t: String, fileName: String) {
         val f = File(File(cacheDir, "open").apply { mkdirs() }, fileName)
         f.writeText(t + "\n", Charsets.UTF_8)
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+        val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f)
         ui.post {
             try {
                 startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)

@@ -1430,7 +1430,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                 f.writeText(sb.toString())
                 ui.post {
                     try {
-                        val uri = FileProvider.getUriForFile(act, act.packageName + ".fileprovider", f)
+                        val uri = com.lanshare.app.core.vault.VaultIntents.uri(act, act.packageName + ".fileprovider", f)
                         val i = Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         act.startActivity(Intent.createChooser(i, "Export CSV"))
                     } catch (e: Exception) { Lm.snack(act, "Cannot share the CSV: " + (e.message ?: ""), Toast.LENGTH_LONG) }

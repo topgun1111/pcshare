@@ -18,7 +18,7 @@ object Albums {
 
     private fun walk(d: File, depth: Int, budget: IntArray, exts: Set<String>, add: (String, Long, Long) -> Unit) {
         if (depth > 6 || budget[0] <= 0) return
-        val fs = d.listFiles() ?: return
+        val fs = d.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray() ?: return
         budget[0]--
         for (f in fs) {
             if (f.name.startsWith(".")) continue

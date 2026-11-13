@@ -31,9 +31,14 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     /** Tells the name index about a change - only this phone's own storage is indexed, a USB drive is not. */
     private fun ix(f: File) { if (id == "local") IndexManager.changed(f) }
 
+    /** Lockdown: directory listings never contain the vault folder (`.lsv`). */
+    private fun lsf(d: File): Array<File>? = d.listFiles()?.let { a -> if (a.all { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }) a else a.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }.toTypedArray() }
+    private fun lsn(d: File): Array<String>? = d.list()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it) }?.toTypedArray()
+
     fun real(v: String): File {
         val p = File(root, vnorm(if (id == "local") Bin.physical(v) else v).trimStart('/')).canonicalFile   // Bin.physical: "/.LANShare Bin/<shown name>/..." -> "/.LANShare Bin/<id>/<name>/..." (folder view of the Recycle bin)
         if (p != root && !p.path.startsWith(root.path.trimEnd('/') + "/")) throw Denied("outside the shared folder")
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultPath(p.path)) throw Denied("not found")   // Lockdown: vault never reachable through LocalFs
         return p
     }
 
@@ -41,6 +46,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     fun lreal(v: String): File {
         val n = vnorm(if (id == "local") Bin.physical(v) else v)
         if (n == "/") return real(v)
+        if (!com.lanshare.app.core.vault.VaultGuard.visible(vbase(n))) throw Denied("not found")
         return File(real(vdir(n)), vbase(n))
     }
 
@@ -64,7 +70,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         if (id == "local" && Bin.isRoot(v)) return Bin.rootItems(counts)   // the bin folder shows the deleted items by their own names, not the id folders
         val d = real(v)
         if (!d.exists()) throw NotFound("No such file or directory")
-        val files = d.listFiles() ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))
+        val files = lsf(d) ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))
         val n = files.size
         val slots = arrayOfNulls<Item>(n)
         val modern = Build.VERSION.SDK_INT >= 26
@@ -91,7 +97,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     /** Item counts of the sub-folders of v, read in parallel (the list itself is shown first, the counts follow). */
     fun counts(v: String): Map<String, Int> {
         val d = real(v)
-        val dirs = d.listFiles()?.filter { it.isDirectory } ?: return emptyMap()
+        val dirs = lsf(d)?.filter { it.isDirectory } ?: return emptyMap()
         val res = java.util.concurrent.ConcurrentHashMap<String, Int>()
         val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
         try {
@@ -113,7 +119,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         stack.addLast(real(v))
         while (stack.isNotEmpty()) {
             val dir = stack.removeLast()
-            for (f in dir.listFiles() ?: continue) {
+            for (f in lsf(dir) ?: continue) {
                 if (f.isDirectory) { if (!isLink(f)) stack.addLast(f) } else { files++; bytes += f.length() }
             }
             if (System.currentTimeMillis() > end) return Triple(files, bytes, true)
@@ -137,7 +143,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         } else stack.addLast(real(v) to vnorm(v))
         while (stack.isNotEmpty()) {
             val (dir, vdir) = stack.removeLast()
-            val kids = dir.listFiles() ?: emptyArray()
+            val kids = lsf(dir) ?: emptyArray()
             val dirs = kids.filter { it.isDirectory }
             for (f in dirs + kids.filter { !it.isDirectory }) {   // like os.walk: folders first, then files
                 if (!f.name.lowercase().contains(ql)) continue
@@ -160,7 +166,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         stack.addLast(real(v) to vnorm(v))
         while (stack.isNotEmpty()) {
             val (dir, vdir) = stack.removeLast()
-            val kids = dir.listFiles() ?: emptyArray()
+            val kids = lsf(dir) ?: emptyArray()
             for (f in kids) {
                 if (System.currentTimeMillis() > end) return SearchResult(out, true)
                 if (f.isDirectory || !com.lanshare.app.core.office.OfficeExport.containsOrFalse(f, q)) continue
@@ -182,7 +188,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     override fun names(v: String): MutableSet<String> =
         try {
             val d = real(v)
-            if (!d.exists()) mutableSetOf() else (d.list() ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))).toMutableSet()   // names only: no stat, no counts
+            if (!d.exists()) mutableSetOf() else (lsn(d) ?: throw (if (d.isDirectory) Denied("Permission denied") else IOException("Not a directory"))).toMutableSet()   // names only: no stat, no counts
         } catch (_: IOException) { mutableSetOf() }
 
     override fun walk(v: String): List<WalkItem> {
@@ -193,7 +199,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         stack.addLast(base to "")
         while (stack.isNotEmpty()) {   // a folder's entries are added before its children: mkdir always precedes its files
             val (dir, rel) = stack.removeLast()
-            val kids = dir.listFiles()
+            val kids = lsf(dir)
             if (kids == null) { res.add(WalkItem(if (rel.isEmpty()) dir.name else rel, false, 0, true)); continue }   // unreadable folder
             for (k in kids) {
                 val r = if (rel.isEmpty()) k.name else rel + "/" + k.name
@@ -214,7 +220,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         var seen = 0
         while (stack.isNotEmpty()) {
             val dir = stack.removeLast()
-            val kids = dir.listFiles() ?: continue
+            val kids = lsf(dir) ?: continue
             for (k in kids) {
                 if (isLink(k)) continue
                 if (k.isDirectory) { tot[1]++; stack.addLast(k) } else { tot[0]++; tot[2] += fsize(k) }

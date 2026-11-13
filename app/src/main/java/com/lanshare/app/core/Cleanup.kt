@@ -142,7 +142,7 @@ object Cleanup {
         /** walks one folder; the result is unused now that empty folders are no longer reported */
         fun walk(d: File, rel: String, inShotP: Boolean, inChatP: Boolean, inJunkP: Boolean): Boolean {
             if (budget[0]-- <= 0 || cancel) return false
-            val fs = d.listFiles() ?: return false
+            val fs = d.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray() ?: return false
             val inDl = rel.lowercase(Locale.ROOT).let { it == "/download" || it.startsWith("/download/") || it == "/downloads" || it.startsWith("/downloads/") }
             for (f in fs) {
                 if (cancel) return false

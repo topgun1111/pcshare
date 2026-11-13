@@ -113,7 +113,7 @@ object StorageActions {
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
-        val uri = try { FileProvider.getUriForFile(a, a.packageName + ".fileprovider", f) }
+        val uri = try { com.lanshare.app.core.vault.VaultIntents.uri(a, a.packageName + ".fileprovider", f) }
                   catch (_: IllegalArgumentException) { toast(a, "Cannot open this file from here"); return }
         fun go(m: String) {
             val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -130,7 +130,7 @@ object StorageActions {
     fun share(a: Activity, f: File) {
         if (!f.isFile) { toast(a, "Only files can be shared"); return }
         try {
-            val uri = FileProvider.getUriForFile(a, a.packageName + ".fileprovider", f)
+            val uri = com.lanshare.app.core.vault.VaultIntents.uri(a, a.packageName + ".fileprovider", f)
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "*/*"
             val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             send.clipData = ClipData.newRawUri("", uri)

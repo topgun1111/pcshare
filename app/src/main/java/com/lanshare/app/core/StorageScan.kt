@@ -546,7 +546,7 @@ object StorageScan {
             if (s.cancel) return
             val now = System.currentTimeMillis()
             if (now - s.tick > 150) { s.tick = now; s.cur = dir.path; mirror(s) }
-            val entries = dir.listFiles()
+            val entries = dir.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray()   // Lockdown: vault is never scanned
             if (entries == null) {
                 node.denied = true
                 if (s.denied.incrementAndGet() <= DENIED_SAMPLE) s.deniedSample.add(node.path())

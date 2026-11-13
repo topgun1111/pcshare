@@ -175,6 +175,9 @@ class FtpServer(
 
         private fun toFile(virtual: String): File = File(root, virtual.trimStart('/'))
 
+        /** Lockdown: lexical (any case, unicode, percent-escapes) AND canonical (symlinks) check, re-done after toFile(). */
+        private fun vaultPath(v: String): Boolean = com.lanshare.app.core.vault.VaultGuard.isVaultName(v) || com.lanshare.app.core.vault.VaultGuard.isVaultPath(toFile(v).path)
+
         // ---- access policy (whitelist + read-only) -------------------------------------------
 
         private fun allowed(): List<String> =
@@ -182,6 +185,7 @@ class FtpServer(
 
         /** Browsing: the path is inside an allowed folder, or is a parent leading to one. */
         private fun canRead(v: String): Boolean {
+            if (vaultPath(v)) return false   // Lockdown: .lsv is never readable over FTP
             val al = allowed()
             if (al.isEmpty()) return true
             val prefix = if (v == "/") "/" else "$v/"
@@ -190,7 +194,7 @@ class FtpServer(
 
         /** Writing: only inside an allowed folder (parents are browse-only), never in read-only mode. */
         private fun canWrite(v: String): Boolean {
-            if (readOnly()) return false
+            if (readOnly() || vaultPath(v)) return false   // Lockdown: never writable / deletable / renamable
             val al = allowed()
             return al.isEmpty() || al.any { v == it || v.startsWith("$it/") }
         }
@@ -240,7 +244,9 @@ class FtpServer(
             return try {
                 if (p != null) {
                     p.soTimeout = 20000
-                    val s = p.accept()
+                    var s = p.accept()
+                    var tries = 0
+                    while (s.inetAddress != ctrl.inetAddress && tries++ < 8) { try { s.close() } catch (_: Exception) {}; s = p.accept() }   // strangers are dropped, the real client still gets the slot
                     closePasv()
                     if (s.inetAddress != ctrl.inetAddress) {
                         s.close()
@@ -472,11 +478,15 @@ class FtpServer(
                     return true
                 }
                 "PASS" -> {
-                    if (userOk && arg == passwordProvider()) {
+                    val ip = ctrl.inetAddress?.hostAddress ?: "?"
+                    if (FtpLockout.remaining(ip) > 0) { reply("421 Too many failed logins, try again later"); return false }
+                    if (userOk && java.security.MessageDigest.isEqual(arg.toByteArray(Charsets.UTF_8), passwordProvider().toByteArray(Charsets.UTF_8))) {
+                        FtpLockout.ok(ip)
                         loggedIn = true
                         reply("230 Logged in")
                     } else {
                         failedLogins++
+                        FtpLockout.fail(ip)   // per source IP: survives reconnects and parallel connections
                         Thread.sleep(700)
                         reply("530 Login incorrect")
                         if (failedLogins >= 5) return false
@@ -515,7 +525,7 @@ class FtpServer(
                 "PASV" -> {
                     closePasv(); activeAddr = null
                     try {
-                        val s = ServerSocket(0)
+                        val s = ServerSocket(0, 4, ctrl.localAddress)   // bound to the control socket's own address only
                         pasv = s
                         val ip = ctrl.localAddress.address
                         val a = if (ip.size == 4) ip else byteArrayOf(127, 0, 0, 1)
@@ -528,7 +538,7 @@ class FtpServer(
                 "EPSV" -> {
                     closePasv(); activeAddr = null
                     try {
-                        val s = ServerSocket(0)
+                        val s = ServerSocket(0, 4, ctrl.localAddress)
                         pasv = s
                         reply("229 Entering Extended Passive Mode (|||${s.localPort}|)")
                     } catch (e: IOException) {
@@ -697,4 +707,17 @@ class FtpServer(
             return true
         }
     }
+}
+
+
+/** Lockdown addendum row 4: failed-login lockout per source IP (5 fails = 5 min, doubling up to 1 h); shared by every FTP connection. */
+object FtpLockout {
+    private class St(var fails: Int = 0, var until: Long = 0, var level: Int = 0)
+    private val m = java.util.concurrent.ConcurrentHashMap<String, St>()
+    fun remaining(ip: String): Long = m[ip]?.let { maxOf(0L, it.until - System.currentTimeMillis()) } ?: 0L
+    @Synchronized fun fail(ip: String) {
+        val s = m.getOrPut(ip) { St() }
+        if (++s.fails >= 5) { s.fails = 0; s.until = System.currentTimeMillis() + minOf(3_600_000L, 300_000L shl s.level.coerceAtMost(4)); s.level++ }
+    }
+    fun ok(ip: String) { m.remove(ip) }
 }

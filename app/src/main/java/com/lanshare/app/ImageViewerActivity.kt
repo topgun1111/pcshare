@@ -640,7 +640,7 @@ class ImageViewerActivity : Activity() {
                 val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }   // the FileProvider path the app already exposes
                 val dst = File(dir, it.name.replace('/', '_').ifEmpty { "image.jpg" })
                 src.copyTo(dst, true)
-                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", dst)
+                val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", dst)
                 val send = Intent(Intent.ACTION_SEND).setType(mimeFor(dst.name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 runOnUiThread { startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
             } catch (e: Exception) {

@@ -1150,7 +1150,7 @@ class PdfViewerActivity : Activity() {
                 val dir = File(cacheDir, "open").apply { deleteRecursively(); mkdirs() }       // the FileProvider path the app already exposes
                 val f = File(dir, "${baseName()} (p. ${rangeText(pages)}).pdf")
                 try { f.outputStream().buffered(1 shl 16).use { writeJpegPdf(pages, it) { isDestroyed } } } catch (e: Throwable) { f.delete(); throw e }
-                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+                val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f)
                 val intent = Intent.createChooser(
                     Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"
                 ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1279,7 +1279,7 @@ class PdfViewerActivity : Activity() {
                 if (!n.lowercase().endsWith(".pdf")) n += ".pdf"
                 val dst = File(dir, n)
                 src.copyTo(dst, true)
-                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", dst)
+                val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", dst)
                 val intent = make(uri)
                 runOnUiThread {
                     try { startActivity(intent) } catch (e: Exception) { Lm.snack(this, "No app can open this", Toast.LENGTH_LONG) }

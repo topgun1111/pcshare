@@ -13,9 +13,9 @@ object PePrefs {
     private fun sp(c: Context) = c.getSharedPreferences("lanshare_pe", Context.MODE_PRIVATE)
 
     fun pin(c: Context): String =
-        sp(c).getString("pin", null) ?: Random.nextInt(100000, 1000000).toString().also { sp(c).edit().putString("pin", it).apply() }
+        sp(c).getString("pin", null) ?: (java.security.SecureRandom().nextInt(900000) + 100000).toString().also { sp(c).edit().putString("pin", it).apply() }
 
-    fun newPin(c: Context): String = Random.nextInt(100000, 1000000).toString().also { sp(c).edit().putString("pin", it).apply() }
+    fun newPin(c: Context): String = (java.security.SecureRandom().nextInt(900000) + 100000).toString().also { sp(c).edit().putString("pin", it).apply() }
 
     fun port(c: Context): Int = sp(c).getInt("port", DEFAULT_PORT)
     fun setPort(c: Context, p: Int) { sp(c).edit().putInt("port", p.coerceIn(1024, 65535)).apply() }

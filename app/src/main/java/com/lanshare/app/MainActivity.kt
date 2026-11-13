@@ -436,6 +436,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        com.lanshare.app.core.vault.VaultGuard.cacheRoot = cacheDir.path
         Haptics.init(this)
         mark("onCreate")   // PERF-DEBUG
         // Start the local server right away on a background thread (it used to wait for the foreground service to come up). Core.start is idempotent: the service's later call returns at once.
@@ -677,6 +678,7 @@ class MainActivity : Activity() {
             runShowPath()
             return
         }
+        if (i != null && com.lanshare.app.core.vault.VaultIntents.refuse(i)) { i.action = null; i.data = null; return }   // Lockdown: external intents never reach the vault
         if (i != null && i.action == Intent.ACTION_VIEW && i.data != null) { handleView(i); return }   // "Open with" on an archive
         if (i == null || (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE)) return
         @Suppress("DEPRECATION")
@@ -1156,7 +1158,7 @@ class MainActivity : Activity() {
 
     private fun shareFileList(files: List<File>) {
         try {
-            val uris = ArrayList<Uri>(files.map { FileProvider.getUriForFile(this, "$packageName.fileprovider", it) })
+            val uris = ArrayList<Uri>(files.map { com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", it) })
             val mimes = files.map { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it.extension.lowercase()) ?: "*/*" }.distinct()
             val mime = when {
                 mimes.size == 1 -> mimes[0]
@@ -1182,7 +1184,7 @@ class MainActivity : Activity() {
         val ext = f.extension.lowercase()
         val mime = if (ext in TEXT_EXT || f.name.startsWith(".")) "text/plain"
                    else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
-        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+        val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f)
         fun go(m: String) {
             val v = Intent(Intent.ACTION_VIEW).setDataAndType(uri, m).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(if (pick) Intent.createChooser(v, "Open with").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) else v)

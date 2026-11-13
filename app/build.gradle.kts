@@ -81,6 +81,7 @@ if (lite) tasks.configureEach {
     }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")                           // vault unit tests (core/vault, pure JVM)
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")      // thumbnails: EXIF rotation
     implementation("com.hierynomus:smbj:0.13.0")                      // SMB2/3 client (pure Java)

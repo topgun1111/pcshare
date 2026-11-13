@@ -142,7 +142,7 @@ class PcPrintService : PrintService() {
                 while (f.exists()) { f = File(dir, "$base ($k).pdf"); k++ }
                 f.outputStream().use { ins.copyTo(it) }
                 shown = f.name
-                uri = try { FileProvider.getUriForFile(this, "$packageName.fileprovider", f) } catch (_: Exception) { null }
+                uri = try { com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f) } catch (_: Exception) { null }
             } else if (Build.VERSION.SDK_INT >= 29) {
                 // no "All files access": MediaStore still lets an app add a file to Download/LANShare PDF
                 val cv = ContentValues().apply {

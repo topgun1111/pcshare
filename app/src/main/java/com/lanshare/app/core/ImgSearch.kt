@@ -242,7 +242,7 @@ object ImgSearch {
         val budget = intArrayOf(200000)   // directories
         fun walk(d: File, rel: String) {
             if (budget[0]-- <= 0 || (honorCancel && cancel)) return
-            val fs = d.listFiles() ?: return
+            val fs = d.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray() ?: return
             for (f in fs) {
                 if (f.name.startsWith(".")) continue
                 val r = "$rel/${f.name}"

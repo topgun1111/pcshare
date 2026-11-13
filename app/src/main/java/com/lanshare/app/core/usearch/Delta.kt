@@ -59,7 +59,7 @@ object Delta {
             stats.removed += idx.remove(id)
             return true
         }
-        val kids = d.listFiles() ?: return false   // unreadable: keep what we know
+        val kids = d.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray() ?: return false   // unreadable: keep what we know
         var changed = false
         // existing children by name (collect first: mutation needs the write lock, forEachChild holds the read lock)
         val have = HashMap<String, Int>()

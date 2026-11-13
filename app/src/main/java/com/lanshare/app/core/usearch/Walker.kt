@@ -98,7 +98,7 @@ class Walker(
         while (stack.isNotEmpty() && !state.cancelled) {
             val f = stack.removeAt(stack.size - 1)
             state.current = f.dir.path
-            val kids = f.dir.listFiles()
+            val kids = f.dir.listFiles()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }?.toTypedArray()
             if (kids == null) { state.unreadable++; continue }
             for (k in kids) {
                 val name = k.name

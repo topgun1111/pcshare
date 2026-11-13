@@ -39,6 +39,7 @@ class OfficeViewerActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        if (com.lanshare.app.core.vault.VaultIntents.refuse(intent)) { finish(); return }   // Lockdown
         web = WebView(this)
         buildBar()
         web.settings.apply { javaScriptEnabled = false; setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false

@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-13 - Safer file sharing
+### Changed
+- The PC file server (FTP) now locks out a device for a while after repeated wrong PINs, even if it reconnects.
+- New FTP PINs are generated more securely, and data connections only accept the device that logged in.
+- Files hidden in the upcoming vault are never listed, scanned, shared or opened from outside the app.
+
 ## 2026-11-12 - Video player: pinch zoom and turn buttons
 ### Added
 - Pinch to zoom the video (up to 8x); drag with one finger to move it while zoomed, double tap to go back to fitted.

@@ -267,7 +267,7 @@ object UpdateCheck {
                 offerInstall(a, f, tag)   // still on screen when the user comes back
                 return
             }
-            val uri = FileProvider.getUriForFile(a, "${a.packageName}.fileprovider", f)
+            val uri = com.lanshare.app.core.vault.VaultIntents.uri(a, "${a.packageName}.fileprovider", f)
             a.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Throwable) {
             Lm.snack(a, "Kurulum başlatılamadı: ${e.message}", Toast.LENGTH_LONG)

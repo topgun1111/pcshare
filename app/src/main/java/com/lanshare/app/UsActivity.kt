@@ -958,7 +958,7 @@ class UsActivity : Activity() {
         if (fs.isEmpty()) { toast("Only files can be shared"); return }
         try {
             val uris = ArrayList<Uri>()
-            for (f in fs) uris.add(FileProvider.getUriForFile(this, packageName + ".fileprovider", f))
+            for (f in fs) uris.add(com.lanshare.app.core.vault.VaultIntents.uri(this, packageName + ".fileprovider", f))
             val si = if (uris.size == 1) Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris[0])
                      else Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             si.type = if (uris.size == 1) (android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(fs[0].extension.lowercase()) ?: "*/*") else "*/*"

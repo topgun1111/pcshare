@@ -997,7 +997,7 @@ class PlayerActivity : Activity() {
 
     private fun sendFile(f: File, name: String) {
         try {
-            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+            val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f)
             val send = Intent(Intent.ACTION_SEND).setType(mimeFor(name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Exception) { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
