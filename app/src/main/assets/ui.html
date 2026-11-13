@@ -3032,8 +3032,16 @@ function openMedia(first){
     spd.onclick=()=>{const R=[1,1.25,1.5,2,.5];rate=R[(R.indexOf(rate)+1)%R.length];v.playbackRate=rate;spd.textContent=rate+'x';kick(!v.paused)};
     mu.onclick=()=>{v.muted=!v.muted;setMu()};
     v.src=U(m);pane.append(v,sp,fl,er,ctl);
-    attach(pane,null,()=>{o.classList.contains('ui')?(showUI(false),clearTimeout(hideT)):kick(!v.paused)},(px)=>{const r=pane.getBoundingClientRect(),f=(px-r.left)/r.width;
-      if(f<.33){seek(-10);flash('-10 s',-1)}else if(f>.67){seek(10);flash('+10 s',1)}else{toggle();kick(!v.paused)}});
+    /* pinch / wheel zoom + double tap in the middle third zooms into that point (same behaviour as the native player) */
+    const Z={sc:1,tx:0,ty:0};
+    Z.set=()=>{v.style.transform='translate('+Z.tx+'px,'+Z.ty+'px) scale('+Z.sc+')'};
+    Z.fix=()=>{if(Z.sc<1.05){Z.sc=1;Z.tx=Z.ty=0}else{const pw=pane.clientWidth,ph=pane.clientHeight,nw=v.videoWidth||pw,nh=v.videoHeight||ph,f=Math.min(pw/nw,ph/nh)*Z.sc,mx=Math.max(0,(nw*f-pw)/2),my=Math.max(0,(nh*f-ph)/2);
+        Z.tx=Math.min(mx,Math.max(-mx,Z.tx));Z.ty=Math.min(my,Math.max(-my,Z.ty))}
+      v.style.transition='transform .18s ease-out';Z.set();setTimeout(()=>{v.style.transition=''},200)};
+    Z.zoomAt=(px,py,s1)=>{s1=Math.min(6,Math.max(1,s1));const r=pane.getBoundingClientRect(),cx=px-r.left-r.width/2,cy=py-r.top-r.height/2,k=s1/Z.sc;Z.tx=cx-(cx-Z.tx)*k;Z.ty=cy-(cy-Z.ty)*k;Z.sc=s1;Z.fix()};
+    attach(pane,Z,()=>{o.classList.contains('ui')?(showUI(false),clearTimeout(hideT)):kick(!v.paused)},(px,py)=>{const r=pane.getBoundingClientRect(),f=(px-r.left)/r.width;
+      if(Z.sc>1){Z.sc=1;Z.tx=Z.ty=0;Z.fix();return}
+      if(f<.33){seek(-10);flash('-10 s',-1)}else if(f>.67){seek(10);flash('+10 s',1)}else Z.zoomAt(px,py,2)});
     cur={key:e=>{const k=e.key;if(k===' '||k==='k'){toggle();return 1}if(k==='j'){seek(-10);return 1}if(k==='l'){seek(10);return 1}if(k==='m'){mu.click();return 1}},
       dispose:()=>{try{savePos();v.pause();v.removeAttribute('src');v.load()}catch(_){}}}}
   function load(dir){
@@ -6271,12 +6279,16 @@ function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(o
 function vaultEnter(path){S.vimp=null;homeHide();drawerClose();S.newest=false;S.dev='vault';S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
 let VPEND=null,VPT=0;
 /* "To vault": when the vault is locked the unlock screen opens and the same selection is locked automatically once it is open (no second try). */
+/* Some phones (Vivo, ...) keep files deleted by apps in their own recycle bin: tell the owner once per lock, with a \"don't show again\" choice. */
+function vaultTrashNote(){
+  try{if(localStorage.getItem('vtn')==='1')return}catch(e){}
+  dlg({kind:'warn',title:'Check the phone\u2019s own trash',msg:'Some phones (for example Vivo) keep files deleted by apps in their own recycle bin for 30 days (Gallery > Third-party deletion blocking). Empty it, or the original photos and videos stay readable there.',ok:'OK',alt:'Do not show again'}).then(v=>{if(v==='alt')try{localStorage.setItem('vtn','1')}catch(e){}})}
 function vaultToVault(ps){
   S.sel.clear();render();let r='bad';try{r=String(LSAndroid.vaultLock(JSON.stringify(ps)))}catch(e){}
   if(r==='locked'){VPEND=ps;VPT=Date.now();toast('Unlock the vault; your files will be locked right after',4000);return}
   VPEND=null;
   if(r==='bad')toast('Nothing to lock',2500);
-  else{toast('Locking '+ps.length+' item(s)...',2500);if(r.indexOf('ok:')===0){const jid=r.slice(3);watchJob(jid);track(jid).then(()=>load(),()=>load())}}}
+  else{toast('Locking '+ps.length+' item(s)...',2500);if(r.indexOf('ok:')===0){const jid=r.slice(3);watchJob(jid);track(jid).then(ok=>{load();if(ok)vaultTrashNote()},()=>load())}}}
 function vaultOpen(){
   if(!(window.LSAndroid&&LSAndroid.vaultState)){toast('Vault needs the Android app',3000);return}
   if(LSAndroid.vaultState()==='open'){vaultEnter();return}

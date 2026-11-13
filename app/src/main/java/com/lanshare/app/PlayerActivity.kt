@@ -118,6 +118,7 @@ class PlayerActivity : Activity() {
         private const val PREFS = "ls_player"
         private const val MAX_ITEMS = 500
         private const val MAX_ZOOM = 8f
+        private const val DOUBLE_TAP_ZOOM = 2f   // double tap in the middle third zooms in this much, around the tapped point
         private const val HIDE_MS = NlViewerBar.HIDE_MS   // Lumen N7: spec 12.7, 3 s (was 3.5 s)
         /** Set after a video was deleted here: MainActivity refreshes the file list when it comes back to the front. */
         @Volatile private var changed = false
@@ -555,10 +556,35 @@ class PlayerActivity : Activity() {
         view.translationX = panX; view.translationY = panY
     }
 
-    private fun resetZoom() { zoom = 1f; panX = 0f; panY = 0f; applyZoom() }
+    private fun resetZoom() { zAnim?.cancel(); zoom = 1f; panX = 0f; panY = 0f; applyZoom() }
+
+    private var zAnim: android.animation.ValueAnimator? = null
+    /** Smooth zoom / pan to the given target (double tap). */
+    private fun animateZoom(z1: Float, px1: Float, py1: Float) {
+        zAnim?.cancel()
+        val z0 = zoom; val px0 = panX; val py0 = panY
+        zAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 180
+            addUpdateListener { a ->
+                val t = a.animatedFraction
+                zoom = z0 + (z1 - z0) * t; panX = px0 + (px1 - px0) * t; panY = py0 + (py1 - py0) * t
+                applyZoom()
+            }
+            start()
+        }
+    }
+
+    /** Double tap: zoom in to [nz] keeping the tapped point ([fx], [fy]) under the finger. */
+    private fun zoomAt(nz: Float, fx: Float, fy: Float) {
+        val kk = nz / zoom
+        val cx = stage.width / 2f; val cy = stage.height / 2f
+        animateZoom(nz, (fx - cx) - kk * ((fx - cx) - panX), (fy - cy) - kk * ((fy - cy) - panY))
+        showHud("${Math.round(nz * 10) / 10f}\u00D7")
+    }
 
     /** Pinch step: zoom by [k] around the finger centre ([fx], [fy]); [dx], [dy] = how far the centre moved (two-finger pan). */
     private fun zoomBy(k: Float, fx: Float, fy: Float, dx: Float, dy: Float) {
+        zAnim?.cancel()
         val nz = (zoom * k).coerceIn(1f, MAX_ZOOM)
         val kk = nz / zoom
         val cx = stage.width / 2f; val cy = stage.height / 2f
@@ -607,7 +633,7 @@ class PlayerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- gestures
-    /** Tap = show/hide controls, double-tap left/right = -10 s / +10 s, double-tap middle = pause, swipe up/down: left half brightness, right half volume. */
+    /** Tap = show/hide controls, double-tap left/right = -10 s / +10 s, double-tap middle = zoom into that point (again = back), swipe up/down: left half brightness, right half volume. */
     private fun setupGestures() {
         val am = getSystemService(AUDIO_SERVICE) as AudioManager
         val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -618,13 +644,14 @@ class PlayerActivity : Activity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (zoom > 1.001f) { resetZoom(); showHud("1\u00D7"); return true }   // zoomed: double tap = back to fitted
+                if (zoom > 1.001f) { animateZoom(1f, 0f, 0f); showHud("1\u00D7"); return true }   // zoomed: double tap = back to fitted
+                if (inPip) return true
                 val p = player ?: return true
                 Haptics.play("double")
                 val f = e.x / maxOf(touch.width, 1)
                 if (f < 0.33f) { p.seekTo(maxOf(0L, p.currentPosition - 10_000)); showHud("-10 s") }
                 else if (f > 0.67f) { p.seekTo(p.currentPosition + 10_000); showHud("+10 s") }
-                else togglePlay()
+                else zoomAt(DOUBLE_TAP_ZOOM, e.x, e.y)   // middle: zoom into the tapped point (pause stays on the play button)
                 return true
             }
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {

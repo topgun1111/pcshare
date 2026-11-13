@@ -6,8 +6,12 @@
 
 
 ## 2026-11-14 - To vault works when the vault is locked
+### Added
+- Video player: double tap in the middle of the screen zooms into that point (double tap again to go back); left and right double taps still skip 10 seconds
+- Video preview in the file manager: the same double tap zoom, plus pinch zoom
 ### Changed
 - Inside the vault the settings button now opens Vault settings
+- After "To vault" the app reminds you to empty the phone's own recycle bin (some phones, e.g. Vivo, keep deleted originals for 30 days); it can be switched off
 - The vault folder is now also hidden and protected in Root mode, and whole storage folders can no longer be deleted or moved there
 ### Fixed
 - "To vault" on a locked vault now opens the unlock screen and locks your selected files automatically afterwards; no need to select them again
