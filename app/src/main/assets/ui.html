@@ -3904,8 +3904,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     else if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0){   // any file or folder of this phone: Hide (Unhide when "Show hidden files" is on and they are all hidden)
       const ps=selPaths(),un=ps.length>0&&ps.every(hidP);
       btn('hide',un?'Unhide':'Hide',()=>{S.sel.clear();galHideMany(ps,!un);toast(un?ps.length+' item(s) visible again':ps.length+' item(s) hidden - Settings > Gallery settings brings them back',un?2000:4000)})}
-    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultCopy)btn('hide','To vault',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultCopy(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try To vault again',4000);else if(r==='bad')toast('Nothing to import',2500);else toast('Copying '+ps.length+' item(s) to the vault (originals stay)...',3000)})   // folders and files: encrypted copy into the vault, originals kept
-    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','Lock',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultLock(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try Lock again',4000);else if(r==='bad')toast('Nothing to lock',2500);else toast('Locking '+ps.length+' item(s)...',2500)})   // Lockdown: encrypt into the vault (this phone only)
+    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','To vault',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultLock(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try To vault again',4000);else if(r==='bad')toast('Nothing to lock',2500);else toast('Locking '+ps.length+' item(s)...',2500)})   // Lockdown: encrypt into the vault (this phone only)
     if(!A||zipEd())btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
