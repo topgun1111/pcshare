@@ -6,6 +6,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.util.Random
@@ -122,5 +123,19 @@ class VaultTest {
         val (_, s) = create(); put(s, "SECRET-CONTENT".toByteArray(), null, "tax-return-2026.pdf"); s.lock()
         s.root.walkTopDown().filter { it.isFile }.forEach { val t = it.readBytes().toString(Charsets.ISO_8859_1); assertFalse(t.contains("SECRET")); assertFalse(t.contains("tax-return")); assertFalse(t.contains("LANSHARE", true)) }
         assertTrue(File(s.root, ".nomedia").exists())
+    }
+
+    @Test fun symbolicLinksAreNotLockedOrFollowed() {
+        val root = tmp.newFolder()
+        val outside = File(root, "outside.txt").apply { writeText("keep me") }
+        val link = File(root, "alias.txt")
+        try { java.nio.file.Files.createSymbolicLink(link.toPath(), outside.toPath()) }
+        catch (_: Exception) { return } // filesystem does not support symlinks in this test environment
+        val vaultRoot = File(root, "volume").apply { mkdirs() }
+        val v = VaultStore.create(vaultRoot, "test password 1".toCharArray(), 10)
+        assertThrows(IOException::class.java) { v.lockFile(link, null, true) }
+        assertTrue(link.exists())
+        assertEquals("keep me", outside.readText())
+        v.lock()
     }
 }

@@ -54,7 +54,12 @@ class VaultActivity : FragmentActivity() {
     private val throttle by lazy { VaultThrottle(prefs) }
     private var forgotMsg: TextView? = null
     private var pendingKey: ByteArray? = null          // .lsrk bytes waiting for the save dialog
-    private val lockListener: () -> Unit = { ui.post { if (!isFinishing) { cur = null; render() } } }
+    @Volatile private var pendingRecoverySecret: ByteArray? = null // candidate is committed only after the user saves/confirms it
+    private val lockListener: () -> Unit = { ui.post {
+        pendingKey?.fill(0); pendingKey = null
+        pendingRecoverySecret?.fill(0); pendingRecoverySecret = null
+        if (!isFinishing) { cur = null; render() }
+    } }
 
     private fun dp(v: Int) = Math.round(v * d)
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
@@ -70,7 +75,11 @@ class VaultActivity : FragmentActivity() {
     }
 
     override fun onStart() { super.onStart(); render() }   // auto-lock timing + screen-off are app-wide now (VaultAppHooks)
-    override fun onDestroy() { super.onDestroy(); pendingKey?.fill(0); pendingKey = null; exec.shutdown() }
+    override fun onDestroy() {
+        VaultSession.removeOnLock(lockListener)
+        pendingKey?.fill(0); pendingKey = null; pendingRecoverySecret?.fill(0); pendingRecoverySecret = null
+        exec.shutdown(); super.onDestroy()
+    }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -134,7 +143,13 @@ class VaultActivity : FragmentActivity() {
                     err = if (create) vf("Could not create the vault: %s", e.message) else if (e is VaultAuthException) vt("Wrong password") else vf("Could not open the vault: %s", e.message)
                 }
                 finally { a.fill('\u0000'); b.fill('\u0000') }
-                ui.post { busy = false; if (err != null) msg.text = err else { cur = null; render(); if (bioOk() && !bioOn() && !prefs.bioDeclined) offerBio() } }
+                ui.post {
+                    busy = false
+                    if (err != null) msg.text = err else {
+                        cur = null; render()
+                        if (create) offerRecovery() else if (bioOk() && !bioOn() && !prefs.bioDeclined) offerBio()
+                    }
+                }
             }
         })
         if (!create) {
@@ -162,7 +177,7 @@ class VaultActivity : FragmentActivity() {
         root.addView(act)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val items = st.list(cur)
-        if (cur != null) list.addView(row("..", "Up", true) { cur = st.get(cur!!)?.parent; render() })
+        if (cur != null) list.addView(row("..", vt("Up"), true) { cur = st.get(cur!!)?.parent; render() })
         if (items.isEmpty()) list.addView(text(vt("Empty. Tap Add files."), 14f, lm.inkMut).apply { setPadding(dp(24), dp(32), dp(24), 0) })
         for (n in items) list.addView(row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { if (n.dir) { cur = n.id; render() } else if (viewable(n)) startActivity(android.content.Intent(this, VaultViewActivity::class.java).putExtra("id", n.id)) else fileMenu(n) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } })
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -199,14 +214,14 @@ class VaultActivity : FragmentActivity() {
                     st.export(n.id, f); val saved = f.name; ui.post { toast(vf("Saved to Download/%s", saved)) }
                 }
                 vt("Rename") -> ask(vt("Rename"), n.name) { v -> bg { st.rename(n.id, v) } }
-                vt("Delete") -> AppPal.dlg(this).kind("danger").setMessage("Delete \"${n.name}\" from the vault for good?").setPositiveButton(vt("Delete")) { _, _ -> bg { st.delete(n.id) } }.setNegativeButton(vt("Cancel"), null).show()
+                vt("Delete") -> AppPal.dlg(this).kind("danger").setMessage(vf("Delete %s from the vault for good?", n.name)).setPositiveButton(vt("Delete")) { _, _ -> bg { st.delete(n.id) } }.setNegativeButton(vt("Cancel"), null).show()
             }
         }.show()
     }
 
     private fun ask(title: String, init: String, ok: (String) -> Unit) {
         val e = EditText(this).apply { setText(init); setSingleLine(true) }
-        AppPal.dlg(this).setTitle(title).setView(e).setPositiveButton("OK") { _, _ -> val v = e.text.toString().trim(); if (v.isNotEmpty()) ok(v) }.setNegativeButton(vt("Cancel"), null).show()
+        AppPal.dlg(this).setTitle(title).setView(e).setPositiveButton(vt("OK")) { _, _ -> val v = e.text.toString().trim(); if (v.isNotEmpty()) ok(v) }.setNegativeButton(vt("Cancel"), null).show()
     }
 
     /** Runs a vault change off the UI thread, then redraws; any failure is shown as a toast. */
@@ -227,6 +242,11 @@ class VaultActivity : FragmentActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
+        if (req == REQ_SAVEKEY && (res != RESULT_OK || data?.data == null)) {
+            pendingKey?.fill(0); pendingKey = null
+            pendingRecoverySecret?.fill(0); pendingRecoverySecret = null
+            return
+        }
         if (res != RESULT_OK || data == null) return
         if (req == REQ_KEYFILE) { keyFilePicked(data.data); return }
         if (req == REQ_SAVEKEY) { saveKeyTo(data.data); return }
@@ -276,6 +296,16 @@ class VaultActivity : FragmentActivity() {
                 }
             }
         }, { msg.text = it })
+    }
+
+
+    private fun offerRecovery() {
+        AppPal.dlg(this).kind("perm").setTitle(vt("Protect your recovery options"))
+            .setMessage(vt("Create a recovery code now. It can open the vault if you forget your password. Store it away from this phone."))
+            .setPositiveButton(vt("Create recovery code")) { _, _ ->
+                bg { val sec = (VaultSession.store ?: return@bg).newRecoverySecret(); val code = VaultRecovery.toCode(sec); ui.post { showCode(code, sec) } }
+            }
+            .setNegativeButton(vt("Not now"), null).show()
     }
 
     private fun offerBio() {
@@ -353,7 +383,7 @@ class VaultActivity : FragmentActivity() {
 
     private fun forgotShares(msg: TextView) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val fs = (1..3).map { n -> EditText(this).apply { hint = vf("Share %s", n) + (if (n == 3) " (optional)" else ""); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
+        val fs = (1..3).map { n -> EditText(this).apply { hint = vf("Share %s", n) + (if (n == 3) " (" + vt("optional") + ")" else ""); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
         AppPal.dlg(this).setTitle(vt("Enter any 2 shares")).setView(box)
             .setPositiveButton(vt("Unlock")) { _, _ ->
                 val shares = fs.map { it.text.toString() }.filter { it.isNotBlank() }.map { VaultRecovery.shareFromCode(it) }
@@ -367,8 +397,9 @@ class VaultActivity : FragmentActivity() {
     private fun makeKeyFile(st: VaultStore) {
         pwDialog(vt("Key file password"), listOf(vt("File password"), vt("Repeat file password")), true, true) { v ->
             bg {
-                val sec = st.enableRecovery()
-                try { pendingKey = VaultRecovery.toKeyFile(sec, v[0]) } finally { sec.fill(0); v.forEach { it.fill('\u0000') } }
+                val sec = st.newRecoverySecret()
+                try { pendingRecoverySecret?.fill(0); pendingRecoverySecret = sec.copyOf(); pendingKey = VaultRecovery.toKeyFile(sec, v[0]) }
+                finally { sec.fill(0); v.forEach { it.fill('\u0000') } }
                 ui.post {
                     startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
                         .putExtra(Intent.EXTRA_TITLE, "vault-recovery.lsrk"), REQ_SAVEKEY)
@@ -380,19 +411,41 @@ class VaultActivity : FragmentActivity() {
     private fun saveKeyTo(uri: android.net.Uri?) {
         val k = pendingKey ?: return
         pendingKey = null
-        if (uri == null) { k.fill(0); return }
-        bg { try { contentResolver.openOutputStream(uri)!!.use { it.write(k) } } finally { k.fill(0) }; ui.post { toast(vt("Key file saved. Keep it away from this phone, and remember its password.")) } }
+        if (uri == null) { k.fill(0); pendingRecoverySecret?.fill(0); pendingRecoverySecret = null; return }
+        bg {
+            val secret = pendingRecoverySecret
+            try {
+                contentResolver.openOutputStream(uri)!!.use { it.write(k) }
+                try {
+                    (VaultSession.store ?: throw IllegalStateException("Vault locked before recovery setup finished")).setRecovery(secret ?: throw IllegalStateException("Recovery setup expired"))
+                } catch (e: Exception) {
+                    try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                    throw e
+                }
+                ui.post { toast(vt("Key file saved. Keep it away from this phone, and remember its password.")) }
+            } finally {
+                k.fill(0); secret?.fill(0)
+                if (pendingRecoverySecret === secret) pendingRecoverySecret = null
+            }
+        }
     }
 
     /** Settings: new recovery secret split 2-of-3 (replaces the current recovery code). */
     private fun makeShares(st: VaultStore) {
         bg {
-            val sec = st.enableRecovery()
-            val codes = try { VaultRecovery.split(sec, 2, 3).map { VaultRecovery.shareToCode(it) } } finally { sec.fill(0) }
+            val sec = st.newRecoverySecret()
+            val codes = try { VaultRecovery.split(sec, 2, 3).map { VaultRecovery.shareToCode(it) } } catch (e: Throwable) { sec.fill(0); throw e }
             ui.post {
+                pendingRecoverySecret?.fill(0); pendingRecoverySecret = sec
                 AppPal.dlg(this).setTitle(vt("Your 3 shares"))
-                    .setMessage(codes.mapIndexed { i, c -> "Share ${i + 1}:\n$c" }.joinToString("\n\n") + "\n\nAny 2 shares open the vault. One alone reveals nothing. Give them to different people or places, away from this phone. Shown only once.")
-                    .setCancelable(false).setPositiveButton(vt("I saved all 3"), null).show()
+                    .setMessage(codes.mapIndexed { i, c -> vt("Share %s").format(i + 1) + ":\n$c" }.joinToString("\n\n") + "\n\n" + vt("Any 2 shares open the vault. One alone reveals nothing. Give them to different people or places, away from this phone. Shown only once."))
+                    .setCancelable(false)
+                    .setPositiveButton(vt("I saved all 3")) { _, _ ->
+                        val secret = pendingRecoverySecret ?: return@setPositiveButton
+                        bg { try { st.setRecovery(secret); ui.post { toast(vt("Recovery shares confirmed")) } } finally { secret.fill(0); pendingRecoverySecret = null } }
+                    }
+                    .setNegativeButton(vt("Cancel")) { _, _ -> pendingRecoverySecret?.fill(0); pendingRecoverySecret = null }
+                    .show()
             }
         }
     }
@@ -402,7 +455,7 @@ class VaultActivity : FragmentActivity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = hints.map { field(it).also { f -> box.addView(f) } }
         val err = text("", 13f, lm.error); box.addView(err)
-        val dlg = AppPal.dlg(this).setTitle(title).setView(box).setCancelable(cancelable).setPositiveButton("OK", null)
+        val dlg = AppPal.dlg(this).setTitle(title).setView(box).setCancelable(cancelable).setPositiveButton(vt("OK"), null)
             .apply { if (cancelable) setNegativeButton(vt("Cancel"), null) }.create()
         dlg.show()
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -441,7 +494,7 @@ class VaultActivity : FragmentActivity() {
         if (bioOk()) add((if (bioOn()) vt("Turn off fingerprint") else vt("Turn on fingerprint"))) { if (bioOn()) { VaultBio.disable(this); toast(vt("Fingerprint is off")) } else enableBio() }
         add(vf("Auto-lock: %s", lockLabel(prefs.autoLockSec))) { autoLockMenu() }
         add((if (st.hasRecovery) vt("New recovery code (replaces the old one)") else vt("Create recovery code"))) {
-            bg { val sec = st.enableRecovery(); val code = VaultRecovery.toCode(sec); sec.fill(0); ui.post { showCode(code) } }
+            bg { val sec = st.newRecoverySecret(); val code = VaultRecovery.toCode(sec); ui.post { showCode(code, sec) } }
         }
         if (st.hasRecovery) add(vt("Remove recovery code")) {
             AppPal.dlg(this).kind("danger").setMessage(vt("Remove the recovery code? Your password still opens the vault.")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeRecovery() } }.setNegativeButton(vt("Cancel"), null).show()
@@ -459,27 +512,36 @@ class VaultActivity : FragmentActivity() {
         AppPal.dlg(this).setTitle(vt("Vault settings")).setItems(acts.map { it.first }.toTypedArray()) { _, i -> acts[i].second() }.show()
     }
 
-    private fun showCode(code: String) {
+    private fun showCode(code: String, secret: ByteArray) {
+        pendingRecoverySecret?.fill(0); pendingRecoverySecret = secret
         AppPal.dlg(this).setTitle(vt("Your recovery code"))
-            .setMessage("$code\n\nWrite it down and keep it away from this phone. It is shown only once. Anyone who has it can open your vault.")
-            .setCancelable(false).setPositiveButton(vt("I wrote it down")) { _, _ -> checkCode(code) }.show()
+            .setMessage("$code\n\n" + vt("Write it down and keep it away from this phone. It is shown only once. Anyone who has it can open your vault."))
+            .setCancelable(false)
+            .setPositiveButton(vt("I wrote it down")) { _, _ -> checkCode(code, secret) }
+            .setNegativeButton(vt("Cancel")) { _, _ -> secret.fill(0); if (pendingRecoverySecret === secret) pendingRecoverySecret = null }
+            .show()
     }
 
     /** Re-enter 3 random groups so a typo while writing it down is caught now, not on the day it is needed. */
-    private fun checkCode(code: String) {
+    private fun checkCode(code: String, secret: ByteArray) {
         val groups = code.split("-")
         val idx = groups.indices.shuffled().take(3).sorted()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = idx.map { n -> EditText(this).apply { hint = "Group ${n + 1}"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
         val err = text("", 13f, lm.error); box.addView(err)
         val dlg = AppPal.dlg(this).setTitle(vt("Check your copy")).setMessage(vt("Type the groups you wrote down.")).setView(box).setCancelable(false)
-            .setPositiveButton(vt("Check"), null).setNegativeButton(vt("Show again"), null).create()
+            .setPositiveButton(vt("Check"), null).setNegativeButton(vt("Cancel"), null).setNeutralButton(vt("Show again"), null).create()
         dlg.show()
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val ok = fs.indices.all { fs[it].text.toString().trim().uppercase() == groups[idx[it]] }
-            if (ok) { dlg.dismiss(); toast(vt("Recovery code confirmed")) } else err.text = vt("That does not match. Compare with what you wrote.")
+            if (ok) {
+                dlg.dismiss()
+                bg { try { (VaultSession.store ?: throw IllegalStateException("Vault locked")).setRecovery(secret); toast(vt("Recovery code confirmed")) }
+                    finally { secret.fill(0); if (pendingRecoverySecret === secret) pendingRecoverySecret = null } }
+            } else err.text = vt("That does not match. Compare with what you wrote.")
         }
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { dlg.dismiss(); showCode(code) }
+        dlg.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { dlg.dismiss(); secret.fill(0); if (pendingRecoverySecret === secret) pendingRecoverySecret = null }
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { dlg.dismiss(); showCode(code, secret) }
     }
 
     private fun lockLabel(s: Int) = when (s) { 0 -> vt("immediately"); 30 -> vt("30 seconds"); 60 -> vt("1 minute"); 300 -> vt("5 minutes"); -1 -> vt("never until app exit"); else -> "$s s" }

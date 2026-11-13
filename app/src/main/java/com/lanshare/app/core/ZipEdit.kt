@@ -29,6 +29,9 @@ import java.util.zip.Deflater
  * Not supported (clear message): ZIP64 archives (> 4 GB or > 65534 entries), encrypted-archive repair, RAR.
  */
 object ZipEdit {
+    private fun guardVault(file: File) {
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultFile(file)) throw Denied("not found")
+    }
     private val lock = Any()
     private const val SIG_CD = 0x02014b50
     private const val SIG_LOCAL = 0x04034b50
@@ -139,6 +142,7 @@ object ZipEdit {
      * [cb] gets the number of bytes read from [input] and may throw [Cancelled].
      */
     fun add(file: File, entryPath: String, input: InputStream?, cb: ((Int) -> Unit)? = null) {
+        guardVault(file)
         val key = normKey(entryPath)
         if (key.isEmpty()) throw BadReq("no name")
         synchronized(lock) {
@@ -223,6 +227,7 @@ object ZipEdit {
 
     /** Deletes entries (and everything below a folder entry) from the ZIP. Returns how many entries were removed. */
     fun remove(file: File, entryPaths: List<String>, progress: ((String) -> Unit)? = null): Int {
+        guardVault(file)
         val keys = entryPaths.map { normKey(it) }
         if (keys.any { it.isEmpty() }) throw Denied("to delete the whole ZIP, delete the file from its folder")
         var gone = 0

@@ -43,7 +43,10 @@ class PeService : Service() {
             val total = s.bytesTotal
             val speed = (total - lastBytes) * 1000 / (now - lastTick).coerceAtLeast(1)
             lastBytes = total; lastTick = now
-            val text = if (s.activeTransfers > 0 || speed > 0)
+            val vaultOpen = com.lanshare.app.core.vault.VaultSession.unlocked
+            val text = if (vaultOpen) {
+                if (s.activeTransfers > 0 || speed > 0) "Phone Explorer - transfer in progress" else "Phone Explorer is sharing storage"
+            } else if (s.activeTransfers > 0 || speed > 0)
                 "${s.lastTransfer}  -  ${fmtSpeed(speed)}" + (if (s.activeTransfers > 1) "  (+${s.activeTransfers - 1} more)" else "")
             else idleText()
             if (text != lastText) { lastText = text; notify(text, s.activeTransfers > 0) }

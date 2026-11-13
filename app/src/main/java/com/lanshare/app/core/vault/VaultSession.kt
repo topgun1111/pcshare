@@ -10,6 +10,7 @@ object VaultSession {
     var clock: () -> Long = System::currentTimeMillis
 
     fun onLock(l: () -> Unit) { listeners.add(l) }
+    fun removeOnLock(l: () -> Unit) { listeners.remove(l) }
     val unlocked get() = store?.isOpen == true
     /** Set once by the app layer: runs for every newly unlocked store (e.g. wires MediaStore purge). */
     @Volatile var onStarted: ((VaultStore) -> Unit)? = null

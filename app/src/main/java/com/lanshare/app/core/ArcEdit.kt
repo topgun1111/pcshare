@@ -41,7 +41,12 @@ object ArcEdit {
         return parts.joinToString("/")
     }
 
+    private fun guard(file: File) {
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultFile(file)) throw Denied("not found")
+    }
+
     fun add(file: File, fmt: String, entryPath: String, input: InputStream?, cb: ((Int) -> Unit)? = null) {
+        guard(file)
         if (fmt == "zip") { ZipEdit.add(file, entryPath, input, cb); return }
         if (!canEdit(fmt)) throw Denied(whyNot(fmt))
         val k = ZipEdit.normKey(entryPath)
@@ -72,6 +77,7 @@ object ArcEdit {
 
     /** Deletes entries (and everything below a folder entry). Returns how many entries were removed. */
     fun remove(file: File, fmt: String, entryPaths: List<String>, progress: ((String) -> Unit)? = null): Int {
+        guard(file)
         if (fmt == "zip") return ZipEdit.remove(file, entryPaths, progress)
         if (!canEdit(fmt)) throw Denied(whyNot(fmt))
         val keys = entryPaths.map { ZipEdit.normKey(it) }

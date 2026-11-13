@@ -26,6 +26,9 @@ class VaultGuardTest {
         VaultGuard.cacheRoot = "/data/cache"
         assertTrue(VaultGuard.isVaultName("/data/cache/vt/ab"))
         assertFalse(VaultGuard.isVaultName("/data/cache/other"))
+        assertFalse(VaultGuard.isVaultName("/data/cache/vt-backup/plain.txt"))
+        assertFalse(VaultGuard.isVaultName("/data/cache/vtfoo/plain.txt"))
+        assertTrue(VaultGuard.isVaultName("/data/cache/vt"))
         assertFalse(VaultGuard.visible(".LSV")); assertTrue(VaultGuard.visible("Docs"))
         VaultGuard.cacheRoot = ""; t.deleteRecursively()
     }

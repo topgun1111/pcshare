@@ -100,6 +100,15 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     private fun idx() = index ?: throw IllegalStateException("vault locked")
     private fun fileKey(id: ByteArray) = VaultCrypto.hkdf(kData ?: throw IllegalStateException("vault locked"), byteArrayOf('f'.code.toByte()) + id)
 
+    private fun isSymbolicLink(f: File): Boolean {
+        return try {
+            val parent = f.parentFile ?: return false
+            val candidate = File(parent.canonicalFile, f.name)
+            candidate.canonicalPath != candidate.absolutePath
+        } catch (_: Exception) { true }
+    }
+
+
     init { gc() }
 
     /** Zeroises all keys; the store cannot be used afterwards (re-open with the password). */
@@ -113,7 +122,11 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     @Synchronized fun changePassword(old: CharArray, new: CharArray) {
         val h = header
         val kOld = VaultCrypto.kek(old, h.salt, h.logN, h.r, h.p)
-        try { VaultCrypto.open(kOld, h.wrapNonce, h.aad(), h.wrapped) } catch (e: GeneralSecurityException) { throw VaultAuthException() } finally { VaultCrypto.wipe(kOld) }
+        try {
+            val verifiedMk = VaultCrypto.open(kOld, h.wrapNonce, h.aad(), h.wrapped)
+            try { if (!MessageDigest.isEqual(verifiedMk, mk!!)) throw VaultCorruptException("vault header changed") }
+            finally { VaultCrypto.wipe(verifiedMk) }
+        } catch (e: GeneralSecurityException) { throw VaultAuthException() } finally { VaultCrypto.wipe(kOld) }
         // salt + params stay (they are part of the AAD of the recovery wrap, which therefore stays valid); only the password-derived KEK changes
         val nh = h.copyWith(wn = VaultCrypto.rand(12), w = ByteArray(0))
         val kek = VaultCrypto.kek(new, h.salt, h.logN, h.r, h.p)
@@ -129,14 +142,20 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
         writeHeader(root, nh); header = nh
     }
 
-    /** Creates (or replaces) the recovery wrap; returns the 32-byte secret to show the user ONCE. */
-    @Synchronized fun enableRecovery(): ByteArray {
-        val h = header; val secret = VaultCrypto.rand(32); val kek = VaultCrypto.hkdf(secret, "lsv-rec")
+    /** Generate a candidate secret without changing the vault. Commit it only after the user has safely stored it. */
+    fun newRecoverySecret(): ByteArray = VaultCrypto.rand(32)
+
+    /** Creates (or replaces) the recovery wrap for a previously generated 32-byte secret. */
+    @Synchronized fun setRecovery(secret: ByteArray) {
+        require(secret.size == 32) { "recovery secret must be 32 bytes" }
+        val h = header; val kek = VaultCrypto.hkdf(secret, "lsv-rec")
         val nh = h.copyWith(flags = h.flags or VaultFormat.F_RECOVERY, rn = VaultCrypto.rand(12), rw = ByteArray(0))
-        nh.recWrapped = VaultCrypto.seal(kek, nh.recNonce, nh.aad(), mk!!); VaultCrypto.wipe(kek)
+        try { nh.recWrapped = VaultCrypto.seal(kek, nh.recNonce, nh.aad(), mk!!) } finally { VaultCrypto.wipe(kek) }
         writeHeader(root, nh); header = nh
-        return secret
     }
+
+    /** Convenience API: creates and immediately commits a recovery secret. UI should prefer newRecoverySecret + setRecovery. */
+    @Synchronized fun enableRecovery(): ByteArray = newRecoverySecret().also { setRecovery(it) }
 
     /** Sets / replaces the BACKUP password (independent second password, e.g. kept by a trusted person or in a password manager). */
     @Synchronized fun setBackupPassword(pw: CharArray) {
@@ -235,6 +254,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
      * If verification fails the vault copy is dropped and the original is left untouched.
      */
     fun lockFile(src: File, parent: String?, removeOriginal: Boolean = true): VaultNode {
+        if (isSymbolicLink(src)) throw IOException("symbolic links cannot be locked")
         val (n, sha) = src.inputStream().use { addStream(it, parent, src.name, src.lastModified()) }
         if (!verify(n.id, n.size, sha) || n.size != src.length()) { delete(n.id); throw IOException("verification failed") }
         if (removeOriginal) { secureDelete(src); onOriginalRemoved?.invoke(src) }
@@ -243,9 +263,11 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
 
     /** Recursive and resumable: folders are merged by name, files already present (same name+size) are skipped. [cancel] is polled between files. */
     fun lockFolder(src: File, parent: String?, removeOriginal: Boolean = true, cancel: () -> Boolean = { false }, progress: (File) -> Unit = {}): VaultNode {
+        if (isSymbolicLink(src)) throw IOException("symbolic links cannot be locked")
         val dir = synchronized(this) { list(parent).firstOrNull { it.dir && it.name == src.name } ?: mkdir(parent, src.name) }
         for (c in src.listFiles()?.sortedBy { it.name } ?: emptyList()) {
             if (cancel()) break
+            if (isSymbolicLink(c)) continue // leave links untouched; never follow a link outside the selected tree
             if (c.isDirectory) { lockFolder(c, dir.id, removeOriginal, cancel, progress); continue }
             progress(c)
             val have = synchronized(this) { list(dir.id).firstOrNull { !it.dir && it.name == c.name && it.size == c.length() } }

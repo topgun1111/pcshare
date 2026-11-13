@@ -60,7 +60,22 @@ object VaultAppHooks {
 
     /** The original is already gone from disk; a scan of its old path makes MediaStore delete the stale row. Never logs the path. */
     private fun purge(ctx: Context, path: String) {
-        if (VaultGuard.isVaultName(path)) return
+        if (VaultGuard.isVaultName(path) || VaultGuard.isVaultPath(path)) return
+        // Remove stale MediaStore rows immediately where the platform still permits DATA-path deletion.
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                for (volume in android.provider.MediaStore.getExternalVolumeNames(ctx)) {
+                    try {
+                        ctx.contentResolver.delete(android.provider.MediaStore.Files.getContentUri(volume),
+                            android.provider.MediaStore.MediaColumns.DATA + "=?", arrayOf(path))
+                    } catch (_: Throwable) { }
+                }
+            } else {
+                ctx.contentResolver.delete(android.provider.MediaStore.Files.getContentUri("external"),
+                    android.provider.MediaStore.MediaColumns.DATA + "=?", arrayOf(path))
+            }
+        } catch (_: Throwable) { }
+        // Scanner callback also cleans providers that don't accept DATA-based deletion.
         try { MediaScannerConnection.scanFile(ctx, arrayOf(path), null, null) } catch (_: Throwable) { }
     }
 }

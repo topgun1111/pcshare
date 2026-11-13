@@ -12,8 +12,8 @@ object VaultLockJob {
         if (st == null || !st.isOpen) return "locked"
         val files = ArrayList<java.io.File>()
         for (p in paths) {
-            val f = try { Core.local.real(p) } catch (_: Exception) { continue }   // vault paths / bad paths throw: skipped
-            if (f.exists()) files.add(f)
+            val f = try { Core.local.lreal(p) } catch (_: Exception) { continue } // preserve the final component; don't resolve a user-selected symlink
+            if (f.exists() && !Core.local.isLink(f)) files.add(f) // links are deliberately left untouched
         }
         if (files.isEmpty()) return "bad"
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)

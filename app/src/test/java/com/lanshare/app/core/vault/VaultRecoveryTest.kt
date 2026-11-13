@@ -19,6 +19,9 @@ class VaultRecoveryTest {
         val s = VaultCrypto.rand(32); val sh = VaultRecovery.split(s, 2, 3)
         for ((a, b) in listOf(0 to 1, 0 to 2, 1 to 2)) assertArrayEquals(s, VaultRecovery.combine(listOf(sh[a], sh[b])))
         assertNull(VaultRecovery.combine(listOf(sh[0])))
+        assertNull(VaultRecovery.combine(listOf(byteArrayOf())))
+        assertNull(VaultRecovery.combine(listOf(sh[0], sh[0])))
+        assertNull(VaultRecovery.combine(listOf(sh[0], sh[1].copyOf().also { it[1] = 3 })))
         assertArrayEquals(sh[1], VaultRecovery.shareFromCode(VaultRecovery.shareToCode(sh[1])))
     }
     @Test fun keyFile() {
@@ -36,6 +39,21 @@ class VaultRecoveryTest {
         VaultStore.open(root, "new password 3".toCharArray()).also { it.removeBackupPassword(); it.lock() }
         assertThrows(VaultAuthException::class.java) { VaultStore.open(root, "backup pass 2".toCharArray()) }
     }
+    @Test fun recoveryReplacementIsTransactional() {
+        val root = tmp.newFolder()
+        val v = VaultStore.create(root, pw, 10)
+        val old = v.enableRecovery()
+        val candidate = v.newRecoverySecret() // generating a replacement must not invalidate the old one
+        v.lock()
+        VaultStore.openWithRecovery(root, old).lock()
+        assertThrows(VaultAuthException::class.java) { VaultStore.openWithRecovery(root, candidate) }
+        val open = VaultStore.open(root, pw)
+        open.setRecovery(candidate)
+        open.lock()
+        VaultStore.openWithRecovery(root, candidate).lock()
+        assertThrows(VaultAuthException::class.java) { VaultStore.openWithRecovery(root, old) }
+    }
+
     @Test fun throttle() {
         var t = 0L; val st = object : VaultThrottle.Store { override var fails = 0; override var lastFail = 0L }
         val th = VaultThrottle(st) { t }; repeat(4) { th.onFail() }; assertEquals(0, th.waitMs())

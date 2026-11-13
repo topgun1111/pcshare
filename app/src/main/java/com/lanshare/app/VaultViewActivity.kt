@@ -24,6 +24,7 @@ import java.lang.ref.WeakReference
  */
 class VaultViewActivity : Activity() {
     private var bmp: Bitmap? = null
+    private var registeredLock: (() -> Unit)? = null
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -34,7 +35,8 @@ class VaultViewActivity : Activity() {
         if (node == null || node.dir) { finish(); return }
         title = node.name
         val me = WeakReference(this)
-        VaultSession.onLock { me.get()?.let { a -> a.runOnUiThread { a.finish() } } }
+        registeredLock = { me.get()?.let { a -> a.runOnUiThread { a.finish() } } }
+        VaultSession.onLock(registeredLock!!)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
         val isText = !isImage(node.mime, node.name)
@@ -93,7 +95,7 @@ class VaultViewActivity : Activity() {
     }
 
     override fun onResume() { super.onResume(); if (!VaultSession.unlocked) finish() }
-    override fun onDestroy() { bmp?.recycle(); bmp = null; super.onDestroy() }
+    override fun onDestroy() { registeredLock?.let { VaultSession.removeOnLock(it) }; registeredLock = null; bmp?.recycle(); bmp = null; super.onDestroy() }
 
     companion object {
         const val MAX_TEXT = 1_000_000L; const val MAX_PX = 2048

@@ -29,10 +29,12 @@ object Bin {
     /** Paths inside the bin (or the bin itself) are never re-trashed: deleting there is permanent. */
     fun inBin(v: String): Boolean = vnorm(v).trimStart('/').let { it == NAME || it.startsWith("$NAME/") }
 
-    fun canTrash(v: String): Boolean = arcSplit(vnorm(v)) == null && vnorm(v) != "/" && !inBin(v)
+    fun canTrash(v: String): Boolean = arcSplit(vnorm(v)) == null && vnorm(v) != "/" && !inBin(v) &&
+        !com.lanshare.app.core.vault.VaultGuard.isVaultName(v) && !com.lanshare.app.core.vault.VaultGuard.isVaultPath(v)
 
     /** Moves [v] into the bin; [progress] gets the name once. Returns the bin id (for Restore / undo). Throws when it cannot (nothing is deleted then). */
     @Synchronized fun trash(v: String, progress: ((String) -> Unit)? = null): String {
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultName(v) || com.lanshare.app.core.vault.VaultGuard.isVaultPath(v)) throw Denied("not found")
         val src = Core.local.real(v)
         if (src == Core.local.root) throw Denied("cannot delete the shared root")
         val link = Core.local.isLink(src)

@@ -32,8 +32,10 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     private fun ix(f: File) { if (id == "local") IndexManager.changed(f) }
 
     /** Lockdown: directory listings never contain the vault folder (`.lsv`). */
-    private fun lsf(d: File): Array<File>? = d.listFiles()?.let { a -> if (a.all { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }) a else a.filter { com.lanshare.app.core.vault.VaultGuard.visible(it.name) }.toTypedArray() }
-    private fun lsn(d: File): Array<String>? = d.list()?.filter { com.lanshare.app.core.vault.VaultGuard.visible(it) }?.toTypedArray()
+    private fun visibleEntry(f: File): Boolean = com.lanshare.app.core.vault.VaultGuard.visible(f.name) &&
+        (!isLink(f) || !com.lanshare.app.core.vault.VaultGuard.isVaultPath(f.path))
+    private fun lsf(d: File): Array<File>? = d.listFiles()?.let { a -> if (a.all(::visibleEntry)) a else a.filter(::visibleEntry).toTypedArray() }
+    private fun lsn(d: File): Array<String>? = d.listFiles()?.filter(::visibleEntry)?.map { it.name }?.toTypedArray()
 
     fun real(v: String): File {
         val p = File(root, vnorm(if (id == "local") Bin.physical(v) else v).trimStart('/')).canonicalFile   // Bin.physical: "/.LANShare Bin/<shown name>/..." -> "/.LANShare Bin/<id>/<name>/..." (folder view of the Recycle bin)
@@ -47,7 +49,9 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
         val n = vnorm(if (id == "local") Bin.physical(v) else v)
         if (n == "/") return real(v)
         if (!com.lanshare.app.core.vault.VaultGuard.visible(vbase(n))) throw Denied("not found")
-        return File(real(vdir(n)), vbase(n))
+        val f = File(real(vdir(n)), vbase(n))
+        if (com.lanshare.app.core.vault.VaultGuard.isVaultPath(f.path)) throw Denied("not found") // last-component symlinks must not alias the vault
+        return f
     }
 
     private fun fsize(f: File): Long {

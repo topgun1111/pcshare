@@ -4,6 +4,14 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-13 - Vault recovery and isolation hardening
+### Fixed
+- Replacing a recovery code, recovery key file or split shares no longer invalidates the previous recovery method until the new copy has been saved and confirmed.
+- The vault is also protected from symbolic links that point into its encrypted folder.
+- Vault files cannot be moved into the recycle bin or modified as ZIP / archive sources.
+- Decrypted vault data and file names are kept out of transfer notifications while the vault is open.
+- Removed originals are purged from MediaStore before the gallery refresh completes.
+
 
 ## 2026-11-13 - Bigger selection menu
 ### Changed

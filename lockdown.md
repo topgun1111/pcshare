@@ -221,3 +221,28 @@ Wired: `LocalFs.real()/lreal()` throw Denied("not found") for vault paths (cover
 
 ## Out of scope (v1)
 Per-folder separate passwords; hiding the app icon; cloud sync of the vault; protection against root/forensic acquisition of an *unlocked, running* device; guaranteed secure erase on flash.
+
+---
+## IMPLEMENTATION FOLLOW-UP — 2026-11-13
+
+### Completed in this pass
+- Recovery replacement is now transactional in the UI: a candidate recovery secret is generated without changing the header; the header slot is updated only after the recovery code is re-entered, the `.lsrk` file is saved, or the user confirms all 3 shares. Cancelled key-file creation leaves the previous recovery slot intact. Pending recovery bytes are zeroized on lock / activity destruction. The create flow now offers recovery setup.
+- `VaultGuard` now matches `cacheDir/vt` with a path-component boundary (not `vtfoo` / `vt-backup`), and `LocalFs.lreal` rejects last-component symlinks whose canonical target enters `.lsv` or the vault plaintext cache. Listings hide such symlink aliases. Vault lock jobs preserve final-component links and leave symlinks untouched; `VaultStore.lockFile` rejects a symlink source and recursive folder locking skips symlink children instead of following them.
+- `Bin.trash` / `canTrash` explicitly deny vault paths. `ArcEdit` and `ZipEdit` reject vault/cache archive source files at their mutation entry points.
+- Transfer notifications use neutral text while the vault is unlocked; no last-transfer filename is shown in Phone Explorer notifications. Main job notifications also suppress task labels/details while unlocked.
+- Original-file removal now attempts MediaStore row deletion for each external volume, then requests a media scan as a fallback.
+- Added tests for transactional recovery replacement, malformed / duplicate Shamir shares, and cache-path prefix collisions.
+- `VaultStore.changePassword` now zeroizes the decrypted verification copy of the master key.
+
+### Verification performed
+- Pure JVM vault sources (`VaultFormat`, `VaultCrypto`, `VaultStream`, `VaultIndex`, `VaultStore`, `VaultRecovery`, `VaultGuard`) compiled with Kotlin compiler and Bouncy Castle 1.80.
+- A JVM smoke test passed: encrypted file round-trip + integrity verification, recovery-code round-trip, 2-of-3 Shamir reconstruction, wrong/uncommitted recovery rejection, committed recovery replacement, and cache-path boundary checks.
+- **Android build NOT run:** this delivered source tree has no Gradle wrapper, no installed Gradle executable, and no Android SDK / `android.jar` in the build environment. Android UI, manifest, FTP and service wiring still require `./gradlew testDebugUnitTest assembleDebug` in the owner's Android/CI environment.
+
+### Still open (must not be represented as complete)
+- Android compile and full + lite APK build/device verification.
+- PDF, video/audio and Office viewers opened directly from the vault; current `VaultViewActivity` handles images and small text in memory, while other types still require explicit export.
+- HTTP `/api/*` loopback binding / token policy: requires owner decision because it can change PC browser access.
+- FTP `tlsRequired` default and visible warning: requires owner decision because it can break plain-FTP clients.
+- Full FTP / HTTP / intent fuzz suite and device isolation matrix (Gallery, second file manager, PC share, CLIP, recents, screenshots).
+- Secondary-volume discovery, storage-analyzer opaque vault slice, and root-device limitations remain as previously scoped.

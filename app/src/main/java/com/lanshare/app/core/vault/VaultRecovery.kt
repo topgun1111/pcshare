@@ -60,10 +60,14 @@ object VaultRecovery {
         return (1..n).map { x -> ByteArray(34).also { s -> s[0] = x.toByte(); s[1] = k.toByte(); for (i in 0 until 32) s[2 + i] = eval(coef[i], x) } }
     }
     fun combine(shares: List<ByteArray>): ByteArray? {
-        if (shares.isEmpty()) return null
-        val k = shares[0].getOrNull(1)?.toInt() ?: return null
-        val sh = shares.distinctBy { it[0] }; if (sh.size < k || sh.any { it.size != 34 || it[1].toInt() != k }) return null
-        val use = sh.take(k); val out = ByteArray(32)
+        if (shares.isEmpty() || shares.any { it.size != 34 }) return null
+        val k = shares[0][1].toInt() and 255
+        if (k !in 2..10 || shares.size < k) return null
+        // Reject malformed, duplicate, or mixed-threshold shares before interpolation.
+        if (shares.any { (it[1].toInt() and 255) != k || (it[0].toInt() and 255) !in 1..255 }) return null
+        val indexes = shares.map { it[0].toInt() and 255 }
+        if (indexes.distinct().size != indexes.size) return null
+        val use = shares.take(k); val out = ByteArray(32)
         for (i in 0 until 32) {
             var acc = 0
             for (a in use) { var num = 1; var den = 1

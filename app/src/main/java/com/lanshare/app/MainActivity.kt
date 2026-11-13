@@ -1024,12 +1024,15 @@ class MainActivity : Activity() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             if (alert && Build.VERSION.SDK_INT >= 26)
                 nm.createNotificationChannel(NotificationChannel("lanshare_results", "Job results", NotificationManager.IMPORTANCE_HIGH))
+            val vaultOpen = com.lanshare.app.core.vault.VaultSession.unlocked
+            val safeTitle = if (vaultOpen) "LANShare" else title
+            val safeText = if (vaultOpen) (if (st == "run") "Working" else "Task finished") else text
             val b = NotificationCompat.Builder(this, if (alert) "lanshare_results" else "lanshare_transfers")
-                .setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(text)
+                .setSmallIcon(R.drawable.ic_notification).setContentTitle(safeTitle).setContentText(safeText)
                 .setContentIntent(open).setOnlyAlertOnce(!alert).setColor(NoteTint.lite(this))
                 .setCategory(if (alert) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
             if (com.lanshare.app.core.vault.VaultSession.unlocked) b.setVisibility(NotificationCompat.VISIBILITY_SECRET)   // Lockdown row 13: nothing on the lock screen while the vault is open
-            if (alert) b.setStyle(NotificationCompat.BigTextStyle().bigText(text)).setPriority(NotificationCompat.PRIORITY_HIGH)
+            if (alert) b.setStyle(NotificationCompat.BigTextStyle().bigText(safeText)).setPriority(NotificationCompat.PRIORITY_HIGH)
             if (st == "run") b.setOngoing(true).setProgress(100, if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0, total <= 0)
             else b.setOngoing(false).setAutoCancel(true).setProgress(0, 0, false)
             nm.notify(nid, b.build())

@@ -22,6 +22,7 @@ class App : Application() {
             override fun onActivityDestroyed(activity: Activity) { }
         })                       // :pdfbuild only renders PDF pages: no clipboard sync, no FileInfo
         com.lanshare.app.core.FileInfo.ctx = applicationContext
+        com.lanshare.app.core.vault.VaultGuard.cacheRoot = cacheDir.path // initialize before any exported activity / intent guard can run
         Haptics.init(this)
         try { ClipSync.install(this) } catch (_: Throwable) {}
         try { VaultAppHooks.install(this) } catch (_: Throwable) {}   // Lockdown: app-wide auto-lock, cache sweep, MediaStore purge

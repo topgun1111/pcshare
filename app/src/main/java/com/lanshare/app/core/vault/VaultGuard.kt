@@ -31,7 +31,10 @@ object VaultGuard {
         val d = dec(path)
         if (hasVaultSegment(d)) return true
         val c = cacheRoot
-        return c.isNotEmpty() && fold(d.replace('\\', '/')).startsWith(fold(c.trimEnd('/')) + "/vt")
+        if (c.isEmpty()) return false
+        val normalized = fold(d.replace('\\', '/')).trimEnd('/')
+        val vt = fold(c.trimEnd('/')) + "/vt"
+        return normalized == vt || normalized.startsWith(vt + "/")
     }
 
     /** Full test: lexical, then canonical path (follows symlinks), then the cache dir. */
