@@ -498,7 +498,7 @@ class UsActivity : Activity() {
                 })
                 if (st.optString("error").let { it.isNotEmpty() && it != "null" }) t.append("\n  Last error: " + st.optString("error"))
             } catch (e: Throwable) { t.append("Could not read the status: " + (e.message ?: e.javaClass.simpleName)) }
-            ui.post { if (!isFinishing) AppPal.dlg(this).kind("info").setTitle("Search index").setMessage(t.toString()).setPositiveButton("OK", null).setNeutralButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.show() }
+            ui.post { if (!isFinishing) AppPal.dlg(this).kind("info").setTitle("Search index").setMessage(t.toString()).setPositiveButton("Rescan now") { _, _ -> IndexManager.rescan(); toast("Rescanning the phone") }.setNegativeButton("Close", null).show() }
         }.start()
     }
 

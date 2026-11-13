@@ -829,8 +829,8 @@ class TextEditorActivity : Activity() {
 
     private fun failLoad(msg: String) {
         AppPal.dlg(this).kind("warn").setMessage(msg).setCancelable(false)
-            .setPositiveButton("Close") { _, _ -> finish() }
-            .setNegativeButton("Retry") { _, _ -> load() }
+            .setPositiveButton("Retry") { _, _ -> load() }
+            .setNegativeButton("Close") { _, _ -> finish() }
             .show()
     }
 

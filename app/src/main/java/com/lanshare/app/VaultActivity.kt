@@ -189,7 +189,7 @@ class VaultActivity : FragmentActivity() {
     private fun fileMenu(n: VaultNode) {
         val st = VaultSession.store ?: return
         val opts = if (n.dir) arrayOf(vt("Rename"), vt("Delete")) else arrayOf(vt("Export to Download"), vt("Rename"), vt("Delete"))
-        AlertDialog.Builder(this).setTitle(n.name).setItems(opts) { _, i ->
+        AppPal.dlg(this).setTitle(n.name).setItems(opts) { _, i ->
             when (opts[i]) {
                 vt("Export to Download") -> bg {
                     val dl = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS); dl.mkdirs()
@@ -199,14 +199,14 @@ class VaultActivity : FragmentActivity() {
                     st.export(n.id, f); val saved = f.name; ui.post { toast(vf("Saved to Download/%s", saved)) }
                 }
                 vt("Rename") -> ask(vt("Rename"), n.name) { v -> bg { st.rename(n.id, v) } }
-                vt("Delete") -> AlertDialog.Builder(this).setMessage("Delete \"${n.name}\" from the vault for good?").setPositiveButton(vt("Delete")) { _, _ -> bg { st.delete(n.id) } }.setNegativeButton(vt("Cancel"), null).show()
+                vt("Delete") -> AppPal.dlg(this).kind("danger").setMessage("Delete \"${n.name}\" from the vault for good?").setPositiveButton(vt("Delete")) { _, _ -> bg { st.delete(n.id) } }.setNegativeButton(vt("Cancel"), null).show()
             }
         }.show()
     }
 
     private fun ask(title: String, init: String, ok: (String) -> Unit) {
         val e = EditText(this).apply { setText(init); setSingleLine(true) }
-        AlertDialog.Builder(this).setTitle(title).setView(e).setPositiveButton("OK") { _, _ -> val v = e.text.toString().trim(); if (v.isNotEmpty()) ok(v) }.setNegativeButton(vt("Cancel"), null).show()
+        AppPal.dlg(this).setTitle(title).setView(e).setPositiveButton("OK") { _, _ -> val v = e.text.toString().trim(); if (v.isNotEmpty()) ok(v) }.setNegativeButton(vt("Cancel"), null).show()
     }
 
     /** Runs a vault change off the UI thread, then redraws; any failure is shown as a toast. */
@@ -279,11 +279,11 @@ class VaultActivity : FragmentActivity() {
     }
 
     private fun offerBio() {
-        AlertDialog.Builder(this).setTitle(vt("Unlock with fingerprint?"))
+        AppPal.dlg(this).kind("perm").setTitle(vt("Unlock with fingerprint?"))
             .setMessage(vt("Skip typing the password next time. The password stays the real key: after a reinstall you enter it once and turn fingerprint on again."))
             .setPositiveButton(vt("Turn on")) { _, _ -> enableBio() }
-            .setNeutralButton(vt("Not now"), null)
-            .setNegativeButton(vt("Don't ask again")) { _, _ -> prefs.bioDeclined = true }.show()
+            .setNegativeButton(vt("Not now"), null)
+            .setNeutralButton(vt("Don't ask again")) { _, _ -> prefs.bioDeclined = true }.show()
     }
 
     private fun enableBio() {
@@ -302,7 +302,7 @@ class VaultActivity : FragmentActivity() {
     private fun forgot(msg: TextView) {
         forgotMsg = msg
         val o = arrayOf(vt("Recovery code"), vt("Key file (.lsrk)"), vt("Shares (2 of 3)"))
-        AlertDialog.Builder(this).setTitle(vt("Forgot password"))
+        AppPal.dlg(this).setTitle(vt("Forgot password"))
             .setMessage(vt("If you set a backup password, cancel and type it in the password field instead."))
             .setItems(o) { _, i -> when (i) { 0 -> forgotCode(msg); 1 -> forgotKeyFile(); else -> forgotShares(msg) } }
             .setNegativeButton(vt("Cancel"), null).show()
@@ -322,7 +322,7 @@ class VaultActivity : FragmentActivity() {
 
     private fun forgotCode(msg: TextView) {
         val e = EditText(this).apply { hint = vt("Recovery code"); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
-        AlertDialog.Builder(this).setTitle(vt("Recovery code")).setView(e)
+        AppPal.dlg(this).setTitle(vt("Recovery code")).setView(e)
             .setPositiveButton(vt("Unlock")) { _, _ ->
                 val secret = VaultRecovery.fromCode(e.text.toString())
                 if (secret == null) msg.text = vt("That recovery code is not valid. Check the typing.") else unlockSecret(secret, msg)
@@ -354,7 +354,7 @@ class VaultActivity : FragmentActivity() {
     private fun forgotShares(msg: TextView) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = (1..3).map { n -> EditText(this).apply { hint = vf("Share %s", n) + (if (n == 3) " (optional)" else ""); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
-        AlertDialog.Builder(this).setTitle(vt("Enter any 2 shares")).setView(box)
+        AppPal.dlg(this).setTitle(vt("Enter any 2 shares")).setView(box)
             .setPositiveButton(vt("Unlock")) { _, _ ->
                 val shares = fs.map { it.text.toString() }.filter { it.isNotBlank() }.map { VaultRecovery.shareFromCode(it) }
                 val ok = shares.filterNotNull()
@@ -390,7 +390,7 @@ class VaultActivity : FragmentActivity() {
             val sec = st.enableRecovery()
             val codes = try { VaultRecovery.split(sec, 2, 3).map { VaultRecovery.shareToCode(it) } } finally { sec.fill(0) }
             ui.post {
-                AlertDialog.Builder(this).setTitle(vt("Your 3 shares"))
+                AppPal.dlg(this).setTitle(vt("Your 3 shares"))
                     .setMessage(codes.mapIndexed { i, c -> "Share ${i + 1}:\n$c" }.joinToString("\n\n") + "\n\nAny 2 shares open the vault. One alone reveals nothing. Give them to different people or places, away from this phone. Shown only once.")
                     .setCancelable(false).setPositiveButton(vt("I saved all 3"), null).show()
             }
@@ -402,7 +402,7 @@ class VaultActivity : FragmentActivity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = hints.map { field(it).also { f -> box.addView(f) } }
         val err = text("", 13f, lm.error); box.addView(err)
-        val dlg = AlertDialog.Builder(this).setTitle(title).setView(box).setCancelable(cancelable).setPositiveButton("OK", null)
+        val dlg = AppPal.dlg(this).setTitle(title).setView(box).setCancelable(cancelable).setPositiveButton("OK", null)
             .apply { if (cancelable) setNegativeButton(vt("Cancel"), null) }.create()
         dlg.show()
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -444,7 +444,7 @@ class VaultActivity : FragmentActivity() {
             bg { val sec = st.enableRecovery(); val code = VaultRecovery.toCode(sec); sec.fill(0); ui.post { showCode(code) } }
         }
         if (st.hasRecovery) add(vt("Remove recovery code")) {
-            AlertDialog.Builder(this).setMessage(vt("Remove the recovery code? Your password still opens the vault.")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeRecovery() } }.setNegativeButton(vt("Cancel"), null).show()
+            AppPal.dlg(this).kind("danger").setMessage(vt("Remove the recovery code? Your password still opens the vault.")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeRecovery() } }.setNegativeButton(vt("Cancel"), null).show()
         }
         add(vt("Save recovery key file (.lsrk) (replaces the recovery code)")) { makeKeyFile(st) }
         add(vt("Split recovery into 3 shares (replaces the recovery code)")) { makeShares(st) }
@@ -454,13 +454,13 @@ class VaultActivity : FragmentActivity() {
             }
         }
         if (st.hasBackupPassword) add(vt("Remove backup password")) {
-            AlertDialog.Builder(this).setMessage(vt("Remove the backup password?")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeBackupPassword() } }.setNegativeButton(vt("Cancel"), null).show()
+            AppPal.dlg(this).kind("danger").setMessage(vt("Remove the backup password?")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeBackupPassword() } }.setNegativeButton(vt("Cancel"), null).show()
         }
-        AlertDialog.Builder(this).setTitle(vt("Vault settings")).setItems(acts.map { it.first }.toTypedArray()) { _, i -> acts[i].second() }.show()
+        AppPal.dlg(this).setTitle(vt("Vault settings")).setItems(acts.map { it.first }.toTypedArray()) { _, i -> acts[i].second() }.show()
     }
 
     private fun showCode(code: String) {
-        AlertDialog.Builder(this).setTitle(vt("Your recovery code"))
+        AppPal.dlg(this).setTitle(vt("Your recovery code"))
             .setMessage("$code\n\nWrite it down and keep it away from this phone. It is shown only once. Anyone who has it can open your vault.")
             .setCancelable(false).setPositiveButton(vt("I wrote it down")) { _, _ -> checkCode(code) }.show()
     }
@@ -472,7 +472,7 @@ class VaultActivity : FragmentActivity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = idx.map { n -> EditText(this).apply { hint = "Group ${n + 1}"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
         val err = text("", 13f, lm.error); box.addView(err)
-        val dlg = AlertDialog.Builder(this).setTitle(vt("Check your copy")).setMessage(vt("Type the groups you wrote down.")).setView(box).setCancelable(false)
+        val dlg = AppPal.dlg(this).setTitle(vt("Check your copy")).setMessage(vt("Type the groups you wrote down.")).setView(box).setCancelable(false)
             .setPositiveButton(vt("Check"), null).setNegativeButton(vt("Show again"), null).create()
         dlg.show()
         dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -486,7 +486,7 @@ class VaultActivity : FragmentActivity() {
 
     private fun autoLockMenu() {
         val v = intArrayOf(0, 30, 60, 300, -1)
-        AlertDialog.Builder(this).setTitle(vt("Auto-lock")).setItems(v.map { lockLabel(it) }.toTypedArray()) { _, i -> prefs.autoLockSec = v[i]; VaultSession.autoLockSec = v[i] }.show()
+        AppPal.dlg(this).setTitle(vt("Auto-lock")).setItems(v.map { lockLabel(it) }.toTypedArray()) { _, i -> prefs.autoLockSec = v[i]; VaultSession.autoLockSec = v[i] }.show()
     }
 
     companion object {

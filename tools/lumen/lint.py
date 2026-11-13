@@ -83,5 +83,19 @@ for _f in sorted(os.listdir(_nat)):
         if re.search(r'(?<![\w.])(?:\w+\.)?textSize\s*=\s*[0-9.]+f(?!\s*\*)|setTextSize\(\s*(?:android\.util\.)?TypedValue\.COMPLEX_UNIT_SP\s*,\s*[0-9.]+f',_l) and 'Paint' not in _l and 'sizeSp' not in _l:_hand.append(f'{_f}:{_i+1}')
 print('P8 native TextViews with a hand-set literal size:',len(_hand),_hand)
 
-_x=[b for b in (_bad,_nb) if b]
+# A9: semantic dialog action hierarchy. Alternative-danger styling must never promote the primary action to danger;
+# notice acknowledgements must have a quiet-action classifier in both implementations; Vault must not bypass AppPal.
+_sem=[]
+if not re.search(r'const dng=!!o\.danger\s*;',_raw):_sem.append('HTML primary danger must depend only on o.danger')
+if re.search(r'const dng=!!\(o\.danger\s*\|\|\s*o\.altDanger\)',_raw):_sem.append('HTML altDanger must not affect primary danger')
+if not re.search(r'function lmDismissAction\(',_raw):_sem.append('HTML dismiss-action classifier missing')
+_lm=open(os.path.join(_nat,'Lm.kt'),encoding='utf-8').read()
+if not re.search(r'private fun isDismissAction\(',_lm) or not re.search(r'isDismissAction\(pos\.text',_lm):_sem.append('Native dismiss-action classifier missing or unused')
+for _f in sorted(os.listdir(_nat)):
+    if not _f.endswith('.kt') or _f=='AppPal.kt':continue
+    _src=open(os.path.join(_nat,_f),encoding='utf-8').read()
+    if re.search(r'AlertDialog\.Builder\s*\(',_src):_sem.append(f'{_f}: raw AlertDialog.Builder bypasses AppPal')
+print('A9 semantic dialog rules:', 'PASS' if not _sem else 'FAIL '+ '; '.join(_sem))
+
+_x=[b for b in (_bad,_nb,_sem) if b]
 sys.exit(1 if bad or _x else 0)

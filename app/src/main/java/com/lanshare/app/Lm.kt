@@ -317,6 +317,14 @@ object Lm {
         return false
     }
 
+    /** Acknowledgement labels are quiet only in notice dialogs; the same label can submit a form elsewhere. */
+    private fun isDismissAction(label: CharSequence?, kind: String?): Boolean {
+        val l = label?.toString()?.trim()?.lowercase() ?: return false
+        if (l in setOf("close", "dismiss", "got it", "kapat", "fermer", "cancel", "iptal", "vazgeç", "back", "go back", "not now")) return true
+        val notice = kind in setOf("info", "warn", "perm", "ok")
+        return notice && l in setOf("ok", "okay", "tamam", "done", "understood")
+    }
+
     /** Dialog extras (Lumen A8): semantic hero kind and optional read-only detail rows. */
     class Opts(val kind: String?, val details: List<Pair<String, String>>?)
 
@@ -454,15 +462,20 @@ object Lm {
             if (mv != null) LumenTypography.apply(mv, LumenTypography.BODY_L)
         } catch (_: Throwable) { }
 
-        val danger = o?.kind == "danger" || (o?.kind == null && pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))
+        val danger = o?.kind == "danger" || (pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))
+        val dismissPrimary = pos != null && pos.visibility == View.VISIBLE && isDismissAction(pos.text, o?.kind) && !danger
         try {
             if (pos != null && pos.visibility == View.VISIBLE) {
-                if (danger) styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c) else styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
+                when {
+                    danger -> styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
+                    dismissPrimary -> styleButton(pos, 0, onWin(lm.primary, AppPal.pal(c).bg, AppPal.pal(c).fg), c)
+                    else -> styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
+                }
             }
             // text buttons sit on the dialog window (page --bg): keep them readable on every theme, fall back to the page ink
             val wbg = AppPal.pal(c).bg
-            if (neu != null && neu.visibility == View.VISIBLE) styleButton(neu, 0, onWin(lm.primary, wbg, AppPal.pal(c).fg), c)
-            if (neg != null && neg.visibility == View.VISIBLE) styleButton(neg, 0, onWin(if (danger) lm.ink else lm.primary, wbg, AppPal.pal(c).fg), c)
+            if (neu != null && neu.visibility == View.VISIBLE) styleButton(neu, 0, onWin(if (isDanger(neu.text, title)) lm.error else lm.primary, wbg, AppPal.pal(c).fg), c)
+            if (neg != null && neg.visibility == View.VISIBLE) styleButton(neg, 0, onWin(if (isDanger(neg.text, title)) lm.error else if (danger) lm.ink else lm.primary, wbg, AppPal.pal(c).fg), c)
             if (danger && neg != null && neg.visibility == View.VISIBLE) neg.requestFocus()   // Cancel is the default in danger dialogs
         } catch (_: Throwable) { }
 

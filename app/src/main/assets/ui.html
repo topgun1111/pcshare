@@ -1792,9 +1792,10 @@ const pdir=p=>p.slice(0,p.lastIndexOf('/'))||'/';
 function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase()]||'file')}
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
 // themed dialog: returns true / the typed text, or null when cancelled
+function lmDismissAction(label,kind){const l=String(label||'').trim().toLowerCase();return ['close','dismiss','got it','kapat','fermer','cancel','iptal','vazgeç','back','go back','not now'].includes(l)||(['info','warn','perm','ok'].includes(kind)&&['ok','okay','tamam','done','understood'].includes(l))}
 function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o.input, o.ok, o.alt, o.danger, o.hero (icon name; auto trash for delete-like danger), o.kind (info|warn|perm|ok hero tile), o.details ([[label,value]]) */
   const d=$('#dlg');d.textContent='';d.style.display='flex';
-  const dng=!!(o.danger||o.altDanger);
+  const dng=!!o.danger;
   const rich=!!(o.kind||o.hero||(o.details&&o.details.length)||o.alt||o.input);
   const card=E('div','dcard'+(rich?' rich':' sd'));
   const KH={info:'info',warn:'warn',perm:'lock',ok:'check'};   // Lumen 12.12 hero kinds: o.kind = info | warn | perm | ok (tile colours = info / warning / primary / success slots)
@@ -1804,8 +1805,8 @@ function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o
   card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   if(o.details&&o.details.length){const dt=E('dl','ddet');o.details.forEach(x=>{dt.append(E('dt','',x[0]),E('dd','',x[1]))});card.append(dt)}   // o.details = [[label, value], ...]: small read-only rows under the message
   let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.innerHTML=ic('close');cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
-  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':' lmp'),o.ok||'OK');
-  let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>done('alt')}   // optional middle choice, resolves 'alt'
+  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':(lmDismissAction(o.ok||'OK',o.kind)?'':' lmp')),o.ok||'OK');
+  let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>{if(o.altDanger)hap('err');done('alt')}}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>{if(o.danger)hap('err');done(inp?inp.value:true)};
   d.onclick=e=>{if(e.target===d)done(null)};

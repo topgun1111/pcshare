@@ -1225,8 +1225,9 @@ class StorageActivity : Activity() {
             val smp = s.deniedSample.toList()
             if (smp.isNotEmpty()) { sb.append(", for example:\n"); for (p in smp.take(8)) sb.append(p).append('\n') } else sb.append(".\n")
         }
-        val b = AppPal.dlg(this).kind("info").setTitle("System / other").setMessage(sb.toString()).setPositiveButton("OK", null)
-        if (needAccess()) b.setNeutralButton("Allow access") { _, _ -> openAccessSettings() }
+        val b = AppPal.dlg(this).kind("info").setTitle("System / other").setMessage(sb.toString())
+        if (needAccess()) b.setPositiveButton("Allow access") { _, _ -> openAccessSettings() }.setNegativeButton("Close", null)
+        else b.setPositiveButton("Close", null)
         b.show()
     }
 
