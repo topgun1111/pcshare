@@ -5,6 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-13 - Build fix
+### Fixed
+- Fixed a build error in the vault recovery key file code.
+
 ## 2026-11-13 - Safer file sharing
 ### Changed
 - The PC file server (FTP) now locks out a device for a while after repeated wrong PINs, even if it reconnects.

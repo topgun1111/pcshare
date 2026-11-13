@@ -42,13 +42,15 @@ object VaultRecovery {
         val head = "LSRK1".toByteArray() + byteArrayOf(logN.toByte()) + salt + nonce
         val sealed = VaultCrypto.seal(kek, nonce, head, secret); VaultCrypto.wipe(kek); return head + sealed
     }
-    fun fromKeyFile(file: ByteArray, filePassword: CharArray): ByteArray? = try {
-        if (file.size != 5 + 1 + 32 + 12 + 48 || !String(file, 0, 5).equals("LSRK1")) null else {
-            val logN = file[5].toInt(); if (logN !in 10..VaultFormat.MAX_LOGN) return null
-            val head = file.copyOf(50); val kek = VaultCrypto.kek(filePassword, file.copyOfRange(6, 38), logN, 8, 1)
-            try { VaultCrypto.open(kek, file.copyOfRange(38, 50), head, file, 50, 48) } finally { VaultCrypto.wipe(kek) }
-        }
-    } catch (e: Exception) { null }
+    fun fromKeyFile(file: ByteArray, filePassword: CharArray): ByteArray? {
+        return try {
+            if (file.size != 5 + 1 + 32 + 12 + 48 || !String(file, 0, 5).equals("LSRK1")) null else {
+                val logN = file[5].toInt(); if (logN !in 10..VaultFormat.MAX_LOGN) return null
+                val head = file.copyOf(50); val kek = VaultCrypto.kek(filePassword, file.copyOfRange(6, 38), logN, 8, 1)
+                try { VaultCrypto.open(kek, file.copyOfRange(38, 50), head, file, 50, 48) } finally { VaultCrypto.wipe(kek) }
+            }
+        } catch (e: Exception) { null }
+    }
 
     // ---- 3. Shamir split: k-of-n shares of the secret (e.g. 2-of-3: family, cloud, safe) ----
     // Share = [index(1)][k(1)][32 bytes]  -> shown with the same Base32 code format via [shareToCode]
