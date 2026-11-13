@@ -5,6 +5,12 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+## 2026-11-13 - Bigger selection menu
+### Changed
+- The buttons in the menu that appears when you select files are bigger (larger icons, text and touch area).
+- Zip has a new icon: a file with a zipper.
+- The Cancel and Create buttons in the Create archive window are now clear, bigger buttons.
+
 ## 2026-11-13 - Vault locks itself everywhere
 ### Changed
 - The vault now locks when the screen turns off or when you leave LANShare, on every screen (not only inside the Vault).

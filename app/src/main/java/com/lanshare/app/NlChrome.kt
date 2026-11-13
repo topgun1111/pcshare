@@ -395,7 +395,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
-    private val lbP = tp(14f, semi)
+    private val lbP = tp(16f, semi)
     private var shownAt = 0L
 
     init {
@@ -416,7 +416,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             "copy", "fwd", "back", "send", "search" -> "aud"
             "share", "openw" -> "doc"
             "cut" -> "ppt"
-            "zip", "print" -> "zip"
+            "zip", "zipf", "print" -> "zip"
             "edit", "extract", "paste", "add" -> "xls"
             "dup", "merge" -> "vid"
             "palette" -> "pic"
@@ -544,18 +544,18 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
             val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
             val col = if (dng) lm.error else p.fg
             val icol = if (dng) lm.error else iconColor(a2.k, p.fg, lm)   // colourful icon; label keeps the theme colour
-            val top = r.top + Math.max(0f, (r.height() - (40f + 6f + 17f) * d) / 2f)
-            val pill = RectF(r.centerX() - 32f * d, top, r.centerX() + 32f * d, top + 40f * d)
+            val top = r.top + Math.max(0f, (r.height() - (48f + 6f + 20f) * d) / 2f)
+            val pill = RectF(r.centerX() - 36f * d, top, r.centerX() + 36f * d, top + 48f * d)
             if (pri) {
                 // gPrimary: 135 degrees, 2 % white start to 12 % black end (same as Lm.styleButton)
                 fillP.shader = LumenGrad.diag(LumenGrad.primary(lm), pill.left, pill.top, pill.right, pill.bottom)
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
-            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 30f, if (pri) p.onac else icol)
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 36f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
-            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 8.5f * d, lbP), lbP)
+            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 10f * d, lbP), lbP)
             if (lay >= 0) cv.restoreToCount(lay)
         }
         if (moving) postInvalidateOnAnimation() else shownAt = 0L
