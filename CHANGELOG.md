@@ -5,7 +5,10 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
-## 2026-11-13 - Build fix
+## 2026-11-13 - Vault on the main menu
+### Added
+- New Vault tile on the main menu: create a password, unlock, add files, make folders, rename, export or delete. Fingerprint comes later.
+
 ### Fixed
 - Fixed a build error in the vault recovery key file code.
 

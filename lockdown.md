@@ -1,6 +1,6 @@
 # LOCKDOWN — Vault feature for LANShare (com.lanshare.app, full + lite)
 
-Status: **PART 1 DONE** (14 passing JVM tests). **PART 2 core DONE 2026-11-13** (vault-side + Android bio layer, NOT compiled; see Part 2 status). **PART 3 core DONE 2026-11-13** (guards, NOT compiled; see Part 3 status). Next: Part 2 UI (`VaultUnlockActivity`, settings) + Part 4.
+Status: **PART 1 DONE** (14 passing JVM tests). **PART 2 core DONE 2026-11-13** (vault-side + Android bio layer, NOT compiled; see Part 2 status). **PART 3 core DONE 2026-11-13** (guards, NOT compiled; see Part 3 status). Part 2 UI first cut DONE 2026-11-13: main-menu Vault tile -> `VaultActivity` (create / password unlock / browse / add / mkdir / rename / export / delete / lock; FLAG_SECURE; NOT compiled). Still missing: fingerprint (androidx.biometric), recovery key / backup password / change password screens, auto-lock setting, lock from the file manager. Next: those + Part 4.
 Base facts (from the repo): minSdk 24, target 34, Kotlin, `MANAGE_EXTERNAL_STORAGE` already granted, BouncyCastle 1.78.1 already bundled, no `androidx.biometric` yet. Hook points: `core/LocalFs.kt`, `core/Bin.kt`, `core/IndexManager.kt`, `core/ImgSearch.kt`, `core/Albums.kt`, `core/Cleanup.kt`, `core/DupFinder.kt`, `core/Gdrive*.kt`, `core/MiniHttp.kt`, `pe/FtpServer.kt`, `pe/PeService.kt`, `StorageTreemap.kt`, `ImageViewerActivity`, `PdfViewerActivity`, `OfficeViewerActivity`, `PlayerActivity`, `TextEditorActivity`.
 
 ## SCOPE (owner clarification)

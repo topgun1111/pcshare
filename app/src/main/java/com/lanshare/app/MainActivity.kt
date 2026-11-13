@@ -289,6 +289,10 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openStorage(vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }
         }
+        /** Main menu Vault tile: opens the Vault screen (create / unlock / browse). */
+        @JavascriptInterface fun openVault() {
+            runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
+        }
         /** Path-bar / file manager search: the Universal Search screen (instant name search of this phone). [q] = text to start with. */
         @JavascriptInterface fun openUsearch(q: String) {
             runOnUiThread { try { startActivity(UsActivity.intent(this@MainActivity, q)) } catch (_: Throwable) { } }

@@ -6121,8 +6121,9 @@ const HM_P={
  fav:'M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2.06 11L15 15.28 12.06 17l.78-3.33-2.59-2.24 3.41-.29L15 8l1.34 3.14 3.41.29-2.59 2.24.78 3.33z',
  dev:'M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z',
  sto:'M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z',
+ vault:'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',
  usr:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'};
-const HM_L={dl:'download',prn:'print',ftp:'ftp',cld:'cld',dev:'dev',sto:'sto',usr:'search',sh:'term',ms:'phone',vid:'vid',gal:'gal',usb:'usb',smb:'smb',fav:'fav'};
+const HM_L={vault:'vault',dl:'download',prn:'print',ftp:'ftp',cld:'cld',dev:'dev',sto:'sto',usr:'search',sh:'term',ms:'phone',vid:'vid',gal:'gal',usb:'usb',smb:'smb',fav:'fav'};
 const hmSvg=k=>{const L=LUMEN_ICONS[HM_L[k]];return '<svg viewBox="0 0 24 24"'+(L?' class="li"':'')+' aria-hidden="true"><path d="'+(L||HM_P[k])+'"/></svg>'};
 /* Lumen 11.6 home tiles: glyph = white or dark ink, whichever reads better on both gradient stops of the tile colour (works for every preset and Custom) */
 function hmInk(root){const hx=h=>{h=(h||'').trim();if(h[0]!=='#')return null;if(h.length===4)h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];if(h.length!==7)return null;const n=parseInt(h.slice(1),16);return[n>>16&255,n>>8&255,n&255]},
@@ -6194,7 +6195,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={gal:'var(--cat-pic)',vid:'var(--cat-vid)',dl:'var(--cat-zip)',prn:'var(--cat-pdf)',sto:'var(--cat-other)',usr:'var(--cat-vid)',smb:'var(--cat-doc)',ftp:'var(--cat-xls)',cld:'var(--cat-aud)',fav:'var(--cat-ppt)',dev:'var(--cat-other)',sh:'var(--cat-code)'};   /* Lumen 4.5 / 12.9: main menu tiles take the named category colours (tokens.json category); the old per-theme --hc1..7 are no longer read */
+  let ti=0;const HC={vault:'var(--cat-zip)',gal:'var(--cat-pic)',vid:'var(--cat-vid)',dl:'var(--cat-zip)',prn:'var(--cat-pdf)',sto:'var(--cat-other)',usr:'var(--cat-vid)',smb:'var(--cat-doc)',ftp:'var(--cat-xls)',cld:'var(--cat-aud)',fav:'var(--cat-ppt)',dev:'var(--cat-other)',sh:'var(--cat-code)'};   /* Lumen 4.5 / 12.9: main menu tiles take the named category colours (tokens.json category); the old per-theme --hc1..7 are no longer read */
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
     const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
@@ -6208,7 +6209,8 @@ function homeShow(){if(window.RSH_X)RSH_X();
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
   const tFtp=tile('ftp','FTP servers','',()=>srvPicker('FTP')),tCld=tile('cld','Cloud servers','',()=>srvPicker('Drive'));   // Printers and Favorite folders tiles removed 2026-10-28 (both stay in the drawer)
   tFtp.querySelector('.ts').id='hmftp';tCld.querySelector('.ts').id='hmcld';
-  g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld,tile('sh','Remote shell','Run commands on a PC',()=>openRemoteShell()));
+  g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld,tile('sh','Remote shell','Run commands on a PC',()=>openRemoteShell()),
+    tile('vault','Vault','Locked files',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}}));
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);try{hmInk(bd)}catch(e){}
