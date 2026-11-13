@@ -1711,7 +1711,7 @@ function toast(msg,ms=2800,pct,o){const t=$('#toast'),b=$('#tp');const _pv=t.sty
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
 function fmt(n){const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return(i?n.toFixed(1):n)+' '+u[i]}
-function devName(id){if(id==='local')return 'this device';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
+function devName(id){if(id==='local')return 'this device';if(id==='vault')return 'Vault';const p=S.peers.find(x=>x.id===id);return p?p.name:'device'}
 const NOTH=(window.LSAndroid&&LSAndroid.sdk&&LSAndroid.sdk()>=28)?/\.svg$/i:/\.(svg|heic|heif)$/i;const EXT={};[['img','jpg jpeg png gif webp bmp heic svg'],['vid','mp4 mkv mov avi webm 3gp m4v mpg mpeg flv ogv m2ts mts'],['aud','mp3 wav m4a ogg flac aac opus'],['pdf','pdf'],['zip','zip rar 7z tar gz cbz cbr'],['apk','apk'],['doc','txt md rtf csv ppt pptx'],['office','doc docx odt xls xlsx ods pptx odp']].forEach(([k,s])=>s.split(' ').forEach(x=>EXT[x]=k));
 const arcP=p=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(p||'');   // inside an archive ("a.zip!/dir"): dot-folders are always shown
 const hidP=p=>HGAL.length>0&&HGAL.indexOf(p)>=0,hidAnc=p=>HGAL.length>0&&HGAL.some(h=>p===h||p.indexOf(h+'/')===0);   // Hide button: the path (or a folder above it) is in the user's hidden list
@@ -1911,7 +1911,7 @@ async function addIp(){
 const SP={};
 function spKey(){const smb=S.dev.indexOf('smb:')===0,seg=smb?'/'+(S.path.split('/')[1]||''):'/';return smb&&seg==='/'?null:{k:S.dev+'|'+seg,seg:seg}}
 /* storage-used % for the pill: this phone = S.used; another device = from its space numbers (needs a share / drive: SMB root has none); root = none */
-function usedPct(){if(S.dev==='local')return S.used!=null?S.used:null;if(S.dev==='root')return null;
+function usedPct(){if(S.dev==='local')return S.used!=null?S.used:null;if(S.dev==='root'||S.dev==='vault')return null;
   const k=spKey(),c=k&&SP[k.k],v=c&&c.v;return v&&v.total&&v.free!=null?Math.max(0,Math.min(100,Math.round((v.total-v.free)*100/v.total))):null}
 function pillSet(){const pl=$('#used'),up=usedPct();if(up!=null){pl.style.display='flex';pl.style.setProperty('--p',up+'%');pl.lastChild.textContent=up+'%';pl.title='Storage used - tap to analyze';pl.onclick=pillTap}else pl.style.display='none'}
 function showFree(){const el=$('#free'),k=spKey(),c=k&&SP[k.k],v=c&&c.v;
@@ -1968,7 +1968,7 @@ async function fillCounts(dev,path){if(dev!=='local')return;
     if(any&&S.sort==='size')render()}catch(e){}}
 async function load(){if(window.RSH_X)RSH_X();try{return await loadMain()}finally{if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
 async function loadMain(){
-  clearTimeout(loadT);
+  clearTimeout(loadT);vaultSecure(S.dev==='vault');
   if(galRoot()){useLSC=false;S.items=[];S.err='';S.sel.clear();if(!S.lost)banner('');render();return}   // gallery = albums from MediaStore only, no file-manager listing
   const dev=S.dev,path=S.path,ck=dev+'|'+path,hit=useLSC&&path.indexOf('!')<0?LSC.get(ck):null;useLSC=false;
   if(hit){S.items=hit.items;S.used=hit.used;S.err='';S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render()}
@@ -1980,6 +1980,7 @@ async function loadMain(){
     S.sel=new Set([...S.sel].filter(n=>vis().find(i=>i.name===n)));render();loadSpace();fillCounts(dev,path);idlePre()}
   catch(e){
     if(dev!==S.dev||path!==S.path)return;
+    if(S.dev==='vault'&&/Vault is locked/i.test(e.message||'')){vaultLeave('Vault locked');return}
     if(/^cancelled$/i.test(e.message)){const r=arcRoot();toast('Cancelled',2000);if(r)go(pdir(r));return}   // opening a big archive was cancelled: leave it
     if(/unreachable|offline|paused|timed out|connection|lost/i.test(e.message)){  // transient: keep what is on screen, retry
       S.err=e.message;banner('⚠ '+e.message+' — retrying…');render();loadT=setTimeout(load,3000)}
@@ -3868,7 +3869,8 @@ var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the na
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
   const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',zipf:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
-  const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
+  const btn=(k,lb,f,c)=>{if(S.dev==='vault'&&/^(print|add|openw|share|zipf|extract|dup|palette|search|merge|hide)$/.test(k))return;   /* vault mode: nothing that hands decrypted data to another app or writes it to disk */
+    const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
   const has=S.clip&&S.clip.paths.length;
   document.body.classList.toggle('selm',S.sel.size>0);
   const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
@@ -6214,7 +6216,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
   const tFtp=tile('ftp','FTP servers','',()=>srvPicker('FTP')),tCld=tile('cld','Cloud servers','',()=>srvPicker('Drive'));   // Printers and Favorite folders tiles removed 2026-10-28 (both stay in the drawer)
   tFtp.querySelector('.ts').id='hmftp';tCld.querySelector('.ts').id='hmcld';
   g2.append(tile('smb','SMB Shares','Network folders',()=>{openSmb()}),tFtp,tCld,tile('sh','Remote shell','Run commands on a PC',()=>openRemoteShell()),
-    tile('vault','Vault','Locked files',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}}));
+    tile('vault','Vault','Locked files',()=>vaultOpen()));
   hmDevSub();api('POST','/api/scan',{},4000).catch(()=>{});pollPeers()   // opening the menu = look for devices now
   bd.append(hrow,E('div','sec','Browse'),g1,E('div','sec','Network and tools'),g2);
   o.append(hb,bd);try{hmInk(bd)}catch(e){}
@@ -6245,10 +6247,35 @@ window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
 (()=>{let k='';setInterval(()=>{if(!window.LSAndroid||!LSAndroid.edgeOk)return;const ok=lsEdgeOk(),top=ok&&!homeOn()?Math.round($('#top').getBoundingClientRect().bottom):0,n=ok+'|'+top;if(n===k)return;k=n;
   try{LSAndroid.edgeOk(ok,top,window.innerWidth)}catch(e){}},200)})();
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
+/* ---- Vault mode: the normal file manager on the unlocked vault (dev 'vault', Vault tile of the Main menu). Only the vault's own files are shown; the
+   app screen only (Routes), nothing is cached or handed to other apps (VAULT_ROUTES, no thumbnails / Share / Open with / Print in this mode). ---- */
+let VMODE=false,VWANT=0,VWT=0;
+function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
+function vaultEnter(){homeHide();drawerClose();S.newest=false;S.dev='vault';S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
+function vaultOpen(){
+  if(!(window.LSAndroid&&LSAndroid.vaultState)){toast('Vault needs the Android app',3000);return}
+  if(LSAndroid.vaultState()==='open'){vaultEnter();return}
+  VWANT=1;VWT=Date.now();try{LSAndroid.openVaultUnlock()}catch(e){VWANT=0;toast('Vault needs the Android app',3000)}}   // unlock / create screen; it closes itself, then vaultEnter() runs from the poll below
+function vaultLeave(msg){
+  for(const k of [...LSC.keys()])if(k.indexOf('vault|')===0)LSC.delete(k);
+  if(S.dev==='vault'){S.dev='local';S.path='/';S.items=[];S.sel.clear();S.sig=''}
+  vaultSecure(false);try{homeShow()}catch(e){}if(msg)toast(msg,3000)}
+function doVaultNew(){
+  const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Vault'));
+  const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
+  const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
+  opt('newfolder','New folder',doMkdir);
+  opt('hide','Lock vault',()=>{try{LSAndroid.vaultLockNow()}catch(e){}});
+  opt('info','Vault settings (password, fingerprint, recovery)',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}});
+  const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
+setInterval(()=>{if(!(window.LSAndroid&&LSAndroid.vaultState))return;let st;try{st=LSAndroid.vaultState()}catch(e){return}
+  if(VWANT&&st==='open'){VWANT=0;vaultEnter()}
+  else if(VWANT&&!document.hidden&&Date.now()-VWT>2500)VWANT=0;   // the unlock screen was closed without unlocking
+  else if(S.dev==='vault'&&st!=='open')vaultLeave('Vault locked')},700);
 // jump to any device + folder (used by every drawer entry)
 function openLoc(dev,path){
   drawerClose();homeHide();
-  if(dev!=='local'&&!S.peers.find(x=>x.id===dev)){toast('\u26a0 That device is not available right now',3000);return}
+  if(dev!=='local'&&dev!=='vault'&&!S.peers.find(x=>x.id===dev)){toast('\u26a0 That device is not available right now',3000);return}
   S.newest=false;S.dev=dev;S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=true;load()}
 function dItem(o){ // {lead:Node,title,sub,right,on,onclick,x:{icon,label,fn}, meter}
   const b=E('div','di'+(o.on?' on':'')+(o.cls?' '+o.cls:''));b.setAttribute('role','button');b.tabIndex=0;
@@ -6960,6 +6987,7 @@ async function doExtract(m){  // 0: archives selected in a folder, 1: items sele
   try{const r=await api('POST','/api/extract',{dev:S.dev,paths,dir,conflict:cf});watchJob(r.job);
     if(await track(r.job)&&!inside)load()}catch(e){toast('\u26a0 '+e.message,5000)}}
 function doNew(){
+  if(S.dev==='vault')return doVaultNew();
   if(!(window.LSAndroid&&LSAndroid.editText))return doMkdir();
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Create new'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};

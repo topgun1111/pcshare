@@ -176,6 +176,15 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     @Synchronized fun list(parent: String?): List<VaultNode> = idx().all.filter { it.parent == parent }.sortedWith(compareBy({ !it.dir }, { it.name.lowercase() }))
     @Synchronized fun totalSize(): Long = idx().all.sumOf { if (it.dir) 0L else it.size }
 
+    /** Snapshot of every node (file manager view: search, walk, folder counts). */
+    @Synchronized fun allNodes(): List<VaultNode> = idx().all.toList()
+
+    /** Changes the stored modification time (ms) of one node; index only. */
+    @Synchronized fun setMtime(id: String, ms: Long) {
+        val n = idx()[id] ?: return
+        idx().commit(listOf(VaultIndex.Op.Put(VaultNode(n.id, n.parent, n.name, n.dir, n.size, ms, n.mime))))
+    }
+
     private fun uniqueName(parent: String?, name: String, except: String? = null): String {
         val taken = idx().all.filter { it.parent == parent && it.id != except }.map { it.name }.toHashSet()
         if (name !in taken) return name

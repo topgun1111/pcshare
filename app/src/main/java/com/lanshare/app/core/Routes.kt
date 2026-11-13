@@ -18,6 +18,8 @@ object Routes {
         return c.split(';').any { it.trim() == "lsroot=$t" }
     }
 
+    private val VAULT_ROUTES = setOf("ls", "search", "stat", "space", "dl", "counts", "warm")
+
     private val xtermCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     fun handle(ex: Exchange) {
@@ -27,6 +29,10 @@ object Routes {
             val p = ex.path
             if (!p.startsWith("/p/")) ex.readBody()   // always consume UI request bodies so they never bleed into the next keep-alive request
             if (p.startsWith("/api/") && !trusted && ex.query["dev"] == "root") throw Denied("Root is only available from the app's own screen")   // also covers cached thumbnails
+            if (p.startsWith("/api/") && ex.query["dev"] == "vault") {   // vault mode: app screen only, and only routes that never write plain text to disk (no thumbnail / preview caches)
+                if (!trusted) throw Denied("The vault is only available from the app's own screen")
+                if (p.substring(5) !in VAULT_ROUTES) throw BadReq("not available inside the vault")
+            }
             when {
                 p == "/p/hello" -> ex.json(Core.disc.hello())
                 p.startsWith("/p/") -> peer(ex, p.substring(3))
@@ -653,6 +659,7 @@ object Routes {
             val h = LinkedHashMap<String, String>()
             h["Content-Type"] = mt
             h["Content-Length"] = length.toString()
+            if (src is VaultSource) h["Cache-Control"] = "no-store"
             h["Content-Disposition"] = (if (inline && safeInline(mt)) "inline" else "attachment") + "; filename*=UTF-8''" + MiniHttp.quote(name)
             if (!mt.startsWith("video/") && !mt.startsWith("audio/")) h["Content-Security-Policy"] = "sandbox"
             h["X-Content-Type-Options"] = "nosniff"

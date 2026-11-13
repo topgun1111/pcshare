@@ -49,6 +49,7 @@ class VaultActivity : FragmentActivity() {
     private lateinit var root: LinearLayout
     private var cur: String? = null                 // current folder id, null = vault root
     private var busy = false
+    private val fromFm by lazy { intent?.getBooleanExtra("fm", false) == true }   // opened from the file manager's Vault tile: close as soon as the vault is open
     private var bioAsked = false
     private val prefs by lazy { VaultPrefs(this) }
     private val throttle by lazy { VaultThrottle(prefs) }
@@ -92,7 +93,7 @@ class VaultActivity : FragmentActivity() {
     private fun render() {
         root.removeAllViews()
         when {
-            VaultSession.unlocked -> browser()
+            VaultSession.unlocked -> if (fromFm) finish() else browser()
             VaultStore.exists(volume) -> credentials(false)
             else -> credentials(true)
         }
@@ -679,6 +680,6 @@ class VaultActivity : FragmentActivity() {
         private const val REQ_ADDDIR = 74
         private const val REQ_KEYFILE = 72
         private const val REQ_SAVEKEY = 73
-        fun intent(c: Context): Intent = Intent(c, VaultActivity::class.java)
+        fun intent(c: Context, fm: Boolean = false): Intent = Intent(c, VaultActivity::class.java).apply { if (fm) putExtra("fm", true) }
     }
 }

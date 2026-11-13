@@ -303,10 +303,26 @@ class MainActivity : Activity() {
             if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
             return r
         }
-        /** Main menu Vault tile: opens the Vault screen (create / unlock / browse). */
+        /** Main menu Vault tile: opens the Vault screen (create / unlock / browse = password, fingerprint, recovery, settings). */
         @JavascriptInterface fun openVault() {
             runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
         }
+        /** "open" = unlocked | "locked" = exists but locked | "none" = no vault yet. */
+        @JavascriptInterface fun vaultState(): String = when {
+            com.lanshare.app.core.vault.VaultSession.unlocked -> "open"
+            com.lanshare.app.core.vault.VaultStore.exists(android.os.Environment.getExternalStorageDirectory()) -> "locked"
+            else -> "none"
+        }
+        /** Unlock (or create) screen that closes itself as soon as the vault is open, so the file manager can switch to vault mode. */
+        @JavascriptInterface fun openVaultUnlock() {
+            runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity, true)) } catch (_: Throwable) { } }
+        }
+        /** Vault mode of the file manager on / off: no screenshots, hidden in the recent-apps list (same as the Vault screen). */
+        @JavascriptInterface fun vaultMode(on: Boolean) {
+            runOnUiThread { try { if (on) this@MainActivity.window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE) else this@MainActivity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) } catch (_: Throwable) { } }
+        }
+        /** Vault mode "Lock vault". */
+        @JavascriptInterface fun vaultLockNow() { com.lanshare.app.core.vault.VaultSession.lock() }
         /** Path-bar / file manager search: the Universal Search screen (instant name search of this phone). [q] = text to start with. */
         @JavascriptInterface fun openUsearch(q: String) {
             runOnUiThread { try { startActivity(UsActivity.intent(this@MainActivity, q)) } catch (_: Throwable) { } }

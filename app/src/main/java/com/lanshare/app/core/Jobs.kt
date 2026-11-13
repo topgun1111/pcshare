@@ -894,7 +894,7 @@ object Jobs {
         }
     }
 
-    fun ep(dev: String): Endpoint = ArcEp(when {   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
+    fun ep(dev: String): Endpoint = if (dev == "vault") VaultFs() else ArcEp(when {   // vault mode: never wrapped in ArcEp (no archive browsing = no plain-text temp files)   // ArcEp: paths inside .zip/.rar files ("a.zip!/dir") are served from the archive
         dev == "local" -> Core.local
         dev == "root" -> RootShell.fs()   // su file access: throws unless Settings > Root access is on, granted, and the request comes from the app's own screen
         dev.startsWith("smb:") -> SmbFs.create(Smb.cfg(dev) ?: throw IOException("that SMB share was removed"))
