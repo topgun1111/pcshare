@@ -46,11 +46,16 @@ import kotlin.math.roundToInt
  * Kaydet: "Kopya olarak" (yanına "ad (edited).uzantı") veya "Aynı dosyanın üstüne yaz" (yalnızca bu telefondaki jpg/png/webp).
  */
 class ImageEditActivity : Activity() {
+    /** Lockdown vault mode: node id of the picture being edited. [src] is a short-lived decrypted copy in cacheDir/vt; the result is saved INTO the vault. */
+    private var vaultId: String? = null
+    private var vaultLock: (() -> Unit)? = null
     companion object {
         const val X_SRC = "src"          // görüntüleyicinin önbellekteki özgün dosyası
         const val X_DEV = "dev"
         const val X_PATH = "path"        // sanal yol (LocalFs)
         const val X_NAME = "name"
+        const val X_VAULT = "vault"      // vault node id (vault mode)
+        const val R_VID = "vid"          // vault: id of the saved item
         const val R_REPLACED = "replaced"
         const val R_SIZE = "size"
         private const val PREVIEW = 2048
@@ -88,6 +93,8 @@ class ImageEditActivity : Activity() {
         dev = intent.getStringExtra(X_DEV) ?: "local"
         vpath = intent.getStringExtra(X_PATH) ?: ""
         name = intent.getStringExtra(X_NAME) ?: "image.jpg"
+        vaultId = intent.getStringExtra(X_VAULT)
+        if (vaultId != null) { if (!com.lanshare.app.core.vault.VaultSession.unlocked) { src.delete(); finish(); return }; VaultMode.secure(this); vaultLock = VaultMode.bindLock(this) }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         buildUi()
         Thread {
@@ -268,7 +275,20 @@ class ImageEditActivity : Activity() {
 
     // ---------------------------------------------------------------- kaydet
     private fun extOf(n: String) = if (n.lastIndexOf('.') > 0) n.substring(n.lastIndexOf('.')).lowercase() else ""
-    private fun canReplace() = dev == "local" && !vpath.contains('!') && vpath.isNotEmpty() && extOf(name) in setOf(".jpg", ".jpeg", ".png", ".webp")
+    private fun canReplace() = extOf(name) in setOf(".jpg", ".jpeg", ".png", ".webp") && (vaultId != null || (dev == "local" && !vpath.contains('!') && vpath.isNotEmpty()))
+
+    /** Vault: new item first (unique name), then the old one is deleted and the new one takes its name: a failure never loses the original. */
+    private fun saveToVault(f: File, ext: String, replace: Boolean): com.lanshare.app.core.vault.VaultNode {
+        val st = com.lanshare.app.core.vault.VaultSession.store?.takeIf { it.isOpen } ?: throw IOException("Vault locked")
+        val old = st.get(vaultId!!) ?: throw IOException("The file is gone")
+        val mime = when (ext) { ".png" -> "image/png"; ".webp" -> "image/webp"; else -> "image/jpeg" }
+        val nm = if (replace) old.name else old.name.substringBeforeLast('.', old.name) + " (edited)" + ext
+        val n = f.inputStream().use { st.addStream(it, old.parent, nm, System.currentTimeMillis(), mime).first }
+        VaultMode.dirty = true
+        if (!replace) return n
+        st.delete(old.id)
+        return try { st.rename(n.id, old.name) } catch (e: Exception) { n }
+    }
 
     private fun askSave() {
         if (base == null || saving) return
@@ -291,6 +311,7 @@ class ImageEditActivity : Activity() {
         Thread {
             var err: String? = null
             var res: File? = null
+            var vres: com.lanshare.app.core.vault.VaultNode? = null
             try {
                 val ext0 = extOf(name)
                 val ext = if (ext0 == ".jpeg") ".jpeg" else if (ext0 in setOf(".jpg", ".png", ".webp")) ext0 else ".jpg"
@@ -299,6 +320,15 @@ class ImageEditActivity : Activity() {
                     ".webp" -> if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
                     else -> Bitmap.CompressFormat.JPEG
                 }
+                if (vaultId != null) {
+                    val bmv = ImgEdit.render(src, pr, r, c, w, h, fmt == Bitmap.CompressFormat.JPEG)
+                    val tv = File(File(cacheDir, "vt").apply { mkdirs() }, "save-" + System.nanoTime())
+                    try {
+                        try { tv.outputStream().use { o -> if (!bmv.compress(fmt, if (fmt == Bitmap.CompressFormat.PNG) 100 else 95, o)) throw IOException("cannot encode the picture") } } finally { bmv.recycle() }
+                        vres = saveToVault(tv, ext, replace)
+                    } finally { tv.delete() }
+                    res = File(vres!!.name)
+                } else {
                 val target: File
                 if (replace) target = Core.local.real(vpath)
                 else {
@@ -314,17 +344,19 @@ class ImageEditActivity : Activity() {
                 } finally { bm.recycle() }
                 if (!tmp.renameTo(target)) { tmp.copyTo(target, true); tmp.delete() }   // aynı klasörde rename; olmazsa kopyala
                 res = target
+                }
             } catch (e: OutOfMemoryError) { err = "Not enough memory for this size"
             } catch (e: Exception) { err = e.message ?: "error" }
             val rf = res
             val re = err
+            val vr = vres
             runOnUiThread {
                 saving = false
                 if (!isDestroyed) dlg.dismiss()
                 if (rf != null) {
-                    MediaScannerConnection.scanFile(applicationContext, arrayOf(rf.path), null, null)
+                    if (vr == null) MediaScannerConnection.scanFile(applicationContext, arrayOf(rf.path), null, null)
                     Lm.snack(this, if (replace) "Saved" else "Saved: " + rf.name, Toast.LENGTH_SHORT)
-                    setResult(RESULT_OK, Intent().putExtra(R_REPLACED, replace).putExtra(R_SIZE, rf.length()))
+                    setResult(RESULT_OK, Intent().putExtra(R_REPLACED, replace).putExtra(R_SIZE, vr?.size ?: rf.length()).putExtra(R_VID, vr?.id))
                     finish()
                 } else Lm.snack(this, "Cannot save: " + (re ?: "error"), Toast.LENGTH_LONG)
             }
@@ -337,6 +369,7 @@ class ImageEditActivity : Activity() {
         if (v != null && v !== b) v.recycle()
         b?.recycle()
         view = null; base = null
+        if (vaultId != null) { try { src.delete() } catch (_: Exception) {}; vaultLock?.let { com.lanshare.app.core.vault.VaultSession.removeOnLock(it) }; vaultLock = null }
         super.onDestroy()
     }
 }

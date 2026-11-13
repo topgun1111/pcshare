@@ -175,12 +175,60 @@ class VaultActivity : FragmentActivity() {
         act.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
         act.addView(btn(vt("New folder"), false) { ask(vt("New folder"), "") { n -> bg { st.mkdir(cur, n) } } })
         root.addView(act)
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // Gallery: photos and videos are square thumbnails (decoded in memory, VaultThumbs), folders / other files are full-width rows.
         val items = st.list(cur)
-        if (cur != null) list.addView(row("..", vt("Up"), true) { cur = st.get(cur!!)?.parent; render() })
-        if (items.isEmpty()) list.addView(text(vt("Empty. Tap Add files."), 14f, lm.inkMut).apply { setPadding(dp(24), dp(32), dp(24), 0) })
-        for (n in items) list.addView(row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { if (n.dir) { cur = n.id; render() } else if (android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name)) startActivity(android.content.Intent(this, VaultPdfActivity::class.java).putExtra("id", n.id)) else if (VaultViewActivity.isMedia(n.mime, n.name)) startActivity(android.content.Intent(this, VaultPlayActivity::class.java).putExtra("id", n.id)) else if (viewable(n)) startActivity(android.content.Intent(this, VaultViewActivity::class.java).putExtra("id", n.id)) else fileMenu(n) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } })
-        root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val scr = resources.displayMetrics.widthPixels
+        val span = if (scr > dp(640)) 5 else 3
+        val cell = scr / span
+        val data = ArrayList<Any>()
+        if (cur != null) data.add("up")
+        if (items.isEmpty()) data.add("empty")
+        data.addAll(items)
+        fun tile(x: Any) = x is VaultNode && !x.dir && (VaultViewActivity.isImage(x.mime, x.name) || VaultMode.isVideo(x.mime, x.name))
+        class VH(v: View, val iv: android.widget.ImageView?, val tag: TextView?) : androidx.recyclerview.widget.RecyclerView.ViewHolder(v) { var id: String? = null }
+        val rv = androidx.recyclerview.widget.RecyclerView(this)
+        rv.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, span).also { g ->
+            g.spanSizeLookup = object : androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() { override fun getSpanSize(p: Int) = if (tile(data[p])) 1 else span }
+        }
+        rv.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<VH>() {
+            override fun getItemCount() = data.size
+            override fun getItemViewType(p: Int) = if (tile(data[p])) 1 else 0
+            override fun onCreateViewHolder(parent: android.view.ViewGroup, t: Int): VH {
+                val box = android.widget.FrameLayout(this@VaultActivity)
+                if (t == 0) { box.layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(-1, -2); return VH(box, null, null) }
+                box.layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(-1, cell)
+                box.setPadding(1, 1, 1, 1)
+                val iv = android.widget.ImageView(this@VaultActivity).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; setBackgroundColor(0xFF222222.toInt()) }
+                box.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
+                val tg = TextView(this@VaultActivity).apply { text = "\u25B6"; textSize = 12f; setTextColor(0xFFFFFFFF.toInt()); setShadowLayer(4f, 0f, 0f, 0xFF000000.toInt()); setPadding(dp(6), 0, 0, dp(4)) }
+                box.addView(tg, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+                return VH(box, iv, tg)
+            }
+            override fun onBindViewHolder(h: VH, p: Int) {
+                val d = data[p]
+                if (!tile(d)) {
+                    val box = h.itemView as android.widget.FrameLayout; box.removeAllViews()
+                    box.addView(when {
+                        d == "up" -> row("..", vt("Up"), true) { cur = st.get(cur!!)?.parent; scrollPos = 0; render() }
+                        d == "empty" -> text(vt("Empty. Tap Add files."), 14f, lm.inkMut).apply { setPadding(dp(24), dp(32), dp(24), 0) }
+                        else -> { val n = d as VaultNode; row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { openNode(n, items) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } } }
+                    })
+                    return
+                }
+                val n = d as VaultNode
+                h.id = n.id
+                h.tag!!.visibility = if (VaultMode.isVideo(n.mime, n.name)) View.VISIBLE else View.GONE
+                val have = VaultThumbs.get(n.id)
+                h.iv!!.setImageBitmap(have)
+                if (have == null) VaultThumbs.load(n, cell) { bm -> if (h.id == n.id && bm != null) h.iv.setImageBitmap(bm) }
+                h.itemView.setOnClickListener { openNode(n, items) }
+                h.itemView.setOnLongClickListener { fileMenu(n); true }
+            }
+            override fun onViewRecycled(h: VH) { h.id = null; h.iv?.setImageBitmap(null) }
+        }
+        gallery = rv
+        if (scrollPos > 0 && scrollPos < data.size) rv.scrollToPosition(scrollPos)
+        root.addView(rv, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
     private fun row(name: String, sub: String, dir: Boolean, fn: () -> Unit): View = LinearLayout(this).apply {
@@ -189,6 +237,33 @@ class VaultActivity : FragmentActivity() {
         addView(text(sub, 12f, lm.inkMut))
         setOnClickListener { fn() }
     }
+
+    private var gallery: androidx.recyclerview.widget.RecyclerView? = null
+    private var scrollPos = 0
+
+    /** Photos / videos open in the app's OWN viewer and player in vault mode (VaultMode.kt); audio, PDF and small text have their own vault screens. */
+    private fun openNode(n: VaultNode, sib: List<VaultNode>) {
+        when {
+            n.dir -> { cur = n.id; scrollPos = 0; render() }
+            VaultViewActivity.isImage(n.mime, n.name) -> {
+                val l = sib.filter { !it.dir && VaultViewActivity.isImage(it.mime, it.name) }
+                remember(); ImageViewerActivity.pending = VaultMode.imagesJson(l, l.indexOfFirst { it.id == n.id })
+                startActivity(Intent(this, ImageViewerActivity::class.java))
+            }
+            VaultMode.isVideo(n.mime, n.name) -> {
+                val l = sib.filter { !it.dir && VaultMode.isVideo(it.mime, it.name) }
+                remember(); PlayerActivity.pending = VaultMode.videosJson(sib, l, l.indexOfFirst { it.id == n.id })
+                startActivity(Intent(this, PlayerActivity::class.java))
+            }
+            VaultMode.isAudio(n.mime, n.name) -> startActivity(Intent(this, VaultPlayActivity::class.java).putExtra("id", n.id))
+            android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name) -> startActivity(Intent(this, VaultPdfActivity::class.java).putExtra("id", n.id))
+            viewable(n) -> startActivity(Intent(this, VaultViewActivity::class.java).putExtra("id", n.id))
+            else -> fileMenu(n)
+        }
+    }
+
+    /** The gallery is rebuilt in onStart; keep the scroll position across a viewer. */
+    private fun remember() { (gallery?.layoutManager as? androidx.recyclerview.widget.GridLayoutManager)?.let { scrollPos = it.findFirstVisibleItemPosition().coerceAtLeast(0) } }
 
     /** Lockdown viewers: images and small text open in memory (VaultViewActivity), audio / video stream via VaultPlayActivity; the rest keeps the menu (export). */
     private fun viewable(n: VaultNode): Boolean {

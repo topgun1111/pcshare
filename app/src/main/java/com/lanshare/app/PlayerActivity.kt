@@ -125,6 +125,9 @@ class PlayerActivity : Activity() {
     }
 
     private class Sub(val name: String, val url: String)
+    /** Lockdown vault mode (VaultMode.kt): items are lsvault://<id>, read through VaultDataSource, nothing leaves the app. */
+    private var vault = false
+    private var vaultLock: (() -> Unit)? = null
     private class Item(val name: String, val url: String, val key: String, val subs: List<Sub>, val mtime: Long, val size: Long)
 
     private val ui = Handler(Looper.getMainLooper())
@@ -480,6 +483,7 @@ class PlayerActivity : Activity() {
 
     /** The list did not say when the file was modified: ask the app's own server (GET /api/stat). */
     private fun fetchMeta(item: Item) {
+        if (vault) return
         if (!metaAsked.add(item.url)) return
         Thread({
             try {
@@ -679,7 +683,10 @@ class PlayerActivity : Activity() {
         val o = JSONObject(json)
         val arr = o.getJSONArray("items")
         val out = ArrayList<Item>()
-        fun local(u: String) = u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")   // only the app's own server
+        val v0 = o.optBoolean("vault") && com.lanshare.app.core.vault.VaultSession.unlocked
+        vault = v0
+        fun sg(u: String) = if (v0) u else com.lanshare.app.core.RootShell.sign(u)
+        fun local(u: String) = if (v0) u.startsWith(VaultMode.SCHEME) else u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")   // only the app's own server (vault: only vault items)
         for (i in 0 until minOf(arr.length(), MAX_ITEMS)) {
             val it = arr.getJSONObject(i)
             val url = it.getString("url")
@@ -688,11 +695,11 @@ class PlayerActivity : Activity() {
             val sa = it.optJSONArray("subs")
             if (sa != null) for (j in 0 until minOf(sa.length(), 8)) {
                 val s = sa.getJSONObject(j)
-                if (local(s.getString("url"))) subs.add(Sub(s.optString("name"), com.lanshare.app.core.RootShell.sign(s.getString("url"))))
+                if (local(s.getString("url"))) subs.add(Sub(s.optString("name"), sg(s.getString("url"))))
             }
             var mt = it.optLong("mtime", 0L)
             if (mt > 100_000_000_000L) mt /= 1000          // milliseconds -> seconds
-            out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optString("key", url), subs, mt, it.optLong("size", 0L)))
+            out.add(Item(it.optString("name"), sg(url), it.optString("key", url), subs, mt, it.optLong("size", 0L)))
         }
         val st = o.optInt("start", 0).coerceIn(0, maxOf(out.size - 1, 0))
         return out to st
@@ -703,6 +710,7 @@ class PlayerActivity : Activity() {
         pending = null
         val parsed = try { if (json == null) null else parse(json) } catch (_: Exception) { null }
         if (parsed == null || parsed.first.isEmpty()) { finish(); return }
+        if (vault && vaultLock == null) { VaultMode.secure(this); vaultLock = VaultMode.bindLock(this); shareBtn.visibility = View.GONE }
         releasePlayer()
         items = parsed.first
         startIdx = parsed.second
@@ -728,7 +736,13 @@ class PlayerActivity : Activity() {
         }, "player-subs").also { it.isDaemon = true }.start()
     }
 
-    private fun fetchSub(s: Sub, n: Int): Uri? = try {
+    /** Vault subtitles stay in memory: decoded text goes into a data: URI (no cacheDir/subs file). */
+    private fun vaultSub(s: Sub): Uri? = try {
+        val raw = com.lanshare.app.core.vault.VaultSession.store?.open(VaultMode.idOf(s.url))?.use { r -> if (r.length > 3_000_000) null else r.readBytes() }
+        if (raw == null) null else Uri.parse("data:text/plain;base64," + android.util.Base64.encodeToString(decode(raw).toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP))
+    } catch (_: Exception) { null }
+
+    private fun fetchSub(s: Sub, n: Int): Uri? = if (vault) vaultSub(s) else try {
         val c = URL(s.url).openConnection() as HttpURLConnection
         c.connectTimeout = 3000; c.readTimeout = 5000
         val raw = c.inputStream.use { it.readBytes() }
@@ -763,7 +777,7 @@ class PlayerActivity : Activity() {
         spin.visibility = View.GONE
         val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(10_000).setReadTimeoutMs(30_000)
         val p = ExoPlayer.Builder(this, DefaultRenderersFactory(this).setEnableDecoderFallback(true))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, if (vault) (androidx.media3.datasource.DataSource.Factory { VaultDataSource() }) else http)))
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
@@ -775,7 +789,7 @@ class PlayerActivity : Activity() {
                     .setMimeType(subMime(s.name)).setLabel(s.name)
                     .setSelectionFlags(if (j == 0) C.SELECTION_FLAG_DEFAULT else 0).build()
             }
-            MediaItem.Builder().setUri(item.url).setMediaId(i.toString())
+            MediaItem.Builder().setUri(item.url).setMediaId(i.toString()).apply { if (vault) VaultMode.mime(item.name)?.let { setMimeType(it) } }
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(item.name).build())
                 .setSubtitleConfigurations(subs).build()
         }
@@ -866,7 +880,7 @@ class PlayerActivity : Activity() {
         labels += "Auto screen rotation"; acts += { screenAuto() }
         labels += "Aspect ratio: " + names[resizeIdx]; acts += { cycleAspect() }
         labels += if (fullscreen) "Exit full screen" else "Full screen"; acts += { setFullscreen(!fullscreen) }
-        if (Build.VERSION.SDK_INT >= 26) { labels += "Picture-in-picture"; acts += { enterPip() } }
+        if (Build.VERSION.SDK_INT >= 26 && !vault) { labels += "Picture-in-picture"; acts += { enterPip() } }
         if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(true); subtitlePadding() } }
         if (zoom > 1.001f) { labels += "Reset zoom"; acts += { resetZoom() } }
         labels += "Details"; acts += { showDetails() }
@@ -949,7 +963,7 @@ class PlayerActivity : Activity() {
         val base = sb.toString()
         val detDlg = dlg(AppPal.dlg(this).kind("info").setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
         Thread({   // container / codec / track / tag details from the app's own /api/stat (same as the file list's Details sheet)
-            val extra = MediaText.format(MediaText.fetchStat(it.url))
+            val extra = if (vault) "" else MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
         }, "player-details").also { t -> t.isDaemon = true }.start()
     }
@@ -1012,6 +1026,7 @@ class PlayerActivity : Activity() {
     /** Asks, then moves the video to the Recycle bin (this phone) / deletes it (other devices) and plays the next one. */
     private fun deleteCurrent() {
         val i = curIndex(); val it = items.getOrNull(i) ?: return
+        if (vault) { deleteVault(it); return }
         dlg(AppPal.dlg(this).kind("danger").setTitle("Delete this video?")
             .setMessage(it.name + "\n\n" + (if (toBin(it)) "It goes to the Recycle bin (kept " + com.lanshare.app.core.Bin.KEEP_DAYS + " days)." else "It is deleted for good. This can't be undone."))
             .setNegativeButton("Cancel", null)
@@ -1026,6 +1041,20 @@ class PlayerActivity : Activity() {
                     } catch (e: Exception) {
                         ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
+                }, "player-delete").also { t -> t.isDaemon = true }.start()
+            })
+    }
+
+    private fun deleteVault(it: Item) {
+        dlg(AppPal.dlg(this).kind("danger").setTitle(vt("Delete this video from the vault?"))
+            .setMessage(it.name + "\n\n" + vt("It is deleted for good. This can't be undone."))
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                Thread({
+                    try {
+                        com.lanshare.app.core.vault.VaultSession.store?.delete(VaultMode.idOf(it.url)); VaultMode.dirty = true
+                        ui.post { if (!isFinishing) afterDelete(it) }
+                    } catch (e: Exception) { ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
                 }, "player-delete").also { t -> t.isDaemon = true }.start()
             })
     }
@@ -1051,6 +1080,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun enterPip() {
+        if (vault) return   // a floating window would show the video outside the vault screen
         if (Build.VERSION.SDK_INT >= 26) try { enterPictureInPictureMode(pipParams()) } catch (_: Exception) {}
     }
 
@@ -1073,6 +1103,7 @@ class PlayerActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        if (vault && !com.lanshare.app.core.vault.VaultSession.unlocked) { finish(); return }
         ui.removeCallbacks(tick); ui.post(tick)
     }
 
@@ -1093,6 +1124,7 @@ class PlayerActivity : Activity() {
         gen++
         releasePlayer()
         File(cacheDir, "subs").deleteRecursively()
+        vaultLock?.let { com.lanshare.app.core.vault.VaultSession.removeOnLock(it) }; vaultLock = null
         super.onDestroy()
     }
 }

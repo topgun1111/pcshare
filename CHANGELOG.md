@@ -4,11 +4,15 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
-## 2026-11-13 - Vault: play music, videos and open PDFs
+## 2026-11-13 - Vault: your normal photo viewer, video player and editor, plus a photo gallery
 ### Added
-- Videos and music inside the vault now play directly from the vault, with seeking and next / previous for the other media in the same folder. Nothing is copied out or saved on the phone while playing.
+- The vault now shows photos and videos as a thumbnail gallery (thumbnails are never saved on the phone).
+- Photos in the vault open in the normal photo viewer: swipe, pinch and double-tap zoom, slideshow, details, text on picture and delete. Edit (crop, rotate, resize) saves the result back into the vault, as a copy or replacing the original.
+- Videos in the vault play in the normal video player: seek, speed, audio tracks, subtitles from the same folder, aspect ratio, zoom, brightness and volume gestures, previous / next, resume where you stopped.
+- Music in the vault plays directly from the vault.
 - PDF files inside the vault now open directly in a viewer (Android 8 and newer). Nothing is saved on the phone and pages are never cached.
 ### Changed
+- Inside the vault, Share, Print space and picture-in-picture are switched off so nothing can leave it by accident. Use Export to Download to take a file out.
 - Playback stops when you leave the screen, and closes by itself when the vault locks.
 - Vault locking progress and error messages are now also shown in Turkish.
 

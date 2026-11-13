@@ -75,6 +75,12 @@ class ImageViewerActivity : Activity() {
     }
 
     private class Item(val name: String, val url: String, val size: Long, val mtime: Long = 0L, val key: String = "")
+    /** Lockdown vault mode (VaultMode.kt): items are lsvault://<id>, decoded in memory, nothing leaves the app. */
+    private var vault = false
+    private var vaultLock: (() -> Unit)? = null
+    private var printBtn: View? = null
+    private var shareBtn: View? = null
+
 
     private val ui = Handler(Looper.getMainLooper())
     private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "img-load").also { it.isDaemon = true } }
@@ -210,6 +216,7 @@ class ImageViewerActivity : Activity() {
         val print = icon(IconBtn.PRINT, "Print") { printCurrent() }
         val turn = icon(IconBtn.ROTATE, "Rotate 90\u00b0") { turnCurrent(1) }
         val share = icon(IconBtn.SHARE, "Share") { share() }
+        printBtn = print; shareBtn = share
         lateinit var more: IconBtn
         more = icon(IconBtn.MORE, "More") {
             PopupMenu(this, more).apply {
@@ -217,7 +224,7 @@ class ImageViewerActivity : Activity() {
                 menu.add(0, 2, 1, "Details")
                 menu.add(0, 5, 1, "Rotate left 90\u00b0")
                 menu.add(0, 6, 1, "Rotate right 90\u00b0")
-                menu.add(0, 4, 2, "To Print space")
+                if (!vault) menu.add(0, 4, 2, "To Print space")
                 menu.add(0, 3, 3, "Delete")
                 setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; 5 -> { turnCurrent(-1); true }; 6 -> { turnCurrent(1); true }; else -> false } }
             }.show()
@@ -335,7 +342,7 @@ class ImageViewerActivity : Activity() {
         val base = rows.joinToString("\n\n")
         val detDlg = AppPal.dlg(this).kind("info").setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("Close", null).show()
         Thread({   // same media details as the file list's Details sheet (date taken etc.), via the app's own /api/stat
-            val extra = MediaText.format(MediaText.fetchStat(it.url))
+            val extra = if (vault) "" else MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
         }, "viewer-details").also { t -> t.isDaemon = true }.start()
     }
@@ -346,6 +353,7 @@ class ImageViewerActivity : Activity() {
         pending = null
         val parsed = try { if (json == null) null else parse(json) } catch (_: Exception) { null }
         if (parsed == null || parsed.first.isEmpty()) { finish(); return }
+        if (vault && vaultLock == null) { VaultMode.secure(this); vaultLock = VaultMode.bindLock(this); printBtn?.visibility = View.GONE; shareBtn?.visibility = View.GONE }
         install(parsed.first, parsed.second)
     }
 
@@ -368,9 +376,11 @@ class ImageViewerActivity : Activity() {
         val o = JSONObject(json)
         val arr = o.getJSONArray("items")
         val out = ArrayList<Item>()
+        vault = o.optBoolean("vault") && com.lanshare.app.core.vault.VaultSession.unlocked
         for (i in 0 until minOf(arr.length(), MAX_ITEMS)) {
             val it = arr.getJSONObject(i)
             val url = it.getString("url")
+            if (vault) { if (url.startsWith(VaultMode.SCHEME)) out.add(Item(it.optString("name"), url, it.optLong("size", 0L), it.optLong("mtime", 0L), it.optString("key", ""))); continue }
             if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost"))   // only the app's own server
                 out.add(Item(it.optString("name"), com.lanshare.app.core.RootShell.sign(url), it.optLong("size", 0L), it.optLong("mtime", 0L), it.optString("key", "")))
         }
@@ -393,8 +403,7 @@ class ImageViewerActivity : Activity() {
             var err: String? = null
             var dim: String? = null
             try {
-                val f = fetch(pos, it)
-                val r = decode(f)
+                val r = if (vault) decodeSrc { openVault(it) } else decode(fetch(pos, it))
                 bm = r.first; dim = r.second
             } catch (e: OutOfMemoryError) { err = "Not enough memory for this picture"
             } catch (e: Exception) { err = e.message ?: "Cannot open this picture" }
@@ -431,9 +440,15 @@ class ImageViewerActivity : Activity() {
         return f
     }
 
-    private fun decode(f: File): Pair<Bitmap, String> {
+    private fun openVault(it: Item): java.io.InputStream =
+        (com.lanshare.app.core.vault.VaultSession.store?.takeIf { s -> s.isOpen } ?: throw IOException("Vault locked")).open(VaultMode.idOf(it.url))
+
+    private fun decode(f: File): Pair<Bitmap, String> = decodeSrc { java.io.FileInputStream(f) }
+
+    /** [open] gives a fresh stream each call (bounds, pixels, EXIF): a file for normal pictures, a decrypting VaultReader in vault mode. */
+    private fun decodeSrc(open: () -> java.io.InputStream): Pair<Bitmap, String> {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(f.path, o)
+        open().use { BitmapFactory.decodeStream(it, null, o) }
         if (o.outWidth <= 0 || o.outHeight <= 0) throw IOException("This device cannot decode this picture")
         val w0 = o.outWidth
         val h0 = o.outHeight
@@ -444,7 +459,7 @@ class ImageViewerActivity : Activity() {
         var bm: Bitmap? = null
         while (bm == null) {
             try {
-                bm = BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = s })
+                bm = open().use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = s }) }
                 if (bm == null) throw IOException("This device cannot decode this picture")
             } catch (e: OutOfMemoryError) { if (s >= 64) throw e; s *= 2 }
         }
@@ -456,7 +471,7 @@ class ImageViewerActivity : Activity() {
             if (r !== b) b.recycle()
             b = r
         }
-        val ori = try { ExifInterface(f.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
+        val ori = try { open().use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) } } catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
         val m = Matrix()
         when (ori) {
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.setScale(-1f, 1f)
@@ -515,6 +530,7 @@ class ImageViewerActivity : Activity() {
     private fun saveTurn(pos: Int) {
         val q = turned[pos] ?: 0
         if (q == 0 || pos in noSave || pos in saving) return
+        if (vault) { noSave.add(pos); return }   // vault: a turn is for viewing only (the encrypted original is not rewritten)
         val item = items.getOrNull(pos) ?: return
         val u = android.net.Uri.parse(item.url)
         val dev = u.getQueryParameter("dev") ?: "local"
@@ -603,6 +619,7 @@ class ImageViewerActivity : Activity() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
         if (slide) setSlide(false)
+        if (vault) { deleteVault(it); return }
         AppPal.dlg(this).kind("danger").setTitle("Delete this picture?")
             .setMessage(it.name + "\n\n" + (if (toBin(it)) "It goes to the Recycle bin (kept " + com.lanshare.app.core.Bin.KEEP_DAYS + " days)." else "It is deleted for good. This can't be undone."))
             .setNegativeButton("Cancel", null)
@@ -618,6 +635,18 @@ class ImageViewerActivity : Activity() {
                         runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
                 }.start()
+            }.show()
+    }
+
+    private fun deleteVault(it: Item) {
+        AppPal.dlg(this).kind("danger").setTitle(vt("Delete this picture from the vault?"))
+            .setMessage(it.name + "\n\n" + vt("It is deleted for good. This can't be undone."))
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                pool.execute {
+                    try { com.lanshare.app.core.vault.VaultSession.store?.delete(VaultMode.idOf(it.url)); VaultMode.dirty = true; runOnUiThread { afterDelete(it) } }
+                    catch (e: Exception) { runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
+                }
             }.show()
     }
 
@@ -716,6 +745,7 @@ class ImageViewerActivity : Activity() {
 
     // ---- disk cache of recognised text (cacheDir/ocr, one small JSON per picture, kept 30 days; valid only for the same decoded size)
     private fun ocrFile(p: Int): File {
+        if (vault) throw IllegalStateException("vault")   // no recognised-text cache on disk for vault pictures
         val it = items[p]
         val key = it.url.substringAfter('?', it.url) + "|" + it.size
         return File(File(cacheDir, "ocr").apply { mkdirs() }, java.util.UUID.nameUUIDFromBytes(key.toByteArray()).toString() + ".json")
@@ -819,9 +849,26 @@ class ImageViewerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- düzenle (döndür / kırp / boyutlandır)
+    /** Vault: the editor works on a short-lived decrypted copy in cacheDir/vt (wiped by the editor, on lock and at process start) and saves back INTO the vault. */
+    private fun editVault(it: Item) {
+        if (slide) setSlide(false)
+        pool.execute {
+            try {
+                val st = com.lanshare.app.core.vault.VaultSession.store?.takeIf { s -> s.isOpen } ?: throw IOException("Vault locked")
+                val f = File(File(cacheDir, "vt").apply { mkdirs() }, "edit-" + System.nanoTime())
+                st.open(VaultMode.idOf(it.url)).use { r -> f.outputStream().use { o -> r.copyTo(o) } }
+                runOnUiThread {
+                    if (isDestroyed) f.delete() else startActivityForResult(Intent(this, ImageEditActivity::class.java)
+                        .putExtra(ImageEditActivity.X_SRC, f.path).putExtra(ImageEditActivity.X_VAULT, VaultMode.idOf(it.url)).putExtra(ImageEditActivity.X_NAME, it.name), REQ_EDIT)
+                }
+            } catch (e: Exception) { runOnUiThread { Lm.snack(this, "Cannot edit: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
+        }
+    }
+
     private fun edit() {
         val pos = pager.currentItem
         val it = items.getOrNull(pos) ?: return
+        if (vault) { editVault(it); return }
         val src = File(File(cacheDir, "img"), "$pos.bin")
         if (pos !in noSave && ((turned[pos] ?: 0) != 0 || pos in saving)) { flushTurns(); Lm.snack(this, "Saving the turn, try again in a moment", Toast.LENGTH_SHORT); return }
         if (!src.isFile) { Lm.snack(this, "Still loading...", Toast.LENGTH_SHORT); return }
@@ -842,7 +889,8 @@ class ImageViewerActivity : Activity() {
         changed = true
         val pos = pager.currentItem
         val old = items.getOrNull(pos) ?: return
-        items = items.toMutableList().also { l -> l[pos] = Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size)) }
+        val nv = if (vault) data.getStringExtra(ImageEditActivity.R_VID) else null   // vault edit-replace: the item got a new id
+        items = items.toMutableList().also { l -> l[pos] = if (nv != null) Item(old.name, VaultMode.SCHEME + nv, data.getLongExtra(ImageEditActivity.R_SIZE, old.size), old.mtime, "lsvault:" + nv) else Item(old.name, old.url, data.getLongExtra(ImageEditActivity.R_SIZE, old.size), old.mtime, old.key) }
         File(File(cacheDir, "img"), "$pos.bin").delete()
         turned.remove(pos)
         cache.remove(pos); failed.remove(pos); loading.remove(pos); dims.remove(pos); ocrRes.remove(pos); ocrOn.remove(pos); ocrNone.remove(pos); ocrBad.remove(pos)
@@ -916,7 +964,7 @@ class ImageViewerActivity : Activity() {
         if (hasFocus && !uiOn) WindowInsetsControllerCompat(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
     }
 
-    override fun onResume() { super.onResume(); ModelLinks.showIfAny(this); armAutoHide() }
+    override fun onResume() { super.onResume(); if (vault && !com.lanshare.app.core.vault.VaultSession.unlocked) { finish(); return }; ModelLinks.showIfAny(this); armAutoHide() }
 
     override fun onDestroy() {
         NlHero.release(this)
@@ -926,6 +974,7 @@ class ImageViewerActivity : Activity() {
         ocr.close()
         cache.evictAll()
         File(cacheDir, "img").deleteRecursively()
+        vaultLock?.let { com.lanshare.app.core.vault.VaultSession.removeOnLock(it) }; vaultLock = null
         super.onDestroy()
     }
 }

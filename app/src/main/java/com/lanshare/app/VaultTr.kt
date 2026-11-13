@@ -119,6 +119,9 @@ private val TR = mapOf(
     "Encrypting 1 item" to "1 öğe şifreleniyor",
     "Encrypting %s items" to "%s öğe şifreleniyor",
     "Vault locked" to "Kasa kilitli",
+    "Delete this picture from the vault?" to "Bu fotoğraf kasadan silinsin mi?",
+    "Delete this video from the vault?" to "Bu video kasadan silinsin mi?",
+    "It is deleted for good. This can't be undone." to "Kalıcı olarak silinir. Geri alınamaz.",
     "An item could not be locked" to "Bir öğe kilitlenemedi",
     "Locking stopped" to "Kilitleme durduruldu",
 )
