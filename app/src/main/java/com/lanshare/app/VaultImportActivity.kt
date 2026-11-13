@@ -245,10 +245,12 @@ class VaultImportActivity : Activity() {
         return md.digest()
     }
 
-    private fun sameAsSource(st: VaultStore, n: VaultNode, uri: Uri): Boolean = try {
-        val a = (contentResolver.openInputStream(uri) ?: return false).use { sha(it) }
-        MessageDigest.isEqual(a, st.open(n.id).use { sha(it) })
-    } catch (e: IllegalStateException) { throw Locked() } catch (_: Exception) { false }
+    private fun sameAsSource(st: VaultStore, n: VaultNode, uri: Uri): Boolean {
+        return try {
+            val a = (contentResolver.openInputStream(uri) ?: return false).use { sha(it) }
+            MessageDigest.isEqual(a, st.open(n.id).use { sha(it) })
+        } catch (e: IllegalStateException) { throw Locked() } catch (_: Exception) { false }
+    }
 
     private fun addOne(t: Tally, uri: Uri, parent: String?, m: Meta, orig: String, move: Boolean) {
         val st = store()
