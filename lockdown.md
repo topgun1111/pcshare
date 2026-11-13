@@ -246,3 +246,14 @@ Per-folder separate passwords; hiding the app icon; cloud sync of the vault; pro
 - FTP `tlsRequired` default and visible warning: requires owner decision because it can break plain-FTP clients.
 - Full FTP / HTTP / intent fuzz suite and device isolation matrix (Gallery, second file manager, PC share, CLIP, recents, screenshots).
 - Secondary-volume discovery, storage-analyzer opaque vault slice, and root-device limitations remain as previously scoped.
+
+### Pass 2026-11-13b - audio / video from the vault (NOT compiled)
+- New `VaultPlay.kt`: `VaultDataSource` (media3 `BaseDataSource`, URI `lsvault://<nodeId>`, one `VaultReader` per `open()`, random access, GCM checked per chunk, nothing on disk / no `cacheDir/vt` / no FileProvider) + `VaultPlayActivity` (not exported, FLAG_SECURE, ExoPlayer + `PlayerView`, playlist = media siblings of the same vault folder, pauses in `onStop` (no background audio), finishes on `VaultSession.onLock`). `VaultViewActivity.isMedia`; `VaultActivity` routes media there; manifest entry added. `VaultLockJob` job / error / problem text now through `vt()/vf()` + TR entries (VaultTr).
+- Not verified: no Android SDK in the session. Check first: `@UnstableApi` opt-in warnings, `DataSource.Factory { }` SAM, `.mkv`/`.mov` playback on device, seek on a >1 GB item, lock while playing, rotation.
+### Pass 2026-11-13c - PDF from the vault + read-pattern tests (NOT compiled)
+- New `VaultPdf.kt` `VaultPdfActivity` (API 26+): `StorageManager.openProxyFileDescriptor` over a `VaultReader` (callbacks on one `HandlerThread`) -> `PdfRenderer`; lazy `RecyclerView` pages, bitmaps in memory only, single render executor, FLAG_SECURE, not exported, closes on lock. The normal `PdfViewerActivity` is deliberately NOT used (it keeps a decrypted page-image cache on disk). `VaultViewActivity.isPdf`; `VaultActivity` routes PDFs there on API >= 26 (below: export menu). No zoom yet (fit-width only); password-protected PDFs are refused.
+- New `VaultReadPatternTest` (3): random-offset reads vs plaintext, two independent readers of one item, open after lock fails.
+- TR audit: every `vt()/vf()` key in the vault files has a TR entry.
+- **Office from the vault: deliberately NOT done.** `OfficeViewerActivity` is File-based end to end (path extra, undo snapshots in `cacheDir/office-undo`, save-copy to `LANShare Shared`, thumbnails); feeding it a decrypted temp file would write plaintext outside the vault and `VaultIntents.refuse` rejects `cacheDir/vt` paths on purpose. Office items stay "Export to Download". A real fix = a read-only `VaultOfficeActivity` over `core/office` readers from an in-memory byte array (new work, needs a decision).
+- Check on device: PDF with 1 / 300 pages, rotation, lock while open, >100 MB PDF, Android 8 and 14.
+- **Still open:** Office-from-vault (above), device fuzz / isolation matrix, pinch zoom in `VaultPdfActivity`, owner decisions (HTTP `/api` loopback/token, FTP `tlsRequired`), Android compile.

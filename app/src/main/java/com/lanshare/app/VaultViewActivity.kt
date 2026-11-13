@@ -100,6 +100,10 @@ class VaultViewActivity : Activity() {
     companion object {
         const val MAX_TEXT = 1_000_000L; const val MAX_PX = 2048
         /** mime may be empty for items added without one, so the extension decides too. */
+        private val MEDIA_EXT = setOf("mp4", "m4v", "mkv", "webm", "3gp", "mov", "mp3", "m4a", "aac", "ogg", "opus", "wav", "flac")
+        fun isMedia(mime: String, name: String) =
+            mime.startsWith("video/") || mime.startsWith("audio/") || name.substringAfterLast('.', "").lowercase() in MEDIA_EXT
+        fun isPdf(mime: String, name: String) = mime == "application/pdf" || name.substringAfterLast('.', "").lowercase() == "pdf"
         fun isImage(mime: String, name: String) =
             (mime.startsWith("image/") && !mime.contains("svg")) || name.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
     }

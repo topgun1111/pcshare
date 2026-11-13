@@ -179,7 +179,7 @@ class VaultActivity : FragmentActivity() {
         val items = st.list(cur)
         if (cur != null) list.addView(row("..", vt("Up"), true) { cur = st.get(cur!!)?.parent; render() })
         if (items.isEmpty()) list.addView(text(vt("Empty. Tap Add files."), 14f, lm.inkMut).apply { setPadding(dp(24), dp(32), dp(24), 0) })
-        for (n in items) list.addView(row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { if (n.dir) { cur = n.id; render() } else if (viewable(n)) startActivity(android.content.Intent(this, VaultViewActivity::class.java).putExtra("id", n.id)) else fileMenu(n) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } })
+        for (n in items) list.addView(row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { if (n.dir) { cur = n.id; render() } else if (android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name)) startActivity(android.content.Intent(this, VaultPdfActivity::class.java).putExtra("id", n.id)) else if (VaultViewActivity.isMedia(n.mime, n.name)) startActivity(android.content.Intent(this, VaultPlayActivity::class.java).putExtra("id", n.id)) else if (viewable(n)) startActivity(android.content.Intent(this, VaultViewActivity::class.java).putExtra("id", n.id)) else fileMenu(n) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } })
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
@@ -190,7 +190,7 @@ class VaultActivity : FragmentActivity() {
         setOnClickListener { fn() }
     }
 
-    /** Lockdown viewers: images and small text open in memory (VaultViewActivity); everything else keeps the menu (export). */
+    /** Lockdown viewers: images and small text open in memory (VaultViewActivity), audio / video stream via VaultPlayActivity; the rest keeps the menu (export). */
     private fun viewable(n: VaultNode): Boolean {
         val ext = n.name.substringAfterLast('.', "").lowercase()
         return VaultViewActivity.isImage(n.mime, n.name) ||

@@ -115,6 +115,12 @@ private val TR = mapOf(
     "Saved to Download/%s" to "İndirilenler/%s olarak kaydedildi",
     "Auto-lock: %s" to "Otomatik kilit: %s",
     "Encrypting %s file(s)..." to "%s dosya şifreleniyor...",
+    "Could not play this file" to "Bu dosya oynatılamadı",
+    "Encrypting 1 item" to "1 öğe şifreleniyor",
+    "Encrypting %s items" to "%s öğe şifreleniyor",
+    "Vault locked" to "Kasa kilitli",
+    "An item could not be locked" to "Bir öğe kilitlenemedi",
+    "Locking stopped" to "Kilitleme durduruldu",
 )
 
 fun vt(s: String): String = if (Locale.getDefault().language == "tr") TR[s] ?: s else s

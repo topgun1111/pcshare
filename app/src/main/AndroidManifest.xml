@@ -194,6 +194,12 @@
         <!-- Vault (Lockdown): in-memory viewer for one vault item (image/text). Not exported, FLAG_SECURE in code -->
         <activity android:name=".VaultViewActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation" />
+        <!-- Vault (Lockdown): audio / video straight from the vault (VaultDataSource, nothing on disk). Not exported, FLAG_SECURE in code -->
+        <activity android:name=".VaultPlayActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation" />
+        <!-- Vault (Lockdown): PDF straight from the vault (proxy fd over VaultReader, nothing on disk). Not exported, FLAG_SECURE in code -->
+        <activity android:name=".VaultPdfActivity" android:exported="false" android:theme="@style/Theme.LANShare"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation" />
         <!-- Vault (Lockdown): main menu tile. FLAG_SECURE is set in code -->
         <activity android:name=".VaultActivity" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize"

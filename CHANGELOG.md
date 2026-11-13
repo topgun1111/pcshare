@@ -4,6 +4,14 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-13 - Vault: play music, videos and open PDFs
+### Added
+- Videos and music inside the vault now play directly from the vault, with seeking and next / previous for the other media in the same folder. Nothing is copied out or saved on the phone while playing.
+- PDF files inside the vault now open directly in a viewer (Android 8 and newer). Nothing is saved on the phone and pages are never cached.
+### Changed
+- Playback stops when you leave the screen, and closes by itself when the vault locks.
+- Vault locking progress and error messages are now also shown in Turkish.
+
 ## 2026-11-13 - Vault recovery and isolation hardening
 ### Fixed
 - Replacing a recovery code, recovery key file or split shares no longer invalidates the previous recovery method until the new copy has been saved and confirmed.
