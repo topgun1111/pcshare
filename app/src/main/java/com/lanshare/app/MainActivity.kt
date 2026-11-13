@@ -289,6 +289,13 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openStorage(vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intent(this@MainActivity, vpath)) } catch (_: Throwable) { } }
         }
+        /** File manager "Lock": [json] = JSON array of local paths. Returns "ok:<jobId>" | "locked" (vault screen opened to unlock first) | "bad". */
+        @JavascriptInterface fun vaultLock(json: String): String {
+            val ps = try { val a = org.json.JSONArray(json); (0 until a.length()).map { a.getString(it) } } catch (_: Exception) { return "bad" }
+            val r = com.lanshare.app.core.VaultLockJob.start(ps)
+            if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
+            return r
+        }
         /** Main menu Vault tile: opens the Vault screen (create / unlock / browse). */
         @JavascriptInterface fun openVault() {
             runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
