@@ -3881,6 +3881,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
     if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
     const A=inArc();
+    if(S.vimp&&S.dev==='local'&&!A){btn('add','Import',()=>vaultImport(false),'pri');btn('cut','Move in',()=>vaultImport(true))}   // vault import mode
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zipf','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
@@ -3909,6 +3910,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     c.append(E('span','',(S.clip.op==='cut'?'Cut ':'Copied ')+S.clip.paths.length+' item(s) from '+devName(S.clip.dev)));
     if(!S.sel.size&&!inBin()&&(!inArc()||zipEd())){const pb=E('button','tbtn fill','Paste here');pb.onclick=doPaste;c.append(pb)}
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
+  else if(S.vimp&&S.dev==='local'){c.style.display='flex';c.textContent='';c.append(E('span','','Importing into the Vault \u2014 select files or folders'));const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=()=>{S.vimp=null;renderBar()};c.append(xb)}
   else c.style.display='none';
   if(b.children.length>5){   // Lumen 12.8: at most 5 cells; the middle ones collapse into More (Delete stays rightmost)
     const n=b.children.length,hasD=NLACL[n-1].c.indexOf('dng')>=0,from=hasD?3:4,to=hasD?n-1:n,kids=[...b.children],ex=[];
@@ -6251,19 +6253,37 @@ function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab==
    app screen only (Routes), nothing is cached or handed to other apps (VAULT_ROUTES, no thumbnails / Share / Open with / Print in this mode). ---- */
 let VMODE=false,VWANT=0,VWT=0;
 function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
-function vaultEnter(){homeHide();drawerClose();S.newest=false;S.dev='vault';S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
+function vaultEnter(path){S.vimp=null;homeHide();drawerClose();S.newest=false;S.dev='vault';S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
 function vaultOpen(){
   if(!(window.LSAndroid&&LSAndroid.vaultState)){toast('Vault needs the Android app',3000);return}
   if(LSAndroid.vaultState()==='open'){vaultEnter();return}
   VWANT=1;VWT=Date.now();try{LSAndroid.openVaultUnlock()}catch(e){VWANT=0;toast('Vault needs the Android app',3000)}}   // unlock / create screen; it closes itself, then vaultEnter() runs from the poll below
 function vaultLeave(msg){
   for(const k of [...LSC.keys()])if(k.indexOf('vault|')===0)LSC.delete(k);
-  if(S.dev==='vault'){S.dev='local';S.path='/';S.items=[];S.sel.clear();S.sig=''}
+  S.vimp=null;if(S.dev==='vault'){S.dev='local';S.path='/';S.items=[];S.sel.clear();S.sig=''}
   vaultSecure(false);try{homeShow()}catch(e){}if(msg)toast(msg,3000)}
+/* Import: go back to the normal file manager (this phone); the selection bar then offers Import (copy, originals stay) and Move in (originals are deleted
+   once copied). The copy / move job is the normal one (Jobs: this phone -> vault endpoint), so folders keep their structure and conflicts are asked like in any paste. */
+function vaultImportStart(){
+  if(!(window.LSAndroid&&LSAndroid.vaultState&&LSAndroid.vaultState()==='open')){toast('Unlock the vault first',3000);return}
+  S.vimp={dir:S.path};S.newest=false;S.dev='local';S.path='/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=true;load();
+  toast('Select files or folders to import, then tap Import',4500)}
+async function vaultImport(cut){
+  const ps=selPaths();if(!ps.length||!S.vimp)return;const dir=S.vimp.dir;
+  if(!(window.LSAndroid&&LSAndroid.vaultState&&LSAndroid.vaultState()==='open')){S.vimp=null;renderBar();toast('Vault is locked',3000);return}
+  try{
+    await api('POST','/api/clip',{op:cut?'cut':'copy',dev:'local',paths:ps});
+    const cf=await askConflicts('vault',dir,ps,'local',false);if(!cf){await api('POST','/api/clip',{op:'clear'});return}
+    const r=await api('POST','/api/paste',{dev:'vault',dir,conflict:cf});
+    watchJob(r.job);const ok=await track(r.job);
+    await api('POST','/api/clip',{op:'clear'});S.clip=null;
+    if(ok){toast((cut?'Moved into':'Imported into')+' the Vault',2500);vaultEnter(dir)}else renderBar()}
+  catch(e){try{await api('POST','/api/clip',{op:'clear'});S.clip=null}catch(x){}toast('⚠ '+e.message,5000)}}
 function doVaultNew(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Vault'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
+  opt('add','Import files and folders from the phone',vaultImportStart);
   opt('newfolder','New folder',doMkdir);
   opt('hide','Lock vault',()=>{try{LSAndroid.vaultLockNow()}catch(e){}});
   opt('info','Vault settings (password, fingerprint, recovery)',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}});
