@@ -121,6 +121,14 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
         writeHeader(root, nh); header = nh
     }
 
+    /** After a recovery / backup unlock (old password unknown): re-wraps MK under a new main password. */
+    @Synchronized fun resetPassword(new: CharArray) {
+        val h = header; val nh = h.copyWith(wn = VaultCrypto.rand(12), w = ByteArray(0))
+        val kek = VaultCrypto.kek(new, h.salt, h.logN, h.r, h.p)
+        nh.wrapped = VaultCrypto.seal(kek, nh.wrapNonce, nh.aad(), mk!!); VaultCrypto.wipe(kek)
+        writeHeader(root, nh); header = nh
+    }
+
     /** Creates (or replaces) the recovery wrap; returns the 32-byte secret to show the user ONCE. */
     @Synchronized fun enableRecovery(): ByteArray {
         val h = header; val secret = VaultCrypto.rand(32); val kek = VaultCrypto.hkdf(secret, "lsv-rec")
