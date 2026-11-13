@@ -30,6 +30,11 @@ class VaultFs : Endpoint {
     override val id = "vault"
     override val name = "Vault"
 
+    companion object {
+        /** Set by the copy job (Jobs.copyFile) on its own thread while it writes a file of THIS phone into the vault: the real source path (recorded for "Restore to original location"). */
+        val srcHint = ThreadLocal<String?>()
+    }
+
     private fun st(): VaultStore {
         if (RootShell.untrusted.get() == true) throw Denied("The vault is only available from the app's own screen")
         return VaultSession.store?.takeIf { it.isOpen } ?: throw Denied("Vault is locked")
@@ -130,7 +135,9 @@ class VaultFs : Endpoint {
                 left -= n; cb?.invoke(n); return n
             }
         }
-        val (nn, _) = s.addStream(counted, parent, name, System.currentTimeMillis(), mimeFor(name))   // the old file (if any) still exists: the new one gets a temporary "name (2)"
+        val src = srcHint.get()?.let { java.io.File(it) }?.takeIf { it.isFile }
+        val (nn, sha) = s.addStream(counted, parent, name, src?.lastModified()?.takeIf { it > 0 } ?: System.currentTimeMillis(), mimeFor(name), src?.absolutePath ?: "")   // the old file (if any) still exists: the new one gets a temporary "name (2)"
+        if (nn.size != size || !s.verify(nn.id, nn.size, sha)) { s.delete(nn.id); throw IOException("verification failed") }   // "Move in" deletes the original right after this returns: re-read the vault copy (every tag + hash) first
         if (old != null) { s.delete(old.id); s.rename(nn.id, name) }
     }
 

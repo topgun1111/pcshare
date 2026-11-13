@@ -79,6 +79,9 @@ class VaultReader(file: File, private val key: ByteArray, expectId: ByteArray? =
         cIdx = k
     }
 
+    /** True when the first and the last chunk authenticate (cheap proof that the blob is complete and belongs to this key). */
+    fun authenticateEnds(): Boolean = try { load(0); load(chunks - 1); true } catch (e: VaultCorruptException) { false }
+
     fun seek(p: Long) { require(p in 0..length); pos = p }
     fun position() = pos
     override fun available(): Int = minOf(length - pos, Int.MAX_VALUE.toLong()).toInt()

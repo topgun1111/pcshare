@@ -13,7 +13,7 @@ object VaultFormat {
     const val TAG = 16
     const val BLOB_VER = 1
     const val BLOB_HDR = 1 + 16 + 4            // ver | fileId | baseNonce
-    const val INDEX_VER = 1
+    const val INDEX_VER = 2                     // 2 = nodes carry the original path (restore); 1 snapshots / PUT records are still read
     const val MAX_LOGN = 18                     // reject hostile headers (scrypt memory = 128*r*2^logN)
     val MAGIC = byteArrayOf(0x9d.toByte(), 0x3a, 0xc1.toByte(), 0x57, 0xe2.toByte(), 0x08, 0xb4.toByte(), 0x6f)
 
@@ -75,20 +75,25 @@ class VaultHeader(
 class VaultNode(
     val id: String, val parent: String?, val name: String, val dir: Boolean,
     val size: Long, val mtime: Long, val mime: String,
+    /** Absolute path the item came from ("" = unknown: imported through the share sheet / a picker). Used by "Restore to original location". */
+    val orig: String = "",
 ) {
-    fun copy(parent: String? = this.parent, name: String = this.name) = VaultNode(id, parent, name, dir, size, mtime, mime)
+    fun copy(parent: String? = this.parent, name: String = this.name, orig: String = this.orig) = VaultNode(id, parent, name, dir, size, mtime, mime, orig)
 
     fun write(o: DataOutputStream) {
         o.write(VaultFormat.unhex(id)); o.write(if (parent == null) ByteArray(16) else VaultFormat.unhex(parent))
         o.writeBoolean(dir); o.writeLong(size); o.writeLong(mtime); o.writeUTF(name); o.writeUTF(mime)
+        o.writeUTF(if (orig.toByteArray(Charsets.UTF_8).size > 60_000) "" else orig)   // v2 field (writeUTF caps at 64 KB)
     }
 
     companion object {
         private val ZERO = ByteArray(16)
-        fun read(i: DataInputStream): VaultNode {
+        /** [ver] 1 = legacy record without the original path. */
+        fun read(i: DataInputStream, ver: Int = 2): VaultNode {
             val id = ByteArray(16).also { i.readFully(it) }; val pa = ByteArray(16).also { i.readFully(it) }
             val dir = i.readBoolean(); val size = i.readLong(); val mt = i.readLong()
-            return VaultNode(VaultFormat.hex(id), if (pa.contentEquals(ZERO)) null else VaultFormat.hex(pa), i.readUTF(), dir, size, mt, i.readUTF())
+            val name = i.readUTF(); val mime = i.readUTF()
+            return VaultNode(VaultFormat.hex(id), if (pa.contentEquals(ZERO)) null else VaultFormat.hex(pa), name, dir, size, mt, mime, if (ver >= 2) i.readUTF() else "")
         }
     }
 }

@@ -3884,6 +3884,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     const it=selItems(),files=it.length>0&&it.every(i=>!i.dir);
     if(KID&&parent.lsXfer){const tr=PN===1?'right':'left',ar=PN===1?'fwd':'back';btn(ar,'Copy to '+tr,()=>parent.lsXfer(PN,'copy'),'pri');btn('send','Move to '+tr,()=>parent.lsXfer(PN,'cut'))}
     const A=inArc();
+    if(S.dev==='vault'&&window.LSAndroid&&LSAndroid.vaultRestore)btn('refresh','Restore',()=>vaultRestore(selPaths(),false),'pri');   // Vault: decrypt back to the place each item came from
     if(S.vimp&&S.dev==='local'&&!A){btn('add','Import',()=>vaultImport(false),'pri');btn('cut','Move in',()=>vaultImport(true))}   // vault import mode
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zipf','Zip',doZip);
@@ -3904,7 +3905,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     else if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0){   // any file or folder of this phone: Hide (Unhide when "Show hidden files" is on and they are all hidden)
       const ps=selPaths(),un=ps.length>0&&ps.every(hidP);
       btn('hide',un?'Unhide':'Hide',()=>{S.sel.clear();galHideMany(ps,!un);toast(un?ps.length+' item(s) visible again':ps.length+' item(s) hidden - Settings > Gallery settings brings them back',un?2000:4000)})}
-    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','To vault',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultLock(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try To vault again',4000);else if(r==='bad')toast('Nothing to lock',2500);else toast('Locking '+ps.length+' item(s)...',2500)})   // Lockdown: encrypt into the vault (this phone only)
+    if(!A&&S.dev==='local'&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.vaultLock)btn('hide','To vault',()=>{const ps=selPaths();S.sel.clear();render();const r=LSAndroid.vaultLock(JSON.stringify(ps));if(r==='locked')toast('Unlock the vault, then try To vault again',4000);else if(r==='bad')toast('Nothing to lock',2500);else{toast('Locking '+ps.length+' item(s)...',2500);if(String(r).indexOf('ok:')===0){const jid=String(r).slice(3);watchJob(jid);track(jid).then(()=>load(),()=>load())}}})   // Lockdown: encrypt into the vault (this phone only)
     if(!A||zipEd())btn('del','Delete',doDelete,'dng')
   }
   const c=$('#clip');
@@ -6294,11 +6295,25 @@ async function vaultImport(cut){
     await api('POST','/api/clip',{op:'clear'});S.clip=null;
     if(ok){toast((cut?'Moved into':'Imported into')+' the Vault',2500);vaultEnter(dir)}else renderBar()}
   catch(e){try{await api('POST','/api/clip',{op:'clear'});S.clip=null}catch(x){}toast('⚠ '+e.message,5000)}}
+/* Vault "Restore": the phone decrypts each item back to the place it was locked from (Kotlin VaultRestoreJob). Nothing is overwritten (a taken name gets " (2)"),
+   the vault copy is removed only after the written file was re-read and matched. Items that came through the share sheet / a picker have no recorded place: Download/Vault restored. */
+async function vaultRestore(ps,all){
+  if(!(window.LSAndroid&&LSAndroid.vaultRestore)){toast('Vault needs the Android app',3000);return}
+  const n=ps.length;
+  if(!await dlg({title:all?'Restore everything?':'Restore '+n+' item'+(n===1?'':'s')+'?',msg:'Each item goes back to the place it was locked from. Items added from other apps go to Download/Vault restored. The vault copy is removed only after the restored file was checked.',ok:'Restore'}))return;
+  let r='bad';try{r=String(LSAndroid.vaultRestore(JSON.stringify(ps)))}catch(e){}
+  if(r==='locked'){vaultLeave('Vault locked');return}
+  if(r==='bad'){toast('Nothing to restore',2500);return}
+  S.sel.clear();render();toast('Restoring...',2500);
+  const jid=r.slice(3);watchJob(jid);track(jid).then(()=>load(),()=>load())}
 function doVaultNew(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Vault'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
   opt('add','Import files and folders from the phone',vaultImportStart);
+  opt('add','Add files from other apps',()=>{try{LSAndroid.vaultPick(false,S.path)}catch(e){toast('Vault needs the Android app',3000)}});
+  opt('newfolder','Add a folder from other apps',()=>{try{LSAndroid.vaultPick(true,S.path)}catch(e){toast('Vault needs the Android app',3000)}});
+  opt('refresh','Restore everything to the original places',()=>vaultRestore(['/'],true));
   opt('newfolder','New folder',doMkdir);
   opt('hide','Lock vault',()=>{try{LSAndroid.vaultLockNow()}catch(e){}});
   opt('info','Vault settings (password, fingerprint, recovery)',()=>{try{LSAndroid.openVault()}catch(e){toast('Vault needs the Android app',3000)}});

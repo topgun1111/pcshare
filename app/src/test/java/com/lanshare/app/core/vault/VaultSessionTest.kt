@@ -9,7 +9,7 @@ import org.junit.rules.TemporaryFolder
 class VaultSessionTest {
     @get:Rule val tmp = TemporaryFolder()
     private var now = 1_000_000L
-    private fun open(): VaultStore { VaultSession.clock = { now }; val s = VaultStore.create(tmp.newFolder(), "password1", logN = 10); VaultSession.start(s); return s }
+    private fun open(): VaultStore { VaultSession.clock = { now }; val s = VaultStore.create(tmp.newFolder(), "password1".toCharArray(), logN = 10); VaultSession.start(s); return s }
     @After fun reset() { VaultSession.lock(); VaultSession.clock = System::currentTimeMillis; VaultSession.autoLockSec = 30; VaultSession.onStarted = null }
 
     @Test fun locksOnlyAfterDelay() {

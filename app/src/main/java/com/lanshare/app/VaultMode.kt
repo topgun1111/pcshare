@@ -25,7 +25,7 @@ import java.util.concurrent.Executors
  */
 object VaultMode {
     const val SCHEME = "lsvault://"
-    /** Set by a viewer / editor after it changed the vault (delete, edit-save); VaultActivity re-lists on resume. */
+    /** Set by a viewer / editor after it changed the vault (delete, edit-save); the file manager re-lists on resume (MainActivity). */
     @Volatile var dirty = false
 
     fun ext(n: String) = n.substringAfterLast('.', "").lowercase()

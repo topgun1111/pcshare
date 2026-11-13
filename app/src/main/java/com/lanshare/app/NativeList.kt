@@ -1067,6 +1067,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             val kp = curKey.split('|', limit = 3)
             if (kp.size != 3 || kp[2].startsWith("N:") || kp[2].contains('!')) return false
             val dev = kp[0]; val path = kp[2]
+            if (dev == "vault") return false   // vault: the page routes the tap (vaultTapOpen -> VaultMode.route, in-memory vault mode); an unsigned /api/dl?dev=vault URL is refused with 403 (ERROR_CODE_IO_BAD_HTTP_STATUS)
             fun url(n: String) = origin + "/api/dl?dev=" + encU(dev) + "&path=" + encU((if (path == "/") "" else path) + "/" + n)
             fun key(n: String, sz: Long) = dev + "|" + path + "/" + n + "|" + sz
             val files = rows.filter { !it.dir && !it.hit && it.k != "hdr" }

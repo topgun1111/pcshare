@@ -19,7 +19,7 @@ class VaultGuardTest {
             assertFalse(p, VaultGuard.isVaultName(p))
     }
     @Test fun symlinkAndCache() {
-        val t = File.createTempFile("vg", "").also { it.delete(); it.mkdirs() }
+        val t = File.createTempFile("vgt", "").also { it.delete(); it.mkdirs() }
         File(t, ".lsv").mkdirs()
         val link = File(t, "ln")
         try { java.nio.file.Files.createSymbolicLink(link.toPath(), File(t, ".lsv").toPath()); assertTrue(VaultGuard.isVaultPath(link.path)) } catch (_: UnsupportedOperationException) {}

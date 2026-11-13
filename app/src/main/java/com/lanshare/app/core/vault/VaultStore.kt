@@ -22,6 +22,8 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
 
     companion object {
         const val SMALL_WIPE = 16L shl 20
+        /** Root folder that receives blobs found without an index entry. */
+        const val RECOVERED = "Recovered files"
 
         fun exists(volumeRoot: File) = File(File(volumeRoot, VaultFormat.DIR), "h0").exists() || File(File(volumeRoot, VaultFormat.DIR), "h1").exists()
 
@@ -29,6 +31,8 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
         @Synchronized fun create(volumeRoot: File, password: CharArray, logN: Int = VaultCrypto.calibrate()): VaultStore {
             val dir = File(volumeRoot, VaultFormat.DIR)
             if (exists(volumeRoot)) throw IOException("vault exists")
+            if (File(dir, "i").exists() || File(dir, "i.bak").exists() || (File(dir, "d").walkTopDown().any { it.isFile }))
+                throw IOException("a damaged vault is still in this folder (header lost): not overwriting it")   // new MK would orphan every file
             File(dir, "d").mkdirs(); File(dir, ".nomedia").createNewFile()
             val mk = VaultCrypto.rand(32); val salt = VaultCrypto.rand(32); val wn = VaultCrypto.rand(12)
             val h = VaultHeader(logN, 8, 1, 0, salt, wn, ByteArray(VaultFormat.WRAP_LEN), VaultCrypto.rand(12), VaultCrypto.rand(VaultFormat.WRAP_LEN))
@@ -109,7 +113,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     }
 
 
-    init { gc() }
+    init { heal() }
 
     /** Zeroises all keys; the store cannot be used afterwards (re-open with the password). */
     @Synchronized fun lock() {
@@ -182,7 +186,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     /** Changes the stored modification time (ms) of one node; index only. */
     @Synchronized fun setMtime(id: String, ms: Long) {
         val n = idx()[id] ?: return
-        idx().commit(listOf(VaultIndex.Op.Put(VaultNode(n.id, n.parent, n.name, n.dir, n.size, ms, n.mime))))
+        idx().commit(listOf(VaultIndex.Op.Put(VaultNode(n.id, n.parent, n.name, n.dir, n.size, ms, n.mime, n.orig))))
     }
 
     private fun uniqueName(parent: String?, name: String, except: String? = null): String {
@@ -192,9 +196,15 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
         var i = 2; while (true) { val c = name.substring(0, dot) + " ($i)" + name.substring(dot); if (c !in taken) return c; i++ }
     }
 
-    @Synchronized fun mkdir(parent: String?, name: String): VaultNode {
+    /** Records where an item came from (restore target). Index only. */
+    @Synchronized fun setOrig(id: String, orig: String) {
+        val n = idx()[id] ?: return
+        if (n.orig != orig) idx().commit(listOf(VaultIndex.Op.Put(n.copy(orig = orig))))
+    }
+
+    @Synchronized fun mkdir(parent: String?, name: String, orig: String = ""): VaultNode {
         parent?.let { require(idx()[it]?.dir == true) { "parent is not a folder" } }
-        val n = VaultNode(VaultFormat.hex(VaultCrypto.rand(16)), parent, uniqueName(parent, name), true, 0, System.currentTimeMillis(), "")
+        val n = VaultNode(VaultFormat.hex(VaultCrypto.rand(16)), parent, uniqueName(parent, name), true, 0, System.currentTimeMillis(), "", orig)
         idx().commit(listOf(VaultIndex.Op.Put(n))); return n
     }
 
@@ -222,7 +232,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
 
     // ---------- data ----------
     /** Encrypts [input] into a new vault file. Returns the node and the SHA-256 of the plaintext as written. */
-    @Synchronized fun addStream(input: InputStream, parent: String?, name: String, mtime: Long = System.currentTimeMillis(), mime: String = ""): Pair<VaultNode, ByteArray> {
+    @Synchronized fun addStream(input: InputStream, parent: String?, name: String, mtime: Long = System.currentTimeMillis(), mime: String = "", orig: String = ""): Pair<VaultNode, ByteArray> {
         parent?.let { require(idx()[it]?.dir == true) { "parent is not a folder" } }
         val id = VaultCrypto.rand(16); val hex = VaultFormat.hex(id); val bf = VaultFormat.blobFile(root, hex)
         bf.parentFile!!.mkdirs()
@@ -232,7 +242,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
             val buf = ByteArray(64 * 1024)
             while (true) { val r = input.read(buf); if (r < 0) break; w.write(buf, 0, r); md.update(buf, 0, r) }
             w.close()
-            val n = VaultNode(hex, parent, uniqueName(parent, name), false, w.total, mtime, mime)
+            val n = VaultNode(hex, parent, uniqueName(parent, name), false, w.total, mtime, mime, orig)
             idx().commit(listOf(VaultIndex.Op.Put(n)))
             return n to md.digest()
         } catch (e: Throwable) { bf.delete(); throw e } finally { VaultCrypto.wipe(key) }
@@ -264,7 +274,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
      */
     fun lockFile(src: File, parent: String?, removeOriginal: Boolean = true): VaultNode {
         if (isSymbolicLink(src)) throw IOException("symbolic links cannot be locked")
-        val (n, sha) = src.inputStream().use { addStream(it, parent, src.name, src.lastModified()) }
+        val (n, sha) = src.inputStream().use { addStream(it, parent, src.name, src.lastModified(), "", src.absolutePath) }
         if (!verify(n.id, n.size, sha) || n.size != src.length()) { delete(n.id); throw IOException("verification failed") }
         if (removeOriginal) { secureDelete(src); onOriginalRemoved?.invoke(src) }
         return n
@@ -273,24 +283,102 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
     /** Recursive and resumable: folders are merged by name, files already present (same name+size) are skipped. [cancel] is polled between files. */
     fun lockFolder(src: File, parent: String?, removeOriginal: Boolean = true, cancel: () -> Boolean = { false }, progress: (File) -> Unit = {}): VaultNode {
         if (isSymbolicLink(src)) throw IOException("symbolic links cannot be locked")
-        val dir = synchronized(this) { list(parent).firstOrNull { it.dir && it.name == src.name } ?: mkdir(parent, src.name) }
+        val dir = synchronized(this) {
+            val e = list(parent).firstOrNull { it.dir && it.name == src.name }
+            if (e == null) mkdir(parent, src.name, src.absolutePath) else { if (e.orig.isEmpty()) setOrig(e.id, src.absolutePath); e }
+        }
         for (c in src.listFiles()?.sortedBy { it.name } ?: emptyList()) {
             if (cancel()) break
             if (isSymbolicLink(c)) continue // leave links untouched; never follow a link outside the selected tree
             if (c.isDirectory) { lockFolder(c, dir.id, removeOriginal, cancel, progress); continue }
             progress(c)
             val have = synchronized(this) { list(dir.id).firstOrNull { !it.dir && it.name == c.name && it.size == c.length() } }
-            if (have != null) { if (removeOriginal) { secureDelete(c); onOriginalRemoved?.invoke(c) }; continue }
+            if (have != null && sameContent(have, c)) { if (removeOriginal) { secureDelete(c); onOriginalRemoved?.invoke(c) }; continue }   // same name + size is not enough: the bytes must match before the original may go
             lockFile(c, dir.id, removeOriginal)
         }
         if (removeOriginal && src.listFiles().isNullOrEmpty()) { src.delete(); onOriginalRemoved?.invoke(src) }
         return dir
     }
 
-    /** Deletes blobs that are not in the index (crash between blob write and journal record). */
-    @Synchronized private fun gc() {
-        val ix = index ?: return
-        File(root, "d").listFiles()?.forEach { sh -> sh.listFiles()?.forEach { f -> if (ix[f.name] == null) f.delete() }; if (sh.list().isNullOrEmpty()) sh.delete() }
+    private fun sha(i: InputStream): ByteArray {
+        val md = MessageDigest.getInstance("SHA-256"); val b = ByteArray(64 * 1024)
+        while (true) { val r = i.read(b); if (r < 0) break; md.update(b, 0, r) }
+        return md.digest()
+    }
+
+    /** True when the vault copy [n] and the file [f] hold identical bytes. */
+    private fun sameContent(n: VaultNode, f: File): Boolean = try {
+        n.size == f.length() && MessageDigest.isEqual(f.inputStream().use { sha(it) }, open(n.id).use { sha(it) })
+    } catch (_: Exception) { false }
+
+    // ---------- self-healing ----------
+    private fun isId(s: String) = s.length == 32 && s.all { it in '0'..'9' || it in 'a'..'f' }
+
+    private fun sniffExt(h: ByteArray, n: Int): String {
+        fun st(vararg b: Int) = n >= b.size && b.indices.all { (h[it].toInt() and 255) == b[it] }
+        return when {
+            st(0xFF, 0xD8, 0xFF) -> ".jpg"; st(0x89, 0x50, 0x4E, 0x47) -> ".png"; st(0x47, 0x49, 0x46, 0x38) -> ".gif"
+            st(0x25, 0x50, 0x44, 0x46) -> ".pdf"; st(0x50, 0x4B, 0x03, 0x04) -> ".zip"; st(0x4F, 0x67, 0x67, 0x53) -> ".ogg"
+            st(0x49, 0x44, 0x33) -> ".mp3"; n >= 12 && h[4].toInt() == 0x66 && h[5].toInt() == 0x74 && h[6].toInt() == 0x79 && h[7].toInt() == 0x70 -> ".mp4"
+            n >= 12 && String(h, 0, 4, Charsets.ISO_8859_1) == "RIFF" && String(h, 8, 4, Charsets.ISO_8859_1) == "WEBP" -> ".webp"
+            else -> ""
+        }
+    }
+
+    /**
+     * Runs when the vault opens. A blob that is not in the index (crash between blob and journal, or an older index snapshot after a storage fault) is NEVER deleted:
+     * a complete blob that authenticates is put back into the folder "[RECOVERED]" (name lost, bytes kept); anything else is moved to ".lsv/q" (dropped after 30 days).
+     */
+    @Synchronized private fun heal() {
+        val ix = index ?: return; val kd = kData ?: return
+        val q = File(root, "q"); var rec: VaultNode? = null
+        File(root, "d").listFiles()?.forEach { sh ->
+            sh.listFiles()?.forEach { f ->
+                if (!isId(f.name) || ix[f.name] != null) return@forEach
+                var ext: String? = null; var size = 0L
+                try {
+                    val id = VaultFormat.unhex(f.name)
+                    VaultReader(f, VaultCrypto.hkdf(kd, byteArrayOf('f'.code.toByte()) + id), id).use { r ->
+                        if (r.authenticateEnds()) { val h = ByteArray(12); val c = maxOf(0, r.read(h, 0, 12)); ext = sniffExt(h, c); size = r.length }
+                    }
+                } catch (_: Exception) { ext = null }
+                if (ext != null) {
+                    val dir = rec ?: ix.all.firstOrNull { it.parent == null && it.dir && it.name == RECOVERED } ?: VaultNode(VaultFormat.hex(VaultCrypto.rand(16)), null, RECOVERED, true, 0, System.currentTimeMillis(), "")
+                    if (ix[dir.id] == null) ix.commit(listOf(VaultIndex.Op.Put(dir)))
+                    rec = dir
+                    ix.commit(listOf(VaultIndex.Op.Put(VaultNode(f.name, dir.id, "recovered-" + f.name.take(8) + ext, false, size, f.lastModified(), ""))))
+                } else {
+                    q.mkdirs(); if (!f.renameTo(File(q, f.name))) f.renameTo(File(q, f.name + "." + System.nanoTime()))
+                }
+            }
+            if (sh.list().isNullOrEmpty()) sh.delete()
+        }
+        val old = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        q.listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
+        if (q.exists() && q.list().isNullOrEmpty()) q.delete()
+    }
+
+    class IntegrityReport(val files: Int, val bytes: Long, val damaged: List<VaultNode>, val missing: List<VaultNode>) {
+        val ok get() = damaged.isEmpty() && missing.isEmpty()
+    }
+
+    /** Reads every file end to end (every GCM tag) and compares the length with the index. Never changes anything. [progress] = (done, total). */
+    fun checkAll(cancel: () -> Boolean = { false }, progress: (Int, Int) -> Unit = { _, _ -> }): IntegrityReport {
+        val files = synchronized(this) { idx().all.filter { !it.dir } }
+        val bad = ArrayList<VaultNode>(); val gone = ArrayList<VaultNode>(); var bytes = 0L
+        for ((i, n) in files.withIndex()) {
+            if (cancel()) break
+            progress(i, files.size)
+            if (!VaultFormat.blobFile(root, n.id).exists()) { gone.add(n); continue }
+            try {
+                var total = 0L
+                open(n.id).use { r -> val b = ByteArray(64 * 1024); while (true) { val c = r.read(b); if (c < 0) break; total += c } }
+                if (total != n.size) bad.add(n) else bytes += total
+            } catch (e: IllegalStateException) { throw e }   // vault locked meanwhile: the caller stops
+            catch (e: Exception) { bad.add(n) }
+        }
+        progress(files.size, files.size)
+        return IntegrityReport(files.size, bytes, bad, gone)
     }
 
     /** Irreversibly removes the whole vault directory. */

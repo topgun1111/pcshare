@@ -303,9 +303,20 @@ class MainActivity : Activity() {
             if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
             return r
         }
-        /** Main menu Vault tile: opens the Vault screen (create / unlock / browse = password, fingerprint, recovery, settings). */
+        /** Vault mode "Restore": [json] = JSON array of virtual vault paths ("/" = everything). Decrypts back to where each item came from. "ok:<jobId>" | "locked" | "bad". */
+        @JavascriptInterface fun vaultRestore(json: String): String {
+            val ps = try { val a = org.json.JSONArray(json); (0 until a.length()).map { a.getString(it) } } catch (_: Exception) { return "bad" }
+            val r = com.lanshare.app.core.VaultRestoreJob.start(ps)
+            if (r == "locked") runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
+            return r
+        }
+        /** Vault mode: add files (folder = false) or a whole folder (true) from any other app through the system picker; [dir] = the open vault folder. */
+        @JavascriptInterface fun vaultPick(folder: Boolean, dir: String) {
+            runOnUiThread { try { startActivity(VaultImportActivity.pick(this@MainActivity, folder, dir)) } catch (_: Throwable) { } }
+        }
+        /** File manager > Vault > Vault settings: password, fingerprint, auto-lock, recovery (needs the open vault; browsing is the file manager's Vault mode). */
         @JavascriptInterface fun openVault() {
-            runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
+            runOnUiThread { try { startActivity(VaultActivity.settingsIntent(this@MainActivity)) } catch (_: Throwable) { } }
         }
         /** "open" = unlocked | "locked" = exists but locked | "none" = no vault yet. */
         @JavascriptInterface fun vaultState(): String = when {
@@ -315,7 +326,7 @@ class MainActivity : Activity() {
         }
         /** Unlock (or create) screen that closes itself as soon as the vault is open, so the file manager can switch to vault mode. */
         @JavascriptInterface fun openVaultUnlock() {
-            runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity, true)) } catch (_: Throwable) { } }
+            runOnUiThread { try { startActivity(VaultActivity.intent(this@MainActivity)) } catch (_: Throwable) { } }
         }
         /** Vault mode of the file manager on / off: no screenshots, hidden in the recent-apps list (same as the Vault screen). */
         @JavascriptInterface fun vaultMode(on: Boolean) {

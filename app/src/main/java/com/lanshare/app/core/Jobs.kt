@@ -1233,7 +1233,8 @@ object Jobs {
                         job.curDone += n
                         if (count) job.done += n
                     }
-                    if (can) dst.writeResume(target, f, f.size, off, tag, cb) else dst.write(target, f, f.size, cb)
+                    if (dst.id == "vault" && src.id == "local") VaultFs.srcHint.set(try { Core.local.lreal(sp).absolutePath } catch (_: Exception) { null })   // remember where the file came from (Restore to original location)
+                    try { if (can) dst.writeResume(target, f, f.size, off, tag, cb) else dst.write(target, f, f.size, cb) } finally { VaultFs.srcHint.remove() }
                     if (smt > 0) try { dst.setMtime(target, smt) } catch (e: Cancelled) { throw e } catch (_: Exception) {}
                 } finally { f.close() }
                 if (count) job.files++

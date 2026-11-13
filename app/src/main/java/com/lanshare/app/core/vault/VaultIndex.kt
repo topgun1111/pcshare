@@ -21,7 +21,7 @@ class VaultIndex(private val root: File, private val key: ByteArray) {
     private var dirty = 0
     private val fi = File(root, "i"); private val fb = File(root, "i.bak"); private val ft = File(root, "i.tmp"); private val fj = File(root, "j")
 
-    companion object { const val CHECKPOINT = 64; private const val PUT = 1; private const val DEL = 2 }
+    companion object { const val CHECKPOINT = 64; private const val PUT = 1; private const val DEL = 2; private const val PUT2 = 3 }   // PUT = legacy node (no original path), PUT2 = current
 
     val all: Collection<VaultNode> get() = nodes.values
     operator fun get(id: String) = nodes[id]
@@ -37,14 +37,15 @@ class VaultIndex(private val root: File, private val key: ByteArray) {
 
     private fun readSnapshot(f: File) {
         val b = f.readBytes()
-        if (b.size < 1 + 8 + 12 + VaultFormat.TAG || b[0].toInt() != VaultFormat.INDEX_VER) throw VaultCorruptException("index header")
+        val ver = if (b.isEmpty()) 0 else b[0].toInt()
+        if (b.size < 1 + 8 + 12 + VaultFormat.TAG || ver !in 1..VaultFormat.INDEX_VER) throw VaultCorruptException("index header")
         val ctr = ByteBuffer.wrap(b, 1, 8).long
-        val pt = VaultCrypto.open(key, b.copyOfRange(9, 21), snapAad(ctr), b, 21, b.size - 21)
-        DataInputStream(ByteArrayInputStream(pt)).use { i -> repeat(i.readInt()) { val n = VaultNode.read(i); nodes[n.id] = n } }
+        val pt = VaultCrypto.open(key, b.copyOfRange(9, 21), snapAad(ctr, ver), b, 21, b.size - 21)
+        DataInputStream(ByteArrayInputStream(pt)).use { i -> repeat(i.readInt()) { val n = VaultNode.read(i, ver); nodes[n.id] = n } }
         seq = ctr
     }
 
-    private fun snapAad(ctr: Long) = ByteBuffer.allocate(9).put(VaultFormat.INDEX_VER.toByte()).putLong(ctr).array()
+    private fun snapAad(ctr: Long, ver: Int = VaultFormat.INDEX_VER) = ByteBuffer.allocate(9).put(ver.toByte()).putLong(ctr).array()
     private fun jAad(s: Long) = ByteBuffer.allocate(9).put('j'.code.toByte()).putLong(s).array()
 
     private fun replay() {
@@ -66,7 +67,8 @@ class VaultIndex(private val root: File, private val key: ByteArray) {
     private fun apply(pt: ByteArray) {
         DataInputStream(ByteArrayInputStream(pt)).use { i ->
             when (i.readByte().toInt()) {
-                PUT -> VaultNode.read(i).let { nodes[it.id] = it }
+                PUT -> VaultNode.read(i, 1).let { nodes[it.id] = it }
+                PUT2 -> VaultNode.read(i, 2).let { nodes[it.id] = it }
                 DEL -> nodes.remove(VaultFormat.hex(ByteArray(16).also { b -> i.readFully(b) }))
                 else -> {}
             }
@@ -83,7 +85,7 @@ class VaultIndex(private val root: File, private val key: ByteArray) {
         var s = seq
         for (op in ops) {
             val pb = ByteArrayOutputStream(); val d = DataOutputStream(pb)
-            when (op) { is Op.Put -> { d.writeByte(PUT); op.n.write(d) }; is Op.Del -> { d.writeByte(DEL); d.write(VaultFormat.unhex(op.id)) } }
+            when (op) { is Op.Put -> { d.writeByte(PUT2); op.n.write(d) }; is Op.Del -> { d.writeByte(DEL); d.write(VaultFormat.unhex(op.id)) } }
             s++; val nonce = VaultCrypto.rand(12); val ct = VaultCrypto.seal(key, nonce, jAad(s), pb.toByteArray())
             val o = DataOutputStream(bo); o.writeInt(ct.size); o.write(nonce); o.writeLong(s); o.write(ct); recs.add(s to pb.toByteArray())
         }

@@ -46,7 +46,7 @@ class VaultModeHardeningTest {
     @Test fun vaultRowsNeverUseDiskThumbnailCaches() {
         val nl = text("NativeList.kt")
         val i = nl.indexOf("if (r.dev == \"vault\")"); assertTrue(i > 0)
-        val branch = nl.substring(i, nl.indexOf("else if (r.dev != \"local\"", i))
+        val branch = nl.substring(i, nl.indexOf("else if (r.dev != \"local\"", i)).lines().joinToString("\n") { it.substringBefore("//") }   // comments may name the forbidden helpers
         for (bad in listOf("RemoteThumbs", "Thumbs.make", "VideoThumbs")) assertFalse(branch.contains(bad))
         assertTrue(branch.contains("VaultThumbs.make"))
     }

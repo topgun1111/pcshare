@@ -4,6 +4,20 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+
+## 2026-11-14 - Vault: add from other apps, restore, safer storage
+### Added
+- Share sheet "Add to Vault": send files, many files or text from any app straight into the vault
+- Vault menu: add files or a whole folder from other apps (Drive, Downloads, USB...), copy or move
+- Restore: put vault items back where they came from (never overwrites, vault copy removed only after the restored file is checked)
+- Vault settings: Check vault integrity
+### Changed
+- The vault remembers the original place of locked items
+- Files are re-read and verified before an original is deleted when moving into the vault
+- After a reinstall the app asks for all-files access instead of offering a new vault
+### Fixed
+- Files the vault index did not know are now recovered into "Recovered files" instead of being deleted
+
 ## 2026-11-14 - Vault opens as a normal file manager
 ### Added
 - The Vault tile in the Main menu now opens the normal file manager in vault mode. It shows only what is inside the vault, and the screen cannot be captured.

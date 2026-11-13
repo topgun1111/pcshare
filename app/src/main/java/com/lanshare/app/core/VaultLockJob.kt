@@ -38,7 +38,7 @@ object VaultLockJob {
                 if (st == null || !st.isOpen) { job.error = vt("Vault locked"); job.state = "error"; return }   // auto-lock mid-job: originals not yet handled stay untouched
                 try {
                     if (f.isDirectory) st.lockFolder(f, null, removeOriginal, { job.cancel }) else st.lockFile(f, null, removeOriginal)
-                } catch (_: Exception) { failed++; job.addProblem(vt("An item could not be locked")) }
+                } catch (e: Exception) { failed++; job.addProblem(vt("An item could not be locked") + ": " + f.name + " (" + (e.message ?: e.javaClass.simpleName) + ")") }
                 job.done = (i + 1).toLong(); job.failed = failed; job.files = i + 1 - failed
             }
             if (failed == 0) job.state = "done" else { job.error = "$failed item(s) could not be locked" + (if (removeOriginal) "; originals kept" else ""); job.state = "error" }

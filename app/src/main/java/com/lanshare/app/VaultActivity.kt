@@ -10,7 +10,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -27,7 +26,6 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.lanshare.app.core.vault.VaultAuthException
 import com.lanshare.app.core.vault.VaultBio
-import com.lanshare.app.core.vault.VaultNode
 import com.lanshare.app.core.vault.VaultPrefs
 import com.lanshare.app.core.vault.VaultRecovery
 import com.lanshare.app.core.vault.VaultThrottle
@@ -37,7 +35,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * Vault (Lockdown) screen, opened from the main menu tile: create the vault, unlock it with the password, browse / add / export / rename / delete.
+ * Vault (Lockdown) security screen: create the vault, unlock it (password, fingerprint, recovery) and the Settings dialogs. Browsing / adding / opening files is the file manager's Vault mode (ui.html), not this screen.
  * Screen is FLAG_SECURE (no screenshots, hidden in recents). Plain views, Lumen colours. Fingerprint (androidx.biometric), throttle, forgot-password (recovery code) and the Settings menu are in; see lockdown.md Part 2 status.
  */
 class VaultActivity : FragmentActivity() {
@@ -47,9 +45,9 @@ class VaultActivity : FragmentActivity() {
     private val d by lazy { resources.displayMetrics.density }
     private val volume: File = Environment.getExternalStorageDirectory()
     private lateinit var root: LinearLayout
-    private var cur: String? = null                 // current folder id, null = vault root
+    private var settingsShown = false
     private var busy = false
-    private val fromFm by lazy { intent?.getBooleanExtra("fm", false) == true }   // opened from the file manager's Vault tile: close as soon as the vault is open
+    private val settingsMode by lazy { intent?.getBooleanExtra("settings", false) == true }   // opened from file manager > Vault > Vault settings; otherwise closes as soon as the vault is open
     private var bioAsked = false
     private val prefs by lazy { VaultPrefs(this) }
     private val throttle by lazy { VaultThrottle(prefs) }
@@ -59,7 +57,7 @@ class VaultActivity : FragmentActivity() {
     private val lockListener: () -> Unit = { ui.post {
         pendingKey?.fill(0); pendingKey = null
         pendingRecoverySecret?.fill(0); pendingRecoverySecret = null
-        if (!isFinishing) { cur = null; render() }
+        if (!isFinishing) { if (settingsMode) finish() else render() }
     } }
 
     private fun dp(v: Int) = Math.round(v * d)
@@ -82,21 +80,34 @@ class VaultActivity : FragmentActivity() {
         exec.shutdown(); super.onDestroy()
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        val st = VaultSession.store
-        if (VaultSession.unlocked && cur != null && st != null) { cur = st.get(cur!!)?.parent; render() } else super.onBackPressed()
-    }
-
     // ------------------------------------------------------------------ views
 
     private fun render() {
         root.removeAllViews()
         when {
-            VaultSession.unlocked -> if (fromFm) finish() else browser()
+            VaultSession.unlocked -> if (settingsMode) settingsPage() else { setResult(RESULT_OK); finish() }   // browsing lives in the file manager (Vault mode); this screen = unlock / create / settings only. RESULT_OK: VaultImportActivity waits for it
+            !storageOk() -> accessScreen()      // without storage access the vault folder looks "missing": never offer to create a new one then
             VaultStore.exists(volume) -> credentials(false)
             else -> credentials(true)
         }
+    }
+
+    /** The vault lives in shared storage (<storage>/.lsv) so it survives updates, "clear data" and uninstall + reinstall: after a reinstall the app must be allowed to see that folder again. */
+    private fun storageOk(): Boolean = try {
+        if (android.os.Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager() else volume.canWrite()
+    } catch (_: Exception) { false }
+
+    private fun accessScreen() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(72), dp(24), dp(24)) }
+        box.addView(text(vt("Vault"), 28f, lm.ink, true))
+        box.addView(text(vt("Allow LANShare to access all files, so it can find your vault again. Your files stay encrypted and are not changed."), 14f, lm.inkMut).apply { setPadding(0, dp(8), 0, dp(24)) })
+        box.addView(btn(vt("Allow access"), true) {
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 30) startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:$packageName")))
+                else startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+            } catch (_: Exception) { try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } catch (_: Exception) { } }
+        })
+        root.addView(box)
     }
 
     private fun text(t: String, sp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
@@ -147,7 +158,7 @@ class VaultActivity : FragmentActivity() {
                 ui.post {
                     busy = false
                     if (err != null) msg.text = err else {
-                        cur = null; render()
+                        render()
                         if (create) offerRecovery() else if (bioOk() && !bioOn() && !prefs.bioDeclined) offerBio()
                     }
                 }
@@ -163,144 +174,16 @@ class VaultActivity : FragmentActivity() {
         root.addView(box)
     }
 
-    private fun browser() {
-        val st = VaultSession.store ?: return
+    /** Settings mode (file manager > Vault > Vault settings): the vault is open, this screen only hosts the settings dialogs. */
+    private fun settingsPage() {
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(40), dp(8), dp(8)); setBackgroundColor(lm.surface) }
-        val title = text(cur?.let { st.get(it)?.name } ?: vt("Vault"), 20f, lm.ink, true)
-        bar.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        bar.addView(btn(vt("Settings"), false) { settings() })
-        bar.addView(btn(vt("Lock"), false) { VaultSession.lock() })
+        bar.addView(text(vt("Vault settings"), 20f, lm.ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        bar.addView(btn(vt("Close"), false) { finish() })
         root.addView(bar)
-        val act = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), dp(8), dp(12), dp(8)) }
-        act.addView(btn(vt("Add files"), true) { pickFiles() })
-        act.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        act.addView(btn(vt("Add folder"), true) { pickFolder() })
-        act.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        act.addView(btn(vt("New folder"), false) { ask(vt("New folder"), "") { n -> bg { st.mkdir(cur, n) } } })
-        root.addView(act)
-        // Gallery: photos and videos are square thumbnails (decoded in memory, VaultThumbs), folders / other files are full-width rows.
-        val items = st.list(cur)
-        val scr = resources.displayMetrics.widthPixels
-        val span = if (scr > dp(640)) 5 else 3
-        val cell = scr / span
-        val data = ArrayList<Any>()
-        if (cur != null) data.add("up")
-        if (items.isEmpty()) data.add("empty")
-        data.addAll(items)
-        fun tile(x: Any) = x is VaultNode && !x.dir && (VaultViewActivity.isImage(x.mime, x.name) || VaultMode.isVideo(x.mime, x.name))
-        class VH(v: View, val iv: android.widget.ImageView?, val tag: TextView?) : androidx.recyclerview.widget.RecyclerView.ViewHolder(v) { var id: String? = null }
-        val rv = androidx.recyclerview.widget.RecyclerView(this)
-        rv.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, span).also { g ->
-            g.spanSizeLookup = object : androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup() { override fun getSpanSize(p: Int) = if (tile(data[p])) 1 else span }
-        }
-        rv.adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<VH>() {
-            override fun getItemCount() = data.size
-            override fun getItemViewType(p: Int) = if (tile(data[p])) 1 else 0
-            override fun onCreateViewHolder(parent: android.view.ViewGroup, t: Int): VH {
-                val box = android.widget.FrameLayout(this@VaultActivity)
-                if (t == 0) { box.layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(-1, -2); return VH(box, null, null) }
-                box.layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(-1, cell)
-                box.setPadding(1, 1, 1, 1)
-                val iv = android.widget.ImageView(this@VaultActivity).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; setBackgroundColor(0xFF222222.toInt()) }
-                box.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
-                val tg = TextView(this@VaultActivity).apply { text = "\u25B6"; textSize = 12f; setTextColor(0xFFFFFFFF.toInt()); setShadowLayer(4f, 0f, 0f, 0xFF000000.toInt()); setPadding(dp(6), 0, 0, dp(4)) }
-                box.addView(tg, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
-                return VH(box, iv, tg)
-            }
-            override fun onBindViewHolder(h: VH, p: Int) {
-                val d = data[p]
-                if (!tile(d)) {
-                    val box = h.itemView as android.widget.FrameLayout; box.removeAllViews()
-                    box.addView(when {
-                        d == "up" -> row("..", vt("Up"), true) { cur = st.get(cur!!)?.parent; scrollPos = 0; render() }
-                        d == "empty" -> text(vt("Empty. Tap Add files."), 14f, lm.inkMut).apply { setPadding(dp(24), dp(32), dp(24), 0) }
-                        else -> { val n = d as VaultNode; row(n.name, if (n.dir) vt("Folder") else fmt(n.size), n.dir) { openNode(n, items) }.also { v -> v.setOnLongClickListener { fileMenu(n); true } } }
-                    })
-                    return
-                }
-                val n = d as VaultNode
-                h.id = n.id
-                h.tag!!.visibility = if (VaultMode.isVideo(n.mime, n.name)) View.VISIBLE else View.GONE
-                val have = VaultThumbs.get(n.id)
-                h.iv!!.setImageBitmap(have)
-                if (have == null) VaultThumbs.load(n, cell) { bm -> if (h.id == n.id && bm != null) h.iv.setImageBitmap(bm) }
-                h.itemView.setOnClickListener { openNode(n, items) }
-                h.itemView.setOnLongClickListener { fileMenu(n); true }
-            }
-            override fun onViewRecycled(h: VH) { h.id = null; h.iv?.setImageBitmap(null) }
-        }
-        gallery = rv
-        if (scrollPos > 0 && scrollPos < data.size) rv.scrollToPosition(scrollPos)
-        root.addView(rv, LinearLayout.LayoutParams(-1, 0, 1f))
-    }
-
-    private fun row(name: String, sub: String, dir: Boolean, fn: () -> Unit): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(12), dp(20), dp(12))
-        addView(text((if (dir) "\uD83D\uDCC1  " else "") + name, 16f, lm.ink))
-        addView(text(sub, 12f, lm.inkMut))
-        setOnClickListener { fn() }
-    }
-
-    private var gallery: androidx.recyclerview.widget.RecyclerView? = null
-    private var scrollPos = 0
-
-    /** Photos / videos open in the app's OWN viewer and player in vault mode (VaultMode.kt); audio, PDF and small text have their own vault screens. */
-    private fun openNode(n: VaultNode, sib: List<VaultNode>) {
-        when {
-            n.dir -> { cur = n.id; scrollPos = 0; render() }
-            VaultViewActivity.isImage(n.mime, n.name) -> {
-                val l = sib.filter { !it.dir && VaultViewActivity.isImage(it.mime, it.name) }
-                remember(); ImageViewerActivity.pending = VaultMode.imagesJson(l, l.indexOfFirst { it.id == n.id })
-                startActivity(Intent(this, ImageViewerActivity::class.java))
-            }
-            VaultMode.isVideo(n.mime, n.name) -> {
-                val l = sib.filter { !it.dir && VaultMode.isVideo(it.mime, it.name) }
-                remember(); PlayerActivity.pending = VaultMode.videosJson(sib, l, l.indexOfFirst { it.id == n.id })
-                startActivity(Intent(this, PlayerActivity::class.java))
-            }
-            VaultMode.isAudio(n.mime, n.name) -> startActivity(Intent(this, VaultPlayActivity::class.java).putExtra("id", n.id))
-            android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name) -> startActivity(Intent(this, VaultPdfActivity::class.java).putExtra("id", n.id))
-            viewable(n) -> startActivity(Intent(this, VaultViewActivity::class.java).putExtra("id", n.id))
-            VaultMode.ext(n.name) in VaultOfficeActivity.EXT && n.size <= VaultOfficeActivity.MAX_BYTES -> startActivity(Intent(this, VaultOfficeActivity::class.java).putExtra("id", n.id))
-            else -> fileMenu(n)
-        }
-    }
-
-    /** The gallery is rebuilt in onStart; keep the scroll position across a viewer. */
-    private fun remember() { (gallery?.layoutManager as? androidx.recyclerview.widget.GridLayoutManager)?.let { scrollPos = it.findFirstVisibleItemPosition().coerceAtLeast(0) } }
-
-    /** Lockdown viewers: images and small text open in memory (VaultViewActivity), audio / video stream via VaultPlayActivity; the rest keeps the menu (export). */
-    private fun viewable(n: VaultNode): Boolean {
-        val ext = n.name.substringAfterLast('.', "").lowercase()
-        return VaultViewActivity.isImage(n.mime, n.name) ||
-            (n.mime.startsWith("text/") || ext in setOf("txt", "md", "json", "csv", "log", "xml", "ini", "yml", "yaml")) && n.size <= VaultViewActivity.MAX_TEXT
-    }
-
-    private fun fmt(n: Long) = when { n < 1024 -> "$n B"; n < 1 shl 20 -> "${n / 1024} KB"; n < 1L shl 30 -> "%.1f MB".format(n / 1048576.0); else -> "%.2f GB".format(n / 1073741824.0) }
-
-    // ------------------------------------------------------------------ actions
-
-    private fun fileMenu(n: VaultNode) {
-        val st = VaultSession.store ?: return
-        val opts = if (n.dir) arrayOf(vt("Rename"), vt("Delete")) else arrayOf(vt("Export to Download"), vt("Rename"), vt("Delete"))
-        AppPal.dlg(this).setTitle(n.name).setItems(opts) { _, i ->
-            when (opts[i]) {
-                vt("Export to Download") -> bg {
-                    val dl = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS); dl.mkdirs()
-                    val base = n.name.substringBeforeLast('.', n.name); val ext = if (n.name.contains('.')) "." + n.name.substringAfterLast('.') else ""
-                    var f = File(dl, n.name); var k = 1
-                    while (f.exists()) { f = File(dl, "$base ($k)$ext"); k++ }
-                    st.export(n.id, f); val saved = f.name; ui.post { toast(vf("Saved to Download/%s", saved)) }
-                }
-                vt("Rename") -> ask(vt("Rename"), n.name) { v -> bg { st.rename(n.id, v) } }
-                vt("Delete") -> AppPal.dlg(this).kind("danger").setMessage(vf("Delete %s from the vault for good?", n.name)).setPositiveButton(vt("Delete")) { _, _ -> bg { st.delete(n.id) } }.setNegativeButton(vt("Cancel"), null).show()
-            }
-        }.show()
-    }
-
-    private fun ask(title: String, init: String, ok: (String) -> Unit) {
-        val e = EditText(this).apply { setText(init); setSingleLine(true) }
-        AppPal.dlg(this).setTitle(title).setView(e).setPositiveButton(vt("OK")) { _, _ -> val v = e.text.toString().trim(); if (v.isNotEmpty()) ok(v) }.setNegativeButton(vt("Cancel"), null).show()
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(24), dp(24), dp(24)) }
+        box.addView(btn(vt("Vault settings"), true) { settings() })
+        root.addView(box)
+        if (!settingsShown) { settingsShown = true; settings() }
     }
 
     /** Runs a vault change off the UI thread, then redraws; any failure is shown as a toast. */
@@ -313,40 +196,6 @@ class VaultActivity : FragmentActivity() {
 
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
 
-    private fun pickFiles() {
-        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-        startActivityForResult(i, REQ_ADD)
-    }
-
-    private fun pickFolder() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_ADDDIR)
-    }
-
-    /** Recursively encrypts a SAF folder tree into the vault under [parent], keeping the structure. Merges by name; same name + size is skipped (resumable). Returns the number of failed files. */
-    private fun importTree(st: VaultStore, treeUri: android.net.Uri, docId: String, parent: String?, name: String): Int {
-        var failed = 0
-        val dir = synchronized(st) { st.list(parent).firstOrNull { it.dir && it.name == name } ?: st.mkdir(parent, name) }
-        val kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
-        class K(val id: String, val name: String, val mime: String, val size: Long, val mtime: Long)
-        val list = ArrayList<K>()
-        contentResolver.query(kids, arrayOf(
-            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE, android.provider.DocumentsContract.Document.COLUMN_SIZE,
-            android.provider.DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
-            while (c.moveToNext()) list.add(K(c.getString(0), c.getString(1) ?: "file", c.getString(2) ?: "", if (c.isNull(3)) -1 else c.getLong(3), if (c.isNull(4)) 0 else c.getLong(4)))
-        }
-        for (k in list.sortedBy { it.name }) {
-            if (!VaultSession.unlocked) throw java.io.IOException(vt("Vault locked"))
-            if (k.mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) { failed += importTree(st, treeUri, k.id, dir.id, k.name); continue }
-            try {
-                if (k.size >= 0 && synchronized(st) { st.list(dir.id).any { !it.dir && it.name == k.name && it.size == k.size } }) continue
-                val u = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, k.id)
-                contentResolver.openInputStream(u)!!.use { st.addStream(it, dir.id, k.name, if (k.mtime > 0) k.mtime else System.currentTimeMillis(), k.mime) }
-            } catch (e: Exception) { failed++ }
-        }
-        return failed
-    }
-
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
@@ -358,36 +207,6 @@ class VaultActivity : FragmentActivity() {
         if (res != RESULT_OK || data == null) return
         if (req == REQ_KEYFILE) { keyFilePicked(data.data); return }
         if (req == REQ_SAVEKEY) { saveKeyTo(data.data); return }
-        if (req == REQ_ADDDIR) {
-            val tree = data.data ?: return
-            val st = VaultSession.store ?: return
-            val parent = cur
-            toast(vt("Importing folder..."))
-            exec.execute {
-                var failed = 0; var err: String? = null
-                try {
-                    val rootId = android.provider.DocumentsContract.getTreeDocumentId(tree)
-                    var nm = "Folder"
-                    contentResolver.query(android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, rootId), arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) nm = c.getString(0) ?: nm }
-                    failed = importTree(st, tree, rootId, parent, nm)
-                } catch (e: Exception) { err = e.message ?: e.javaClass.simpleName }
-                ui.post { toast(err ?: if (failed == 0) vt("Folder imported") else vf("%s file(s) could not be imported", failed)); render() }
-            }
-            return
-        }
-        if (req != REQ_ADD) return
-        val uris = ArrayList<android.net.Uri>()
-        data.clipData?.let { c -> for (k in 0 until c.itemCount) uris.add(c.getItemAt(k).uri) } ?: data.data?.let { uris.add(it) }
-        val st = VaultSession.store ?: return
-        val parent = cur
-        toast(vf("Encrypting %s file(s)...", uris.size))
-        bg {
-            for (u in uris) {
-                var name = "file"
-                contentResolver.query(u, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name }
-                contentResolver.openInputStream(u)!!.use { st.addStream(it, parent, name, System.currentTimeMillis(), contentResolver.getType(u) ?: "") }
-            }
-        }
     }
 
     // ------------------------------------------------------------------ fingerprint
@@ -417,7 +236,7 @@ class VaultActivity : FragmentActivity() {
                 exec.execute {
                     var err: String? = null
                     try { VaultSession.start(VaultStore.openWithMasterKey(volume, mk)) } catch (e: Exception) { err = vf("Could not unlock: %s", e.message) } finally { mk.fill(0) }
-                    ui.post { busy = false; if (err != null) msg.text = err else { cur = null; render() } }
+                    ui.post { busy = false; if (err != null) msg.text = err else render() }
                 }
             }
         }, { msg.text = it })
@@ -471,7 +290,7 @@ class VaultActivity : FragmentActivity() {
             try { VaultSession.start(VaultStore.openWithRecovery(volume, secret)) }
             catch (x: Exception) { err = if (x is VaultAuthException) vt("Wrong recovery secret") else vf("Could not unlock: %s", x.message) }
             finally { secret.fill(0) }
-            ui.post { busy = false; if (err != null) msg.text = err else { cur = null; render(); forceNewPassword() } }
+            ui.post { busy = false; if (err != null) msg.text = err else { render(); forceNewPassword() } }
         }
     }
 
@@ -618,6 +437,7 @@ class VaultActivity : FragmentActivity() {
         }
         if (bioOk()) add((if (bioOn()) vt("Turn off fingerprint") else vt("Turn on fingerprint"))) { if (bioOn()) { VaultBio.disable(this); toast(vt("Fingerprint is off")) } else enableBio() }
         add(vf("Auto-lock: %s", lockLabel(prefs.autoLockSec))) { autoLockMenu() }
+        add(vt("Check vault integrity")) { checkIntegrity(st) }
         add((if (st.hasRecovery) vt("New recovery code (replaces the old one)") else vt("Create recovery code"))) {
             bg { val sec = st.newRecoverySecret(); val code = VaultRecovery.toCode(sec); ui.post { showCode(code, sec) } }
         }
@@ -635,6 +455,31 @@ class VaultActivity : FragmentActivity() {
             AppPal.dlg(this).kind("danger").setMessage(vt("Remove the backup password?")).setPositiveButton(vt("Remove")) { _, _ -> bg { st.removeBackupPassword() } }.setNegativeButton(vt("Cancel"), null).show()
         }
         AppPal.dlg(this).setTitle(vt("Vault settings")).setItems(acts.map { it.first }.toTypedArray()) { _, i -> acts[i].second() }.show()
+    }
+
+    /** Reads every file end to end (all authentication tags) and reports damaged / missing ones. Changes nothing. */
+    private fun checkIntegrity(st: VaultStore) {
+        val tv = text(vt("Checking..."), 14f, lm.ink).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val dlg = AppPal.dlg(this).setTitle(vt("Check vault integrity")).setView(tv).setCancelable(false)
+            .setNegativeButton(vt("Cancel")) { _, _ -> stop.set(true) }.create()
+        dlg.show()
+        exec.execute {
+            val rep = try { st.checkAll({ stop.get() }) { d, t -> ui.post { tv.text = vf("Checking %s of %s...", d, t) } } } catch (e: Exception) { null }
+            ui.post {
+                dlg.dismiss()
+                if (rep == null) { toast(vt("Vault locked")); return@post }
+                val m = StringBuilder()
+                if (rep.ok) m.append(vf("All %s files are intact.", rep.files))
+                else {
+                    if (rep.damaged.isNotEmpty()) m.append(vt("Damaged (cannot be read correctly):")).append("\n").append(rep.damaged.take(10).joinToString("\n") { it.name }).append("\n\n")
+                    if (rep.missing.isNotEmpty()) m.append(vt("Missing (data not found):")).append("\n").append(rep.missing.take(10).joinToString("\n") { it.name })
+                    m.append("\n\n").append(vt("Nothing was changed. Restore the vault folder (.lsv) from a backup if you have one."))
+                }
+                if (stop.get()) m.append("\n\n").append(vt("Stopped before the end."))
+                AppPal.dlg(this).setTitle(vt("Check vault integrity")).setMessage(m.toString()).setPositiveButton(vt("OK"), null).show()
+            }
+        }
     }
 
     private fun showCode(code: String, secret: ByteArray) {
@@ -677,10 +522,11 @@ class VaultActivity : FragmentActivity() {
     }
 
     companion object {
-        private const val REQ_ADD = 71
-        private const val REQ_ADDDIR = 74
         private const val REQ_KEYFILE = 72
         private const val REQ_SAVEKEY = 73
-        fun intent(c: Context, fm: Boolean = false): Intent = Intent(c, VaultActivity::class.java).apply { if (fm) putExtra("fm", true) }
+        /** Unlock / create screen: closes itself once the vault is open (the file manager shows the vault). */
+        fun intent(c: Context): Intent = Intent(c, VaultActivity::class.java)
+        /** Settings screen for an open vault (password, fingerprint, auto-lock, recovery, backup password). */
+        fun settingsIntent(c: Context): Intent = Intent(c, VaultActivity::class.java).putExtra("settings", true)
     }
 }
