@@ -4,6 +4,17 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-14 - Vault opens as a normal file manager
+### Added
+- The Vault tile in the Main menu now opens the normal file manager in vault mode. It shows only what is inside the vault, and the screen cannot be captured.
+- Copy, cut, paste, rename, new folder, delete, search and details work inside the vault like anywhere else, also between this phone and the vault.
+- New "Import files and folders from the phone" in vault mode: pick items on the phone, then Import (originals stay) or Move in (originals are deleted once copied). Folders keep their structure.
+- Vault screen: new "Add folder" button imports a whole folder, and the file manager has a new "To vault" button that copies the selected items into the vault and keeps the originals.
+### Changed
+- Inside vault mode, Share, Open with, Print, Zip and similar actions are hidden so nothing leaves the vault by accident.
+- If the vault locks while it is open in the file manager, you are taken back to the Main menu.
+- Photos and videos show plain icons for now.
+
 ## 2026-11-13 - Vault: your normal photo viewer, video player and editor, plus a photo gallery
 ### Added
 - The vault now shows photos and videos as a thumbnail gallery (thumbnails are never saved on the phone).

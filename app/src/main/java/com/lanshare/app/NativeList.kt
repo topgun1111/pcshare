@@ -853,6 +853,15 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
     private val failed = HashSet<String>()
     private val pool = Executors.newFixedThreadPool(3)
+    init {   // vault mode (dev "vault"): thumbnails live only in this memory cache and are dropped the moment the vault locks
+        val me = java.lang.ref.WeakReference(this)
+        com.lanshare.app.core.vault.VaultSession.onLock { me.get()?.dropVaultThumbs() }
+    }
+    private fun dropVaultThumbs() {
+        thumbs.snapshot().keys.filter { it.startsWith("vault|") }.forEach { thumbs.remove(it) }
+        synchronized(failed) { failed.removeAll { it.startsWith("vault|") } }
+        act.runOnUiThread { preloading.clear() }
+    }
     private val ad = Ad()
     // ---- Lumen M3 / M2 (native twins of the page effects, which are invisible while this list is shown) ----
     private val collapseAnim = object : androidx.recyclerview.widget.DefaultItemAnimator() {
@@ -1532,7 +1541,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
         val th: Th? = try {
-            if (r.dev != "local" || (r.k == "img" && r.path != null && com.lanshare.app.core.arcSplit(r.path!!) != null)) {   // other LANShare device / SMB share, or a picture INSIDE a zip/rar/7z (a.zip!/x.jpg): through the endpoint (disk cached), see RemoteThumbs
+            if (r.dev == "vault") {   // decrypted in memory only (VaultThumbs): never RemoteThumbs / Thumbs / VideoThumbs (those write a disk cache)
+                val n = com.lanshare.app.core.VaultFs().nodeAtOrNull(r.path!!)
+                if (n == null || n.dir || (r.k != "img" && r.k != "vid")) null
+                else VaultThumbs.make(n, 384)?.let { Th(it, null) }
+            }
+            else if (r.dev != "local" || (r.k == "img" && r.path != null && com.lanshare.app.core.arcSplit(r.path!!) != null)) {   // other LANShare device / SMB share, or a picture INSIDE a zip/rar/7z (a.zip!/x.jpg): through the endpoint (disk cached), see RemoteThumbs
                 val (data, ms) = RemoteThumbs.make(r.dev, r.path!!, r.size, r.mtime, r.k == "vid")
                 BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, if (ms > 0) fmtDur(ms) else null) }
             }

@@ -1672,12 +1672,14 @@ function applyPrefs(){const o0=Object.assign({},G,PF[pfKey()]||{}),o=wideScr()?O
   S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;if(binRoot()&&!PF[pfKey()]){S.sort='date';S.asc=false}   /* recycle bin: newest deletion first until the user picks another order */S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
   S.cols=[2,3,4,5,6,7,8].indexOf(cv)>=0?cv:0}}
   // folders that are mostly photos/videos open as big thumbnails, unless the user chose a view for this folder or for all folders
-  try{if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
+  try{if(S.dev==='vault'){if(!PF[pfKey()]&&vaultPure()==='img'){S.view='grid';S.thumb='l'}}   // vault: only photos = photo gallery (big square thumbnails); only videos = video gallery cells (galOn)
+  else if(!PF[pfKey()]&&!localStorage.getItem('ls_g')){const f=S.items.filter(i=>!i.dir);
     if(f.length&&f.filter(i=>{const k=kind(i);return k==='img'||k==='vid'}).length*2>=f.length){S.view='grid';S.thumb='l'}}}catch(e){}
 function setPref(p){p=Object.assign({},p);if('cols'in p){const wd=wideScr(),n=+p.cols||0;p.lastW=wd?1:0;p.cell=n?Math.round(window.innerWidth*uiF()/n):0;if(n===0){p.cols=0;p.colsW=0}else if(wd){p.colsW=n;delete p.cols}}   // a column count chosen on the wide (unfolded) screen is kept apart from the narrow (folded) one
   const base=Object.assign({},G,PF[pfKey()]||{}),mine={view:S.view,sort:S.sort,asc:S.asc,thumb:S.thumb},rest={};
   for(const q in p){if(q in mine)mine[q]=p[q];else rest[q]=p[q]}
   const cur=wideScr()?Object.assign({},base,rest,{W:Object.assign({},PF[pfKey()]?PF[pfKey()].W||{}:G.W||{},mine)}):Object.assign({},base,mine,rest);   // wide screen: view / sort / thumb go to W, so the folded layout of this folder is not touched (and vice versa)
+  if(S.dev==='vault'){const k=pfKey();delete VPF[k];VPF[k]=cur;PF[k]=cur;render();return}   // vault folder names are never written to localStorage / app prefs: view choice lives in memory until the vault locks
   if(S.aa){G=cur;PF={}}else{const k=pfKey();delete PF[k];PF[k]=cur;const ks=Object.keys(PF);if(ks.length>200)delete PF[ks[0]]}
   try{const g=JSON.stringify(G),pf=JSON.stringify(PF);localStorage.setItem('ls_g',g);localStorage.setItem('ls_pf',pf);NPS('ls_g',g);NPS('ls_pf',pf)}catch(e){}
   render()}
@@ -1784,7 +1786,7 @@ function openView(){
   draw()}
 /* archives: a .zip/.rar opens like a folder; its virtual path is "/dir/a.zip!/inner" */
 const ARC_RE=/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)$/i;
-const isArcF=i=>!i.dir&&ARC_RE.test(i.name);
+const isArcF=i=>!i.dir&&S.dev!=='vault'&&ARC_RE.test(i.name);   // vault mode: archives are never opened (no plain-text temp files)
 const inArc=()=>/\.(zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!(\/|$)/i.test(S.path);
 const zipEd=()=>S.dev==='local'&&/(\.tar\.(gz|bz2|xz)|\.(zip|cbz|jar|war|aar|xpi|apks|xapk|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz))!(\/|$)/i.test(S.path);   // an editable archive (ZIP, 7z, TAR family) on this phone is open (add / delete); RAR, single .gz/.bz2/.xz and archives on other devices stay read-only
 const arcRoot=()=>{const m=S.path.match(/^(.*?\.(?:zip|rar|cbz|cbr|7z|cb7|tar|cbt|tgz|tbz|tbz2|txz|gz|bz2|xz|jar|war|aar|xpi|apks|xapk)!)/i);return m?m[1]:null};
@@ -2054,7 +2056,7 @@ function nlBuild(LIST,P0,GN){   // rows -> plain data for Kotlin (no side effect
       if(inArc()?(k==='img'&&!NOTH.test(i.name)&&i.size>0&&i.size<30e6):(((k==='img'||k==='vid')&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6))||(k==='pdf'&&S.dev==='local'&&i.size>0&&i.size<60e6)||nlOffTh(k,i))){o.p=jn(P0,i.name);o.s=i.size||0;o.t=i.mtime||0}}
     return o});
   return a}
-const nlCfg=()=>[S.sort,S.asc?1:0,showHid()?1:0,S.gal?1:0,S.view,S.thumb].join(',');
+const nlCfg=()=>[S.sort,S.asc?1:0,showHid()?1:0,galOn()?1:0,S.view,S.thumb].join(',');
 function nlRender(LIST,P0,GN){
   if(GN==null)GN=NLGN;NLL=LIST;NLP0=P0;NLGN=GN;   // LIST = folder rows followed by the video-gallery cells (index >= GN)
   const a=nlBuild(LIST,P0,GN);
@@ -2803,7 +2805,7 @@ function render(){
   if(!V.length){l.append(S.err?lmEmpty('err','Can\'t reach this device','Check that it is on and on the same Wi-Fi.','Try again',()=>load(),'wifi',S.err):S.q?lmEmpty('neutral','No matches','Try a different word.',null,null,'search'):S.items.length?lmEmpty('neutral','Nothing to show','Hidden files are off.',null,null,'folder'):galRoot()?lmEmpty('','No albums','Pictures and videos will appear here.'):binRoot()?lmEmpty('','The recycle bin is empty','Deleted files wait here before they go for good.'):lmEmpty('','This folder is empty','Files you add will show up here.'))}
   DUPS=findDups(S.items);
   const P0=S.path;  // folder this list was drawn for: a double-tap must not append the name twice (/a/a)
-  const GV=S.gal&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
+  const GV=galOn()&&!AR?V.filter(i=>!i.dir&&kind(i)==='vid'):[];
   const GALM=!AR&&!S.q&&!S.newest&&galRoot();   // Pictures / Movies: every folder of the phone with pictures / videos as album cards
   const AL=GALM?V.filter(i=>i.dir):[];
   const LIST0=(GV.length||AL.length)?V.filter(i=>GV.indexOf(i)<0&&AL.indexOf(i)<0):V,
@@ -2817,7 +2819,7 @@ function render(){
     r.dataset.n=i.name;const lead=E('div','lead k-'+k);
     if(i.dir){const fs=fsGet(jn(S.path,i.name));lead.append(raw(fs&&fs.c?foldSvg(fs.c):FOLD,'fold'));let bd=BADGE[i.name.toLowerCase()];if(fs&&fs.i)bd=[fs.i,fsIc(fs)];if(bd){const g=E('span','bdg');g.style.color=bd[1];g.append(ic(bd[0]));lead.append(g)}}
     else{lead.append(ic(k,'kd'));
-      if((AR?k==='img'&&i.size>0:(k==='img'||k==='vid'||(k==='office'&&S.dev==='local')))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){   // inside an archive: pictures only (server extracts + caches the thumbnail)
+      if(S.dev!=='vault'&&(AR?k==='img'&&i.size>0:(k==='img'||k==='vid'||(k==='office'&&S.dev==='local')))&&!NOTH.test(i.name)&&(k==='vid'||i.size<30e6)){   // inside an archive: pictures only (server extracts + caches the thumbnail)
        
         const key=thKey(i),pth0=jn(S.path,i.name);
         const showR=t=>{if(!t||!t.u)return;const im=E('img','thi');im.alt='';im.src=t.u;lead.insertBefore(im,lead.firstChild);const kd=lead.querySelector('.kd');if(kd)kd.style.display='none';
@@ -2873,7 +2875,7 @@ function render(){
       if(isNew(i)){c.classList.add('nwc');c.append(E('span','nw'))}
       const show=t=>{if(!t)return;if(t.u){const im=E('img');im.src=t.u;im.alt='';c.insertBefore(im,ph);ph.style.display='none'}
         if(t.d){du.textContent=fmtDur(t.d);du.style.display=''}};
-      const hit=thGet(key);if(hit)show(hit);else thWatch(c,()=>({gen:S.rg,key:key,k:'vid',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth),done:show}));
+      const hit=S.dev==='vault'?null:thGet(key);if(hit)show(hit);else if(S.dev!=='vault')thWatch(c,()=>({gen:S.rg,key:key,k:'vid',url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(pth),done:show}));
       c.onclick=()=>{if(c._lp){c._lp=false;return}
         if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);c.classList.toggle('sel',S.sel.has(i.name));renderBar()}else playVid(i)};
       holdMenu(c,i);
@@ -2883,11 +2885,11 @@ function render(){
 
 $('#newb').onclick=()=>{S.newest=!S.newest;S.sel.clear();render()};
 /* Tap on a file: in the Android app fetch it and open it with an installed app (text editor for source files); in a browser let it handle the URL */
-function openFile(i){const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
+function openFile(i){if(S.dev==='vault')return vaultTapOpen(i);const u='/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   if(window.LSAndroid&&LSAndroid.open)LSAndroid.open(location.origin+u);else window.open(u,'_blank')}
 /* Android app: text / code files open in the native Keep-style editor (this phone, other devices, SMB shares; inside archives read-only) */
 const ED_MORE=['csv','html','htm','svg','htaccess','readme','license','jsonc','twig','tpl','dist','example','sample','txt','md','log'];
-const isEd=i=>{if(i.dir||!(window.LSAndroid&&LSAndroid.editText))return false;const e=(i.name.split('.').pop()||'').toLowerCase();return PV_TXT.includes(e)||ED_MORE.includes(e)};
+const isEd=i=>{if(i.dir||S.dev==='vault'||!(window.LSAndroid&&LSAndroid.editText))return false;const e=(i.name.split('.').pop()||'').toLowerCase();return PV_TXT.includes(e)||ED_MORE.includes(e)};
 function editFile(i){try{LSAndroid.editText(JSON.stringify({dev:S.dev,path:jn(S.path,i.name)}));return true}catch(e){openFile(i);return false}}
 function doNewNote(){
   if(S.dev!=='local'&&S.path==='/'){toast('\u26a0 Open a folder first',3000);return}
@@ -2912,15 +2914,16 @@ function nativeImg(i){
   const items=V.map(m=>({name:m.name,url:url(m),size:m.size||0,mtime:m.mtime||0}));
   const at=Math.max(0,V.findIndex(m=>(m.p||m.name)===(i.p||i.name)));
   try{LSAndroid.viewImages(JSON.stringify({start:at,items}));return true}catch(e){return false}}
-function viewImg(i){if(!nativeImg(i))openMedia(i)}
+function viewImg(i){if(cxd()==='vault')return vaultTapOpen(i);if(!nativeImg(i))openMedia(i)}
 /* Android app: PDFs open in the dedicated native reader (PdfRenderer, works for local / other device / SMB / inside archives); browsers keep their own PDF handling */
 function nativePdf(i){
   if(!(window.LSAndroid&&LSAndroid.viewPdf))return false;
   const url=location.origin+'/api/dl?dev='+enc(S.dev)+'&path='+enc(jn(S.path,i.name));
   try{LSAndroid.viewPdf(JSON.stringify({name:i.name,url,size:i.size||0,key:S.dev+'|'+S.path+'/'+i.name+'|'+(i.size||0)}));return true}catch(e){return false}}
-function viewPdf(i){if(!nativePdf(i))openFile(i)}
+function viewPdf(i){if(S.dev==='vault')return vaultTapOpen(i);if(!nativePdf(i))openFile(i)}
 /* Android app: Word / Excel / ODF files open in the native Office viewer (read-only; remote files are copied to cache first) */
 function nativeOffice(i){
+  if(S.dev==='vault')return vaultTapOpen(i);   // Office inside the vault: part 4 (answers 'not supported yet' for now)
   if(!(window.LSAndroid&&LSAndroid.viewOffice)){   /* PC browser: read-only HTML preview made by the phone (this device's own files only) */
     if(S.dev!=='local')return false;
     window.open('/api/office?dev=local&path='+enc(jn(S.path,i.name)),'_blank');return true}
@@ -2937,7 +2940,7 @@ function nativePlay(i){
     subs:subs.filter(s=>{const c=base(s.name);return c===b||c.indexOf(b+'.')===0}).map(s=>({name:s.name,url:url(s)}))}});
   const at=Math.max(0,V.findIndex(m=>m.name===i.name));
   try{LSAndroid.play(JSON.stringify({start:at,items}));return true}catch(e){return false}}
-function playVid(i){if(!nativePlay(i))openMedia(i)}
+function playVid(i){if(cxd()==='vault')return vaultTapOpen(i);if(!nativePlay(i))openMedia(i)}
 function openMedia(first){
   const o=$('#pv'),L=mediaList();if(!L.length)return;
   let idx=Math.max(0,L.findIndex(m=>m.name===first.name)),cur=null,hideT=0,rate=1;
@@ -6251,7 +6254,19 @@ window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 /* ---- Vault mode: the normal file manager on the unlocked vault (dev 'vault', Vault tile of the Main menu). Only the vault's own files are shown; the
    app screen only (Routes), nothing is cached or handed to other apps (VAULT_ROUTES, no thumbnails / Share / Open with / Print in this mode). ---- */
-let VMODE=false,VWANT=0,VWT=0;
+let VMODE=false,VWANT=0,VWT=0,VPF={};
+/* what the open vault folder holds: 'img' / 'vid' when every file in it is a photo / a video (folders may be there too), else '' */
+function vaultPure(){if(S.dev!=='vault'||S.q)return '';let k='';for(const i of S.items){if(i.dir)continue;const t=kind(i);if(t!=='img'&&t!=='vid')return '';if(k&&k!==t)return '';k=t}return k}
+function galOn(){return S.gal||(S.dev==='vault'&&vaultPure()==='vid')}
+/* tap on a file in vault mode: the vault's own viewers (Kotlin VaultMode.route: photo viewer / video player in vault mode, audio, PDF, small text), decrypting in memory only, never through /api/dl */
+function vaultTapOpen(i){
+  const order=cxl().filter(x=>!x.dir).map(x=>x.name);let r='bad';
+  try{r=LSAndroid.vaultOpenFile(JSON.stringify({dir:cxp(),name:i.name,order}))}catch(e){}
+  if(r==='other')toast('This file type can\u2019t be opened inside the vault yet',3500);
+  else if(r==='locked')vaultLeave('Vault locked');
+  else if(r==='missing')toast('\u26a0 File not found',3000);
+  else if(r!=='ok')toast('\u26a0 Could not open this file',3000);
+  return true}
 function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
 function vaultEnter(path){S.vimp=null;homeHide();drawerClose();S.newest=false;S.dev='vault';S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
 function vaultOpen(){
@@ -6261,6 +6276,7 @@ function vaultOpen(){
 function vaultLeave(msg){
   for(const k of [...LSC.keys()])if(k.indexOf('vault|')===0)LSC.delete(k);
   S.vimp=null;if(S.dev==='vault'){S.dev='local';S.path='/';S.items=[];S.sel.clear();S.sig=''}
+  for(const k of Object.keys(VPF)){delete VPF[k];delete PF[k]}   // in-memory vault view choices end with the session
   vaultSecure(false);try{homeShow()}catch(e){}if(msg)toast(msg,3000)}
 /* Import: go back to the normal file manager (this phone); the selection bar then offers Import (copy, originals stay) and Move in (originals are deleted
    once copied). The copy / move job is the normal one (Jobs: this phone -> vault endpoint), so folders keep their structure and conflicts are asked like in any paste. */
@@ -6832,6 +6848,7 @@ function drawerRender(){
       const dup=QF.some(q=>sameLoc(q,{dev:S.dev,path:S.path}));
       const ad=dItem({lead:ic('add','s24'),title:'Add current folder',sub:S.path==='/'?'Open a folder first':baseName(S.dev,S.path)+(S.dev==='local'?'':' \u00b7 '+devName(S.dev)),
         onclick:()=>{if(S.path==='/'){toast('Open the folder you want first, then add it',2500);return}
+          if(S.dev==='vault'){toast('Vault folders cannot be added to the list',2500);return}   // quick folders are stored in plain text
           if(dup){toast('Already in the list',1800);return}
           QF.push({dev:S.dev,path:S.path,name:baseName(S.dev,S.path),dn:S.dev==='local'?'':devName(S.dev)});qfSave();drawerRender()}});
       ad.classList.add('add');if(dup||S.path==='/')ad.classList.add('dis');bd.append(ad);

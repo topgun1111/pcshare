@@ -62,6 +62,12 @@ class VaultFs : Endpoint {
 
     override fun lsFast(v: String): List<Item> = ls(v)
 
+    /** Vault mode part 3 (viewers + RAM thumbnails): the node at virtual path [v]; null = root or missing. Throws [Denied] when locked / untrusted. */
+    fun nodeAtOrNull(v: String): VaultNode? = try { node(st(), v) } catch (_: NotFound) { null }
+
+    /** The direct children of folder [v] (empty when missing). */
+    fun childrenOf(v: String): List<VaultNode> = try { val s = st(); s.list(dirId(s, v)) } catch (_: NotFound) { emptyList() }
+
     override fun search(v: String, q: String): SearchResult {
         val s = st(); val id = dirId(s, v); val base = vnorm(v)
         val all = s.allNodes(); val by = kids(all); val ql = q.lowercase()

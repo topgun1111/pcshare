@@ -28,7 +28,7 @@ object VaultMode {
     /** Set by a viewer / editor after it changed the vault (delete, edit-save); VaultActivity re-lists on resume. */
     @Volatile var dirty = false
 
-    private fun ext(n: String) = n.substringAfterLast('.', "").lowercase()
+    fun ext(n: String) = n.substringAfterLast('.', "").lowercase()
     private val AUDIO = setOf("mp3", "m4a", "aac", "ogg", "opus", "wav", "flac")
     private val SUBS = setOf("srt", "vtt", "ass", "ssa")
     fun isAudio(mime: String, name: String) = mime.startsWith("audio/") || ext(name) in AUDIO
@@ -63,6 +63,40 @@ object VaultMode {
         return JSONObject().put("vault", true).put("start", start.coerceAtLeast(0)).put("items", a).toString()
     }
 
+    private val TEXT_EXT = setOf("txt", "md", "json", "csv", "log", "xml", "ini", "yml", "yaml")
+
+    /**
+     * File manager vault mode (part 3): a tap on [name] inside virtual vault folder [dir]. [order] = the folder's file names in the order the
+     * file manager shows them (swipe / playlist order). Returns "ok" (+ the Intent to start: the app's own photo viewer / video player in vault
+     * mode, VaultPlayActivity, VaultPdfActivity, VaultViewActivity), "locked", "missing" or "other" (no vault viewer for this type: part 4).
+     */
+    fun route(ctx: android.content.Context, dir: String, name: String, order: List<String>): Pair<String, android.content.Intent?> {
+        val kids = try { com.lanshare.app.core.VaultFs().childrenOf(dir) } catch (_: Throwable) { return "locked" to null }
+        val files = kids.filter { !it.dir }
+        val n = files.firstOrNull { it.name == name } ?: return "missing" to null
+        fun seq(pred: (VaultNode) -> Boolean): List<VaultNode> {
+            val by = files.associateBy { it.name }
+            val l = order.mapNotNull { by[it] }.filter(pred).distinct()
+            return if (l.any { it.id == n.id }) l else files.filter(pred)
+        }
+        fun go(c: Class<*>) = android.content.Intent(ctx, c)
+        return when {
+            VaultViewActivity.isImage(n.mime, n.name) -> {
+                val l = seq { VaultViewActivity.isImage(it.mime, it.name) }
+                ImageViewerActivity.pending = imagesJson(l, l.indexOfFirst { it.id == n.id }); "ok" to go(ImageViewerActivity::class.java)
+            }
+            isVideo(n.mime, n.name) -> {
+                val l = seq { isVideo(it.mime, it.name) }
+                PlayerActivity.pending = videosJson(files, l, l.indexOfFirst { it.id == n.id }); "ok" to go(PlayerActivity::class.java)
+            }
+            isAudio(n.mime, n.name) -> "ok" to go(VaultPlayActivity::class.java).putExtra("id", n.id)
+            android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name) -> "ok" to go(VaultPdfActivity::class.java).putExtra("id", n.id)
+            (n.mime.startsWith("text/") || ext(n.name) in TEXT_EXT) && n.size <= VaultViewActivity.MAX_TEXT -> "ok" to go(VaultTextActivity::class.java).putExtra("id", n.id)   // editable, saves back into the vault
+            ext(n.name) in VaultOfficeActivity.EXT && n.size <= VaultOfficeActivity.MAX_BYTES -> "ok" to go(VaultOfficeActivity::class.java).putExtra("id", n.id)   // read-only
+            else -> "other" to null
+        }
+    }
+
     fun secure(a: Activity) = a.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 
     /** Finishes [a] when the vault locks. The caller passes the result to [VaultSession.removeOnLock] in onDestroy. */
@@ -82,6 +116,15 @@ object VaultThumbs {
 
     private fun hook() { if (!hooked) { hooked = true; VaultSession.onLock { cache.evictAll() } } }
     fun get(id: String): Bitmap? = cache.get(id)
+
+    /** Blocking variant for the file manager's own thumbnail pool (vault mode). RAM only; the caller's memory cache is dropped on lock (NativeList.dropVaultThumbs). */
+    fun make(n: VaultNode, px: Int): Bitmap? {
+        hook()
+        if (!VaultSession.unlocked) return null
+        val bm = try { if (VaultMode.isVideo(n.mime, n.name)) video(n.id, px) else image(n.id, px) } catch (_: Throwable) { null }
+        if (!VaultSession.unlocked) { bm?.recycle(); return null }
+        return bm
+    }
 
     /** [done] runs on the main thread (null = no thumbnail). Dropped silently when the vault locked meanwhile. */
     fun load(n: VaultNode, px: Int, done: (Bitmap?) -> Unit) {

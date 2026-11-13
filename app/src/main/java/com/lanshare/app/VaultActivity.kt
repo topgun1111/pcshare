@@ -261,6 +261,7 @@ class VaultActivity : FragmentActivity() {
             VaultMode.isAudio(n.mime, n.name) -> startActivity(Intent(this, VaultPlayActivity::class.java).putExtra("id", n.id))
             android.os.Build.VERSION.SDK_INT >= 26 && VaultViewActivity.isPdf(n.mime, n.name) -> startActivity(Intent(this, VaultPdfActivity::class.java).putExtra("id", n.id))
             viewable(n) -> startActivity(Intent(this, VaultViewActivity::class.java).putExtra("id", n.id))
+            VaultMode.ext(n.name) in VaultOfficeActivity.EXT && n.size <= VaultOfficeActivity.MAX_BYTES -> startActivity(Intent(this, VaultOfficeActivity::class.java).putExtra("id", n.id))
             else -> fileMenu(n)
         }
     }

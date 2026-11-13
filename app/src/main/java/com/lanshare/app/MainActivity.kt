@@ -321,6 +321,15 @@ class MainActivity : Activity() {
         @JavascriptInterface fun vaultMode(on: Boolean) {
             runOnUiThread { try { if (on) this@MainActivity.window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE) else this@MainActivity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) } catch (_: Throwable) { } }
         }
+        /** Vault mode tap on a file. [json] = {dir, name, order:[file names as shown]}. Returns "ok" | "locked" | "missing" | "other" (no vault viewer for that type yet) | "bad". */
+        @JavascriptInterface fun vaultOpenFile(json: String): String {
+            val o = try { JSONObject(json) } catch (_: Exception) { return "bad" }
+            val a = o.optJSONArray("order")
+            val order = if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }
+            val (r, intent) = VaultMode.route(this@MainActivity, o.optString("dir", "/"), o.optString("name"), order)
+            if (intent != null) runOnUiThread { try { startActivity(intent, LumenPrefs.growFrom(this@MainActivity)) } catch (_: Throwable) { } }
+            return r
+        }
         /** Vault mode "Lock vault". */
         @JavascriptInterface fun vaultLockNow() { com.lanshare.app.core.vault.VaultSession.lock() }
         /** Path-bar / file manager search: the Universal Search screen (instant name search of this phone). [q] = text to start with. */
@@ -672,6 +681,7 @@ class MainActivity : Activity() {
         super.onResume()
         ClipPush.front = this
         repaintSoon()
+        if (VaultMode.dirty) { VaultMode.dirty = false; try { web.evaluateJavascript("try{if(S.dev==='vault')lsRefresh()}catch(e){}", null) } catch (_: Throwable) { } }   // a vault viewer deleted / edited an item: re-list the vault folder
         if (wasStopped) { wasStopped = false; wakeWebSoon() }   // came back from the background: wake the WebView compositor (white screen until touched)
         try { com.lanshare.app.core.IndexManager.onResume() } catch (_: Throwable) {}   // name index: look for changes other apps made
         ModelLinks.checkAll(applicationContext); ModelLinks.showIfAny(this)   // dead model download links: daily check + warning screen
