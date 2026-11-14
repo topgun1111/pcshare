@@ -5,6 +5,16 @@
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 
+
+## 2026-11-14 - Theme and Lumen consistency
+
+### Fixed
+- Pop-up messages (toasts) were unreadable in the Windows 11 Light and Ubuntu Light themes.
+- Buttons on Inbox, PDF viewer, Storage and Print screens are now readable in every theme.
+- Native screens now agree with the page on whether a theme is dark or light, including mid-tone custom themes.
+- Text fields, menus and progress bars are now dark in dark themes.
+- The check mark on colour swatches in the text editor is always visible.
+
 ## 2026-11-14 - Video player volume and rotation, vault creation fix
 ### Changed
 - Video player: swiping for volume now changes only the app's own volume, not the phone's media volume

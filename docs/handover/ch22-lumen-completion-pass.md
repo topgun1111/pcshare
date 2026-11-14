@@ -25,3 +25,12 @@
 - 2026-11-13 - Lockdown vault PART 3 (guards; see `lockdown.md` Part 3 status): `core/vault/VaultGuard.kt` + `VaultIntents.kt`; `.lsv` refused in `LocalFs.real/lreal` and hidden in listings / walkers (`Walker`, `Delta`, `StorageScan`, `Albums`, `ImgSearch`, `Cleanup`); FTP: vault deny in `canRead/canWrite`, per-IP lockout `FtpLockout`, constant-time PIN compare, PASV bound to control address, `PePrefs` PIN via `SecureRandom`; intent + FileProvider guards (13 sites). Test `VaultGuardTest.kt`. Kotlin NOT compiled.
 - 2026-11-13 - Lockdown vault PART 2 UI second cut (see `lockdown.md`, NOT compiled): `VaultActivity` (now `FragmentActivity`): fingerprint via BiometricPrompt + `VaultBio`, `VaultThrottle` on password attempts, Forgot password (recovery code -> forced new password), Settings menu (change password, fingerprint, auto-lock, recovery code, backup password). New `core/vault/VaultPrefs.kt`, `VaultStore.resetPassword`, gradle `androidx.biometric:biometric:1.1.0`, manifest `USE_BIOMETRIC`. Owner asked for the whole project as a zip this time.
 - 2026-11-13 - Lockdown vault PART 2 UI third cut (see `lockdown.md`, NOT compiled): `VaultActivity` forgot-password chooser (recovery code / .lsrk key file / 2-of-3 shares via `unlockSecret`), Settings 'Save recovery key file' + 'Split into 3 shares', 3-group re-entry check after the recovery code, screen-off receiver. First step next session: `./gradlew testDebugUnitTest assembleDebug`.
+
+
+## 2026-11-14 - theme / Lumen consistency pass
+- One dark rule everywhere: `AppPal.isDark` / `isLight` (gamma luma < 0.4), same as page `lmDarkCanvas` and `derive.is_dark`. Never use `calculateLuminance` vs 0.5 (lint D1 fails on it).
+- `Theme.LANShare.AppDark` (Material dark base) is applied by `LumenNativeTheme.darkBase` from `App.onActivityCreated` when the app theme is dark and the window background is `R.color.canvas`.
+- `LumenNativeTheme.styleButton`: default-looking buttons become the tonal pill (primaryCont / onPrimaryCont); buttons with own fill keep it and only fix label if contrast < 3:1.
+- Page toast: dark gradient only for ubuntu/win11 dark, not the *light variants.
+- `tokens.json` darkThemes = computed list of 26; lint D1 checks it. Kotlin/XML not compiled in sandbox.
+- Open: MainActivity.bars() vs applySystemBars (default `light` preset has dark --bar), PlayerPal / PrintLive constants, device checks.
