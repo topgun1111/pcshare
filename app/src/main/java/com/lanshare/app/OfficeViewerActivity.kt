@@ -133,7 +133,7 @@ class OfficeViewerActivity : Activity() {
         val d = resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
         val pal = AppPal.pal(this); palSig = AppPal.json(this)
-        val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
+        val light = AppPal.isLight(pal.bg)
         window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
@@ -253,7 +253,7 @@ class OfficeViewerActivity : Activity() {
     private val readingOn get() = rprefs.getBoolean("on", false) && !printOn
     /** Part 5: print layout = real page sheets (offline). Off by default until it is device-tested; a menu item switches it, reading mode is the "mobile view". */
     private val printOn get() = rprefs.getBoolean("print", false)
-    private fun autoTheme() = if (androidx.core.graphics.ColorUtils.calculateLuminance(AppPal.pal(this).bg) > 0.5) DocxReading.PAPER else DocxReading.DARK
+    private fun autoTheme() = if (AppPal.isLight(AppPal.pal(this).bg)) DocxReading.PAPER else DocxReading.DARK
     private fun readingCfg(): DocxReading? =
         if (!readingOn || od?.isSheet == true) null
         else DocxReading(DocxReading.clampPx(rprefs.getInt("px", 18)), rprefs.getInt("theme", autoTheme()).coerceIn(0, 2))

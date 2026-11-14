@@ -46,9 +46,14 @@ object AppPal {
         } catch (_: Throwable) { null }
     }
 
-    /** App theme first (page palette luminance), system day / night mode only when the page never sent a palette. */
+    /** THE light / dark rule of the whole app, identical to ui.html lmDarkCanvas() and tools/lumen derive.is_dark(): gamma-space luma (0.2126 R + 0.7152 G + 0.0722 B, 0..1) of the canvas under 0.4 = dark.
+     * Never use calculateLuminance(x) vs 0.5 for this: that is linear light and calls mid-tone canvases dark while the page calls them light. */
+    fun isDark(color: Int): Boolean = (0.2126f * Color.red(color) + 0.7152f * Color.green(color) + 0.0722f * Color.blue(color)) / 255f < 0.4f
+    fun isLight(color: Int): Boolean = !isDark(color)
+
+    /** App theme first (page palette canvas, see [isDark]), system day / night mode only when the page never sent a palette. */
     fun night(c: Context): Boolean {
-        load(c)?.let { return ColorUtils.calculateLuminance(it.bg) < 0.5 }
+        load(c)?.let { return isDark(it.bg) }
         return (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 

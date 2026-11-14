@@ -10,6 +10,18 @@
         <item name="android:colorControlActivated">@color/accent</item>
         <item name="android:alertDialogTheme">@style/Theme.LANShare.Dialog</item>
     </style>
+    <!-- Theme.LANShare screens while the APP theme is dark (set from App.kt via LumenNativeTheme.darkBase, any system mode): dark Material base for the stock widgets -->
+    <style name="Theme.LANShare.AppDark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/bar</item>
+        <item name="android:navigationBarColor">@color/bar</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:colorPrimary">@color/accent_dark</item>
+        <item name="android:colorAccent">@color/accent_dark</item>
+        <item name="android:colorControlActivated">@color/accent_dark</item>
+        <item name="android:alertDialogTheme">@style/Theme.LANShare.Dialog.Dark</item>
+    </style>
     <style name="Theme.LANShare.Player" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>

@@ -675,7 +675,7 @@ class TextEditorActivity : Activity() {
         val hint = ColorUtils.setAlphaComponent(textColor, 110)
         root.setBackgroundColor(bg)
         window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
-        val light = ColorUtils.calculateLuminance(bg) > 0.5
+        val light = AppPal.isLight(bg)
         WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         for (t in listOf(back, saveBtn, printBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
@@ -1063,7 +1063,7 @@ class TextEditorActivity : Activity() {
         PALS.forEachIndexed { i, p ->
             val c = if (night) p.dark else p.light
             val v = TextView(this).apply {
-                gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateLuminance(c) > 0.5) Color.BLACK else Color.WHITE)
+                gravity = Gravity.CENTER; text = if (i == sel) "✓" else ""; setTextColor(if (ColorUtils.calculateContrast(Color.BLACK, c or 0xFF000000.toInt()) >= ColorUtils.calculateContrast(Color.WHITE, c or 0xFF000000.toInt())) Color.BLACK else Color.WHITE)
                 LumenTypography.fit(this, 16f)
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c); setStroke(dp(2), if (i == sel) Lumen.of(this@TextEditorActivity).primary else 0x33000000) }
                 layoutParams = GridLayout.LayoutParams().apply { width = dp(42); height = dp(42); setMargins(dp(8), dp(8), dp(8), dp(8)) }

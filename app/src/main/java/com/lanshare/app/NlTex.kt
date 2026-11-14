@@ -35,7 +35,7 @@ object NlTex {
         return b
     }
 
-    fun isLight(top: Int) = ColorUtils.calculateLuminance(top) > 0.5
+    fun isLight(top: Int) = AppPal.isLight(top)
 
     /** Rectangular gradient + grain (list background, drawer, full-screen sheets). */
     fun layered(c: Context, top: Int, bottom: Int): Drawable {

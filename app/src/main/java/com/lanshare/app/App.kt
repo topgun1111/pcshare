@@ -10,7 +10,7 @@ class App : Application() {
         super.onCreate()
         if (isBuildProcess()) return
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityCreated(activity: Activity, state: Bundle?) { try { LumenNativeTheme.early(activity) } catch (_: Throwable) { } }   // window colour before the first frame (no light flash in dark themes)
+            override fun onActivityCreated(activity: Activity, state: Bundle?) { try { LumenNativeTheme.darkBase(activity) } catch (_: Throwable) { }; try { LumenNativeTheme.early(activity) } catch (_: Throwable) { } }   // window colour before the first frame (no light flash in dark themes)
             override fun onActivityStarted(activity: Activity) { }
             override fun onActivityResumed(activity: Activity) {
                 // Post until each Activity has finished its first content/layout pass.

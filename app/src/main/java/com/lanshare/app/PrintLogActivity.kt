@@ -70,7 +70,7 @@ class PrintLogActivity : Activity() {
         super.onCreate(b)
         Fnt.init(applicationContext)   // the app font (Settings > Interface > Font) for the whole screen
         pal = AppPal.pal(this)
-        val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
+        val light = AppPal.isLight(pal.bg)
         window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         jids = (intent.getStringExtra(X_JIDS) ?: "").split(',').map { it.trim() }.filter { it.isNotEmpty() }

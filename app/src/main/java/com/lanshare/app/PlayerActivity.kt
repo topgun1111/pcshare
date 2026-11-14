@@ -235,7 +235,7 @@ class PlayerActivity : Activity() {
     // ---------------------------------------------------------------- theme
     /** The app's own theme (light / dark) when the page has sent one, otherwise the system day / night mode. */
     private fun isLight(): Boolean {
-        AppPal.load(this)?.let { return ColorUtils.calculateLuminance(it.bg) > 0.5 }
+        AppPal.load(this)?.let { return AppPal.isLight(it.bg) }
         return (Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
     }
 

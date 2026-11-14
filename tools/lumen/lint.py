@@ -97,5 +97,28 @@ for _f in sorted(os.listdir(_nat)):
     if re.search(r'AlertDialog\.Builder\s*\(',_src):_sem.append(f'{_f}: raw AlertDialog.Builder bypasses AppPal')
 print('A9 semantic dialog rules:', 'PASS' if not _sem else 'FAIL '+ '; '.join(_sem))
 
-_x=[b for b in (_bad,_nb,_sem) if b]
+# D1: ONE light / dark rule everywhere (gamma-space canvas luma < 0.4: ui.html lmDarkCanvas, derive.is_dark, AppPal.isDark).
+# tokens.json darkThemes must equal the presets that rule calls dark; every dark preset needs color-scheme:dark and the picker flag "d":1;
+# native code must not decide light / dark with calculateLuminance(..) vs 0.5 (linear light disagrees with the page on mid-tone canvases).
+import json as _json,derive as _dv
+_T=_json.load(open(os.path.join(os.path.dirname(__file__),'tokens.json'),encoding='utf-8'))
+_dk=sorted(n for n,v in _T['themes'].items() if _dv.is_dark(v['canvas']))
+_dmis=[]
+if sorted(_T.get('darkThemes',[]))!=_dk:_dmis.append('tokens.json darkThemes != computed '+str(sorted(set(_dk)^set(_T.get('darkThemes',[])))))
+_cs={}
+for _m in re.finditer(r'([^{}]*)\{([^{}]*)\}',_raw):
+    if 'color-scheme:dark' in _m.group(2):
+        for _n in re.findall(r'data-theme=([a-z0-9]+)\]',_m.group(1)):_cs[_n]=1
+_miss=[n for n in _dk if n not in _cs and n!='dark']
+if _miss:_dmis.append('dark presets without color-scheme:dark: '+str(_miss))
+_pk=dict((a,b) for a,b in re.findall(r'\{"id":"([a-z0-9]+)","n":"[^"]+",(?:"d":(\d),)?"sw"',_raw) and [(x[0],x[1] or '0') for x in re.findall(r'\{"id":"([a-z0-9]+)","n":"[^"]+",(?:"d":(\d),)?"sw"',_raw)])
+_pbad=[n for n,d in _pk.items() if n in _T['themes'] and (d=='1')!=(n in _dk)]
+if _pbad:_dmis.append('picker d flag disagrees: '+str(_pbad))
+for _f in sorted(os.listdir(_nat)):
+    if not _f.endswith('.kt'):continue
+    for _i,_l in enumerate(open(os.path.join(_nat,_f),encoding='utf-8').read().split('\n')):
+        if re.search(r'calculateLuminance\([^)]*\)\s*[<>]=?\s*0?\.5',_l):_dmis.append(f'{_f}:{_i+1} light/dark by linear luminance vs 0.5 (use AppPal.isDark / isLight)')
+print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
+
+_x=[b for b in (_bad,_nb,_sem,_dmis) if b]
 sys.exit(1 if bad or _x else 0)

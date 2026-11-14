@@ -626,7 +626,7 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
     // colours: the app theme (AppPal, the palette the page pushes), so the screen follows light / dark and the chosen theme
     private val theme = WizThemes.resolve(act)
     private val themeApplied = run { WizUtil.PAL = theme.pal; WizUtil.CATC = theme.cat; WizUtil.FOLDER = theme.folder; WizUtil.RED = Lumen.of(act).error }
-    private val night = ColorUtils.calculateLuminance(theme.bg) < 0.5
+    private val night = AppPal.isDark(theme.bg)
     private fun mix(a: Int, b: Int, t: Float) = ColorUtils.blendARGB(a, b, t)
     private val cBg = theme.bg
     private val cFg = theme.fg

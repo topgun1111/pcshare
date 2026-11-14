@@ -50,7 +50,7 @@ class InboxActivity : Activity() {
         super.onCreate(b)
         TextSend.ensureRunning(this)
         pal = AppPal.pal(this); palSig = AppPal.json(this)
-        val light = androidx.core.graphics.ColorUtils.calculateLuminance(pal.bg) > 0.5
+        val light = AppPal.isLight(pal.bg)
         window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
