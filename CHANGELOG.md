@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-14 - New main menu
+
+### Changed
+- Main menu: Network and tools is now one clean list (SMB Shares, FTP servers, Cloud servers, Remote shell, Vault), so everything fits on one screen.
+- Main menu icons are bigger, bolder and easier to recognise, with soft tonal colours.
+- Vault now has its own colour, different from Downloads.
+
 ## 2026-11-14 - Theme and Lumen consistency
 
 ### Fixed

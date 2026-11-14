@@ -1330,6 +1330,31 @@ html.nldr #dwr{opacity:0}
 }
 :root[data-rm] #home .ht .tb{transition:none}
 /*LUMEN-UI10:END*/
+/*LUMEN-UI11:BEGIN*/
+/* Main menu 2026-11-14: tonal icons, bigger glyphs, Network and tools as one list, everything stretches to fit one screen (scrolls only on very small screens) */
+#home .hbd{gap:10px;padding-top:6px}
+#home .sec{margin-bottom:-4px}
+#home .hrow{flex:1.15 1 auto;min-height:168px}
+#home .hg{flex:.95 1 auto;min-height:128px}
+#home .hl{flex:1.9 1 auto;min-height:300px;display:flex;flex-direction:column;background:var(--cont);border-radius:var(--r-xl);overflow:hidden}
+#home svg.hmx{fill:none!important;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:none}
+#home .ht .tb svg,#home .hero .ic svg{width:66%;height:66%;filter:none}
+#home .hero .ic{width:52px;height:52px}
+#home .hg .ht{min-height:0;justify-content:center;gap:8px}
+#home .hg .ht .tb{width:76px;height:76px;border-radius:24px}
+#home .ht .tb{background-image:none;box-shadow:none;background-color:color-mix(in srgb,var(--c) 15%,var(--cont));color:var(--c)}
+#home .ht:active .tb{box-shadow:none;background-color:color-mix(in srgb,var(--c) 26%,var(--cont))}
+#home .ht .tt{font-size:var(--fs-14);font-weight:600}
+#home .ht .ts{font-size:var(--fs-12)}
+#home .hl .ht{flex:1 1 0;min-height:58px;border-radius:0;background:transparent;display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;grid-template-areas:"i t c" "i s c";column-gap:14px;align-content:center;justify-items:start;align-items:center;padding:0 16px;gap:0 14px}
+#home .hl .ht+.ht{border-top:1px solid var(--bd,rgba(128,128,128,.25))}
+#home .hl .ht:active{transform:none;background:var(--hov)}
+#home .hl .ht .tb{grid-area:i;width:48px;height:48px;border-radius:var(--r-l)}
+#home .hl .ht .tt{grid-area:t;align-self:end;text-align:left;font-size:var(--fs-16)}
+#home .hl .ht .ts{grid-area:s;align-self:start;text-align:left}
+#home .hl .ht::after{content:'';grid-area:c;width:20px;height:20px;background:var(--mut);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat}
+/*LUMEN-UI11:END*/
+
 /*LUMEN-UI17:BEGIN*/
 /* Part 4c N5: Devices / FTP / Cloud / SMB / USB sheet icon tiles = category tone tile (tint to tint+base, glyph in the base tone), same recipe as .k-* file tiles */
 @supports(selector(:has(a)))and(background:color-mix(in srgb,red,blue)){
@@ -6146,7 +6171,20 @@ const HM_P={
  vault:'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',
  usr:'M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z'};
 const HM_L={vault:'vault',dl:'download',prn:'print',ftp:'ftp',cld:'cld',dev:'dev',sto:'sto',usr:'search',sh:'term',ms:'phone',vid:'vid',gal:'gal',usb:'usb',smb:'smb',fav:'fav'};
-const hmSvg=k=>{const L=LUMEN_ICONS[HM_L[k]];return '<svg viewBox="0 0 24 24"'+(L?' class="li"':'')+' aria-hidden="true"><path d="'+(L||HM_P[k])+'"/></svg>'};
+/* Home menu glyphs 2026-11-14: bolder two-tone set, drawn to fill ~2/3 of the button */
+const HXP='fill="currentColor" fill-opacity=".22"',HXD='fill="currentColor" stroke="none"';
+const HX={
+gal:`<rect x="3" y="4" width="18" height="16" rx="3.5" ${HXP}/><circle cx="8.6" cy="9.4" r="1.7" ${HXD}/><path d="M3.5 17.5l5-5 4 4 3-3 5 5"/>`,
+vid:`<rect x="3" y="5" width="18" height="14" rx="4" ${HXP}/><path d="M10.2 9.3v5.4l4.6-2.7z" fill="currentColor"/>`,
+dl:`<path d="M12 3.5v11M7.5 10.5l4.5 4.5 4.5-4.5M4 15.5v2.5a2.5 2.5 0 0 0 2.5 2.5h11a2.5 2.5 0 0 0 2.5-2.5v-2.5"/>`,
+smb:`<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" ${HXP}/><circle cx="8.3" cy="14.3" r="1.5" ${HXD}/><circle cx="15.7" cy="14.3" r="1.5" ${HXD}/><path d="M9.8 14.3h4.4"/>`,
+ftp:`<rect x="3" y="4" width="18" height="7" rx="2.5" ${HXP}/><rect x="3" y="13" width="18" height="7" rx="2.5" ${HXP}/><circle cx="7" cy="7.5" r="1" ${HXD}/><circle cx="7" cy="16.5" r="1" ${HXD}/><path d="M11 7.5h6M11 16.5h6"/>`,
+cld:`<path d="M7.5 19a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 18.2 11.2 4 4 0 0 1 17.5 19z" ${HXP}/><path d="M12 16.5v-5M9.6 13.6l2.4-2.4 2.4 2.4"/>`,
+sh:`<rect x="3" y="4.5" width="18" height="15" rx="3.5" ${HXP}/><path d="M7.5 9.5l3 2.5-3 2.5M13 15h4"/>`,
+vault:`<rect x="4.5" y="10" width="15" height="10.5" rx="3" ${HXP}/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><circle cx="12" cy="14.6" r="1.5" ${HXD}/><path d="M12 16v2"/>`,
+ms:`<rect x="6.5" y="2.5" width="11" height="19" rx="3" ${HXP}/><path d="M10.5 18.5h3"/>`,
+dev:`<rect x="2.5" y="5" width="13" height="9.5" rx="2" ${HXP}/><path d="M1.5 18.5h15"/><rect x="17.5" y="9" width="4.5" height="10" rx="1.5" ${HXP}/>`};
+const hmSvg=k=>{if(HX[k])return '<svg viewBox="0 0 24 24" class="hmx" aria-hidden="true">'+HX[k]+'</svg>';const L=LUMEN_ICONS[HM_L[k]];return '<svg viewBox="0 0 24 24"'+(L?' class="li"':'')+' aria-hidden="true"><path d="'+(L||HM_P[k])+'"/></svg>'};
 /* Lumen 11.6 home tiles: glyph = white or dark ink, whichever reads better on both gradient stops of the tile colour (works for every preset and Custom) */
 function hmInk(root){const hx=h=>{h=(h||'').trim();if(h[0]!=='#')return null;if(h.length===4)h='#'+h[1]+h[1]+h[2]+h[2]+h[3]+h[3];if(h.length!==7)return null;const n=parseInt(h.slice(1),16);return[n>>16&255,n>>8&255,n&255]},
   lum=a=>{const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};return .2126*f(a[0])+.7152*f(a[1])+.0722*f(a[2])},
@@ -6217,7 +6255,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
   const c0=SP['local|/'];if(c0&&c0.v)fill(c0.v);
   api('GET','/api/space?dev=local&path=/',null,8000).then(r=>{SP['local|/']={t:Date.now(),v:r};if(homeOn())fill(r)}).catch(()=>{});
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
-  let ti=0;const HC={vault:'var(--cat-zip)',gal:'var(--cat-pic)',vid:'var(--cat-vid)',dl:'var(--cat-zip)',prn:'var(--cat-pdf)',sto:'var(--cat-other)',usr:'var(--cat-vid)',smb:'var(--cat-doc)',ftp:'var(--cat-xls)',cld:'var(--cat-aud)',fav:'var(--cat-ppt)',dev:'var(--cat-other)',sh:'var(--cat-code)'};   /* Lumen 4.5 / 12.9: main menu tiles take the named category colours (tokens.json category); the old per-theme --hc1..7 are no longer read */
+  let ti=0;const HC={vault:'var(--cat-ppt)',gal:'var(--cat-pic)',vid:'var(--cat-vid)',dl:'var(--cat-zip)',prn:'var(--cat-pdf)',sto:'var(--cat-other)',usr:'var(--cat-vid)',smb:'var(--cat-doc)',ftp:'var(--cat-xls)',cld:'var(--cat-aud)',fav:'var(--cat-ppt)',dev:'var(--cat-other)',sh:'var(--cat-code)'};   /* Lumen 4.5 / 12.9: main menu tiles take the named category colours (tokens.json category); the old per-theme --hc1..7 are no longer read */
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
     const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
@@ -6225,7 +6263,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
       try{sh(JSON.parse(localStorage.getItem(ck)||'null'))}catch(e){}
       setTimeout(()=>{if(!homeOn()||trk>0||LVS)return;api('GET','/api/folderstat?dev=local&path='+enc(stat)+(media?'&media='+media:''),null,60000).then(r=>{if(r&&r.files!=null){try{localStorage.setItem(ck,JSON.stringify(r))}catch(e){}if(homeOn())sh(r)}}).catch(()=>{})},1500)}   // not while a copy is running, and not at the same instant the menu opens: these scans read the whole storage
     return b};
-  const g1=E('div','hg'),g2=E('div','hg');
+  const g1=E('div','hg'),g2=E('div','hl');
   g1.append(tile('gal','Gallery','Photos',()=>{homeHide();openLoc('local','/@gallery')},'/Pictures','img'),
     tile('vid','Videos','Movies and clips',()=>{homeHide();openLoc('local','/@videos')},'/Movies','vid'),
     tile('dl','Downloads','Received files',()=>{homeHide();openLoc('local','/Download')},'/Download'));
