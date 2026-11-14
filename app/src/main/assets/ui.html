@@ -1334,22 +1334,25 @@ html.nldr #dwr{opacity:0}
 /* Main menu 2026-11-14: tonal icons, bigger glyphs, Network and tools as one list, everything stretches to fit one screen (scrolls only on very small screens) */
 #home .hbd{gap:10px;padding-top:6px}
 #home .sec{margin-bottom:-4px}
-#home .hrow{flex:1.15 1 auto;min-height:168px}
-#home .hg{flex:.95 1 auto;min-height:128px}
-#home .hl{flex:1.9 1 auto;min-height:300px;display:flex;flex-direction:column;background:var(--cont);border-radius:var(--r-xl);overflow:hidden}
+#home .hrow{flex:1.25 1 auto;min-height:204px}
+#home .hrow .hero{padding:var(--sp-3);gap:var(--sp-2)}
+#home .hrow .hero .top{gap:var(--sp-2)}
+#home .hrow .hero .ic{width:48px;height:48px}
+#home .hg{flex:.9 1 auto;min-height:128px}
+#home .hl{flex:1.6 1 auto;min-height:270px;display:flex;flex-direction:column;background:var(--cont);border-radius:var(--r-xl);overflow:hidden}
 #home svg.hmx{fill:none!important;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:none}
 #home .ht .tb svg,#home .hero .ic svg{width:66%;height:66%;filter:none}
 #home .hero .ic{width:52px;height:52px}
 #home .hg .ht{min-height:0;justify-content:center;gap:8px}
-#home .hg .ht .tb{width:76px;height:76px;border-radius:24px}
+#home .hg .ht .tb{width:68px;height:68px;border-radius:22px}
 #home .ht .tb{background-image:none;box-shadow:none;background-color:color-mix(in srgb,var(--c) 15%,var(--cont));color:var(--c)}
 #home .ht:active .tb{box-shadow:none;background-color:color-mix(in srgb,var(--c) 26%,var(--cont))}
 #home .ht .tt{font-size:var(--fs-14);font-weight:600}
 #home .ht .ts{font-size:var(--fs-12)}
-#home .hl .ht{flex:1 1 0;min-height:58px;border-radius:0;background:transparent;display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;grid-template-areas:"i t c" "i s c";column-gap:14px;align-content:center;justify-items:start;align-items:center;padding:0 16px;gap:0 14px}
+#home .hl .ht{flex:1 1 0;min-height:54px;border-radius:0;background:transparent;display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;grid-template-areas:"i t c" "i s c";column-gap:14px;align-content:center;justify-items:start;align-items:center;padding:0 16px;gap:0 14px}
 #home .hl .ht+.ht{border-top:1px solid var(--bd,rgba(128,128,128,.25))}
 #home .hl .ht:active{transform:none;background:var(--hov)}
-#home .hl .ht .tb{grid-area:i;width:48px;height:48px;border-radius:var(--r-l)}
+#home .hl .ht .tb{grid-area:i;width:44px;height:44px;border-radius:var(--r-l)}
 #home .hl .ht .tt{grid-area:t;align-self:end;text-align:left;font-size:var(--fs-16)}
 #home .hl .ht .ts{grid-area:s;align-self:start;text-align:left}
 #home .hl .ht::after{content:'';grid-area:c;width:20px;height:20px;background:var(--mut);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat}
