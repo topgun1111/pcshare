@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-14 - Picture details and location
+
+### Added
+- Image viewer: pull a picture up to see all its details (camera, exposure, date, size, format, XMP and every other tag stored in the file).
+- If the picture has GPS data, the details show the coordinates, altitude, direction and time, with buttons to open the spot in Google Maps, copy the coordinates or share the map link.
+- Menu > Details opens the same sheet. Back, a tap above the sheet or pulling its title bar down closes it.
+
 ## 2026-11-14 - New main menu
 
 ### Changed

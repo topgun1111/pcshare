@@ -86,6 +86,8 @@ class ImageViewerActivity : Activity() {
     private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "img-load").also { it.isDaemon = true } }
     private var items: List<Item> = emptyList()
     private lateinit var pager: ViewPager2
+    private lateinit var sheet: ImageInfoSheet                 // pull-up details (EXIF, GPS ...)
+    private val infoCache = HashMap<Int, ImageInfo.Result>()   // UI thread only
     private lateinit var top: LinearLayout
     private lateinit var topWrap: LinearLayout   // top bar + details band underneath it
     private lateinit var infoTv: TextView        // wide details band: date, time, pixels, size, position
@@ -226,7 +228,7 @@ class ImageViewerActivity : Activity() {
                 menu.add(0, 6, 1, "Rotate right 90\u00b0")
                 if (!vault) menu.add(0, 4, 2, "To Print space")
                 menu.add(0, 3, 3, "Delete")
-                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { showDetails(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; 5 -> { turnCurrent(-1); true }; 6 -> { turnCurrent(1); true }; else -> false } }
+                setOnMenuItemClickListener { mi -> when (mi.itemId) { 1 -> { setSlide(!slide); true }; 2 -> { openInfo(pager.currentItem); true }; 3 -> { deleteCurrent(); true }; 4 -> { addToPrintSpace(); true }; 5 -> { turnCurrent(-1); true }; 6 -> { turnCurrent(1); true }; else -> false } }
             }.show()
         }
         top.addView(back)
@@ -280,6 +282,16 @@ class ImageViewerActivity : Activity() {
             insets
         }
         root.addView(selBar)
+        sheet = ImageInfoSheet(this).apply {
+            visibility = View.GONE
+            onProgress = { f ->   // the picture moves up and shrinks into the free top part while the sheet rises
+                pager.translationY = -f * root.height * 0.30f
+                val sc = 1f - 0.5f * f
+                pager.scaleX = sc; pager.scaleY = sc
+            }
+            onClosed = { pager.isUserInputEnabled = true; pager.translationY = 0f; pager.scaleX = 1f; pager.scaleY = 1f }
+        }
+        root.addView(sheet, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
         NlHero.play(this, root, listOf(topWrap, countPill)) { cache.size() > 0 }   // Lumen 4f M7 b: container transform from the tapped thumbnail (no-op when not launched from the list)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
@@ -329,6 +341,61 @@ class ImageViewerActivity : Activity() {
         if (it.size > 0) parts.add(android.text.format.Formatter.formatShortFileSize(this, it.size))
         infoTv.text = parts.joinToString(sep)
         infoTv.visibility = if (parts.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    // ---------------------------------------------------------------- pull-up details sheet
+    private fun onPull(phase: Int, total: Float, flung: Boolean) {
+        if (phase == 0) {
+            if (sheet.pos != pager.currentItem) prepInfo(pager.currentItem)
+            sheet.drag(total)
+        } else sheet.settle(total > dp(72) || flung)
+    }
+
+    private fun prepInfo(pos: Int) { sheet.begin(pos); pager.isUserInputEnabled = false; loadInfo(pos) }
+    private fun openInfo(pos: Int) { prepInfo(pos); sheet.settle(true) }
+
+    override fun onBackPressed() { if (sheet.isOpen()) sheet.settle(false) else super.onBackPressed() }
+
+    private fun loadInfo(pos: Int) {
+        val item = items.getOrNull(pos) ?: return
+        infoCache[pos]?.let { sheet.setContent(it.secs, it.lat, it.lon, item.name); return }
+        sheet.setLoading()
+        val g = gen
+        Thread({
+            val res = try { buildInfo(pos, item) } catch (_: Throwable) { null }
+            runOnUiThread {
+                if (res != null) infoCache[pos] = res
+                if (!isFinishing && g == gen && sheet.pos == pos) { if (res != null) sheet.setContent(res.secs, res.lat, res.lon, item.name) else sheet.setError() }
+            }
+        }, "viewer-info").also { t -> t.isDaemon = true }.start()
+    }
+
+    /** File facts + every metadata group ImageInfo finds + the app's own media details (/api/stat: date taken etc.). Worker thread. */
+    private fun buildInfo(pos: Int, item: Item): ImageInfo.Result {
+        val f = if (vault) null else fetch(pos, item)
+        val open: () -> java.io.InputStream = { if (f == null) openVault(item) else java.io.FileInputStream(f) }
+        val file = ImageInfo.Sec("File")
+        file.row("Name", item.name)
+        if (item.size > 0) file.row("Size", android.text.format.Formatter.formatShortFileSize(this, item.size) + String.format(java.util.Locale.US, " (%,d bytes)", item.size))
+        if (item.mtime > 0) file.row("Modified", java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(item.mtime * 1000)))
+        file.row("Position", (pos + 1).toString() + " of " + items.size)
+        val r = ImageInfo.read(open)
+        val secs = ArrayList<ImageInfo.Sec>()
+        if (file.rows.isNotEmpty()) secs.add(file)
+        secs.addAll(r.secs)
+        if (!vault) {
+            val txt = MediaText.format(MediaText.fetchStat(item.url))
+            var cur = ImageInfo.Sec("More details")
+            for (ln in txt.lines()) {
+                val t = ln.trim()
+                if (t.isEmpty()) continue
+                val i = t.indexOf(": ")
+                if (i > 0) cur.row(t.substring(0, i), t.substring(i + 2))
+                else { if (cur.rows.isNotEmpty()) secs.add(cur); cur = ImageInfo.Sec(t.substring(0, 1) + t.substring(1).lowercase(java.util.Locale.US)) }
+            }
+            if (cur.rows.isNotEmpty()) secs.add(cur)
+        }
+        return ImageInfo.Result(secs, r.lat, r.lon)
     }
 
     private fun showDetails(pos: Int) {
@@ -926,6 +993,7 @@ class ImageViewerActivity : Activity() {
             val iv = ZoomImageView(c)
             val ov = OcrOverlayView(c)
             iv.onTap = { if (ov.hasSelection()) ov.clearSelection() else toggleUi() }
+            iv.onPull = { phase, total, flung -> onPull(phase, total, flung) }
             iv.onMatrixChanged = { m -> ov.setImageMatrix(m) }
             iv.onRotated = { q -> val hp = holder(pager.currentItem); if (hp?.iv === iv) { turned[hp.pos] = q; ov.visibility = if (q == 0) View.VISIBLE else View.INVISIBLE; ui.removeCallbacks(flushRun); ui.postDelayed(flushRun, 700) } }
             iv.onTwist = { on -> if (on) ov.visibility = View.INVISIBLE else if (iv.quarter == 0) ov.visibility = View.VISIBLE }   // the text layer does not follow a free twist
@@ -987,6 +1055,12 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     private var bh = 0
     private var fit = 1f
     var onTap: (() -> Unit)? = null
+    /** Pull-up gesture at fit size: (0, total px moved up, false) while moving, (1, total, flung up) when the finger lifts. Opens the details sheet. */
+    var onPull: ((Int, Float, Boolean) -> Unit)? = null
+    private var pullOn = false
+    private var pullTotal = 0f
+    private var flung = false
+    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
     /** Long press at view coordinates; return true if it was used (text selection) - gives a haptic tick. */
     var onHold: ((Float, Float) -> Boolean)? = null
     /** Image px -> view px matrix changed (zoom / pan / new picture / resize). */
@@ -1169,6 +1243,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     private val gd = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
+        override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean { if (pullOn && vy < -900f) flung = true; return false }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap?.invoke(); return true }
         override fun onLongPress(e: MotionEvent) { if (onHold?.invoke(e.x, e.y) == true) { held = true; Haptics.play("long") } }
         override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -1177,7 +1252,18 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         }
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
             if (held) return true
-            if (!zoomed()) { parent?.requestDisallowInterceptTouchEvent(false); return false }
+            if (!zoomed()) {
+                if (onPull != null && e1 != null && e2.pointerCount == 1) {
+                    val up = e1.y - e2.y
+                    if (pullOn || (up > slop * 1.5f && up > Math.abs(e2.x - e1.x) * 1.3f)) {
+                        pullOn = true; pullTotal = up.coerceAtLeast(0f)
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        onPull?.invoke(0, pullTotal, false)
+                        return true
+                    }
+                }
+                parent?.requestDisallowInterceptTouchEvent(false); return false
+            }
             mx.getValues(v)
             val s = v[Matrix.MSCALE_X]
             val tx = v[Matrix.MTRANS_X]
@@ -1195,7 +1281,12 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         twistEvent(e)
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
-        if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; pullOn = false; flung = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
+        if (pullOn && (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL)) {
+            pullOn = false
+            onPull?.invoke(1, pullTotal, flung && e.actionMasked == MotionEvent.ACTION_UP)
+            flung = false
+        }
         if (held) parent?.requestDisallowInterceptTouchEvent(true)
         if (e.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
         return true
