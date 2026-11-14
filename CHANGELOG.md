@@ -14,6 +14,7 @@
 - Native screens now agree with the page on whether a theme is dark or light, including mid-tone custom themes.
 - Text fields, menus and progress bars are now dark in dark themes.
 - The check mark on colour swatches in the text editor is always visible.
+- Cancel, Keep both and other secondary dialog actions are now real buttons instead of bare text, in every theme (they were plain text in Ubuntu Orange).
 
 ## 2026-11-14 - Video player volume and rotation, vault creation fix
 ### Changed

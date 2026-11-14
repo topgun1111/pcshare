@@ -468,14 +468,18 @@ object Lm {
             if (pos != null && pos.visibility == View.VISIBLE) {
                 when {
                     danger -> styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
-                    dismissPrimary -> styleButton(pos, 0, onWin(lm.primary, AppPal.pal(c).bg, AppPal.pal(c).fg), c)
+                    dismissPrimary -> styleButton(pos, lm.primaryCont, onFill(lm.primaryCont, lm.onPrimaryCont), c)
                     else -> styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
                 }
             }
             // text buttons sit on the dialog window (page --bg): keep them readable on every theme, fall back to the page ink
-            val wbg = AppPal.pal(c).bg
-            if (neu != null && neu.visibility == View.VISIBLE) styleButton(neu, 0, onWin(if (isDanger(neu.text, title)) lm.error else lm.primary, wbg, AppPal.pal(c).fg), c)
-            if (neg != null && neg.visibility == View.VISIBLE) styleButton(neg, 0, onWin(if (isDanger(neg.text, title)) lm.error else if (danger) lm.ink else lm.primary, wbg, AppPal.pal(c).fg), c)
+            // secondary actions are real (tonal) buttons too, not bare text: error tonal for destructive labels, primary tonal otherwise
+            fun tonal(b: android.widget.Button) {
+                if (isDanger(b.text, title)) styleButton(b, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
+                else styleButton(b, lm.primaryCont, onFill(lm.primaryCont, lm.onPrimaryCont), c)
+            }
+            if (neu != null && neu.visibility == View.VISIBLE) tonal(neu)
+            if (neg != null && neg.visibility == View.VISIBLE) tonal(neg)
             if (danger && neg != null && neg.visibility == View.VISIBLE) neg.requestFocus()   // Cancel is the default in danger dialogs
         } catch (_: Throwable) { }
 

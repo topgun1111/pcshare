@@ -743,38 +743,38 @@ body.dual #dedge,body.selm #dedge{display:none}
 :root[data-theme^=ubuntu]{accent-color:#e95420;scrollbar-color:#e9542099 transparent;scrollbar-width:thin}
 :root[data-theme^=ubuntu] ::selection{background:#e9542073;color:inherit}
 :root[data-theme^=ubuntu] :focus-visible{outline:2px solid #e95420;outline-offset:2px}
-:root[data-theme^=ubuntu] .bar{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl),inset 0 -1px 0 #0000003d,0 1px 3px #00000059}
+:root[data-theme^=ubuntu] .bar{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),inset 0 -1px 0 #0000003d,0 1px 3px #00000059}
 :root[data-theme^=ubuntu] #top:before{background:linear-gradient(180deg,var(--ht),var(--ht))}
 :root[data-theme^=ubuntu] #top{background:transparent}
 :root[data-theme^=ubuntu] #fab,:root[data-theme^=ubuntu] .tbtn.fill,:root[data-theme^=ubuntu] .tbtn.lmp,:root[data-theme^=ubuntu] .ib.pri .ii{background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 94%,#fff),var(--primary) 52%,color-mix(in srgb,var(--primary) 88%,#000));color:var(--onPrimary);text-shadow:none;box-shadow:inset 0 1px 0 #ffffff61,inset 0 -1px 0 #00000026,0 0 0 1px color-mix(in srgb,var(--primary) 70%,#000),0 3px 6px #0000004d,0 8px 16px -6px color-mix(in srgb,var(--primary) 60%,transparent)}
 :root[data-theme^=ubuntu] #fab:active,:root[data-theme^=ubuntu] .tbtn.fill:active,:root[data-theme^=ubuntu] .tbtn.lmp:active{background:var(--primary);color:var(--onPrimary);box-shadow:inset 0 2px 5px #00000066,0 0 0 1px color-mix(in srgb,var(--primary) 70%,#000)}
-:root[data-theme^=ubuntu] .tbtn:not(.fill):not(.dng):not(.lmp){background:linear-gradient(180deg,var(--hl),#ffffff00 70%),var(--cont);box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 1px 2px #0003}
+:root[data-theme^=ubuntu] .tbtn:not(.fill):not(.dng):not(.lmp){background:linear-gradient(180deg,var(--hl,#ffffff1f),#ffffff00 70%),var(--cont);box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 0 0 1px var(--bd),0 1px 2px #0003}
 :root[data-theme^=ubuntu] .tbtn:not(.fill):not(.lmp):active{background:var(--hov);box-shadow:inset 0 2px 4px #0000004d,0 0 0 1px var(--bd)}
-:root[data-theme^=ubuntu] .dcard,:root[data-theme^=ubuntu] #sheet .card{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 20px 44px #00000073}
-:root[data-theme^=ubuntu] #dock{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 -4px 16px #00000050;border-top-color:var(--dv)}
-:root[data-theme^=ubuntu] #dwr{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset -1px 0 0 var(--hl),3px 0 18px #00000070}
-:root[data-theme^=ubuntu] .row{border-bottom:1px solid var(--dv);box-shadow:0 1px 0 var(--hl)}
-:root[data-theme^=ubuntu] .row.sel,:root[data-theme^=ubuntu] .row.dnt{background:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 3px 0 0 #e95420,inset 0 1px 0 var(--hl),0 1px 0 var(--hl)}
-:root[data-theme^=ubuntu] .chip.on{background:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 0 1px 0 var(--hl)}
-:root[data-theme^=ubuntu] .chip,:root[data-theme^=ubuntu] .pill{box-shadow:inset 0 1px 0 var(--hl),0 1px 2px #00000040}
+:root[data-theme^=ubuntu] .dcard,:root[data-theme^=ubuntu] #sheet .card{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 0 0 1px var(--bd),0 20px 44px #00000073}
+:root[data-theme^=ubuntu] #dock{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 -4px 16px #00000050;border-top-color:var(--dv)}
+:root[data-theme^=ubuntu] #dwr{background:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset -1px 0 0 var(--hl,#ffffff1f),3px 0 18px #00000070}
+:root[data-theme^=ubuntu] .row{border-bottom:1px solid var(--dv);box-shadow:0 1px 0 var(--hl,#ffffff1f)}
+:root[data-theme^=ubuntu] .row.sel,:root[data-theme^=ubuntu] .row.dnt{background:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 3px 0 0 #e95420,inset 0 1px 0 var(--hl,#ffffff1f),0 1px 0 var(--hl,#ffffff1f)}
+:root[data-theme^=ubuntu] .chip.on{background:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f)}
+:root[data-theme^=ubuntu] .chip,:root[data-theme^=ubuntu] .pill{box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 1px 2px #00000040}
 :root[data-theme^=ubuntu] .li:active{background:linear-gradient(180deg,var(--st),var(--sb))}
 :root[data-theme^=ubuntu] .vc{box-shadow:0 1px 3px #00000066,inset 0 0 0 1px #ffffff14}
 :root[data-theme^=ubuntu] .row .lead .kd,:root[data-theme^=ubuntu] .li .lead{background-image:linear-gradient(180deg,#ffffff2e,#00000026);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #00000040}
 :root[data-theme^=ubuntu]:not([data-theme=ubuntulight]) #toast,:root[data-theme^=ubuntu] .dlc{background:linear-gradient(180deg,#4d4c47,#2f2e2b);box-shadow:inset 0 1px 0 #ffffff26,0 0 0 1px #00000066,0 10px 24px #0000006b}
-:root[data-theme^=ubuntu] #dlg input,:root[data-theme^=ubuntu] #dlg textarea,:root[data-theme^=ubuntu] #sheet input,:root[data-theme^=ubuntu] #sheet textarea{box-shadow:inset 0 2px 3px #00000047,0 1px 0 var(--hl)}
-:root[data-theme^=ubuntu] #sheet hr{border-top-color:var(--dv);box-shadow:0 1px 0 var(--hl)}
+:root[data-theme^=ubuntu] #dlg input,:root[data-theme^=ubuntu] #dlg textarea,:root[data-theme^=ubuntu] #sheet input,:root[data-theme^=ubuntu] #sheet textarea{box-shadow:inset 0 2px 3px #00000047,0 1px 0 var(--hl,#ffffff1f)}
+:root[data-theme^=ubuntu] #sheet hr{border-top-color:var(--dv);box-shadow:0 1px 0 var(--hl,#ffffff1f)}
 :root[data-theme^=ubuntu] .sw i{background-image:linear-gradient(180deg,#00000040,#ffffff10);box-shadow:inset 0 2px 3px #00000059}
 :root[data-theme^=ubuntu] .sw input:checked+i{background-color:#e95420;border-color:#b73d14}
 :root[data-theme^=ubuntu] #scrim,:root[data-theme^=ubuntu] #dscrim{background-image:radial-gradient(120% 80% at 50% 100%,#2c001e55,#00000000)}
 /* Ubuntu / Yaru on the main menu (#home): wallpaper + grain, headerbar gradient, bevelled cards and tiles */
 :root[data-theme^=ubuntu] #home{background-color:var(--bg);background-image:var(--grain),var(--wall);background-size:140px 140px,cover;background-repeat:repeat,no-repeat}
-:root[data-theme^=ubuntu] #home .hb{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl),inset 0 -1px 0 #0000003d,0 1px 3px #00000059}
-:root[data-theme^=ubuntu] #home .hero{background-image:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 6px 16px #00000050}
+:root[data-theme^=ubuntu] #home .hb{background:linear-gradient(180deg,var(--ht),var(--hb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),inset 0 -1px 0 #0000003d,0 1px 3px #00000059}
+:root[data-theme^=ubuntu] #home .hero{background-image:linear-gradient(180deg,var(--st),var(--sb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 0 0 1px var(--bd),0 6px 16px #00000050}
 :root[data-theme^=ubuntu] #home .hero .ic{background-image:linear-gradient(180deg,#ffffff38,#00000030);box-shadow:inset 0 1px 0 #ffffff59,0 2px 4px #00000059}
-:root[data-theme^=ubuntu] #home .ht{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl),0 0 0 1px var(--bd),0 3px 8px #0000004d}
+:root[data-theme^=ubuntu] #home .ht{background-image:linear-gradient(180deg,var(--ct),var(--cb));box-shadow:inset 0 1px 0 var(--hl,#ffffff1f),0 0 0 1px var(--bd),0 3px 8px #0000004d}
 :root[data-theme^=ubuntu] #home .ht:active{background-image:linear-gradient(180deg,var(--st),var(--sb))}
 :root[data-theme^=ubuntu] #home .ht .tb{background-image:linear-gradient(180deg,#ffffff2e,#00000026);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #00000040}
-:root[data-theme^=ubuntu] #home .meter{box-shadow:inset 0 2px 3px #0000004d,0 1px 0 var(--hl)}
+:root[data-theme^=ubuntu] #home .meter{box-shadow:inset 0 2px 3px #0000004d,0 1px 0 var(--hl,#ffffff1f)}
 :root[data-theme^=ubuntu] #home .meter i{background-image:linear-gradient(180deg,#ffffff4d,#00000026)}
 /* ===== Windows 11 (Fluent / Mica): tinted Bloom wallpaper + fine grain, Mica header, accent pill selection, hairline strokes (themes win11 + win11light) ===== */
 :root[data-theme^=win11] body{font-family:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI',Selawik,'Noto Sans','Figtree LS',Figtree,system-ui,sans-serif;background-color:var(--bg);background-image:var(--grain),var(--wall);background-size:140px 140px,cover;background-repeat:repeat,no-repeat}
@@ -940,6 +940,9 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 .tbtn.busy::after{content:'';position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:var(--r-full);border:2.5px solid var(--bc);border-right-color:transparent;animation:rot .8s linear infinite}
 .dact .tbtn.lmp,.dact .tbtn.dng{height:48px;padding:0 var(--sp-6)}
 .dact.stk .tbtn{height:48px}.dact.stk .tbtn.lmp,.dact.stk .tbtn.dng{height:56px}
+/* every dialog action is a real button: secondary / alt / cancel = tonal pill (primaryCont + onPrimaryCont), primary = .lmp fill, destructive = .dng fill */
+.dact .tbtn:where(:not(.lmp):not(.dng):not(.fill):not(.dngf):not(:disabled)){background:var(--primaryCont);color:var(--onPrimaryCont);height:48px;padding:0 var(--sp-6)}
+.dact .tbtn:where(:not(.lmp):not(.dng):not(.fill):not(.dngf):not(:disabled)):active{filter:brightness(.95)}
 .ibtn.on{background:var(--primaryCont);color:var(--onPrimaryCont)}
 #fab{border-radius:var(--r-full)}
 .chip{height:32px;gap:var(--sp-2);padding:0 var(--sp-3);border:1px solid var(--edgeHi);background:transparent;color:var(--ink);border-radius:var(--r-full);font-size:var(--t-labelM-size);line-height:var(--t-labelM-lh);font-weight:var(--t-labelM-w);letter-spacing:var(--t-labelM-tr)}
@@ -1813,7 +1816,7 @@ function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o
   c.onclick=()=>done(null);k.onclick=()=>{if(o.danger)hap('err');done(inp?inp.value:true)};
   d.onclick=e=>{if(e.target===d)done(null)};
   if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
-  if(o.boxOk){k.className='tbtn';k.style.color='var(--err)'}   // boxOk: the OK button is a normal outlined button (red text) instead of the flat danger style
+  if(o.boxOk){k.className='tbtn dng'}   // boxOk: the OK button is a normal outlined button (red text) instead of the flat danger style
   const stk=!o.altFirst&&innerWidth<600&&([c,k,al].filter(Boolean).length>=3||[c,k,al].some(x=>x&&x.textContent.length>16));   // phones: stacked full-width, primary on top
   if(o.altFirst&&al){row.append(al,c,k)}else if(stk){row.classList.add('stk');row.append(k);if(al)row.append(al);row.append(c)}else{row.append(c);if(al)row.append(al);row.append(k)}   // altFirst: alt button on the far left
   if(o.altFirst){row.style.flexWrap='nowrap';row.style.gap='6px';[...row.children].forEach(x=>{x.style.padding='0 12px';x.style.whiteSpace='nowrap'})}
