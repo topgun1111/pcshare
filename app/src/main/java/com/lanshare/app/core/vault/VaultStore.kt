@@ -36,7 +36,7 @@ class VaultStore private constructor(val root: File, private var mk: ByteArray?,
             File(dir, "d").mkdirs(); File(dir, ".nomedia").createNewFile()
             val mk = VaultCrypto.rand(32); val salt = VaultCrypto.rand(32); val wn = VaultCrypto.rand(12)
             val h = VaultHeader(logN, 8, 1, 0, salt, wn, ByteArray(VaultFormat.WRAP_LEN), VaultCrypto.rand(12), VaultCrypto.rand(VaultFormat.WRAP_LEN))
-            val kek = VaultCrypto.kek(password, salt, logN, 8, 1)
+            val kek = VaultCrypto.kek(password.copyOf(), salt, logN, 8, 1)   // kek() wipes its input: the caller still needs the password to open the new vault
             h.wrapped = VaultCrypto.seal(kek, wn, h.aad(), mk); VaultCrypto.wipe(kek)
             writeHeader(dir, h)
             return VaultStore(dir, mk, h).also { it.index!!.close() }

@@ -170,7 +170,7 @@ class PlayerActivity : Activity() {
     private var resizeIdx = 0
     private var gMode = 0                // swipe gesture: 0 undecided, -1 ignored, 1 brightness, 2 volume
     private var gB0 = 0.5f
-    private var gV0 = 0
+    private var gV0 = 1f
     private var insL = 0; private var insT = 0; private var insR = 0; private var insB = 0
     private var lastBs = -1
     private var controlsOn = false
@@ -504,10 +504,17 @@ class PlayerActivity : Activity() {
         }, "player-meta").also { it.isDaemon = true }.start()
     }
 
+    // ---------------------------------------------------------------- remembered settings (video rotation, app volume)
+    private fun savedRot(): Int = Math.floorMod(getSharedPreferences(PREFS, MODE_PRIVATE).getInt("rot", 0), 360)
+    private fun saveRot() { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("rot", Math.floorMod(rotTarget, 360)).apply() }
+    /** The player's own volume (0..1, the app's level) - the phone's media volume is never touched by the swipe. */
+    private fun appVolume(): Float = getSharedPreferences(PREFS, MODE_PRIVATE).getFloat("vol", 1f).coerceIn(0f, 1f)
+
     // ---------------------------------------------------------------- turning the VIDEO (not the screen)
     private fun rotateVideo(delta: Int) {
         zoom = 1f; panX = 0f; panY = 0f
         rotTarget += delta
+        saveRot()
         applyVideoTransform(true)
         showHud(Math.floorMod(rotTarget, 360).toString() + "\u00B0")
         subtitlePadding()
@@ -635,7 +642,6 @@ class PlayerActivity : Activity() {
     // ---------------------------------------------------------------- gestures
     /** Tap = show/hide controls, double-tap left/right = -10 s / +10 s, double-tap middle = zoom into that point (again = back), swipe up/down: left half brightness, right half volume. */
     private fun setupGestures() {
-        val am = getSystemService(AUDIO_SERVICE) as AudioManager
         val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -664,7 +670,7 @@ class PlayerActivity : Activity() {
                         gMode = if (s.x < touch.width / 2f) 1 else 2
                         val cur = window.attributes.screenBrightness
                         gB0 = if (cur >= 0f) cur else try { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f } catch (_: Exception) { 0.5f }
-                        gV0 = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        gV0 = player?.volume ?: appVolume()
                     } else if (adx > dp(12)) gMode = -1
                 }
                 if (gMode <= 0) return false
@@ -674,10 +680,10 @@ class PlayerActivity : Activity() {
                     window.attributes = window.attributes.apply { screenBrightness = nb }
                     showHud("Brightness " + Math.round(nb * 100) + "%")
                 } else {
-                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                    val nv = Math.round(gV0 + d * max).coerceIn(0, max)
-                    am.setStreamVolume(AudioManager.STREAM_MUSIC, nv, 0)
-                    showHud("Volume $nv/$max")
+                    val nv = (gV0 + d).coerceIn(0f, 1f)
+                    player?.volume = nv
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putFloat("vol", nv).apply()
+                    showHud("Volume " + Math.round(nv * 100) + "%")
                 }
                 return true
             }
@@ -744,7 +750,7 @@ class PlayerActivity : Activity() {
         mtimes.clear(); sizes.clear(); metaAsked.clear()
         val my = ++gen
         errTv.visibility = View.GONE
-        zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(false)
+        zoom = 1f; panX = 0f; panY = 0f; rotTarget = savedRot(); applyVideoTransform(false)
         updateInfo(); updateNav()
         if (items.none { it.subs.isNotEmpty() }) { start(emptyMap()); return }
         spin.visibility = View.VISIBLE
@@ -810,6 +816,7 @@ class PlayerActivity : Activity() {
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
+        p.volume = appVolume()
         val mis = items.mapIndexed { i, item ->
             val subs = item.subs.mapIndexed { j, s ->
                 MediaItem.SubtitleConfiguration.Builder(got[s.url] ?: Uri.parse(s.url))
@@ -824,7 +831,7 @@ class PlayerActivity : Activity() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val i = p.currentMediaItemIndex
                 errTv.visibility = View.GONE
-                if (mediaItem != null) { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(false) }   // every video starts upright
+                if (mediaItem != null) { zoom = 1f; panX = 0f; panY = 0f; rotTarget = savedRot(); applyVideoTransform(false) }   // a new video starts with the last chosen video rotation
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
                     val pos = savedPos(i)
                     if (pos > 0) p.seekTo(pos)
@@ -908,7 +915,7 @@ class PlayerActivity : Activity() {
         labels += "Aspect ratio: " + names[resizeIdx]; acts += { cycleAspect() }
         labels += if (fullscreen) "Exit full screen" else "Full screen"; acts += { setFullscreen(!fullscreen) }
         if (Build.VERSION.SDK_INT >= 26 && !vault) { labels += "Picture-in-picture"; acts += { enterPip() } }
-        if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; applyVideoTransform(true); subtitlePadding() } }
+        if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; saveRot(); applyVideoTransform(true); subtitlePadding() } }
         if (zoom > 1.001f) { labels += "Reset zoom"; acts += { resetZoom() } }
         labels += "Details"; acts += { showDetails() }
         dlg(AppPal.dlg(this).setItems(labels.toTypedArray()) { _, i -> acts[i]() })
