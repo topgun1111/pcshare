@@ -7,6 +7,8 @@ private val TR = mapOf(
     "Vault" to "Kasa",
     "Create a password. There is no way to recover files if you forget it." to "Bir parola oluşturun. Unutursanız dosyaları geri almanın hiçbir yolu yoktur.",
     "Enter your vault password." to "Kasa parolanızı girin.",
+    "Existing vault found. Enter its password to open it." to "Mevcut bir kasa bulundu. Açmak için parolasını girin.",
+    "Your files are safe. Fingerprint unlock can be turned on again after you open the vault." to "Dosyalarınız güvende. Kasayı açtıktan sonra parmak izi kilidini yeniden açabilirsiniz.",
     "Password" to "Parola",
     "Repeat password" to "Parolayı tekrarlayın",
     "Create vault" to "Kasa oluştur",

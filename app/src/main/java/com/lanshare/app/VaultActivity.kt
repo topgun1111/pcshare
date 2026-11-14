@@ -133,7 +133,9 @@ class VaultActivity : FragmentActivity() {
     private fun credentials(create: Boolean) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(72), dp(24), dp(24)) }
         box.addView(text(vt("Vault"), 28f, lm.ink, true))
-        box.addView(text(if (create) vt("Create a password. There is no way to recover files if you forget it.") else vt("Enter your vault password."), 14f, lm.inkMut).apply { setPadding(0, dp(8), 0, dp(24)) })
+        val found = !create && !prefs.known   // vault folder on disk but no app state: reinstall / cleared data
+        box.addView(text(if (create) vt("Create a password. There is no way to recover files if you forget it.") else if (found) vt("Existing vault found. Enter its password to open it.") else vt("Enter your vault password."), 14f, lm.inkMut).apply { setPadding(0, dp(8), 0, if (found) dp(8) else dp(24)) })
+        if (found) box.addView(text(vt("Your files are safe. Fingerprint unlock can be turned on again after you open the vault."), 13f, lm.inkMut).apply { setPadding(0, 0, 0, dp(24)) })
         val p1 = field(vt("Password")); box.addView(p1)
         val p2 = field(vt("Repeat password")); if (create) box.addView(p2)
         val msg = text("", 13f, lm.error).apply { setPadding(0, dp(8), 0, dp(8)) }; box.addView(msg)
@@ -150,6 +152,7 @@ class VaultActivity : FragmentActivity() {
                     if (create) { VaultStore.create(volume, a).lock() }
                     VaultSession.start(VaultStore.open(volume, a))
                     if (!create) throttle.onSuccess()
+                    prefs.known = true
                 } catch (e: Exception) {
                     if (!create && e is VaultAuthException) throttle.onFail()
                     err = if (create) vf("Could not create the vault: %s", e.message) else if (e is VaultAuthException) vt("Wrong password") else vf("Could not open the vault: %s", e.message)
@@ -287,7 +290,7 @@ class VaultActivity : FragmentActivity() {
         busy = true; msg.text = vt("Unlocking...")
         exec.execute {
             var err: String? = null
-            try { VaultSession.start(VaultStore.openWithRecovery(volume, secret)) }
+            try { VaultSession.start(VaultStore.openWithRecovery(volume, secret)); prefs.known = true }
             catch (x: Exception) { err = if (x is VaultAuthException) vt("Wrong recovery secret") else vf("Could not unlock: %s", x.message) }
             finally { secret.fill(0) }
             ui.post { busy = false; if (err != null) msg.text = err else { render(); forceNewPassword() } }

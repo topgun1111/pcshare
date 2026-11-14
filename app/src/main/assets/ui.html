@@ -1383,7 +1383,7 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
-    <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
+    <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=vlock aria-label="Lock vault" data-i=lock style="display:none"></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
   <div class="bar selb"><button class=ibtn id=xsel aria-label=Cancel data-i=close></button><h2 id=selcount></h2><button class=ibtn id=allsel aria-label="Select all" data-i=selall></button></div>
   <div id=srow><button class=ibtn id=sback aria-label=Back data-i=back></button><input id=sq type=search placeholder="Search in this folder" autocomplete=off><button class=ibtn id=scont aria-label="Search inside Word / Excel / PowerPoint files" title="Search inside Word / Excel / PowerPoint files" style="font:600 12px sans-serif;width:auto;padding:0 var(--sp-2)">In files</button><button class=ibtn id=suall aria-label="Search the whole phone" title="Search the whole phone" style="font:600 12px sans-serif;width:auto;padding:0 var(--sp-2)">Phone</button><button class=ibtn id=sclr aria-label=Clear data-i=close></button></div>
   <div id=peers></div><div id=hint></div><div id=free></div>
@@ -6275,7 +6275,8 @@ function vaultTapOpen(i){
   else if(r==='missing')toast('\u26a0 File not found',3000);
   else if(r!=='ok')toast('\u26a0 Could not open this file',3000);
   return true}
-function vaultSecure(on){if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
+function vaultSecure(on){{const b=$('#vlock');if(b)b.style.display=on?'':'none'}   /* top bar Lock button: only in vault mode */
+  if(on===VMODE)return;VMODE=on;try{LSAndroid.vaultMode(on)}catch(e){}}
 function vaultEnter(path){S.vimp=null;homeHide();drawerClose();S.newest=false;S.dev='vault';S.path=path||'/';S.lim=0;S.sel.clear();S.sig='';clearQ();renderPeers();window.scrollTo(0,0);useLSC=false;load()}
 let VPEND=null,VPT=0;
 /* "To vault": when the vault is locked the unlock screen opens and the same selection is locked automatically once it is open (no second try). */
@@ -6916,6 +6917,7 @@ $('#dscrim').onclick=drawerClose;
     if(Math.abs(dy)>Math.abs(dx)*1.2&&Math.abs(dy)>14){mode=0;return}
     if(mode===1&&dx>50){mode=0;drawerOpen()}else if(mode===2&&dx<-50){mode=0;drawerClose()}},{passive:true});
   document.addEventListener('touchend',()=>{mode=0},{passive:true})})();
+$('#vlock').onclick=()=>{try{LSAndroid.vaultLockNow()}catch(e){}if(S.dev==='vault')vaultLeave('Vault locked')};   // lock now, straight back to the Main menu
 $('#cog').onclick=()=>{if(S.dev==='vault'&&window.LSAndroid&&LSAndroid.openVault){try{LSAndroid.openVault();return}catch(e){}}openSettings()};   // inside the vault the gear opens Vault settings
 $('#sortb').onclick=openSort;$('#tune').onclick=openView;
 const sOpen=v=>{if(v){document.body.classList.add('srch');if(NLSR){nlSrPush();NL.nlSrFocus()}else setTimeout(()=>$('#sq').focus(),50)}else{clearQ();render()}};

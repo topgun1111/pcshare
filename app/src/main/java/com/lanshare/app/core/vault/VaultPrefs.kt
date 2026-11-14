@@ -15,6 +15,10 @@ class VaultPrefs(c: Context) : VaultThrottle.Store {
     var autoLockSec: Int
         get() = p.getInt("autoLock", 30)
         set(v) { p.edit().putInt("autoLock", v).apply() }
+    /** True once this install has opened or created a vault (or has any older vault UI state). False + a vault folder on disk = fresh install / cleared data that found an existing vault. */
+    var known: Boolean
+        get() = p.getBoolean("known", false) || p.all.isNotEmpty()
+        set(v) { p.edit().putBoolean("known", v).apply() }
     var bioDeclined: Boolean
         get() = p.getBoolean("bioDeclined", false)
         set(v) { p.edit().putBoolean("bioDeclined", v).apply() }
