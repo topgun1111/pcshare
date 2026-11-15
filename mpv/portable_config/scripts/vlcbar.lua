@@ -1,0 +1,2 @@
+-- vlcbar.lua: KALDIRILDI (yerine mpcbar.lua). Eski kurulumlarda çift çubuk/çakışan sol tık bağı
+-- olmasın diye boş bırakıldı; güvenle silinebilir.

@@ -1,0 +1,149 @@
+name: Build
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows-package:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"  # Windows konsolu cp1252: Türkçe çıktı (ı, ş...) UnicodeEncodeError veriyordu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check .
+          pytest -q
+      - name: Paket klasörünü hazırla
+        run: python scripts/make_package.py
+      - name: Güncelleme deposu (Yardım → Güncellemeleri denetle)
+        run: |
+          python -c "import json,os; json.dump({'repo': os.environ['GITHUB_REPOSITORY']}, open('dist/TakipliOynat/update.json','w'))"
+      - name: Gömülü Python + bağımlılıklar
+        run: python scripts/build_embedded.py
+      - name: mpv indir
+        shell: pwsh
+        run: ./scripts/fetch_deps.ps1 -Target dist/TakipliOynat/mpv
+      - name: Model indir (YOLOX-S, Apache-2.0; kurulumla birlikte gelir)
+        shell: pwsh
+        run: ./scripts/fetch_model.ps1 -Target dist/TakipliOynat/models
+        # Özeti doğrulayınca env: YOLOX_S_SHA256 olarak sabitle (tedarik zinciri)
+      - name: Pose modeli (YOLOv8s-pose, vücut parçası takibi; kişisel kullanım)
+        shell: pwsh
+        run: |
+          pip install ultralytics onnx
+          python scripts/export_pose.py dist/TakipliOynat/models yolov8s-pose
+      - name: Güçlü pose adayı (YOLO11m-pose fp32+fp16; isteğe bağlı, tek-model/benchmark için)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          pip install onnxconverter-common
+          python scripts/export_pose.py dist/TakipliOynat/models yolo11m-pose --fp16
+      - name: Re-ID modeli (OSNet x0.25, isteğe bağlı; indirilemezse Re-ID kapalı kalır)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install torchreid gdown onnx
+          python scripts/export_reid.py dist/TakipliOynat/models osnet_x0_25
+      - name: Tüm-vücut poz modeli (RTMPose-wholebody, el/yüz/ayak parmağı; isteğe bağlı)
+        shell: pwsh
+        continue-on-error: true
+        run: python scripts/export_wholebody.py dist/TakipliOynat/models
+      - name: ffmpeg indir (GPL derlemesi, libx264; takip kamerası dışa aktarma için)
+        shell: pwsh
+        run: ./scripts/fetch_ffmpeg.ps1 -Target dist/TakipliOynat/ffmpeg
+        # Özeti doğrulayınca env: FFMPEG_SHA256 olarak sabitle
+      - name: Model/araç bütünlüğü (models/manifest.json) + SHA256SUMS
+        run: python scripts/verify_models.py dist/TakipliOynat --write-sums
+      - name: Paketlenmiş Python duman testi
+        shell: pwsh
+        working-directory: dist/TakipliOynat
+        run: |
+          .\python\python.exe -m tracker --version
+          .\python\python.exe -c "import tracker, numpy, cv2, onnxruntime as o; p = o.get_available_providers(); print(p); assert 'DmlExecutionProvider' in p, 'DirectML yok'"
+          .\python\python.exe -m tracker detect --help | Out-Null
+          if (-not (Test-Path THIRD_PARTY_NOTICES.md)) { throw "THIRD_PARTY_NOTICES.md pakette yok" }
+          if (-not (Test-Path mpv\BUILD_INFO.txt)) { throw "mpv/BUILD_INFO.txt yok (GPL kaynak teklifi)" }
+          # Kurulumdan sonra elle bir şey gerekmesin: model pakette olmalı ve gerçekten çalışmalı
+          if (-not (Test-Path models\yolox_s.onnx)) { throw "models\yolox_s.onnx pakette yok" }
+          if (-not (Test-Path models\YOLOX_LICENSE.txt)) { throw "YOLOX lisans metni (Apache-2.0) pakette yok" }
+          if (-not (Test-Path models\yolov8s-pose.onnx)) { throw "models\yolov8s-pose.onnx pakette yok" }
+          if (-not (Test-Path ffmpeg\ffmpeg.exe)) { throw "ffmpeg\ffmpeg.exe pakette yok" }
+          if (-not (Test-Path models\SHA256SUMS.txt)) { throw "models\SHA256SUMS.txt yok" }
+          .\python\python.exe -c "import numpy as np, cv2; cv2.imwrite('blank.jpg', np.zeros((720, 1280, 3), np.uint8))"
+          .\python\python.exe -m tracker detect blank.jpg --model models\yolox_s.onnx --out blank_out.jpg
+          if ($LASTEXITCODE -ne 0) { throw "YOLOX modeli duman testinde çalışmadı" }
+          # pose modeli açılıyor mu ve çıktı düzeni [1,56,N] mi (tracker/pose.py çözücüsünün varsayımı)
+          .\python\python.exe -c "import onnxruntime as o; s = o.InferenceSession('models/yolov8s-pose.onnx', providers=['CPUExecutionProvider']); sh = s.get_outputs()[0].shape; print('pose çıktı', sh); assert sh[1] == 56, sh"
+          if ($LASTEXITCODE -ne 0) { throw "yolov8s-pose.onnx açılmadı ya da çıktı düzeni [1,56,N] değil" }
+          foreach ($pm in "yolo11m-pose", "yolo11m-pose-fp16") {
+            if (Test-Path "models\$pm.onnx") {
+              .\python\python.exe -c "import onnxruntime as o; s = o.InferenceSession('models/$pm.onnx', providers=['CPUExecutionProvider']); sh = s.get_outputs()[0].shape; print('$pm çıktı', sh); assert sh[1] == 56, sh"
+              if ($LASTEXITCODE -ne 0) { throw "$pm.onnx açılmadı ya da çıktı [1,56,N] değil" }
+            } else { Write-Host "UYARI: models\$pm.onnx yok (isteğe bağlı)" }
+          }
+          if (Test-Path models\osnet_x0_25.onnx) {
+            .\python\python.exe -c "import onnxruntime as o, numpy as np; s = o.InferenceSession('models/osnet_x0_25.onnx', providers=['CPUExecutionProvider']); y = s.run(None, {s.get_inputs()[0].name: np.zeros((1, 3, 256, 128), np.float32)})[0]; print('reid çıktı', y.shape); assert y.ndim == 2"
+            if ($LASTEXITCODE -ne 0) { throw "osnet_x0_25.onnx açılmadı ya da çıktı [N,D] değil" }
+          } else { Write-Host "UYARI: osnet_x0_25.onnx yok: Re-ID kapalı kalacak (reid_live=auto)" }
+          if (Test-Path models\rtmpose-wholebody.onnx) {
+            .\python\python.exe -c "import onnxruntime as o, numpy as np; s = o.InferenceSession('models/rtmpose-wholebody.onnx', providers=['CPUExecutionProvider']); sh = s.get_inputs()[0].shape; ys = s.run(None, {s.get_inputs()[0].name: np.zeros((1, 3, sh[2], sh[3]), np.float32)}); print('wholebody çıktı', [y.shape for y in ys]); assert ys[0].shape[1] == 133 and ys[1].shape[1] == 133"
+            if ($LASTEXITCODE -ne 0) { throw "rtmpose-wholebody.onnx açılmadı ya da SimCC [1,133,*] değil" }
+          } else { Write-Host "UYARI: rtmpose-wholebody.onnx yok: el/yüz/ayak parmağı takibi kapalı kalacak (wholebody=auto)" }
+          # ffmpeg libx264 ile gerçekten kodluyor mu (dışa aktarma sessiz yedeğe düşmesin)
+          .\ffmpeg\ffmpeg.exe -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=10 -t 1 -c:v libx264 -pix_fmt yuv420p ff_test.mp4
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path ff_test.mp4)) { throw "ffmpeg libx264 duman testi başarısız" }
+          Remove-Item blank.jpg, blank_out.jpg, ff_test.mp4 -ErrorAction SilentlyContinue
+      - name: Taşınabilir ZIP
+        shell: pwsh
+        run: Compress-Archive -Path dist/TakipliOynat -DestinationPath dist/TakipliOynat-portable.zip
+      - name: Installer derle (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION).Trim()
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=$v" installer.iss
+      # İki ayrı çıktı: kurulum (Setup) ve taşınabilir sürüm (Portable) ayrı artifact/zip olarak iner
+      - name: Dosyaları adlandır
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION).Trim()
+          $exe = Get-ChildItem dist/installer/*.exe | Select-Object -First 1
+          if (-not $exe) { throw "installer .exe üretilmedi" }
+          Move-Item $exe.FullName "dist/TakipliOynat-Setup-$v.exe" -Force
+          Move-Item dist/TakipliOynat-portable.zip "dist/TakipliOynat-Portable-$v.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TakipliOynat-Setup
+          path: dist/TakipliOynat-Setup-*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TakipliOynat-Portable
+          path: dist/TakipliOynat-Portable-*.zip
+          if-no-files-found: error
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/TakipliOynat-Setup-*.exe
+            dist/TakipliOynat-Portable-*.zip

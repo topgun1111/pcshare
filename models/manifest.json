@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "note": "Pakette bulunmasi ZORUNLU dosyalar. sha256 bos (null) ise yalniz boyut denetlenir; ozet CI gunlugunden dogrulanip buraya sabitlenir. optional:true olan dosya yoksa yalniz uyari verilir (CI'da indirilemeyebilir); varsa tum denetimlerden gecmelidir.",
+  "files": [
+    {
+      "path": "models/yolox_s.onnx",
+      "min_bytes": 10000000,
+      "license": "Apache-2.0",
+      "license_file": "models/YOLOX_LICENSE.txt",
+      "sha256": null,
+      "feature": "kisi tespiti (canli + offline)"
+    },
+    {
+      "path": "models/yolov8s-pose.onnx",
+      "min_bytes": 5000000,
+      "license": "AGPL-3.0",
+      "license_file": null,
+      "sha256": null,
+      "feature": "eklem (vucut parcasi) takibi"
+    },
+    {
+      "path": "ffmpeg/ffmpeg.exe",
+      "min_bytes": 20000000,
+      "license": "GPL-3.0 (libx264)",
+      "license_file": "ffmpeg/FFMPEG_LICENSE.txt",
+      "sha256": null,
+      "feature": "takip kamerasi video disa aktarma"
+    },
+    {
+      "path": "mpv/mpv.exe",
+      "min_bytes": 10000000,
+      "license": "GPL-2.0+",
+      "license_file": "mpv/BUILD_INFO.txt",
+      "sha256": null,
+      "feature": "oynatici"
+    },
+    {
+      "path": "models/osnet_x0_25.onnx",
+      "min_bytes": 500000,
+      "license": "MIT (kod); agirlik ImageNet on egitimi",
+      "license_file": null,
+      "sha256": null,
+      "optional": true,
+      "feature": "Re-ID (kalabalikta kisiyi yeniden bulma)"
+    },
+    {
+      "path": "models/yolo11m-pose.onnx",
+      "min_bytes": 30000000,
+      "license": "AGPL-3.0",
+      "license_file": null,
+      "sha256": null,
+      "optional": true,
+      "feature": "tek-model (single_pose) adayi: guclu poz"
+    },
+    {
+      "path": "models/yolo11m-pose-fp16.onnx",
+      "min_bytes": 15000000,
+      "license": "AGPL-3.0",
+      "license_file": null,
+      "sha256": null,
+      "optional": true,
+      "feature": "ayni model fp16 (DirectML hizi icin pose-bench ile kiyasla)"
+    },
+    {
+      "path": "models/rtmpose-wholebody.onnx",
+      "min_bytes": 20000000,
+      "license": "Apache-2.0 (kod); agirlik COCO-WholeBody/UBody egitim verisi kosullarina tabi",
+      "license_file": null,
+      "sha256": null,
+      "optional": true,
+      "feature": "tum-vucut poz: el, yuz, ayak parmagi (133 nokta; O2)"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.cxx/
+.externalNativeBuild/
+*.keystore
+*.jks
+# models are copied here at build time (never committed)
+app/src/*/assets/models/

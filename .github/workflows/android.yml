@@ -1,0 +1,186 @@
+name: Android
+
+# Runs in parallel with the PC "Build" workflow on the same triggers (separate workflow file,
+# so build.yml and its tests stay untouched). Part 15: on a v* tag it also builds a SIGNED release APK
+# (keystore from the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+# secrets) and, in a PRIVATE repository only, attaches it to the same GitHub Release as the Windows files.
+# Why private only: the APK contains the Ultralytics pose models (AGPL-3.0, personal use; handover-android.md, decisions log).
+# Two builds from one job (matrix): `pose` (pose models + optical-flow trackers) and `sam` (adds EdgeTAM for free-point / region targets;
+# own applicationId com.takipli.oynat.sam, so both install side by side). One failing flavor does not cancel the other.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["**.md"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # only the release step writes (tags in a private repo); pull requests from forks stay read-only
+
+jobs:
+  android:
+    name: android-${{ matrix.flavor }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}  # app/build.gradle.kts: versionCode = (X*10000+Y*100+Z)*1000 + build, so builds update each other
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: pose
+            gradle_task: Pose
+          - flavor: sam
+            gradle_task: Sam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Pose models into app assets (explicit list; AGPL-3.0, personal use)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install ultralytics onnx
+          d=android/app/src/${{ matrix.flavor }}/assets/models
+          # pose build: both candidates (decide by measurement); sam build: the small one + the SAM models below
+          if [ "${{ matrix.flavor }}" = "pose" ]; then models="yolov8s-pose yolo11m-pose"; else models="yolov8s-pose"; fi
+          for m in $models; do python scripts/export_pose.py "$d" "$m"; done
+          ls -l "$d"
+          for m in $models; do test -s "$d/$m.onnx" || { echo "missing $m.onnx"; exit 1; }; done
+      - name: EdgeTAM models (sam build only; Apache-2.0; exported from the official checkpoint)
+        if: matrix.flavor == 'sam'
+        env:
+          SAM_MODELS_URL: ${{ vars.SAM_MODELS_URL }}
+        run: |
+          d=android/app/src/sam/assets/models
+          mkdir -p "$d"
+          if [ -n "$SAM_MODELS_URL" ]; then # optional override: a zip with the .onnx files (encoder + decoder required; decoder-trk/memenc/memattn enable the memory tracker)
+            curl -fL --retry 3 -o "$RUNNER_TEMP/sam.zip" "$SAM_MODELS_URL"
+            unzip -o -j "$RUNNER_TEMP/sam.zip" "*.onnx" -d "$d"
+          else
+            # Editable install from a clone: the pip wheel of EdgeTAM leaves out configs/edgetam.yaml (build_sam2 then cannot find it).
+            # It installs a package named `sam2`: never next to facebookresearch/sam2.
+            git clone --depth 1 https://github.com/facebookresearch/EdgeTAM.git "$RUNNER_TEMP/EdgeTAM"
+            pip install onnx onnxruntime timm -e "$RUNNER_TEMP/EdgeTAM"
+            # Five static graphs (encoder, decoder, decoder-trk, memenc, memattn); the script checks every file against PyTorch.
+            # If the memory export fails (e.g. another RoPE variant), still ship encoder + decoder: the app then tracks per frame.
+            python scripts/export_sam2.py "$d" edgetam || {
+              echo "::warning::EdgeTAM memory export failed: exporting encoder + decoder only"
+              rm -f "$d"/sam-*.onnx
+              python scripts/export_sam2.py "$d" edgetam --no-memory
+            }
+          fi
+          ls -l "$d"
+          for m in sam-encoder sam-decoder; do test -s "$d/$m.onnx" || { echo "missing $m.onnx"; exit 1; }; done
+          for m in sam-decoder-trk sam-memenc sam-memattn; do test -s "$d/$m.onnx" || echo "::warning::$m.onnx missing: scans use the prompt-per-frame tracker"; done
+      - name: int8 EdgeTAM encoder for the NPU (only if android/calib has frames AND the accuracy gate passes; optional)
+        if: matrix.flavor == 'sam'
+        continue-on-error: true
+        run: |
+          n=$(ls android/calib/*.jpg android/calib/*.jpeg android/calib/*.png 2>/dev/null | wc -l)
+          if [ "$n" -lt 10 ]; then echo "android/calib has $n frames (<10): keeping the fp16 encoder"; exit 0; fi
+          pip install onnxruntime opencv-python-headless
+          d=android/app/src/sam/assets/models
+          set +e
+          python scripts/quantize_edgetam.py "$d/sam-encoder.onnx" "$RUNNER_TEMP/sam-encoder-int8.onnx" android/calib
+          rc=$?
+          if [ $rc -eq 0 ]; then mv "$RUNNER_TEMP/sam-encoder-int8.onnx" "$d/sam-encoder.onnx"; echo "int8 encoder in use"
+          elif [ $rc -eq 3 ]; then echo "accuracy gate failed: fp16 encoder kept"
+          else exit $rc; fi
+      - name: int8 QDQ pose models for the NPU (only if android/calib has frames; optional)
+        continue-on-error: true
+        run: |
+          n=$(ls android/calib/*.jpg android/calib/*.jpeg android/calib/*.png 2>/dev/null | wc -l)
+          if [ "$n" -lt 10 ]; then echo "android/calib has $n frames (<10): skipping int8"; exit 0; fi
+          pip install onnxruntime opencv-python-headless
+          d=android/app/src/${{ matrix.flavor }}/assets/models
+          python scripts/quantize_android.py "$d/yolov8s-pose.onnx" "$d/yolov8s-pose-int8.onnx" android/calib
+          python scripts/quantize_android.py "$d/yolov8s-pose.onnx" "$d/yolov8s-pose-a16w8.onnx" android/calib --a16
+          ls -l "$d"
+      - name: Android SDK (accepts licences)
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""  # default `tools platform-tools` fails: package `tools` no longer exists
+      - name: Gradle (installs the pinned version and caches it)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Unit tests + debug APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :core:test :app:assemble${{ matrix.gradle_task }}Debug
+      - name: Models are inside the APK
+        run: |
+          unzip -l android/app/build/outputs/apk/${{ matrix.flavor }}/debug/app-${{ matrix.flavor }}-debug.apk | grep -E "assets/models/.*\.onnx"
+      - name: Name the APK
+        run: |
+          v=$(tr -d "[:space:]" < VERSION)
+          mkdir -p dist-android/release
+          cp android/app/build/outputs/apk/${{ matrix.flavor }}/debug/app-${{ matrix.flavor }}-debug.apk "dist-android/TakipliOynat-Android-${{ matrix.flavor }}-$v-debug.apk"
+      - name: Signed release APK (every push to main and v* tags; needs the keystore secrets, otherwise skipped with a warning)
+        if: github.event_name == 'push'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::warning::Android keystore secrets are not set: the signed release APK is skipped (the debug APK is still uploaded)"
+            exit 0
+          fi
+          export KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_B64" | base64 -d > "$KEYSTORE_PATH"
+          (cd android && gradle --no-daemon --stacktrace :app:assemble${{ matrix.gradle_task }}Release)
+          rm -f "$KEYSTORE_PATH"
+          apk=android/app/build/outputs/apk/${{ matrix.flavor }}/release/app-${{ matrix.flavor }}-release.apk
+          test -s "$apk" || { echo "release APK was not produced (unsigned?)"; ls -l android/app/build/outputs/apk/${{ matrix.flavor }}/release; exit 1; }
+          v=$(tr -d "[:space:]" < VERSION)
+          cp "$apk" "dist-android/release/TakipliOynat-Android-${{ matrix.flavor }}-$v-b${{ github.run_number }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TakipliOynat-Android-${{ matrix.flavor }}
+          path: dist-android/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TakipliOynat-Android-${{ matrix.flavor }}-Release
+          path: dist-android/release/*.apk
+          if-no-files-found: ignore
+      - name: Publish to GitHub Releases (private repositories only; AGPL models inside). main = prerelease, v* tag = release. The app updates from these.
+        if: github.event_name == 'push' && github.event.repository.private == true && hashFiles('dist-android/release/*.apk') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(tr -d "[:space:]" < VERSION)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes "Android release $tag" || true
+          else
+            tag="v$v-b${{ github.run_number }}"
+            gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "$tag" --notes "Android build ${{ github.run_number }} ($GITHUB_SHA)" || true
+          fi
+          gh release upload "$tag" dist-android/release/*.apk --clobber
+          # keep the newest 8 prereleases (their tags go too)
+          gh release list --limit 100 --json tagName,isPrerelease,createdAt \
+            -q '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
+            | while read -r old; do gh release delete "$old" --cleanup-tag --yes || true; done
+      - name: Public repository - APK stays an artifact (no Release, so no in-app updates)
+        if: github.event_name == 'push' && github.event.repository.private != true
+        run: |
+          echo "::notice::Public repository: the APK contains AGPL-3.0 models (personal use), so it is not published to Releases. Download it from the workflow artifacts."
+      - name: Test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports-${{ matrix.flavor }}
+          path: android/**/build/reports
+          if-no-files-found: ignore

@@ -1,0 +1,6 @@
+# Runtime bağımlılıkları.
+numpy>=1.26
+opencv-python-headless>=4.9
+# Windows: DirectML (NVIDIA/AMD/Intel); diğer platformlar (CI/ubuntu): CPU
+onnxruntime-directml>=1.18; sys_platform == "win32"
+onnxruntime>=1.18; sys_platform != "win32"

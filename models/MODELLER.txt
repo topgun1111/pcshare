@@ -1,0 +1,60 @@
+Takipli Oynat - modeller
+========================
+KURULUM PAKETI yolox_s.onnx ILE HAZIR GELIR (YOLOX-S, Apache-2.0, Megvii): kurduktan sonra elle model
+kopyalamak GEREKMEZ. Lisans metni: models\YOLOX_LICENSE.txt. Ayrintili lisans bilgisi: THIRD_PARTY_NOTICES.md
+Asagisi yalnizca BASKA bir model kullanmak (ya da istege bagli Re-ID/numara modeli eklemek) isteyenler icindir.
+Guncelleme yeni setup.exe'yi calistirarak yapilir; yolox_s.onnx de yenilenir, kendi eklediginiz dosyalara dokunulmaz.
+
+PERSON TESPITI - bunlardan BIRI zorunlu (pakette yolox_s.onnx var)
+  yolox_s.onnx   PAKETTE (Apache-2.0, dagitima uygun). YOLOX, Megvii-BaseDetection/YOLOX.
+                 Kaynak: depodaki "Releases" sayfasi (0.1.1rc0) yolox_s.onnx; ya da kendin disa aktar: python tools/export_onnx.py --output-name yolox_s.onnx -n yolox-s -c yolox_s.pth
+                 Disa aktarma --decode_in_inference ile yapildiysa tracker_config.json'a "yolox_decoded": true yaz.
+                 Dosya adinda "yolox" gecmeli (model_type otomatik secilir); yolox_m/tiny/nano de olur.
+  yolov8n.onnx   AGPL-3.0 (Ultralytics). pip install ultralytics, sonra
+                 yolo export model=yolov8n.pt format=onnx
+                 Modeli baskalarina DAGITIRSAN AGPL sartlari gecerli olur; kisisel/okul ici kullanimda sorun yok.
+Oncelik: models\yolov8n.onnx varsa o, yoksa yolox_s -> yolox_m -> yolox_tiny -> yolox_nano.
+Baska bir adi kullanirsan: --model yol (ve gerekirse "model_type": "yolox" | "yolov8").
+
+VUCUT PARCASI (EKLEM) TAKIBI - PAKETTE (kisisel kullanim)
+  yolov8s-pose.onnx  Ultralytics YOLOv8s-pose (AGPL-3.0), CI'da scripts/export_pose.py ile uretilir.
+                     Elle: pip install ultralytics onnx; yolo export model=yolov8s-pose.pt format=onnx imgsz=640 opset=12
+                     Sag tik bir eklemin (ayak bilegi, diz, bilek, omuz...) yakinina yapilirsa o eklem izlenir;
+                     uzaksa eski nesne takibi. Dosya yoksa yalniz nesne takibi calisir. Ayarlar: pose_model, kp_tol.
+
+TAKIP KAMERASI VIDEO DISA AKTARMA - PAKETTE
+  ffmpeg\\ffmpeg.exe  BtbN FFmpeg-Builds win64 GPL derlemesi (libx264). Kurulumla gelir, elle ffmpeg kurmak GEREKMEZ.
+                     Lisans: ffmpeg\\FFMPEG_LICENSE.txt, kaynak/derleme bilgisi: ffmpeg\\BUILD_INFO.txt.
+
+PAKET BUTUNLUGU
+  models\\manifest.json zorunlu dosyalari listeler (CI'da scripts/verify_models.py denetler);
+  models\\SHA256SUMS.txt kurulan dosyalarin ozetidir (elle dogrulama icin).
+
+TEK MODEL (G2) - ISTEGE BAGLI, CI'DA URETILIR
+  yolo11m-pose.onnx, yolo11m-pose-fp16.onnx  Ultralytics YOLO11m-pose (AGPL-3.0, kisisel kullanim); cikti [1,56,N].
+  single_pose=true (ya da live/offline --single-pose) ile poz modeli kisi tespitini de yapar: ayri person modeli
+  yuklenmez, offline --pose taramasinda kare basina 1 cikarim. Varsayilan KAPALI (olculmedi). Karar icin Windows'ta:
+  python -m tracker pose-bench klip.mp4 --model models\yolov8s-pose.onnx --model models\yolo11m-pose.onnx --model models\yolo11m-pose-fp16.onnx
+  Sonra tracker_config.json: "pose_model": "models/yolo11m-pose.onnx", "single_pose": true.
+
+TUM VUCUT POZ (O2: EL, YUZ, AYAK PARMAGI) - CI'DA URETILIR, ISTEGE BAGLI (uretilemezse yok)
+  rtmpose-wholebody.onnx  OpenMMLab RTMPose-m wholebody (133 nokta, COCO-WholeBody; girdi 256x192, cikti SimCC), scripts/export_wholebody.py
+                      hazir onnx_sdk arsivini indirir (torch gerekmez). Kod Apache-2.0; agirlik COCO-WholeBody/UBody
+                      egitim verisi kosullarina tabidir: KISISEL KULLANIM. Dosya varsa canli modda OTOMATIK acilir
+                      (config: wholebody = auto | on | off). Sag tik bir parmagin/yuz noktasinin/ayak parmaginin
+                      yakinina yapilirsa o nokta izlenir (wb_tol, wb_min_conf); vucut eklemleri YOLO-pose ile eskisi gibi.
+                      Model yalniz secili kisiye calisir (kare basina 1 cikarim). Offline tarama henuz 17 nokta.
+
+RE-ID (KISI GORUNUMU) - CI'DA URETILIR, KURULUMLA GELMESI HEDEFLENIR (istege bagli: uretilemezse yok)
+  osnet_x0_25.onnx    scripts/export_reid.py ile (torchreid, ImageNet on egitimli agirlik; Re-ID verisiyle egitilmemistir,
+                      reid_thres gercek videoda ayarlanmali). Dosya varsa canli modda Re-ID OTOMATIK acilir
+                      (config: reid_live = auto | on | off); eklem takibi kalabalikta kisiyi gorunumle bulur (kp_reid).
+                      Takim rengi / forma numarasi yalniz config ile: team_live, number_live.
+                      Agirliklar egitim verisinin lisansina tabidir (Market-1501 vb. ticari olmayabilir).
+
+ISTEGE BAGLI
+  jersey_number.onnx  Forma numarasi (girdi [N,C,H,W], cikti [N,101]; bkz. tracker/number.py).
+
+Offline.bat osnet_x0_25.onnx varsa --reid --team ekler. Canli modda (mpv'nin otomatik baslattigi takip programi)
+Re-ID, osnet_x0_25.onnx varsa kendiliginden acilir (reid_live=auto); takim/numara config ile (team_live/number_live)
+ya da elle: python -m tracker live --reid [--team] [--number]. Baslat.bat sadece mpv'yi acar.

@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"tracker/update.py" = ["E501"]
+"tests/test_update.py" = ["E501"]
+"scripts/gen_golden.py" = ["E501"]
+"tests/test_parts.py" = ["E501"]
+"tests/test_scan_fixture.py" = ["E501"]
+"tests/test_offscreen.py" = ["E501"]
+"tracker/config.py" = ["E501"]
+"tracker/offline.py" = ["E501"]
+"tracker/offscreen.py" = ["E501"]
+"tracker/parts.py" = ["E501"]
+"tracker/pipeline.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

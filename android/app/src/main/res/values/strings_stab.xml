@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="stab_chip">Stabilize (analyses every frame, slow)</string>
+    <string name="stab_working">Analysing camera motion on every frame. This can take a while; keep the app open.</string>
+</resources>
