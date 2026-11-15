@@ -159,6 +159,7 @@ class UsActivity : Activity() {
 
     @Suppress("OVERRIDE_DEPRECATION")
     // Lumen predictive back: on Android 13+ the callback is registered only while a selection exists (BackGate); otherwise the system animation runs and finishes the screen
+    @Volatile private var selBusy = false
     private val backGate = BackGate(this, { sel.isNotEmpty() }, { endSel() })
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() { if (sel.isNotEmpty()) endSel() else super.onBackPressed() }
@@ -524,7 +525,7 @@ class UsActivity : Activity() {
         banner.setOnClickListener { statusDlg() }
         if (s == stamp) return
         if (force) { stamp = s; return }
-        if (loading || sel.isNotEmpty()) return          // try again on the next tick (stamp kept)
+        if (loading || selBusy || sel.isNotEmpty()) return          // try again on the next tick (stamp kept)
         stamp = s
         if (lastText.isNotBlank() || kind.isNotEmpty()) runQuery(true, maxOf(PAGE, rows.size))
     }
@@ -814,11 +815,17 @@ class UsActivity : Activity() {
 
     private fun sectionAllSel(i: Int): Boolean { val ids = sectionIds(i); return ids.isNotEmpty() && ids.all { sel.contains(it) } }
 
-    /** Select every result of one category (Names / Contents / Pictures); when all of it is already selected, clear it instead. */
+    /** Select every result of one category (Names / Contents / Pictures), including rows not loaded yet; when all of it is already selected, clear it instead. */
     private fun toggleSection(i: Int) {
-        val ids = sectionIds(i); if (ids.isEmpty()) return
-        if (ids.all { sel.contains(it) }) sel.removeAll(ids.toSet()) else sel.addAll(ids)
-        updateSelBar(); ad.notifyDataSetChanged()
+        val id = rows[i].badge.removePrefix("#h:")
+        val sec = secs.firstOrNull { it.id == id }
+        fun apply() {
+            val at = rows.indexOfFirst { it.badge == "#h:" + id }; if (at < 0) return
+            val ids = sectionIds(at); if (ids.isEmpty()) return
+            if (ids.all { sel.contains(it) }) sel.removeAll(ids.toSet()) else sel.addAll(ids)
+            updateSelBar(); ad.notifyDataSetChanged()
+        }
+        if (sec != null && sec.out.total > sec.out.rows.size) expandAll { apply() } else apply()
     }
 
     /**
@@ -828,7 +835,14 @@ class UsActivity : Activity() {
      */
     private fun selectAll() {
         val needMore = if (secs.isNotEmpty()) secs.any { it.out.total > it.out.rows.size } else more
-        if (!needMore) { for (r in rows) if (!pseudo(r)) sel.add(r.id); updateSelBar(); ad.notifyDataSetChanged(); return }
+        val pick = { for (r in rows) if (!pseudo(r)) sel.add(r.id); updateSelBar(); ad.notifyDataSetChanged() }
+        if (!needMore) pick() else expandAll(pick)
+    }
+
+    /** Fetches every match not loaded yet (max 20,000 per section), extends the list, then runs [then]. selBusy stops the banner tick from re-running the query meanwhile (that bumped seq and silently dropped the result, leaving only the 50 visible rows selected). */
+    private fun expandAll(then: () -> Unit) {
+        if (selBusy) return
+        selBusy = true
         toast("Selecting all results\u2026")
         val s0 = seq
         val text = et.text.toString()
@@ -847,25 +861,29 @@ class UsActivity : Activity() {
                 }
                 return out
             }
-            val full: List<Pair<UsSearch.Sect, List<UsSearch.Row>>> = sections.map { x -> x to fetch(x.query, 0).ifEmpty { x.out.rows } }
+            val full: List<Pair<UsSearch.Sect, List<UsSearch.Row>>> = sections.map { x -> x to (if (x.out.total > x.out.rows.size) fetch(x.query, 0).ifEmpty { x.out.rows } else x.out.rows) }
             val rest: List<UsSearch.Row> = if (sections.isEmpty()) fetch(effective, have.size) else emptyList()
             ui.post {
+                selBusy = false
                 if (s0 != seq) return@post
                 if (sections.isNotEmpty()) {
                     rows.clear(); var n = 0
+                    val ns = ArrayList<UsSearch.Sect>()
                     for ((x, list) in full) {
                         val keepRows = list.filter { r -> !isGone(r) }
                         rows.add(pseudoRow(-1000 - n, UsSections.title(UsSections.Sec(x.id, x.title, x.query), keepRows.size, false), "#h:" + x.id))
                         rows.addAll(keepRows); n++
+                        ns.add(UsSearch.Sect(x.id, x.title, x.query, UsSearch.Out(keepRows, keepRows.size, true, x.out.ms, x.out.notes, false)))
                     }
+                    secs = ns
                 } else {
                     val seen = HashSet<Int>(); for (r in rows) seen.add(r.id)
                     for (r in rest) if (!isGone(r) && seen.add(r.id)) rows.add(r)
                     more = false
                 }
                 total = rows.count { !pseudo(it) }; approx = false
-                for (r in rows) if (!pseudo(r)) sel.add(r.id)
-                updateSelBar(); ad.notifyDataSetChanged(); setInfo()
+                setInfo()
+                then()
             }
         }
     }
