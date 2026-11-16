@@ -6773,14 +6773,19 @@ function openRemoteShell(){
     const cn=E('button','tbtn','Cancel'),go=E('button','tbtn fill','Connect');cn.style.cssText=go.style.cssText='flex:1;height:46px';acts.append(cn,go);
     cd.append(h,nt,sm('PCs found'),st,pcl,sm('Address'),ad,sm('Password'),pw,rl,er,acts);ov.append(cd);w.append(ov);
     let sel=cfg.fromList?{ip:cfg.ip,name:cfg.name,port:cfg.port}:null,list=[];
-    const showList=()=>{pcl.textContent='';list.forEach(p=>{const b=E('button','set'),t=E('div','t');b.style.cssText='width:100%;text-align:left'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
-      t.append(E('b','',p.name),E('small','',p.ip));b.append(t);b.onclick=()=>{sel=p;ad.value=p.ip;showList()};pcl.append(b)})};
+    /* same look as the device list: live PC = green blinking chip (lead.ol + dot), not answering = steady light red (lead.of + dot.wn) */
+    const showList=()=>{pcl.textContent='';list.forEach(p=>{const live=p.ok!==false,b=E('button','li'),ld=E('div','lead '+(live?'ol':'of')),lt=E('div','lt');
+      b.style.cssText='width:100%;text-align:left;margin:2px 0'+(sel&&sel.ip===p.ip?';outline:2px solid var(--ac)':'');
+      ld.append(E('i','dot'+(live?'':' wn')));
+      const nr=E('div','');nr.append(E('span','dn',p.name));lt.append(nr,E('small','',p.ip+' \u00b7 '+(live?'online':'not answering')));
+      b.append(ld,lt);b.onclick=()=>{sel=p;ad.value=p.ip;showList()};pcl.append(b)})};
     ad.oninput=()=>{if(sel&&ad.value.trim()!==sel.ip){sel=null;showList()}};
     cn.onclick=()=>{ov.remove();if(!opened)close()};ov.onclick=e=>{if(e.target===ov)cn.onclick()};
-    (async()=>{let a=[];try{a=(await api('GET','/api/pcfind',null,8000))||[]}catch(e){}
+    (async()=>{let a=[];try{a=((await api('GET','/api/pcfind',null,8000))||[]).map(x=>Object.assign({ok:true},x))}catch(e){}   // answered the broadcast = live
       try{const seen=new Set(a.map(x=>x.ip)),ps2=(await api('GET','/api/peers',null,5000))||[];
         ps2.filter(x=>x.kind==='SMB'&&x.ip).forEach(x=>{const h2=String(x.ip).replace(/^[a-z]+:\/\//i,'').split('/')[0].replace(/:\d+$/,'');
-          if(h2&&!seen.has(h2)){seen.add(h2);a.push({ip:h2,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798})}})}catch(e){}
+          if(h2&&!seen.has(h2)){seen.add(h2);a.push({ip:h2,name:x.name+(x.via&&x.via!=='LAN'?' ('+x.via+')':''),port:8798,ok:x.ok!==false})}})}catch(e){}
+      a.sort((m,n)=>(m.ok===false)-(n.ok===false));   // live PCs first
       if(!ov.isConnected)return;list=a;st.textContent=a.length?'Tap one, or type an address below':'No PC found. Type its address below (Tailscale IP or name)';showList()})();
     go.onclick=async()=>{er.textContent='';const addr=ad.value.trim(),tgt=addr?(sel&&sel.ip===addr?{ip:sel.ip,name:sel.name,port:sel.port||8798,fromList:true}:{ip:addr,name:addr,port:8798,fromList:false}):null;
       if(!tgt){er.textContent='Tap a PC or type an address';return}

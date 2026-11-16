@@ -6,6 +6,11 @@
 
 
 
+## 2026-11-16 - Live PCs in the Remote shell list
+
+### Changed
+- Remote shell > Connect: a PC that is online shows a green, blinking chip, just like in the device list. A PC that does not answer shows a steady light red chip and is listed below the live ones.
+
 ## 2026-11-14 - Picture details and location
 
 ### Added
