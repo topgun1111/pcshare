@@ -3909,6 +3909,7 @@ function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above
   m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(128px + env(safe-area-inset-bottom))'}
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
+  if(!S.sel.size)document.querySelectorAll('.dsc').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
   const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',zipf:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
   const btn=(k,lb,f,c)=>{if(S.dev==='vault'&&/^(print|add|openw|share|zipf|extract|dup|palette|search|merge|hide)$/.test(k))return;   /* vault mode: nothing that hands decrypted data to another app or writes it to disk */
@@ -6140,6 +6141,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 // Android back: close the top-most overlay / search / selection; returns true when it handled the press
 function lsBack(){
+  {const dm=document.querySelector('.dsc');if(dm){dm.remove();return true}}   // the dock "More" popup closes first on Back (it used to stay open over the next screen)
   {const rs=$('#rsh');if(rs){const c=rs.querySelector('.rshc');if(c)c.onclick({target:c});else rs._close();return true}}
   if($('#hmfav')){hmFavClose();return true}
   if(document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm')){drawerClose();return true}
