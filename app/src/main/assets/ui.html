@@ -1928,7 +1928,7 @@ function resume(){  // screen unlocked / tab restored / network back
   try{jbKick()}catch(e){}   // the job poll loop stops when idle; wake it for jobs started elsewhere
   const n=Date.now();if(n-lastResume<3000)return;lastResume=n;
   api('POST','/api/scan',{},4000).catch(()=>{});
-  pollPeers();S.sig='';if(S.dev!=='local')load()}
+  pollPeers();S.sig='';if(S.dev!=='local')load();else if(window.lsDirChanged)lsDirChanged()}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)resume()});
 window.addEventListener('pageshow',resume);window.addEventListener('online',resume);window.addEventListener('focus',resume);
 async function pollOnce(){try{const pr=await api('GET','/api/peers');if(Array.isArray(pr))S.peers=pr}catch(e){}}
@@ -1999,7 +1999,8 @@ async function fillCounts(dev,path){if(dev!=='local')return;
     let any=false;const ch=new Set();S.items.forEach(i=>{if(i.dir&&c[i.name]!=null&&i.n!==c[i.name]){i.n=c[i.name];any=true;ch.add(i);if(i._sz)i._sz.textContent=i.n+(i.n===1?' item':' items')}});if(any&&window.nlPatch)nlPatch(ch);
     const ck=dev+'|'+path,e=LSC.get(ck);if(e)e.items=S.items;
     if(any&&S.sort==='size')render()}catch(e){}}
-async function load(){if(window.RSH_X)RSH_X();try{return await loadMain()}finally{if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
+async function load(){if(window.RSH_X)RSH_X();try{return await loadMain()}finally{try{if(window.LSAndroid&&LSAndroid.watchDir)LSAndroid.watchDir(S.dev,S.path)}catch(e){}   // native folder watcher follows the open folder
+  if(window.nlBoot)nlBoot();try{if(window.LSAndroid&&LSAndroid.nlDone)LSAndroid.nlDone()}catch(e){}}}   // first finished load = the native start picture can go
 async function loadMain(){
   clearTimeout(loadT);vaultSecure(S.dev==='vault');
   if(galRoot()){useLSC=false;S.items=[];S.err='';S.sel.clear();if(!S.lost)banner('');render();return}   // gallery = albums from MediaStore only, no file-manager listing
@@ -2497,7 +2498,7 @@ function galView(a){
     const xb=E('button','ibtn');xb.append(ic('close'));xb.setAttribute('aria-label','Clear clipboard');
     xb.onclick=async()=>{try{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()}catch(e){}};
     pst.append(pbn,xb)};
-  o._pst=pasteUpd;o._reload=reload;pasteUpd();
+  o._pst=pasteUpd;o._reload=reload;o._alb=a;pasteUpd();
   api('GET','/api/ls?dev='+enc(D)+'&path='+enc(a.path)).then(r=>{
     if(o._for!==tok)return;
     const all=r.items||[],it=all.filter(x=>!x.dir&&x.name[0]!=='.'&&(a.v?kind(x)==='vid':kind(x)==='img')).sort((x,y)=>(y.mtime||0)-(x.mtime||0));
@@ -2930,6 +2931,29 @@ function doNewOffice(kind){
   try{LSAndroid.newOffice(JSON.stringify({dev:S.dev,dir:S.path,kind}))}catch(e){toast('\u26a0 '+e.message,4000)}}
 /* the editor saved something: reload the open folder */
 window.lsRefresh=()=>{try{load()}catch(e){}try{const g=$('#gal');if(g&&g._reload&&g.style.display!=='none')g._reload()}catch(e){}};
+/* native folder watcher (DirWatch.kt): something changed in the open folder of this phone -> list it quietly, redraw only when it really differs */
+let dwBusy=0;
+window.lsDirChanged=async()=>{
+  if(dwBusy||document.hidden||S.dev!=='local'||S.path.indexOf('!')>=0||/^\/@/.test(S.path))return;
+  dwBusy=1;
+  try{const dev=S.dev,path=S.path,r=await api('GET','/api/ls?dev='+enc(dev)+'&path='+enc(path));
+    if(dev!==S.dev||path!==S.path||!r||!r.items)return;
+    const o=S.items||[];
+    if(o.length===r.items.length&&o.every((x,k)=>x.name===r.items[k].name&&x.mtime===r.items[k].mtime&&x.size===r.items[k].size))return;
+    await load()}catch(e){}finally{dwBusy=0}};
+/* native gallery watcher (MediaWatch.kt): a photo / video appeared, changed or vanished on this phone -> album list / open album re-read quietly (redraws only when it differs) */
+let mwT=0;
+window.lsMediaChanged=()=>{try{
+  if(document.hidden)return;
+  const g=$('#gal'),inAlb=g&&g._reload&&g.style.display!=='none';
+  if(inAlb){
+    if(g.classList.contains('selm')||g._for==null)return;   // selecting: never redraw under the finger
+    const a=g._alb;if(a&&a.dev&&a.dev!=='local')return;
+    clearTimeout(mwT);mwT=setTimeout(()=>{const sc=g.querySelector('.gs'),y=sc?sc.scrollTop:0;try{g._reload()}catch(e){}
+      [150,500,1200].forEach(t=>setTimeout(()=>{const s2=g.querySelector('.gs');if(s2&&y&&Math.abs(s2.scrollTop-y)>2)s2.scrollTop=y},t))},0);return}
+  if(S.dev==='local'&&galRoot()&&!inArc()){GALT=0;GALP=null;GALPK=null;galFetch();return}   // album home (Gallery / Videos)
+  GALA=null;GALT=0;   // elsewhere: albums are read again when the gallery is opened
+  if(S.dev==='local'&&!/^\/@/.test(S.path)&&window.lsDirChanged)lsDirChanged()}catch(e){}};
 window.lsFtpChanged=(d,p)=>{try{if(S.dev===d&&S.path===p)load()}catch(e){}};   /* FTP: the folder painted from the saved listing differs on the server -> reload it once */
 /* ---- media viewer: swipe gallery, pinch / double-tap zoom, custom video controls, resume position ---- */
 Object.assign(IC,{pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',vol:'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',mute:'M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0021 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',prev:'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'});

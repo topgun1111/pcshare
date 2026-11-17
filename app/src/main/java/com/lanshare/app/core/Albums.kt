@@ -62,6 +62,7 @@ object Albums {
         val list = map.entries.filter { File(root + it.value.cover).exists() }.sortedByDescending { it.value.mtime }.toMutableList()
         val cam = list.indexOfFirst { it.key.equals("/DCIM/Camera", true) }
         if (cam > 0) list.add(0, list.removeAt(cam))
+        try { com.lanshare.app.MediaWatch.cur?.setDirs(list.map { root + it.key }, root) } catch (_: Throwable) {}   // live gallery: watch every album folder
         val arr = JSONArray()
         for (e in list) {
             val a = e.value

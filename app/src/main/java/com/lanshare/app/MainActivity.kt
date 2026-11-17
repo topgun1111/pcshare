@@ -57,6 +57,10 @@ class MainActivity : Activity() {
     private lateinit var splash: NlSplash
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
+    /** Watches the folder open in the file list (this phone only): other programs' changes appear without a manual refresh. */
+    private val mediaWatch by lazy { MediaWatch(applicationContext) { if (::web.isInitialized) try { web.evaluateJavascript("window.lsMediaChanged&&lsMediaChanged()", null) } catch (_: Throwable) { } }.also { MediaWatch.cur = it } }
+    private val dirWatch = DirWatch { if (::web.isInitialized) try { web.evaluateJavascript("window.lsDirChanged&&lsDirChanged()", null) } catch (_: Throwable) { } }
+
     private var uiBooted = false   // the page's first screen is drawn (nlBoot / nlLayout / nlHide): a pending print dialog may open now
     private var showHome = false
     private val perfMarks get() = com.lanshare.app.core.PerfMarks.marks   // PERF-DEBUG (temporary): Settings -> Debug: performance
@@ -451,6 +455,11 @@ class MainActivity : Activity() {
         /** First load() of the page finished (whatever the outcome): the native start picture is no longer needed. */
         @JavascriptInterface fun nlBoot() { mark("firstScreen"); Core.firstScreenDrawn(); runOnUiThread { splash.dismiss(); uiBooted = true; runPrint() } }
         @JavascriptInterface fun nlDone() { runOnUiThread { nl.done() } }
+        /** The page shows [path] of device [dev]: watch it when it is a real folder of this phone, otherwise stop watching. */
+        @JavascriptInterface fun watchDir(dev: String, path: String) {
+            try { dirWatch.watch(if (dev == "local" && path.indexOf('!') < 0 && !path.startsWith("/@")) com.lanshare.app.core.Core.local.real(path) else null) }
+            catch (_: Throwable) { dirWatch.watch(null) }
+        }
         /** Native search box (NlSearch.kt): ui.html nlSrPush() geometry / state, the query the next nlItems was filtered by, focus request. */
         @JavascriptInterface fun nlSearch(json: String) { runOnUiThread { try { nl.setSearch(json) } catch (_: Throwable) { } } }
         @JavascriptInterface fun nlQ(q: String) { runOnUiThread { nl.noteQ(q) } }
@@ -678,11 +687,12 @@ class MainActivity : Activity() {
     /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
     override fun onDestroy() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
+        dirWatch.stop(); mediaWatch.pause(); MediaWatch.cur = null
         if (::chrome.isInitialized) chrome.release()
         super.onDestroy()
     }
 
-    override fun onPause() { super.onPause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
+    override fun onPause() { super.onPause(); dirWatch.pause(); mediaWatch.pause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
     private var wasStopped = false
     /** The app went fully to the background (minimized / another app in front): on return the WebView's compositor can stay stalled = white screen until a touch. [wakeWeb] fixes that. */
@@ -692,6 +702,8 @@ class MainActivity : Activity() {
         super.onResume()
         ClipPush.front = this
         repaintSoon()
+        mediaWatch.resume()   // gallery live updates (MediaStore + album folders)
+        dirWatch.resume()   // folder watcher back on + one re-check of the open folder
         if (VaultMode.dirty) { VaultMode.dirty = false; try { web.evaluateJavascript("try{if(S.dev==='vault')lsRefresh()}catch(e){}", null) } catch (_: Throwable) { } }   // a vault viewer deleted / edited an item: re-list the vault folder
         if (wasStopped) { wasStopped = false; wakeWebSoon() }   // came back from the background: wake the WebView compositor (white screen until touched)
         try { com.lanshare.app.core.IndexManager.onResume() } catch (_: Throwable) {}   // name index: look for changes other apps made
