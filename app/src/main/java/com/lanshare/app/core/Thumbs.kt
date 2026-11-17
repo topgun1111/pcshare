@@ -21,6 +21,10 @@ object Thumbs {
     private const val COVER_Q = 95   // every thumbnail is JPEG quality 95
     private const val PRINT_MAX = 3508
     private val writes = AtomicInteger()
+    /** At most 3 decodes at once: a fast scroll asks for dozens of thumbnails; unbounded parallel decodes fight for CPU / memory and make the visible ones LATER, not sooner. */
+    private val decodeSlots = java.util.concurrent.Semaphore(3)
+    /** Same thumbnail asked twice at once (page + live gallery reload + prefetch): one decode, the other caller waits for it. */
+    private val inflight = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
     private fun cacheRoot() = File(Cfg.dir ?: File("/data/local/tmp"), "thumbcache")
 
@@ -48,13 +52,20 @@ object Thumbs {
         val cp = File(File(cacheRoot(), key.substring(0, 2)), "$key.jpg")
         try { if (cp.isFile) return cp.readBytes() } catch (_: IOException) {}
 
-        val data = if (f.name.endsWith(".pdf", true)) renderPdf(f) else render(f, max, draft, quality)
+        val lock = inflight.computeIfAbsent(key) { Any() }
+        val data = try {
+            synchronized(lock) {
+                try { if (cp.isFile) return cp.readBytes() } catch (_: IOException) {}   // the caller we waited for has written it
+                decodeSlots.acquire()
+                try { if (f.name.endsWith(".pdf", true)) renderPdf(f) else render(f, max, draft, quality) } finally { decodeSlots.release() }
+            }
+        } finally { inflight.remove(key) }
         try {
             cp.parentFile?.mkdirs()
             val tmp = File(cp.path + ".tmp" + Thread.currentThread().id)
             tmp.writeBytes(data)
             if (!tmp.renameTo(cp)) { cp.delete(); if (!tmp.renameTo(cp)) tmp.delete() }
-            if (writes.incrementAndGet() % 500 == 0) prune()
+            if (writes.incrementAndGet() % 500 == 0) Thread { prune() }.also { it.isDaemon = true }.start()   // a 30 000-file walk must not stall this request
         } catch (_: IOException) {}
         return data
     }

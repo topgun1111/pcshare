@@ -27,7 +27,19 @@ object Albums {
         }
     }
 
+    private val memo = arrayOfNulls<Pair<Long, JSONObject>>(2)
+    /** Live gallery can ask several times in a burst (a download writing 50 files): answers within 150 ms of the last real read reuse it. */
     fun json(video: Boolean = false): JSONObject {
+        val i = if (video) 1 else 0
+        synchronized(this) {
+            val m = memo[i]
+            if (m != null && System.currentTimeMillis() - m.first < 150) return m.second
+            val r = read(video)
+            memo[i] = System.currentTimeMillis() to r
+            return r
+        }
+    }
+    private fun read(video: Boolean): JSONObject {
         val rootFile = Core.local.root
         val root = rootFile.path.trimEnd('/')
         val map = LinkedHashMap<String, A>()

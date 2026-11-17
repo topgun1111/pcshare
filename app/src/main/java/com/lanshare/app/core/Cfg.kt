@@ -85,7 +85,7 @@ object Cfg {
     @Synchronized fun setUsExcluded(l: List<String>) { obj.put("us_excl", JSONArray(l)); save() }
 
     /** PDF page cache (Part 4b): size from which a PDF is cached (MB, 0 = every PDF), WebP quality of the pages, cap of the cache folders (MB, 0 = unlimited). */
-    @Synchronized fun pdfMinMb(): Int = obj.optInt("pdf_min_mb", 10).coerceIn(0, 500)
+    @Synchronized fun pdfMinMb(): Int = obj.optInt("pdf_min_mb", 0).coerceIn(0, 500)
     @Synchronized fun setPdfMinMb(v: Int) { obj.put("pdf_min_mb", v.coerceIn(0, 500)); save() }
     @Synchronized fun pdfQuality(): Int = obj.optInt("pdf_q", 78).coerceIn(40, 95)
     @Synchronized fun setPdfQuality(v: Int) { obj.put("pdf_q", v.coerceIn(40, 95)); save() }

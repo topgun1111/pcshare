@@ -6,10 +6,18 @@
 
 
 
+## 2026-11-17 - PDF page cache for every PDF
+
+### Changed
+- The PDF reader now builds its page cache for every PDF, whatever its size (before: only 10 MB or bigger). You can still raise the limit in Settings > PDF page cache.
+
 ## 2026-11-17 - Live photo and video gallery
 
 ### Added
 - Gallery and Videos update by themselves: a new photo or video (camera, screenshot, download, another app, PC) appears in the album list and in an open album within a second, and deleted ones disappear. No pull-to-refresh needed.
+
+### Changed
+- Thumbnails load faster while scrolling fast: fewer pictures are decoded at once and the same thumbnail is never made twice.
 
 ## 2026-11-16 - Live PCs in the Remote shell list
 

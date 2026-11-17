@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * kept, so an interrupted build continues from where it stopped the next time the PDF is opened.
  */
 object PdfPageCache {
-    const val MIN_BYTES = 10L * 1024 * 1024                // default; the real threshold is [minBytes] (Settings > PDF page cache)
+    const val MIN_BYTES = 1L                // default; the real threshold is [minBytes] (Settings > PDF page cache)
     /** Size from which a PDF gets a page cache (setting; 0 MB = every PDF). */
     fun minBytes(): Long = try { val mb = Cfg.pdfMinMb(); if (mb <= 0) 1L else mb * 1024L * 1024 } catch (_: Throwable) { MIN_BYTES }
     /** WebP quality of new pages (setting; already cached pages keep theirs). */
