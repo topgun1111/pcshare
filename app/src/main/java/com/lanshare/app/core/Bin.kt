@@ -215,15 +215,28 @@ object Bin {
                 t.total = ids.size
                 val info = try { list().associateBy { it.id } } catch (_: Exception) { emptyMap() }
                 t.totalBytes = ids.sumOf { info[it]?.size ?: 0L }
-                for (id in ids) {
-                    if (t.cancel) break
+                val finish = { id: String ->
                     t.cur = info[id]?.name ?: ""
+                    val sz = info[id]?.size ?: 0L
+                    synchronized(t) { t.done++; t.bytes += sz }
+                }
+                if (op == "restore") {   // one at a time: the first restored path decides where the "tap to open" toast goes
+                    for (id in ids) {
+                        if (t.cancel) break
+                        t.cur = info[id]?.name ?: ""
+                        try { t.paths.add(restore(id)); t.gone.add(id) } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
+                        finish(id)
+                    }
+                } else {   // delete / empty: several entries are wiped at the same time (each is detached first, so its row leaves the list at once)
+                    val pool = java.util.concurrent.Executors.newFixedThreadPool(minOf(4, maxOf(1, ids.size)))
                     try {
-                        if (op == "restore") { t.paths.add(restore(id)); t.gone.add(id) }
-                        else { val d = detach(id); t.gone.add(id); wipe(d) }   // out of the list as soon as it is detached; the files are wiped after
-                    } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
-                    t.done++
-                    t.bytes += info[id]?.size ?: 0L
+                        for (id in ids) pool.execute {
+                            if (t.cancel) return@execute   // cancelled: entries not started yet stay in the bin
+                            t.cur = info[id]?.name ?: ""
+                            try { val d = detach(id); t.gone.add(id); wipe(d) } catch (x: Exception) { if (t.errors.size < 20) t.errors.add(errText(x)) }
+                            finish(id)
+                        }
+                    } finally { pool.shutdown(); try { pool.awaitTermination(7, java.util.concurrent.TimeUnit.DAYS) } catch (_: InterruptedException) { } }
                 }
             } finally { t.cur = ""; t.running = false }
         }, "bin-$op").also { it.isDaemon = true; it.start() }

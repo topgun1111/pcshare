@@ -168,7 +168,7 @@ class PlayerActivity : Activity() {
     private var userRotated = false      // the screen-rotation button was used: stop following the video's shape
     private var fullscreen = false       // default: system bars visible; toggled in the More menu and remembered
     private var resizeIdx = 0
-    private var gMode = 0                // swipe gesture: 0 undecided, -1 ignored, 1 brightness, 2 volume
+    private var gMode = 0                // swipe gesture: 0 undecided, -1 ignored, 1 brightness, 2 volume, 3 details (up from the bottom)
     private var gB0 = 0.5f
     private var gV0 = 1f
     private var insL = 0; private var insT = 0; private var insR = 0; private var insB = 0
@@ -640,7 +640,7 @@ class PlayerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- gestures
-    /** Tap = show/hide controls, double-tap left/right = -10 s / +10 s, double-tap middle = zoom into that point (again = back), swipe up/down: left half brightness, right half volume. */
+    /** Tap = show/hide controls, double-tap left/right = -10 s / +10 s, double-tap middle = zoom into that point (again = back), swipe up/down: left half brightness, right half volume; swipe up from the bottom quarter = extended details. */
     private fun setupGestures() {
         val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -667,11 +667,16 @@ class PlayerActivity : Activity() {
                 val adx = Math.abs(e2.x - s.x)
                 if (gMode == 0) {
                     if (ady > dp(12) && ady > adx) {
-                        gMode = if (s.x < touch.width / 2f) 1 else 2
+                        gMode = if (s.y > touch.height * 0.75f && e2.y < s.y) 3   // swipe up from the bottom quarter = extended details (no brightness / volume there)
+                            else if (s.x < touch.width / 2f) 1 else 2
                         val cur = window.attributes.screenBrightness
                         gB0 = if (cur >= 0f) cur else try { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f } catch (_: Exception) { 0.5f }
                         gV0 = player?.volume ?: appVolume()
                     } else if (adx > dp(12)) gMode = -1
+                }
+                if (gMode == 3) {
+                    if (!inPip && s.y - e2.y > dp(70)) { gMode = -1; Haptics.play("click"); showDetails(true) }
+                    return true
                 }
                 if (gMode <= 0) return false
                 val d = (s.y - e2.y) / maxOf(touch.height, 1) * 1.3f
@@ -983,7 +988,7 @@ class PlayerActivity : Activity() {
             })
     }
 
-    private fun showDetails() {
+    private fun showDetails(sheet: Boolean = false) {
         val i = curIndex(); val it = items.getOrNull(i) ?: return
         val v = player?.videoSize
         val d = player?.duration ?: C.TIME_UNSET
@@ -996,6 +1001,7 @@ class PlayerActivity : Activity() {
         if (mt > 0) sb.append("\nModified: ").append(dateText(mt))
         val base = sb.toString()
         val detDlg = dlg(AppPal.dlg(this).kind("info").setTitle("Details").setMessage(base + "\n\nReading details\u2026").setPositiveButton("OK", null))
+        if (sheet) detDlg.window?.apply { setGravity(Gravity.BOTTOM); setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.WRAP_CONTENT) }   // swipe-up: slides in as a bottom sheet
         Thread({   // container / codec / track / tag details from the app's own /api/stat (same as the file list's Details sheet)
             val extra = if (vault) "" else MediaText.format(MediaText.fetchStat(it.url))
             runOnUiThread { if (!isFinishing && detDlg.isShowing) detDlg.setMessage(if (extra.isEmpty()) base else base + "\n" + extra) }
