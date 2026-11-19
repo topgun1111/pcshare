@@ -84,6 +84,7 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
             val a = if (modern) try { Files.readAttributes(f.toPath(), BasicFileAttributes::class.java) } catch (_: Exception) { null } else null
             if (a != null) { dir = a.isDirectory; size = if (dir) 0L else a.size(); mt = a.lastModifiedTime().toMillis() / 1000 }   // ONE stat instead of three
             else { dir = f.isDirectory; size = if (dir) 0L else f.length(); mt = f.lastModified() / 1000 }
+            if (!dir && size == 0L) size = fsize(f)   // stat() can report a stale 0 for a file another app just wrote (Android storage cache): ask the open file instead
             val cache = dir && (f.name.equals("thumbnails", true) || File(f, ".nomedia").exists())   // cache folder: hidden together with the dot-folders
             slots[i] = Item(f.name, dir, size, mt, if (dir && counts) f.list()?.size else null, null, cache)
         }

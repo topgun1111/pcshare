@@ -4,6 +4,11 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
+## 2026-11-19 - Wrong 0 B size fixed
+
+### Fixed
+- A file that was just written by another app (for example from Termux or git) no longer shows 0 B in the folder list.
+
 
 
 ## 2026-11-17 - PDF page cache for every PDF
