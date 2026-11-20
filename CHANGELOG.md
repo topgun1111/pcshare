@@ -6,6 +6,12 @@
 
 
 
+## 2026-11-20 - Text box icons fixed
+
+### Fixed
+- Text boxes no longer show the words "[object SVGSVGElement]" at the right edge: the clear (x) button, the show / hide password eye and the three-dot button of split buttons now show their icons.
+- In Phone Explorer sharing, the Port and Shared folders boxes show their name once, inside the box, instead of repeating the value above it.
+
 ## 2026-11-20 - Text inbox looks like the PC window
 
 ### Changed

@@ -1837,7 +1837,7 @@ function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o
   if(hero){const h=E('div','dhero'+(dng?' dng':'')+(kind&&!dng?' k-'+kind:''));h.append(ic(hero));card.append(h)}
   card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   if(o.details&&o.details.length){const dt=E('dl','ddet');o.details.forEach(x=>{dt.append(E('dt','',x[0]),E('dd','',x[1]))});card.append(dt)}   // o.details = [[label, value], ...]: small read-only rows under the message
-  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.innerHTML=ic('close');cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
+  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.append(ic('close'));cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
   const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':(lmDismissAction(o.ok||'OK',o.kind)?'':' lmp')),o.ok||'OK');
   let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>{if(o.altDanger)hap('err');done('alt')}}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
@@ -6494,9 +6494,9 @@ function openPhoneExplorer(){
     t.append(E('b','',title),E('small','',sub));cb.onchange=()=>{B.peSet(JSON.stringify({[key]:cb.checked}))};s.append(cb,E('i'));r.append(t,s);card.append(r)};
   sw('Read-only','The PC can look and copy, not change anything','ro');
   sw('Start automatically','After the phone restarts or the app updates','auto');
-  const fld=(label,ph,val,type,key,fix)=>{const w=E('div'),l=E('small','',label),i=E('input','tf');w.style.cssText='margin:var(--sp-2) var(--sp-1) 0';l.style.cssText='display:block;color:var(--mut);margin:0 0 var(--sp-1) var(--sp-3)';
-    i.type=type;i.placeholder=ph;i.value=val;i.style.cssText='height:48px;margin:0';i.autocomplete='off';
-    i.onchange=()=>{let v=fix(i.value);i.value=v;B.peSet(JSON.stringify({[key]:v}));if(key==='port'&&st.run)toast('Stop and start sharing to use the new port',3500)};w.append(l,i);card.append(w)};
+  const fld=(label,ph,val,type,key,fix)=>{const w=E('div'),i=E('input','tf');w.style.cssText='margin:var(--sp-2) var(--sp-1) 0';
+    i.type=type;i.placeholder=ph;i.setAttribute('aria-label',label);i.value=val;i.style.cssText='margin:0';i.autocomplete='off';
+    i.onchange=()=>{let v=fix(i.value);i.value=v;B.peSet(JSON.stringify({[key]:v}));if(key==='port'&&st.run)toast('Stop and start sharing to use the new port',3500)};w.append(i);card.append(w)};
   fld('Shared folders (empty = everything)','e.g. DCIM, Download',st.wl,'text','wl',v=>v.trim());
   fld('Port','2121',st.port,'number','port',v=>String(Math.min(65535,Math.max(1024,parseInt(v)||2121))));
   const url=()=>'ftp://'+st.user+':'+st.pin+'@'+st.ip+':'+st.port+'/';
@@ -7434,14 +7434,14 @@ function fw(i){if(i._lmf||i.closest('.tfw')||!i.classList.contains('tf')||!OK.te
   const lab=i.getAttribute('aria-label')||(i.placeholder&&i.placeholder.trim())||'';if(!lab||!i.parentNode)return;i._lmf=1;
   const w=E('div','tfw'),fl=E('span','fl',lab),cl=E('button','clr');if(!i.getAttribute('aria-label'))i.setAttribute('aria-label',lab);i.placeholder=' ';
   const cs=getComputedStyle(i.parentNode);if(cs.display.indexOf('flex')>=0)w.style.cssText='flex:1 1 0;min-width:0';
-  cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.innerHTML=ic('close');cl.onclick=ev=>{ev.preventDefault();i.value='';i.focus();i.dispatchEvent(new Event('input',{bubbles:true}))};
+  cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.append(ic('close'));cl.onclick=ev=>{ev.preventDefault();i.value='';i.focus();i.dispatchEvent(new Event('input',{bubbles:true}))};
   i.replaceWith(w);w.append(i,fl,cl);
-  if(i.type==='password'){w.classList.add('pw');const ey=E('button','eye');ey.type='button';ey.tabIndex=-1;ey.setAttribute('aria-label','Show password');ey.setAttribute('aria-pressed','false');ey.innerHTML=ic('hide');
+  if(i.type==='password'){w.classList.add('pw');const ey=E('button','eye');ey.type='button';ey.tabIndex=-1;ey.setAttribute('aria-label','Show password');ey.setAttribute('aria-pressed','false');ey.append(ic('hide'));
     ey.onclick=ev=>{ev.preventDefault();const sh=i.type==='password';i.type=sh?'text':'password';ey.setAttribute('aria-pressed',sh?'true':'false');ey.setAttribute('aria-label',sh?'Hide password':'Show password')};w.append(ey)}}
 const scan=r=>{if(r.nodeType!==1)return;(r.matches&&r.matches('input.tf')?[r]:[]).concat(qa('input.tf',r)).forEach(fw)};
 ['#sheet','#pv','#dual'].forEach(id=>{const el=q(id);if(el){new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(el,{childList:true,subtree:true});scan(el)}});
 /* P3: split button helper: lmSplit('Save',fn,[{l:'Save as...',k:'save',f:fn}]) -> element */
-window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn fill',label),d=E('button','tbtn fill');d.innerHTML=ic('more');d.setAttribute('aria-label','More options');d.setAttribute('aria-haspopup','menu');a.onclick=main;
+window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn fill',label),d=E('button','tbtn fill');d.append(ic('more'));d.setAttribute('aria-label','More options');d.setAttribute('aria-haspopup','menu');a.onclick=main;
   d.onclick=()=>{const sc=E('div','dsc'),m=E('div','dmn'),done=()=>sc.remove();items.forEach(o=>{const b=E('button','dmb'+(o.danger?' dng':'')),ii=E('span','dmi');if(o.k){const g=ic(o.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g)}b.append(ii,E('span','',o.l));b.onclick=()=>{done();o.f()};m.append(b)});
     sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);const r=d.getBoundingClientRect();m.style.right=Math.max(8,innerWidth-r.right)+'px';m.style.top=Math.round(r.bottom+8)+'px'};w.append(a,d);return w};
 }catch(e){console.log('[lumen] ui14 init failed',e)}})();
