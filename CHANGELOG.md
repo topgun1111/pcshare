@@ -6,6 +6,16 @@
 
 
 
+## 2026-11-20 - Text inbox looks like the PC window
+
+### Changed
+- The text inbox now looks like the PC window: every message is a full-width band with a coloured edge (received in the theme colour, sent in blue), each message a slightly different tint, and its own Copy button.
+- Messages are shown with formatting (headings, lists, quotes, tables, bold, links). Code, fenced or pasted without fences, appears as a card with the language name, line numbers, colours and its own Copy button; long code starts collapsed.
+- The input row matches the PC: a prompt sign, a flat box, Paste and Send.
+
+### Added
+- Long-press a message: Copy code, Show as code, Show as plain text, Reset view.
+
 ## 2026-11-20 - Text sharing separated from printing, no limits, easier PC finding
 
 ### Added

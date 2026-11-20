@@ -1,17 +1,23 @@
 package com.lanshare.app
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.format.DateUtils
+import android.text.method.LinkMovementMethod
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
+import android.util.LruCache
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -19,25 +25,96 @@ import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.graphics.ColorUtils
 import com.lanshare.app.core.Cfg
 import com.lanshare.app.core.Notes
 import java.text.DateFormat
 import java.util.Date
 
 /**
- * Text inbox: a chat-like list of everything sent to / received from other devices, plus a box to type or paste text and send it.
- * Tap an entry = copy it, long-press = copy / open link / share / delete. The device line chooses the default target of text sharing
- * (share-sheet entry, Direct Share, Quick Settings tile, notification quick-reply); the menu holds the Auto-copy and Clipboard-sync switches.
+ * Guesses whether a message that came WITHOUT ``` fences is code (a phone usually sends a pasted snippet), so the inbox can show it as a code card.
+ * Port of `guess_lang` in lanshare_text.py - keep both in step. Returns a [CodeHl] key (json, html, sh, php, py, sql, c, java, js, yaml, css) or null for prose.
+ */
+internal object CodeGuess {
+    private val CODE_START = Regex(
+        """^\s*(def |class |import |from \S+ import |function |const |let |var |if\s*\(|for\s*\(|while\s*\(|return\b|public |private |protected |""" +
+        """#include|#define|using |namespace |package |fun |val |@\w+|<\?php|SELECT |INSERT |UPDATE |DELETE |CREATE |async |await |try:|except|else:|elif |""" +
+        """\$\w+\s*=|\w+\(.*\)\s*[{:;]?\s*$|[\w.\[\]]+\s*(=|:=|\+=|-=)\s*\S)"""
+    )
+    private val CODE_END = Regex("""[;{}]\s*$|\)\s*:?\s*$|:\s*$|,\s*$""")
+    private val SYMBOLS = Regex("""[=(){}\[\]<>;]""")
+    private val NOT_PROSE = Regex("""[{};=]""")
+    private val WS = Regex("""\s+""")
+    private val JSON_HINT = Regex("\"\\s*:|\\[\\s*[\\d\"{\\[]")
+    private val HTML = Regex("""^\s*<(!doctype|html|\?xml|svg|div|span|body|head|script|style|p|a|ul|table)\b""", RegexOption.IGNORE_CASE)
+    private val DOLLAR_VAR = Regex("""\$\w+\s*=""")
+    private val PY = Regex("""^\s*(def |class \w+.*:|import \w+|from \w+ import|elif |print\()""", RegexOption.MULTILINE)
+    private val SQL = Regex("""^\s*(select|insert into|update|delete from|create table)\b""", RegexOption.MULTILINE)
+    private val C = Regex("""#include|std::|::|->|\bnullptr\b""")
+    private val JAVA = Regex("""\bfun \w+|\bval \w+|\bvar \w+:|\bclass \w+\(|import (android|java|kotlin)""")
+    private val JS = Regex("""\b(function|const|let|=>|console\.|document\.|require\()""")
+    private val YAML = Regex("""^\s*[\w.-]+\s*:\s*\S""", RegexOption.MULTILINE)
+    private val CSS_SEL = Regex("""^\s*[#.]?[\w-]+\s*\{""", RegexOption.MULTILINE)
+    private val CSS_DECL = Regex("""[\w-]+\s*:\s*[^;]+;""")
+    private val SHELL = arrayOf("$ ", "pip ", "pip3 ", "python ", "python3 ", "py ", "git ", "npm ", "npx ", "yarn ", "cd ", "dir ", "ls ", "curl ", "wget ", "sudo ", "apt ", "apt-get ",
+        "winget ", "docker ", "adb ", "ssh ", "scp ", "chmod ", "mkdir ", "gradle ", "./gradlew", "PS ", "C:\\", "kubectl ", "cargo ", "go ", "pwsh ", "powershell ")
+
+    private fun endsSentence(l: String): Boolean { val t = l.trimEnd(); return t.endsWith(".") || t.endsWith("?") || t.endsWith("!") }
+
+    fun guess(text: String): String? {
+        val s = text.trim()
+        if (s.isEmpty() || s.length > 60_000) return null
+        val first = s.substringBefore('\n')
+        if ((s[0] == '{' || s[0] == '[') && (s.last() == '}' || s.last() == ']') && JSON_HINT.containsMatchIn(s)) return "json"
+        if (HTML.containsMatchIn(s) && s.endsWith(">")) return "html"
+        if (!s.contains('\n')) {
+            if (SHELL.any { first.startsWith(it) } && !endsSentence(first)) return "sh"
+            return null
+        }
+        val rows = s.split('\n').filter { it.isNotBlank() }
+        if (rows.size < 2) return null
+        var score = 0
+        for (l in rows) {
+            val codey = CODE_START.containsMatchIn(l) || CODE_END.containsMatchIn(l) ||
+                ((l.startsWith("  ") || l.startsWith("\t")) && SYMBOLS.containsMatchIn(l))
+            val prose = l.trim().split(WS).size >= 7 && endsSentence(l) && !NOT_PROSE.containsMatchIn(l)
+            if (codey && !prose) score++
+        }
+        if (score.toDouble() / rows.size < 0.6) return null
+        val low = s.lowercase()
+        if (low.contains("<?php") || (DOLLAR_VAR.containsMatchIn(s) && s.contains(';'))) return "php"
+        if (PY.containsMatchIn(s) && !s.take(200).contains('{')) return "py"
+        if (SQL.containsMatchIn(low)) return "sql"
+        if (C.containsMatchIn(s)) return "c"
+        if (JAVA.containsMatchIn(s)) return "java"
+        if (JS.containsMatchIn(s)) return "js"
+        if (YAML.containsMatchIn(s) && !s.contains('{') && !s.contains(';')) return "yaml"
+        if (CSS_SEL.containsMatchIn(s) && CSS_DECL.containsMatchIn(s)) return "css"
+        return if (s.contains('{') || s.contains(';')) "js" else "py"
+    }
+}
+
+/**
+ * Text inbox: a transcript of everything sent to / received from other devices, plus a box to type or paste text and send it. Dressed like the PC window
+ * (lanshare_text.py): every message is a full-width band with a coloured edge bar - received = the theme's primary colour, sent = the theme's blue - and
+ * a slightly different tint on every other message; each message has its own Copy action; Markdown is rendered; code (fenced or pasted) is a card with
+ * a language label, line numbers, syntax colours and its own Copy button; long code starts collapsed.
+ * Tap a message = copy it, long-press = copy / copy code / open link / view as code or text / share / delete. The device line chooses the default target of
+ * text sharing (share-sheet entry, Direct Share, Quick Settings tile, notification quick-reply); the menu holds the Auto-copy and Clipboard-sync switches.
  */
 class InboxActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var list: ListView
     private lateinit var input: EditText
     private lateinit var toLine: TextView
+    private lateinit var info: TextView
     private var data: List<Notes.Note> = emptyList()
     private val onChange: () -> Unit = { ui.post { refresh() } }
 
@@ -45,21 +122,35 @@ class InboxActivity : Activity() {
 
     private lateinit var pal: AppPal.P
     private var palSig: String? = null
+    private var night = false
+    private var inCol = 0      // received messages: the theme's primary colour
+    private var outCol = 0     // sent messages: the theme's blue (the code-highlighter's "type" colour)
+
+    private val modes = HashMap<Long, String>()          // note id -> "code" | "text": the view the person forced from the long-press menu
+    private val expanded = HashSet<String>()             // "noteId:blockIndex" of long code blocks shown in full
+    private val cache = LruCache<Long, List<MdRender.Block>>(64)   // parsed messages (a note never changes; the mode and the theme reset it)
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         TextSend.ensureRunning(this)
         pal = AppPal.pal(this); palSig = AppPal.json(this)
         val light = AppPal.isLight(pal.bg)
+        night = !light
+        inCol = pal.ac
+        outCol = CodeHl.color(this, CodeHl.TYPE, night)
         window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
         androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
 
-        // header: title + menu
+        // header: dot + title + device count + menu
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(12), dp(8), dp(8)) }
-        head.addView(TextView(this).apply { NlA11y.heading(this); text = "Text inbox"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, android.graphics.Typeface.BOLD) },
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(TextView(this).apply { text = "●"; LumenTypography.fit(this, 20f); setTextColor(pal.ac); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO })
+        head.addView(TextView(this).apply {
+            NlA11y.heading(this); text = "  LANShare Text"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); setTypeface(typeface, Typeface.BOLD)
+        })
+        info = TextView(this).apply { LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(12), 0, 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        head.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(TextView(this).apply {
             text = "⋮"; LumenTypography.fit(this, 24f); setTextColor(pal.fg); gravity = Gravity.CENTER
             setPadding(dp(16), dp(4), dp(16), dp(4)); setOnClickListener { menu() }
@@ -74,7 +165,7 @@ class InboxActivity : Activity() {
         }
         root.addView(toLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        // list (+ empty hint)
+        // transcript (+ empty hint)
         list = ListView(this).apply { divider = null; dividerHeight = 0; isStackFromBottom = true; transcriptMode = android.widget.AbsListView.TRANSCRIPT_MODE_NORMAL; adapter = this@InboxActivity.adapter }
         val empty = TextView(this).apply {
             text = "Nothing yet.\nType below, or share any text to LANShare."; gravity = Gravity.CENTER; LumenTypography.fit(this, 15f); setTextColor(pal.mut); setPadding(dp(32), dp(32), dp(32), dp(32))
@@ -85,16 +176,23 @@ class InboxActivity : Activity() {
         list.emptyView = empty
         root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        // input row
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(8), dp(8), dp(8), dp(8)) }
+        // input row: prompt, flat box, Paste / Send
+        root.addView(View(this).apply { setBackgroundColor(pal.bd) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(dp(12), dp(8), dp(8), dp(8)) }
+        row.addView(TextView(this).apply {
+            text = "›"; typeface = Typeface.MONOSPACE; LumenTypography.fit(this, 20f); setTextColor(pal.ac); gravity = Gravity.CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
         input = EditText(this).apply {
-            setTextColor(pal.fg); setHintTextColor(pal.mut)
+            setTextColor(pal.fg); setHintTextColor(pal.mut); background = null
+            typeface = Typeface.MONOSPACE; LumenTypography.fit(this, 14f)
+            setPadding(dp(8), dp(10), dp(8), dp(10))
             hint = "Type or paste text"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             minLines = 1; maxLines = 5
         }
         row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Button(this).apply { text = "Paste"; isAllCaps = false; setOnClickListener { paste() } })
-        row.addView(Button(this).apply { text = "Send"; isAllCaps = false; setOnClickListener { sendTyped() } })
+        row.addView(pill("Paste", false) { paste() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(4) })
+        row.addView(pill("Send", true) { sendTyped() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(6) })
         root.addView(row)
 
         setContentView(root)
@@ -122,6 +220,8 @@ class InboxActivity : Activity() {
         data = Notes.all()
         adapter.notifyDataSetChanged()
         if (data.isNotEmpty()) list.setSelection(data.size - 1)
+        val n = TextSend.online().size
+        info.text = "$n device" + (if (n != 1) "s" else "") + " online"
         val d = TextSend.defaultName()
         val id = Cfg.defTarget()
         toLine.text = when {
@@ -203,7 +303,7 @@ class InboxActivity : Activity() {
         }.show()
     }
 
-    // ---- list
+    // ---- helpers
     private fun toast(m: String) { Lm.snack(this, m, Toast.LENGTH_SHORT) }
 
     private fun copy(t: String) {
@@ -211,25 +311,194 @@ class InboxActivity : Activity() {
         ClipPush.copy(this, t); toast("Copied")
     }
 
+    private fun copyRaw(t: String, what: String) {
+        ClipSync.mark(t)
+        ClipPush.copy(this, t); toast(what)
+    }
+
     private fun whenText(ts: Long): String =
         if (DateUtils.isToday(ts)) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(ts))
         else DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
 
+    private fun openUrl(u: String) {
+        try {
+            val uri = android.net.Uri.parse(u.trim())
+            val sc = uri.scheme?.lowercase()
+            if (sc == "http" || sc == "https" || sc == "mailto" || sc == "tel") startActivity(Intent(Intent.ACTION_VIEW, uri)) else toast(u)
+        } catch (_: Exception) { toast("Cannot open link") }
+    }
+
+    private fun tint(color: Int, a: Float): Int = ColorUtils.blendARGB(pal.bg, color, a)
+
+    /** Flat button of the input row: Paste = surface, Send = the theme's primary. */
+    private fun pill(label: String, primary: Boolean, click: () -> Unit): Button = Button(this).apply {
+        text = label; isAllCaps = false; LumenTypography.fit(this, 14f)
+        setTextColor(if (primary) pal.onac else pal.fg)
+        background = GradientDrawable().apply { setColor(if (primary) pal.ac else pal.cont); cornerRadius = dp(10).toFloat() }
+        stateListAnimator = null
+        minWidth = dp(64); minimumWidth = dp(64); minHeight = dp(44); minimumHeight = dp(44)
+        setPadding(dp(14), 0, dp(14), 0)
+        setOnClickListener { click() }
+    }
+
+    /** Small text action (Copy, Open link, the three-dot menu) with a 40 dp touch height. */
+    private fun act(label: String, desc: String, click: () -> Unit): TextView = TextView(this).apply {
+        text = label; LumenTypography.fit(this, 12f); setTextColor(pal.mut); gravity = Gravity.CENTER
+        setPadding(dp(10), 0, dp(10), 0); minimumHeight = dp(40); contentDescription = desc
+        setOnClickListener { click() }
+    }
+
+    private fun setMode(id: Long, mode: String?) {
+        if (mode == null) modes.remove(id) else modes[id] = mode
+        cache.remove(id)
+        adapter.notifyDataSetChanged()
+    }
+
+    // ---- one message -> blocks (Markdown, fenced code, or a pasted snippet guessed to be code)
+    private fun blocksFor(n: Notes.Note): List<MdRender.Block> {
+        cache.get(n.id)?.let { return it }
+        val t = n.text
+        val mode = modes[n.id]
+        val fenced = t.contains("```") || t.contains("~~~")
+        val guess = if (mode == "text" || fenced) null else (CodeGuess.guess(t) ?: if (mode == "code") "text" else null)
+        val out: List<MdRender.Block> = when {
+            guess != null -> listOf(MdRender.Block.Code(guess, t.trim('\n')))
+            mode == "text" -> listOf(MdRender.Block.Text(t.trim('\n')))
+            else -> MdRender.blocks(t, pal.fg, night, resources.displayMetrics.density) { u -> openUrl(u) }
+        }
+        cache.put(n.id, out)
+        return out
+    }
+
     private fun actions(n: Notes.Note) {
         val link = ClipPush.linkOf(n.text)
-        val labels = ArrayList<String>(); labels.add("Copy")
-        if (link != null) labels.add("Open link")
-        labels.add("Share…"); labels.add("Delete")
-        AppPal.dlg(this).setItems(labels.toTypedArray()) { _, w ->
-            when (labels[w]) {
-                "Copy" -> copy(n.text)
-                "Open link" -> if (link != null && !ClipPush.open(this, link)) toast("No app can open this link")
-                "Share…" -> try {
-                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, n.text), "Share text"))
-                } catch (_: Throwable) {}
-                "Delete" -> Notes.remove(n.id)
+        val fenced = n.text.contains("```") || n.text.contains("~~~")
+        val guess = if (fenced) null else CodeGuess.guess(n.text)
+        val codes: List<String> =
+            if (fenced) MdRender.blocks(n.text, pal.fg, night, resources.displayMetrics.density) { }.filterIsInstance<MdRender.Block.Code>().map { it.code }
+            else if (guess != null) listOf(n.text.trim('\n')) else emptyList()
+        val looksCode = codes.isNotEmpty()
+        val mode = modes[n.id]
+        val labels = ArrayList<String>()
+        val acts = ArrayList<() -> Unit>()
+        labels.add("Copy message"); acts.add { copy(n.text) }
+        if (looksCode) { labels.add(if (codes.size > 1) "Copy all code" else "Copy code"); acts.add { copyRaw(codes.joinToString("\n\n"), "Code copied") } }
+        if (link != null) { labels.add("Open link"); acts.add { if (!ClipPush.open(this, link)) toast("No app can open this link") } }
+        if (mode != "code" && !looksCode) { labels.add("Show as code"); acts.add { setMode(n.id, "code") } }
+        if (mode != "text" && looksCode) { labels.add("Show as plain text"); acts.add { setMode(n.id, "text") } }
+        if (mode != null) { labels.add("Reset view"); acts.add { setMode(n.id, null) } }
+        labels.add("Share…"); acts.add {
+            try { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, n.text), "Share text")) } catch (_: Throwable) {}
+        }
+        labels.add("Delete"); acts.add { Notes.remove(n.id) }
+        AppPal.dlg(this).setItems(labels.toTypedArray()) { _, w -> acts[w]() }.show()
+    }
+
+    // ---- views
+    private fun headLine(n: Notes.Note, color: Int): CharSequence {
+        val a = (if (n.out) "› To " else "● From ") + n.peer
+        return SpannableStringBuilder(a).apply {
+            setSpan(StyleSpan(Typeface.BOLD), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(color), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val st = length
+            append("  ·  " + whenText(n.ts))
+            setSpan(ForegroundColorSpan(pal.mut), st, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    private fun bodyText(t: CharSequence, out: Boolean, wire: (View) -> Unit): TextView = TextView(this).apply {
+        text = t; LumenTypography.fit(this, 15f)
+        setTextColor(if (out) ColorUtils.blendARGB(pal.fg, outCol, 0.15f) else pal.fg)
+        movementMethod = LinkMovementMethod.getInstance()   // links in the text are tappable
+        isFocusable = false
+        wire(this)                                          // a tap on text that is not a link still copies the message
+    }
+
+    private fun codeCard(key: String, b: MdRender.Block.Code, wire: (View) -> Unit): View {
+        val lines = b.code.split('\n')
+        val total = lines.size
+        val capped = total > CAP_LINES && !expanded.contains(key)
+        val shown = if (capped) lines.subList(0, CAP_LINES) else lines
+        val txt = shown.joinToString("\n")
+        val sp = SpannableString(txt)
+        val hk = if (b.lang.isEmpty() || b.lang == "text" || b.lang == "table") null else CodeHl.key(b.lang)
+        if (hk != null && hk != "md" && b.code.length <= 60_000) {
+            val arr = try { CodeHl.scan(txt, hk) } catch (_: Throwable) { null }
+            if (arr != null) {
+                var k = 0
+                while (k + 2 < arr.size) {
+                    val s = arr[k]; val e = arr[k + 1]
+                    if (s >= 0 && e > s && e <= txt.length) sp.setSpan(ForegroundColorSpan(CodeHl.color(this, arr[k + 2], night)), s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    k += 3
+                }
             }
-        }.show()
+        }
+        val codeBg = ColorUtils.blendARGB(pal.bg, pal.fg, 0.04f)
+
+        val lbl = TextView(this).apply { text = b.lang.ifEmpty { "text" }; LumenTypography.fit(this, 12f); setTextColor(pal.mut); typeface = Fnt.semi(); setPadding(dp(10), 0, dp(4), 0) }
+        val cpy = act("Copy", "Copy code") {}
+        cpy.setOnClickListener {
+            copyRaw(b.code, "Code copied")
+            cpy.text = "Copied"; cpy.setTextColor(CodeHl.color(this, CodeHl.STRING, night))
+            ui.postDelayed({ cpy.text = "Copy"; cpy.setTextColor(pal.mut) }, 1200)
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(pal.cont)
+            addView(lbl, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (total > CAP_LINES) addView(act(if (capped) "▾ Show all $total lines" else "▴ Collapse", if (capped) "Show all lines" else "Collapse code") {
+                if (!expanded.remove(key)) expanded.add(key)
+                adapter.notifyDataSetChanged()
+            }.also { it.setTextColor(outCol) })
+            addView(cpy)
+        }
+        wire(head)
+
+        val code = TextView(this).apply {
+            typeface = Typeface.MONOSPACE; LumenTypography.fit(this, 12f); setTextColor(pal.fg)
+            setPadding(dp(10), dp(6), dp(10), dp(6)); setHorizontallyScrolling(true)
+            text = sp
+        }
+        val scroll = HorizontalScrollView(this).apply {
+            isFillViewport = true; isHorizontalScrollBarEnabled = false
+            addView(code, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        if (shown.size > 1) {
+            body.addView(TextView(this).apply {
+                typeface = Typeface.MONOSPACE; LumenTypography.fit(this, 12f); setTextColor(ColorUtils.setAlphaComponent(pal.mut, 170))
+                gravity = Gravity.END; setBackgroundColor(pal.cont); setPadding(dp(8), dp(6), dp(6), dp(6))
+                text = (1..shown.size).joinToString("\n")
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        body.addView(scroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(codeBg); addView(head); addView(body) }
+        return LinearLayout(this).apply { setBackgroundColor(pal.bd); setPadding(1, 1, 1, 1); addView(inner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
+    }
+
+    private fun tableView(b: MdRender.Block.Table): View {
+        val headBg = ColorUtils.blendARGB(pal.bg, pal.fg, 0.10f)
+        val tl = TableLayout(this).apply { setBackgroundColor(pal.bd); setPadding(1, 1, 0, 0) }
+        fun row(cells: List<CharSequence>, head: Boolean) {
+            val tr = TableRow(this)
+            for ((k, t) in cells.withIndex()) {
+                val tv = TextView(this).apply {
+                    text = t; LumenTypography.fit(this, 14f); setTextColor(pal.fg)
+                    typeface = if (head) Fnt.semi() else Fnt.med()
+                    setPadding(dp(10), dp(6), dp(10), dp(6)); maxWidth = dp(260)
+                    gravity = when (b.align.getOrElse(k) { 0 }) { 1 -> Gravity.CENTER_HORIZONTAL; 2 -> Gravity.END; else -> Gravity.START }
+                    setBackgroundColor(if (head) headBg else pal.bg)
+                }
+                val lp = TableRow.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                lp.setMargins(0, 0, 1, 1)
+                tr.addView(tv, lp)
+            }
+            tl.addView(tr)
+        }
+        row(b.head, true)
+        for (r in b.rows) row(r, false)
+        return HorizontalScrollView(this).apply { addView(tl, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
     }
 
     private val adapter = object : BaseAdapter() {
@@ -238,29 +507,45 @@ class InboxActivity : Activity() {
         override fun getItemId(p: Int) = data[p].id
         override fun getView(p: Int, cv: View?, parent: ViewGroup): View {
             val n = data[p]
-            val root = LinearLayout(this@InboxActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = if (n.out) Gravity.END else Gravity.START
-                setPadding(dp(12), dp(4), dp(12), dp(4))
+            val color = if (n.out) outCol else inCol
+            val alt = p % 2 == 1                                   // every other message a little stronger, so neighbours are easy to tell apart
+            val wire: (View) -> Unit = { v -> v.setOnClickListener { copy(n.text) }; v.setOnLongClickListener { actions(n); true } }
+
+            val content = LinearLayout(this@InboxActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(4), dp(4), dp(10)) }
+            val link = ClipPush.linkOf(n.text)
+            val hdr = LinearLayout(this@InboxActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            hdr.addView(TextView(this@InboxActivity).apply {
+                text = headLine(n, color); LumenTypography.fit(this, 12f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            hdr.addView(act("Copy", "Copy message") { copy(n.text) })
+            if (link != null) hdr.addView(act("Open link", "Open link") { if (!ClipPush.open(this@InboxActivity, link)) toast("No app can open this link") })
+            hdr.addView(act("⋮", "More actions for this message") { actions(n) })
+            content.addView(hdr)
+
+            for ((i, b) in blocksFor(n).withIndex()) {
+                val v: View = when (b) {
+                    is MdRender.Block.Text -> bodyText(b.text, n.out, wire)
+                    is MdRender.Block.Code -> codeCard("${n.id}:$i", b, wire)
+                    is MdRender.Block.Table -> tableView(b)
+                }
+                content.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4); leftMargin = dp(2) })
             }
-            val bubble = LinearLayout(this@InboxActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = GradientDrawable().apply { setColor(if (n.out) androidx.core.graphics.ColorUtils.blendARGB(pal.bg, pal.ac, 0.22f) else pal.cont); cornerRadius = dp(12).toFloat() }
-                setOnClickListener { copy(n.text) }
-                setOnLongClickListener { actions(n); true }
+
+            val band = LinearLayout(this@InboxActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setBackgroundColor(tint(color, if (alt) 0.12f else 0.08f))
+                addView(View(this@InboxActivity).apply { setBackgroundColor(tint(color, 0.55f)) }, LinearLayout.LayoutParams(dp(3), ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(content, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
-            bubble.addView(TextView(this@InboxActivity).apply {
-                text = (if (n.out) "To " else "From ") + n.peer + " · " + whenText(n.ts)
-                LumenTypography.fit(this, 12f); setTextColor(pal.mut)
-            })
-            bubble.addView(TextView(this@InboxActivity).apply {
-                text = n.text.trim(); LumenTypography.fit(this, 15f); setTextColor(pal.fg)
-                maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
-                setPadding(0, dp(2), 0, 0)
-            })
-            root.addView(bubble, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            return root
+            wire(band)
+            return FrameLayout(this@InboxActivity).apply {
+                setPadding(0, dp(3), 0, dp(3))
+                addView(band, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
         }
+    }
+
+    private companion object {
+        const val CAP_LINES = 30   // code blocks longer than this start collapsed ("Show all N lines")
     }
 }
