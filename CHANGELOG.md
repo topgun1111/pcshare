@@ -4,12 +4,21 @@
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
-## 2026-11-19 - Wrong 0 B size fixed
+
+
+## 2026-11-20 - Text sharing separated from printing, no limits, easier PC finding
+
+### Added
+- The phone finds a PC running LANShare Text by itself, on Wi-Fi and over Tailscale: the PC announces itself and the phone answers, so sending works both ways without typing an address.
+
+### Removed
+- Text size limits: texts of any length can be sent and received, and the text inbox no longer drops old texts.
 
 ### Fixed
-- A file that was just written by another app (for example from Termux or git) no longer shows 0 B in the folder list.
+- A damaged or cut-off archive (ZIP, 7z, RAR, TAR) now says so in plain words - what is wrong and what to do - instead of showing a web address or a technical error. The download card also explains why a download failed (file not found, device not answering, connection lost).
 
-
+### Changed
+- PC text sharing now uses its own ports and the separate LANShare Text program (lanshare_text.py); pcprint.py only prints. Run the new lanshare_text.py on the PC.
 
 ## 2026-11-17 - PDF page cache for every PDF
 

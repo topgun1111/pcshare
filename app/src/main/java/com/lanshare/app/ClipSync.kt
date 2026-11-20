@@ -60,7 +60,7 @@ object ClipSync {
         } catch (_: Throwable) { false }
         if (sensitive) return
         val t = try { c.getItemAt(0).coerceToText(ctx)?.toString() } catch (_: Throwable) { null }
-        if (t.isNullOrBlank() || t.length > 100_000) return
+        if (t.isNullOrBlank()) return
         if (t.hashCode() == lastHash) return
         lastHash = t.hashCode()
         val peer = TextSend.target() ?: return

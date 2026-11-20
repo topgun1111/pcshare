@@ -33,6 +33,7 @@ import com.lanshare.app.core.PrintSpace
 import com.lanshare.app.core.errText
 import android.provider.OpenableColumns
 import java.io.File
+import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicInteger
@@ -1131,6 +1132,17 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    /** Why the server refused: its own {"error": "..."} text (already plain words), else a short description of the HTTP code. */
+    private fun serverReason(h: java.net.HttpURLConnection): String {
+        val txt = try { h.errorStream?.use { String(it.readBytes(), Charsets.UTF_8) } } catch (_: Exception) { null }
+        val msg = try { txt?.let { JSONObject(it).optString("error") } } catch (_: Exception) { null }
+        return when {
+            !msg.isNullOrBlank() -> msg
+            h.responseCode == 404 -> "The file was not found - it was moved, renamed or deleted. Refresh the folder and try again."
+            else -> "The other device answered with an error (HTTP ${h.responseCode})."
+        }
+    }
+
     /** Stream a LANShare URL into /Download using the server's own filename, reporting progress. */
     private fun saveToDownloads(url: String, name0: String?, openAfter: Boolean = false, pick: Boolean = false) {
         val id = dlSeq.incrementAndGet()
@@ -1140,6 +1152,7 @@ class MainActivity : Activity() {
             try {
                 dlUi(id, name, 0, 0, 0.0, "run")
                 val c = URL(com.lanshare.app.core.RootShell.sign(url)).openConnection().apply { connectTimeout = 15_000; readTimeout = 60_000 }
+                (c as? java.net.HttpURLConnection)?.let { h -> if (h.responseCode >= 400) throw IOException(serverReason(h)) }   // show the server's reason (damaged archive ...), not Android's "http://127.0.0.1:8765/api/dl?..." text
                 c.getHeaderField("Content-Disposition")?.let {
                     Regex("filename\\*=UTF-8''([^;]+)").find(it)?.let { m ->
                         name = URLDecoder.decode(m.groupValues[1], "UTF-8") }
@@ -1176,7 +1189,7 @@ class MainActivity : Activity() {
             } catch (e: InterruptedException) {
                 f?.delete(); dlUi(id, name, 0, 0, 0.0, "cancel")
             } catch (e: Exception) {
-                f?.delete(); dlUi(id, name, 0, 0, 0.0, "err", e.message ?: e.javaClass.simpleName)
+                f?.delete(); dlUi(id, name, 0, 0, 0.0, "err", com.lanshare.app.core.ArcErr.download(e))
             }
         }.start()
     }
@@ -1222,7 +1235,7 @@ class MainActivity : Activity() {
             } catch (e: InterruptedException) {
                 out.forEach { it.delete() }; dlUi(id, label, 0, 0, 0.0, "cancel")
             } catch (e: Exception) {
-                out.forEach { it.delete() }; dlUi(id, label, 0, 0, 0.0, "err", e.message ?: e.javaClass.simpleName)
+                out.forEach { it.delete() }; dlUi(id, label, 0, 0, 0.0, "err", com.lanshare.app.core.ArcErr.download(e))
             }
         }.start()
     }

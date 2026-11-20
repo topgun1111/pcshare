@@ -255,7 +255,7 @@ class InboxActivity : Activity() {
                 LumenTypography.fit(this, 12f); setTextColor(pal.mut)
             })
             bubble.addView(TextView(this@InboxActivity).apply {
-                text = n.text.trim().take(1500); LumenTypography.fit(this, 15f); setTextColor(pal.fg)
+                text = n.text.trim(); LumenTypography.fit(this, 15f); setTextColor(pal.fg)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
                 setPadding(0, dp(2), 0, 0)
             })

@@ -198,14 +198,15 @@ class ArcIndex(val file: File?, val fmt: String, val charset: Charset, val rz: R
                     }
                     return ix
                 } catch (e: IllegalArgumentException) { continue
-                } catch (e: ZipException) { throw IOException("not a valid ZIP file: " + errText(e)) }
+                } catch (e: ZipException) { throw IOException(ArcErr.friendly(e, "ZIP file")) }
             }
-            throw IOException("could not read the file names of this ZIP")
+            throw IOException("This ZIP file is damaged or incomplete - its file names cannot be read. Copy it again, or repair it with an archive tool.")
         }
 
         fun otherMsg(fmt: String, e: Exception): String {
             val m = (e.message ?: "") + " " + e.javaClass.simpleName
             return if (m.contains("password", true) || m.contains("encrypt", true) || m.contains("Cannot read encrypted", true)) "this archive is password-protected"
+                else if (ArcErr.damaged(e)) ArcErr.friendly(e, fmt.uppercase() + " archive")
                 else "cannot read this ${fmt.uppercase()} file: " + errText(e)
         }
 
@@ -214,6 +215,7 @@ class ArcIndex(val file: File?, val fmt: String, val charset: Charset, val rz: R
             return when {
                 m.contains("v5", true) || m.contains("rar5", true) -> "RAR5 archives are not supported yet (ZIP and RAR 4 work)"
                 m.contains("password", true) || m.contains("encrypt", true) -> "this archive is password-protected"
+                ArcErr.damaged(e) -> ArcErr.friendly(e, "RAR archive")
                 else -> "cannot read this RAR file: " + errText(e)
             }
         }
@@ -375,7 +377,7 @@ object RangeZip {
     /** Where an entry's data begins: its local header has name/extra lengths of its own, which may differ from the central directory's. */
     fun dataStart(s: Source, e: AEntry): Long {
         val h = readAt(s, e.off, 30)
-        if (u32(h, 0) != 0x04034b50L) throw IOException("damaged ZIP entry header")
+        if (u32(h, 0) != 0x04034b50L) throw IOException("A file inside this ZIP has a damaged header - the archive is corrupted or cut off. Copy it again, or repair it with an archive tool.")
         return e.off + 30 + u16(h, 26) + u16(h, 28)
     }
 }
@@ -581,6 +583,12 @@ object ArcStore {
                 } catch (c: Cancelled) {
                     job.state = "cancel"
                     throw c
+                } catch (z: ZipException) {
+                    job.state = "error"
+                    throw IOException(ArcErr.friendly(z, "ZIP file", e.name))
+                } catch (z: java.io.EOFException) {
+                    job.state = "error"
+                    throw IOException(ArcErr.friendly(z, "ZIP file", e.name))
                 } finally {
                     inf.end()
                     if (tmp.exists()) tmp.delete()
@@ -595,11 +603,13 @@ object ArcStore {
     private fun zipExtract(file: File, charset: Charset, raw: String, o: OutputStream) {
         try {
             ZipFile(file, charset).use { z ->
-                val e = z.getEntry(raw) ?: throw NotFound("entry not found in the archive")
+                val e = z.getEntry(raw) ?: throw NotFound("this file was not found in the archive - the archive may be damaged or have changed; reload the folder")
                 z.getInputStream(e).use { it.copyTo(o, 1 shl 16) }
             }
         } catch (e: ZipException) {
-            throw IOException("cannot extract this file (password-protected or damaged): " + errText(e))
+            throw IOException(ArcErr.friendly(e, "ZIP file", raw.substringAfterLast('/')))
+        } catch (e: java.io.EOFException) {   // cut-off data: "Unexpected end of ZLIB input stream"
+            throw IOException(ArcErr.friendly(e, "ZIP file", raw.substringAfterLast('/')))
         }
     }
 
@@ -608,17 +618,18 @@ object ArcStore {
         try {
             when (fmt) {
                 "7z" -> SevenZFile(file).use { z ->
-                    val e = z.entries.firstOrNull { it.name == raw && !it.isDirectory } ?: throw NotFound("entry not found in the archive")
+                    val e = z.entries.firstOrNull { it.name == raw && !it.isDirectory } ?: throw NotFound("this file was not found in the archive - the archive may be damaged or have changed; reload the folder")
                     z.getInputStream(e).use { it.copyTo(o, 1 shl 16) }
                 }
                 "gz", "bz2", "xz" -> ArcIndex.unpack(fmt, file.inputStream()).use { it.copyTo(o, 1 shl 16) }
                 else -> TarArchiveInputStream(ArcIndex.unpack(fmt, file.inputStream()), "UTF-8").use { t ->
                     while (true) {
-                        val e = t.nextTarEntry ?: throw NotFound("entry not found in the archive")
+                        val e = t.nextTarEntry ?: throw NotFound("this file was not found in the archive - the archive may be damaged or have changed; reload the folder")
                         if (e.isFile && e.name == raw) { t.copyTo(o, 1 shl 16); break }
                     }
                 }
             }
+        } catch (e: java.io.EOFException) { throw IOException(ArcErr.friendly(e, fmt.uppercase() + " archive", raw.substringAfterLast('/')))
         } catch (e: IOException) { throw e
         } catch (e: NotFound) { throw e
         } catch (e: Exception) { throw IOException(ArcIndex.otherMsg(fmt, e)) }
@@ -627,10 +638,11 @@ object ArcStore {
     private fun rarExtract(file: File, raw: String, o: OutputStream) {
         try {
             Archive(file).use { a ->
-                val h = a.fileHeaders.firstOrNull { it.fileName == raw } ?: throw NotFound("entry not found in the archive")
+                val h = a.fileHeaders.firstOrNull { it.fileName == raw } ?: throw NotFound("this file was not found in the archive - the archive may be damaged or have changed; reload the folder")
                 if (h.isEncrypted) throw IOException("this file is password-protected")
                 a.extractFile(h, o)
             }
+        } catch (e: java.io.EOFException) { throw IOException(ArcErr.friendly(e, "RAR archive", raw.substringAfterLast('/')))
         } catch (e: IOException) { throw e
         } catch (e: NotFound) { throw e
         } catch (e: Exception) { throw IOException(ArcIndex.rarMsg(e)) }

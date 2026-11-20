@@ -148,11 +148,11 @@ class RemoteFs(peer: Peer) : Endpoint {
     /** Sends clipboard text / a link to that device (it shows a box and opens links in its browser). */
     fun pushClip(text: String, from: String, quiet: Boolean = false) {
         val j = JSONObject().put("text", text).put("from", from)
-        try { j.put("id", Cfg.id); Core.discOrNull()?.let { j.put("port", it.port) } } catch (_: Exception) {}   // lets a PC (pcprint.py 26+) answer this device from its text window
+        try { j.put("id", Cfg.id); Core.discOrNull()?.let { j.put("port", it.port) } } catch (_: Exception) {}   // lets a PC (lanshare_text.py) answer this device from its text window
         if (quiet) j.put("quiet", true)   // clipboard sync: the receiver only copies it silently when its owner turned "Auto-copy" on, else it is shown like any other text
         val b = j.toString().toByteArray(Charsets.UTF_8)
         callRaw("POST", "clip", body = java.io.ByteArrayInputStream(b), size = b.size.toLong(),
-            headers = mapOf("Content-Type" to "application/json"), timeoutMs = 15_000).close()
+            headers = mapOf("Content-Type" to "application/json"), timeoutMs = 600_000).close()   // no size limit: a very long text may need minutes
     }
 
     override fun ls(v: String): List<Item> {

@@ -7,14 +7,11 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Text inbox: every text / link sent to or received from another device, oldest first.
- * Persisted in <filesDir>/inbox.json (written to a temp file, then renamed), capped by count and total size.
+ * Persisted in <filesDir>/inbox.json (written to a temp file, then renamed). No limit on the number or the size of the texts.
  */
 object Notes {
     class Note(val id: Long, val ts: Long, val out: Boolean, val peer: String, val text: String)
 
-    private const val MAX_ITEMS = 300
-    private const val MAX_TEXT = 100_000
-    private const val MAX_TOTAL = 2_000_000
     private val items = ArrayList<Note>()
     private var loaded = false
     private var nextId = 1L
@@ -59,7 +56,7 @@ object Notes {
     /** Adds one entry ([out] = sent by this device). The same text twice within 2 s from the same device is kept once. */
     fun add(out: Boolean, peer: String, text: String): Note? {
         if (text.isBlank()) return null
-        val t = text.take(MAX_TEXT)
+        val t = text
         val n: Note
         synchronized(this) {
             ensure()
@@ -68,8 +65,6 @@ object Notes {
             if (last != null && last.out == out && last.peer == peer && last.text == t && now - last.ts < 2000) return last
             n = Note(nextId++, now, out, peer, t)
             items.add(n)
-            var total = items.sumOf { it.text.length }
-            while (items.size > MAX_ITEMS || (total > MAX_TOTAL && items.size > 1)) { total -= items.removeAt(0).text.length }
             save()
         }
         fire()

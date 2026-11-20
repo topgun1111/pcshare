@@ -91,6 +91,7 @@ object Core {
             server = srv
             srv.start()
             disc.start()
+            try { PcText.start() } catch (_: Throwable) {}   // beacons of PCs running lanshare_text.py
             PerfMarks.mark("core.discoveryStarted")   // PERF-DEBUG
             url = "http://127.0.0.1:$port"   // published first: the screen waits for this, so the slower setup below must not delay it
             PerfMarks.mark("core.url")   // PERF-DEBUG

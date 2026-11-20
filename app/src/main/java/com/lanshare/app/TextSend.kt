@@ -18,7 +18,7 @@ import java.io.IOException
 object TextSend {
     const val ACT_SEND = "com.lanshare.app.SEND_CLIP"
 
-    /** Devices that answered a live check: phones / PCs running LANShare, plus PCs running pcprint.py v26+ ("<name> (PC)"). */
+    /** Devices that answered a live check: phones / PCs running LANShare, plus PCs running lanshare_text.py ("<name> (PC)"). */
     fun online(): List<Peer> {
         PcText.kick()
         val lan = try { Core.discOrNull()?.list()?.filter { it.ok }.orEmpty() } catch (_: Throwable) { emptyList() }
@@ -32,7 +32,7 @@ object TextSend {
     fun target(): Peer? {
         val on = online()
         val d = Cfg.defTarget()
-        return on.firstOrNull { it.id == d } ?: if (d.isEmpty() && on.size == 1) on[0] else null
+        return on.firstOrNull { it.id == d || (d.startsWith(PcText.PREFIX) && it.id.startsWith(PcText.PREFIX) && d == PcText.PREFIX + it.ip) } ?: if (d.isEmpty() && on.size == 1) on[0] else null
     }
 
     /** Name of the chosen default device (even when it is offline), or null. */
@@ -57,7 +57,7 @@ object TextSend {
                 name = peer.name
                 try { RemoteFs(peer).pushClip(text, Cfg.name, quiet) }
                 catch (e: NotFound) {
-                    throw IOException(if (peerId.startsWith(PcText.PREFIX)) "pcprint.py on ${peer.name} is older than v26 - run the new file once on that PC"
+                    throw IOException(if (peerId.startsWith(PcText.PREFIX)) "LANShare Text on ${peer.name} is too old - run the new lanshare_text.py on that PC"
                                       else "${peer.name} runs an older LANShare - update it to receive text")
                 }
                 if (!quiet) Notes.add(true, peer.name, text)

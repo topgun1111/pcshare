@@ -125,7 +125,7 @@ object Routes {
             }
             "clip" -> {   // text / link pushed from another device's "LANShare Send"
                 val n = ex.header("content-length")?.toLongOrNull() ?: throw BadReq("missing Content-Length")
-                if (n > (4 shl 20)) throw BadReq("text too large")
+                if (n > Int.MAX_VALUE - 16) throw BadReq("text too large")   // only what one array can hold (2 GB): no other limit
                 val buf = ByteArray(n.toInt()); var o = 0
                 while (o < buf.size) { val r = ex.body.read(buf, o, buf.size - o); if (r < 0) throw BadReq("short body"); o += r }
                 val j = JSONObject(String(buf, Charsets.UTF_8))
