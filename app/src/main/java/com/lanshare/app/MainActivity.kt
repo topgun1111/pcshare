@@ -488,13 +488,14 @@ class MainActivity : Activity() {
                                         com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
                                     }
                                 ).use { response ->
-                                if (response.status !in 200..299)
-                                    throw java.io.IOException("PC rejected " + relative + " (HTTP " +
-                                        response.status + "): " +
-                                        String(response.readUpTo(2048), Charsets.UTF_8))
+                                    if (response.status !in 200..299)
+                                        throw java.io.IOException("PC rejected " + relative + " (HTTP " +
+                                            response.status + "): " +
+                                            String(response.readUpTo(2048), Charsets.UTF_8))
                                 }
                             }
                         }
+                        com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
                         com.lanshare.app.core.PcTransferNotice.outgoingItemDone(transfer)
                         if (isDirectory) folders++ else files++
                     }
