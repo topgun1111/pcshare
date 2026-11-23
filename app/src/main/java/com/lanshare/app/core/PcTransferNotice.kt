@@ -25,6 +25,52 @@ object PcTransferNotice {
     private const val CHANNEL = "pcshare_files"
     private val sequence = AtomicInteger(7400)
     private val sessions = ConcurrentHashMap<String, State>()
+    private val recent = ConcurrentHashMap<String, Snapshot>()
+    private const val RECENT_MS = 15_000L
+
+    /** Immutable progress information for the in-app incoming-transfer ring and its details sheet. */
+    data class Snapshot(
+        val key: String,
+        val peer: String,
+        val fileName: String,
+        val received: Long,
+        val total: Long,
+        val finishedItems: Int,
+        val itemCount: Int,
+        val started: Long,
+        val finishedAt: Long,
+        val status: String,
+        val error: String?,
+        val bytesPerSecond: Double
+    ) {
+        val percent: Int get() = if (total > 0L)
+            (received.toDouble() * 100.0 / total.toDouble()).toInt().coerceIn(0, 100)
+        else 0
+        val etaSeconds: Long? get() = if (status == "receiving" && total > received && bytesPerSecond > 0.0)
+            ((total - received).toDouble() / bytesPerSecond).toLong()
+        else null
+    }
+
+    private fun snapshotOf(s: State, now: Long, status: String, error: String? = null): Snapshot {
+        val elapsed = max(0.25, (now - s.started) / 1000.0)
+        return Snapshot(
+            s.key, s.peer, s.fileName, s.received, s.total,
+            s.finishedItems, s.itemCount, s.started,
+            if (status == "receiving") 0L else now, status, error, s.received / elapsed
+        )
+    }
+
+    /** Thread-safe snapshots; preserve a short finished/failed history so a fast transfer remains tappable. */
+    fun snapshots(): List<Snapshot> {
+        val now = SystemClock.elapsedRealtime()
+        for ((key, value) in recent) {
+            if (now - value.finishedAt > RECENT_MS) recent.remove(key, value)
+        }
+        val live = sessions.values.map { s -> synchronized(s) { snapshotOf(s, now, "receiving") } }
+        return (live + recent.values).sortedWith(
+            compareBy<Snapshot> { it.status != "receiving" }.thenByDescending { it.started }
+        )
+    }
 
     class State internal constructor(
         val key: String, val notificationId: Int, val peer: String,
@@ -78,13 +124,18 @@ object PcTransferNotice {
             state.finishedItems++
             val finished = state.finishedItems >= state.itemCount
             publish(ctx, state, finished, null)
-            if (finished) sessions.remove(state.key, state)
+            if (finished) {
+                recent[state.key] = snapshotOf(state, SystemClock.elapsedRealtime(), "completed")
+                sessions.remove(state.key, state)
+            }
         }
     }
 
     fun failed(ctx: Context, state: State, message: String?) {
         synchronized(state) {
-            publish(ctx, state, true, message?.take(120) ?: "Transfer failed")
+            val reason = message?.take(120) ?: "Transfer failed"
+            publish(ctx, state, true, reason)
+            recent[state.key] = snapshotOf(state, SystemClock.elapsedRealtime(), "failed", reason)
             sessions.remove(state.key, state)
         }
     }
