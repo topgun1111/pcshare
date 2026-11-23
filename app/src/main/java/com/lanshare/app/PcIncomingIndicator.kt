@@ -40,7 +40,7 @@ class PcIncomingIndicator(context: Context) : View(context) {
             if (entries.isNotEmpty()) {
                 val active = entries.count { it.status == "receiving" }
                 contentDescription = if (VaultSession.unlocked) "Incoming PC transfer" else
-                    if (active > 0) "$"+"active incoming PC transfer(s), tap for details" else
+                    if (active > 0) active.toString() + " incoming PC transfer(s), tap for details" else
                         "Recently received PC files, tap for details"
             }
             detailText?.text = details()
