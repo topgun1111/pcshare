@@ -56,6 +56,7 @@ class MainActivity : Activity() {
     private lateinit var chrome: NlChrome
     private lateinit var drawer: NlDrawer
     private lateinit var splash: NlSplash
+    private lateinit var incomingIndicator: PcIncomingIndicator
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
     /** Watches the folder open in the file list (this phone only): other programs' changes appear without a manual refresh. */
@@ -710,6 +711,15 @@ class MainActivity : Activity() {
             addView(nl.search, FrameLayout.LayoutParams(1, 1))      // native search box: its own view (the overlay forwards touches outside the list to the page); GONE until the page opens its search row
             addView(chrome.layer, FrameLayout.LayoutParams(-1, -1)) // native app chrome (bars, FAB, dock, snackbar): no background, touches outside its buttons fall through
             addView(drawer.panel, drawer.layoutParams())            // native side drawer: topmost, GONE until the page opens its drawer; swallows touches inside its own width only
+            // A 56 dp native transfer ring, outside the WebView; does not affect the file list's layout.
+            incomingIndicator = PcIncomingIndicator(this@MainActivity)
+            val dpi = resources.displayMetrics.density
+            val ringSize = (56f * dpi + 0.5f).toInt()
+            val rightGap = (12f * dpi + 0.5f).toInt()
+            val topGap = (66f * dpi + 0.5f).toInt()
+            val ringParams = FrameLayout.LayoutParams(ringSize, ringSize, android.view.Gravity.TOP or android.view.Gravity.END)
+            ringParams.setMargins(0, topGap, rightGap, 0)
+            addView(incomingIndicator, ringParams)
         }
         setContentView(root)
         mark("contentSet")   // PERF-DEBUG
@@ -829,10 +839,11 @@ class MainActivity : Activity() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
         dirWatch.stop(); mediaWatch.pause(); MediaWatch.cur = null
         if (::chrome.isInitialized) chrome.release()
+        if (::incomingIndicator.isInitialized) incomingIndicator.stop()
         super.onDestroy()
     }
 
-    override fun onPause() { super.onPause(); dirWatch.pause(); mediaWatch.pause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
+    override fun onPause() { if (::incomingIndicator.isInitialized) incomingIndicator.stop(); super.onPause(); dirWatch.pause(); mediaWatch.pause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
 
     private var wasStopped = false
     /** The app went fully to the background (minimized / another app in front): on return the WebView's compositor can stay stalled = white screen until a touch. [wakeWeb] fixes that. */
@@ -841,6 +852,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         ClipPush.front = this
+        if (::incomingIndicator.isInitialized) incomingIndicator.start()
         repaintSoon()
         mediaWatch.resume()   // gallery live updates (MediaStore + album folders)
         dirWatch.resume()   // folder watcher back on + one re-check of the open folder
