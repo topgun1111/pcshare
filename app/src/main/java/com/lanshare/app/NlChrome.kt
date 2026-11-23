@@ -320,7 +320,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
     }
 }
 
-/** #fab: "New folder" / "Extract all". 56 dp pill-rect, fixed colours from the CSS. */
+/** #fab: extended New folder FAB, or compact 72 x 48 dp Extract pill with a caption. */
 class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     override fun labelOf(id: String): String? = if (id == "fab") lb.ifEmpty { "Add" } else null
     private var lb = ""
@@ -333,10 +333,12 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(v: View, o: Outline) {
-                val inset = if (ik == "extract") Math.max(0f, (v.height - 48f * d) / 2f).toInt() else 0
-                o.setRoundRect(0, inset, v.width, v.height - inset, (v.height - 2 * inset) / 2f)
+                if (ik == "extract") {
+                    val pillHeight = Math.min(v.height, Math.round(48f * d))
+                    o.setRoundRect(0, 0, v.width, pillHeight, pillHeight / 2f)
+                } else o.setRoundRect(0, 0, v.width, v.height, v.height / 2f)
                 o.setAlpha(1f)
-            }   // Extract-all uses the same 48 dp visual height as the dock actions
+            }   // Extract uses the dock's 72 x 48 dp pill; the caption is beneath it
         }
         if (Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = (lumen().shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); outlineAmbientShadowColor = 0x33000000 }   // E3 shadow tinted by shadowTint (N4)
     }
@@ -357,15 +359,30 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         if (pressed != null) cv.scale(0.96f, 0.96f, bw / 2f, bh / 2f)
         fillP.shader = null; fillP.style = Paint.Style.FILL; val fp = pal ?: return
         fillP.color = fp.fab
-        // Extract-all is a contextual action, not the oversized primary New folder FAB.
-        // Inset its visible pill to the action bar's 48 dp height, retaining the 56 dp tap target.
-        val inset = if (ik == "extract") Math.max(0f, (bh - 48f * d) / 2f) else 0f
-        val fr = (bh - inset * 2f) / 2f
-        rf.set(0f, inset, bw, bh - inset)
+        if (ik == "extract") {
+            // Exactly the dock action anatomy: a 72 x 48 dp icon pill with a separate caption.
+            // Do not draw the old full-width extended FAB in archive mode.
+            val ph = Math.min(bh, 48f * d)
+            val rad = ph / 2f
+            rf.set(0f, 0f, bw, ph)
+            if (LumenGlass.chromeGradient(context))
+                fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), rf.left, rf.top, rf.right, rf.bottom)
+            cv.drawRoundRect(rf, rad, rad, fillP)
+            fillP.shader = null
+            ripple(cv, "fab", rf, rad, fp.onfab)
+            glyph(cv, ik, bw / 2f, ph / 2f, 36f, fp.onfab)
+            lbP.color = fp.fg
+            val t = fit(lb, lbP, bw - 2f * d)
+            cv.drawText(t, (bw - lbP.measureText(t)) / 2f, ty(ph + 6f * d + 10f * d, lbP), lbP)
+            cv.restore()
+            return
+        }
+        val fr = bh / 2f
+        rf.set(0f, 0f, bw, bh)
         // gGlow: a restrained theme-accent halo, kept outside the pill so it reads as light rather than a colour wash.
         if (LumenGlass.chromeGradient(context) && !LumenPrefs.reduceMotion(context)) {
             fillP.shader = LumenGrad.glow(lumen(), bw * .5f, bh * .5f, Math.max(bw, bh) * .78f, AppPal.night(context))
-            cv.drawRoundRect(-8f * d, inset - 8f * d, bw + 8f * d, bh - inset + 8f * d, fr + 8f * d, fr + 8f * d, fillP)
+            cv.drawRoundRect(-8f * d, -8f * d, bw + 8f * d, bh + 8f * d, fr + 8f * d, fr + 8f * d, fillP)
         }
         if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), 0f, 0f, bw, bh)   // gFab (flat at F3)
         else fillP.shader = null
