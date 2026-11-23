@@ -352,12 +352,15 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         if (pressed != null) cv.scale(0.96f, 0.96f, bw / 2f, bh / 2f)
         fillP.shader = null; fillP.style = Paint.Style.FILL; val fp = pal ?: return
         fillP.color = fp.fab
-        val fr = bh / 2f   // pill (extended FAB)
-        rf.set(0f, 0f, bw, bh)
+        // Extract-all is a contextual action, not the oversized primary New folder FAB.
+        // Inset its visible pill to the action bar's 48 dp height, retaining the 56 dp tap target.
+        val inset = if (ik == "extract") 4f * d else 0f
+        val fr = (bh - inset * 2f) / 2f
+        rf.set(0f, inset, bw, bh - inset)
         // gGlow: a restrained theme-accent halo, kept outside the pill so it reads as light rather than a colour wash.
         if (LumenGlass.chromeGradient(context) && !LumenPrefs.reduceMotion(context)) {
             fillP.shader = LumenGrad.glow(lumen(), bw * .5f, bh * .5f, Math.max(bw, bh) * .78f, AppPal.night(context))
-            cv.drawRoundRect(-8f * d, -8f * d, bw + 8f * d, bh + 8f * d, fr + 8f * d, fr + 8f * d, fillP)
+            cv.drawRoundRect(-8f * d, inset - 8f * d, bw + 8f * d, bh - inset + 8f * d, fr + 8f * d, fr + 8f * d, fillP)
         }
         if (LumenGlass.chromeGradient(context)) fillP.shader = LumenGrad.diag(LumenGrad.fab(fp.fab), 0f, 0f, bw, bh)   // gFab (flat at F3)
         else fillP.shader = null
@@ -552,7 +555,9 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
-            glyph(cv, a2.k, pill.centerX(), pill.centerY(), if (a2.k == "extract") 32f else 36f, if (pri) p.onac else icol)
+            // The extract glyph has a visually heavy frame; optical compensation makes
+            // it match the other 36 dp action icons without enlarging its button.
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), if (a2.k == "extract") 28f else 36f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
             cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 10f * d, lbP), lbP)
