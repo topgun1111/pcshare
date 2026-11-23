@@ -1412,6 +1412,19 @@ html.dperm #dlg{padding-left:calc(var(--dw) + var(--sp-6))}
 html.nldr.dperm.nldrh #dwr{opacity:1}
 @media (min-width:600px){#sheet .card:not(.fu):not(.pfull):not(.vs):not(.pj){max-width:560px;margin:0 auto var(--sp-6);border-radius:var(--r-xxl)}}
 /*LUMEN-UI21:END*/
+/* Archive extraction uses the same 72 x 48 dp action pill and caption as the dock.
+   Keep the full hit target and label, not the oversized 56 dp extended FAB. */
+#fab.extract-action{
+  width:72px;height:78px;padding:0;gap:6px;flex-direction:column;
+  align-items:center;justify-content:flex-start;white-space:nowrap;
+  font-size:var(--fs-14);font-weight:600;color:var(--ink);
+  border-radius:0;background:transparent!important;box-shadow:none!important
+}
+#fab.extract-action svg{
+  box-sizing:border-box;flex:0 0 48px;width:72px;height:48px;min-height:48px;
+  padding:6px 18px;border-radius:var(--r-full);background:var(--fab);
+  color:var(--onfab);box-shadow:var(--sh)
+}
 </style></head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
@@ -2480,6 +2493,7 @@ function galView(a){
     if(!a.v&&gi().some(pvOK)&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,path:a.path,done:clr}))}
     if(!a.v&&psOK(gi().map(m=>m.name)))btn('add','To Print space',()=>psAdd('local',gi().filter(m=>psPic(m.name)).map(m=>jn(a.path,m.name)),clr));
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev=local&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
+    if(window.LSAndroid&&LSAndroid.sendToPC)btn('send','Send to PC',()=>sendPickedToPC(gp(),()=>{if(o._for===tok)clr()}));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
     btn('del','Delete',async()=>{const n=GS.size;
       const ch=await dlg({kind:'warn',title:'Move '+n+' item'+(n>1?'s':'')+' to the Recycle bin?',msg:'You can restore them from the Recycle bin in the menu. Kept 30 days.',ok:'Move to bin',alt:'Delete permanently',altDanger:true});
@@ -2821,7 +2835,7 @@ function galPhoneBar(){
 function render(){
   applyPrefs();
   const AR=inArc();
-  {const fb=$('#fab');fb.textContent='';fb.append(ic(binRoot()?'del':AR&&!zipEd()?'extract':'newfolder'),document.createTextNode(binRoot()?'Empty bin':zipEd()?'Edit archive':AR?'Extract all':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')));fb.style.display=inBin()&&!binRoot()?'none':''}
+  {const fb=$('#fab'),extractAction=AR&&!zipEd();fb.classList.toggle('extract-action',extractAction);fb.setAttribute('aria-label',extractAction?'Extract all':'New folder');fb.textContent='';fb.append(ic(binRoot()?'del':extractAction?'extract':'newfolder'),document.createTextNode(binRoot()?'Empty bin':zipEd()?'Edit archive':extractAction?'Extract':(window.LSAndroid&&LSAndroid.editText?'New':'New folder')));fb.style.display=inBin()&&!binRoot()?'none':''}
   const cr=$('#crumbs');cr.textContent='';
   const segs=S.path.split('/').filter(Boolean);
   const home=E('button','crumb');home.setAttribute('aria-label','Root');home.append(raw(HOME));home.onclick=()=>go('/');cr.append(home,ic('chev'));
@@ -3923,9 +3937,13 @@ function doSearch(){
 (function(){const u=$('#suall');if(u)u.onclick=()=>usOpen($('#sq').value);const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
-/* Send the long-press selection directly to the Windows LANShare Text receiver. */
-async function sendPickedToPC(){
+/* Send selected local paths to the Windows receiver (file browser, gallery, or video gallery). */
+let pcSendBusy=false,pcSendFinished=null;
+async function sendPickedToPC(paths=selPaths(),onSuccess=null){
   if(!window.LSAndroid||!LSAndroid.sendToPC||!LSAndroid.pcSendTargets)return toast('Send to PC needs the Android app',3000);
+  const selected=Array.isArray(paths)?paths.filter(p=>typeof p==='string'&&p.startsWith('/')&&!p.startsWith('/@')):[];
+  if(!selected.length)return toast('Select local photos, videos, files or folders first',3000);
+  if(pcSendBusy)return toast('Another transfer is already running',3000);
   let pcs=[];
   try{pcs=JSON.parse(LSAndroid.pcSendTargets())}catch(e){}
   if(!pcs.length)return toast('No PC found. Start LANShare Text on Windows, check Wi-Fi, then try again.',5000);
@@ -3944,12 +3962,17 @@ async function sendPickedToPC(){
     card.append(cancel);sheet.append(card);
   });
   if(!pc)return;
-  try{LSAndroid.sendToPC(pc.id,JSON.stringify(selPaths()));toast('Sending to '+pc.name+'…',3000)}
-  catch(e){toast('⚠ '+e.message,5000)}
+  try{
+    pcSendBusy=true;
+    pcSendFinished=typeof onSuccess==='function'?onSuccess:()=>{S.sel.clear();render()};
+    LSAndroid.sendToPC(pc.id,JSON.stringify(selected));
+    toast('Sending to '+pc.name+'…',3000);
+  }catch(e){pcSendBusy=false;pcSendFinished=null;toast('⚠ '+e.message,5000)}
 }
 window.lsPcSendDone=(success,message)=>{
+  const finished=pcSendFinished;pcSendFinished=null;pcSendBusy=false;
   toast((success?'✓ ':'⚠ ')+message,success?5000:7000);
-  if(success){S.sel.clear();render()}
+  if(success&&finished)finished();
 };
 
 const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.sel].map(k=>XM[k]||mp.get(k)).filter(Boolean)};   // tap order
@@ -3982,8 +4005,9 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.dev==='vault'&&window.LSAndroid&&LSAndroid.vaultRestore)btn('refresh','Restore',()=>vaultRestore(selPaths(),false),'pri');   // Vault: decrypt back to the place each item came from
     if(S.vimp&&S.dev==='local'&&!A){btn('add','Import',()=>vaultImport(false),'pri');btn('cut','Move in',()=>vaultImport(true))}   // vault import mode
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
-    if(!A&&S.dev==='local'&&!inBin()&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.sendToPC)
-      moreActions.push({f:sendPickedToPC,l:{k:'send',l:'Send to PC',c:''}});
+    if(!A&&S.dev==='local'&&!inBin()&&window.LSAndroid&&LSAndroid.sendToPC&&
+        selPaths().every(p=>p.startsWith('/')&&!p.startsWith('/@')&&!p.includes('!')))
+      moreActions.push({f:()=>sendPickedToPC(),l:{k:'send',l:'Send to PC',c:''}});
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zipf','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
     if(files&&it.every(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());   // only when EVERY selected file can be printed (a zip next to a .py used to show it)
