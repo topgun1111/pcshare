@@ -394,6 +394,7 @@ class MainActivity : Activity() {
                 var result = ""
                 val notificationId = 7642
                 var notified = false
+                var outgoing: com.lanshare.app.core.PcTransferNotice.Outgoing? = null
                 try {
                     val pc = com.lanshare.app.core.PcText.get(targetId)
                         ?: throw java.io.IOException("PC not found. Open LANShare Text on the PC and scan again.")
@@ -441,6 +442,9 @@ class MainActivity : Activity() {
                         "X-Pcshare-Total-Bytes" to totalBytes.toString(),
                         "X-Pcshare-Item-Count" to entries.size.toString()
                     )
+                    outgoing = com.lanshare.app.core.PcTransferNotice.beginOutgoing(
+                        "send:" + session, pc.name, entries.first().second, totalBytes, entries.size)
+                    val transfer = outgoing!!
                     val started = android.os.SystemClock.elapsedRealtime()
                     var lastNotification = 0L
                     var sent = 0L
@@ -464,27 +468,34 @@ class MainActivity : Activity() {
                     }
                     updateNotification(true)
                     for ((file, relative, isDirectory) in entries) {
+                        com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
+                        com.lanshare.app.core.PcTransferNotice.outgoingFile(transfer, relative)
                         val url = "/p/pcshare-transfer?path=" +
                             java.net.URLEncoder.encode(relative, "UTF-8")
                         val size = if (isDirectory) 0L else file.length()
                         val payload: java.io.InputStream = if (isDirectory)
                             java.io.ByteArrayInputStream(ByteArray(0)) else java.io.FileInputStream(file)
                         payload.use { data ->
-                            com.lanshare.app.core.Http.request(
-                                pc.ip, pc.port, "POST",
-                                url + (if (isDirectory) "&dir=1" else ""),
-                                headers, 300_000, data, size, 5000,
-                                onSent = { n ->
-                                    sent += n.toLong()
-                                    updateNotification(false)
-                                }
-                            ).use { response ->
+                            com.lanshare.app.core.PcTransferNotice.outgoingStream(transfer, data).use { gated ->
+                                com.lanshare.app.core.Http.request(
+                                    pc.ip, pc.port, "POST",
+                                    url + (if (isDirectory) "&dir=1" else ""),
+                                    headers, 300_000, gated, size, 5000,
+                                    onSent = { n ->
+                                        com.lanshare.app.core.PcTransferNotice.outgoingBytes(transfer, n)
+                                        sent += n.toLong()
+                                        updateNotification(false)
+                                        com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
+                                    }
+                                ).use { response ->
                                 if (response.status !in 200..299)
                                     throw java.io.IOException("PC rejected " + relative + " (HTTP " +
                                         response.status + "): " +
                                         String(response.readUpTo(2048), Charsets.UTF_8))
+                                }
                             }
                         }
+                        com.lanshare.app.core.PcTransferNotice.outgoingItemDone(transfer)
                         if (isDirectory) folders++ else files++
                     }
                     ok = true
@@ -495,6 +506,7 @@ class MainActivity : Activity() {
                     result = error.message ?: "Transfer failed"
                     if (notified) notifyProgress(notificationId, "Send to PC failed", result, 0, 0, "err")
                 } finally {
+                    outgoing?.let { com.lanshare.app.core.PcTransferNotice.endOutgoing(it, ok, result) }
                     pcSending.set(false)
                     val success = ok
                     val message = result
