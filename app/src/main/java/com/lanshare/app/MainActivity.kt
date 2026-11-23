@@ -504,7 +504,11 @@ class MainActivity : Activity() {
                         result + " · " + sz(sent), sent, totalBytes, "done")
                 } catch (error: Throwable) {
                     result = error.message ?: "Transfer failed"
-                    if (notified) notifyProgress(notificationId, "Send to PC failed", result, 0, 0, "err")
+                    if (result.contains("cancelled", ignoreCase = true))
+                        outgoing?.let { com.lanshare.app.core.PcTransferNotice.control(it.key, "cancel") }
+                    if (notified) notifyProgress(notificationId,
+                        if (result.contains("cancelled", ignoreCase = true)) "Send to PC cancelled" else "Send to PC failed",
+                        result, 0, 0, "err")
                 } finally {
                     outgoing?.let { com.lanshare.app.core.PcTransferNotice.endOutgoing(it, ok, result) }
                     pcSending.set(false)
