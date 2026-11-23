@@ -11,6 +11,8 @@ import android.os.SystemClock
 import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.LinearLayout
+import android.widget.Button
 import com.lanshare.app.core.PcTransferNotice
 import com.lanshare.app.core.vault.VaultSession
 import kotlin.math.max
@@ -31,6 +33,11 @@ class PcIncomingIndicator(context: Context) : View(context) {
     private var running = false
     private var detailDialog: AlertDialog? = null
     private var detailText: TextView? = null
+    private var detailActions: LinearLayout? = null
+    private var actionSignature = ""
+
+    private fun active(s: PcTransferNotice.Snapshot): Boolean =
+        s.status in listOf("receiving", "sending", "paused", "cancelling")
 
     private val refresh = object : Runnable {
         override fun run() {
@@ -38,12 +45,13 @@ class PcIncomingIndicator(context: Context) : View(context) {
             entries = PcTransferNotice.snapshots()
             visibility = if (entries.isEmpty()) GONE else VISIBLE
             if (entries.isNotEmpty()) {
-                val active = entries.count { it.status == "receiving" }
-                contentDescription = if (VaultSession.unlocked) "Incoming PC transfer" else
-                    if (active > 0) active.toString() + " incoming PC transfer(s), tap for details" else
-                        "Recently received PC files, tap for details"
+                val active = entries.count { active(it) }
+                contentDescription = if (VaultSession.unlocked) "PC file transfer" else
+                    if (active > 0) active.toString() + " active PC transfer(s), tap to pause or cancel" else
+                        "Recent PC file transfers, tap for details"
             }
             detailText?.text = details()
+            refreshActions()
             invalidate()
             handler.postDelayed(this, 450L)
         }
@@ -68,6 +76,8 @@ class PcIncomingIndicator(context: Context) : View(context) {
         detailDialog?.dismiss()
         detailDialog = null
         detailText = null
+        detailActions = null
+        actionSignature = ""
     }
 
     private fun dp(n: Float) = n * density
@@ -90,10 +100,11 @@ class PcIncomingIndicator(context: Context) : View(context) {
         paint.color = theme.edge
         canvas.drawCircle(cx, cy, radius - dp(0.5f), paint)
 
-        val active = entries.filter { it.status == "receiving" }
+        val active = entries.filter { active(it) }
         val current = if (active.isNotEmpty()) active else entries.take(1)
         val failed = active.isEmpty() && current.any { it.status == "failed" }
-        val complete = active.isEmpty() && !failed
+        val cancelled = active.isEmpty() && current.any { it.status == "cancelled" }
+        val complete = active.isEmpty() && !failed && !cancelled
         val allKnown = current.isNotEmpty() && current.all { it.total > 0L }
         val total = current.sumOf { it.total.toDouble() }
         val done = current.sumOf { it.received.toDouble().coerceAtMost(it.total.toDouble()) }
@@ -106,7 +117,7 @@ class PcIncomingIndicator(context: Context) : View(context) {
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = theme.edge
         canvas.drawArc(ring, -90f, 360f, false, paint)
-        paint.color = if (failed) theme.error else if (complete) theme.success else theme.primary
+        paint.color = if (failed || cancelled) theme.error else if (complete) theme.success else theme.primary
         val start = if (allKnown || complete) -90f else ((SystemClock.uptimeMillis() / 12L) % 360L).toFloat() - 90f
         val sweep = if (allKnown || complete) max(1f, percent * 3.6f) else 82f
         canvas.drawArc(ring, start, sweep, false, paint)
@@ -114,8 +125,10 @@ class PcIncomingIndicator(context: Context) : View(context) {
 
         val label = when {
             failed -> "!"
+            cancelled -> "×"
             complete -> "✓"
-            !allKnown -> "↓"
+            current.any { it.status == "paused" } -> "Ⅱ"
+            !allKnown -> if (current.any { it.direction == "outgoing" }) "↑" else "↓"
             else -> percent.toString() + "%"
         }
         paint.color = theme.ink
@@ -149,12 +162,16 @@ class PcIncomingIndicator(context: Context) : View(context) {
     }
 
     private fun details(): String {
-        if (VaultSession.unlocked) return "Incoming transfers are active. File details are hidden while the vault is unlocked."
-        if (entries.isEmpty()) return "No incoming PC transfers."
+        if (VaultSession.unlocked) return "PC file transfers are active. Details are hidden while the vault is unlocked."
+        if (entries.isEmpty()) return "No PC file transfers."
         return entries.joinToString("\n\n────────────\n\n") { s ->
             val status = when (s.status) {
                 "receiving" -> "Receiving"
+                "sending" -> "Sending"
+                "paused" -> "Paused"
+                "cancelling" -> "Cancelling"
                 "completed" -> "Completed"
+                "cancelled" -> "Cancelled"
                 else -> "Failed"
             }
             buildString {
@@ -165,13 +182,54 @@ class PcIncomingIndicator(context: Context) : View(context) {
                 append(size(s.received))
                 if (s.total > 0L) append(" / ").append(size(s.total))
                 append("\nItems: ").append(s.finishedItems).append(" / ").append(s.itemCount)
-                if (s.status == "receiving") {
-                    append("\nSpeed: ").append(speed(s.bytesPerSecond))
-                    append("\nETA: ").append(eta(s.etaSeconds))
+                if (active(s)) {
+                    if (s.status == "paused") append("\nPaused until resumed")
+                    else {
+                        append("\nSpeed: ").append(speed(s.bytesPerSecond))
+                        append("\nETA: ").append(eta(s.etaSeconds))
+                    }
                 }
                 if (s.error != null) append("\nError: ").append(s.error)
                 append("\nDestination: Downloads/pcshare")
             }
+        }
+    }
+
+    private fun refreshActions() {
+        val panel = detailActions ?: return
+        val live = entries.filter { active(it) }
+        val sig = live.joinToString("|") { it.key + ":" + it.status }
+        if (sig == actionSignature) return
+        actionSignature = sig
+        panel.removeAllViews()
+        if (VaultSession.unlocked) return
+        for (s in live) {
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            val pause = Button(context).apply {
+                text = if (s.status == "paused") "Resume" else "Pause"
+                isEnabled = s.status != "cancelling"
+                setOnClickListener {
+                    PcTransferNotice.control(s.key, if (s.status == "paused") "resume" else "pause")
+                    actionSignature = ""
+                    entries = PcTransferNotice.snapshots()
+                    detailText?.text = details()
+                    refreshActions()
+                }
+            }
+            val cancel = Button(context).apply {
+                text = "Cancel"
+                isEnabled = s.status != "cancelling"
+                setOnClickListener {
+                    PcTransferNotice.control(s.key, "cancel")
+                    actionSignature = ""
+                    entries = PcTransferNotice.snapshots()
+                    detailText?.text = details()
+                    refreshActions()
+                }
+            }
+            row.addView(pause, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(cancel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            panel.addView(row)
         }
     }
 
@@ -188,10 +246,19 @@ class PcIncomingIndicator(context: Context) : View(context) {
             setPadding(dp(22f).toInt(), dp(16f).toInt(), dp(22f).toInt(), dp(18f).toInt())
             setTextIsSelectable(true)
         }
-        val scroller = ScrollView(context).apply { addView(body) }
+        val actions = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(body)
+            addView(actions)
+        }
+        val scroller = ScrollView(context).apply { addView(content) }
         detailText = body
+        detailActions = actions
+        actionSignature = ""
+        refreshActions()
         val dialog = AlertDialog.Builder(context)
-            .setTitle("Incoming transfers")
+            .setTitle("PC file transfers")
             .setView(scroller)
             .setPositiveButton("Close", null)
             .create()
@@ -200,6 +267,8 @@ class PcIncomingIndicator(context: Context) : View(context) {
             if (detailDialog === dialog) {
                 detailDialog = null
                 detailText = null
+                detailActions = null
+                actionSignature = ""
             }
         }
         dialog.show()
