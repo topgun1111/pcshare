@@ -6144,10 +6144,10 @@ function jbRender(){
   jbB.style.display=any&&!JB.open&&!lvOn()?'flex':'none';
   if(any&&!JB.drag){try{jbPos()}catch(e){}}
   const sg=jbP.style.display+jbB.style.display+JB.c+jbB.style.top+jbB.style.bottom+jbP.style.top+jbP.style.bottom+jbP.style.maxHeight;if(sg!==JB.sig){JB.sig=sg;jbLay()}
-  const failed=!run.length&&rows.some(r=>r.state==='error'),pcts=run.map(r=>r.pct);
+  const failed=!run.length&&rows.some(r=>r.state==='error'),cancelled=!run.length&&rows.some(r=>r.state==='cancel'),pcts=run.map(r=>r.pct);
   const ind=run.length>0&&pcts.some(p=>p<0),all=pcts.length&&!ind?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0;
-  jbB.className=failed?'bad':!run.length?'ok':ind?'ind':'';jbB.style.setProperty('--p',all);
-  jbN.textContent=failed?'!':!run.length?'\u2713':String(run.length);
+  jbB.className=failed?'bad':cancelled?'':!run.length?'ok':ind?'ind':'';jbB.style.setProperty('--p',all);
+  jbN.textContent=failed?'!':cancelled?'\u00d7':!run.length?'\u2713':String(run.length);
   if(!JB.open||!any)return;
   const ids=rows.map(r=>r.id);Object.keys(JB.h).forEach(k=>{if(!ids.includes(k)){JB.h[k].root.remove();delete JB.h[k]}});
   rows.forEach((r,i)=>{const h=JB.h[r.id]||(JB.h[r.id]=jbRow(r.id));
