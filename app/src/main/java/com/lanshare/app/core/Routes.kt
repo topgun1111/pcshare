@@ -69,6 +69,33 @@ object Routes {
         val L: Endpoint = ArcEp(Core.local)
         when (route) {
             "ping" -> ok(ex)
+            "pcshare-transfer" -> {
+                // Raw HTTP file/folder transfer from the Windows app, no pairing or token.
+                // Only write under the phone's public Downloads/pcshare directory.
+                if (ex.method != "POST") throw BadReq("POST required")
+                val rel = ex.q("path").replace('\\', '/')
+                val segments = rel.split('/')
+                if (rel.length > 3000 || segments.any {
+                        it.isEmpty() || it == "." || it == ".." || ':' in it || '\u0000' in it
+                    }) throw BadReq("unsafe transfer path")
+                val home = Core.local.real("/Download/pcshare")
+                val vpath = "/Download/pcshare/$rel"
+                val output = Core.local.real(vpath)
+                if (!output.path.startsWith(home.path + java.io.File.separator))
+                    throw Denied("transfer path outside Downloads/pcshare")
+                if (ex.query["dir"] == "1") {
+                    if (!output.isDirectory && (!output.mkdirs() || !output.isDirectory))
+                        throw IOException("cannot create destination folder")
+                } else {
+                    val size = ex.header("content-length")?.toLongOrNull()
+                        ?: throw BadReq("Content-Length required")
+                    if (size < 0) throw BadReq("bad Content-Length")
+                    if (output.isDirectory) throw BadReq("destination is a directory")
+                    // LocalFs.write uses a temporary file and renames after the final byte.
+                    Core.local.write(vpath, ex.body, size, null)
+                }
+                ok(ex)
+            }
             "ls" -> { if (ex.query["fresh"] == "1") L.invalidate(ex.q("path")); ex.json(jarr((if (ex.query["counts"] == "0") L.lsFast(ex.q("path")) else L.ls(ex.q("path"))).map { it.toJson() })) }
             "stat" -> ex.json(L.stat(ex.q("path")))
             "space" -> ex.json(spaceJson(L.space(ex.q("path"))))
