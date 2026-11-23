@@ -552,7 +552,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
-            glyph(cv, a2.k, pill.centerX(), pill.centerY(), 36f, if (pri) p.onac else icol)
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), if (a2.k == "extract") 32f else 36f, if (pri) p.onac else icol)
             lbP.color = col
             val t = fit(a2.lb, lbP, r.width() - 2f * d)
             cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 10f * d, lbP), lbP)
