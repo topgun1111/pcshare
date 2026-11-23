@@ -3922,6 +3922,35 @@ function doSearch(){
 (function(){const u=$('#suall');if(u)u.onclick=()=>usOpen($('#sq').value);const b=$('#scont');if(!b)return;b.onclick=()=>{S.cont=!S.cont;b.style.color=S.cont?'#107c41':'';b.style.fontWeight=S.cont?'800':'600';toast(S.cont?'Searching inside Office files':'Searching file names',1800);if(S.q&&S.q.length>=2)doSearch()}})();
 const selPaths=()=>[...S.sel].map(n=>jn(S.path,n));
 
+/* Send the long-press selection directly to the Windows LANShare Text receiver. */
+async function sendPickedToPC(){
+  if(!window.LSAndroid||!LSAndroid.sendToPC||!LSAndroid.pcSendTargets)return toast('Send to PC needs the Android app',3000);
+  let pcs=[];
+  try{pcs=JSON.parse(LSAndroid.pcSendTargets())}catch(e){}
+  if(!pcs.length)return toast('No PC found. Start LANShare Text on Windows, check Wi-Fi, then try again.',5000);
+  const pc=await new Promise(resolve=>{
+    const sheet=$('#sheet');sheet.textContent='';sheet.style.display='flex';
+    const card=E('div','card');card.append(E('div','handle'),E('h3','','Send to PC'));
+    card.append(E('p','','Selected files and folders will be stored in Downloads/pcshare on the PC.'));
+    const close=choice=>{sheet.style.display='none';sheet.onclick=null;resolve(choice)};
+    sheet.onclick=e=>{if(e.target===sheet)close(null)};
+    pcs.forEach(p=>{
+      const b=E('button','li'),lead=E('div','lead'),details=E('div','lt');
+      lead.append(ic('pc'));details.append(E('span','',p.name));
+      b.append(lead,details);b.onclick=()=>close(p);card.append(b);
+    });
+    const cancel=E('button','tbtn','Cancel');cancel.onclick=()=>close(null);
+    card.append(cancel);sheet.append(card);
+  });
+  if(!pc)return;
+  try{LSAndroid.sendToPC(pc.id,JSON.stringify(selPaths()));toast('Sending to '+pc.name+'…',3000)}
+  catch(e){toast('⚠ '+e.message,5000)}
+}
+window.lsPcSendDone=(success,message)=>{
+  toast((success?'✓ ':'⚠ ')+message,success?5000:7000);
+  if(success){S.sel.clear();render()}
+};
+
 const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.sel].map(k=>XM[k]||mp.get(k)).filter(Boolean)};   // tap order
 function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above the bar, right aligned)
   const sc=E('div','dsc'),m=E('div','dmn'),done=()=>sc.remove();
@@ -3951,6 +3980,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.dev==='vault'&&window.LSAndroid&&LSAndroid.vaultRestore)btn('refresh','Restore',()=>vaultRestore(selPaths(),false),'pri');   // Vault: decrypt back to the place each item came from
     if(S.vimp&&S.dev==='local'&&!A){btn('add','Import',()=>vaultImport(false),'pri');btn('cut','Move in',()=>vaultImport(true))}   // vault import mode
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
+    if(!A&&S.dev==='local'&&!inBin()&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.sendToPC)
+      btn('send','Send to PC',sendPickedToPC,'pri');
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zipf','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
     if(files&&it.every(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());   // only when EVERY selected file can be printed (a zip next to a .py used to show it)
