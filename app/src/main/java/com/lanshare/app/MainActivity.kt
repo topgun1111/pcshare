@@ -69,6 +69,8 @@ class MainActivity : Activity() {
     private val dlSeq = AtomicInteger()
     private val dlCancel = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
+    private val pcSending = java.util.concurrent.atomic.AtomicBoolean(false)
+
     inner class Bridge {
         /** Haptics from the page: kind = tick | click | heavy | long | double | success | error | warn | select | <ms>. Alarm-usage, so Battery saver does not mute it. */
         @JavascriptInterface fun haptic(kind: String) { Haptics.play(kind) }
@@ -368,6 +370,105 @@ class MainActivity : Activity() {
         @JavascriptInterface fun openStorageDev(dev: String, name: String, vpath: String) {
             runOnUiThread { try { startActivity(StorageActivity.intentDev(this@MainActivity, dev, name, vpath)) } catch (_: Throwable) { } }
         }
+        /** Nearby PCs running the Windows Text worker (port 48558). */
+        @JavascriptInterface fun pcSendTargets(): String {
+            com.lanshare.app.core.PcText.kick()
+            return org.json.JSONArray().also { targets ->
+                com.lanshare.app.core.PcText.peers().forEach { p ->
+                    targets.put(JSONObject().put("id", p.id).put("name", p.name))
+                }
+            }.toString()
+        }
+
+        /** Send selected local files/folders to Windows without archiving or buffering them in memory. */
+        @JavascriptInterface fun sendToPC(targetId: String, pathsJson: String) {
+            if (!pcSending.compareAndSet(false, true)) {
+                runOnUiThread { try { web.evaluateJavascript(
+                    "window.lsPcSendDone&&window.lsPcSendDone(false,'Another transfer is running')", null
+                ) } catch (_: Throwable) {} }
+                return
+            }
+            Thread({
+                var ok = false
+                var result = ""
+                try {
+                    val pc = com.lanshare.app.core.PcText.get(targetId)
+                        ?: throw java.io.IOException("PC not found. Open LANShare Text on the PC and scan again.")
+                    val choices = org.json.JSONArray(pathsJson)
+                    if (choices.length() == 0) throw java.io.IOException("No files selected")
+                    var files = 0
+                    var folders = 0
+                    val localRoot = com.lanshare.app.core.Core.local.root.canonicalPath
+                    val allowedPrefix = localRoot.trimEnd(java.io.File.separatorChar) + java.io.File.separator
+                    for (index in 0 until choices.length()) {
+                        val virtual = choices.getString(index)
+                        if (!virtual.startsWith("/") || virtual.startsWith("/@") ||
+                            virtual.contains('!') || virtual.startsWith("/.LANShare Bin/"))
+                            throw java.io.IOException("Only regular local folders/files can be sent")
+                        val selected = com.lanshare.app.core.Core.local.real(virtual)
+                        if (!selected.exists()) throw java.io.IOException("Missing file: $virtual")
+                        val base = selected.parentFile ?: throw java.io.IOException("Cannot send root directory")
+                        val pending = java.util.ArrayDeque<java.io.File>()
+                        pending.addLast(selected)
+                        while (!pending.isEmpty()) {
+                            val file = pending.removeLast()
+                            if (java.nio.file.Files.isSymbolicLink(file.toPath())) continue
+                            val canonical = file.canonicalPath
+                            if (!canonical.startsWith(allowedPrefix))
+                                throw java.io.IOException("File outside shared storage")
+                            val relative = base.toPath().relativize(file.toPath()).toString()
+                                .replace(java.io.File.separatorChar, '/')
+                            if (relative.isBlank()) throw java.io.IOException("Invalid transfer name")
+                            val url = "/p/pcshare-transfer?path=" +
+                                java.net.URLEncoder.encode(relative, "UTF-8")
+                            val isDirectory = file.isDirectory
+                            val payload: java.io.InputStream
+                            val bytes: Long
+                            if (isDirectory) {
+                                payload = java.io.ByteArrayInputStream(ByteArray(0))
+                                bytes = 0L
+                            } else if (file.isFile) {
+                                payload = java.io.FileInputStream(file)
+                                bytes = file.length()
+                            } else continue
+                            payload.use { data ->
+                                com.lanshare.app.core.Http.request(
+                                    pc.ip, pc.port, "POST",
+                                    url + (if (isDirectory) "&dir=1" else ""),
+                                    emptyMap(), 300_000, data, bytes, 5000
+                                ).use { response ->
+                                    if (response.status !in 200..299)
+                                        throw java.io.IOException("PC rejected " + relative + " (HTTP " +
+                                            response.status + "): " +
+                                            String(response.readUpTo(2048), Charsets.UTF_8))
+                                }
+                            }
+                            if (isDirectory) {
+                                folders++
+                                val children = file.listFiles()
+                                    ?: throw java.io.IOException("Cannot list folder $relative")
+                                children.forEach { pending.addLast(it) }
+                            } else files++
+                        }
+                    }
+                    ok = true
+                    result = "Sent $files file(s) and $folders folder(s) to " + pc.name
+                } catch (error: Throwable) {
+                    result = error.message ?: "Transfer failed"
+                } finally {
+                    pcSending.set(false)
+                    val success = ok
+                    val message = result
+                    runOnUiThread {
+                        try {
+                            web.evaluateJavascript("window.lsPcSendDone&&window.lsPcSendDone(" +
+                                success + "," + JSONObject.quote(message) + ")", null)
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }, "pcshare-send-to-pc").also { it.isDaemon = true; it.start() }
+        }
+
         @JavascriptInterface fun txtDevs(): String {
             val o = JSONObject()
             val d = com.lanshare.app.core.Cfg.defTarget()
