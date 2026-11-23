@@ -333,7 +333,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(v: View, o: Outline) {
-                val inset = if (ik == "extract") (4f * d).toInt() else 0
+                val inset = if (ik == "extract") Math.max(0f, (v.height - 48f * d) / 2f).toInt() else 0
                 o.setRoundRect(0, inset, v.width, v.height - inset, (v.height - 2 * inset) / 2f)
                 o.setAlpha(1f)
             }   // Extract-all uses the same 48 dp visual height as the dock actions
@@ -359,7 +359,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
         fillP.color = fp.fab
         // Extract-all is a contextual action, not the oversized primary New folder FAB.
         // Inset its visible pill to the action bar's 48 dp height, retaining the 56 dp tap target.
-        val inset = if (ik == "extract") 4f * d else 0f
+        val inset = if (ik == "extract") Math.max(0f, (bh - 48f * d) / 2f) else 0f
         val fr = (bh - inset * 2f) / 2f
         rf.set(0f, inset, bw, bh - inset)
         // gGlow: a restrained theme-accent halo, kept outside the pill so it reads as light rather than a colour wash.
