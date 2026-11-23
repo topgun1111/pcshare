@@ -21,6 +21,9 @@ object Routes {
     private val VAULT_ROUTES = setOf("ls", "search", "stat", "space", "dl", "counts", "warm")
 
     private val xtermCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+    // Reserve inbound target names briefly; concurrent transfers still stream in parallel.
+    private val pcTransferGate = Any()
+    private val pcTransferReserved = HashSet<String>()
 
     fun handle(ex: Exchange) {
         val trusted = rootTrusted(ex)
@@ -91,8 +94,32 @@ object Routes {
                         ?: throw BadReq("Content-Length required")
                     if (size < 0) throw BadReq("bad Content-Length")
                     if (output.isDirectory) throw BadReq("destination is a directory")
-                    // LocalFs.write uses a temporary file and renames after the final byte.
-                    Core.local.write(vpath, ex.body, size, null)
+                    // Preserve previously received files: use name (1).ext etc. A short
+                    // reservation prevents two simultaneous senders choosing the same name.
+                    // Only target selection is locked; the actual streams remain concurrent.
+                    val chosen = synchronized(pcTransferGate) {
+                        val leaf = segments.last()
+                        val dot = leaf.lastIndexOf('.')
+                        val stem = if (dot > 0) leaf.substring(0, dot) else leaf
+                        val ext = if (dot > 0) leaf.substring(dot) else ""
+                        val parent = if (segments.size > 1) segments.dropLast(1).joinToString("/") + "/" else ""
+                        var index = 0
+                        var finalPath = vpath
+                        var finalFile = output
+                        while (finalFile.exists() || pcTransferReserved.contains(finalFile.path)) {
+                            index++
+                            finalPath = "/Download/pcshare/" + parent + stem + " (" + index + ")" + ext
+                            finalFile = Core.local.real(finalPath)
+                        }
+                        pcTransferReserved.add(finalFile.path)
+                        Pair(finalPath, finalFile.path)
+                    }
+                    try {
+                        // LocalFs.write streams to a temporary file and commits after the final byte.
+                        Core.local.write(chosen.first, ex.body, size, null)
+                    } finally {
+                        synchronized(pcTransferGate) { pcTransferReserved.remove(chosen.second) }
+                    }
                 }
                 ok(ex)
             }
