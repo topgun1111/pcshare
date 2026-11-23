@@ -1353,6 +1353,7 @@ html.nldr #dwr{opacity:0}
 #home .hl .ht+.ht{border-top:1px solid var(--bd,rgba(128,128,128,.25))}
 #home .hl .ht:active{transform:none;background:var(--hov)}
 #home .hl .ht .tb{grid-area:i;width:44px;height:44px;border-radius:var(--r-l)}
+#home .hl .ht .tb.msg svg{width:72%;height:72%}   /* Messages speech bubble has more internal whitespace; equalize its optical size with its neighbours */
 #home .hl .ht .tt{grid-area:t;align-self:end;text-align:left;font-size:var(--fs-16)}
 #home .hl .ht .ts{grid-area:s;align-self:start;text-align:left}
 #home .hl .ht::after{content:'';grid-area:c;width:20px;height:20px;background:var(--mut);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat}
@@ -3964,6 +3965,7 @@ var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the na
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
   if(!S.sel.size)document.querySelectorAll('.dsc').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
+  const moreActions=[];   // actions that always live in More, never in the primary dock
   const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',zipf:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
   const btn=(k,lb,f,c)=>{if(S.dev==='vault'&&/^(print|add|openw|share|zipf|extract|dup|palette|search|merge|hide)$/.test(k))return;   /* vault mode: nothing that hands decrypted data to another app or writes it to disk */
     const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
@@ -3981,7 +3983,7 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     if(S.vimp&&S.dev==='local'&&!A){btn('add','Import',()=>vaultImport(false),'pri');btn('cut','Move in',()=>vaultImport(true))}   // vault import mode
     if(A)btn('extract','Extract',()=>doExtract(1),'pri');else if(it.every(isArcF))btn('extract','Extract',()=>doExtract(0),'pri');
     if(!A&&S.dev==='local'&&!inBin()&&S.path.indexOf('/@')!==0&&window.LSAndroid&&LSAndroid.sendToPC)
-      btn('send','Send to PC',sendPickedToPC,'pri');
+      moreActions.push({f:sendPickedToPC,l:{k:'send',l:'Send to PC',c:''}});
     btn('copy','Copy',()=>setClip('copy'));if(!A)btn('cut','Cut',()=>setClip('cut'));if(!A)btn('zipf','Zip',doZip);
     if(has&&(!A||zipEd()))btn('paste','Paste',doPaste,'pri');
     if(files&&it.every(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint());   // only when EVERY selected file can be printed (a zip next to a .py used to show it)
@@ -4010,10 +4012,11 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
   else if(S.vimp&&S.dev==='local'){c.style.display='flex';c.textContent='';c.append(E('span','','Importing into the Vault \u2014 select files or folders'));const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=()=>{S.vimp=null;renderBar()};c.append(xb)}
   else c.style.display='none';
-  if(b.children.length>5){   // Lumen 12.8: at most 5 cells; the middle ones collapse into More (Delete stays rightmost)
-    const n=b.children.length,hasD=NLACL[n-1].c.indexOf('dng')>=0,from=hasD?3:4,to=hasD?n-1:n,kids=[...b.children],ex=[];
+  if(b.children.length>5||moreActions.length){   // Always expose More for secondary actions, even when the dock has room
+    const n=b.children.length,hasD=NLACL[n-1].c.indexOf('dng')>=0,from=hasD?Math.min(3,n-1):Math.min(4,n),to=hasD?n-1:n,kids=[...b.children],ex=[];
     for(let i=from;i<to;i++){ex.push({f:NLACT[i],l:NLACL[i]});kids[i].remove()}
     NLACT.splice(from,to-from);NLACL.splice(from,to-from);
+    ex.push(...moreActions);   // File/folder transfer follows the original overflow actions
     btn('more','More',()=>lmDockMore(ex));
     if(hasD){b.insertBefore(b.lastChild,b.lastChild.previousSibling);NLACT.splice(-1,0,NLACT.pop());NLACL.splice(-1,0,NLACL.pop())}}
   {const n=b.children.length,cl=n<=5?Math.max(n,1):Math.ceil(n/2);b.style.setProperty('--cols',cl);   // more than 5 actions: two rows
@@ -6318,7 +6321,7 @@ function homeShow(){if(window.RSH_X)RSH_X();
   hero.onclick=()=>{homeHide();openLoc('local','/')};hero.onkeydown=e=>{if(e.key==='Enter')hero.click()};
   let ti=0;const HC={vault:'var(--cat-ppt)',gal:'var(--cat-pic)',vid:'var(--cat-vid)',dl:'var(--cat-zip)',prn:'var(--cat-pdf)',sto:'var(--cat-other)',usr:'var(--cat-vid)',smb:'var(--cat-doc)',ftp:'var(--cat-xls)',cld:'var(--cat-aud)',fav:'var(--cat-ppt)',dev:'var(--cat-other)',sh:'var(--cat-code)',msg:'var(--cat-code)'};   /* Lumen 4.5 / 12.9: main menu tiles take the named category colours (tokens.json category); the old per-theme --hc1..7 are no longer read */
   const tile=(k,t,sub,fn,stat,media)=>{const b=E('div','ht'+(fn?'':' off'));b.style.setProperty('--i',ti++);b.style.setProperty('--c',HC[k]);b.setAttribute('role','button');b.setAttribute('aria-label',t);b.tabIndex=fn?0:-1;if(!fn)b.setAttribute('aria-disabled','true');
-    const tb=E('span','tb');tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
+    const tb=E('span','tb'+(k==='msg'?' msg':''));tb.innerHTML=hmSvg(k);const ts=E('span','ts',sub);b.append(tb,E('span','tt',t),ts);if(fn){b.onclick=()=>fn(b);b.onkeydown=e=>{if(e.key==='Enter')fn(b)}}
     /* live size and file count under the title, like "5.4 GB (10517)": last known value at once, exact numbers once the phone has counted */
     if(stat){const ck='ls_hs2_'+(media||'')+stat,sh=v=>{if(v&&v.files!=null)ts.textContent=fmt(v.bytes)+' ('+v.files+(v.partial?'+':'')+')'};
       try{sh(JSON.parse(localStorage.getItem(ck)||'null'))}catch(e){}
