@@ -332,7 +332,11 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     init {
         elevation = 6f * d
         outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, v.height / 2f); o.setAlpha(1f) }   // extended FAB = pill (spec 8.2 / 12.1), same as the page #fab
+            override fun getOutline(v: View, o: Outline) {
+                val inset = if (ik == "extract") (4f * d).toInt() else 0
+                o.setRoundRect(0, inset, v.width, v.height - inset, (v.height - 2 * inset) / 2f)
+                o.setAlpha(1f)
+            }   // Extract-all uses the same 48 dp visual height as the dock actions
         }
         if (Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = (lumen().shadowTint and 0x00FFFFFF) or 0x80000000.toInt(); outlineAmbientShadowColor = 0x33000000 }   // E3 shadow tinted by shadowTint (N4)
     }
@@ -343,6 +347,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
     fun setData(lb: String, ik: String, w: Float, h: Float) {
         this.lb = lb; this.ik = ik; bw = w; bh = h
         hits.clear(); hits.add(Hit("fab", RectF(0f, 0f, bw, bh)))
+        invalidateOutline()
         invalidate()
     }
 
