@@ -86,9 +86,18 @@ object Routes {
                 val output = Core.local.real(vpath)
                 if (!output.path.startsWith(home.path + java.io.File.separator))
                     throw Denied("transfer path outside Downloads/pcshare")
+                val noticeContext = Core.appCtx ?: throw IOException("application not ready")
+                val rawId = ex.header("x-pcshare-transfer-id")
+                val transferId = if (rawId != null && rawId.matches(Regex("[A-Za-z0-9_-]{1,90}")))
+                    rawId else java.util.UUID.randomUUID().toString()
+                val transferKey = ex.remoteIp + ":" + transferId
+                val totalBytes = ex.header("x-pcshare-total-bytes")?.toLongOrNull()?.coerceIn(0L, Long.MAX_VALUE) ?: 0L
+                val items = ex.header("x-pcshare-item-count")?.toIntOrNull()?.coerceIn(1, 10000000) ?: 1
                 if (ex.query["dir"] == "1") {
                     if (!output.isDirectory && (!output.mkdirs() || !output.isDirectory))
                         throw IOException("cannot create destination folder")
+                    val notice = PcTransferNotice.begin(noticeContext, transferKey, ex.remoteIp, rel, totalBytes, items)
+                    PcTransferNotice.itemDone(noticeContext, notice)
                 } else {
                     val size = ex.header("content-length")?.toLongOrNull()
                         ?: throw BadReq("Content-Length required")
@@ -114,9 +123,16 @@ object Routes {
                         pcTransferReserved.add(finalFile.path)
                         Pair(finalPath, finalFile.path)
                     }
+                    val notice = PcTransferNotice.begin(noticeContext, transferKey, ex.remoteIp, rel,
+                        maxOf(totalBytes, size), items)
                     try {
                         // LocalFs.write streams to a temporary file and commits after the final byte.
-                        Core.local.write(chosen.first, ex.body, size, null)
+                        // Track bytes at the source stream; no extra buffering or disk passes.
+                        Core.local.write(chosen.first, PcTransferNotice.monitor(noticeContext, notice, ex.body), size, null)
+                        PcTransferNotice.itemDone(noticeContext, notice)
+                    } catch (error: Throwable) {
+                        PcTransferNotice.failed(noticeContext, notice, error.message)
+                        throw error
                     } finally {
                         synchronized(pcTransferGate) { pcTransferReserved.remove(chosen.second) }
                     }
