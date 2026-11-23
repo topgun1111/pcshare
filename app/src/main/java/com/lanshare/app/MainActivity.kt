@@ -380,7 +380,7 @@ class MainActivity : Activity() {
             }.toString()
         }
 
-        /** Send selected local files/folders to Windows without archiving or buffering them in memory. */
+        /** Send selected local files/folders to Windows with a grouped progress notification. */
         @JavascriptInterface fun sendToPC(targetId: String, pathsJson: String) {
             if (!pcSending.compareAndSet(false, true)) {
                 runOnUiThread { try { web.evaluateJavascript(
@@ -391,15 +391,17 @@ class MainActivity : Activity() {
             Thread({
                 var ok = false
                 var result = ""
+                val notificationId = 7642
+                var notified = false
                 try {
                     val pc = com.lanshare.app.core.PcText.get(targetId)
                         ?: throw java.io.IOException("PC not found. Open LANShare Text on the PC and scan again.")
                     val choices = org.json.JSONArray(pathsJson)
                     if (choices.length() == 0) throw java.io.IOException("No files selected")
-                    var files = 0
-                    var folders = 0
                     val localRoot = com.lanshare.app.core.Core.local.root.canonicalPath
                     val allowedPrefix = localRoot.trimEnd(java.io.File.separatorChar) + java.io.File.separator
+                    val entries = ArrayList<Triple<java.io.File, String, Boolean>>()
+                    var totalBytes = 0L
                     for (index in 0 until choices.length()) {
                         val virtual = choices.getString(index)
                         if (!virtual.startsWith("/") || virtual.startsWith("/@") ||
@@ -413,48 +415,84 @@ class MainActivity : Activity() {
                         while (!pending.isEmpty()) {
                             val file = pending.removeLast()
                             if (java.nio.file.Files.isSymbolicLink(file.toPath())) continue
-                            val canonical = file.canonicalPath
-                            if (!canonical.startsWith(allowedPrefix))
+                            if (!file.canonicalPath.startsWith(allowedPrefix))
                                 throw java.io.IOException("File outside shared storage")
                             val relative = base.toPath().relativize(file.toPath()).toString()
                                 .replace(java.io.File.separatorChar, '/')
                             if (relative.isBlank()) throw java.io.IOException("Invalid transfer name")
-                            val url = "/p/pcshare-transfer?path=" +
-                                java.net.URLEncoder.encode(relative, "UTF-8")
-                            val isDirectory = file.isDirectory
-                            val payload: java.io.InputStream
-                            val bytes: Long
-                            if (isDirectory) {
-                                payload = java.io.ByteArrayInputStream(ByteArray(0))
-                                bytes = 0L
-                            } else if (file.isFile) {
-                                payload = java.io.FileInputStream(file)
-                                bytes = file.length()
-                            } else continue
-                            payload.use { data ->
-                                com.lanshare.app.core.Http.request(
-                                    pc.ip, pc.port, "POST",
-                                    url + (if (isDirectory) "&dir=1" else ""),
-                                    emptyMap(), 300_000, data, bytes, 5000
-                                ).use { response ->
-                                    if (response.status !in 200..299)
-                                        throw java.io.IOException("PC rejected " + relative + " (HTTP " +
-                                            response.status + "): " +
-                                            String(response.readUpTo(2048), Charsets.UTF_8))
-                                }
-                            }
-                            if (isDirectory) {
-                                folders++
+                            val dir = file.isDirectory
+                            if (!dir && !file.isFile) continue
+                            entries.add(Triple(file, relative, dir))
+                            if (dir) {
                                 val children = file.listFiles()
                                     ?: throw java.io.IOException("Cannot list folder $relative")
                                 children.forEach { pending.addLast(it) }
-                            } else files++
+                            } else {
+                                val bytes = file.length()
+                                totalBytes = Math.addExact(totalBytes, bytes)
+                            }
                         }
+                    }
+                    if (entries.isEmpty()) throw java.io.IOException("No transferable files found")
+                    val session = java.util.UUID.randomUUID().toString().replace("-", "")
+                    val headers = mapOf(
+                        "X-Pcshare-Transfer-Id" to session,
+                        "X-Pcshare-Total-Bytes" to totalBytes.toString(),
+                        "X-Pcshare-Item-Count" to entries.size.toString()
+                    )
+                    val started = android.os.SystemClock.elapsedRealtime()
+                    var lastNotification = 0L
+                    var sent = 0L
+                    var files = 0
+                    var folders = 0
+                    fun updateNotification(force: Boolean) {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (!force && now - lastNotification < 350) return
+                        lastNotification = now
+                        val secs = maxOf(0.25, (now - started) / 1000.0)
+                        val rate = sent / secs
+                        val eta = if (totalBytes > 0L && rate > 0.0) {
+                            val seconds = ((totalBytes - sent).coerceAtLeast(0L) / rate).toLong()
+                            if (seconds >= 3600) "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+                            else "${seconds / 60}m ${seconds % 60}s"
+                        } else "calculating"
+                        notifyProgress(notificationId, "Sending to " + pc.name,
+                            progressText(sent, totalBytes, rate) + " · ETA " + eta,
+                            sent, totalBytes, "run")
+                        notified = true
+                    }
+                    updateNotification(true)
+                    for ((file, relative, isDirectory) in entries) {
+                        val url = "/p/pcshare-transfer?path=" +
+                            java.net.URLEncoder.encode(relative, "UTF-8")
+                        val size = if (isDirectory) 0L else file.length()
+                        val payload: java.io.InputStream = if (isDirectory)
+                            java.io.ByteArrayInputStream(ByteArray(0)) else java.io.FileInputStream(file)
+                        payload.use { data ->
+                            com.lanshare.app.core.Http.request(
+                                pc.ip, pc.port, "POST",
+                                url + (if (isDirectory) "&dir=1" else ""),
+                                headers, 300_000, data, size, 5000,
+                                onSent = { n ->
+                                    sent += n.toLong()
+                                    updateNotification(false)
+                                }
+                            ).use { response ->
+                                if (response.status !in 200..299)
+                                    throw java.io.IOException("PC rejected " + relative + " (HTTP " +
+                                        response.status + "): " +
+                                        String(response.readUpTo(2048), Charsets.UTF_8))
+                            }
+                        }
+                        if (isDirectory) folders++ else files++
                     }
                     ok = true
                     result = "Sent $files file(s) and $folders folder(s) to " + pc.name
+                    notifyProgress(notificationId, "Files sent to " + pc.name,
+                        result + " · " + sz(sent), sent, totalBytes, "done")
                 } catch (error: Throwable) {
                     result = error.message ?: "Transfer failed"
+                    if (notified) notifyProgress(notificationId, "Send to PC failed", result, 0, 0, "err")
                 } finally {
                     pcSending.set(false)
                     val success = ok
