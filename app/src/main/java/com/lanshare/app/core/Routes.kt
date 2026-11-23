@@ -94,10 +94,15 @@ object Routes {
                 val totalBytes = ex.header("x-pcshare-total-bytes")?.toLongOrNull()?.coerceIn(0L, Long.MAX_VALUE) ?: 0L
                 val items = ex.header("x-pcshare-item-count")?.toIntOrNull()?.coerceIn(1, 10000000) ?: 1
                 if (ex.query["dir"] == "1") {
-                    if (!output.isDirectory && (!output.mkdirs() || !output.isDirectory))
-                        throw IOException("cannot create destination folder")
                     val notice = PcTransferNotice.begin(noticeContext, transferKey, ex.remoteIp, rel, totalBytes, items)
-                    PcTransferNotice.itemDone(noticeContext, notice)
+                    try {
+                        if (!output.isDirectory && (!output.mkdirs() || !output.isDirectory))
+                            throw IOException("cannot create destination folder")
+                        PcTransferNotice.itemDone(noticeContext, notice)
+                    } catch (error: Throwable) {
+                        PcTransferNotice.failed(noticeContext, notice, error.message)
+                        throw error
+                    }
                 } else {
                     val size = ex.header("content-length")?.toLongOrNull()
                         ?: throw BadReq("Content-Length required")
