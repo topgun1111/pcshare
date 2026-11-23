@@ -569,6 +569,11 @@ body.kid #list .row.sel{touch-action:none}
 #jp .jbar.ind i{width:100%!important;opacity:.5;animation:jbpulse 1.2s ease-in-out infinite}
 #jp small{display:block;color:var(--mut);font-size:var(--fs-11);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #jp .jx{flex:0 0 40px;height:40px;border:0;background:none;color:var(--fg);font-size:var(--fs-20)}
+/* PCShare transfers use the existing Lumen job panel and draggable #jb bubble. */
+#jp .jpause{flex:0 0 auto;min-width:58px;height:38px;padding:0 var(--sp-2);border:1px solid var(--bd);border-radius:var(--r-full);background:var(--hov);color:var(--ac);font-size:var(--fs-12);font-weight:600}
+#jp .jpause:disabled{opacity:.4}
+#jp .jr.pc .jc small{white-space:normal;line-height:1.45}
+#jp .jr.pc{border-bottom:1px solid var(--bd)}
 @keyframes jbpulse{50%{opacity:.55}}
 .handle{width:32px;height:4px;border-radius:var(--r-xs);background:var(--mut);opacity:.5;margin:var(--sp-1) auto var(--sp-3)}
 #sheet h3,.dcard h3{margin:0 0 var(--sp-2);font-size:var(--fs-20);font-weight:500}
@@ -6116,13 +6121,24 @@ function jbPos(){const top=JB.c<2,left=JB.c%2===0,W=window.innerWidth,H=window.i
   jbP.style.maxHeight=Math.max(140,Math.min(lvh*.6,b-Math.max(t,0)-32))+'px'}   // panel never taller than the free band (split screen / fold half)
 jbPos();
 let jbLT=0;function jbLay(){if(jbLT)return;jbLT=requestAnimationFrame(()=>{jbLT=0;try{nlLay(true)}catch(e){}try{nlChPush()}catch(e){}})}   // native list/chrome: punch a hole for the bubble / panel
-function jbRow(id){const root=E('div','jr'),col=E('div','jc'),t=E('div','jt'),bar=E('div','jbar'),f=E('i'),d=E('small'),x=E('button','jx');
-  bar.append(f);col.append(t,bar,d);root.append(col,x);
-  root.onclick=e=>{if(e.target===x)return;if(LVS&&LVS.id===id){JB.open=false;lvShow();jbRender()}};
-  x.onclick=()=>{if(x.dataset.k==='c'){api('POST','/api/jobcancel?id='+id).catch(()=>{});x.disabled=true}};
-  return{root,t,f,bar,d,x}}
+function jbPcControl(r,action){
+  if(!r||!r.pc||!(window.LSAndroid&&LSAndroid.pcTransferControl))return;
+  try{if(!LSAndroid.pcTransferControl(r.pcKey,action))toast('Transfer is no longer active',3000);
+    else{if(action==='cancel')r.cancel=true;else r.paused=action==='pause';jbRender();jbKick()}}
+  catch(e){toast('Transfer control failed: '+(e.message||e),4000)}
+}
+function jbRow(id){const root=E('div','jr'),col=E('div','jc'),t=E('div','jt'),bar=E('div','jbar'),f=E('i'),d=E('small'),pause=E('button','jpause','Pause'),x=E('button','jx');
+  bar.append(f);col.append(t,bar,d);root.append(col,pause,x);
+  root.onclick=e=>{if(e.target===x||e.target===pause)return;if(LVS&&LVS.id===id){JB.open=false;lvShow();jbRender()}};
+  pause.onclick=()=>{const r=JB.rows.find(r=>r.id===id);if(r&&r.pc&&r.state==='run'&&!r.cancel)jbPcControl(r,r.paused?'resume':'pause')};
+  x.onclick=()=>{if(x.dataset.k!=='c')return;const r=JB.rows.find(r=>r.id===id);
+    if(r&&r.pc)jbPcControl(r,'cancel');
+    else api('POST','/api/jobcancel?id='+encodeURIComponent(id)).catch(()=>{});
+    x.disabled=true};
+  return{root,t,f,bar,d,pause,x}}
 function jbRender(){
   const rows=JB.rows,run=rows.filter(r=>r.state==='run'),any=rows.length>0;
+  jbHd.querySelector('b').textContent=rows.some(r=>r.pc)?'Transfers and tasks':'Running tasks';
   if(!any)JB.open=false;
   jbP.style.display=JB.open&&any?'flex':'none';
   jbB.style.display=any&&!JB.open&&!lvOn()?'flex':'none';
@@ -6136,20 +6152,50 @@ function jbRender(){
   const ids=rows.map(r=>r.id);Object.keys(JB.h).forEach(k=>{if(!ids.includes(k)){JB.h[k].root.remove();delete JB.h[k]}});
   rows.forEach((r,i)=>{const h=JB.h[r.id]||(JB.h[r.id]=jbRow(r.id));
     if(jbL.children[i]!==h.root)jbL.insertBefore(h.root,jbL.children[i]||null);
+    h.root.classList.toggle('pc',!!r.pc);
+    h.pause.style.display=r.pc?'':'none';
+    h.pause.textContent=r.paused?'Resume':'Pause';
+    h.pause.disabled=!(r.pc&&r.state==='run'&&!r.cancel);
+    h.pause.setAttribute('aria-label',h.pause.textContent+' transfer');
     h.t.textContent=(r.label||'Working')+(r.state==='run'&&r.pct>=0?'  '+r.pct+'%':'');
     h.bar.classList.toggle('ind',r.pct<0);h.f.style.width=Math.max(r.pct,0)+'%';
     h.f.style.background=r.state==='error'?'var(--err)':r.state==='cancel'?'var(--mut)':r.state==='done'?'var(--ok)':'';
-    const dt=r.state==='error'?(r.error||''):r.cancel?'Cancelling\u2026':r.ask?'Waiting for your answer - tap to open':[r.filesTotal>0?(r.files||0)+'/'+r.filesTotal:'',r.cur||'',r.speed>0?fmt(r.speed)+'/s':''].filter(Boolean).join('  ');
+    const dt=r.pc
+      ?(r.state==='error'?(r.error||'Transfer failed'):r.state==='cancel'?'Cancelled':r.state==='done'?'Completed · '+r.sizeText
+        :r.cancel?'Cancelling…':r.paused?'Paused · '+r.sizeText
+        :[r.sizeText,r.filesTotal>1?r.files+'/'+r.filesTotal+' items':'',r.speed>0?fmt(r.speed)+'/s':'',r.eta].filter(Boolean).join(' · '))
+      :r.state==='error'?(r.error||''):r.cancel?'Cancelling\u2026':r.ask?'Waiting for your answer - tap to open':[r.filesTotal>0?(r.files||0)+'/'+r.filesTotal:'',r.cur||'',r.speed>0?fmt(r.speed)+'/s':''].filter(Boolean).join('  ');
     h.d.textContent=dt;h.d.style.display=dt?'':'none';
     const st=r.state;h.x.dataset.k=st==='run'&&!r.cancel?'c':'';h.x.disabled=!(st==='run'&&!r.cancel);
     h.x.textContent=st==='run'?(r.cancel?'\u2026':'\u2715'):st==='done'?'\u2713':st==='error'?'!':'\u2013';h.x.setAttribute('aria-label',st==='run'?'Cancel':'')});
   jbClr.style.visibility=rows.some(r=>r.state!=='run')?'visible':'hidden'}
+function jbPcSnapshots(){
+  if(!(window.LSAndroid&&LSAndroid.pcTransferSnapshots))return[];
+  try{const a=JSON.parse(LSAndroid.pcTransferSnapshots());return Array.isArray(a)?a:[]}catch(e){return[]}
+}
+function jbPcRow(s){
+  if(!s||typeof s.key!=='string'||!s.key)return null;
+  const status=String(s.status||'failed'),active=['receiving','sending','paused','cancelling'].includes(status);
+  const total=Math.max(0,Number(s.total)||0),done=Math.max(0,Number(s.received)||0);
+  const pct=status==='completed'?100:total>0?Math.max(0,Math.min(100,Math.floor(done*100/total))):-1;
+  const rate=Math.max(0,Number(s.bytesPerSecond)||0);
+  const eta=typeof s.etaSeconds==='number'&&Number.isFinite(s.etaSeconds)&&s.etaSeconds>=0
+    ?'ETA '+(s.etaSeconds>=3600?Math.floor(s.etaSeconds/3600)+'h ':'')+Math.floor(s.etaSeconds%3600/60)+'m '+Math.floor(s.etaSeconds%60)+'s':'';
+  return{id:'pc-transfer:'+s.key,pc:true,pcKey:s.key,
+    label:(s.direction==='outgoing'?'To ':'From ')+(s.peer||'PC')+' · '+(s.name||'File'),
+    state:active?'run':status==='completed'?'done':status==='cancelled'?'cancel':'error',
+    pct,error:s.error||'',cancel:status==='cancelling',paused:status==='paused',
+    cur:s.name||'',files:Math.max(0,Number(s.finishedItems)||0),
+    filesTotal:Math.max(1,Number(s.itemCount)||1),speed:rate,eta,
+    sizeText:fmt(done)+(total>0?' / '+fmt(total):'')};
+}
 async function jbPoll(){
-  let a;try{a=await api('GET','/api/jobs',null,4000)}catch(e){return}
-  if(!Array.isArray(a))return;const now=Date.now()/1000;
+  let a;try{a=await api('GET','/api/jobs',null,4000)}catch(e){a=[]}
+  if(!Array.isArray(a))a=[];const now=Date.now()/1000;
   JB.rows=a.filter(j=>j.state==='run'||(j.end&&!JB.dis[j.id]&&now-j.end<(j.state==='error'?10:5)))
     .map(j=>({id:j.id,label:j.label,state:j.state,pct:j.state==='done'?100:j.total>0?Math.min(100,Math.floor(j.done*100/j.total)):-1,error:j.error,cancel:!!j.cancel,
       ask:j.ask,cur:j.cur,files:j.files,filesTotal:j.filesTotal,speed:j.speed}));
+  JB.rows.push(...jbPcSnapshots().map(jbPcRow).filter(r=>r&&!JB.dis[r.id]));
   JB.rows.forEach(r=>{if(JB.seen[r.id]==null)JB.seen[r.id]=JB.seq++});JB.rows.sort((x,y)=>JB.seen[x.id]-JB.seen[y.id]);
   jbRender()}
 function jbKick(){if(JB.on)return;JB.on=true;
@@ -6170,6 +6216,12 @@ document.addEventListener('click',e=>{if(Date.now()-(JB.t||0)<400)return;if(JB.o
 ['resize','orientationchange'].forEach(t=>window.addEventListener(t,()=>setTimeout(()=>{try{jbPos();jbLay()}catch(e){}},300)));
 if(window.visualViewport)visualViewport.addEventListener('resize',()=>{try{jbPos();jbLay()}catch(e){}});
 jbKick();   // jobs outlive the page: show the ones already running after a reload / coming back to the app
+// PC transfer streams are native, so the existing job bubble watches their shared
+// registry even when no /api/jobs task is running. Never add another floating ring.
+window.lsPcTransferChanged=()=>jbKick();
+if(window.LSAndroid&&LSAndroid.pcTransferSnapshots)setInterval(()=>{
+  try{if(jbPcSnapshots().length)jbKick()}catch(e){}
+},850);
 
 // ---- pull down to refresh
 (()=>{const box=$('#ptr'),lab=box.firstChild,TH=70;let y0=0,dy=0,on=false,busy=false;
