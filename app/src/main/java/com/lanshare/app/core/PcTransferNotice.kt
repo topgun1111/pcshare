@@ -89,6 +89,7 @@ object PcTransferNotice {
         @Volatile var paused = false
         @Volatile var cancelled = false
         val gate = java.lang.Object()
+        @Volatile var activeInput: InputStream? = null
     }
 
     fun begin(ctx: Context, key: String, peer: String, fileName: String, total: Long, items: Int): State {
@@ -104,8 +105,9 @@ object PcTransferNotice {
     }
 
     /** Count bytes actually read by LocalFs.write, without buffering the file in memory. */
-    fun monitor(ctx: Context, state: State, input: InputStream): InputStream =
-        object : FilterInputStream(input) {
+    fun monitor(ctx: Context, state: State, input: InputStream): InputStream {
+        state.activeInput = input
+        return object : FilterInputStream(input) {
             override fun read(): Int {
                 awaitIncoming(state)
                 val b = super.read()
@@ -122,6 +124,7 @@ object PcTransferNotice {
                 return n
             }
         }
+    }
 
     private fun advance(ctx: Context, state: State, amount: Int) {
         synchronized(state) {
@@ -138,6 +141,7 @@ object PcTransferNotice {
             val finished = state.finishedItems >= state.itemCount
             publish(ctx, state, finished, null)
             if (finished) {
+                state.activeInput = null
                 recent[state.key] = snapshotOf(state, SystemClock.elapsedRealtime(), "completed")
                 sessions.remove(state.key, state)
             }
@@ -146,6 +150,7 @@ object PcTransferNotice {
 
     fun failed(ctx: Context, state: State, message: String?) {
         synchronized(state) {
+            state.activeInput = null
             val reason = message?.take(120) ?: "Transfer failed"
             publish(ctx, state, true, reason)
             recent[state.key] = snapshotOf(state, SystemClock.elapsedRealtime(),
@@ -253,6 +258,11 @@ object PcTransferNotice {
                 else -> return false
             }
             incoming.gate.notifyAll()
+        }
+        if (action == "cancel") {
+            // Interrupt socket reads as well as paused threads, so cancelled receives
+            // cannot remain blocked until the sender's next network packet.
+            try { incoming.activeInput?.close() } catch (_: java.io.IOException) {}
         }
         return true
     }
