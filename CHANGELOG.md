@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-24 - File attachments in messages
+
+### Added
+- Attach one or several files directly from the Messages screen using the paperclip button next to Send.
+- Send attachments to the selected Windows PC or Android device using the existing PCShare file-transfer connection; received files continue to appear under Downloads/pcshare.
+- File-picker transfers share the regular transfer progress, pause, and cancel controls. Files from providers without known sizes are streamed through temporary on-device storage instead of being loaded into memory.
+
 ## 2026-11-20 - Text box icons fixed
 
 ### Fixed
