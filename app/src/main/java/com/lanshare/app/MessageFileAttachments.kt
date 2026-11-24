@@ -165,15 +165,22 @@ internal object MessageFileAttachments {
     }
 
     private fun safeFileName(raw: String): String {
+        // The same attachment may be received on Windows. Avoid Windows
+        // reserved filename characters and DOS device names before sending.
         val filtered = buildString {
             for (ch in raw.take(220)) {
                 append(
-                    if (ch == '/' || ch == '\\' || ch == ':' ||
-                        ch == '\u0000' || ch.code < 32) '_' else ch
+                    if (ch == '/' || ch == '\\' || ch == ':' || ch == '*' ||
+                        ch == '?' || ch == '"' || ch == '<' || ch == '>' ||
+                        ch == '|' || ch.code < 32) '_' else ch
                 )
             }
         }.trim().trimEnd('.')
-        return if (filtered.isEmpty() || filtered == "." || filtered == "..")
-            "attachment" else filtered
+        if (filtered.isBlank() || filtered == "." || filtered == "..")
+            return "attachment"
+        val basename = filtered.substringBefore('.').uppercase(java.util.Locale.ROOT)
+        val reserved = basename in setOf("CON", "PRN", "AUX", "NUL") ||
+            basename.matches(Regex("(COM|LPT)[1-9]"))
+        return if (reserved) "_$filtered" else filtered
     }
 }
