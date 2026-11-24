@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: false
+  # A newer commit supersedes incomplete APKs; only the latest version is published.
+  cancel-in-progress: true
 
 jobs:
   # Job 1: version + shared versionCode (one value for both editions)
