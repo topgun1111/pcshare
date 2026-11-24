@@ -187,7 +187,12 @@ object PcTransferNotice {
             null, s.sent / elapsed, "outgoing")
     }
 
+    @Synchronized
     fun beginOutgoing(key: String, peer: String, fileName: String, total: Long, items: Int): Outgoing {
+        // Both the explorer's Send to PC action and the Messages attachment
+        // button share this single progress/cancellation state. Refuse a
+        // second send rather than silently replacing the active transfer.
+        if (outgoing != null) throw java.io.IOException("Another file transfer is running")
         val state = Outgoing(key, peer, fileName.takeLast(100), total.coerceAtLeast(0L), items.coerceAtLeast(1))
         outgoing = state
         return state
@@ -222,6 +227,7 @@ object PcTransferNotice {
         }
     }
 
+    @Synchronized
     fun endOutgoing(state: Outgoing, success: Boolean, message: String? = null) {
         synchronized(state) {
             val now = SystemClock.elapsedRealtime()
