@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -115,6 +116,7 @@ class InboxActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var toLine: TextView
     private lateinit var info: TextView
+    private var attachmentTargetId: String? = null
     private var data: List<Notes.Note> = emptyList()
     private val onChange: () -> Unit = { ui.post { refresh() } }
 
@@ -191,6 +193,20 @@ class InboxActivity : Activity() {
             minLines = 1; maxLines = 5
         }
         row.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // File attachments use the same PCShare transfer protocol and the
+        // currently selected messaging target (phone or Windows PC).
+        row.addView(TextView(this).apply {
+            text = "📎"
+            LumenTypography.fit(this, 20f)
+            setTextColor(pal.fg)
+            contentDescription = "Attach and send files"
+            gravity = Gravity.CENTER
+            minimumWidth = dp(44); minimumHeight = dp(44)
+            background = GradientDrawable().apply {
+                setColor(pal.cont); cornerRadius = dp(10).toFloat()
+            }
+            setOnClickListener { chooseAttachmentFiles() }
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(4) })
         row.addView(pill("Paste", false) { paste() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(4) })
         row.addView(pill("Send", true) { sendTyped() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(6) })
         root.addView(row)
@@ -231,6 +247,60 @@ class InboxActivity : Activity() {
                 val on = TextSend.online()
                 if (on.size == 1) "To: ${on[0].name}  ▾   (the only device online)" else "To: ask every time  ▾"
             }
+        }
+    }
+
+    // The native Android file picker grants read access only to user-selected
+    // files. No all-files permission or separate network transport is needed.
+    private fun chooseAttachmentFiles() {
+        val target = TextSend.target()
+        if (target != null) {
+            openAttachmentPicker(target.id)
+            return
+        }
+        val online = TextSend.online()
+        if (online.isEmpty()) { toast("No device found yet"); return }
+        chooseTarget { id -> openAttachmentPicker(id) }
+    }
+
+    private fun openAttachmentPicker(targetId: String) {
+        attachmentTargetId = targetId
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivityForResult(picker, REQUEST_ATTACH_FILES)
+        } catch (_: android.content.ActivityNotFoundException) {
+            attachmentTargetId = null
+            toast("No file picker available")
+        }
+    }
+
+    @Deprecated("Uses the Activity result API supported by this native Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, result: Intent?) {
+        super.onActivityResult(requestCode, resultCode, result)
+        if (requestCode != REQUEST_ATTACH_FILES) return
+        val selectedPeerId = attachmentTargetId
+        attachmentTargetId = null
+        if (resultCode != RESULT_OK || selectedPeerId.isNullOrBlank()) return
+
+        val uris = LinkedHashSet<Uri>()
+        result?.data?.let { uris.add(it) }
+        result?.clipData?.let { clips ->
+            for (index in 0 until clips.itemCount) uris.add(clips.getItemAt(index).uri)
+        }
+        if (uris.isEmpty()) { toast("No files selected"); return }
+        val peer = TextSend.find(selectedPeerId)
+        if (peer == null) { toast("Selected device is no longer available"); return }
+
+        val count = uris.size
+        toast("Sending $count attachment(s) to ${peer.name}")
+        MessageFileAttachments.send(applicationContext, peer, uris.toList()) { error ->
+            if (isFinishing || isDestroyed) return@send
+            toast(error ?: "Sent $count attachment(s) to ${peer.name}")
         }
     }
 
@@ -546,6 +616,7 @@ class InboxActivity : Activity() {
     }
 
     private companion object {
+        const val REQUEST_ATTACH_FILES = 2917
         const val CAP_LINES = 30   // code blocks longer than this start collapsed ("Show all N lines")
     }
 }
