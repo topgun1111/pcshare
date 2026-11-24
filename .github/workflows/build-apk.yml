@@ -37,14 +37,10 @@ jobs:
           echo "tag=v$VER" >> "$GITHUB_OUTPUT"
           echo "code=$(( ($(date -u +%s) - 1767225600) / 60 ))" >> "$GITHUB_OUTPUT"
 
-  # Jobs 2 + 3: full and lite build IN PARALLEL on two runners (matrix)
+  # Build both editions on one runner so the release can use the APKs directly.
   build:
     needs: prep
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        edition: [full, lite]
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # commit sayısı için tam geçmiş şart
@@ -69,64 +65,48 @@ jobs:
             echo "::warning::Keystore secrets incomplete/invalid - signing with app/lanshare.jks"
           fi
 
-      - name: Release APK (${{ matrix.edition }})
+      - name: Build Main and Lite APKs
         env:
-          EDITION: ${{ matrix.edition }}
           APP_VERSION: ${{ needs.prep.outputs.ver }}
           VERSION_CODE: ${{ needs.prep.outputs.code }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          set +e
-          if [ "$EDITION" = lite ]; then OUT="LANShare-v$APP_VERSION-lite.apk"; else OUT="LANShare-v$APP_VERSION.apk"; fi
-          echo "OUT=$OUT" >> "$GITHUB_ENV"
-          gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" -Pedition="$EDITION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
-          rc=${PIPESTATUS[0]}
-          if [ "$rc" -ne 0 ]; then
-            # Surface the real error in the Annotations list (readable on a phone)
-            grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -8 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
-            grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
-            exit $rc
-          fi
-          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
-          if [ -n "$AAPT2" ]; then
-            GOT=$("$AAPT2" dump badging app/build/outputs/apk/release/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
-            echo "[$EDITION] APK versionName: $GOT (beklenen: $APP_VERSION)"
-            case "$GOT" in
-              "$APP_VERSION"|"$APP_VERSION"-*) ;;
-              *) echo "::error::[$EDITION] APK versionName '$GOT' but release is '$APP_VERSION' - app/build.gradle.kts is missing the appVersion line?"; exit 1 ;;
-            esac
-          else
-            echo "::warning::aapt2 yok, sürüm doğrulaması atlandı"
-          fi
-          cp app/build/outputs/apk/release/*.apk "$OUT"
-          if [ "$EDITION" = lite ] && unzip -l "$OUT" | grep -qE 'assets/fonts/(office/|ff_)'; then
-            echo "::error::lite APK still contains the bundled fonts (liteExclude in app/build.gradle.kts did not apply)"; exit 1
-          fi
-          if [ "$EDITION" = lite ] && unzip -l "$OUT" | grep -q 'libonnxruntime'; then
-            echo "::error::lite APK still contains the ONNX runtime (compileOnly in app/build.gradle.kts did not apply)"; exit 1
-          fi
-          echo "- $EDITION: $(( $(stat -c %s "$OUT") / 1048576 )) MB ($OUT)" >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LANShare-apk-${{ matrix.edition }}
-          path: ${{ env.OUT }}
-          if-no-files-found: error
-          retention-days: 7   # build artifacts are deleted after 7 days
-
-  # Job 4: publishes ONE release carrying both APKs, only when both builds succeeded
-  release:
-    needs: [prep, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: LANShare-apk-*
-          merge-multiple: true
-          path: apks
+          mkdir -p apks
+          for EDITION in full lite; do
+            rm -rf app/build
+            if [ "$EDITION" = lite ]; then OUT="LANShare-v$APP_VERSION-lite.apk"; else OUT="LANShare-v$APP_VERSION.apk"; fi
+            set +e
+            gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" -Pedition="$EDITION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              # Surface the real error in the Annotations list (readable on a phone)
+              grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -8 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
+              grep -A4 'What went wrong' "$RUNNER_TEMP/build.log" | head -6 | while IFS= read -r l; do echo "::error::[$EDITION] $l"; done
+              exit $rc
+            fi
+            AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+            if [ -n "$AAPT2" ]; then
+              GOT=$("$AAPT2" dump badging app/build/outputs/apk/release/*.apk | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+              echo "[$EDITION] APK versionName: $GOT (beklenen: $APP_VERSION)"
+              case "$GOT" in
+                "$APP_VERSION"|"$APP_VERSION"-*) ;;
+                *) echo "::error::[$EDITION] APK versionName '$GOT' but release is '$APP_VERSION' - app/build.gradle.kts is missing the appVersion line?"; exit 1 ;;
+              esac
+            else
+              echo "::warning::aapt2 yok, sürüm doğrulaması atlandı"
+            fi
+            cp app/build/outputs/apk/release/*.apk "apks/$OUT"
+            if [ "$EDITION" = lite ] && unzip -l "apks/$OUT" | grep -E 'assets/fonts/(office/|ff_)' > /dev/null; then
+              echo "::error::lite APK still contains the bundled fonts (liteExclude in app/build.gradle.kts did not apply)"; exit 1
+            fi
+            if [ "$EDITION" = lite ] && unzip -l "apks/$OUT" | grep 'libonnxruntime' > /dev/null; then
+              echo "::error::lite APK still contains the ONNX runtime (compileOnly in app/build.gradle.kts did not apply)"; exit 1
+            fi
+            echo "- $EDITION: $(( $(stat -c %s "apks/$OUT") / 1048576 )) MB ($OUT)" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       # Release notes = TOP "## " section of CHANGELOG.md (shown by the app's update dialog before the download button).
       # Same text as the previous release (nobody added a new section) or no bullets = "not listed", never old notes twice.
@@ -148,7 +128,6 @@ jobs:
           cat release-notes.md
           ls -l apks
 
-      # Release kalıcıdır (artifact 7 günde silinir)
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
@@ -171,9 +150,9 @@ jobs:
           if [ "$N" != "2" ]; then echo "::error::release $TAG has $N of 2 APKs - not publishing"; exit 1; fi
           gh release edit "$TAG" --draft=false --latest
 
-  # Job 5: deletes run logs and any leftover artifacts older than 7 days
+  # Cleanup deletes run logs and any leftover artifacts older than 7 days
   cleanup:
-    needs: [release]
+    needs: build
     if: always()
     runs-on: ubuntu-latest
     steps:
