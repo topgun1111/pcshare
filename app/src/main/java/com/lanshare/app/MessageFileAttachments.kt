@@ -66,9 +66,9 @@ internal object MessageFileAttachments {
                 )
                 // Shared with the main explorer's file transfers; using its
                 // progress state also gives the normal pause/cancel controls.
-                progress = PcTransferNotice.beginOutgoing(
+                val current = PcTransferNotice.beginOutgoing(
                     "send:" + session, peer.name, files.first().name, bytes, files.size)
-                val current = progress
+                progress = current
 
                 for (item in files) {
                     PcTransferNotice.awaitOutgoing(current)
