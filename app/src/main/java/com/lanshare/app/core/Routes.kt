@@ -72,6 +72,7 @@ object Routes {
         val L: Endpoint = ArcEp(Core.local)
         when (route) {
             "ping" -> ok(ex)
+            "pcshare-v2" -> TransferV2.handle(ex, pcTransferGate, pcTransferReserved)
             "pcshare-transfer" -> {
                 // Raw HTTP file/folder transfer from the Windows app, no pairing or token.
                 // Only write under the phone's public Downloads/pcshare directory.

@@ -70,9 +70,17 @@ internal object MessageFileAttachments {
                     "send:" + session, peer.name, files.first().name, bytes, files.size)
                 progress = current
 
+                val upload = com.lanshare.app.core.TransferUpload(app, peer, current)
                 for (item in files) {
                     PcTransferNotice.awaitOutgoing(current)
                     PcTransferNotice.outgoingFile(current, item.name)
+                    if (upload.send(item.name, item.uri.toString(), item.size, {
+                            item.staged?.inputStream() ?: app.contentResolver.openInputStream(item.uri)
+                                ?: throw IOException("Cannot read " + item.name)
+                        }) { n -> PcTransferNotice.outgoingBytes(current,n) }) {
+                        PcTransferNotice.outgoingItemDone(current)
+                        continue
+                    }
                     val url = "/p/pcshare-transfer?path=" +
                         URLEncoder.encode(item.name, "UTF-8")
                     val source = item.staged?.let { FileInputStream(it) }
@@ -100,6 +108,7 @@ internal object MessageFileAttachments {
                     }
                     PcTransferNotice.outgoingItemDone(current)
                 }
+                upload.batchDone()
                 success = true
             } catch (failure: Exception) {
                 error = failure.message ?: "Attachment transfer failed"

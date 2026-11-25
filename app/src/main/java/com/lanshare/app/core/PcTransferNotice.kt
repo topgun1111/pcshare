@@ -161,7 +161,7 @@ object PcTransferNotice {
 
 
     /** Cooperative pause/cancel for both incoming and outgoing streams. No new network port. */
-    private fun awaitIncoming(s: State) {
+    internal fun awaitIncoming(s: State) {
         synchronized(s.gate) {
             while (s.paused && !s.cancelled) s.gate.wait(250L)
             if (s.cancelled) throw java.io.IOException("Transfer cancelled")

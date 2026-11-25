@@ -500,6 +500,7 @@ class MainActivity : Activity() {
                             sent, totalBytes, "run")
                         notified = true
                     }
+                    val upload = com.lanshare.app.core.TransferUpload(this@MainActivity, pc, transfer)
                     updateNotification(true)
                     for ((file, relative, isDirectory) in entries) {
                         com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
@@ -507,6 +508,15 @@ class MainActivity : Activity() {
                         val url = "/p/pcshare-transfer?path=" +
                             java.net.URLEncoder.encode(relative, "UTF-8")
                         val size = if (isDirectory) 0L else file.length()
+                        if (!isDirectory && upload.send(relative, file.canonicalPath, size, { file.inputStream() }) { n ->
+                                com.lanshare.app.core.PcTransferNotice.outgoingBytes(transfer, n)
+                                sent += n
+                                updateNotification(false)
+                            }) {
+                            com.lanshare.app.core.PcTransferNotice.outgoingItemDone(transfer)
+                            files++
+                            continue
+                        }
                         val payload: java.io.InputStream = if (isDirectory)
                             java.io.ByteArrayInputStream(ByteArray(0)) else java.io.FileInputStream(file)
                         payload.use { data ->
@@ -533,6 +543,7 @@ class MainActivity : Activity() {
                         com.lanshare.app.core.PcTransferNotice.outgoingItemDone(transfer)
                         if (isDirectory) folders++ else files++
                     }
+                    upload.batchDone()
                     ok = true
                     result = "Sent $files file(s) and $folders folder(s) to " + pc.name
                     notifyProgress(notificationId, "Files sent to " + pc.name,
