@@ -70,6 +70,12 @@ internal object TransferV2 {
             val length = (ex.header("content-length") ?: "0").toLongOrNull() ?: throw BadReq("Invalid length")
             if (length !in 0L..CHUNK.toLong() || (op != "chunk" && length != 0L)) throw BadReq("Invalid length")
             val ctx = Core.appCtx ?: throw IOException("Application not ready")
+            if (op == "mkdir") {
+                val dir = target(ex.q("path"))
+                if (!dir.isDirectory && !dir.mkdirs() && !dir.isDirectory) throw IOException("Cannot create directory")
+                ex.json(JSONObject().put("ok",true))
+                return
+            }
             val folder = File(ctx.filesDir, "transfer-v2")
             val receiptsDir = File(folder,"completed")
             var journal = AtomicFile(File(folder,ticket))

@@ -36,6 +36,7 @@ class TransferInteropTest {
             val outgoing = PcTransferNotice.beginOutgoing("send:test",peer.name,rel,input.length(),1)
             try {
                 val upload = TransferUpload(ctx,peer,outgoing,PendingUpload(ctx,peer,items))
+                assertTrue(upload.directory("Empty folder"))
                 var acknowledged = 0L
                 assertTrue(upload.send(rel,input.path,input.length(),{input.inputStream()}) { acknowledged += it })
                 assertEquals(input.length(),acknowledged)
@@ -44,6 +45,7 @@ class TransferInteropTest {
             fun digest(f: File) = f.inputStream().use { TransferV2.hash(it,f.length()) }
             val destination = System.getenv("PCSHARE_WINDOWS_ROOT")?.let { File(it) }
                 ?: File(shared,"Download/pcshare")
+            assertTrue(File(destination,"Empty folder").isDirectory)
             assertEquals(digest(input),digest(File(destination,rel)))
             val dll = System.getenv("PCSHARE_WINDOWS_CLIENT")
             if (dll != null) {

@@ -513,6 +513,11 @@ class MainActivity : Activity() {
                         val url = "/p/pcshare-transfer?path=" +
                             java.net.URLEncoder.encode(relative, "UTF-8")
                         val size = if (isDirectory) 0L else file.length()
+                        if (isDirectory && upload.directory(relative)) {
+                            com.lanshare.app.core.PcTransferNotice.outgoingItemDone(transfer)
+                            folders++
+                            continue
+                        }
                         if (!isDirectory && upload.send(relative, file.canonicalPath, size, { file.inputStream() }) { n ->
                                 com.lanshare.app.core.PcTransferNotice.outgoingBytes(transfer, n)
                                 sent += n

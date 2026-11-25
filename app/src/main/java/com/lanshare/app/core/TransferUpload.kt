@@ -98,6 +98,18 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
         supportsV2 = true
     }
 
+    fun directory(path: String): Boolean {
+        if (supportsV2 == null) supportsV2 = retry { probe() }
+        if (supportsV2 != true) {
+            if (batch.saved) throw IOException("Partial transfer requires the original v2 peer")
+            return false
+        }
+        batch.record()
+        val ticket = UUID.randomUUID().toString().replace("-","")
+        retry { request("mkdir",ticket,"&path="+URLEncoder.encode(path,"UTF-8")) }
+        return true
+    }
+
     fun send(path: String, identity: String, size: Long, open: () -> InputStream, advanced: (Int) -> Unit): Boolean {
         val name = JSONObject().put("peer",peer.id).put("source",identity).put("path",path).toString()
         val key = MessageDigest.getInstance("SHA-256").digest(name.toByteArray()).joinToString("") { "%02x".format(it) }

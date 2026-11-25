@@ -4,7 +4,7 @@ Both peers use HTTP at `/p/pcshare-v2`. There is no content encoding. A GET with
 `op=caps` returns the numeric version (2), chunk size (8388608), and discovery
 peer ID. A 404 or 405 before starting a file permits the original upload
 route. Network failures and errors after ticket creation must not select v1.
-Directory creation remains the existing idempotent directory operation.
+Peers create directories idempotently before uploading their contents.
 
 Every other operation is POST with a 32-character lowercase hexadecimal random
 `X-Pcshare-Ticket`. Keep this ticket private. Discovery IDs and tickets do not
@@ -13,6 +13,7 @@ percent-encoded. Control requests have empty bodies.
 
 | op | Request | Successful response |
 | --- | --- | --- |
+| mkdir | path | ok after creation or if already present |
 | init | path, size in bytes, sha (lowercase SHA-256 of the entire source) | done and have (array of committed zero-based chunk indices) |
 | status | ticket | same as init |
 | chunk | i, X-Pcshare-Sha256, exact Content-Length, raw slice | ok |

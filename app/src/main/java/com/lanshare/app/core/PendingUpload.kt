@@ -7,7 +7,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -64,11 +63,7 @@ internal class PendingUpload(context: Context, peer: Peer, val items: JSONArray)
                                 val source = entry.getString("source")
                                 PcTransferNotice.outgoingFile(state,rel)
                                 if (entry.getBoolean("dir")) {
-                                    val url = "/p/pcshare-transfer?dir=1&path="+URLEncoder.encode(rel,"UTF-8")
-                                    Http.request(peer.ip,peer.port,"POST",url,emptyMap(),30000,
-                                        byteArrayOf().inputStream(),0).use {
-                                        if (it.status !in 200..299) throw IOException("Cannot recreate folder")
-                                    }
+                                    if (!upload.directory(rel)) throw IOException("Peer does not support resumed directory transfers")
                                 } else {
                                     val open: () -> InputStream = {
                                         if (source.startsWith("/")) {
