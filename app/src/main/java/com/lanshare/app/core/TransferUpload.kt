@@ -113,13 +113,15 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
             val input = open()
             try {
                 if (offset > 0 && input is FileInputStream) {
-                    try { input.channel.position(offset); return input } catch (_: IOException) {}
+                    try { input.channel.position(Math.addExact(input.channel.position(),offset)); return input } catch (_: IOException) {}
                 }
                 var left = offset
+                val scratch = ByteArray(256 * 1024)
                 while (left > 0) {
-                    val skipped = input.skip(left)
-                    if (skipped > 0) left -= skipped
-                    else if (input.read() < 0) throw IOException("Source shortened") else left--
+                    PcTransferNotice.awaitOutgoing(progress)
+                    val n = input.read(scratch,0,minOf(left,scratch.size.toLong()).toInt())
+                    if (n <= 0) throw IOException("Source shortened")
+                    left -= n
                 }
                 return input
             } catch (e: Throwable) { input.close(); throw e }
@@ -131,44 +133,57 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
         }
         if (saved != null && saved.getString("sha") != sha) throw IOException("Source changed since interruption")
         val ticket = saved?.getString("ticket") ?: UUID.randomUUID().toString().replace("-","")
-        if (!jobs.edit().putString(key,JSONObject().put("ticket",ticket).put("sha",sha).put("job",name).toString()).commit())
+        val record = saved ?: JSONObject().put("ticket",ticket).put("sha",sha).put("job",name)
+        if (!jobs.edit().putString(key,record.toString()).commit())
             throw IOException("Cannot save transfer ticket")
         val chunk = TransferV2.CHUNK
         try {
-            val state = retry { request("init",ticket,"&size=$size&sha=$sha&path="+URLEncoder.encode(path,"UTF-8")) }
-            val have = state.getJSONArray("have")
-            val complete = (0 until have.length()).map { have.getInt(it) }.toSet()
-            val count = ((size+chunk-1)/chunk).toInt()
-            fun length(i: Int) = minOf(chunk.toLong(), size-i.toLong()*chunk).toInt()
-            for (i in complete) {
-                if (i !in 0 until count) throw IOException("Invalid completion map")
-                advanced(length(i))
-            }
-            val missing = (0 until count).filter { it !in complete }
-            run {
-                var pos = 0
-                var workers = 1
-                var lastRate = 0.0
-                while (pos < missing.size) {
-                    val wave = missing.subList(pos,minOf(missing.size,pos+workers))
-                    val start = System.nanoTime()
-                    val tasks = wave.map { i -> Callable {
-                        val n = length(i)
-                        val offset = i.toLong()*chunk
-                        val digest = at(offset).use { TransferV2.hash(it,n.toLong()) }
-                        retry { request("chunk",ticket,"&i=$i",digest,n) { at(offset) } }
-                        n
-                    } }
-                    for (result in pool.invokeAll(tasks)) {
-                        try { advanced(result.get()) } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e }
+            var repairs = 0
+            val reported = HashSet<Int>()
+            while (true) {
+                val resume = if (record.optBoolean("confirmed")) "&resume=1" else ""
+                val state = retry { request("init",ticket,"&size=$size&sha=$sha$resume&path="+URLEncoder.encode(path,"UTF-8")) }
+                if (!record.optBoolean("confirmed") && !jobs.edit().putString(key,record.put("confirmed",true).toString()).commit())
+                    throw IOException("Cannot save acknowledgement")
+                val have = state.getJSONArray("have")
+                val complete = (0 until have.length()).map { have.getInt(it) }.toSet()
+                val count = ((size+chunk-1)/chunk).toInt()
+                fun length(i: Int) = minOf(chunk.toLong(), size-i.toLong()*chunk).toInt()
+                for (i in complete) {
+                    if (i !in 0 until count) throw IOException("Invalid completion map")
+                    if (reported.add(i)) advanced(length(i))
+                }
+                val missing = (0 until count).filter { it !in complete }
+                run {
+                    var pos = 0
+                    var workers = 1
+                    var lastRate = 0.0
+                    while (pos < missing.size) {
+                        val wave = missing.subList(pos,minOf(missing.size,pos+workers))
+                        val start = System.nanoTime()
+                        val tasks = wave.map { i -> Callable {
+                            val n = length(i)
+                            val offset = i.toLong()*chunk
+                            val digest = at(offset).use { TransferV2.hash(it,n.toLong()) }
+                            retry { request("chunk",ticket,"&i=$i",digest,n) { at(offset) } }
+                            n
+                        } }
+                        for ((index,result) in pool.invokeAll(tasks).withIndex()) {
+                            try { val amount = result.get(); if (reported.add(wave[index])) advanced(amount) } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e }
+                        }
+                        val rate = wave.sumOf { length(it).toLong() }.toDouble() / maxOf(1L,System.nanoTime()-start)
+                        workers = if (rate >= lastRate*0.97) minOf(8,workers*2) else maxOf(1,workers/2)
+                        lastRate = rate
+                        pos += wave.size
                     }
-                    val rate = wave.sumOf { length(it).toLong() }.toDouble() / maxOf(1L,System.nanoTime()-start)
-                    workers = if (rate >= lastRate*0.97) minOf(8,workers*2) else maxOf(1,workers/2)
-                    lastRate = rate
-                    pos += wave.size
+                }
+                try {
+                    if (!retry { request("finish",ticket) }.getBoolean("done")) throw IOException("Missing completion receipt")
+                    break
+                } catch (e: Rejected) {
+                    if (e.status != 409 || repairs++ > 0 || retry { request("status",ticket) }.getJSONArray("have").length() >= count) throw e
                 }
             }
-            if (!retry { request("finish",ticket) }.getBoolean("done")) throw IOException("Missing completion receipt")
             finished.add(key)
             return true
         } catch (e: Throwable) {

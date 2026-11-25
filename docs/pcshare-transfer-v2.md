@@ -22,5 +22,7 @@ percent-encoded. Control requests have empty bodies.
 A receiver derives offsets from the index, fixing the size of the last chunk
 from the manifest. Files up to 64 GiB are supported. Upload streams use
 256 KiB blocks. Only flush-complete chunks enter the atomic journal. A repeat
-init with different metadata fails. Repeated completion reuses the receipt.
+init with different metadata fails. After recording an initialization acknowledgement,
+senders add `resume=1` to every later init. A missing receipt then returns HTTP
+410 and cannot create a second copy. Repeated completion reuses the receipt.
 Idle journals can expire after seven days. Status is scoped to a file.

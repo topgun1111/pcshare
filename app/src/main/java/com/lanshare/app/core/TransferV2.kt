@@ -15,6 +15,7 @@ internal object TransferV2 {
     const val CHUNK = 8 * 1024 * 1024
     private val slots = Semaphore(8)
     private val gate = Any()
+    private var lastReceiptSweep = 0L
     private val busy = HashSet<Pair<String, Int>>()
     private val digestPattern = Regex("[0-9a-f]{64}")
     private val ticketPattern = Regex("[0-9a-f]{32}")
@@ -37,7 +38,7 @@ internal object TransferV2 {
         if (rel.length > 3000 || rel.split('/').any { it.isEmpty() || it == "." || it == ".." ||
                 it.any { c -> c == ':' || c == '\\' || c.code < 32 } }) throw BadReq("Invalid path")
         val root = Core.local.real("/Download/pcshare").canonicalFile
-        return File(root, rel).canonicalFile.also {
+        return Core.local.real("/Download/pcshare/$rel").canonicalFile.also {
             if (!it.path.startsWith(root.path + File.separator)) throw Denied("Outside receive folder")
         }
     }
@@ -70,12 +71,15 @@ internal object TransferV2 {
             if (length !in 0L..CHUNK.toLong() || (op != "chunk" && length != 0L)) throw BadReq("Invalid length")
             val ctx = Core.appCtx ?: throw IOException("Application not ready")
             val folder = File(ctx.filesDir, "transfer-v2")
-            val journal = AtomicFile(File(folder, ticket))
+            val receiptsDir = File(folder,"completed")
+            var journal = AtomicFile(File(folder,ticket))
             val i = ex.query["i"]?.toIntOrNull() ?: -1
             val digest = ex.header("x-pcshare-sha256") ?: ""
             var notice: PcTransferNotice.State? = null
             val part = synchronized(gate) {
                 folder.mkdirs()
+                val receipt = File(receiptsDir,ticket)
+                if (receipt.exists()) journal = AtomicFile(receipt)
                 var s = try { read(journal) } catch (_: java.io.FileNotFoundException) { null }
                 if (op == "init") {
                     val path = ex.q("path")
@@ -84,6 +88,7 @@ internal object TransferV2 {
                     val dst = target(path)
                     if (size !in 0L..(64L shl 30) || !digestPattern.matches(sha)) throw BadReq("Invalid manifest")
                     if (s == null) {
+                        if (ex.query["resume"] == "1") { ex.fail(410,"Session expired"); return }
                         val receipts = folder.listFiles() ?: throw IOException("Cannot read journals")
                         for (receipt in receipts) {
                             if (ticketPattern.matches(receipt.name) && receipt.lastModified() < System.currentTimeMillis()-604800000L &&
@@ -110,7 +115,10 @@ internal object TransferV2 {
                 val chunks = state.getJSONObject("chunks")
                 val size = state.getLong("size")
                 val count = ((size + CHUNK-1) / CHUNK).toInt()
+                val dst = target(state.getString("path"))
                 val tmp = File(state.getString("part"))
+                if (tmp.parentFile != dst.parentFile || tmp.canonicalFile != tmp) throw Denied("Partial file moved")
+                if (state.optBoolean("cancelled") && op != "cancel") { ex.fail(409,"Cancelled"); return }
                 if (!state.getBoolean("done")) {
                     notice = PcTransferNotice.begin(ctx,"v2:"+ticket,ex.remoteIp,state.getString("path"),size,1)
                     val active = requireNotNull(notice)
@@ -146,9 +154,11 @@ internal object TransferV2 {
                                     src.inputStream().use { input ->
                                         for (index in 0 until count) {
                                             val n = minOf(CHUNK.toLong(),size-index.toLong()*CHUNK)
-                                            if (hash(input,n) != chunks.optString(index.toString())) chunks.remove(index.toString())
+                                            if (index.toLong()*CHUNK+n > src.length() || hash(input,n) != chunks.optString(index.toString()))
+                                                chunks.remove(index.toString())
                                         }
                                     }
+                                    if (src.length() > size) RandomAccessFile(src,"rw").use { it.setLength(size); it.fd.sync() }
                                     save(journal,state)
                                 }
                                 ex.fail(409,"Final digest mismatch"); return
@@ -171,6 +181,15 @@ internal object TransferV2 {
                             notice?.let { PcTransferNotice.itemDone(ctx,it) }
                             state.put("done",true)
                             save(journal,state)
+                            receiptsDir.mkdirs()
+                            if (journal.baseFile.renameTo(receipt) && receiptsDir.lastModified() != 0L) {
+                                // Amortize cleanup over many small files.
+                                if (System.currentTimeMillis() - lastReceiptSweep > 3600000L) {
+                                    val before = System.currentTimeMillis() - 604800000L
+                                    receiptsDir.listFiles()?.filter { it.lastModified() < before }?.forEach { it.delete() }
+                                    lastReceiptSweep = System.currentTimeMillis()
+                                }
+                            }
                         }
                         ex.json(JSONObject().put("done",true)); return
                     }
