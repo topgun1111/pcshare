@@ -66,6 +66,9 @@ jobs:
             echo "::warning::Keystore secrets incomplete/invalid - signing with app/lanshare.jks"
           fi
 
+      - name: Test Android sender and receiver over loopback
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.core.TransferInteropTest
+
       - name: Build Main and Lite APKs
         env:
           APP_VERSION: ${{ needs.prep.outputs.ver }}

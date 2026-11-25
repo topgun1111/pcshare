@@ -91,6 +91,7 @@ class LanShareService : Service() {
         override fun run() {
             if (tickN++ % 5 == 0) {   // every ~10 s: keep the Direct Share targets (online devices) current
                 val app = applicationContext
+                com.lanshare.app.core.PendingUpload.recover(app)
                 Thread { Shortcuts.sync(app) }.also { it.isDaemon = true }.start()
             }
             try {

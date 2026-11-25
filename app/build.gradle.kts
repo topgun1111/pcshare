@@ -41,6 +41,7 @@ android {
         manifestPlaceholders["appLabel"] = if (lite) "LANShare Lite" else "LANShare"
         manifestPlaceholders["appIcon"] = if (lite) "@mipmap/ic_launcher_lite" else "@mipmap/ic_launcher"   // lite = purple icon (res/mipmap-anydpi*/ic_launcher_lite.xml)
     }
+    testOptions.unitTests.isIncludeAndroidResources = true
     buildFeatures { buildConfig = true }
     // Sabit imza: her derlemede AYNI anahtar kullanılır, böylece güncellemeler üstüne kurulur.
     // CI secret'ları (KEYSTORE_FILE...) verilirse onlar, yoksa depodaki app/lanshare.jks kullanılır.
@@ -81,6 +82,7 @@ if (lite) tasks.configureEach {
     }
 }
 dependencies {
+    testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("junit:junit:4.13.2")                           // vault unit tests (core/vault, pure JVM)
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.biometric:biometric:1.1.0")                // Vault fingerprint unlock (core/vault/VaultBio.kt, VaultActivity)

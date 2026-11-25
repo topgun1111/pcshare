@@ -429,6 +429,7 @@ class MainActivity : Activity() {
                 val notificationId = 7642
                 var notified = false
                 var outgoing: com.lanshare.app.core.PcTransferNotice.Outgoing? = null
+                var pendingBatch: com.lanshare.app.core.PendingUpload? = null
                 try {
                     val pc = com.lanshare.app.core.PcText.get(targetId)
                         ?: throw java.io.IOException("PC not found. Open LANShare Text on the PC and scan again.")
@@ -500,7 +501,11 @@ class MainActivity : Activity() {
                             sent, totalBytes, "run")
                         notified = true
                     }
-                    val upload = com.lanshare.app.core.TransferUpload(this@MainActivity, pc, transfer)
+                    val manifest = org.json.JSONArray()
+                    for ((f, path, dir) in entries) manifest.put(com.lanshare.app.core.PendingUpload.item(f.canonicalPath,path,if (dir) 0 else f.length(),dir))
+                    val batch = com.lanshare.app.core.PendingUpload(this@MainActivity,pc,manifest)
+                    pendingBatch = batch
+                    val upload = com.lanshare.app.core.TransferUpload(this@MainActivity, pc, transfer,batch)
                     updateNotification(true)
                     for ((file, relative, isDirectory) in entries) {
                         com.lanshare.app.core.PcTransferNotice.awaitOutgoing(transfer)
@@ -556,6 +561,7 @@ class MainActivity : Activity() {
                         if (result.contains("cancelled", ignoreCase = true)) "Send to PC cancelled" else "Send to PC failed",
                         result, 0, 0, "err")
                 } finally {
+                    if (outgoing?.cancelled == true) pendingBatch?.clear()
                     outgoing?.let { com.lanshare.app.core.PcTransferNotice.endOutgoing(it, ok, result) }
                     pcSending.set(false)
                     val success = ok

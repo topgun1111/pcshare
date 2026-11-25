@@ -269,7 +269,7 @@ class InboxActivity : Activity() {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
         try {
             startActivityForResult(picker, REQUEST_ATTACH_FILES)
@@ -296,6 +296,10 @@ class InboxActivity : Activity() {
         val peer = TextSend.find(selectedPeerId)
         if (peer == null) { toast("Selected device is no longer available"); return }
 
+        for (uri in uris) {
+            try { contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            catch (_: SecurityException) { /* Provider grants access only until this process exits. */ }
+        }
         val count = uris.size
         toast("Sending $count attachment(s) to ${peer.name}")
         MessageFileAttachments.send(applicationContext, peer, uris.toList()) { error ->

@@ -6,7 +6,6 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
-import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URL
 import java.net.URLEncoder
@@ -14,18 +13,19 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
-internal class TransferUpload(context: Context, private val peer: Peer, private val progress: PcTransferNotice.Outgoing) {
+internal class TransferUpload(context: Context, private val peer: Peer, private val progress: PcTransferNotice.Outgoing, private val batch: PendingUpload) {
+    companion object { private val pool = Executors.newFixedThreadPool(8) }
     private val jobs = context.getSharedPreferences("pcshare-outbound-v2", Context.MODE_PRIVATE)
     private val expected = peer.id.removePrefix(PcText.PREFIX)
     private val finished = ArrayList<String>()
+    @Volatile private var verified: Peer? = null
     private var supportsV2: Boolean? = null
     private class Rejected(val status: Int, message: String): IOException(message)
 
     private fun request(op: String, ticket: String? = null, query: String = "", sha: String? = null,
-                        size: Int = 0, source: (() -> InputStream)? = null): JSONObject {
-        val endpoint = PcText.get(peer.id) ?: Core.discOrNull()?.get(peer.id) ?: peer
+                        size: Int = 0, probeTarget: Peer? = null, source: (() -> InputStream)? = null): JSONObject {
+        val endpoint = probeTarget ?: verified ?: throw IOException("Peer has not been verified")
         val url = URL("http", endpoint.ip, endpoint.port, "/p/pcshare-v2?op=$op$query")
         val conn = url.openConnection(Proxy.NO_PROXY) as HttpURLConnection
         try {
@@ -65,12 +65,14 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
     }
 
     private fun probe(): Boolean {
-        val caps = try { request("caps") } catch (e: Rejected) {
+        val candidate = (PcText.get(peer.id) ?: Core.discOrNull()?.get(peer.id) ?: peer).snapshot()
+        val caps = try { request("caps",probeTarget=candidate) } catch (e: Rejected) {
             if (e.status == 404 || e.status == 405) return false
             throw e
         }
         if (caps.getInt("version") != 2 || caps.getInt("chunk") != TransferV2.CHUNK ||
             caps.getString("peer") != expected) throw IOException("Peer identity or protocol changed")
+        verified = candidate
         return true
     }
 
@@ -91,15 +93,22 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
         throw IOException("Retry limit reached")
     }
 
+    fun requireV2() {
+        if (!retry { probe() }) throw IOException("Partial transfer requires the original v2 peer")
+        supportsV2 = true
+    }
+
     fun send(path: String, identity: String, size: Long, open: () -> InputStream, advanced: (Int) -> Unit): Boolean {
         val name = JSONObject().put("peer",peer.id).put("source",identity).put("path",path).toString()
         val key = MessageDigest.getInstance("SHA-256").digest(name.toByteArray()).joinToString("") { "%02x".format(it) }
         val saved = jobs.getString(key,null)?.let { JSONObject(it) }
         if (supportsV2 == null) supportsV2 = retry { probe() }
         if (supportsV2 != true) {
-            if (saved != null) throw IOException("Partial transfer requires the original v2 peer")
+            if (saved != null || batch.saved) throw IOException("Partial transfer requires the original v2 peer")
             return false
         }
+        batch.record()
+        if (size !in 0L..(64L shl 30)) throw IOException("Invalid transfer size")
         fun at(offset: Long): InputStream {
             val input = open()
             try {
@@ -136,8 +145,7 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
                 advanced(length(i))
             }
             val missing = (0 until count).filter { it !in complete }
-            val pool = Executors.newFixedThreadPool(8)
-            try {
+            run {
                 var pos = 0
                 var workers = 1
                 var lastRate = 0.0
@@ -159,12 +167,13 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
                     lastRate = rate
                     pos += wave.size
                 }
-            } finally { pool.shutdownNow(); pool.awaitTermination(65,TimeUnit.SECONDS) }
+            }
             if (!retry { request("finish",ticket) }.getBoolean("done")) throw IOException("Missing completion receipt")
             finished.add(key)
             return true
         } catch (e: Throwable) {
             if (progress.cancelled) {
+                batch.clear()
                 runCatching { request("cancel",ticket) }
                 jobs.edit().remove(key).commit()
             }
@@ -173,6 +182,7 @@ internal class TransferUpload(context: Context, private val peer: Peer, private 
     }
 
     fun batchDone() {
+        batch.clear()
         val edit = jobs.edit()
         finished.forEach { edit.remove(it) }
         if (!edit.commit()) throw IOException("Cannot clear completed transfer tickets")

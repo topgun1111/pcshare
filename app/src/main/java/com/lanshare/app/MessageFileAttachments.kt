@@ -51,6 +51,7 @@ internal object MessageFileAttachments {
         Thread({
             val temporaryFiles = ArrayList<File>()
             var progress: PcTransferNotice.Outgoing? = null
+            var batch: com.lanshare.app.core.PendingUpload? = null
             var success = false
             var error: String? = null
             try {
@@ -70,7 +71,11 @@ internal object MessageFileAttachments {
                     "send:" + session, peer.name, files.first().name, bytes, files.size)
                 progress = current
 
-                val upload = com.lanshare.app.core.TransferUpload(app, peer, current)
+                val manifest = org.json.JSONArray()
+                for (file in files) manifest.put(com.lanshare.app.core.PendingUpload.item(file.uri.toString(),file.name,file.size))
+                val pending = com.lanshare.app.core.PendingUpload(app,peer,manifest)
+                batch = pending
+                val upload = com.lanshare.app.core.TransferUpload(app, peer, current,pending)
                 for (item in files) {
                     PcTransferNotice.awaitOutgoing(current)
                     PcTransferNotice.outgoingFile(current, item.name)
@@ -113,6 +118,7 @@ internal object MessageFileAttachments {
             } catch (failure: Exception) {
                 error = failure.message ?: "Attachment transfer failed"
             } finally {
+                if (progress?.cancelled == true) batch?.clear()
                 progress?.let { PcTransferNotice.endOutgoing(it, success, error) }
                 for (staged in temporaryFiles) {
                     try { staged.delete() } catch (_: Exception) {}
