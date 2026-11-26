@@ -36,6 +36,27 @@ class GalleryCopyPlanTest {
         try { plan.walk("/"); fail("root accepted") } catch (_: BadReq) {}
     }
 
+    @Test fun retryRetainsFailedLookupsAndPartialNamesWithoutRepeatingCompletedItems() {
+        val result = interruptedCopyItems(
+            listOf("/A/done.jpg", "/A/partial.jpg", "/A/untouched.jpg"),
+            2,
+            mapOf("/A/partial.jpg" to "partial (1).jpg"),
+            listOf("/A/missing.jpg"),
+            mapOf("/A/missing.jpg" to "missing (2).jpg")
+        )
+        assertEquals(listOf("/A/missing.jpg", "/A/partial.jpg", "/A/untouched.jpg"), result.keys.toList())
+        assertEquals("missing (2).jpg", result["/A/missing.jpg"])
+        assertEquals("partial (1).jpg", result["/A/partial.jpg"])
+        assertNull(result["/A/untouched.jpg"])
+        assertFalse(result.containsKey("/A/done.jpg"))
+    }
+
+    @Test fun retryAfterPlanningFailureDoesNotDuplicateTheSelection() {
+        val result = interruptedCopyItems(listOf("/A/a.jpg", "/A/b.jpg"), 0,
+            emptyMap(), listOf("/A/a.jpg"), emptyMap())
+        assertEquals(listOf("/A/a.jpg", "/A/b.jpg"), result.keys.toList())
+    }
+
     @Test fun failedListingIsNotRepeatedForEveryFile() {
         var attempts = 0
         val plan = GalleryCopyPlan { attempts++; throw IOException("offline") }

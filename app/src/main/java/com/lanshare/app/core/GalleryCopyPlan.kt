@@ -23,3 +23,22 @@ internal class GalleryCopyPlan(private val list: (String) -> List<Item>) {
         return listOf(WalkItem("", false, item.size.coerceAtLeast(0L)))
     }
 }
+
+// Keep planning failures, partially transferred files and untouched entries. Completed
+// entries must not be retried. Preserve any name assigned by a previous attempt.
+internal fun interruptedCopyItems(
+    planned: List<String>,
+    visited: Int,
+    pending: Map<String, String>,
+    planningFailures: Collection<String>,
+    forced: Map<String, String>
+): Map<String, String?> {
+    val left = LinkedHashMap<String, String?>()
+    for (path in planningFailures) left[path] = forced[path]
+    for ((index, path) in planned.withIndex()) {
+        val name = pending[path]
+        if (name != null) left[path] = name
+        else if (index >= visited && !left.containsKey(path)) left[path] = forced[path]
+    }
+    return left
+}

@@ -2455,7 +2455,7 @@ function galView(a){
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=lmLive(E('h2')),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
   const pb=E('div','gptr'),pst=E('div','gpst');pb.append(E('div'));o.append(hd,sh,pb,sc,gb,pst);
-  let LIST=[];const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>{const mp=new Map(LIST.map(m=>[m.name,m]));return [...GS].map(n=>mp.get(n)).filter(Boolean)};   // selection order (tap order), not list order: it is the order they print / are added
+  let LIST=[],galleryCopyBusy=false;const gp=()=>[...GS].map(n=>jn(a.path,n)),gi=()=>{const mp=new Map(LIST.map(m=>[m.name,m]));return [...GS].map(n=>mp.get(n)).filter(Boolean)};   // selection order (tap order), not list order: it is the order they print / are added
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}   // everything already selected: the button now unselects
     LIST.forEach(m=>{GS.add(m.name);const e=els.get(m.name);if(e)e.classList.add('sel')});upd()};
@@ -2468,12 +2468,12 @@ function galView(a){
     const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:D,paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
     if(rem){   // other phone: copy to THIS phone (album picker -> paste), clipboard copy, share, details. Nothing that changes the other phone.
-      btn('download','To this phone',async()=>{const ps=gp(),dir=await galPick({v:a.v,path:'\u0000'},'Copy to album on this phone');if(!dir)return;
-        try{const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
+      btn('download','To this phone',async()=>{if(galleryCopyBusy)return;galleryCopyBusy=true;
+        try{const ps=gp(),dir=await galPick({v:a.v,path:'\u0000'},'Copy to album on this phone');if(!dir)return;const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
           const r=await api('POST','/api/gallerycopy',{dev:D,paths:ps,dir,conflict:cf});
           watchJob(r.job);toast('Copying\u2026',0,0);
           if(await track(r.job)){clr();galForceLocal()}}
-        catch(e){toast('\u26a0 '+e.message,5000)}});
+        catch(e){toast('\u26a0 '+e.message,5000)}finally{galleryCopyBusy=false}});
       if(!a.v&&gi().some(pvOK)&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,dev:D,path:a.path,done:clr}))}   // pictures of the other phone are read through /api/dl?dev=D
       btn('copy','Copy',()=>clip('copy'));
       btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev='+enc(D)+'&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
@@ -2692,18 +2692,18 @@ function risView(D,dn,sdir,sname){
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;tw.append(tt,sb);hd.append(bk,tw);
   const GS=new Set(),els=new Map(),sh=E('div','gh sl'),sx=E('button','ibtn'),sn=lmLive(E('h2')),sa=E('button','ibtn'),gb=E('div','gb');
   sx.append(ic('close'));sx.setAttribute('aria-label','Cancel selection');sa.append(ic('selall'));sa.setAttribute('aria-label','Select all');sh.append(sx,sn,sa);
-  let LIST=[],mode=LD('ls_ismode','v')==='t'?'t':'v',whole=LD('ls_iswhole','1')==='1',ST=null;
+  let LIST=[],galleryCopyBusy=false,mode=LD('ls_ismode','v')==='t'?'t':'v',whole=LD('ls_iswhole','1')==='1',ST=null;
   const live=()=>o._for===tok&&o.style.display==='flex',key=m=>m.p,gi=()=>{const mp=new Map(LIST.map(m=>[m.p,m]));return [...GS].map(k=>mp.get(k)).filter(Boolean)},gp=()=>gi().map(m=>m.p);
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
   const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
-    btn('download','To this phone',async()=>{const ps=gp(),dir=await galPick({v:false,path:'\u0000'},'Copy to album on this phone');if(!dir)return;
-      try{const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
+    btn('download','To this phone',async()=>{if(galleryCopyBusy)return;galleryCopyBusy=true;
+      try{const ps=gp(),dir=await galPick({v:false,path:'\u0000'},'Copy to album on this phone');if(!dir)return;const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
         const r=await api('POST','/api/gallerycopy',{dev:D,paths:ps,dir,conflict:cf});
         watchJob(r.job);toast('Copying\u2026',0,0);
         if(await track(r.job)){clr();galForceLocal()}}
-      catch(e){toast('\u26a0 '+e.message,5000)}});
+      catch(e){toast('\u26a0 '+e.message,5000)}finally{galleryCopyBusy=false}});
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:D,paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev='+enc(D)+'&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(gi().some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint(null,{items:gi(),dev:D,full:1,path:'/',done:clr}));

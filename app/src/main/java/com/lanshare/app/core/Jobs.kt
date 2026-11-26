@@ -982,12 +982,9 @@ object Jobs {
         fun saveResume() {
             if (same && cut) return   // same-device moves are renames: nothing partial
             val left = JSONArray(); val names = JSONObject()
-            val added = HashSet<String>()
-            for (p in planFailures) if (added.add(p)) { left.put(p); forced?.get(p)?.let { names.put(p, it) } }
-            for ((i, p) in planned.withIndex()) {
-                val nn = pending[p]
-                if (nn != null) { if (added.add(p)) left.put(p); names.put(p, nn) }
-                else if (i >= visited && added.add(p)) { left.put(p); forced?.get(p)?.let { names.put(p, it) } }
+            for ((p, nn) in interruptedCopyItems(planned, visited, pending, planFailures, forced.orEmpty())) {
+                left.put(p)
+                if (nn != null) names.put(p, nn)
             }
             if (left.length() == 0) { job.rid?.let { Partials.dropJob(it) }; return }
             val id = job.rid ?: UUID.randomUUID().toString().replace("-", "").take(8)
@@ -1103,7 +1100,7 @@ object Jobs {
                             if (ex != null) {
                                 if (ex.dir) throw IOException("a folder with this name is in the way")
                                 existed = true
-                                var act: String? = if (fname != null && filesOnly) "resume" else sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; "unsim" -> "both"; else -> null }
+                                var act: String? = if (fname != null && filesOnly && conflict == "rename") "both" else sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; "unsim" -> "both"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
                                         .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
@@ -1128,6 +1125,10 @@ object Jobs {
                                     target = vjoin(vdir(target), nm)
                                     shown = shown.substringBeforeLast('/', "").let { if (it.isEmpty()) nm else "$it/$nm" }
                                     existed = false
+                                    if (filesOnly && w.rel.isEmpty()) {
+                                        pending[p] = vbase(target)
+                                        taken.add(vbase(target))
+                                    }
                                 }
                                 if (act == "skip") {
                                     job.files++
