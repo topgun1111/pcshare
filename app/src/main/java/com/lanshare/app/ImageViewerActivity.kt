@@ -473,7 +473,7 @@ class ImageViewerActivity : Activity() {
                 val r = if (vault) decodeSrc { openVault(it) } else decode(fetch(pos, it))
                 bm = r.first; dim = r.second
             } catch (e: OutOfMemoryError) { err = "Not enough memory for this picture"
-            } catch (e: Exception) { err = e.message ?: "Cannot open this picture" }
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); err = e.message ?: "Cannot open this picture" }
             val rb = bm
             val re = err
             val rd = dim
@@ -581,7 +581,7 @@ class ImageViewerActivity : Activity() {
                 .putExtra(MainActivity.X_PATHS, arrayOf(path))
                 .putExtra(MainActivity.X_NAMES, arrayOf(it.name))
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        } catch (e: Exception) { Lm.snack(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
+        } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); Lm.snack(this, "Cannot print: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
 
     /** Rotate the picture on screen by [q] quarter turns (view only; the text layer is hidden while turned because its boxes belong to the unturned picture). */
@@ -627,7 +627,7 @@ class ImageViewerActivity : Activity() {
                 try { android.media.MediaScannerConnection.scanFile(applicationContext, arrayOf(t.path), null, null) } catch (_: Throwable) {}
                 done = t
             } catch (e: OutOfMemoryError) { err = "Not enough memory"
-            } catch (e: Exception) { err = e.message ?: "error" }
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); err = e.message ?: "error" }
             val fe = done
             val re = err
             ui.post {
@@ -670,7 +670,7 @@ class ImageViewerActivity : Activity() {
                 val r = com.lanshare.app.core.PrintSpace.add(listOf(path), dev)
                 val sk = r.getJSONArray("skipped")
                 if (sk.length() > 0) "Not added: " + sk.getJSONObject(0).optString("why") else "Added to Print space"
-            } catch (e: Exception) { "Cannot add: " + (e.message ?: "error") }
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); "Cannot add: " + (e.message ?: "error") }
             runOnUiThread { if (!isFinishing) Lm.snack(this, msg, Toast.LENGTH_LONG) }
         }.start()
     }
@@ -698,7 +698,7 @@ class ImageViewerActivity : Activity() {
                     try {
                         com.lanshare.app.core.Jobs.removeUser(com.lanshare.app.core.Jobs.ep(dev), com.lanshare.app.core.vnorm(path))
                         runOnUiThread { afterDelete(it) }
-                    } catch (e: Exception) {
+                    } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e);
                         runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
                 }.start()
@@ -712,7 +712,7 @@ class ImageViewerActivity : Activity() {
             .setPositiveButton("Delete") { _, _ ->
                 pool.execute {
                     try { com.lanshare.app.core.vault.VaultSession.store?.delete(VaultMode.idOf(it.url)); VaultMode.dirty = true; runOnUiThread { afterDelete(it) } }
-                    catch (e: Exception) { runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
+                    catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); runOnUiThread { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
                 }
             }.show()
     }
@@ -739,7 +739,7 @@ class ImageViewerActivity : Activity() {
                 val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", dst)
                 val send = Intent(Intent.ACTION_SEND).setType(mimeFor(dst.name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 runOnUiThread { startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
-            } catch (e: Exception) {
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e);
                 runOnUiThread { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
@@ -928,7 +928,7 @@ class ImageViewerActivity : Activity() {
                     if (isDestroyed) f.delete() else startActivityForResult(Intent(this, ImageEditActivity::class.java)
                         .putExtra(ImageEditActivity.X_SRC, f.path).putExtra(ImageEditActivity.X_VAULT, VaultMode.idOf(it.url)).putExtra(ImageEditActivity.X_NAME, it.name), REQ_EDIT)
                 }
-            } catch (e: Exception) { runOnUiThread { Lm.snack(this, "Cannot edit: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image viewer", e); runOnUiThread { Lm.snack(this, "Cannot edit: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
         }
     }
 

@@ -526,7 +526,7 @@ class TextEditorActivity : Activity() {
             val uri = android.net.Uri.parse(u)
             val sc = uri.scheme?.lowercase()
             if (sc == "http" || sc == "https" || sc == "mailto" || sc == "tel") startActivity(Intent(Intent.ACTION_VIEW, uri)) else toast(u)
-        } catch (x: Exception) { toast("Cannot open link") }
+        } catch (x: Exception) { com.lanshare.app.core.ErrorLog.exception("Text editor", x, privateDetails = true); toast("Cannot open link") }
     }
 
     private fun pvFace(): Typeface = if (mono) Typeface.MONOSPACE else Fnt.med()

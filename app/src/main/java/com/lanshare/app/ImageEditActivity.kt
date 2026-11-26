@@ -108,7 +108,7 @@ class ImageEditActivity : Activity() {
                     cropV.set(bm, RectF(0f, 0f, 1f, 1f))
                     refreshInfo()
                 }
-            } catch (t: Throwable) {
+            } catch (t: Throwable) { com.lanshare.app.core.ErrorLog.exception("Image editor", t);
                 runOnUiThread { Lm.snack(this, "Cannot open this picture: " + (t.message ?: "error"), Toast.LENGTH_LONG); finish() }
             }
         }.start()
@@ -346,7 +346,7 @@ class ImageEditActivity : Activity() {
                 res = target
                 }
             } catch (e: OutOfMemoryError) { err = "Not enough memory for this size"
-            } catch (e: Exception) { err = e.message ?: "error" }
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Image editor", e); err = e.message ?: "error" }
             val rf = res
             val re = err
             val vr = vres

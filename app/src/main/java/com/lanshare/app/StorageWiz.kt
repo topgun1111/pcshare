@@ -1433,9 +1433,9 @@ class WizScreen(private val act: Activity, private val scan: Scan, private val h
                         val uri = com.lanshare.app.core.vault.VaultIntents.uri(act, act.packageName + ".fileprovider", f)
                         val i = Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         act.startActivity(Intent.createChooser(i, "Export CSV"))
-                    } catch (e: Exception) { Lm.snack(act, "Cannot share the CSV: " + (e.message ?: ""), Toast.LENGTH_LONG) }
+                    } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Storage analysis export", e); Lm.snack(act, "Cannot share the CSV: " + (e.message ?: ""), Toast.LENGTH_LONG) }
                 }
-            } catch (e: Throwable) { ui.post { Lm.snack(act, "Export failed: " + (e.message ?: ""), Toast.LENGTH_LONG) } }
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Storage analysis export", e); ui.post { Lm.snack(act, "Export failed: " + (e.message ?: ""), Toast.LENGTH_LONG) } }
         }, "wiz-export").also { it.isDaemon = true }.start()
     }
 

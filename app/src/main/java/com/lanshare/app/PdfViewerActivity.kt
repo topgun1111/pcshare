@@ -480,7 +480,7 @@ class PdfViewerActivity : Activity() {
                     if (!tmp.renameTo(out)) throw IOException("cannot cache the document")
                     out.setLastModified(System.currentTimeMillis())
                 }
-            } catch (e: Exception) {
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("PDF viewer", e, privateDetails = true);
                 if (my != gen) return@Thread
                 err = e.message ?: "Cannot download this document"
             }
@@ -1136,7 +1136,7 @@ class PdfViewerActivity : Activity() {
                     shown = "Downloads/${f.name}"
                 }
                 runOnUiThread { Lm.snack(this, "Saved to $shown", Toast.LENGTH_LONG) }
-            } catch (e: Throwable) {
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("PDF viewer", e, privateDetails = true);
                 runOnUiThread { Lm.snack(this, "Could not save: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
@@ -1155,7 +1155,7 @@ class PdfViewerActivity : Activity() {
                     Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share"
                 ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 runOnUiThread { try { startActivity(intent) } catch (_: Exception) { Lm.snack(this, "No app can open this", Toast.LENGTH_LONG) } }
-            } catch (e: Throwable) {
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("PDF viewer", e, privateDetails = true);
                 runOnUiThread { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }.start()
@@ -1193,7 +1193,7 @@ class PdfViewerActivity : Activity() {
                             bos.flush()
                             ok = ranges.map { it }.toTypedArray()
                         }
-                    } catch (e: Throwable) { fail = e.message ?: "error" }
+                    } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("PDF viewer", e, privateDetails = true); fail = e.message ?: "error" }
                     try { dest.close() } catch (_: Exception) {}
                     ui.post {
                         val r = ok

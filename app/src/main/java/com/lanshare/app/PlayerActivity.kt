@@ -1043,7 +1043,7 @@ class PlayerActivity : Activity() {
                 ui.post { box.dismiss(); sendFile(dst, it.name) }
             } catch (e: InterruptedException) {
                 ui.post { box.dismiss() }
-            } catch (e: Exception) {
+            } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Video player", e);
                 ui.post { box.dismiss(); Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
             }
         }, "player-share").also { it.isDaemon = true }.start()
@@ -1054,7 +1054,7 @@ class PlayerActivity : Activity() {
             val uri = com.lanshare.app.core.vault.VaultIntents.uri(this, "$packageName.fileprovider", f)
             val send = Intent(Intent.ACTION_SEND).setType(mimeFor(name)).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (e: Exception) { Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
+        } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Video player", e); Lm.snack(this, "Cannot share: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
     }
 
     /** Mirrors Jobs.removeUser: only this phone's own, non-archive files go to the bin; every other device / USB / archive entry is deleted for good. */
@@ -1078,7 +1078,7 @@ class PlayerActivity : Activity() {
                     try {
                         com.lanshare.app.core.Jobs.removeUser(com.lanshare.app.core.Jobs.ep(dev), com.lanshare.app.core.vnorm(path))
                         ui.post { if (!isFinishing) afterDelete(it) }
-                    } catch (e: Exception) {
+                    } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Video player", e);
                         ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) }
                     }
                 }, "player-delete").also { t -> t.isDaemon = true }.start()
@@ -1094,7 +1094,7 @@ class PlayerActivity : Activity() {
                     try {
                         com.lanshare.app.core.vault.VaultSession.store?.delete(VaultMode.idOf(it.url)); VaultMode.dirty = true
                         ui.post { if (!isFinishing) afterDelete(it) }
-                    } catch (e: Exception) { ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
+                    } catch (e: Exception) { com.lanshare.app.core.ErrorLog.exception("Video player", e); ui.post { Lm.snack(this, "Cannot delete: " + (e.message ?: "error"), Toast.LENGTH_LONG) } }
                 }, "player-delete").also { t -> t.isDaemon = true }.start()
             })
     }

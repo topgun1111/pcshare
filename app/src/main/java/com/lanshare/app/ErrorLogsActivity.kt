@@ -26,6 +26,8 @@ class ErrorLogsActivity : Activity() {
     private lateinit var scroll: ScrollView
     private lateinit var pal: AppPal.P
     private var busy = false
+    private var loading = false
+    private var choosing = false
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b) }
@@ -71,19 +73,21 @@ class ErrorLogsActivity : Activity() {
     }
 
     private fun refresh() {
-        if (busy) return
+        if (busy || loading || isDestroyed) return
+        loading = true
         body.text = "Reading logs…"
         worker.execute {
             val text = try { ErrorLog.recent().ifBlank { "No errors recorded yet." } }
             catch (e: Throwable) { ErrorLog.exception("Error Logs viewer", e); "Unable to read diagnostic logs." }
             runOnUiThread {
+                loading = false
                 if (!isDestroyed && !isFinishing) { body.text = text; scroll.scrollTo(0, 0) }
             }
         }
     }
 
     private fun chooseExport() {
-        if (busy) return
+        if (busy || choosing || isDestroyed) return
         AppPal.dlg(this).setTitle("Export error logs?")
             .setMessage("The file may include filenames and technical error details. Review it before sharing. Nothing is uploaded automatically.")
             .setPositiveButton("Choose location") { _, _ ->
@@ -91,14 +95,17 @@ class ErrorLogsActivity : Activity() {
                     val date = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
                         .setType("text/plain").putExtra(Intent.EXTRA_TITLE, "PCShare-error-logs-$date.txt")
+                    choosing = true
                     startActivityForResult(i, EXPORT)
-                } catch (e: Exception) { ErrorLog.exception("Error Logs export picker", e); toast("Cannot open the file picker") }
+                } catch (e: Exception) { choosing = false; ErrorLog.exception("Error Logs export picker", e); toast("Cannot open the file picker") }
             }.setNegativeButton("Cancel", null).show()
     }
 
     override fun onActivityResult(req: Int, result: Int, data: Intent?) {
         super.onActivityResult(req, result, data)
-        if (req != EXPORT || result != RESULT_OK) return
+        if (req != EXPORT) return
+        choosing = false
+        if (result != RESULT_OK) return
         val uri = data?.data ?: return
         if (busy) return
         busy = true

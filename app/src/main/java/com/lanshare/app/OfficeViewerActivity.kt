@@ -102,7 +102,7 @@ class OfficeViewerActivity : Activity() {
             try {
                 pdf = oe.cached(applicationContext, f)?.also { hit = true } ?: oe.convert(applicationContext, f, auto) { status(it) }
                 md5 = oe.md5(f)
-            } catch (e: Throwable) { why = e.message ?: e.javaClass.simpleName; err = e }
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); why = e.message ?: e.javaClass.simpleName; err = e }
             val ms = System.currentTimeMillis() - t0
             val pf = pdf
             if (pf != null) com.lanshare.app.core.PrintLog.ev("office-exact-ok", null, "name" to f.name, "cached" to hit, "sec" to ms / 1000.0, "pdf_size" to pf.length())
@@ -283,7 +283,7 @@ class OfficeViewerActivity : Activity() {
         pendingFrac = if (h > 0) (web.scrollY / h).coerceIn(0f, 1f) else 0f
         updateReadRow()
         Thread {
-            val html = try { renderDoc(o, doc) } catch (e: Throwable) { "<body style=\"font:15px sans-serif;padding:16px\">" + e.message + "</body>" }
+            val html = try { renderDoc(o, doc) } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); "<body style=\"font:15px sans-serif;padding:16px\">" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }
@@ -319,7 +319,7 @@ class OfficeViewerActivity : Activity() {
         curSheet = i
         fbar?.text = "Tap a cell to see its formula"
         Thread {
-            val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, fontUrl, gridOverride) } catch (e: Throwable) { "<body>" + e.message + "</body>" }
+            val html = try { val xs = r.readSheet(i); curXs = xs; XlsxHtml.render(xs, tabs, i, r.styles, fontUrl, gridOverride) } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); "<body>" + e.message + "</body>" }
             runOnUiThread { if (!isDestroyed) show(html) }
         }.start()
     }
@@ -360,7 +360,7 @@ class OfficeViewerActivity : Activity() {
                         .putExtra("names", arrayOf(t.name)).putExtra("nid", 0)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP))
                 }
-            } catch (e: Throwable) { runOnUiThread { Lm.snack(this, "Print on PC failed: " + e.message, Toast.LENGTH_LONG) } }
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); runOnUiThread { Lm.snack(this, "Print on PC failed: " + e.message, Toast.LENGTH_LONG) } }
         }.start()
     }
 
@@ -369,7 +369,7 @@ class OfficeViewerActivity : Activity() {
         try {
             val nm = file?.name ?: "document"
             (getSystemService(PRINT_SERVICE) as android.print.PrintManager).print(nm, web.createPrintDocumentAdapter(nm), android.print.PrintAttributes.Builder().build())
-        } catch (e: Throwable) { Lm.snack(this, "Print failed: " + e.message, Toast.LENGTH_LONG) }
+        } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); Lm.snack(this, "Print failed: " + e.message, Toast.LENGTH_LONG) }
     }
 
     // ---- Part 7: editing (docx via DocxEditor, xlsx via XlsxEditor on the cache copy; every edit is uploaded back to the source right away) ----
@@ -394,7 +394,7 @@ class OfficeViewerActivity : Activity() {
                 else { undoStack.add(snap); while (undoStack.size > 10) undoStack.removeAt(0).delete() }
                 val d = dev; val rp = rpath
                 if (d != null && rp != null) f.inputStream().use { com.lanshare.app.core.Jobs.ep(d).write(rp, it, f.length()) }
-            } catch (e: Throwable) { msg = "Edit failed: " + (e.message ?: "error") }
+            } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Office viewer", e, privateDetails = true); msg = "Edit failed: " + (e.message ?: "error") }
             runOnUiThread { if (!isDestroyed) { Lm.snack(this, msg, Toast.LENGTH_SHORT); load(f) } }
         }.start()
     }

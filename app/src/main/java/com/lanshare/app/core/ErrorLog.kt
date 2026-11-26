@@ -66,10 +66,11 @@ object ErrorLog {
     private fun sensitive(frames: Array<StackTraceElement>): Boolean =
         frames.any { ErrorLogPrivacy.sensitiveClass(it.className) }
 
-    private fun describe(error: Throwable): String {
+    private fun describe(error: Throwable, privateDetails: Boolean = false): String {
         val frames = error.stackTrace
-        val private = sensitive(frames)
-        val message = ErrorLogPrivacy.clean(error.message ?: "", private)
+        // JSON parsing can include input text; document/editor paths may contain private content.
+        val omitMessage = privateDetails || sensitive(frames) || error is org.json.JSONException
+        val message = ErrorLogPrivacy.clean(error.message ?: "", omitMessage)
         val trace = frames.take(12).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
         val cause = error.cause?.javaClass?.simpleName?.let { "; cause=$it" } ?: ""
         return "${error.javaClass.name}: $message$cause | $trace"
@@ -93,10 +94,10 @@ object ErrorLog {
         if (!queue.offer(line(level, component, detail))) dropped.incrementAndGet()
     }
 
-    fun exception(component: String, error: Throwable) {
+    fun exception(component: String, error: Throwable, privateDetails: Boolean = false) {
         try {
             if (store == null || error is Cancelled || error is InterruptedException) return
-            enqueue("ERROR", component, describe(error))
+            enqueue("ERROR", component, describe(error, privateDetails))
         } catch (_: Throwable) {}
     }
 
@@ -116,7 +117,7 @@ object ErrorLog {
                 "script", "promise", "network", "http", "toast" -> kind
                 else -> "unknown"
             }
-            val safeLoc = location.take(80).filter { it.isLetterOrDigit() || it in "/_.- " }
+            val safeLoc = when (location) { "ui.html", "api" -> location; else -> "app" }
             record("WebView", "$safeKind at $safeLoc:$line")
         } catch (_: Throwable) {}
     }

@@ -9,7 +9,7 @@ internal class ErrorLogStore(private val directory: File, private val process: S
                              private val limit: Long = 1024L * 1024L) {
     init {
         require(process in listOf("main", "pdfbuild"))
-        require(limit > 0)
+        require(limit in 1..(1024L * 1024L))
     }
 
     private fun current() = File(directory, "$process.log")
@@ -53,30 +53,30 @@ internal class ErrorLogStore(private val directory: File, private val process: S
         return sections.joinToString("\n\n")
     }
 
-    /** Export the full retained files, not the shortened on-screen view. */
-    @Synchronized fun export(out: OutputStream) {
-        for (p in listOf("main", "pdfbuild")) {
-            out.write("=== $p (oldest first) ===\n".toByteArray(Charsets.UTF_8))
-            for (f in listOf(File(directory, "$p.previous.log"), File(directory, "$p.log"))) {
-                try {
-                    if (f.isFile) f.inputStream().use { input ->
-                        // A concurrently appending second process cannot make this export unbounded.
-                        var left = minOf(f.length(), limit)
-                        val b = ByteArray(8192)
-                        while (left > 0) {
-                            val n = input.read(b, 0, minOf(left, b.size.toLong()).toInt())
-                            if (n <= 0) break
-                            out.write(b, 0, n)
-                            left -= n
+    /** Capture a bounded snapshot before touching an external provider. A slow or failed
+     * export must not hold the writer lock or prevent the crash handler from saving a record. */
+    fun export(out: OutputStream) {
+        val chunks = synchronized(this) {
+            val result = ArrayList<ByteArray>()
+            for (p in listOf("main", "pdfbuild")) {
+                result.add("=== $p (oldest first) ===\n".toByteArray(Charsets.UTF_8))
+                for (f in listOf(File(directory, "$p.previous.log"), File(directory, "$p.log"))) {
+                    val bytes = try {
+                        RandomAccessFile(f, "r").use { r ->
+                            val b = ByteArray(minOf(r.length(), limit).toInt())
+                            r.readFully(b)
+                            b
                         }
+                    } catch (e: java.io.FileNotFoundException) {
+                        if (f.exists()) throw e else continue // other process rotated the file
                     }
-                } catch (e: java.io.FileNotFoundException) {
-                    // Only ignore a rotated source file, never an error writing the export destination.
-                    if (f.exists()) throw e
+                    result.add(bytes)
                 }
+                result.add("\n".toByteArray(Charsets.UTF_8))
             }
-            out.write("\n".toByteArray(Charsets.UTF_8))
+            result
         }
+        for (chunk in chunks) out.write(chunk)
     }
 }
 
