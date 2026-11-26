@@ -68,7 +68,7 @@ class Discovery(val port: Int) {
         for ((n, fn) in listOf<Pair<String, () -> Unit>>("listen" to ::listen, "beacon" to ::beacon, "tcp" to ::tcpLoop, "live" to ::liveLoop))
             Thread({
                 while (true) {   // a crashed loop is restarted (an Error here would otherwise end discovery silently, or kill the app)
-                    try { fn() } catch (e: Throwable) { Log.w(tag, "$n loop crashed: $e") }
+                    try { fn() } catch (e: Throwable) { ErrorLog.exception("Device discovery: $n", e); Log.w(tag, "$n loop crashed: $e") }
                     try { Thread.sleep(2000) } catch (_: InterruptedException) {}
                 }
             }, "disc-$n").also { it.isDaemon = true }.start()

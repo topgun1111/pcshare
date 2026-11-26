@@ -22,7 +22,10 @@ const val BASE_PORT = 8765
 const val STORAGE_MSG = "This phone hides files from LANShare: open Android Settings > Apps > LANShare > " +
     "Permissions > Files and media (or 'All files access') and allow management of all files, then restart the app"
 
-fun errText(e: Throwable): String = (e.message ?: "").ifEmpty { e.javaClass.simpleName }
+fun errText(e: Throwable): String {
+    ErrorLog.exception("Handled exception", e)
+    return (e.message ?: "").ifEmpty { e.javaClass.simpleName }
+}
 
 // ---- virtual paths (always '/'-separated, rooted at '/', never above the root)
 fun vnorm(p: String): String {

@@ -8,7 +8,9 @@ import android.os.Bundle
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (isBuildProcess()) return
+        val pdfBuild = isBuildProcess()
+        com.lanshare.app.core.ErrorLog.init(this, pdfBuild)
+        if (pdfBuild) return
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, state: Bundle?) { try { LumenNativeTheme.darkBase(activity) } catch (_: Throwable) { }; try { LumenNativeTheme.early(activity) } catch (_: Throwable) { } }   // window colour before the first frame (no light flash in dark themes)
             override fun onActivityStarted(activity: Activity) { }
@@ -24,10 +26,10 @@ class App : Application() {
         com.lanshare.app.core.FileInfo.ctx = applicationContext
         com.lanshare.app.core.vault.VaultGuard.cacheRoot = cacheDir.path // initialize before any exported activity / intent guard can run
         Haptics.init(this)
-        try { ClipSync.install(this) } catch (_: Throwable) {}
-        try { VaultAppHooks.install(this) } catch (_: Throwable) {}   // Lockdown: app-wide auto-lock, cache sweep, MediaStore purge
+        try { ClipSync.install(this) } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Clipboard startup", e) }
+        try { VaultAppHooks.install(this) } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Vault startup", e) }   // Lockdown: app-wide auto-lock, cache sweep, MediaStore purge
         // a PDF page-cache build that was running when the app process died continues now (PdfPageCache keeps a small pending list)
-        Thread({ try { Thread.sleep(4000); com.lanshare.app.core.PdfPageCache.resumePending(applicationContext) } catch (_: Throwable) { } }, "pdf-resume").also { it.isDaemon = true }.start()
+        Thread({ try { Thread.sleep(4000); com.lanshare.app.core.PdfPageCache.resumePending(applicationContext) } catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("PDF cache resume", e) } }, "pdf-resume").also { it.isDaemon = true }.start()
     }
 
     private fun isBuildProcess(): Boolean = try { java.io.File("/proc/self/cmdline").readText().trim('\u0000', ' ').endsWith(":pdfbuild") } catch (_: Throwable) { false }

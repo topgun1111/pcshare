@@ -1740,6 +1740,10 @@ const jn=(a,b)=>(b&&b.charCodeAt(0)===1)?b.slice(1):(a==='/'?'':a)+'/'+b;   // a
 const XM={};   // \u0001+path -> {name:key,disp,dir:true,path}
 function rootCk(){try{if(window.LSAndroid&&LSAndroid.rootToken)document.cookie='lsroot='+LSAndroid.rootToken()+'; path=/'}catch(e){}}   // root support: proves that requests come from this screen (the token only exists inside this app, see RootShell)
 rootCk();
+/* App-wide WebView diagnostics. Never forward request URLs, bodies, clipboard or exception message text. */
+function appError(kind,loc,line){try{if(window.LSAndroid&&LSAndroid.reportUiError)LSAndroid.reportUiError(kind,loc||'',Number.isFinite(line)?Math.floor(line):0)}catch(_){}}
+window.addEventListener('error',e=>{if(e instanceof ErrorEvent)appError('script','ui.html',e.lineno||0)});
+window.addEventListener('unhandledrejection',()=>appError('promise','ui.html',0));
 async function api(m,u,b,ms){
   const ac=ms?new AbortController():null,tm=ms?setTimeout(()=>ac.abort(),ms):0;let r,t;
   try{for(let k=0;;k++){
@@ -1747,10 +1751,10 @@ async function api(m,u,b,ms){
       t=await r.text();S.down=false;if(S.lost){S.lost=false;S.back=true;S.fails=0;banner('')}break}  // any answer proves the local server is alive
     catch(e){if(e&&e.name==='AbortError')throw new Error('timed out');
       if(e instanceof TypeError){if(m==='GET'&&k<2){await new Promise(x=>setTimeout(x,300));continue}  // one-off network blip: retry quietly
-        S.down=true;throw new Error('LANShare on this phone is paused - reopen the LANShare app, then come back')}throw e}}}
+        appError('network','api',0);S.down=true;throw new Error('LANShare on this phone is paused - reopen the LANShare app, then come back')}throw e}}}
   finally{clearTimeout(tm)}
   let j;try{j=JSON.parse(t)}catch(e){j={error:t}}
-  if(!r.ok)throw new Error((j&&j.error)||('HTTP '+r.status));return j}
+  if(!r.ok){appError('http','api',r.status);throw new Error((j&&j.error)||('HTTP '+r.status))}return j}
 let tt;
 /* M5: "3 files" then "4 files" = same pill, number changes (no second announcement / haptic), text after the number identical */
 function lmMerge(a,b){const x=/^(\d+)\s+(.+)$/.exec(a||''),y=/^(\d+)\s+(.+)$/.exec(b||'');return !!(x&&y&&x[2]===y[2]&&x[1]!==y[1])}
@@ -1758,7 +1762,7 @@ function lmToastX(t,o,ms){o=o||{};t.className=o.kind||'';t.querySelectorAll('.tk
   const g={ok:'check',warn:'info',err:'close'}[o.kind];if(g){const k=ic(g,'tk');t.insertBefore(k,t.firstChild);if(o.kind==='ok')lmPulse(k);else if(o.kind==='err')lmShake(k)}
   if(o.action){const a=E('button','ta',o.action.label);a.onclick=e=>{e.stopPropagation();t.style.display='none';o.action.fn()};t.append(a);if(ms===2800)ms=5000;if(/undo/i.test(o.action.label)){const u=E('i','tu');u.style.animationDuration=ms+'ms';t.append(u)}}
   else if(o.kind==='err'&&ms===2800)ms=8000;return ms}
-function toast(msg,ms=2800,pct,o){const t=$('#toast'),b=$('#tp');const _pv=t.style.display==='block'?$('#tx').textContent:'',_mg=pct==null&&!(o&&o.action)&&lmMerge(_pv,msg);if(pct==null&&!_mg)try{toastHp(msg,o&&o.kind)}catch(_){}$('#tx').textContent=msg;if(_mg)lmPulse($('#tx'));ms=lmToastX(t,o,ms);
+function toast(msg,ms=2800,pct,o){if((o&&o.kind==='err')||String(msg||'').startsWith('⚠'))appError('toast','ui.html',0);const t=$('#toast'),b=$('#tp');const _pv=t.style.display==='block'?$('#tx').textContent:'',_mg=pct==null&&!(o&&o.action)&&lmMerge(_pv,msg);if(pct==null&&!_mg)try{toastHp(msg,o&&o.kind)}catch(_){}$('#tx').textContent=msg;if(_mg)lmPulse($('#tx'));ms=lmToastX(t,o,ms);
   b.style.display=pct==null?'none':'block';$('#tc').style.display=pct==null?'none':'inline-block';if(pct!=null)b.firstChild.style.width=pct+'%';
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
@@ -3425,6 +3429,7 @@ function openSettings(){
 
   /* ---- About and advanced ---- */
   sec('About and advanced','#6d6d6d');
+  if(window.LSAndroid&&LSAndroid.openErrorLogs)row('info','Error Logs','Read automatic diagnostics and export to storage',()=>{close();LSAndroid.openErrorLogs()});
   {let v='';try{v=(window.LSAndroid&&LSAndroid.appVersion)?LSAndroid.appVersion():''}catch(e){}
    row('info','This device',(v?'Version '+v:'')+(v&&S.ips?' \u00b7 ':'')+(S.ips||''),null)}
 

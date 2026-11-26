@@ -86,6 +86,11 @@ object PrintLog {
 
     private fun put(lvl: String, ev: String, jid: String?, e: Throwable?, kv: Array<out Pair<String, Any?>>) {
         try {
+            // Keep print diagnostics separate; forward only the event and exception, never its payload.
+            if (lvl == "e" || lvl == "w") {
+                ErrorLog.record("Printing", ev, if (lvl == "w") "WARN" else "ERROR")
+                if (e != null) ErrorLog.exception("Printing: $ev", e)
+            }
             if (!started) { started = true; start() }
             write(lvl, ev, jid ?: curJid.get(), e, kv)
         } catch (_: Throwable) {}

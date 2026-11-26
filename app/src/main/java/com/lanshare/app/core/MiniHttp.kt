@@ -100,11 +100,11 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
                     val s = server.accept()
                     if (!slots.tryAcquire()) { try { s.close() } catch (_: Exception) {}; continue }   // overloaded: refuse, the client retries
                     try { pool.execute { try { serve(s) } finally { slots.release() } } }
-                    catch (e: Throwable) { slots.release(); try { s.close() } catch (_: Exception) {} }
+                    catch (e: Throwable) { slots.release(); ErrorLog.exception("HTTP worker scheduling", e); try { s.close() } catch (_: Exception) {} }
                 }
-                catch (_: SocketException) { if (!running) break; Thread.sleep(200) }   // e.g. out of file descriptors: never spin
-                catch (_: IOException) { Thread.sleep(200) }
-                catch (_: Throwable) { Thread.sleep(200) }
+                catch (e: SocketException) { if (!running) break; ErrorLog.exception("HTTP accept", e); Thread.sleep(200) }   // e.g. out of file descriptors: never spin
+                catch (e: IOException) { ErrorLog.exception("HTTP accept", e); Thread.sleep(200) }
+                catch (e: Throwable) { ErrorLog.exception("HTTP accept", e); Thread.sleep(200) }
             }
         }, "http-accept").also { it.isDaemon = true }.start()
     }
@@ -149,7 +149,9 @@ class MiniHttp(val port: Int, private val handler: (Exchange) -> Unit) {
                     while (body.read(sink) >= 0) { /* drain */ }
                 }
             }
-        } catch (_: Throwable) {   // incl. Errors: an uncaught Throwable in a worker thread would kill the app process
+        } catch (e: Throwable) {   // incl. Errors: an uncaught Throwable in a worker thread would kill the app process
+            // Idle timeout, client disconnect and reset are ordinary server lifecycle events.
+            if (e !is java.net.SocketTimeoutException && e !is SocketException && e !is java.io.EOFException) ErrorLog.exception("HTTP worker", e)
         } finally { try { s.close() } catch (_: Exception) {} }
     }
 

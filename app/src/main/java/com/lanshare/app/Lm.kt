@@ -87,6 +87,8 @@ object Lm {
     fun snack(c: Context, msg: CharSequence?, len: Int, kind: String?, actionLabel: String?, action: (() -> Unit)?) {
         val text = msg?.toString() ?: return
         if (text.isEmpty()) return
+        // Never store arbitrary snackbar text (it may contain clipboard, document or vault data).
+        if ((kind ?: guess(text)) == "err") com.lanshare.app.core.ErrorLog.record("Native UI", "Error shown in " + c.javaClass.simpleName)
         main.post {
             try { show(c, text, len, kind ?: guess(text), actionLabel, action) }
             catch (_: Throwable) { fallback(c, text, len) }

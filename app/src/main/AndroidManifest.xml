@@ -227,6 +227,7 @@
             </intent-filter>
         </activity>
         <!-- Print log screen (Settings > Print log, PC screen > Print log) -->
+        <activity android:name=".ErrorLogsActivity" android:exported="false" android:theme="@style/Theme.LANShare"/>
         <activity android:name=".PrintLogActivity" android:enableOnBackInvokedCallback="true" android:exported="false" android:theme="@style/Theme.LANShare"
             android:launchMode="standard"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|keyboardHidden|keyboard|navigation"/>

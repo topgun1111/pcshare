@@ -6,6 +6,12 @@
 
 
 
+## 2026-11-26 - Automatic error logs
+
+### Added
+- Settings > Error Logs: review persistent app diagnostics, refresh the screen and export retained logs to a chosen storage location.
+- Automatic logging of crashes, background-job failures, network errors, transfer and printing failures, WebView errors and handled application exceptions. Private on-device storage with automatic rotation; no automatic upload.
+
 ## 2026-11-26 - Remote gallery copy reliability
 
 ### Fixed

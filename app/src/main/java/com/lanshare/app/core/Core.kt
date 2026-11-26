@@ -57,7 +57,7 @@ object Core {
             PerfMarks.mark("core.cleanup")   // PERF-DEBUG
             page = app.assets.open("ui.html").use { it.readBytes() }
             local = LocalFs(rootPath)
-            try { Otg.start(app) } catch (_: Throwable) {}   // USB / OTG drives: plug / unplug broadcasts (Otg.kt)
+            try { Otg.start(app) } catch (e: Throwable) { ErrorLog.exception("USB storage startup", e) }   // USB / OTG drives: plug / unplug broadcasts (Otg.kt)
             PerfMarks.mark("core.pageAndFs")   // PERF-DEBUG
             Thread({ Bin.autoPurge() }, "bin-purge").also { it.isDaemon = true }.start()
             Thread({   // "LANShare Shared": cleaned at start and then every day while the app / service is alive
@@ -98,15 +98,16 @@ object Core {
             Thread({   // image search engine + new-picture watcher: heavy (model load), so they wait until the first screen is drawn instead of competing with the page load
                 try { firstScreen.await(6, java.util.concurrent.TimeUnit.SECONDS) } catch (_: InterruptedException) {}   // no activity (service-only start): go after 6 s
                 try { Thread.sleep(500) } catch (_: InterruptedException) {}
-                try { ClipEngine.tryLoad(app) } catch (_: Throwable) {}   // engine ready when the model files are already downloaded
+                try { ClipEngine.tryLoad(app) } catch (e: Throwable) { ErrorLog.exception("Image model startup", e) }   // engine ready when the model files are already downloaded
                 PerfMarks.mark("core.clipLoaded")   // PERF-DEBUG
-                try { ImgSearch.startAutoWatch(app) } catch (_: Throwable) {}   // new pictures are picked up by an automatic incremental scan
-                try { IndexManager.start(app) } catch (_: Throwable) {}   // Universal Search name index: load / build / keep fresh (chapter 16)
+                try { ImgSearch.startAutoWatch(app) } catch (e: Throwable) { ErrorLog.exception("Image search watcher", e) }   // new pictures are picked up by an automatic incremental scan
+                try { IndexManager.start(app) } catch (e: Throwable) { ErrorLog.exception("Search index startup", e) }   // Universal Search name index: load / build / keep fresh (chapter 16)
             }, "late-init").also { it.isDaemon = true; it.start() }
-            try { WifiPrinters.start(app) } catch (_: Throwable) {}   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
+            try { WifiPrinters.start(app) } catch (e: Throwable) { ErrorLog.exception("Printer discovery startup", e) }   // finds printers on the Wi-Fi (shown as "Wi-Fi" in the Print picker)
             Log.i(TAG, "running on $port, sharing ${local.root}, device ${Cfg.name}")
         } catch (e: Throwable) {
             error = e.stackTraceToString().takeLast(1500)
+            ErrorLog.exception("Core startup", e)
             Log.e(TAG, "startup failed", e)
             started = false
         }

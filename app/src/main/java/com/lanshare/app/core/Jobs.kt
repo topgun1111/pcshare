@@ -32,6 +32,10 @@ class Job(@Volatile var label: String) {
     @Volatile var total = 1L
     @Volatile var bytes = true
     @Volatile var error: String? = null
+        set(value) {
+            field = value
+            if (!value.isNullOrBlank()) ErrorLog.record("Background job", "$label: $value", privateDetails = label.contains("vault", true) || label.contains("lock", true) || label.contains("restor", true))
+        }
     @Volatile private var cancelled = false
     /** Cancel: besides the flag (polled between steps), every registered abort action runs at once - sockets that wait for a slow printer / PC are closed, so the job stops now instead of after the network timeout. */
     var cancel: Boolean
@@ -55,7 +59,12 @@ class Job(@Volatile var label: String) {
     @Volatile var rid: String? = null          // resume id this job continues (set by [Jobs.resume]); dropped from [Partials] when it ends fine
     @Volatile var resumeId: String? = null     // set when the job ended with an error and can be continued: the UI shows a Resume button
     private val problems = ArrayList<String>()
-    @Synchronized fun addProblem(s: String) { if (problems.size < 30) problems.add(s) }
+    @Synchronized fun addProblem(s: String) {
+        if (problems.size < 30) {
+            problems.add(s)
+            ErrorLog.record("Background job item", "$label: $s", privateDetails = label.contains("vault", true) || label.contains("lock", true) || label.contains("restor", true))
+        }
+    }
     private val binIds = ArrayList<String>()   // delete jobs: recycle-bin ids of what was moved there (the UI's "Undo" button restores them)
     @Volatile var grace = false   // "Delete permanently" on this phone: the items sit in the bin only for the UI's 5 s Undo countdown, then the UI purges them
     @Synchronized fun addBin(id: String) { binIds.add(id) }

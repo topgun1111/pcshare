@@ -67,6 +67,7 @@ class LanShareService : Service() {
                 .createNotificationChannel(NotificationChannel(ch, NoteTint.appName, NotificationManager.IMPORTANCE_LOW))
         try { val (run, done, total) = com.lanshare.app.core.ImgSearch.progress(); lastNote = noteKey(run, done, total); startForeground(1, buildNote(run, done, total)) }
         catch (e: Exception) {   // ForegroundServiceStartNotAllowedException etc.: keep running as a normal service rather than crash
+            com.lanshare.app.core.ErrorLog.exception("Foreground service", e)
             android.util.Log.w("LANShare", "startForeground refused: " + e)
         }
         if (!started) {

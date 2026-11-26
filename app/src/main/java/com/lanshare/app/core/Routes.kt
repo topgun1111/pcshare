@@ -49,16 +49,16 @@ object Routes {
                 }
                 else -> ex.reply(404, "not found".toByteArray(), "text/plain")
             }
-        } catch (e: NotFound) { ex.fail(404, errText(e))
-        } catch (e: Denied) { ex.fail(403, errText(e))
-        } catch (e: Full) { ex.fail(507, errText(e))
-        } catch (e: Exists) { ex.fail(409, errText(e))
+        } catch (e: NotFound) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 404 ${e.javaClass.simpleName}"); ex.fail(404, errText(e))
+        } catch (e: Denied) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 403 ${e.javaClass.simpleName}"); ex.fail(403, errText(e))
+        } catch (e: Full) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 507 ${e.javaClass.simpleName}"); ex.fail(507, errText(e))
+        } catch (e: Exists) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 409 ${e.javaClass.simpleName}"); ex.fail(409, errText(e))
         } catch (e: Cancelled) { ex.fail(499, "cancelled")   // the user pressed Cancel while an archive was being opened
-        } catch (e: BadReq) { ex.fail(400, errText(e))
-        } catch (e: JSONException) { ex.fail(400, errText(e))
+        } catch (e: BadReq) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 400 ${e.javaClass.simpleName}"); ex.fail(400, errText(e))
+        } catch (e: JSONException) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 400 ${e.javaClass.simpleName}"); ex.fail(400, errText(e))
         } catch (e: FileNotFoundException) { ex.fail(if ((e.message ?: "").contains("denied", true)) 403 else 404, errText(e))
-        } catch (e: Exception) { ex.fail(500, errText(e))
-        } catch (e: Throwable) { ex.fail(500, "internal error: " + errText(e))   // OutOfMemoryError, LinkageError (a library missing on this Android version) ...
+        } catch (e: Exception) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 500 ${e.javaClass.simpleName}"); ex.fail(500, errText(e))
+        } catch (e: Throwable) { ErrorLog.record("HTTP", "${ex.method} ${ex.path.substringBefore('?')} -> 500 ${e.javaClass.simpleName}"); ex.fail(500, "internal error: " + errText(e))   // OutOfMemoryError, LinkageError (a library missing on this Android version) ...
         } finally { RootShell.untrusted.remove() }
     }
 

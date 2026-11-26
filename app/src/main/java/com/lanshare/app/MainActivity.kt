@@ -96,6 +96,17 @@ class MainActivity : Activity() {
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
         /** Main menu > Google Drive > Sign in / Reconnect: [email] = "" lets the user pick the account. The page hears the result through lsGdriveDone(ok, message). */
         @JavascriptInterface fun gdriveConnect(email: String) { gdStart(email) }
+        @JavascriptInterface fun openErrorLogs() {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && ::web.isInitialized && (web.url?.startsWith("http://127.0.0.1:") == true || web.url?.startsWith("http://localhost:") == true)) {
+                    try { startActivity(Intent(this@MainActivity, ErrorLogsActivity::class.java)) }
+                    catch (e: Throwable) { com.lanshare.app.core.ErrorLog.exception("Open Error Logs", e) }
+                }
+            }
+        }
+        @JavascriptInterface fun reportUiError(kind: String, location: String, line: Int) {
+            com.lanshare.app.core.ErrorLog.web(kind, location, line)
+        }
         /** Page keys the settings backup needs from localStorage (JSON array of names). */
         @JavascriptInterface fun settingsWebKeys(): String = org.json.JSONArray(com.lanshare.app.core.settings.SettingsSchema.WEB_KEYS).toString()
         /** Settings > Google Drive > Back up settings: [webJson] = {key: value|null} read from localStorage. The page hears the result through lsSettingsCloudDone(ok, message). */
@@ -751,11 +762,16 @@ class MainActivity : Activity() {
                         WebResourceResponse(x.ctype, "utf-8", x.code, x.reason, x.headers, x.body())
                     } catch (_: Throwable) { null }   // anything unexpected: the request simply goes the normal HTTP way
                 }
+                override fun onReceivedError(v: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) com.lanshare.app.core.ErrorLog.record("WebView navigation", "Main page load failed, code ${error.errorCode}")
+                    super.onReceivedError(v, request, error)
+                }
                 override fun onPageFinished(v: WebView, u: String) {
                     if (u.startsWith("http://127.0.0.1") || u.startsWith("http://localhost")) { mark("pageFinished"); pageReady = true; runShare(); runClipShare(); runPrint(); runOpen(); runShowPath() }
                 }
                 // WebView renderer crashed / was killed by Android: rebuild the screen
                 override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
+                    com.lanshare.app.core.ErrorLog.record("WebView renderer", if (d.didCrash()) "Renderer crashed" else "Renderer killed by Android")
                     runOnUiThread { recreate() }; return true
                 }
             }

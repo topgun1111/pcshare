@@ -149,6 +149,7 @@ object PcTransferNotice {
     }
 
     fun failed(ctx: Context, state: State, message: String?) {
+        if (!state.cancelled) ErrorLog.record("Incoming PCShare transfer", message ?: "Transfer failed")
         synchronized(state) {
             state.activeInput = null
             val reason = message?.take(120) ?: "Transfer failed"
@@ -229,6 +230,7 @@ object PcTransferNotice {
 
     @Synchronized
     fun endOutgoing(state: Outgoing, success: Boolean, message: String? = null) {
+        if (!success && !state.cancelled) ErrorLog.record("Outgoing PCShare transfer", message ?: "Transfer failed")
         synchronized(state) {
             val now = SystemClock.elapsedRealtime()
             val finished = outgoingSnapshot(state, now).copy(

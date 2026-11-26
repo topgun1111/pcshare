@@ -234,6 +234,7 @@ object UpdateCheck {
                 } finally { c.disconnect() }
                 if (!part.renameTo(out)) throw IOException("Dosya kaydedilemedi")
             } catch (e: Throwable) {
+                if (!cancel.get()) com.lanshare.app.core.ErrorLog.exception("Update download", e)
                 err = if (cancel.get()) "cancel" else (e.message ?: e.javaClass.simpleName)
                 part.delete()
             }
@@ -270,6 +271,7 @@ object UpdateCheck {
             val uri = com.lanshare.app.core.vault.VaultIntents.uri(a, "${a.packageName}.fileprovider", f)
             a.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Throwable) {
+            com.lanshare.app.core.ErrorLog.exception("Update installation", e)
             Lm.snack(a, "Kurulum başlatılamadı: ${e.message}", Toast.LENGTH_LONG)
         }
     }
