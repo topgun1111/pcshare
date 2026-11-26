@@ -904,7 +904,7 @@ object Jobs {
         else -> RemoteFs(Core.disc.get(dev) ?: throw IOException("that device is offline"))
     })
 
-    fun start(srcId: String, paths: List<String>, dstId: String, ddir: String, cut: Boolean, label: String, conflict: String = "rename"): String {   // conflict: what to do when the name exists at the destination - rename ("name (1)") | replace | skip
+    fun start(srcId: String, paths: List<String>, dstId: String, ddir: String, cut: Boolean, label: String, conflict: String = "rename", filesOnly: Boolean = false): String {   // conflict: what to do when the name exists at the destination - rename ("name (1)") | replace | skip
         val src = ep(srcId)
         val dst = ep(dstId)
         val jid = UUID.randomUUID().toString().replace("-", "").take(8)
@@ -912,7 +912,7 @@ object Jobs {
         val job = Job(label)
         all[jid] = job
         val cutOk = cut && paths.none { arcSplit(it) != null } && arcSplit(vnorm(ddir)) == null   // nothing can be moved out of / into an archive: it is copied
-        Thread({ work(job, src, dst, srcId, paths, ddir, cutOk, conflict) }, "job-$jid").also { it.isDaemon = true }.start()
+        Thread({ work(job, src, dst, srcId, paths, ddir, cutOk, conflict, filesOnly = filesOnly) }, "job-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -935,7 +935,9 @@ object Jobs {
         all[jid] = job
         val ddir = sp.optString("ddir", "/")
         val cut = sp.optBoolean("cut")
-        Thread({ work(job, src, dst, src.id, paths, ddir, cut, "resume", forced) }, "job-$jid").also { it.isDaemon = true }.start()
+        val filesOnly = sp.optBoolean("filesOnly", false)
+        val conflict = if (filesOnly) sp.optString("conflict", "rename") else "resume"
+        Thread({ work(job, src, dst, src.id, paths, ddir, cut, conflict, forced, filesOnly) }, "job-$jid").also { it.isDaemon = true }.start()
         return jid
     }
 
@@ -961,13 +963,15 @@ object Jobs {
         return a
     }
 
-    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename", forced: Map<String, String>? = null) {
+    private fun work(job: Job, src: Endpoint, dst: Endpoint, srcId: String, paths: List<String>, ddir: String, cut: Boolean, conflict: String = "rename", forced: Map<String, String>? = null, filesOnly: Boolean = false) {
         var dest: String? = null
         val unsim = conflict == "unsim"                      // gallery "copy / move if not similar": skip files whose picture is already at the destination
         val lite = src.id == dst.id && cut && !unsim          // same-device move without a file walk (plain renames)
         val simIdx = if (unsim) DupFinder.SimIndex(dst) else null
         val pending = LinkedHashMap<String, String>()   // top-level items started but not finished cleanly: path -> destination name used
         var planned: List<String> = emptyList()
+        val planFailures = LinkedHashSet<String>()
+        val galleryMedia = ArrayList<String>()
         var visited = 0                                  // how many planned items were started
         val same = src.id == dst.id
         val fails = ArrayList<String>()   // what went wrong, one line each (first 50)
@@ -978,14 +982,17 @@ object Jobs {
         fun saveResume() {
             if (same && cut) return   // same-device moves are renames: nothing partial
             val left = JSONArray(); val names = JSONObject()
+            val added = HashSet<String>()
+            for (p in planFailures) if (added.add(p)) { left.put(p); forced?.get(p)?.let { names.put(p, it) } }
             for ((i, p) in planned.withIndex()) {
                 val nn = pending[p]
-                if (nn != null) { left.put(p); names.put(p, nn) } else if (i >= visited) left.put(p)
+                if (nn != null) { if (added.add(p)) left.put(p); names.put(p, nn) }
+                else if (i >= visited && added.add(p)) { left.put(p); forced?.get(p)?.let { names.put(p, it) } }
             }
             if (left.length() == 0) { job.rid?.let { Partials.dropJob(it) }; return }
             val id = job.rid ?: UUID.randomUUID().toString().replace("-", "").take(8)
             Partials.putJob(id, JSONObject().put("src", src.id).put("dst", dst.id).put("ddir", vnorm(ddir)).put("cut", cut).put("label", job.label)
-                .put("paths", left).put("names", names))
+                .put("paths", left).put("names", names).put("filesOnly", filesOnly).put("conflict", conflict))
             job.resumeId = id
         }
         try {
@@ -1004,8 +1011,10 @@ object Jobs {
             }
             // Another LANShare phone answers one request per item: walking 100+ pictures one after the other took minutes before the first byte moved.
             // Several walks run side by side (results are used in the original order).
+            planned = todo.toList()   // a failure before planning completes must not lose the original selection
+            val galleryPlan = if (filesOnly) GalleryCopyPlan { src.lsFast(it) } else null
             val walks = arrayOfNulls<Any>(todo.size)
-            if (!lite && todo.size > 2 && (src as? ArcEp)?.base is RemoteFs) {
+            if (galleryPlan == null && !lite && todo.size > 2 && (src as? ArcEp)?.base is RemoteFs) {
                 val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
                 try {
                     val fs = todo.map { tp -> pool.submit(java.util.concurrent.Callable<Any> { try { if (job.cancel) throw Cancelled(); src.walk(tp) } catch (x: Throwable) { x } }) }
@@ -1017,10 +1026,10 @@ object Jobs {
                 try {
                     val r = walks[i]
                     @Suppress("UNCHECKED_CAST")
-                    val w: List<WalkItem>? = if (lite) null else if (r is Throwable) throw r else if (r == null) src.walk(p) else r as List<WalkItem>
+                    val w: List<WalkItem>? = if (lite) null else if (galleryPlan != null) galleryPlan.walk(p) else if (r is Throwable) throw r else if (r == null) src.walk(p) else r as List<WalkItem>
                     plan.add(p to w)
                 }
-                catch (e: Cancelled) { throw e } catch (e: Exception) { fail(vbase(p), e) }   // one unreadable item must not stop the others
+                catch (e: Cancelled) { throw e } catch (e: Exception) { planFailures.add(p); fail(vbase(p), e) }   // retain failed planning entries for Resume
             }
             planned = plan.map { it.first }
             if (lite) { job.bytes = false; job.total = maxOf(plan.size, 1).toLong() }
@@ -1094,7 +1103,7 @@ object Jobs {
                             if (ex != null) {
                                 if (ex.dir) throw IOException("a folder with this name is in the way")
                                 existed = true
-                                var act: String? = sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; "unsim" -> "both"; else -> null }
+                                var act: String? = if (fname != null && filesOnly) "resume" else sticky ?: when (conflict) { "replace" -> "replace"; "skip" -> "skip"; "newer" -> "newer"; "resume" -> "resume"; "unsim" -> "both"; else -> null }
                                 if (act == null) {
                                     val q = JSONObject().put("name", shown).put("srcSize", w.size).put("dstSize", ex.size).put("dstMtime", ex.mtime)
                                         .put("sDev", src.id).put("sPath", sp).put("dDev", dst.id).put("dPath", target)   // lets the UI show both previews
@@ -1129,6 +1138,9 @@ object Jobs {
                             }
                         }
                         copyFile(job, src, dst, sp, target, counting)   // an existing file is overwritten through a temp file: never half-written
+                        if (filesOnly && dst.id == "local") {
+                            try { galleryMedia.add(Core.local.real(target).absolutePath) } catch (_: Exception) {}
+                        }
                         simIdx?.added(vdir(target), target, w.size)
                         if (unsim && cut && w.rel.isNotEmpty()) try { src.remove(sp) } catch (e: Cancelled) { throw e } catch (_: Exception) {}   // move inside a folder: each copied file leaves the source now, so skipped look-alikes are the only ones left behind
                         if (merge) dstDirs.remove(vdir(target))
@@ -1168,8 +1180,8 @@ object Jobs {
                 if (cut && Clip.paths.isNotEmpty() && Clip.dev == srcId) Clip.clear()
             } else {
                 job.error = (if (failCount == 1) fails[0] else "$failCount problems - " + fails.take(3).joinToString("; ") + (if (failCount > 3) "; ..." else ""))
-                job.state = "error"
                 saveResume()
+                job.state = "error"
             }
         } catch (e: Cancelled) {
             job.state = "cancel"
@@ -1178,10 +1190,16 @@ object Jobs {
             job.rid?.let { Partials.dropJob(it) }   // cancelled on purpose: no Resume offer any more
         } catch (e: Throwable) {   // incl. OutOfMemoryError / LinkageError: the job must end, not stay "running" forever
             job.error = errText(e)
-            job.state = "error"
             try { saveResume() } catch (_: Throwable) {}
+            job.state = "error"
         } finally {
             if (job.state == "run") { job.state = "error"; if (job.error == null) job.error = "stopped unexpectedly" }
+            // New albums and folders outside MediaWatch\u2019s watch limit still need explicit indexing.
+            if (galleryMedia.isNotEmpty()) Core.appCtx?.let { ctx ->
+                for (batch in galleryMedia.chunked(128)) try {
+                    android.media.MediaScannerConnection.scanFile(ctx, batch.toTypedArray(), null, null)
+                } catch (_: Exception) {}
+            }
             job.end = System.currentTimeMillis()
         }
     }

@@ -488,6 +488,18 @@ object Routes {
                     Clip.set(op, b.getString("dev"), ps.strings().map { vnorm(it) })
                 ex.json(Clip.toJson())
             }
+            "gallerycopy" -> {
+                if (ex.method != "POST") throw BadReq("POST required")
+                val dev = b.getString("dev")
+                if (!dev.startsWith("smb:") && Core.disc.get(dev) == null) throw NotFound("The source device is offline")
+                val paths = b.getJSONArray("paths").strings().map { vnorm(it) }.distinct()
+                val dir = vnorm(b.getString("dir"))
+                val conflict = b.optString("conflict", "rename")
+                if (paths.isEmpty() || paths.any { it == "/" || arcSplit(it) != null } || dir == "/" || arcSplit(dir) != null)
+                    throw BadReq("Select media files and a local album")
+                if (conflict !in setOf("rename", "replace", "skip", "newer", "ask")) throw BadReq("Unknown conflict option")
+                ex.json(JSONObject().put("job", Jobs.start(dev, paths, "local", dir, false, "Copying gallery", conflict, filesOnly = true)))
+            }
             "paste" -> {
                 if (Clip.isEmpty()) throw BadReq("clipboard is empty")
                 val cut = Clip.op == "cut"

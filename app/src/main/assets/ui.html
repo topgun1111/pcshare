@@ -2470,9 +2470,9 @@ function galView(a){
     if(rem){   // other phone: copy to THIS phone (album picker -> paste), clipboard copy, share, details. Nothing that changes the other phone.
       btn('download','To this phone',async()=>{const ps=gp(),dir=await galPick({v:a.v,path:'\u0000'},'Copy to album on this phone');if(!dir)return;
         try{const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
-          await api('POST','/api/clip',{op:'copy',dev:D,paths:ps});clr();
-          const r=await api('POST','/api/paste',{dev:'local',dir,conflict:cf});watchJob(r.job);toast('Copying\u2026',0,0);
-          if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar();galForceLocal()}}
+          const r=await api('POST','/api/gallerycopy',{dev:D,paths:ps,dir,conflict:cf});
+          watchJob(r.job);toast('Copying\u2026',0,0);
+          if(await track(r.job)){clr();galForceLocal()}}
         catch(e){toast('\u26a0 '+e.message,5000)}});
       if(!a.v&&gi().some(pvOK)&&(CAN_PRINT||S.peers.length)){const pf=gi().filter(m=>!m.dir);btn('print','Print',()=>doPrint(null,{items:pf,dev:D,path:a.path,done:clr}))}   // pictures of the other phone are read through /api/dl?dev=D
       btn('copy','Copy',()=>clip('copy'));
@@ -2700,9 +2700,9 @@ function risView(D,dn,sdir,sname){
     const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
     btn('download','To this phone',async()=>{const ps=gp(),dir=await galPick({v:false,path:'\u0000'},'Copy to album on this phone');if(!dir)return;
       try{const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
-        await api('POST','/api/clip',{op:'copy',dev:D,paths:ps});clr();
-        const r=await api('POST','/api/paste',{dev:'local',dir,conflict:cf});watchJob(r.job);toast('Copying\u2026',0,0);
-        if(await track(r.job)){await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar();galForceLocal()}}
+        const r=await api('POST','/api/gallerycopy',{dev:D,paths:ps,dir,conflict:cf});
+        watchJob(r.job);toast('Copying\u2026',0,0);
+        if(await track(r.job)){clr();galForceLocal()}}
       catch(e){toast('\u26a0 '+e.message,5000)}});
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:D,paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev='+enc(D)+'&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});

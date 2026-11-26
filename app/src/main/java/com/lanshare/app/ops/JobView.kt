@@ -18,7 +18,7 @@ object JobView {
     )
 
     private const val LINGER_OK_MS = 5_000L   // Lumen 12.16: a finished job stays 5 s so the expanded card can collapse at 4 s and the success bubble remains briefly
-    private const val LINGER_ERR_MS = 10_000L
+    private const val LINGER_ERR_MS = 5 * 60_000L
 
     private val order = HashMap<String, Int>()      // first-seen order (the job map has none)
     private var seq = 0
@@ -53,6 +53,19 @@ object JobView {
         }
         if (order.size > 200) order.keys.retainAll(Jobs.all.keys)
         return out.sortedBy { it.first }.map { it.second }
+    }
+
+    fun errorDetails(id: String): String {
+        val j = Jobs.all[id]?.toJson() ?: return "This task is no longer available."
+        return buildString {
+            append(j.optString("error", "Transfer failed"))
+            val problems = j.optJSONArray("problems")
+            if (problems != null && problems.length() > 0) {
+                append("\n\nFailed items:\n")
+                for (i in 0 until problems.length()) append(problems.optString(i)).append("\n")
+            }
+            if (j.has("resume")) append("\nResume is available in the interrupted transfers list.")
+        }
     }
 
     fun running(): List<Row> = rows().filter { it.state == "run" }

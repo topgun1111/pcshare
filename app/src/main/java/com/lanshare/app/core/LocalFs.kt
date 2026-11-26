@@ -199,6 +199,8 @@ class LocalFs(rootPath: String, override val id: String = "local", override val 
     override fun walk(v: String): List<WalkItem> {
         val base = real(v)
         if (base.isFile) return listOf(WalkItem("", false, fsize(base)))
+        if (!base.exists()) throw NotFound("Source file or folder no longer exists")
+        if (!base.isDirectory) throw Denied("Source is not a readable file or folder")
         val res = arrayListOf(WalkItem("", true, 0))
         val stack = ArrayDeque<Pair<File, String>>()
         stack.addLast(base to "")

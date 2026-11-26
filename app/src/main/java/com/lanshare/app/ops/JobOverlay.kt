@@ -255,7 +255,16 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
             col.addView(title); col.addView(bar, LinearLayout.LayoutParams(-1, px(8)).also { it.topMargin = px(4); it.bottomMargin = px(2) }); col.addView(detail)
             root.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
             root.addView(action, LinearLayout.LayoutParams(px(40), px(40)).also { it.leftMargin = px(6) })
-            action.setOnClickListener { if (action.tag == "cancel") { JobView.cancel(id); poll(false) } }
+            action.setOnClickListener {
+                if (action.tag == "cancel") { JobView.cancel(id); poll(false) }
+                else if (action.tag == "error") showError()
+            }
+            root.setOnClickListener { if (action.tag == "error") showError() }
+        }
+
+        private fun showError() {
+            android.app.AlertDialog.Builder(act).setTitle("Transfer failed")
+                .setMessage(JobView.errorDetails(id)).setPositiveButton("Close", null).show()
         }
 
         fun bind(r: JobView.Row) {
@@ -274,7 +283,7 @@ class JobOverlay private constructor(private val act: Activity) : FrameLayout(ac
                             action.animate().scaleX(1f).scaleY(1f).setDuration(240).setInterpolator(com.lanshare.app.LumenMotion.SPRING).start() }
                     }
                 }
-                r.state == "error" -> { action.text = "!"; action.setTextColor(pal.err); action.tag = null }
+                r.state == "error" -> { action.text = "!"; action.setTextColor(pal.err); action.tag = "error"; action.contentDescription = "View transfer error" }
                 else -> { action.text = "\u2013"; action.setTextColor(pal.subtext); action.tag = null }   // cancelled
             }
         }

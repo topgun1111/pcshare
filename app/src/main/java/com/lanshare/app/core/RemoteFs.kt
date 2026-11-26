@@ -16,14 +16,22 @@ class RemoteSource(private val rm: RemoteFs, private val v: String) : Source() {
 
     init {
         val r = rm.callRaw("GET", "file", mapOf("path" to v))
+        if (r.status != 200 || r.contentLength < 0L) { r.close(); throw IOException("Source returned an invalid file length") }
         s = r
-        size = maxOf(r.contentLength, 0L)
+        size = r.contentLength
     }
 
-    override fun seek(pos: Long) { s?.close(); s = null; this.pos = pos }
+    override fun seek(pos: Long) {
+        if (pos < 0L || pos > size) throw IOException("Invalid source offset")
+        s?.close(); s = null; this.pos = pos
+    }
 
     private fun reopen() {
-        s = rm.callRaw("GET", "file", mapOf("path" to v), headers = if (pos > 0) mapOf("Range" to "bytes=$pos-") else emptyMap())
+        val r = rm.callRaw("GET", "file", mapOf("path" to v), headers = if (pos > 0) mapOf("Range" to "bytes=$pos-") else emptyMap())
+        val valid = if (pos == 0L) r.status == 200 && r.contentLength == size else
+            r.status == 206 && r.headers["content-range"]?.trim() == "bytes $pos-${size - 1}/$size" && r.contentLength == size - pos
+        if (!valid) { r.close(); throw IOException("Source changed or did not honor the requested byte range") }
+        s = r
     }
 
     override fun read(): Int {
@@ -32,11 +40,14 @@ class RemoteSource(private val rm: RemoteFs, private val v: String) : Source() {
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (len == 0) return 0
+        if (pos >= size) return -1
         var last: Exception? = null
         for (attempt in 0 until 5) {
             try {
                 if (s == null) reopen()
-                val n = s!!.body.read(b, off, len)
+                val n = s!!.body.read(b, off, minOf(len.toLong(), size - pos).toInt())
+                if (n < 0) throw java.io.EOFException("Source ended before the declared file length")
                 if (n > 0) pos += n
                 return n
             } catch (e: NotFound) { throw e

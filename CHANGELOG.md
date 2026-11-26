@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-26 - Remote gallery copy reliability
+
+### Fixed
+- Copying selected photos and videos from another device no longer needs a separate file-list request for every item or uses the shared clipboard.
+- Failed source lookups remain eligible for Resume, copied media is registered with Android, and tapping a failed task shows its error and affected files.
+- Interrupted remote reads reject invalid byte ranges instead of risking damaged copies.
+
 ## 2026-11-24 - File attachments in messages
 
 ### Added
