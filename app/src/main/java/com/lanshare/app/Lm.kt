@@ -492,7 +492,7 @@ object Lm {
         } catch (_: Throwable) { }
         try {   // spec 7: dialog title = Title L, message = Body L (colours stay as the dialog theme sets them)
             val tv = d.findViewById<TextView>(c.resources.getIdentifier("alertTitle", "id", "android"))
-            if (tv != null) LumenTypography.apply(tv, LumenTypography.TITLE_L)
+            if (tv != null) { LumenTypography.apply(tv, LumenTypography.TITLE_L); NlA11y.heading(tv) }
             val mv = d.findViewById<TextView>(android.R.id.message)
             if (mv != null) LumenTypography.apply(mv, LumenTypography.BODY_L)
         } catch (_: Throwable) { }
@@ -529,7 +529,7 @@ object Lm {
             val phone = c.resources.configuration.screenWidthDp < 600 || c.resources.configuration.fontScale >= 1.3f
             var longLabel = false
             for (b in shown) if (b.text.length > 16) longLabel = true
-            if (phone && shown.size >= 2 && (shown.size >= 3 || longLabel)) {
+            if (phone && shown.size >= 2 && (shown.size >= 3 || longLabel || c.resources.configuration.fontScale >= 1.3f)) {
                 val row = shown[0].parent as? LinearLayout
                 if (row != null) {
                     row.removeAllViews()

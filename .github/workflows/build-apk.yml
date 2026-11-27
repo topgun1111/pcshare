@@ -76,6 +76,7 @@ jobs:
           python3 tools/lumen/lint.py --system-bars-regression
           python3 tools/lumen/lint.py --player-regression
           python3 tools/lumen/lint.py --split-button-regression
+          python3 tools/lumen/lint.py --accessibility-regression
           node tools/lumen/test_split.js
           python3 - <<'PY'
           import pathlib, re, subprocess, tempfile

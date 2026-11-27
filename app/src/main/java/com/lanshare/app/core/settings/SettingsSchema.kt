@@ -61,7 +61,7 @@ object SettingsSchema {
         cfg("def_target", T.STR, "Default device for text sharing"); cfg("auto_copy", T.BOOL, "Copy received text automatically")
         cfg("clip_sync", T.BOOL, "Clipboard sync"); cfg("print_verbose", T.BOOL, "Detailed print log")
         // ---- interface
-        pref("ls_ui", "iface", T.INT, "Interface size", min = 80.0, max = 160.0); pref("ls_ui", "text", T.INT, "Text size", min = 80.0, max = 160.0)
+        pref("ls_ui", "iface", T.INT, "Interface size", min = 80.0, max = 160.0); pref("ls_ui", "text", T.INT, "Text size", min = 80.0, max = 200.0)
         pref("ls_ui", "font", T.STR, "App font")
         pref("ops_overlay", "corner", T.INT, "Job bubble corner (native screens)", min = 0.0, max = 3.0)
         // ---- viewers and editors

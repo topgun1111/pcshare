@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - Accessibility foundation
+
+### Improved
+- Text size up to 200%, honoring larger system font settings without compounded scaling.
+- Shared native and web dialog accessibility, keyboard navigation for canvas controls and independent focus management for sheets and dialogs.
+- List rows grow with text size, dialog actions stack at large font sizes, and viewer auto-hide rechecks touch exploration.
+- Added accessibility source regression checks.
+
 ## 2026-11-27 - Lumen split buttons
 
 ### Added

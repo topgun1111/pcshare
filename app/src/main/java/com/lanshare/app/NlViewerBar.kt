@@ -73,12 +73,12 @@ object NlViewerBar {
      */
     class AutoHide(private val a: Activity, private val isOn: () -> Boolean, private val hide: () -> Unit, private val ms: Long = HIDE_MS) {
         private val h = Handler(Looper.getMainLooper())
-        private val run = Runnable { if (isOn() && !a.isFinishing) hide() }
+        private fun exploring(): Boolean = (a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)?.isTouchExplorationEnabled == true
+        private val run = Runnable { if (isOn() && !a.isFinishing && !exploring()) hide() }
         fun arm() {
             h.removeCallbacks(run)
             if (!isOn()) return
-            val am = a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
-            if (am?.isTouchExplorationEnabled == true) return
+            if (exploring()) return
             h.postDelayed(run, ms)
         }
         fun cancel() { h.removeCallbacks(run) }

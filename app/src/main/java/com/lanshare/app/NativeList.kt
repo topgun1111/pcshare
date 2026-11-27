@@ -248,7 +248,11 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
-    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(MeasureSpec.getSize(w), Math.round((if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f) * d)) }
+    override fun onMeasure(w: Int, h: Int) {
+        val base = if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f
+        val extra = if (UiScale.tf > 1f) (UiScale.tf - 1f) * (if (compact || row?.k == "hdr") 24f else 42f) else 0f
+        setMeasuredDimension(MeasureSpec.getSize(w), Math.round(maxOf(48f, base + extra) * d))
+    }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
         NlIcons.draw(cv, p, if (NlIcons.path(k) != null) k else "file", x, y, size, color)
@@ -631,6 +635,9 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
             n.contentDescription = NlA11y.describe(r)
             n.className = "android.widget.Button"
             n.isSelected = (first + i) in sel
+            n.isClickable = true
+            n.isLongClickable = true
+            n.stateDescription = if (n.isSelected) "Selected" else null
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
             n.setBoundsInParent(Rect(x.toInt(), y.toInt(), Math.max(x.toInt() + 1, (x + cs).toInt()), Math.max(y.toInt() + 1, (y + cs).toInt())))   // never empty (TalkBack throws)
@@ -646,6 +653,11 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     }
     init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt) }
     override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
 
     fun bind(cs: List<NlRow>, firstIdx: Int, columns: Int, pl: NlPal, selected: Set<Int>, selm: Boolean, isLast: Boolean) {
         cells = cs; first = firstIdx; cols = columns; pal = pl; sel = selected; selMode = selm; last = isLast

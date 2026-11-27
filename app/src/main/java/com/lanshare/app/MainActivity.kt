@@ -616,6 +616,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun prefGet(k: String): String = try { getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).getString(k, "") ?: "" } catch (_: Throwable) { "" }
         @JavascriptInterface fun prefSet(k: String, v: String) { try { if (k.startsWith("ls_") && v.length < 1_500_000) getSharedPreferences("ui_prefs", Context.MODE_PRIVATE).edit().putString(k, v).apply() } catch (_: Throwable) { } }
         @JavascriptInterface fun uiGet(): String = UiScale.iface(this@MainActivity).toString() + "," + UiScale.text(this@MainActivity)
+        @JavascriptInterface fun uiEffectiveText(): Int = UiScale.effectiveText(this@MainActivity)
         /** Settings > Exit app: stops the sharing service (the notification's Stop button does the same), closes the screen and ends the process. */
         @JavascriptInterface fun exitApp() {
             runOnUiThread {
@@ -736,7 +737,7 @@ class MainActivity : Activity() {
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             if (UiScale.iface(this@MainActivity) != 100) { settings.useWideViewPort = true; settings.loadWithOverviewMode = false }   // the page rewrites its viewport meta to scale itself (ui.html head)
-            settings.textZoom = UiScale.text(this@MainActivity)   // 100 = ignore the system font-size slider so every device renders the same sizes; Settings -> Text size changes it
+            settings.textZoom = UiScale.effectiveText(this@MainActivity)   // use the larger accessibility scale without compounding it
             addJavascriptInterface(Bridge(), "LSAndroid")
             addOnLayoutChangeListener { _, l, _, r, _, ol, _, or2, _ -> if (r - l != or2 - ol) post { evaluateJavascript("window.lsFit&&lsFit()", null) } }   // window resized (split screen, fold)
             webViewClient = object : WebViewClient() {

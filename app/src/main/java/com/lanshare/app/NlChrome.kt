@@ -78,6 +78,11 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
     private var a11yReady = false   // View's constructor may call invalidate() before the fields above exist
     init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt); a11yReady = true }
     override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
     override fun invalidate() {
         super.invalidate()
         if (a11yReady && (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager).isTouchExplorationEnabled) { removeCallbacks(a11yInv); postDelayed(a11yInv, 250) }

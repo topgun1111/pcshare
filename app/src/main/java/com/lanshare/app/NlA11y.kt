@@ -41,22 +41,29 @@ object NlA11y {
         "←" to "Back", "✓" to "Save", "⋮" to "More options", "✕" to "Close",
         "▲" to "Previous match", "▼" to "Next match", "↶" to "Undo", "↷" to "Redo",
         "\uD83C\uDFA8" to "Text colour", "\uD83D\uDC41" to "Preview", "\uD83D\uDDA8" to "Print",
-        "▦" to "Pages", "☾" to "Night mode", "↗" to "Open with another app", "⤴" to "Share", "Aa" to "Text size"
+        "▦" to "Pages", "☾" to "Night mode", "↗" to "Open with another app", "⤴" to "Share", "Aa" to "Text size",
+        "×" to "Close", "✖" to "Close", "…" to "More options", "↺" to "Rotate left", "↻" to "Rotate right",
+        "⟲" to "Reset", "⤢" to "Resize", "+" to "Increase", "−" to "Decrease"
     )
 
     /** Walks a native screen once: a clickable view that is not already a button announces itself as "Button", and a symbol-only
      * button without a description gets its spoken name. Skips the WebView and every view that has its own accessibility delegate
      * (the native list, bars and drawer describe themselves). */
     fun polish(root: View) {
-        if (root is WebView) return
-        if (root.isClickable && root !is Button && root !is CompoundButton && root !is EditText && !ViewCompat.hasAccessibilityDelegate(root)) {
-            if (root is TextView && root.contentDescription.isNullOrEmpty()) root.text?.toString()?.trim()?.let { GLYPHS[it] }?.let { root.contentDescription = it }
-            ViewCompat.setAccessibilityDelegate(root, object : AccessibilityDelegateCompat() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = Button::class.java.name
-                }
-            })
+        if (root is WebView || root.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) return
+        // Only label actual controls; never replace an explicit label or custom virtual-node delegate.
+        if (root.isClickable && root is TextView && root !is EditText && root !is CompoundButton &&
+            root.importantForAccessibility != View.IMPORTANT_FOR_ACCESSIBILITY_NO) {
+            if (root.contentDescription.isNullOrEmpty()) root.text?.toString()?.trim()?.let { GLYPHS[it] }?.let { root.contentDescription = it }
+            if (root !is Button && !ViewCompat.hasAccessibilityDelegate(root)) {
+                root.isFocusable = true
+                ViewCompat.setAccessibilityDelegate(root, object : AccessibilityDelegateCompat() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        info.className = Button::class.java.name
+                    }
+                })
+            }
         }
         if (root is ViewGroup) for (i in 0 until root.childCount) polish(root.getChildAt(i))
     }

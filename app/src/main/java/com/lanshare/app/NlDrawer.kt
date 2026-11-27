@@ -193,6 +193,11 @@ private class DrView(c: Context, private val d: Float) : View(c) {
     }
     init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt) }
     override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
 
     private fun find(px: Float, py: Float): DrHit? {
         val r = reg ?: return null

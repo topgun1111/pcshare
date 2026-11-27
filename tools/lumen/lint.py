@@ -128,6 +128,17 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--accessibility-regression' in sys.argv:
+    errs=[]
+    for marker in ('LUMEN-A11Y-MODALS','const modalState=new WeakMap()','const topModal=','aria-labelledby','lm-large-text','uiEffectiveText()','tx0,200','const sayTimers=[0,0]'):
+        if marker not in _raw:errs.append('Missing web accessibility invariant: '+marker)
+    checks={'UiScale.kt':('MAX_TEXT = 200','fun effectiveText('),'MainActivity.kt':('settings.textZoom = UiScale.effectiveText','fun uiEffectiveText()'),'NlA11y.kt':('IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS','!ViewCompat.hasAccessibilityDelegate(root)'),'NlChrome.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NlDrawer.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NativeList.kt':('ebt.dispatchKeyEvent(event)','maxOf(48f, base + extra)','n.stateDescription'),'Lm.kt':('NlA11y.heading(tv)','fontScale >= 1.3f'),'NlViewerBar.kt':('!exploring()','if (exploring()) return')}
+    for name,markers in checks.items():
+        source=open(os.path.join(_nat,name),encoding='utf-8').read()
+        for marker in markers:
+            if marker not in source:errs.append(name+': '+marker)
+    print('Accessibility regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--split-button-regression' in sys.argv:
     errs=[]
     for marker in ('LUMEN-SPLIT:BEGIN','aria-expanded','aria-haspopup','lmSplitPlacement','sc._close=done','window.removeEventListener','lmSplit(\'New folder\'','lmSplit(\'Add files or folders…\'','lmSplit(\'Save this layout\''):

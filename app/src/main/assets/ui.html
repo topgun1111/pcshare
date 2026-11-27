@@ -1444,7 +1444,13 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
   padding:6px 18px;border-radius:var(--r-full);background:var(--fab);
   color:var(--onfab);box-shadow:var(--sh)
 }
-</style></head><body>
+</style><style>
+/* Large text: wrap modal action labels and expand only the shared dialog/sheet controls. */
+html.lm-large-text #dlg .dact{flex-direction:column;align-items:stretch}
+html.lm-large-text #dlg .dact .tbtn,html.lm-large-text #sheet .dact .tbtn{height:auto;min-height:48px;white-space:normal;overflow-wrap:anywhere;line-height:1.4;padding-block:var(--sp-3)}
+html.lm-large-text #dlg .dcard,html.lm-large-text #sheet .card{overflow-wrap:anywhere}
+</style>
+</head><body>
 <header id=top>
   <div class="bar mainb"><button class=ibtn id=menub aria-label="Menu" data-i=menu></button><div class=ttl><h1 id=ht>Main</h1><button id=nm><span id=nmt></span><span data-i=edit></span></button></div>
     <button class=ibtn id=srch aria-label=Search data-i=search></button><button class=ibtn id=tune aria-label="View options" data-i=tune></button><button class=ibtn id=scan aria-label=Refresh data-i=refresh></button><button class=ibtn id=dualb aria-label="Split screen" data-i=vsplit></button><button class=ibtn id=vlock aria-label="Lock vault" data-i=lock style="display:none"></button><button class=ibtn id=cog aria-label=Settings data-i=settings></button></div>
@@ -3635,9 +3641,9 @@ function openInterfaceSettings(){
   const close=()=>{o.style.display='none';o.onclick=null};o.onclick=e=>{if(e.target===o)close()};
   const card=E('div','card');card.append(E('div','handle'),E('h3','','Interface settings'));
   if(window.LSAndroid&&LSAndroid.uiGet){const [ui0,tx0]=LSAndroid.uiGet().split(',').map(Number);
-    const mk=(title,sub,v0)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.className='lmr';s.min=80;s.max=160;s.step=5;s.value=v0;const lmv=()=>s.style.setProperty('--lmv',((s.value-80)/80*100)+'%');lmv();s.addEventListener('input',lmv);s.style.cssText='width:100%;margin:var(--sp-1) 0 2px';
+    const mk=(title,sub,v0,max=160)=>{const r=E('div','set'),t=E('div','t'),v=E('small','',v0+'%'),s=E('input');s.type='range';s.className='lmr';s.min=80;s.max=max;s.step=5;s.value=v0;s.setAttribute('aria-label',title);s.style.cssText='width:100%;margin:var(--sp-1) 0 2px';const lmv=()=>{s.style.setProperty('--lmv',((s.value-80)/(max-80)*100)+'%');s.setAttribute('aria-valuetext',s.value+' percent')};lmv();s.addEventListener('input',lmv);
       s.oninput=()=>{v.textContent=s.value+'%'};t.append(E('b','',title),E('small','',sub),s,v);r.append(t);card.append(r);return s};
-    const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Extra text scaling for menus, dialogs, editor',tx0);
+    const si=mk('Interface size','Everything: icons, rows, buttons, spacing, text',ui0),st=mk('Text size','Up to 200%; larger Android system text is respected',tx0,200);
     let fsel=null;
     if(LSAndroid.fontGet&&LSAndroid.fontList){const fr=E('div','set'),ft=E('div','t');fsel=E('select');fsel.style.cssText='width:100%;margin:var(--sp-1) 0 2px;padding:var(--sp-2);border-radius:var(--r-m);font-size:var(--fs-14)';
       const f0=LSAndroid.fontGet();LSAndroid.fontList().split('\n').forEach(l=>{const q=l.split('|');if(q.length<2)return;const o=E('option','',q[1]);o.value=q[0];if(q[0]===f0)o.selected=true;fsel.append(o)});
@@ -7447,43 +7453,68 @@ EV.forEach(k=>t.addEventListener(k,end));setTimeout(end,1500)}catch(_){}},{passi
 const H=document.documentElement,B=document.body,q=(s,r)=>(r||document).querySelector(s),qa=(s,r)=>[...(r||document).querySelectorAll(s)];
 if(!H.lang)H.lang='en';
 const LB={back:'Back',close:'Close',menu:'Main menu',more:'More options',search:'Search',settings:'Settings',refresh:'Refresh',edit:'Edit',del:'Delete',share:'Share',copy:'Copy',cut:'Cut',paste:'Paste',add:'Add',newfolder:'New folder',selall:'Select all',tune:'View options',vsplit:'Split screen',sort:'Sort',info:'Details',check:'Select',star:'Favorite',download:'Download',dl:'Download',print:'Print',play:'Play',pause:'Pause',home:'Home',undo:'Undo',redo:'Redo',rotate:'Rotate',save:'Save',mute:'Mute',vol:'Volume',openw:'Open with',hist:'History',palette:'Style',up2:'Move up',dn2:'Move down',dup:'Duplicate',merge:'Merge',single:'Single view',extract:'Extract',zip:'Zip'};
-const vis=e=>!!(e&&e.style.display&&e.style.display!=='none');
+const vis=e=>!!(e&&e.isConnected&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&!e.classList.contains('lm-out')&&e.getClientRects().length);
 const mk=(id,live)=>{const d=document.createElement('div');d.id=id;d.className='lmvh';d.setAttribute('role',live==='assertive'?'alert':'status');d.setAttribute('aria-live',live);d.setAttribute('aria-atomic','true');B.appendChild(d);return d};
 const lp=mk('lmlive','polite'),la=mk('lmalert','assertive');
-let sayT=0;const say=(t,hard)=>{const d=hard?la:lp;clearTimeout(sayT);d.textContent='';sayT=setTimeout(()=>{d.textContent=t},60)};
+const sayTimers=[0,0];const say=(t,hard)=>{const i=hard?1:0,d=hard?la:lp;clearTimeout(sayTimers[i]);d.textContent='';sayTimers[i]=setTimeout(()=>{d.textContent=t},60)};
 window.lmSay=say;
 window.lmLive=n=>{n.setAttribute('aria-live','polite');n.setAttribute('aria-atomic','true');return n};   /* P10: own live region for the gallery overlay selection count */
 /* names + roles for what the page builds (icon-only buttons, day headings, switches) */
 const lab=r=>{if(r.nodeType!==1)return;
   const bs=(r.matches('button,[role=button]')?[r]:[]).concat(qa('button:not([aria-label]),[role=button]:not([aria-label])',r));
-  bs.forEach(b=>{if(b.getAttribute('aria-label')||b.textContent.trim())return;const s=q('svg[data-ik]',b),k=s&&s.getAttribute('data-ik'),t=b.getAttribute('title')||(k&&LB[k]);if(t)b.setAttribute('aria-label',t)});
+  bs.forEach(b=>{if(b.getAttribute('aria-label')||b.textContent.trim())return;const s=q('svg[data-ik]',b),k=(s&&s.getAttribute('data-ik'))||b.getAttribute('data-i'),t=b.getAttribute('title')||(k&&LB[k]);if(t)b.setAttribute('aria-label',t)});
   (r.matches('.galh,.gdh')?[r]:[]).concat(qa('.galh,.gdh',r)).forEach(h=>{h.setAttribute('role','heading');h.setAttribute('aria-level','2')});
-  qa('.sw input:not([role])',r).forEach(i=>i.setAttribute('role','switch'))};
+  (r.matches('.sw input:not([role])')?[r]:[]).concat(qa('.sw input:not([role])',r)).forEach(i=>i.setAttribute('role','switch'));
+  (r.matches('[role=button]:not(button)')?[r]:[]).concat(qa('[role=button]:not(button)',r)).forEach(b=>{if(!b.hasAttribute('tabindex'))b.tabIndex=0})};
 let qd=new Set(),qt=0;
 const flush=()=>{qt=0;const a=[...qd];qd=new Set();a.forEach(n=>{if(n.isConnected)lab(n)})};
 new MutationObserver(ms=>{for(const m of ms){if(m.target.closest&&m.target.closest('#list'))continue;m.addedNodes.forEach(n=>{if(n.nodeType===1)qd.add(n)})}if(qd.size&&!qt)qt=requestAnimationFrame(flush)}).observe(B,{childList:true,subtree:true});
 lab(B);
-/* dialog: role, labelled by its title, focus in, trap, return focus */
-const dl=q('#dlg'),sh=q('#sheet');let opener=null,n=0;
-const foc=r=>qa('button,[href],input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])',r).filter(e=>!e.disabled&&e.offsetParent!==null);
-if(dl)new MutationObserver(()=>{const c=q('.dcard',dl);
-  if(vis(dl)&&c){if(!dl._o){dl._o=1;opener=document.activeElement}
-    if(!c.hasAttribute('role')){const h=q('h3',c),m=q('p',c);n++;if(h){h.id='lmdt'+n;c.setAttribute('aria-labelledby',h.id)}if(m){m.id='lmdm'+n;c.setAttribute('aria-describedby',m.id)}
-      c.setAttribute('role',q('.tbtn.dng,.tbtn.alt-danger',c)?'alertdialog':'dialog');c.setAttribute('aria-modal','true');
-      setTimeout(()=>{if(vis(dl)&&!dl.contains(document.activeElement)){const f=q('input',c)||q('.lmp',c)||foc(c)[0];if(f)f.focus()}},0)}}
-  else if(!vis(dl)&&dl._o){dl._o=0;const o=opener;opener=null;try{if(o&&o.isConnected&&o.focus)o.focus()}catch(e){}}
- }).observe(dl,{childList:true,attributes:true,attributeFilter:['style']});
-if(sh)new MutationObserver(()=>{const c=q('.card',sh);if(vis(sh)&&c&&!c.hasAttribute('role')){const h=q('h2,h3',c);c.setAttribute('role','dialog');c.setAttribute('aria-modal','true');c.setAttribute('aria-label',(h&&h.textContent.trim())||'Panel')}}).observe(sh,{childList:true,attributes:true,attributeFilter:['style']});
+/* Shared modal accessibility: independent focus stacks for sheet and dialog, including replacements. */
+const dl=q('#dlg'),sh=q('#sheet');let n=0;
+const modalState=new WeakMap();
+const foc=r=>qa('button,[href],input:not([type=hidden]),select,textarea,[tabindex]',r).filter(e=>!e.disabled&&e.tabIndex>=0&&e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden'&&!e.closest('[aria-hidden="true"],[inert]'));
+const safeFocus=e=>{if(e&&e.isConnected&&e.getClientRects().length)try{e.focus({preventScroll:true})}catch(_){}};
+const topModal=()=>{const pop=q('.dsc:not(.lm-out)');if(vis(pop))return pop;return vis(dl)?dl:vis(sh)?sh:null};
+const modalSync=host=>{
+  const c=q('.dcard,.card',host)||host.firstElementChild,old=modalState.get(host);
+  if(!vis(host)||!c){
+    if(old){modalState.delete(host);if(!topModal()||topModal().contains(old.opener))safeFocus(old.opener)}
+    return;
+  }
+  if(old&&old.card===c)return;
+  modalState.set(host,{card:c,opener:old?old.opener:document.activeElement});
+  const h=q('h2,h3',c),m=q('p',c);
+  if(h){if(!h.id)h.id='lmdt'+(++n);c.setAttribute('aria-labelledby',h.id)}else if(!c.hasAttribute('aria-label'))c.setAttribute('aria-label',host===dl?'Dialog':'Panel');
+  if(host===dl&&m){if(!m.id)m.id='lmdm'+(++n);c.setAttribute('aria-describedby',m.id)}
+  if(!c.hasAttribute('role'))c.setAttribute('role',q('.tbtn.dng,.tbtn.alt-danger,.tbtn.dngf',c)?'alertdialog':'dialog');
+  c.setAttribute('aria-modal','true');c.tabIndex=-1;
+  requestAnimationFrame(()=>{if(topModal()!==host||!c.isConnected||host.contains(document.activeElement))return;
+    const fields=foc(c),input=host===dl?fields.find(e=>e.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea')):null;
+    const cancel=fields.find(e=>/^(cancel|close|back|no)$/i.test(e.textContent.trim()));
+    safeFocus(input||(host===dl?(c.getAttribute('role')==='alertdialog'?cancel:fields.find(e=>e.classList.contains('lmp'))):null)||c);
+  });
+};
+[sh,dl].filter(Boolean).forEach(host=>new MutationObserver(()=>modalSync(host)).observe(host,{childList:true,attributes:true,attributeFilter:['style','class']}));
+/* LUMEN-A11Y-MODALS */
+try{if(window.LSAndroid&&LSAndroid.uiEffectiveText&&LSAndroid.uiEffectiveText()>=130)H.classList.add('lm-large-text')}catch(_){} 
 /* toast text + progress (10 % steps) and selection count go to the live regions */
 const tx=q('#tx'),tp=q('#tp'),tt=q('#toast');let lastP=-1;
 if(tx&&tt)new MutationObserver(()=>{const t=tx.textContent;if(!t||(tp&&tp.style.display!=='none'))return;say(t,tt.className==='err')}).observe(tx,{childList:true,characterData:true,subtree:true});
 if(tp&&tp.firstChild)new MutationObserver(()=>{const p=parseFloat(tp.firstChild.style.width);if(isNaN(p))return;const st=Math.floor(p/10);if(st!==lastP){lastP=st;say((tx?tx.textContent+' ':'')+st*10+'%')}if(p>=100)lastP=-1}).observe(tp.firstChild,{attributes:true,attributeFilter:['style']});
 const sc=q('#selcount');let selT=0;
 if(sc)new MutationObserver(()=>{clearTimeout(selT);selT=setTimeout(()=>{if(sc.textContent.trim())say(sc.textContent.trim())},500)}).observe(sc,{childList:true,characterData:true,subtree:true});
-/* keys: Tab stays inside an open dialog, Escape closes only the top layer */
+/* Keys follow the top layer, never the dialog underneath a dropdown. */
 addEventListener('keydown',e=>{
-  if(e.key==='Tab'&&vis(dl)){const f=foc(dl);if(f.length){const i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0){e.preventDefault();f[f.length-1].focus()}else if(!e.shiftKey&&(i<0||i===f.length-1)){e.preventDefault();f[0].focus()}}}
-  else if(e.key==='Escape'&&!e.defaultPrevented&&!e.isComposing){if(vis(dl)){e.preventDefault();dl.click()}else if(vis(sh)&&typeof lsBack==='function'){e.preventDefault();lsBack()}}
+  if(e.defaultPrevented||e.isComposing)return;
+  const host=topModal();
+  if(e.key==='Tab'&&host){const f=foc(host),i=f.indexOf(document.activeElement);
+    if(!f.length){e.preventDefault();return}
+    if(e.shiftKey&&i<=0){e.preventDefault();safeFocus(f[f.length-1])}
+    else if(!e.shiftKey&&(i<0||i===f.length-1)){e.preventDefault();safeFocus(f[0])}}
+  else if(e.key==='Escape'&&host&&typeof lsBack==='function'){e.preventDefault();lsBack()}
+  else if((e.key==='Enter'||e.key===' ')&&!e.repeat){const x=e.target;
+    if(x&&x.matches('[role=button]:not(button):not(a):not(input)')&&!x.closest('[aria-disabled="true"]')){e.preventDefault();x.click()}}
 });
 /* fling: glass bars go solid while a list scrolls (CSS html.lm-fling), back after 140 ms */
 let ft=0;addEventListener('scroll',()=>{if(!H.classList.contains('lm-fling'))H.classList.add('lm-fling');clearTimeout(ft);ft=setTimeout(()=>H.classList.remove('lm-fling'),140)},{passive:true,capture:true});

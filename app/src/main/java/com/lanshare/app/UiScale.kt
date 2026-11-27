@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 
 /**
- * User display scale (Settings -> Interface size / Text size), percent, 80..160, default 100.
+ * User display scale (Settings -> Interface size / Text size), percent, interface 80..160 / text 80..200, default 100.
  * Interface size = the activity's densityDpi is scaled: every dp (WebView CSS px, native painted rows, buttons, icons, spacing) grows or shrinks together.
  * Text size = fontScale (sp text in the native screens) + WebView textZoom. Applied in attachBaseContext of every activity; a change recreates the activity.
  */
@@ -12,13 +12,19 @@ object UiScale {
     private const val P = "ls_ui"
     const val MIN = 80
     const val MAX = 160
+    const val MAX_TEXT = 200
     fun iface(c: Context): Int = c.getSharedPreferences(P, Context.MODE_PRIVATE).getInt("iface", 100).coerceIn(MIN, MAX)
-    fun text(c: Context): Int = c.getSharedPreferences(P, Context.MODE_PRIVATE).getInt("text", 100).coerceIn(MIN, MAX)
+    fun text(c: Context): Int = c.getSharedPreferences(P, Context.MODE_PRIVATE).getInt("text", 100).coerceIn(MIN, MAX_TEXT)
+    /** Honor enlarged system text without multiplying the two scales or changing the user's normal smaller setting. */
+    fun effectiveText(c: Context): Int {
+        val system = Math.round(android.content.res.Resources.getSystem().configuration.fontScale * 100f).coerceIn(MIN, MAX_TEXT)
+        return if (system > 100) maxOf(text(c), system) else text(c)
+    }
     /** Text factor for natively painted text (file list, bars, drawer): those paints use px = dp * density and ignore fontScale, so Settings -> Text size is multiplied in here. */
     @Volatile @JvmField var tf: Float = 1f
     fun save(c: Context, iface: Int, text: Int) {
-        c.getSharedPreferences(P, Context.MODE_PRIVATE).edit().putInt("iface", iface.coerceIn(MIN, MAX)).putInt("text", text.coerceIn(MIN, MAX)).commit()
-        tf = text.coerceIn(MIN, MAX) / 100f
+        c.getSharedPreferences(P, Context.MODE_PRIVATE).edit().putInt("iface", iface.coerceIn(MIN, MAX)).putInt("text", text.coerceIn(MIN, MAX_TEXT)).commit()
+        tf = effectiveText(c) / 100f
     }
     /** Chosen app font id (see [Fnt.LIST]); "figtree" = the built-in default. */
     fun font(c: Context): String = c.getSharedPreferences(P, Context.MODE_PRIVATE).getString("font", "figtree") ?: "figtree"
@@ -33,22 +39,22 @@ object UiScale {
      * Call right after super.attachBaseContext(b).
      */
     fun attach(act: android.app.Activity, base: Context, density: Boolean = true) {
-        val i = if (density) iface(base) else 100; val t = text(base)
+        val i = if (density) iface(base) else 100; val t = effectiveText(base)
         tf = t / 100f
-        if (i == 100 && t == 100) return
+        if (i == 100 && t == 100 && base.resources.configuration.fontScale == 1f) return
         val cfg = Configuration(base.resources.configuration)
         if (i != 100) cfg.densityDpi = Math.max(60, Math.round(cfg.densityDpi * i / 100f))
-        if (t != 100) cfg.fontScale = t / 100f
+        cfg.fontScale = t / 100f
         try { act.applyOverrideConfiguration(cfg) } catch (_: IllegalStateException) {}
     }
 
     fun wrap(base: Context, density: Boolean = true): Context {
-        val i = if (density) iface(base) else 100; val t = text(base)
+        val i = if (density) iface(base) else 100; val t = effectiveText(base)
         tf = t / 100f
-        if (i == 100 && t == 100) return base
+        if (i == 100 && t == 100 && base.resources.configuration.fontScale == 1f) return base
         val cfg = Configuration(base.resources.configuration)
         if (i != 100) cfg.densityDpi = Math.max(60, Math.round(cfg.densityDpi * i / 100f))
-        if (t != 100) cfg.fontScale = t / 100f
+        cfg.fontScale = t / 100f
         return base.createConfigurationContext(cfg)
     }
 }
