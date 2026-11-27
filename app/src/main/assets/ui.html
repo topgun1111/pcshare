@@ -6497,7 +6497,7 @@ window.lsEdgeOpen=()=>{if(!lsEdgeOk())return false;
   if(homeOn()){hmFavClose();homeHide();if(window.nlLay)try{nlLay(true)}catch(e){}return true}   // on the Main menu the same swipe goes back to the file manager (the folder that was open)
   homeShow();return true};
 /* tell the native side when the swipe is allowed and where the header ends (a swipe that starts in the header scrolls the path / device chips instead) */
-(()=>{let k='';setInterval(()=>{if(!window.LSAndroid||!LSAndroid.edgeOk)return;const ok=lsEdgeOk(),top=ok&&!homeOn()?Math.round($('#top').getBoundingClientRect().bottom):0,n=ok+'|'+top;if(n===k)return;k=n;
+(()=>{let k='';setInterval(()=>{if(!window.LSAndroid||!LSAndroid.edgeOk)return;const ok=lsEdgeOk(),top=ok&&!homeOn()?Math.round($('#top').getBoundingClientRect().bottom):0,n=ok+'|'+top+'|'+window.innerWidth+'|'+(window.devicePixelRatio||1);if(n===k)return;k=n;
   try{LSAndroid.edgeOk(ok,top,window.innerWidth)}catch(e){}},200)})();
 function drawerRefresh(){if(document.body.classList.contains('dopen')&&DRW.tab===0)drawerRender()}
 /* ---- Vault mode: the normal file manager on the unlocked vault (dev 'vault', Vault tile of the Main menu). Only the vault's own files are shown; the

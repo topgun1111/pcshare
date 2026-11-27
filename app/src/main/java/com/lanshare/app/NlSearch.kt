@@ -77,6 +77,7 @@ class NlSearchRow(c: Context, private var d: Float) : LinearLayout(c) {
         et.setPadding(dp(2f), 0, dp(2f), 0)
         all.setPadding(dp(8f), 0, dp(8f), 0)
         LumenTypography.fit(et, 16f); LumenTypography.fit(all, 12f)
+        all.typeface = android.graphics.Typeface.DEFAULT_BOLD
         back.layoutParams = LayoutParams(dp(40f), dp(40f))
         et.layoutParams = LayoutParams(0, dp(40f), 1f)
         all.layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f))
