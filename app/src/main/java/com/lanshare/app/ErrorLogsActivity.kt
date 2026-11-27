@@ -55,6 +55,7 @@ class ErrorLogsActivity : Activity() {
         bar.addView(button("Refresh", LumenButtons.Role.OUTLINE) { refresh() })
         bar.addView(button("Export to storage", LumenButtons.Role.PRIMARY) { chooseExport() })
         root.addView(bar)
+        root.addView(button("Rendering performance", LumenButtons.Role.OUTLINE) { showPerformance() }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), 0, dp(8), dp(8)) })
         scroll = ScrollView(this).apply { isFillViewport = true }
         body = TextView(this).apply {
             LumenTypography.apply(this, LumenTypography.MONO)
@@ -70,6 +71,21 @@ class ErrorLogsActivity : Activity() {
     private fun button(title: String, role: LumenButtons.Role, click: () -> Unit) = android.widget.Button(this).apply {
         text = title; LumenButtons.apply(this, role, compact = true)
         setOnClickListener { click() }
+    }
+
+    private fun showPerformance() {
+        AppPal.dlg(this).setTitle("Rendering performance")
+            .setMessage(LumenFrameProbe.report() + "\n\nStart a five-second test and return to the file browser. Open a folder or gallery and scroll continuously after two seconds. Reopen Error Logs to see the result. No data is uploaded.")
+            .setPositiveButton("Start test") { _, _ ->
+                LumenFrameProbe.arm()
+                finish()
+            }
+            .setNeutralButton("Copy report") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Rendering performance", LumenFrameProbe.report()))
+                toast("Performance report copied")
+            }
+            .setNegativeButton("Close", null).show()
     }
 
     private fun refresh() {
