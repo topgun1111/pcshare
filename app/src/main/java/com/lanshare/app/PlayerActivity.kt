@@ -259,7 +259,15 @@ class PlayerActivity : Activity() {
         view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         stage.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         stage.addOnLayoutChangeListener { _, l, t, r, bt, ol, ot, or2, ob ->
-            if (r - l != or2 - ol || bt - t != ob - ot) applyVideoTransform(false)   // new window size (screen turned, split screen, PiP): refit the turned picture
+            val w = r - l; val h = bt - t
+            if (w != or2 - ol || h != ob - ot) {
+                zAnim?.cancel(); zAnim = null
+                if (w > 0 && h > 0) {
+                    panX = com.lanshare.app.core.LumenViewport.rescaleOffset(panX, or2 - ol, w)
+                    panY = com.lanshare.app.core.LumenViewport.rescaleOffset(panY, ob - ot, h)
+                    applyVideoTransform(false)
+                }
+            }
         }
 
         touch = View(this)
@@ -561,7 +569,8 @@ class PlayerActivity : Activity() {
     /** Applies fit scale x pinch zoom and the pan; the pan is kept so that the picture always covers the window where it is bigger than it. */
     private fun applyZoom() {
         val w = stage.width.toFloat(); val h = stage.height.toFloat()
-        if (zoom <= 1.001f || w <= 0f || h <= 0f) { zoom = 1f; panX = 0f; panY = 0f }
+        if (w <= 0f || h <= 0f) return // transient empty layout is not a request to reset zoom
+        if (zoom <= 1.001f) { zoom = 1f; panX = 0f; panY = 0f }
         else {
             var fw = w; var fh = h
             val v = player?.videoSize
@@ -1172,7 +1181,7 @@ class PlayerActivity : Activity() {
     override fun onDestroy() {
         NlHero.release(this)
         ui.removeCallbacksAndMessages(null)
-        rotAnim?.cancel()
+        rotAnim?.cancel(); zAnim?.cancel()
         gen++
         releasePlayer()
         File(cacheDir, "subs").deleteRecursively()

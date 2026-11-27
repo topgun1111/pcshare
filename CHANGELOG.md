@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Foldable viewer and dialog stability
+
+### Changed
+- Preserve image zoom and visible focal point when the viewer changes size.
+- Cancel stale video zoom animations and adapt video pan to the resized viewport without restarting playback.
+- Refit open dialogs and view-options sheets as the host window resizes.
+
 ## 2026-11-27 - Foldable viewport stability
 
 ### Changed

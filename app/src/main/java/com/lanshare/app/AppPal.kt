@@ -133,16 +133,26 @@ object AppPal {
     /** The activity handles fold / unfold itself (configChanges), so a showing dialog is told to re-fit; the fold animation takes a moment, hence the repeats. */
     private fun trackFold(d: AlertDialog, a: Activity, rich: Boolean) {
         val h = d.window?.decorView ?: return
+        val host = a.window.decorView
+        val refit = Runnable { if (d.isShowing && !a.isDestroyed) fit(d, a, rich) }
+        fun queue() { h.removeCallbacks(refit); h.postDelayed(refit, 80L) }
+        val layout = View.OnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
+            if (r - l != or2 - ol || b - t != ob - ot) queue()
+        }
         val cb = object : ComponentCallbacks {
-            override fun onConfigurationChanged(n: Configuration) {
-                for (t in longArrayOf(0, 120, 350, 800)) h.postDelayed({ if (d.isShowing) fit(d, a, rich) }, t)
-            }
+            override fun onConfigurationChanged(n: Configuration) { queue() }
             override fun onLowMemory() {}
         }
         try { a.registerComponentCallbacks(cb) } catch (_: Throwable) { return }
+        host.addOnLayoutChangeListener(layout)
         h.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
-            override fun onViewDetachedFromWindow(v: View) { try { a.unregisterComponentCallbacks(cb) } catch (_: Throwable) {} }
+            override fun onViewDetachedFromWindow(v: View) {
+                h.removeCallbacks(refit)
+                host.removeOnLayoutChangeListener(layout)
+                try { a.unregisterComponentCallbacks(cb) } catch (_: Throwable) {}
+                h.removeOnAttachStateChangeListener(this)
+            }
         })
         fit(d, a, rich)
     }

@@ -1055,6 +1055,9 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     private var bw = 0
     private var bh = 0
     private var fit = 1f
+    private var zoomAnimation: ValueAnimator? = null
+    private var lastViewportWidth = 0
+    private var lastViewportHeight = 0
     var onTap: (() -> Unit)? = null
     /** Pull-up gesture at fit size: (0, total px moved up, false) while moving, (1, total, flung up) when the finger lifts. Opens the details sheet. */
     var onPull: ((Int, Float, Boolean) -> Unit)? = null
@@ -1082,6 +1085,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     fun setBmp(b: Bitmap?) {
         if (b != null && b === orig) return     // same picture again: keep the current zoom and turn
+        zoomAnimation?.cancel(); zoomAnimation = null
         val g = snap; snap = null; animating = false; twOn = false; twDeg = 0f; g?.cancel()     // snap is cleared first: the end listener then does nothing
         orig = b; quarter = 0; cur = b
         if (b == null) { setImageDrawable(null); bw = 0; bh = 0; return }
@@ -1094,6 +1098,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         val n = ((q % 4) + 4) % 4
         if (n == quarter) return
         val b = if (n == 0) o else try { Bitmap.createBitmap(o, 0, 0, o.width, o.height, Matrix().apply { postRotate(n * 90f) }, true) } catch (_: OutOfMemoryError) { return }
+        zoomAnimation?.cancel(); zoomAnimation = null
         quarter = n; cur = b
         setImageBitmap(b); bw = b.width; bh = b.height; reset()
     }
@@ -1195,6 +1200,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     private fun reset() {
         if (bw == 0 || width == 0 || height == 0) return
+        lastViewportWidth = width; lastViewportHeight = height
         fit = minOf(width / bw.toFloat(), height / bh.toFloat())
         mx.setScale(fit, fit)
         mx.postTranslate((width - bw * fit) / 2f, (height - bh * fit) / 2f)
@@ -1203,7 +1209,28 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         onMatrixChanged?.invoke(mx)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { super.onSizeChanged(w, h, ow, oh); reset() }
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+        super.onSizeChanged(w, h, ow, oh)
+        zoomAnimation?.cancel(); zoomAnimation = null
+        val wasTwisting = twOn || animating || twDeg != 0f
+        val g = snap; snap = null; animating = false; twOn = false; twist = 0f; twDeg = 0f; g?.cancel()
+        if (wasTwisting) onTwist?.invoke(false)
+        held = false
+        if (pullOn) { pullOn = false; onPull?.invoke(1, 0f, false) }
+        flung = false; pullTotal = 0f
+        parent?.requestDisallowInterceptTouchEvent(false)
+        if (w <= 0 || h <= 0 || bw <= 0 || bh <= 0) return
+        mx.getValues(v)
+        val result = com.lanshare.app.core.LumenViewport.image(
+            lastViewportWidth, lastViewportHeight, w, h, bw, bh,
+            v[Matrix.MSCALE_X], v[Matrix.MTRANS_X], v[Matrix.MTRANS_Y])
+        if (result == null) { reset(); return }
+        lastViewportWidth = w; lastViewportHeight = h
+        fit = result.fit
+        mx.setScale(result.scale, result.scale)
+        mx.postTranslate(result.x, result.y)
+        clamp()
+    }
 
     private fun scale(): Float { mx.getValues(v); return v[Matrix.MSCALE_X] }
     private fun zoomed() = scale() > fit * 1.02f
@@ -1220,10 +1247,11 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
     }
 
     private fun zoomTo(target: Float, fx: Float, fy: Float, animate: Boolean) {
+        zoomAnimation?.cancel(); zoomAnimation = null
         val from = scale()
         val to = target.coerceIn(fit, fit * 8f)
         if (!animate) { val f = to / from; mx.postScale(f, f, fx, fy); clamp(); return }
-        ValueAnimator.ofFloat(from, to).apply {
+        zoomAnimation = ValueAnimator.ofFloat(from, to).apply {
             duration = 200
             addUpdateListener { a -> val s = a.animatedValue as Float; val f = s / scale(); mx.postScale(f, f, fx, fy); clamp() }
             start()
@@ -1232,6 +1260,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
 
     private val sd = ScaleGestureDetector(c, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(d: ScaleGestureDetector): Boolean {
+            zoomAnimation?.cancel(); zoomAnimation = null
             val s = scale()
             val n = (s * d.scaleFactor).coerceIn(fit * 0.8f, fit * 8f)
             val f = n / s
@@ -1282,7 +1311,7 @@ internal class ZoomImageView(c: Context) : ImageView(c) {
         twistEvent(e)
         sd.onTouchEvent(e)
         if (!sd.isInProgress) gd.onTouchEvent(e)
-        if (e.actionMasked == MotionEvent.ACTION_DOWN) { held = false; pullOn = false; flung = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) { zoomAnimation?.cancel(); zoomAnimation = null; held = false; pullOn = false; flung = false; parent?.requestDisallowInterceptTouchEvent(zoomed()) }
         if (pullOn && (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL)) {
             pullOn = false
             onPull?.invoke(1, pullTotal, flung && e.actionMasked == MotionEvent.ACTION_UP)

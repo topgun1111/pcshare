@@ -101,6 +101,13 @@ private class SwipeSheet(c: Context, private val scroll: ScrollView, private val
         return true
     }
 
+    fun scrollPosition() = scroll.scrollY
+    fun restoreScroll(y: Int) { scroll.post { scroll.scrollTo(0, y) } }
+    fun finishResize() {
+        animate().cancel(); drag = false; vt?.recycle(); vt = null
+        translationY = 0f; alpha = 1f; scaleX = 1f; scaleY = 1f
+    }
+
     fun settle() { animate().translationY(0f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start() }
 
     fun dismissOut() {
@@ -127,7 +134,7 @@ private class SwipeSheet(c: Context, private val scroll: ScrollView, private val
  * {sort,asc} / {view} / {thumb} / {cols} / {ff} / {aa} / {hid}. Kill switch: localStorage ls_nls='0' (page keeps its own HTML sheets).
  */
 class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Unit) {
-    private val d = UiScale.dens(act)
+    private val d get() = UiScale.dens(act)
     private fun dp(v: Float) = Math.round(v * d)
     private var dlg: Dialog? = null
 
@@ -184,6 +191,56 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         }
         dl.setCanceledOnTouchOutside(true)
         return dl
+    }
+
+    private fun windowWidth(): Int {
+        val decor = act.window.decorView
+        return if (decor.width > 0) decor.width else act.resources.displayMetrics.widthPixels
+    }
+
+    /** Refit the open sheet in place; do not dismiss, reconstruct or reapply preferences. */
+    private fun trackSheet(dl: Dialog, sheet: SwipeSheet, textured: Boolean, redraw: () -> Unit) {
+        val host = act.window.decorView
+        val decor = dl.window?.decorView ?: return
+        var lastWidth = -1
+        var lastDensity = -1f
+        val fit = Runnable {
+            if (dl.isShowing && !act.isDestroyed) {
+                val px = windowWidth()
+                val density = d
+                if (px > 0 && density > 0f && (lastWidth != px || lastDensity != density)) {
+                    val wasFloating = sheet.floating
+                    val first = lastWidth < 0
+                    lastWidth = px; lastDensity = density
+                    val floating = px / density >= 600f
+                    sheet.floating = floating
+                    dl.window?.apply {
+                        setGravity(if (floating) Gravity.CENTER else Gravity.BOTTOM)
+                        setLayout(if (floating) minOf(dp(560f), (px * 0.9f).toInt()) else ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                        setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (floating) R.style.LmDialogExit else R.style.LmSheetExit)
+                    }
+                    if (!textured) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), !floating)
+                    if (!first) {
+                        val y = sheet.scrollPosition()
+                        if (floating != wasFloating) sheet.finishResize()
+                        redraw()
+                        sheet.restoreScroll(y)
+                    }
+                }
+            }
+        }
+        val listener = View.OnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
+            if (r-l != or2-ol || b-t != ob-ot) { decor.removeCallbacks(fit); decor.postDelayed(fit, 80L) }
+        }
+        host.addOnLayoutChangeListener(listener)
+        decor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                decor.removeCallbacks(fit); host.removeOnLayoutChangeListener(listener)
+                decor.removeOnAttachStateChangeListener(this)
+            }
+        })
+        fit.run()
     }
 
     private fun round(col: Int, r: Float) = GradientDrawable().apply { setColor(col); cornerRadius = r * d }
@@ -292,7 +349,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             }
         }
         // 7 column counts need ~400 dp on one line; below that they wrap 4 + 3 + ...
-        val colsPerRow = if (act.resources.displayMetrics.widthPixels / d >= 480f) 7 else 4
+        fun colsPerRow() = if (minOf(windowWidth() / d, 560f) >= 480f) 7 else 4
 
         fun draw() {
             col.removeAllViews()
@@ -301,7 +358,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
                 hr(); head("Albums")
                 val gshown = if (s.cols in 2..8) s.cols else s.autoCols
                 val gcols = listOf(2, 3, 4, 5, 6, 7, 8)
-                radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow) { n ->
+                radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow()) { n ->
                     tv("${gcols[n]}", 16f, p.fg)
                 }
                 return
@@ -321,7 +378,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             if (s.view == "grid") {
                 val shown = if (s.cols in 2..8) s.cols else s.autoCols
                 val cols = listOf(2, 3, 4, 5, 6, 7, 8)
-                radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow) { n ->
+                radioRow(cols.map { n -> Triple("$n columns", shown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow()) { n ->
                     tv("${cols[n]}", 16f, p.fg)
                 }
             }
@@ -340,7 +397,6 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         dlg = dl
         dl.setOnShowListener { sheet.post { sheet.enter() } }
         dl.show()
-        val sheetWidth = dp(minOf(560f, act.resources.configuration.screenWidthDp.coerceAtLeast(1) * 0.9f))
-        dl.window?.setLayout(if (wideSheet) sheetWidth else ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        trackSheet(dl, sheet, p.ct != 0) { draw() }
     }
 }
