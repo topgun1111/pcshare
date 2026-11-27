@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Partial updates
+
+### Added
+- Download only the changed APK data when an exact matching Full or Lite patch is available.
+- Verify reconstructed APK integrity, app identity and signing certificate before offering installation; automatically use the full APK if the patch is unavailable or fails.
+- Interrupted downloads can resume on retry when the release server supports byte ranges.
+
 ## 2026-11-26 - Automatic error logs
 
 ### Added

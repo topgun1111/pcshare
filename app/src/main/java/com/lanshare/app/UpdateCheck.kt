@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import com.lanshare.app.core.ApkDelta
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -30,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object UpdateCheck {
     private const val API = "https://api.github.com/repos/topgun1111/pcshare/releases?per_page=30"   // list, not /latest: we pick the highest version ourselves
     private const val PREFS = "update_check"
+    private val downloading = AtomicBoolean(false)
     private const val MIN_INTERVAL_MS = 6L * 60 * 60 * 1000
 
     /** [onMsg] (manual check only) gets a short status when no dialog is shown: up to date / failed. */
@@ -85,7 +88,7 @@ object UpdateCheck {
                         .setTitle("Yeni sürüm: $tag")
                         .setView(changeView(a, cur, all))
                         .setPositiveButton("İndir") { _, _ ->
-                            download(a, dl, dlSize, tag)
+                            download(a, dl, dlSize, tag, apk, assets, lite)
                         }
                         .setNegativeButton("Sonra", null)
                         .setNeutralButton("Bu sürümü atla") { _, _ ->
@@ -189,61 +192,101 @@ object UpdateCheck {
 
     private fun mb(n: Long) = String.format("%.1f MB", n / 1048576.0)
 
-    /** In-app download with progress: .part file -> size check -> rename, so "completed" only shows when every byte arrived. */
-    private fun download(a: Activity, url: String, expected: Long, tag: String) {
+    /** Download an exact-base delta when worthwhile; keep the existing APK installer as the only install path. */
+    private fun download(a: Activity, url: String, expected: Long, tag: String, apk: JSONObject, assets: JSONArray?, lite: Boolean) {
+        if (!downloading.compareAndSet(false, true)) {
+            Lm.snack(a, "Güncelleme zaten indiriliyor", Toast.LENGTH_SHORT)
+            return
+        }
         val cancel = AtomicBoolean(false)
         val pad = (20 * a.resources.displayMetrics.density).toInt()
-        val tv = TextView(a).apply { text = "İndiriliyor…" }
-        val pb = ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = expected <= 0 }
+        val tv = TextView(a).apply { text = "Güncelleme hazırlanıyor…" }
+        val pb = ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = true }
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0); addView(tv); addView(pb) }
         val dlg = AppPal.dlg(a).setTitle("Güncelleme $tag").setView(box).setCancelable(false)
             .setNegativeButton("İptal") { _, _ -> cancel.set(true) }.create()
         dlg.show()
         Thread {
-            val dir = File(a.cacheDir, "open").apply { mkdirs() }   // already exposed by the app's FileProvider
-            val part = File(dir, "update.apk.part"); val out = File(dir, "update.apk")
+            val dir = File(a.cacheDir, "open").apply { mkdirs() }
+            val out = File(dir, "update.apk")
+            val rebuilt = File(dir, "update-rebuild.apk")
             var err: String? = null
-            try {
-                part.delete(); out.delete()
-                val c = URL(url).openConnection() as HttpURLConnection
-                c.connectTimeout = 15000; c.readTimeout = 30000
-                try {
-                    if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode}")
-                    val total = if (c.contentLengthLong > 0) c.contentLengthLong else expected
-                    var got = 0L; var lastUi = 0L
-                    c.inputStream.use { ins ->
-                        part.outputStream().use { os ->
-                            val buf = ByteArray(64 * 1024)
-                            while (true) {
-                                if (cancel.get()) throw IOException("cancel")
-                                val n = ins.read(buf); if (n < 0) break
-                                os.write(buf, 0, n); got += n
-                                val t = System.currentTimeMillis()
-                                if (t - lastUi > 200) {
-                                    lastUi = t; val g = got
-                                    a.runOnUiThread {
-                                        if (total > 0) { pb.progress = (g * 100 / total).toInt(); tv.text = "${mb(g)} / ${mb(total)}" } else tv.text = mb(g)
-                                    }
-                                }
-                            }
-                            os.flush()
-                        }
+            var usedDelta = false
+            val digest = apk.optString("digest").removePrefix("sha256:").takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            fun status(message: String) = a.runOnUiThread { tv.text = message; pb.isIndeterminate = true }
+            fun fetch(assetUrl: String, size: Long, label: String): File {
+                // URL uniquely identifies the immutable release asset; partials cannot mix editions or releases.
+                val key = java.security.MessageDigest.getInstance("SHA-256").digest(assetUrl.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+                val f = File(dir, "pcshare-update-$key.part")
+                fetchUpdate(assetUrl, size, f, cancel) { got, total ->
+                    a.runOnUiThread {
+                        pb.isIndeterminate = total <= 0
+                        if (total > 0) pb.progress = (got * 100 / total).coerceIn(0, 100).toInt()
+                        tv.text = if (total > 0) "$label: ${mb(got)} / ${mb(total)}" else "$label: ${mb(got)}"
                     }
-                    if (got <= 0L) throw IOException("Boş dosya")
-                    if (total > 0 && got != total) throw IOException("Eksik indirme: ${mb(got)} / ${mb(total)}")
-                } finally { c.disconnect() }
-                if (!part.renameTo(out)) throw IOException("Dosya kaydedilemedi")
-            } catch (e: Throwable) {
+                }
+                return f
+            }
+            try {
+                out.delete(); rebuilt.delete()
+                // Retain recent partials for a retry, but avoid accumulating old releases indefinitely.
+                dir.listFiles()?.filter { it.name.startsWith("pcshare-update-") && it.name.endsWith(".part") &&
+                    System.currentTimeMillis() - it.lastModified() > 7L * 24 * 60 * 60 * 1000 }?.forEach { it.delete() }
+                try {
+                    val base = File(a.applicationInfo.sourceDir)
+                    val baseHash = ApkDelta.sha256(base) { cancel.get() }
+                    val edition = if (lite) "lite" else "full"
+                    val pattern = Regex("LANShare-delta-$baseHash-([0-9a-f]{64})-$edition\\.patch")
+                    var chosen: JSONObject? = null
+                    var targetHash = ""
+                    if (assets != null && expected > 0) for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        val match = pattern.matchEntire(asset.optString("name")) ?: continue
+                        val hash = match.groupValues[1]
+                        val size = asset.optLong("size")
+                        if (size <= 0 || size >= expected || (digest != null && digest != hash) ||
+                            asset.optString("browser_download_url").isEmpty()) continue
+                        if (chosen == null || size < chosen.optLong("size")) { chosen = asset; targetHash = hash }
+                    }
+                    val selected = chosen
+                    if (selected != null) {
+                        val patch = fetch(selected.getString("browser_download_url"), selected.getLong("size"), "Parça güncelleme")
+                        try {
+                            status("APK yeniden oluşturuluyor…")
+                            ApkDelta.apply(base, patch, rebuilt, baseHash, targetHash, expected) { cancel.get() }
+                            verifyUpdate(a, rebuilt)
+                            if (!rebuilt.renameTo(out)) throw IOException("Dosya kaydedilemedi")
+                            usedDelta = true
+                        } finally { patch.delete() }
+                    }
+                } catch (e: Exception) {
+                    if (cancel.get()) throw e
+                    rebuilt.delete()
+                    com.lanshare.app.core.ErrorLog.exception("Delta update fallback", e)
+                    status("Tam APK indiriliyor…")
+                }
+                if (!usedDelta) {
+                    val part = fetch(url, expected, "Tam APK")
+                    try {
+                        status("APK doğrulanıyor…")
+                        if (digest != null && ApkDelta.sha256(part) { cancel.get() } != digest) throw IOException("APK checksum mismatch")
+                        if (cancel.get()) throw IOException("cancel")
+                        if (!part.renameTo(out)) throw IOException("Dosya kaydedilemedi")
+                        verifyUpdate(a, out)
+                    } catch (e: Exception) { part.delete(); throw e }
+                }
+                if (cancel.get()) throw IOException("cancel")
+            } catch (e: Exception) {
                 if (!cancel.get()) com.lanshare.app.core.ErrorLog.exception("Update download", e)
                 err = if (cancel.get()) "cancel" else (e.message ?: e.javaClass.simpleName)
-                part.delete()
-            }
+                out.delete()
+            } finally { rebuilt.delete(); downloading.set(false) }
             a.runOnUiThread {
                 try { dlg.dismiss() } catch (_: Throwable) { }
                 if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                 val e = err
                 when {
-                    e == null -> offerInstall(a, out, tag)
+                    e == null -> offerInstall(a, out, tag, usedDelta)
                     e == "cancel" -> { }
                     else -> AppPal.dlg(a).kind("warn").setTitle("İndirme başarısız").setMessage(e)
                         .setPositiveButton("Tarayıcıda aç") { _, _ -> openInBrowser(a, url) }
@@ -253,9 +296,64 @@ object UpdateCheck {
         }.start()
     }
 
-    private fun offerInstall(a: Activity, f: File, tag: String) {
+    /** Retry resumes the same release asset if the server supports ranges; a 200 response restarts cleanly. */
+    private fun fetchUpdate(url: String, expected: Long, part: File, cancel: AtomicBoolean, progress: (Long, Long) -> Unit) {
+        if (cancel.get()) throw IOException("cancel")
+        if (expected <= 0 || part.length() > expected) part.delete()
+        var got = part.length()
+        if (expected > 0 && got == expected) { progress(got, expected); return }
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 15000; c.readTimeout = 30000
+        c.setRequestProperty("Accept-Encoding", "identity")
+        if (got > 0) c.setRequestProperty("Range", "bytes=$got-")
+        try {
+            val code = c.responseCode
+            if (code == 206 && got > 0) {
+                val match = Regex("bytes ([0-9]+)-([0-9]+)/([0-9]+)").matchEntire(c.getHeaderField("Content-Range") ?: "")
+                if (match == null || match.groupValues[1].toLongOrNull() != got ||
+                    match.groupValues[2].toLongOrNull() != expected - 1 || match.groupValues[3].toLongOrNull() != expected) {
+                    part.delete(); throw IOException("Invalid download range")
+                }
+            } else if (code == 200) { got = 0; part.delete() }
+            else { if (code == 416) part.delete(); throw IOException("HTTP $code") }
+            val total = if (expected > 0) expected else c.contentLengthLong
+            if (total > 512L * 1024 * 1024) throw IOException("APK too large")
+            var lastUi = 0L
+            c.inputStream.use { ins ->
+                java.io.FileOutputStream(part, got > 0).use { os ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        if (cancel.get()) throw IOException("cancel")
+                        val n = ins.read(buf); if (n < 0) break
+                        if (got + n > 512L * 1024 * 1024 || (total > 0 && got + n > total)) {
+                            throw IOException("Download exceeds expected size")
+                        }
+                        os.write(buf, 0, n); got += n
+                        val t = System.currentTimeMillis()
+                        if (t - lastUi > 200) { lastUi = t; progress(got, total) }
+                    }
+                }
+            }
+            if (got <= 0 || (total > 0 && got != total)) throw IOException("Eksik indirme: ${mb(got)} / ${mb(total)}")
+            progress(got, total)
+        } finally { c.disconnect() }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun verifyUpdate(a: Activity, file: File) {
+        val pm = a.packageManager
+        val current = pm.getPackageInfo(a.packageName, PackageManager.GET_SIGNATURES)
+        val candidate = pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            ?: throw IOException("Geçersiz APK")
+        val installedSigners = current.signatures?.map { it.toCharsString() }?.toSet()
+        val nextSigners = candidate.signatures?.map { it.toCharsString() }?.toSet()
+        if (candidate.packageName != a.packageName || candidate.versionCode <= current.versionCode ||
+            installedSigners.isNullOrEmpty() || installedSigners != nextSigners) throw IOException("APK kimliği, sürümü veya imzası uyuşmuyor")
+    }
+
+    private fun offerInstall(a: Activity, f: File, tag: String, usedDelta: Boolean = false) {
         AppPal.dlg(a).kind("ok").setTitle("İndirme tamamlandı")
-            .setMessage("$tag indirildi (${mb(f.length())}). Kurulumu başlatmak için Kur'a bas.")
+            .setMessage("$tag ${if (usedDelta) "parça güncelleme ile hazırlandı" else "indirildi"} (${mb(f.length())}). Kurulumu başlatmak için Kur'a bas.")
             .setPositiveButton("Kur") { _, _ -> install(a, f, tag) }
             .setNegativeButton("Kapat", null).show()
     }
