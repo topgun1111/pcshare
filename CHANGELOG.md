@@ -2,6 +2,7 @@
 
 <!-- USER-FACING list. The app's update dialog shows it BEFORE the download button; CI publishes the TOP "## " section below as the GitHub release body. -->
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
+<!-- Release checkpoint 2026-11-28: v2.534 (178e488) includes BOTH the "Search, Office and secure viewer consistency" and "Native theme consistency" sections below. The intermediate build was cancelled; CI published only the top section in the release body. Historical entries are preserved. This docs-only sync does not add a user-visible change section. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
 

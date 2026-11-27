@@ -49,6 +49,8 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 
 ---
 
+> **Current release checkpoint — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality. Both theme consistency phases shipped in this release; the intermediate run 46070392392 was cancelled, not failed. Historical "not compiled" labels in chapters refer to their original sessions, not the current Android build. For new Lumen work read the current status in `docs/handover/LUMEN.md` and chapter 22 first. Next: accessibility refinement, performance/memory audit, then physical-device acceptance. No device acceptance result is recorded for the new work.
+
 ## 1. Project at a glance
 
 **What it is.** LANShare is an Android file manager that browses and moves files between this phone, other LANShare phones, SMB / FTP / SFTP servers and a Windows PC on the same network, and also prints, shares text, searches pictures with AI and analyses storage. Pure Kotlin; no Python any more.
@@ -86,22 +88,28 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 | Archives read (7z, tar*, gz, bz2, xz, zip family) | 5.7 | not compiled | RAR5 / encrypted 7z unsupported |
 | Archive editing (zip family, 7z, tar*) | 5.7 | `ZipEdit` JVM-tested; `ArcEdit` not compiled | |
 | Recycle bin, progress card + bubble | 5.8, 5.9 | UI checked in Chromium with mocks; Kotlin not compiled | |
-| Native list / chrome / drawer / path bar | 6.2 | not compiled in the notes, but shipping | switches `NativeList.HEAD`, `NlChrome.ENABLED`, `NlDrawer.ENABLED` |
-| Main menu (home), gallery, view options, folder style, Hide | 6.3-6.8 | ui.html JS syntax-checked; Kotlin not compiled | |
-| Video player, image viewer, image edit, PDF viewer | 7 | not compiled / not device-tested in the notes | |
-| Office viewer / editors (docx xlsx xls doc odt ods pptx odp) | 8 | `core/office` JVM-compiled and self-tested (to part 6c / 10c); Android side never confirmed | |
+| Native list / chrome / drawer / path bar | 6.2 / 22 | C (v2.534); D open | Responsive geometry, density, gallery anchors, keyboard and Lumen refinements implemented |
+| Main menu (home), gallery, view options, folder style, Hide | 6.3-6.8 / 22 | C (v2.534), page syntax checks; D open | Fold/unfold, selection, album reflow and Settings accessibility |
+| Video player, image viewer, image edit, PDF viewer | 7 / 22 | C (v2.534); D open | Viewer zoom/pan reflow, stage contrast, shared chrome and buttons |
+| Office viewer / editors (docx xlsx xls doc odt ods pptx odp) | 8 | C (v2.534); earlier office JVM self-tests; D open | Shared toolbar icons / find typography; document fidelity not device-tested here |
 | Printing (PC, Wi-Fi IPP, this phone) and `pcprint.py` | 9 | `pcprint.py` tested on Linux with stubs, Windows paths not run; app side not confirmed | |
 | Text sharing (phone + PC) | 10.1 | code complete, not compiled, not device-tested | PR branch `feat/text-inbox` |
 | Phone Explorer | 10.2 | coded, not compiled, not run on Windows | |
 | Image search (CLIP) | 11.1 | code complete; first device test open | |
 | OCR (ML Kit + PaddleOCR) | 11.2 | session 9: build green and device test OK for the basic version; later work not compiled | |
-| Storage Analyzer | 12 | all 81 sources compiled against android-34 (0 errors in the storage files); mirror test 4000 / 4000; device test open | WizTree view uncompiled |
-| Performance (cold start 533 -> 335 ms) | 13 | measured on a phone 2026-10-20, merged | debug tab still in |
-| Universal Search (Everything for the phone) | 16 | Parts 1-4 coded 2026-10-25, not compiled, not run; CI job `usearch-selftest` (minimum 190 ok) first run pending; Parts 0, 5-10 open | `core/usearch/`, `core/IndexManager.kt` |
+| Storage Analyzer | 12 / 22 | C (v2.534); historical mirror test 4000 / 4000; D open | Selected-chip contrast, explicit feature palettes, touch targets |
+| Performance (cold start 533 -> 335 ms) | 13 / 22 | Historical D (2026-10-20); latest C; new D open | Opt-in FrameMetrics sample and glass/resize optimizations; no new measured FPS |
+| Universal Search (Everything for the phone) | 16 / 22 | C (v2.534); search-specific functional verification open | 48 dp filters, selected contrast/state, scrollable selection dock; older core plan preserved |
+| Partial APK updates | 5.10 | C and CI patch verification (v2.534); D open | Partial first on all networks, explicit consent for full fallback; own edition and exact base hash |
+| Lumen design system | 22 / LUMEN.md | C and targeted automated checks (v2.534); D open | Typography, shared components, accessibility foundation, performance, foldable phases 1–3, theme consistency passes 1–2 |
+| Lockdown UI | lockdown.md / 22 | C (v2.534); security/runtime acceptance open | Shared theme refinements, secure flags and clipboard restrictions preserved |
+
 
 ---
 
 ## 3. Open work (prioritised)
+
+**L. Current Lumen roadmap** — accessibility refinement (large text, custom touch targets, keyboard/focus, TalkBack); final performance and memory audit; physical-device acceptance (V2/V3, folded and unfolded, full and lite). Source-level theme consistency passes 1–2 are shipped, but exhaustive visual audit remains open. Do not restart completed stages or reintroduce first-run coach marks (owner skipped them). Use the current release and checklist in LUMEN.md §3.6–3.8.
 
 **U. Universal Search** - plan in chapter 16. Parts 1, 2, 3 and 4 are coded but never compiled / run: read the result of CI job `usearch-selftest` AND the APK build (Part 3 touched `LocalFs`, `Bin`, `Jobs`, `Core`, `Cfg`, `Routes`, `MainActivity`, `ui.html`), fix, record the measured numbers (the `info` lines) in the Part 1 / 2 / 3 notes, then do Part 4. Part 0 (green CI + image-search device check 11.1) is still open.
 

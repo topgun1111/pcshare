@@ -85,3 +85,7 @@ Select folders -> bottom bar **Style** (palette icon; not inside archives) -> sh
 `openLoc(dev, path)`, `openDev(id)`, `lsGoLocal(p)` (= `openLoc('local', p)`, used by "Show in file manager"), `pickPrinter(here, wifi, peers)`, `showPrinters()`, `openSmb()`, `devPicker(all)`, `drawerOpen/Close/Render`, `pillTap()`, `spaceInfo()`, `isView()`, `galView()`, `openPrintQueue(pc)`, `openPcScreen(pc)`, `peOpenOnPc()`, `nativeOffice(i)`, `doNewOffice`.
 
 ---
+
+### Current Lumen UI checkpoint — 2026-11-28
+
+Native and WebView remain a single hybrid architecture. Foldable phases preserve visible native row anchors and album range/selection on reflow, coalesce viewport sync and permanent drawer updates, and refresh native density/paint/geometry using current WebView viewport width. Search keyboard retries are cancelled when hidden or detached; visualViewport resizes clamp list geometry. Shared dialog/snackbar/button, system bars, split buttons, settings switch labels and accessibility foundation are described in [chapter 22](ch22-lumen-completion-pass.md). Test deep gallery scroll, fold/unfold, drawer, split-screen, selection, dialogs, keyboard, custom hits and a running transfer. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.

@@ -192,3 +192,7 @@ Device check: office rows show thumbnails only for files that carry one (Word / 
 - **Device test (open, needs a CI build first).** Open `sample_styles.docx`: More > Outline > the heading is listed, tap scrolls there; turn Print layout on, open the outline again (jumps to the right page sheet) and check the strip: a box per page, the current one orange, tap jumps. Open `sample_chart2.xlsx`: More > Sheets lists 4 sheets, a tap switches; tap a cell with text: the bar under the toolbar shows its reference and value; open a real workbook with formulas and a hidden sheet (Show hidden works).
 
 ---
+
+### Current Office chrome checkpoint — 2026-11-28
+
+Office back/search actions use shared native glyphs, find field uses Lumen BODY_L; document styles, sheet data and rendering remain unchanged. Existing document and reading-color exceptions intentionally preserved. Current Android release compiles; earlier core tests are historical. Verify document fidelity, search, keyboard, toolbar clipping and spreadsheet navigation on device. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.

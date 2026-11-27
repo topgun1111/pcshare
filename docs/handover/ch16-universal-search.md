@@ -306,3 +306,7 @@ All JVM self-test tools (tools/*_selftest, tools/*_test.*, ui smoke scripts), th
 
 ### Select all per category (UsActivity.kt)
 Long-press a section header (Names / Contents / Pictures) = select that whole section; while selecting, tapping a header toggles it (checkbox shown), and again clears it. Dock "Select all" still selects every result.
+
+### Current Universal Search UI checkpoint — 2026-11-28
+
+UsActivity search toolbar/filter targets raised to 48 dp; selected chips keep feature palette with contrast-safe ink and explicit selected state. Selection dock scrolls horizontally, using 64 dp action cells. Search algorithms/indexing and protocol unchanged; original search plan/test claims are historical. The latest Android APK compilation is green, but no current search-specific functional or index benchmark is claimed. Test large text, narrow layout, selection/copy/share/delete, saved queries, TalkBack and real index queries. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.

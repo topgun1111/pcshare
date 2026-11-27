@@ -139,3 +139,7 @@ Crop, per-slot rotation, snapping to neighbours, black-and-white / crop marks / 
 `SheetLayout.kt` + `tools/sheetlayout_selftest/Main.kt` and `tools/psrender_geom_selftest/Main.kt` (kotlinc, JVM, ALL OK); `tools/sheet_layout_mirror_test.py`, `tools/psclamp_14c_mirror_test.py` (Kotlin maths vs the real ui.html helpers, 19,968 checks); `node tools/psfree_12b_test.js`, `psfree_12c_test.js`, `psfree_14a_test.js` (100,023 checks), `psfree_14b_test.js` (4,356 checks), `psess_13c_test.js`; `tools/pslayout_ui_smoke_test.js` (79 checks, jsdom / Chromium), `tools/psscreen_ui_smoke_chromium.py` (14 checks). No automated test yet for the free-stage gestures (incl. side dots) or the Recent prints list DOM; `PsLayoutJson` has no own JVM cases.
 
 ---
+
+### Current print UI checkpoint — 2026-11-28
+
+Print-log action controls now use shared outline button roles; top action row scrolls horizontally on narrow screens. Prior shared button and system-bar work covers PrintLive/PrintLog. Printing, PC service and job execution logic not changed by this audit. Test refresh/export/advanced controls, narrow width, and actual printing independently. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.

@@ -50,3 +50,7 @@ Protocol change: `/p/clip` body gains optional `"quiet": true` (old receivers ig
 - **Device checklist (next session)**: APK compiles; on PC, UAC prompt appears and title shows "(Administrator)"; toggle on, PIN shown; phone lists the PC, enters PIN, runs e.g. `whoami /all` and sees admin output; wrong PIN -> "wrong PIN"; toggle off -> "Remote commands are turned off on this PC"; "Start with Windows" while elevated creates the scheduled task (`schtasks /Query /TN PhoneExplorer`) and the next logon starts with no UAC prompt.
 
 ---
+
+### Current Inbox UI checkpoint — 2026-11-28
+
+Inbox native buttons use shared Lumen roles, system bars use the shared ownership policy, and generic accessibility labeling applies. Text-transfer protocol and Windows service not altered by the Lumen work. Android compilation verified; do not infer Windows or phone-to-PC runtime success. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.

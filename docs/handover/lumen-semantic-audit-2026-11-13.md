@@ -206,3 +206,7 @@
 - Text-entry confirmation callbacks and validation.
 - The native `AlertDialog` positive/negative/neutral callback bodies.
 - Existing dialog sizing, animations, hero artwork, theme tokens and contrast values.
+
+## Follow-up status — 2026-11-28
+
+This dated audit is a historical inventory, not a current count of every call site. Subsequent work in [chapter 22](ch22-lumen-completion-pass.md) added shared semantic action roles, secure-dialog inheritance and diagnostic suppression, contrast-safe dialog fills, shared snackbar behavior, button roles and automated dialog/snackbar regression checks. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality. Real-dialog appearance, focus and secure behavior still require physical-device testing.
