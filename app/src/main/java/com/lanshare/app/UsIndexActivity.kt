@@ -343,13 +343,7 @@ class UsIndexActivity : Activity() {
         Fnt.init(applicationContext)
         p = AppPal.pal(this); night = AppPal.night(this)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(p.bg))
-        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
-        if (Build.VERSION.SDK_INT >= 23) {
-            var f = window.decorView.systemUiVisibility
-            f = if (!night) f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-            if (Build.VERSION.SDK_INT >= 26) f = if (!night) f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
-            window.decorView.systemUiVisibility = f
-        }
+        LumenNativeTheme.bars(this, p.bg, transparent = true)
         build()
         if (b == null) kick(false)   // the moment the screen opens: start names + texts + picture meaning + picture text
     }

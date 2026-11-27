@@ -674,9 +674,7 @@ class TextEditorActivity : Activity() {
         val sub = ColorUtils.setAlphaComponent(textColor, 150)
         val hint = ColorUtils.setAlphaComponent(textColor, 110)
         root.setBackgroundColor(bg)
-        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
-        val light = AppPal.isLight(bg)
-        WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        LumenNativeTheme.bars(this, bg, transparent = true)
         for (t in listOf(back, saveBtn, printBtn, moreBtn, palBtn, sizeBtn, undoBtn, redoBtn, modeBtn)) t.setTextColor(textColor)
         for (t in listOf(titleEt, body, findEt, replEt)) { t.setTextColor(textColor); t.setHintTextColor(hint) }
         for (t in listOf(locTv, status, findCount, linesTv)) t.setTextColor(sub)

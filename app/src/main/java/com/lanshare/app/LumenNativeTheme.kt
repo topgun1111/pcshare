@@ -36,6 +36,7 @@ object LumenNativeTheme {
      * so a dark theme never flashes the light canvas of Theme.LANShare. Only screens whose theme background is that canvas are touched:
      * viewers keep their black stage and the one-shot Clear activities stay transparent. Does not touch the decor view (no feature-order side effects). */
     fun early(activity: Activity) {
+        if (isClear(activity) || barPolicies.containsKey(activity) || edge.containsKey(activity) || isViewer(activity)) return
         val tv = android.util.TypedValue()
         if (!activity.theme.resolveAttribute(android.R.attr.windowBackground, tv, true)) return
         if (tv.type < android.util.TypedValue.TYPE_FIRST_COLOR_INT || tv.type > android.util.TypedValue.TYPE_LAST_COLOR_INT) return
@@ -43,12 +44,68 @@ object LumenNativeTheme {
         val canvas = Lumen.of(activity).canvas
         val window = activity.window
         window.setBackgroundDrawable(ColorDrawable(canvas))
-        window.statusBarColor = canvas
-        window.navigationBarColor = canvas
+        paintBars(window, BarPolicy(canvas, canvas, false, false))
     }
 
     /** Screens that draw edge to edge (spec 9.4 / 15.3): [edgeToEdge] registers them, [applySystemBars] then keeps their bars transparent. */
     private val edge = java.util.WeakHashMap<Activity, Boolean>()
+    private data class BarPolicy(val top: Int, val bottom: Int, val transparent: Boolean, val overMedia: Boolean)
+    private val barPolicies = java.util.WeakHashMap<Activity, BarPolicy>()
+
+    private fun isClear(a: Activity): Boolean = a is ClipSendActivity || a is OfficeShortcutActivity
+    private fun isViewer(a: Activity): Boolean = a is PlayerActivity || a is ImageViewerActivity ||
+        a is ImageEditActivity || a is PdfViewerActivity || a is VaultViewActivity ||
+        a is VaultPlayActivity || a is VaultPdfActivity || a is VaultOfficeActivity
+
+    /** Explicit ownership: theme updates / Activity resume reuse the last screen-specific policy.
+     * Visibility and immersive mode remain entirely controlled by the viewer. */
+    fun bars(activity: Activity, top: Int, bottom: Int = top, transparent: Boolean = false, overMedia: Boolean = false) {
+        val policy = BarPolicy(top or Color.BLACK, bottom or Color.BLACK, transparent, overMedia)
+        barPolicies[activity] = policy
+        paintBars(activity.window, policy)
+    }
+
+    /** MainActivity keeps its non-edge-to-edge WebView layout and persists the real page bar colour. */
+    fun pageBars(activity: Activity, color: Int) {
+        val value = color or Color.BLACK
+        val prefs = activity.getSharedPreferences("ls_theme", Activity.MODE_PRIVATE)
+        if (prefs.getInt("system_bar", 0) != value) prefs.edit().putInt("system_bar", value).apply()
+        bars(activity, value)
+    }
+
+    fun restorePageBars(activity: Activity) {
+        val color = activity.getSharedPreferences("ls_theme", Activity.MODE_PRIVATE)
+            .getInt("system_bar", activity.resources.getColor(R.color.bar, activity.theme))
+        bars(activity, color)
+    }
+
+    /** Theme classification and icon contrast are different: compare actual white/black foreground contrast. */
+    private fun darkIcons(bg: Int): Boolean {
+        val opaque = bg or Color.BLACK
+        return ColorUtils.calculateContrast(Color.BLACK, opaque) >= ColorUtils.calculateContrast(Color.WHITE, opaque)
+    }
+
+    private fun paintBars(window: Window, p: BarPolicy) {
+        val topDark = darkIcons(p.top)
+        val bottomDark = darkIcons(p.bottom)
+        fun fill(bg: Int, dark: Boolean): Int = when {
+            !p.transparent -> bg
+            // Video/photos can change each frame. A local scrim guarantees readable system icons.
+            p.overMedia -> if (dark) 0xCCFFFFFF.toInt() else 0xCC000000.toInt()
+            else -> Color.TRANSPARENT
+        }
+        window.statusBarColor = fill(p.top, topDark)
+        // API 24/25 cannot display dark navigation icons; a dark plate is required on light screens.
+        window.navigationBarColor = if (Build.VERSION.SDK_INT < 26 && bottomDark) Color.BLACK else fill(p.bottom, bottomDark)
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = topDark
+            isAppearanceLightNavigationBars = Build.VERSION.SDK_INT >= 26 && bottomDark
+        }
+    }
 
     /** Spec 9.4 / 15.3: transparent status and navigation bars, the screen draws under them and pads [root] by the bar / cutout insets
      * (and by the keyboard, because an edge-to-edge window is no longer resized by adjustResize). [root] must paint its own background. */
@@ -56,12 +113,9 @@ object LumenNativeTheme {
         val window = activity.window
         edge[activity] = true
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        if (Build.VERSION.SDK_INT >= 29) {
-            window.isNavigationBarContrastEnforced = false
-            window.isStatusBarContrastEnforced = false
-        }
+        val bg = (root.background as? ColorDrawable)?.color ?: Lumen.of(activity).canvas
+        val policy = barPolicies[activity]
+        if (policy != null) paintBars(window, policy) else paintBars(window, BarPolicy(bg, bg, true, false))
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, ins ->
             val b = ins.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val ime = ins.getInsets(WindowInsetsCompat.Type.ime()).bottom   // AndroidX derives this back to API 21 with adjustResize
@@ -73,32 +127,22 @@ object LumenNativeTheme {
 
     fun apply(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
+        if (isClear(activity)) return
         val lm = Lumen.of(activity)
         val window = activity.window
-        applySystemBars(window, lm, edge.containsKey(activity))
-        val decor = window.decorView
-        val content = decor.findViewById<ViewGroup>(android.R.id.content) ?: return
-        if (content.childCount == 0) return
-        val root = content.getChildAt(0)
-        if (root.background == null || isPlainWindowBackground(root.background)) {
+        val content = window.decorView.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val root = content.getChildAt(0) ?: return
+        val policy = barPolicies[activity]
+        val stage = isViewer(activity)
+        // Do not turn a dark photo stage or a note's chosen paper colour into the app canvas.
+        if (policy == null && !stage && (root.background == null || (!edge.containsKey(activity) && isPlainWindowBackground(root.background)))) {
             root.setBackgroundColor(lm.canvas)
         }
-        styleTree(root, lm)
+        val bg = (root.background as? ColorDrawable)?.color ?: lm.canvas
+        paintBars(window, policy ?: BarPolicy(bg, bg, edge.containsKey(activity), false))
+        // Stage controls deliberately use media-specific contrast, independent of the app canvas.
+        if (!stage) styleTree(root, lm)
         if (activity !is MainActivity) try { NlA11y.polish(root) } catch (_: Throwable) { }   // MainActivity: the native list / bars / drawer describe themselves
-    }
-
-    private fun applySystemBars(window: Window, lm: Lumen, transparent: Boolean) {
-        window.statusBarColor = if (transparent) Color.TRANSPARENT else lm.canvas
-        window.navigationBarColor = if (transparent) Color.TRANSPARENT else lm.canvas
-        if (Build.VERSION.SDK_INT >= 29) {
-            window.isNavigationBarContrastEnforced = false
-            window.isStatusBarContrastEnforced = false
-        }
-        val light = AppPal.isLight(lm.canvas)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = light
-            isAppearanceLightNavigationBars = light
-        }
     }
 
     private fun isPlainWindowBackground(drawable: android.graphics.drawable.Drawable?): Boolean {

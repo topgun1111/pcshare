@@ -643,13 +643,11 @@ class MainActivity : Activity() {
         // ---- native file list (NativeList.kt): ui.html only sends data; see HANDOVER_NATIVE_LIST.md ----
         @JavascriptInterface fun nlAvail(): Boolean = NativeList.ENABLED
         /** Page theme changed: paint the status / navigation bars like the top bar and pick dark or light icons. [color] = "#rrggbb". */
-        @JavascriptInterface fun bars(color: String, light: Boolean) {
+        @JavascriptInterface fun bars(color: String, @Suppress("UNUSED_PARAMETER") light: Boolean) {
             runOnUiThread {
                 try {
                     val c = Color.parseColor(color)
-                    window.statusBarColor = c; window.navigationBarColor = c
-                    val ic = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-                    ic.isAppearanceLightStatusBars = light; ic.isAppearanceLightNavigationBars = light
+                    LumenNativeTheme.pageBars(this@MainActivity, c)
                 } catch (_: Throwable) { }
             }
         }
@@ -828,7 +826,7 @@ class MainActivity : Activity() {
     private var swX = 0f; private var swY = 0f
 
     /** The left screen edge belongs to the phone's Back gesture: no gesture-exclusion strip is requested and swipes that start there are never ours. */
-    private fun edgeInit(root: View) { }
+    private fun edgeInit(root: View) { LumenNativeTheme.restorePageBars(this) }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         val d = resources.displayMetrics.density

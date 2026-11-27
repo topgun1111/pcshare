@@ -128,6 +128,18 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--system-bars-regression' in sys.argv:
+    theme=open(os.path.join(_nat,'LumenNativeTheme.kt'),encoding='utf-8').read()
+    errs=[]
+    for marker in ('private data class BarPolicy','barPolicies[activity]','ColorUtils.calculateContrast(Color.BLACK, opaque)','Build.VERSION.SDK_INT < 26','if (isClear(activity)) return','if (!stage) styleTree(root, lm)'):
+        if marker not in theme:errs.append('Missing system bar invariant: '+marker)
+    names=('MainActivity.kt','PlayerActivity.kt','ImageViewerActivity.kt','ImageEditActivity.kt','PdfViewerActivity.kt','StorageActivity.kt','TextEditorActivity.kt','OfficeViewerActivity.kt','UsActivity.kt','UsIndexActivity.kt','InboxActivity.kt','PrintLiveActivity.kt','PrintLogActivity.kt','VaultViewActivity.kt','VaultPlay.kt','VaultPdf.kt','VaultOffice.kt')
+    for name in names:
+        source=open(os.path.join(_nat,name),encoding='utf-8').read()
+        if not re.search(r'LumenNativeTheme\.(?:bars|pageBars)\(',source):errs.append('Missing explicit bar policy: '+name)
+        if re.search(r'\bwindow\.(?:statusBarColor|navigationBarColor)\s*=|\bisAppearanceLight(?:Status|Navigation)Bars\s*=',source):errs.append('Competing bar writer: '+name)
+    print('System bar regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--button-regression' in sys.argv:
     theme=open(os.path.join(_nat,'LumenNativeTheme.kt'),encoding='utf-8').read()
     errs=[]

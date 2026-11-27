@@ -152,6 +152,7 @@ class ImageViewerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 28)
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        LumenNativeTheme.bars(this, Color.BLACK, transparent = true, overMedia = true)
         val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         val mc = maxOf(am.memoryClass, 96)
         maxDim = if (mc >= 192) 4096 else 3072

@@ -76,9 +76,8 @@ class PrintLiveActivity : Activity() {
         super.onCreate(b)
         Fnt.init(applicationContext)
         dev = intent.getStringExtra(X_DEV) ?: ""
-        window.statusBarColor = BG; window.navigationBarColor = BG
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { val light = AppPal.isLight(BG); isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        LumenNativeTheme.bars(this, BG, transparent = true)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG) }
         LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge

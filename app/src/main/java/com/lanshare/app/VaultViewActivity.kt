@@ -37,6 +37,7 @@ class VaultViewActivity : Activity() {
         val me = WeakReference(this)
         registeredLock = { me.get()?.let { a -> a.runOnUiThread { a.finish() } } }
         VaultSession.onLock(registeredLock!!)
+        LumenNativeTheme.bars(this, Color.BLACK)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
         val isText = !isImage(node.mime, node.name)

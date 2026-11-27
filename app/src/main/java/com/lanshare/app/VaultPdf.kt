@@ -67,6 +67,7 @@ class VaultPdfActivity : Activity() {
         val me = WeakReference(this)
         registeredLock = { me.get()?.let { a -> a.runOnUiThread { a.finish() } } }
         VaultSession.onLock(registeredLock!!)
+        LumenNativeTheme.bars(this, Color.DKGRAY)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.DKGRAY) }
         setContentView(root)
         try {

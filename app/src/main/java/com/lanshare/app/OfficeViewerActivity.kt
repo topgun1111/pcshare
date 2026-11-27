@@ -133,9 +133,7 @@ class OfficeViewerActivity : Activity() {
         val d = resources.displayMetrics.density
         fun dp(v: Int) = (v * d).toInt()
         val pal = AppPal.pal(this); palSig = AppPal.json(this)
-        val light = AppPal.isLight(pal.bg)
-        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT   // spec 9.4 / 15.3: the root paints the colour under the bars
-        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        LumenNativeTheme.bars(this, pal.bg, transparent = true)
         val root = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         fun btn(txt: String, desc: String, click: (android.view.View) -> Unit) = android.widget.TextView(this).apply {
             text = txt; LumenTypography.fit(this, 22f); gravity = android.view.Gravity.CENTER; setTextColor(pal.fg); contentDescription = desc

@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - System bar consistency
+
+### Fixed
+- System bars retain each screen's own colours when resuming, switching themes or returning from a viewer.
+- Status and navigation icons use contrast against their actual background; older Android versions retain readable navigation icons.
+- Viewers preserve immersive controls and use a contrast-safe scrim over moving media; notes and storage themes retain their own colours.
+- Added an automated system-bar ownership regression check.
+
 ## 2026-11-27 - Shared native button styling
 
 ### Fixed

@@ -80,16 +80,10 @@ class StorageActivity : Activity() {
     private val wizOn: Boolean get() = getSharedPreferences("storage_ui", MODE_PRIVATE).getBoolean("wiz", true)
     private fun setWizOn(v: Boolean) { getSharedPreferences("storage_ui", MODE_PRIVATE).edit().putBoolean("wiz", v).apply(); val s = curScan ?: return; wiz = null; buildDone(s) }
     /** System bars + window in the colour of the shown screen (the WizTree view has its own themes); [darkIcons] = light background. */
-    private fun paintBars(bg: Int, darkIcons: Boolean) {
+    private fun paintBars(bg: Int, @Suppress("UNUSED_PARAMETER") darkIcons: Boolean) {
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (::rootView.isInitialized) rootView.setBackgroundColor(bg)
-        if (Build.VERSION.SDK_INT >= 23) {
-            var f = window.decorView.systemUiVisibility
-            f = if (darkIcons) f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-            if (Build.VERSION.SDK_INT >= 26) f = if (darkIcons) f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else f and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
-            window.decorView.systemUiVisibility = f
-        }
+        LumenNativeTheme.bars(this, bg, transparent = true)
     }
     private val wizHost = object : WizHost {
         override val label: String get() = rootLabel()
@@ -204,14 +198,7 @@ class StorageActivity : Activity() {
         val wantVol = b?.getString(X_VOL) ?: intent.getStringExtra(X_VOL)
         if (dev == "local" && vpath == "/" && wantVol != null) vols.firstOrNull { it.path == wantVol }?.let { volPath = it.path; volName = it.name }
         applyTheme()
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(cBg))
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
-        if (!night && Build.VERSION.SDK_INT >= 23) {
-            var f = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-            if (Build.VERSION.SDK_INT >= 26) f = f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-            window.decorView.systemUiVisibility = f
-        }
+        paintBars(cBg, !night)
         buildUi()
         LumenNativeTheme.edgeToEdge(this, rootView)
         setContentView(rootView)

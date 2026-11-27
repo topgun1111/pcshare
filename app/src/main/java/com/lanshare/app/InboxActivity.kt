@@ -140,8 +140,7 @@ class InboxActivity : Activity() {
         night = !light
         inCol = pal.ac
         outCol = CodeHl.color(this, CodeHl.TYPE, night)
-        window.statusBarColor = pal.bg; window.navigationBarColor = pal.bg
-        androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
+        LumenNativeTheme.bars(this, pal.bg, transparent = true)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
 

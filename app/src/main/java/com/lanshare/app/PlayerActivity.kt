@@ -210,9 +210,7 @@ class PlayerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 28)
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        if (Build.VERSION.SDK_INT >= 29) { window.isStatusBarContrastEnforced = false; window.isNavigationBarContrastEnforced = false }
+        LumenNativeTheme.bars(this, Color.BLACK, transparent = true, overMedia = true)
         fullscreen = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("fullscreen", false)
         buildUi()
         applyTheme()
@@ -243,9 +241,7 @@ class PlayerActivity : Activity() {
         pal = PlayerPal(isLight(), Lumen.of(this).primary)
         root.setBackgroundColor(pal.bg)
         window.setBackgroundDrawable(ColorDrawable(pal.bg))
-        val c = WindowInsetsControllerCompat(window, window.decorView)
-        c.isAppearanceLightStatusBars = pal.light
-        c.isAppearanceLightNavigationBars = pal.light
+        LumenNativeTheme.bars(this, pal.bg, transparent = true, overMedia = true)
         header.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(pal.scrimTop, pal.scrimEnd))
         titleTv.setTextColor(pal.text); dateTv.setTextColor(pal.text); resTv.setTextColor(pal.text)
         calIcon.pal = pal; pill.pal = pal

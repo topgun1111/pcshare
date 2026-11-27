@@ -40,6 +40,7 @@ class VaultOfficeActivity : Activity() {
         if (st == null || node == null || node.dir || node.size > MAX_BYTES) { finish(); return }
         lock = VaultMode.bindLock(this)
         web = WebView(this)
+        LumenNativeTheme.bars(this, android.graphics.Color.WHITE)
         web.setBackgroundColor(android.graphics.Color.WHITE)
         web.settings.apply { javaScriptEnabled = false; setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
             allowFileAccess = false; allowContentAccess = false; useWideViewPort = true; loadWithOverviewMode = true; blockNetworkLoads = true }

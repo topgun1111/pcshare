@@ -210,6 +210,7 @@ class PdfViewerActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 28)
             window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        LumenNativeTheme.bars(this, Color.BLACK, transparent = true, overMedia = true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)       // it is a reader
         val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         val big = am.memoryClass >= 192

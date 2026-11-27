@@ -105,6 +105,7 @@ class VaultPlayActivity : Activity() {
             }
         })
         player = p
+        LumenNativeTheme.bars(this, Color.BLACK)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         root.addView(PlayerView(this).apply { this.player = p; setShowNextButton(items.size > 1); setShowPreviousButton(items.size > 1) }, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)

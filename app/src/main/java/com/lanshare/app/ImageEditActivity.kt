@@ -96,6 +96,7 @@ class ImageEditActivity : Activity() {
         vaultId = intent.getStringExtra(X_VAULT)
         if (vaultId != null) { if (!com.lanshare.app.core.vault.VaultSession.unlocked) { src.delete(); finish(); return }; VaultMode.secure(this); vaultLock = VaultMode.bindLock(this) }
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        LumenNativeTheme.bars(this, Color.BLACK, transparent = true)
         buildUi()
         Thread {
             try {
