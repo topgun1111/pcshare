@@ -237,8 +237,10 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
     }
 
+    private var paintTextScale = UiScale.tf
     fun densityChanged(value: Float) {
-        d = value
+        if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
+        d = value; paintTextScale = UiScale.tf
         nameP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
         smallP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
         dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
@@ -452,8 +454,10 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
         if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
     }
 
+    private var paintTextScale = UiScale.tf
     fun densityChanged(value: Float) {
-        d = value
+        if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
+        d = value; paintTextScale = UiScale.tf
         nameP.textSize = LumenTypography.snap(17f) * d * UiScale.tf
         dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
         dubP.textSize = LumenTypography.snap(10f) * d * UiScale.tf
@@ -676,8 +680,10 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
         ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
     }
 
+    private var paintTextScale = UiScale.tf
     fun densityChanged(value: Float) {
-        d = value
+        if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
+        d = value; paintTextScale = UiScale.tf
         nameP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
         dubP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
         requestLayout(); invalidate()
