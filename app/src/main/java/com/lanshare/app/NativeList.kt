@@ -335,8 +335,8 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d, nlErr(context)) }
         // ---- texts ----
         val xr = w - 14f * d
-        nameP.textSize = (if (c) 15f else 16f) * d * UiScale.tf
-        smallP.textSize = (if (c) 12f else 13f) * d * UiScale.tf
+        nameP.textSize = LumenTypography.snap(if (c) 15f else 16f) * d * UiScale.tf
+        smallP.textSize = LumenTypography.snap(if (c) 12f else 13f) * d * UiScale.tf
         nameP.color = if (isSel) pl.onsel else pl.fg
         smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
         var dupW = 0f
@@ -604,7 +604,7 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     private val du = arrayOfNulls<String>(5)
     private var pressed = -1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
     private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(11f) * d * UiScale.tf }
     private val rf = RectF()
     private val src = Rect()

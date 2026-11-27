@@ -69,10 +69,10 @@ class VaultImportActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (mode == null && VaultIntents.refuse(intent)) { finish(); return }          // never take in something that points into the vault itself
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(lm.canvas); gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(72), dp(24), dp(24)) }
-        root.addView(text(vt("Add to vault"), 26f, lm.ink, true))
-        status = text(vt("Preparing..."), 15f, lm.inkMut).apply { setPadding(0, dp(12), 0, dp(12)) }; root.addView(status)
+        root.addView(text(vt("Add to vault"), LumenTypography.HEADLINE_L, lm.ink))
+        status = text(vt("Preparing..."), LumenTypography.BODY_M, lm.inkMut).apply { setPadding(0, dp(12), 0, dp(12)) }; root.addView(status)
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { isIndeterminate = true }; root.addView(bar, LinearLayout.LayoutParams(-1, -2))
-        detail = text("", 13f, lm.inkMut).apply { setPadding(0, dp(12), 0, dp(12)) }
+        detail = text("", LumenTypography.BODY_S, lm.inkMut).apply { setPadding(0, dp(12), 0, dp(12)) }
         root.addView(ScrollView(this).apply { addView(detail) }, LinearLayout.LayoutParams(-1, 0, 1f))
         action = btn(vt("Cancel")) { if (running) { cancel = true; action.isEnabled = false } else finish() }; root.addView(action)
         setContentView(root)
@@ -89,12 +89,12 @@ class VaultImportActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() { if (running) cancel = true; super.onBackPressed() }
 
-    private fun text(t: String, sp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = sp; setTextColor(color); if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+    private fun text(t: String, style: LumenTypography.Style, color: Int) = TextView(this).apply {
+        text = t; LumenTypography.apply(this, style); setTextColor(color)
     }
 
     private fun btn(t: String, fn: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; setTextColor(lm.onPrimary)
+        text = t; isAllCaps = false; LumenTypography.apply(this, LumenTypography.LABEL_L); setTextColor(lm.onPrimary)
         background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(lm.primary) }
         setPadding(dp(18), 0, dp(18), 0); setOnClickListener { fn() }
     }

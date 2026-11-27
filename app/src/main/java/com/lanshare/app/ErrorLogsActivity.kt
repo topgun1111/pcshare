@@ -41,13 +41,13 @@ class ErrorLogsActivity : Activity() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), dp(12), dp(8)) }
         header.addView(button("Back") { finish() })
         header.addView(TextView(this).apply {
-            text = "Error Logs"; NlA11y.heading(this); LumenTypography.fit(this, 20f); typeface = Fnt.semi()
+            text = "Error Logs"; NlA11y.heading(this); LumenTypography.apply(this, LumenTypography.TITLE_L)
             setTextColor(pal.fg); setPadding(dp(10), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(header)
         info = TextView(this).apply {
             text = "Automatic diagnostics are stored privately on this device. Newest entries first. Export includes all retained logs."
-            setTextColor(pal.mut); typeface = Fnt.reg(); LumenTypography.fit(this, 13f)
+            setTextColor(pal.mut); LumenTypography.apply(this, LumenTypography.BODY_M)
             setPadding(dp(16), 0, dp(16), dp(10))
         }
         root.addView(info)
@@ -57,7 +57,7 @@ class ErrorLogsActivity : Activity() {
         root.addView(bar)
         scroll = ScrollView(this).apply { isFillViewport = true }
         body = TextView(this).apply {
-            typeface = Typeface.MONOSPACE; LumenTypography.fit(this, 12f)
+            LumenTypography.apply(this, LumenTypography.MONO)
             setTextColor(pal.fg); setTextIsSelectable(true)
             setPadding(dp(16), dp(8), dp(16), dp(16))
         }
@@ -68,7 +68,7 @@ class ErrorLogsActivity : Activity() {
     }
 
     private fun button(title: String, click: () -> Unit) = android.widget.Button(this).apply {
-        text = title; isAllCaps = false; setTextColor(pal.fg); LumenTypography.fit(this, 13f)
+        text = title; isAllCaps = false; setTextColor(pal.fg); LumenTypography.apply(this, LumenTypography.LABEL_L)
         minHeight = dp(44); setOnClickListener { click() }
     }
 

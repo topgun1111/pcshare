@@ -125,7 +125,7 @@ object UpdateCheck {
         val pad = (20 * d).toInt()
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         box.addView(TextView(a).apply {
-            setTextColor(p.mut); LumenTypography.fit(this, 14f)
+            setTextColor(p.mut); LumenTypography.apply(this, LumenTypography.BODY_M)
             text = "Mevcut sürüm: $cur"
             setPadding(0, 0, 0, (8 * d).toInt())
         })
@@ -144,7 +144,7 @@ object UpdateCheck {
                 }
             }
             card.addView(TextView(a).apply {
-                setTextColor(if (latest && androidx.core.graphics.ColorUtils.calculateContrast(greenLine or 0xFF000000.toInt(), androidx.core.graphics.ColorUtils.compositeColors(greenFill, p.bg)) >= 3.0) greenLine else p.fg); LumenTypography.fit(this, 15f); setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (latest && androidx.core.graphics.ColorUtils.calculateContrast(greenLine or 0xFF000000.toInt(), androidx.core.graphics.ColorUtils.compositeColors(greenFill, p.bg)) >= 3.0) greenLine else p.fg); LumenTypography.apply(this, LumenTypography.TITLE_M)
                 val date = o.optString("published_at").take(10)
                 text = buildString {
                     append(tag)
@@ -153,10 +153,10 @@ object UpdateCheck {
                     if (date.isNotEmpty()) append("\n").append(date)
                 }
             })
-            card.addView(TextView(a).apply { setTextColor(p.fg); LumenTypography.fit(this, 14f); text = notesText(a, o) })
+            card.addView(TextView(a).apply { setTextColor(p.fg); LumenTypography.apply(this, LumenTypography.BODY_M); text = notesText(a, o) })
             box.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = (8 * d).toInt() })
         }
-        if (rels.isEmpty()) box.addView(TextView(a).apply { setTextColor(p.mut); text = "(not listed)" })
+        if (rels.isEmpty()) box.addView(TextView(a).apply { setTextColor(p.mut); LumenTypography.apply(this, LumenTypography.BODY_S); text = "(not listed)" })
         return ScrollView(a).apply { setPadding(pad, pad / 2, pad, 0); addView(box) }
     }
 
@@ -213,7 +213,7 @@ object UpdateCheck {
         }
         val cancel = AtomicBoolean(false)
         val pad = (20 * a.resources.displayMetrics.density).toInt()
-        val tv = TextView(a).apply { text = "Güncelleme hazırlanıyor…" }
+        val tv = TextView(a).apply { text = "Güncelleme hazırlanıyor…"; LumenTypography.apply(this, LumenTypography.BODY_M) }
         val pb = ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = true }
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad / 2, pad, 0); addView(tv); addView(pb) }
         val dlg = AppPal.dlg(a).setTitle("Güncelleme $tag").setView(box).setCancelable(false)

@@ -174,14 +174,22 @@ object LumenTypography {
 
     /** Size, line height, weight and tracking of [s]; colour, alignment and lines are left alone. */
     fun apply(tv: android.widget.TextView, s: Style): android.widget.TextView {
+        Fnt.init(tv.context.applicationContext)
+        tv.typeface = when {
+            s === MONO -> android.graphics.Typeface.MONOSPACE
+            s.weight >= 600 -> Fnt.semi()
+            s.weight >= 500 -> Fnt.med()
+            else -> Fnt.reg()
+        }
+        return metrics(tv, s)
+    }
+
+    private fun metrics(tv: android.widget.TextView, s: Style): android.widget.TextView {
         tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, s.sp)
         tv.letterSpacing = s.tracking
         val lhPx = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, s.lineSp, tv.resources.displayMetrics)
         if (android.os.Build.VERSION.SDK_INT >= 28) tv.lineHeight = Math.round(lhPx)
         else { val fm = tv.paint.fontMetricsInt; tv.setLineSpacing(Math.max(0f, lhPx - (fm.descent - fm.ascent)), 1f) }
-        val base = tv.typeface ?: android.graphics.Typeface.DEFAULT
-        tv.typeface = if (android.os.Build.VERSION.SDK_INT >= 28) android.graphics.Typeface.create(base, s.weight, false)
-                      else android.graphics.Typeface.create(base, if (s.weight >= 600) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
         return tv
     }
 
@@ -194,12 +202,7 @@ object LumenTypography {
     fun fit(tv: android.widget.TextView, sp: Float): android.widget.TextView {
         val sn = snap(sp)
         val s = listOf(DISPLAY, HEADLINE_L, HEADLINE_M, TITLE_L, TITLE_M, TITLE_S, BODY_L, BODY_M, BODY_S, LABEL_L, LABEL_M, LABEL_S).first { it.sp == sn }
-        tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, s.sp)
-        tv.letterSpacing = s.tracking
-        val lhPx = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, s.lineSp, tv.resources.displayMetrics)
-        if (android.os.Build.VERSION.SDK_INT >= 28) tv.lineHeight = Math.round(lhPx)
-        else { val fm = tv.paint.fontMetricsInt; tv.setLineSpacing(Math.max(0f, lhPx - (fm.descent - fm.ascent)), 1f) }
-        return tv
+        return metrics(tv, s)
     }
 
     /** Spec 7: numbers in sizes, counts, speeds and times use tabular figures so columns line up and counters do not jitter. */

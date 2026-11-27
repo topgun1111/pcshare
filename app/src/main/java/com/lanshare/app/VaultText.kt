@@ -49,13 +49,14 @@ class VaultTextActivity : Activity() {
         val d = resources.displayMetrics.density
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg); setPadding(0, (24 * d).toInt(), 0, 0) }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0) }
-        val ttl = TextView(this).apply { text = vt("Edit text"); textSize = 16f; setTextColor(pal.fg) }
-        val save = Button(this).apply { text = vt("Save"); setOnClickListener { save(false) } }
+        val ttl = TextView(this).apply { text = vt("Edit text"); LumenTypography.apply(this, LumenTypography.TITLE_M); setTextColor(pal.fg) }
+        val save = Button(this).apply { text = vt("Save"); LumenTypography.apply(this, LumenTypography.LABEL_L); setOnClickListener { save(false) } }
         bar.addView(ttl, LinearLayout.LayoutParams(0, -2, 1f)); bar.addView(save)
         et = EditText(this).apply {
-            setText(txt); typeface = Typeface.MONOSPACE; textSize = 14f; setTextColor(pal.fg); setBackgroundColor(Color.TRANSPARENT)
+            setText(txt); setTextColor(pal.fg); setBackgroundColor(Color.TRANSPARENT)
             gravity = android.view.Gravity.TOP or android.view.Gravity.START; setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (16 * d).toInt())
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            LumenTypography.apply(this, LumenTypography.MONO)
             imeOptions = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             isLongClickable = false; setTextIsSelectable(false)
             val none = object : ActionMode.Callback {

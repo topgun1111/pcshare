@@ -66,6 +66,9 @@ jobs:
             echo "::warning::Keystore secrets incomplete/invalid - signing with app/lanshare.jks"
           fi
 
+      - name: Verify generated Lumen typography and token parity
+        run: python3 tools/lumen/gen.py --check
+
       - name: Test Android transfers and gallery planning
         run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.core.TransferInteropTest --tests com.lanshare.app.core.GalleryCopyPlanTest --tests com.lanshare.app.core.ErrorLogStoreTest --tests com.lanshare.app.core.ApkDeltaTest
 

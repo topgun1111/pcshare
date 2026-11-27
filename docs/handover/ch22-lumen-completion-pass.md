@@ -34,3 +34,8 @@
 - Page toast: dark gradient only for ubuntu/win11 dark, not the *light variants.
 - `tokens.json` darkThemes = computed list of 26; lint D1 checks it. Kotlin/XML not compiled in sandbox.
 - Open: MainActivity.bars() vs applySystemBars (default `light` preset has dark --bar), PlayerPal / PrintLive constants, device checks.
+
+## 2026-11-27 - Typography consistency pass
+- Generated `LumenTypography.apply` now resolves the selected `Fnt` family and semantic weight (MONO uses monospace), then calculates line height after setting the face. `fit` retains caller-selected font/weight and shares the same metrics code. Generator and generated Kotlin updated together.
+- Migrated VaultActivity, VaultImportActivity, VaultViewActivity, VaultText, ErrorLogsActivity and UpdateCheck text to named roles; native list runtime sizes snap to the existing scale and gallery captions use Fnt. Existing security behavior and editor input types preserved.
+- CI now checks generated Lumen files with `gen.py --check`. System font scale parity, full legacy-screen audit and real-device font scaling/clipping remain open; no physical-device validation performed.

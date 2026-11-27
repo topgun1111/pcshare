@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Consistent Lumen typography
+
+### Fixed
+- Shared native dialog and snackbar text now uses the selected app font and the intended regular or semibold weight.
+- Vault, encrypted text viewer/editor, Error Logs and update screens use named typography roles, including monospace text and password/code fields.
+- Native file-list and gallery text uses the shared size scale and selected font more consistently.
+
 ## 2026-11-27 - Wi-Fi and mobile update policy
 
 ### Changed

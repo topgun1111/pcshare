@@ -99,8 +99,8 @@ class VaultActivity : FragmentActivity() {
 
     private fun accessScreen() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(72), dp(24), dp(24)) }
-        box.addView(text(vt("Vault"), 28f, lm.ink, true))
-        box.addView(text(vt("Allow LANShare to access all files, so it can find your vault again. Your files stay encrypted and are not changed."), 14f, lm.inkMut).apply { setPadding(0, dp(8), 0, dp(24)) })
+        box.addView(text(vt("Vault"), LumenTypography.HEADLINE_L, lm.ink))
+        box.addView(text(vt("Allow LANShare to access all files, so it can find your vault again. Your files stay encrypted and are not changed."), LumenTypography.BODY_M, lm.inkMut).apply { setPadding(0, dp(8), 0, dp(24)) })
         box.addView(btn(vt("Allow access"), true) {
             try {
                 if (android.os.Build.VERSION.SDK_INT >= 30) startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:$packageName")))
@@ -110,12 +110,12 @@ class VaultActivity : FragmentActivity() {
         root.addView(box)
     }
 
-    private fun text(t: String, sp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = sp; setTextColor(color); if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+    private fun text(t: String, style: LumenTypography.Style, color: Int) = TextView(this).apply {
+        text = t; LumenTypography.apply(this, style); setTextColor(color)
     }
 
     private fun btn(t: String, primary: Boolean, fn: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false
+        text = t; isAllCaps = false; LumenTypography.apply(this, LumenTypography.LABEL_L)
         setTextColor(if (primary) lm.onPrimary else lm.ink)
         background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(if (primary) lm.primary else lm.surfaceHi) }
         setPadding(dp(18), 0, dp(18), 0)
@@ -126,19 +126,20 @@ class VaultActivity : FragmentActivity() {
         this.hint = hint; setTextColor(lm.ink); setHintTextColor(lm.inkMut)
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         setSingleLine(true)
+        LumenTypography.apply(this, LumenTypography.MONO)
     }
 
     private fun chars(e: EditText): CharArray { val c = CharArray(e.length()); e.text.getChars(0, c.size, c, 0); return c }
 
     private fun credentials(create: Boolean) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(72), dp(24), dp(24)) }
-        box.addView(text(vt("Vault"), 28f, lm.ink, true))
+        box.addView(text(vt("Vault"), LumenTypography.HEADLINE_L, lm.ink))
         val found = !create && !prefs.known   // vault folder on disk but no app state: reinstall / cleared data
-        box.addView(text(if (create) vt("Create a password. There is no way to recover files if you forget it.") else if (found) vt("Existing vault found. Enter its password to open it.") else vt("Enter your vault password."), 14f, lm.inkMut).apply { setPadding(0, dp(8), 0, if (found) dp(8) else dp(24)) })
-        if (found) box.addView(text(vt("Your files are safe. Fingerprint unlock can be turned on again after you open the vault."), 13f, lm.inkMut).apply { setPadding(0, 0, 0, dp(24)) })
+        box.addView(text(if (create) vt("Create a password. There is no way to recover files if you forget it.") else if (found) vt("Existing vault found. Enter its password to open it.") else vt("Enter your vault password."), LumenTypography.BODY_M, lm.inkMut).apply { setPadding(0, dp(8), 0, if (found) dp(8) else dp(24)) })
+        if (found) box.addView(text(vt("Your files are safe. Fingerprint unlock can be turned on again after you open the vault."), LumenTypography.BODY_S, lm.inkMut).apply { setPadding(0, 0, 0, dp(24)) })
         val p1 = field(vt("Password")); box.addView(p1)
         val p2 = field(vt("Repeat password")); if (create) box.addView(p2)
-        val msg = text("", 13f, lm.error).apply { setPadding(0, dp(8), 0, dp(8)) }; box.addView(msg)
+        val msg = text("", LumenTypography.BODY_S, lm.error).apply { setPadding(0, dp(8), 0, dp(8)) }; box.addView(msg)
         box.addView(btn(if (create) vt("Create vault") else vt("Unlock"), true) {
             if (busy) return@btn
             val a = chars(p1); val b = chars(p2)
@@ -180,7 +181,7 @@ class VaultActivity : FragmentActivity() {
     /** Settings mode (file manager > Vault > Vault settings): the vault is open, this screen only hosts the settings dialogs. */
     private fun settingsPage() {
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), dp(40), dp(8), dp(8)); setBackgroundColor(lm.surface) }
-        bar.addView(text(vt("Vault settings"), 20f, lm.ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        bar.addView(text(vt("Vault settings"), LumenTypography.TITLE_L, lm.ink), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         bar.addView(btn(vt("Close"), false) { finish() })
         root.addView(bar)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(24), dp(24), dp(24)) }
@@ -298,7 +299,7 @@ class VaultActivity : FragmentActivity() {
     }
 
     private fun forgotCode(msg: TextView) {
-        val e = EditText(this).apply { hint = vt("Recovery code"); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }
+        val e = EditText(this).apply { hint = vt("Recovery code"); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; LumenTypography.apply(this, LumenTypography.MONO) }
         AppPal.dlg(this).setTitle(vt("Recovery code")).setView(e)
             .setPositiveButton(vt("Unlock")) { _, _ ->
                 val secret = VaultRecovery.fromCode(e.text.toString())
@@ -330,7 +331,7 @@ class VaultActivity : FragmentActivity() {
 
     private fun forgotShares(msg: TextView) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val fs = (1..3).map { n -> EditText(this).apply { hint = vf("Share %s", n) + (if (n == 3) " (" + vt("optional") + ")" else ""); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
+        val fs = (1..3).map { n -> EditText(this).apply { hint = vf("Share %s", n) + (if (n == 3) " (" + vt("optional") + ")" else ""); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; LumenTypography.apply(this, LumenTypography.MONO) }.also { box.addView(it) } }
         AppPal.dlg(this).setTitle(vt("Enter any 2 shares")).setView(box)
             .setPositiveButton(vt("Unlock")) { _, _ ->
                 val shares = fs.map { it.text.toString() }.filter { it.isNotBlank() }.map { VaultRecovery.shareFromCode(it) }
@@ -401,7 +402,7 @@ class VaultActivity : FragmentActivity() {
     private fun pwDialog(title: String, hints: List<String>, checkNew: Boolean, cancelable: Boolean, ok: (List<CharArray>) -> Unit) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val fs = hints.map { field(it).also { f -> box.addView(f) } }
-        val err = text("", 13f, lm.error); box.addView(err)
+        val err = text("", LumenTypography.BODY_S, lm.error); box.addView(err)
         val dlg = AppPal.dlg(this).setTitle(title).setView(box).setCancelable(cancelable).setPositiveButton(vt("OK"), null)
             .apply { if (cancelable) setNegativeButton(vt("Cancel"), null) }.create()
         dlg.show()
@@ -462,7 +463,7 @@ class VaultActivity : FragmentActivity() {
 
     /** Reads every file end to end (all authentication tags) and reports damaged / missing ones. Changes nothing. */
     private fun checkIntegrity(st: VaultStore) {
-        val tv = text(vt("Checking..."), 14f, lm.ink).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
+        val tv = text(vt("Checking..."), LumenTypography.BODY_M, lm.ink).apply { setPadding(dp(20), dp(12), dp(20), dp(12)) }
         val stop = java.util.concurrent.atomic.AtomicBoolean(false)
         val dlg = AppPal.dlg(this).setTitle(vt("Check vault integrity")).setView(tv).setCancelable(false)
             .setNegativeButton(vt("Cancel")) { _, _ -> stop.set(true) }.create()
@@ -500,8 +501,8 @@ class VaultActivity : FragmentActivity() {
         val groups = code.split("-")
         val idx = groups.indices.shuffled().take(3).sorted()
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val fs = idx.map { n -> EditText(this).apply { hint = "Group ${n + 1}"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS }.also { box.addView(it) } }
-        val err = text("", 13f, lm.error); box.addView(err)
+        val fs = idx.map { n -> EditText(this).apply { hint = "Group ${n + 1}"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; LumenTypography.apply(this, LumenTypography.MONO) }.also { box.addView(it) } }
+        val err = text("", LumenTypography.BODY_S, lm.error); box.addView(err)
         val dlg = AppPal.dlg(this).setTitle(vt("Check your copy")).setMessage(vt("Type the groups you wrote down.")).setView(box).setCancelable(false)
             .setPositiveButton(vt("Check"), null).setNegativeButton(vt("Cancel"), null).setNeutralButton(vt("Show again"), null).create()
         dlg.show()
