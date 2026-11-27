@@ -15,10 +15,11 @@ class App : Application() {
             override fun onActivityCreated(activity: Activity, state: Bundle?) { try { LumenNativeTheme.darkBase(activity) } catch (_: Throwable) { }; try { LumenNativeTheme.early(activity) } catch (_: Throwable) { } }   // window colour before the first frame (no light flash in dark themes)
             override fun onActivityStarted(activity: Activity) { }
             override fun onActivityResumed(activity: Activity) {
+                LumenFrameProbe.resumed(activity)
                 // Post until each Activity has finished its first content/layout pass.
                 activity.window.decorView.post { try { LumenNativeTheme.apply(activity) } catch (_: Throwable) { } }
             }
-            override fun onActivityPaused(activity: Activity) { }
+            override fun onActivityPaused(activity: Activity) { LumenFrameProbe.paused(activity) }
             override fun onActivityStopped(activity: Activity) { Lm.stop(activity) }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) { }
             override fun onActivityDestroyed(activity: Activity) { Lm.stop(activity) }
