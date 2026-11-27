@@ -1,6 +1,12 @@
 # LANShare change log
 
-<!-- USER-FACING list. The app's update dialog shows it BEFORE the download button; CI publishes the TOP "## " section below as the GitHub release body. -->
+<!-- USER-FACING list. The app's update dialog shows it BEFORE the download button; CI publishes the TOP "## 2026-11-27 - Rendering performance diagnostics
+
+### Added
+- Run a five-second window frame-time test from Error Logs, including native file browser rendering.
+- Review and copy frame-time percentiles, over-budget frames, lost reports and display conditions without continuous monitoring.
+
+## " section below as the GitHub release body. -->
 <!-- RULE: every session that changes the app adds a NEW section at the TOP (below this note). Never edit older sections. Plain words, one line per change, no file names. -->
 <!-- Section format: "## YYYY-MM-DD - short title", then any of "### Added", "### Removed", "### Changed", "### Fixed" with "- " bullets. -->
 
