@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Foldable viewport stability
+
+### Changed
+- Preserve the visible native file or gallery row during layout reflow and compatible folded/unfolded view changes.
+- Coalesce repeated resize notifications and avoid album thumbnail rebuilds when the decode tier is unchanged.
+- Preserve loaded album position and selection when a higher or lower thumbnail tier is needed.
+
 ## 2026-11-27 - Partial-first updates on every connection
 
 ### Changed

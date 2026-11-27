@@ -10,7 +10,7 @@ document.head.appendChild(st)}catch(e){}})();</script>
 var ww=0;try{ww=LSAndroid.winW?LSAndroid.winW():0}catch(e){}var w=Math.round((ww>0?ww:(window.screen.width||innerWidth))/f);   /* window width (split screen / pop-up), not the whole display */
 var m=document.querySelector('meta[name=viewport]');var c='width='+w+',initial-scale='+f+',minimum-scale='+f+',maximum-scale='+f+',user-scalable=no,viewport-fit=cover';if(m&&m.getAttribute('content')!==c)m.setAttribute('content',c)}catch(e){}}
 /* fold / unfold changes the screen width without a reload: re-fit the layout width (the new width can arrive a moment late, so retry) */
-window.lsFit=function(){fit();setTimeout(fit,150);setTimeout(fit,500);setTimeout(fit,1200)};fit();
+var retry=[];window.lsFit=function(){retry.forEach(clearTimeout);fit();retry=[150,500,1200].map(function(ms){return setTimeout(fit,ms)})};fit();
 window.addEventListener('orientationchange',window.lsFit);var ft=0;window.addEventListener('resize',function(){clearTimeout(ft);ft=setTimeout(window.lsFit,100)})})();</script>
 <meta name=theme-color content="#1c1c1e">
 <title>LANShare</title>
@@ -1739,8 +1739,12 @@ try{const a=localStorage.getItem('ls_g'),b=localStorage.getItem('ls_pf');if(a&&!
 const pfKey=()=>S.dev+'|'+S.path;
 const uiF=()=>{try{const f=LSAndroid.uiGet().split(',')[0]/100;return f>0?f:1}catch(e){return 1}};   // Interface size factor (1 = 100%)
 const wideScr=()=>window.innerWidth*uiF()>=600;   // real dp (page width is screen/f): unfolded phone / tablet; a folded phone is narrower
-let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}try{const g=$('#gal'),w=window.innerWidth;if(g&&g._redraw&&g.style.display!=='none'&&window._gw&&Math.abs(w-window._gw)>40)g._redraw();window._gw=w}catch(e){}   // folded <-> unfolded while an album is open: redraw so the thumbnails are fetched in the new size
-try{nlLay(true);nlChPush()}catch(e){}},300)});
+let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('resize',()=>{clearTimeout(lswT);lswT=setTimeout(()=>{
+  const w=window.innerWidth;if(w<=0)return;
+  if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}
+  try{const g=$('#gal');if(g&&g._redraw&&g.style.display!=='none'&&window._gw!==w)g._redraw(true);window._gw=w}catch(e){}
+  try{nlLay();nlChPush();nlSrPush();nlDrPush()}catch(e){}
+},300)});
 function applyPrefs(){const o0=Object.assign({},G,PF[pfKey()]||{}),o=wideScr()?Object.assign({},o0,PF[pfKey()]?PF[pfKey()].W||{}:G.W||{}):o0;   // unfolded / tablet screen keeps its own view, sort and thumbnail size (stored under W); until chosen there it follows the folded one
  
   S.view=VIEWS[o.view]?o.view:'list';S.sort=SORTS[o.sort]?o.sort:'date';S.asc=!!o.asc;if(binRoot()&&!PF[pfKey()]){S.sort='date';S.asc=false}   /* recycle bin: newest deletion first until the user picks another order */S.thumb=o.thumb==='l'?'l':'s';{let cv=+(wideScr()?o.colsW:o.cols);if(o.cell>0&&!!o.lastW!==wideScr())cv=Math.max(2,Math.min(8,Math.round(window.innerWidth*uiF()/o.cell)));   // chosen on the other screen (folded / unfolded): same icon size here, not 'automatic' (bigger)
@@ -2419,7 +2423,7 @@ function mkAlbum(i,P0){
 const galJunkName=n=>/^(mipmap|drawable|raw|values|layout|anim|xml|menu)(-[a-z0-9]+)*$/i.test(n),galJunk=a=>(a.n<=1&&!a.v)||galJunkName(a.name);
 let GCX=null;   // while an album is open: the viewers take their list / folder from it instead of the browsed folder
 const cxd=()=>GCX?GCX.dev:S.dev,cxp=()=>GCX?GCX.path:S.path,cxl=()=>GCX?GCX.list:shown();
-function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;o._reload=null;GCX=null}
+function galClose(){const o=$('#gal');o.style.display='none';o.textContent='';o.classList.remove('selm');o._for=null;o._sel=null;o._pst=null;o._reload=null;o._redraw=null;GCX=null}
 /* move-to-album picker: existing albums of the same kind (pictures / videos) + "New album"; resolves the target folder path or null */
 function galPick(a,ttl){return new Promise(async res=>{
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','',ttl||'Move to album'));
@@ -2476,7 +2480,7 @@ function vidTier(gg,img){const W=(gg&&gg.clientWidth)||window.innerWidth,pc=+get
   const n=cell*1.8;return n<=420?0:n<=660?640:1000}
 function galView(a){
   const D=a.dev||'local',rem=D!=='local';   // rem: album of ANOTHER phone = read-only, files come through /api/..?dev=D
-  const o=$('#gal'),tok=o._for=Math.random();o.textContent='';o.style.display='flex';
+  const o=$('#gal'),tok=o._for=Math.random();o._redraw=null;o.textContent='';o.style.display='flex';
   const hd=E('div','gh'),bk=E('button','ibtn'),tw=E('div','gt'),tt=E('b','',a.name),sb=E('small','',a.n?a.n+(a.n===1?' item':' items'):'\u00a0'),sc=E('div','gs'),gg=E('div','gg');
   bk.append(ic('back'));bk.setAttribute('aria-label','Back');bk.onclick=galClose;
   const pcv=+LD('ls_galpc','')||0;if(pcv)gg.style.setProperty('--pc',pcv);
@@ -2570,7 +2574,7 @@ function galView(a){
         else if(k==='vid')playVid(m);else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
-    let n=0,sent=null,io=null,mk0='';const CH=300;
+    let n=0,sent=null,io=null,mk0='',tierKey='';const CH=300;
     const mlab=t=>{const d=new Date((t||0)*1000),now=new Date(),k=d.getFullYear()*12+d.getMonth();
       if(!t)return['0','Older'];
       if(galGrp()==='day'){const dk=d.getFullYear()*10000+d.getMonth()*100+d.getDate(),dd=Math.round((new Date(now.getFullYear(),now.getMonth(),now.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);
@@ -2590,10 +2594,26 @@ function galView(a){
     const more=()=>{const end=Math.min(it.length,n+CH),fr=document.createDocumentFragment(),ds=galSort()==='new'||galSort()==='old';
       for(;n<end;n++){if(ds){const ml=mlab(it[n].mtime);if(ml[0]!==mk0){mk0=ml[0];fr.append(mkH(ml[0],ml[1]))}}fr.append(mk(it[n]))}   // month headings only while sorted by date
       gg.insertBefore(fr,sent);if(n>=it.length&&sent){sent.remove();sent=null}hdUpd()};
-    const draw=()=>{if(io){io.disconnect();io=null}
+    const draw=(resize=false)=>{
+      if(o._for!==tok||!gg.isConnected)return;
+      const nextTier=vidTier(gg)+'|'+vidTier(gg,1);
+      // CSS reflows existing cells for most width changes. Only refresh their images if the decode tier changes.
+      if(resize&&nextTier===tierKey)return;
+      let anchor=null,offset=0,keep=0,oldScroll=0;
+      if(resize){
+        const top=sc.getBoundingClientRect().top;oldScroll=sc.scrollTop;keep=n;
+        for(const [name,cell] of els){const r=cell.getBoundingClientRect();if(r.bottom>top){anchor=name;offset=r.top-top;break}}
+      }
+      tierKey=nextTier;
+      if(io){io.disconnect();io=null}
+      if(typeof thIO!=='undefined'&&thIO)els.forEach(cell=>thIO.unobserve(cell));
       gg.textContent='';els.clear();hds.clear();mem.clear();n=0;mk0='';galSortList(it);
       if(galSort()==='new'||galSort()==='old')for(const m of it){const k=mlab(m.mtime)[0];(mem.get(k)||mem.set(k,[]).get(k)).push(m.name)}
       sent=E('div');sent.style.cssText='height:1px;grid-column:1/-1';gg.append(sent);more();
+      if(resize){while(n<Math.min(keep,it.length))more();gNum(GS,els);
+        const cell=anchor!==null?els.get(anchor):null;
+        sc.scrollTop=cell?sc.scrollTop+cell.getBoundingClientRect().top-sc.getBoundingClientRect().top-offset:oldScroll;
+      }
       if(n<it.length){if(window.IntersectionObserver){io=new IntersectionObserver(es=>{if(!sent||!sent.isConnected||o._for!==tok){io.disconnect();return}if(es.some(e=>e.isIntersecting))more()},{root:sc,rootMargin:'1500px'});io.observe(sent)}else while(n<it.length)more()}};
     o._redraw=draw;draw();
   }).catch(e=>{if(o._for===tok)gg.append(E('div','ge','Can\'t open this album'))})}
@@ -7803,7 +7823,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(upd)},{passive:true});upd();
     /* large title row disabled: the title lives in the top bar, right next to Search */})();
   /* Responsive drawer sync: re-evaluate on resize / fold and on split-screen body-class changes. */
-  (function(){const f=()=>{if(window.lmPermSync)window.lmPermSync()};f();addEventListener('resize',f);new MutationObserver(f).observe(document.body,{attributes:true,attributeFilter:['class']})})();
+  (function(){let raf=0;const f=()=>{raf=0;if(window.lmPermSync)window.lmPermSync()};const queue=()=>{if(!raf)raf=requestAnimationFrame(f)};f();addEventListener('resize',queue);new MutationObserver(queue).observe(document.body,{attributes:true,attributeFilter:['class']})})();
   /* pull to refresh: ring progress from the bubble height; spinner while refreshing */
   (function(){const box=$('#ptr');if(!box)return;const d=box.firstElementChild;
     const up=()=>{const h=parseFloat(box.style.height)||0;box.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));d.style.setProperty('--p',Math.max(0,Math.min(1,h/70)).toFixed(2));box.classList.toggle('spin',/^Refreshing/.test(d.textContent))};

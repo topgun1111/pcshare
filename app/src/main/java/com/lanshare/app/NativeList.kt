@@ -828,6 +828,50 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var curSig = 0
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
+    private data class ReflowAnchor(val row: NlRow, val offset: Int)
+    private var viewportAnchor: ReflowAnchor? = null
+    private var viewportKey = ""
+    private var viewportUntil = 0L
+
+    private fun captureReflowAnchor(): ReflowAnchor? {
+        val pos = lm.findFirstVisibleItemPosition()
+        val index = com.lanshare.app.core.LumenReflow.rowIndex(pos, galStart, gs, rows.size)
+        val row = rows.getOrNull(index) ?: return null
+        val view = lm.findViewByPosition(pos) ?: return null
+        return ReflowAnchor(row, lm.getDecoratedTop(view) - rv.paddingTop)
+    }
+
+    private fun restoreReflowAnchor(anchor: ReflowAnchor?) {
+        if (anchor == null) return
+        val old = anchor.row
+        val index = rows.indexOfFirst {
+            it.dev == old.dev && it.path == old.path && it.nm == old.nm &&
+                it.dir == old.dir && it.k == old.k && it.gal == old.gal && it.hit == old.hit
+        }
+        if (index >= 0) lm.scrollToPositionWithOffset(posOf(index), anchor.offset)
+    }
+
+    fun beginViewportChange() {
+        if (curKey.isEmpty()) return
+        // Keep the earliest still-valid anchor across a burst of layout notifications.
+        if (viewportKey != curKey || android.os.SystemClock.uptimeMillis() > viewportUntil || viewportAnchor == null) {
+            viewportAnchor = captureReflowAnchor()
+            viewportKey = curKey
+        }
+        viewportUntil = android.os.SystemClock.uptimeMillis() + 1200L
+        rv.stopScroll()
+        rv.animate().cancel()
+        rv.translationX = 0f; rv.alpha = 1f
+        rv.itemAnimator?.endAnimations()
+    }
+
+    private fun takeViewportAnchor(key: String): ReflowAnchor? {
+        val anchor = if (android.os.SystemClock.uptimeMillis() <= viewportUntil &&
+            com.lanshare.app.core.LumenReflow.sameLocation(viewportKey, key)) viewportAnchor else null
+        viewportAnchor = null; viewportKey = ""; viewportUntil = 0L
+        return anchor
+    }
+
     private var elev = false
     private var lastSy = -1   // Lumen large top bar: scroll offset (px) sent to the page while inside the collapse range, 999 beyond it
     // ---- native path bar + tool row (NlHead.kt) ----
@@ -1390,6 +1434,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         skelOff()
         if (key == curKey && sig == curSig) { setSel(selected); return }
         val oldSel = sel
+        val reflow = takeViewportAnchor(key)
         sel = selected
         if (key != curKey) {
             val prevKey = curKey
@@ -1400,11 +1445,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
             ad.notifyDataSetChanged()
             val st = states[key]
             if (st != null) lm.onRestoreInstanceState(st) else lm.scrollToPositionWithOffset(0, 0)
+            restoreReflowAnchor(reflow)
             push(prevKey, key, outSnap)
         } else {
             val plan = removalPlan(rows, list, oldSel, selected)
             rows = list; calcGal(); curSig = sig
-            if (plan != null) collapse(plan) else { if (gridOn) ensureMgr(true); ad.notifyDataSetChanged() }
+            if (plan != null && reflow == null) collapse(plan) else { if (gridOn) ensureMgr(true); ad.notifyDataSetChanged(); restoreReflowAnchor(reflow) }
         }
     }
 
@@ -1431,6 +1477,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         val w = (j.getDouble("w") * d).toFloat(); val h = (j.getDouble("h") * d).toFloat()
         val lp = srl.layoutParams as FrameLayout.LayoutParams
         val nl = Math.round(l); val nt = Math.round(t); val nw = Math.round(w); val nh = Math.max(0, Math.round(h))
+        val widthChanged = nw > 0 && lp.width > 0 && lp.width != nw
+        val anchor = if (widthChanged) captureReflowAnchor() else null
+        val oldManager = lm
+        val oldGallerySpan = gs
         if (lp.leftMargin != nl || lp.topMargin != nt || lp.width != nw || lp.height != nh) {   // a dim-only change (drawer fade) must not re-measure the list
             lp.leftMargin = nl; lp.topMargin = nt; lp.width = nw; lp.height = nh
             srl.layoutParams = lp
@@ -1458,6 +1508,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..8) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
+        if (widthChanged && (lm !== oldManager || gs != oldGallerySpan)) restoreReflowAnchor(anchor)
         val hd = j.optJSONArray("hd")
         if (HEAD && hd != null && hd.length() >= 5) {
             val hl = Math.round((hd.getDouble(0) * d).toFloat()); val ht = Math.round((hd.getDouble(1) * d).toFloat())
@@ -1521,7 +1572,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { rv.stopScroll(); NlBackdrop.setScrolling(rv, false); srl.isRefreshing = false; skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { viewportAnchor = null; viewportKey = ""; viewportUntil = 0L; rv.stopScroll(); NlBackdrop.setScrolling(rv, false); srl.isRefreshing = false; skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

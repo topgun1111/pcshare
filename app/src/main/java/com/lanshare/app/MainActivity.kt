@@ -715,10 +715,22 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun attachBaseContext(b: Context) { super.attachBaseContext(b); UiScale.attach(this, b, false) }
 
-    /** Fold / unfold: the activity is not recreated (configChanges), so tell the page to re-fit its layout width to the new screen. */
+    // Configuration and layout notifications often arrive in bursts during fold/unfold.
+    private val viewportSync = Runnable {
+        if (!isDestroyed && ::web.isInitialized) web.evaluateJavascript("window.lsFit&&lsFit()", null)
+    }
+    private fun scheduleViewportSync() {
+        if (!::web.isInitialized) return
+        web.removeCallbacks(viewportSync)
+        web.postDelayed(viewportSync, 60L)
+    }
+    /** Keep this Activity and its WebView alive on fold/unfold. Refresh geometry after layout settles. */
     override fun onConfigurationChanged(c: android.content.res.Configuration) {
         super.onConfigurationChanged(c)
-        if (::web.isInitialized) web.post { web.evaluateJavascript("window.lsFit&&lsFit()", null) }
+        if (::web.isInitialized) {
+            web.settings.textZoom = UiScale.effectiveText(this)
+            scheduleViewportSync()
+        }
     }
 
     override fun onCreate(b: Bundle?) {
@@ -739,7 +751,11 @@ class MainActivity : Activity() {
             if (UiScale.iface(this@MainActivity) != 100) { settings.useWideViewPort = true; settings.loadWithOverviewMode = false }   // the page rewrites its viewport meta to scale itself (ui.html head)
             settings.textZoom = UiScale.effectiveText(this@MainActivity)   // use the larger accessibility scale without compounding it
             addJavascriptInterface(Bridge(), "LSAndroid")
-            addOnLayoutChangeListener { _, l, _, r, _, ol, _, or2, _ -> if (r - l != or2 - ol) post { evaluateJavascript("window.lsFit&&lsFit()", null) } }   // window resized (split screen, fold)
+            addOnLayoutChangeListener { _, l, t, r, btm, ol, ot, or2, ob ->
+                val widthChanged = r - l != or2 - ol
+                if (widthChanged && or2 > ol && r > l && ::nl.isInitialized) nl.beginViewportChange()
+                if (widthChanged || btm - t != ob - ot) scheduleViewportSync()
+            }
             webViewClient = object : WebViewClient() {
                 // window.open('/api/dl?...') and <a download> navigations -> save to Downloads
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
@@ -917,6 +933,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
         dirWatch.stop(); mediaWatch.pause(); MediaWatch.cur = null
+        if (::web.isInitialized) web.removeCallbacks(viewportSync)
         if (::chrome.isInitialized) chrome.release()
         super.onDestroy()
     }
