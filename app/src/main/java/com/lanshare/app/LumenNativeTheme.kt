@@ -106,38 +106,6 @@ object LumenNativeTheme {
         return color == Color.WHITE || color == Color.BLACK || color == 0xFFF5F5F5.toInt()
     }
 
-    private fun opq(c: Int) = c or 0xFF000000.toInt()
-    private fun contrast(a: Int, b: Int) = ColorUtils.calculateContrast(opq(a), opq(b))
-    /** Black or white, whichever reads better on [fill]. */
-    private fun blackOrWhite(fill: Int) = if (contrast(Color.BLACK, fill) >= contrast(Color.WHITE, fill)) Color.BLACK else Color.WHITE
-    private fun pill(c: Int, v: View): GradientDrawable = GradientDrawable().apply { setColor(c); cornerRadius = 999f * v.resources.displayMetrics.density }
-
-    /** A plain Button: a platform-default one (light grey Material fill) becomes the Lumen tonal button (primaryCont fill, onPrimaryCont label, 4.5:1 guaranteed);
-     * a button whose screen set its own fill keeps that fill and only gets a different label colour when the current one is below 3:1 on it. The old code made every label
-     * `primary`, which is invisible on a primary fill and on the light grey default fill of a dark theme. */
-    private fun styleButton(b: Button, lm: Lumen) {
-        b.isAllCaps = false
-        b.minHeight = maxOf(b.minHeight, (48 * b.resources.displayMetrics.density).toInt())
-        val bg = b.background
-        val own: Int? = when (bg) {
-            is ColorDrawable -> bg.color
-            is GradientDrawable -> try { bg.color?.defaultColor } catch (_: Throwable) { null }
-            else -> null
-        }
-        val stock = bg == null || bg is android.graphics.drawable.InsetDrawable || bg is android.graphics.drawable.RippleDrawable
-        if (stock) {
-            val on = if (contrast(lm.onPrimaryCont, lm.primaryCont) >= 4.5) lm.onPrimaryCont else blackOrWhite(lm.primaryCont)
-            b.setTextColor(android.content.res.ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(lm.inkDim, on)))
-            val face = android.graphics.drawable.StateListDrawable().apply {
-                addState(intArrayOf(-android.R.attr.state_enabled), pill(lm.surfaceHi, b))
-                addState(intArrayOf(), pill(lm.primaryCont, b))
-            }
-            b.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(on, 36)), face, null)
-        } else if (own != null && contrast(b.currentTextColor, own) < 3.0) {
-            b.setTextColor(blackOrWhite(own))
-        }
-    }
-
     private fun styleTree(view: View, lm: Lumen) {
         when (view) {
             is EditText -> {
@@ -145,8 +113,9 @@ object LumenNativeTheme {
                 view.setHintTextColor(lm.inkDim)
                 view.backgroundTintList = android.content.res.ColorStateList.valueOf(lm.primary)
             }
-            is Button -> styleButton(view, lm)
+            is Button -> LumenButtons.refresh(view, lm)
             is TextView -> {
+                if (LumenButtons.refreshManaged(view, lm)) return
                 val current = view.currentTextColor
                 // Only normalize platform-default monochrome text. Preserve semantic and custom feature colours.
                 if (current == Color.BLACK || current == Color.WHITE || current == 0xFF212121.toInt() || current == 0xFF303030.toInt()) {
@@ -158,5 +127,104 @@ object LumenNativeTheme {
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) styleTree(view.getChildAt(i), lm)
         }
+    }
+}
+
+/** Explicit button roles from Lumen 12.1; never replace listeners or enabled/selected state. */
+object LumenButtons {
+    enum class Role { PRIMARY, TONAL, OUTLINE, TEXT, DANGER, GLASS }
+    private data class Spec(val role: Role, val compact: Boolean, val label: Int?, val backdrop: Int?)
+    private val managed = java.util.WeakHashMap<TextView, Spec>()
+    private fun dp(v: TextView, n: Float) = Math.round(n * v.resources.displayMetrics.density)
+    private fun opq(c: Int) = c or 0xFF000000.toInt()
+    private fun contrast(a: Int, b: Int) = ColorUtils.calculateContrast(opq(a), opq(b))
+    private fun readable(preferred: Int, colors: IntArray): Int? {
+        val samples = if (colors.size == 2) (0..16).map { ColorUtils.blendARGB(colors[0], colors[1], it / 16f) } else colors.toList()
+        return listOf(preferred, Color.BLACK, Color.WHITE).distinct().firstOrNull { fg -> samples.all { contrast(fg, it) >= 4.5 } }
+    }
+
+    fun apply(v: TextView, role: Role, compact: Boolean = false, label: Int? = null, backdrop: Int? = null) {
+        val spec = Spec(role, compact, label, backdrop)
+        managed[v] = spec
+        render(v, spec, Lumen.of(v.context))
+    }
+
+    /** A RippleDrawable alone does not identify a stock button. Leave all custom controls intact. */
+    fun refresh(b: Button, lm: Lumen) {
+        if (b is android.widget.CompoundButton) return
+        if (refreshManaged(b, lm)) return
+        if (b.javaClass != Button::class.java) return
+        val current = b.background?.constantState ?: return
+        val stock = Button(b.context).background?.constantState ?: return
+        if (current === stock && b.backgroundTintList == null) apply(b, Role.TONAL)
+    }
+
+    fun refreshManaged(v: TextView, lm: Lumen): Boolean {
+        val spec = managed[v] ?: return false
+        render(v, spec, lm)
+        return true
+    }
+
+    private fun render(v: TextView, spec: Spec, lm: Lumen) {
+        val role = spec.role
+        val bg = spec.backdrop ?: lm.surface
+        val transparent = role == Role.TEXT || role == Role.OUTLINE
+        val flat = when (role) {
+            Role.PRIMARY -> lm.primary
+            Role.TONAL -> lm.primaryCont
+            Role.DANGER -> lm.error
+            Role.GLASS -> lm.surfaceHi
+            else -> bg
+        }
+        var fills = when (role) {
+            Role.PRIMARY -> LumenGrad.primary(lm)
+            Role.DANGER -> LumenGrad.danger(lm)
+            else -> intArrayOf(flat)
+        }
+        val preferred = spec.label ?: when (role) {
+            Role.PRIMARY -> lm.onPrimary
+            Role.TONAL -> lm.onPrimaryCont
+            Role.DANGER -> lm.onError
+            Role.GLASS -> lm.ink
+            else -> lm.primary
+        }
+        val backgrounds = if (transparent && Color.alpha(bg) < 255)
+            intArrayOf(ColorUtils.compositeColors(bg, Color.BLACK), ColorUtils.compositeColors(bg, Color.WHITE))
+        else fills
+        val initial = readable(preferred, backgrounds)
+        if (initial == null && !transparent) fills = intArrayOf(flat)
+        val on = initial ?: if (transparent) preferred else readable(preferred, fills) ?: lm.ink
+        val disabledFill = ColorUtils.blendARGB(opq(lm.surface), opq(lm.ink), 0.12f)
+        val disabledOn = ColorUtils.blendARGB(disabledFill, opq(lm.ink), 0.38f)
+        fun shape(colors: IntArray, stroke: Int? = null): GradientDrawable {
+            val g = if (colors.size == 2) GradientDrawable(GradientDrawable.Orientation.TL_BR, colors)
+                else GradientDrawable().apply { setColor(colors[0]) }
+            g.cornerRadius = dp(v, 999f).toFloat()
+            if (stroke != null) g.setStroke(dp(v, 1.5f).coerceAtLeast(1), stroke)
+            return g
+        }
+        fun face(focused: Boolean) = shape(if (transparent) intArrayOf(Color.TRANSPARENT) else fills,
+            if (focused) lm.focus else if (role == Role.OUTLINE || role == Role.GLASS) lm.edge else null)
+        val states = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(-android.R.attr.state_enabled), shape(if (transparent) intArrayOf(Color.TRANSPARENT) else intArrayOf(disabledFill)))
+            addState(intArrayOf(android.R.attr.state_focused), face(true))
+            addState(intArrayOf(), face(false))
+        }
+        v.backgroundTintList = null
+        v.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(opq(on), 36)), states, shape(intArrayOf(Color.WHITE)))
+        v.setTextColor(android.content.res.ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(disabledOn, on)))
+        if (v is Button) {
+            v.isAllCaps = false
+            v.stateListAnimator = null
+            v.minHeight = dp(v, 48f)
+            v.minWidth = dp(v, 64f)
+        }
+        v.minimumHeight = dp(v, 48f)
+        v.minimumWidth = dp(v, 64f)
+        v.gravity = android.view.Gravity.CENTER
+        LumenTypography.apply(v, LumenTypography.LABEL_L)
+        val pad = dp(v, if (spec.compact || transparent) 16f else 24f)
+        v.setPaddingRelative(pad, dp(v, 4f), pad, dp(v, 4f))
+        v.elevation = if (role == Role.PRIMARY || role == Role.DANGER) dp(v, 1f).toFloat() else 0f
     }
 }
