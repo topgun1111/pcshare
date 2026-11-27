@@ -2167,7 +2167,8 @@ function nlLay(force){if(!NL||!NLL)return;
   if((window.scrollY||0)>0)window.scrollTo(0,0);   // the hidden HTML list under the native one must never scroll: it shifted #list's rect (native list top) and the head geometry
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   const r=$('#list').getBoundingClientRect(),dh=parseFloat(getComputedStyle(document.body).getPropertyValue('--dockh'))||0;
-  const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
+  const vv=window.visualViewport,vh=vv&&vv.height>0?Math.min(window.innerHeight,vv.height+Math.max(0,vv.offsetTop||0)):window.innerHeight;
+  const top=Math.max(0,Math.round(r.top)),H=Math.max(0,vh-dh-top);
   const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'))||vis($('#home'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
   ['#fab','#toast','#dlw','#jb','#jp','#ubn'].forEach(q=>{if(NLCH&&NLCHJ!=='0'&&(q==='#fab'||(q==='#toast'&&vis($('#tp')))||q==='#dlw'))return;const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
@@ -2179,7 +2180,7 @@ function nlLay(force){if(!NL||!NLL)return;
   if(NLHEAD&&NL.nlHead&&!full){const pr=$('#pathrow'),tr=$('#toolrow');
     if(vis(pr)&&vis(tr)){const a=pr.getBoundingClientRect(),b=tr.getBoundingClientRect(),q=v=>Math.round(v*100)/100;
       if(a.width>0&&a.height>0&&b.height>0)hd=[q(a.left),q(a.top),q(a.width),q(a.height),q(b.height)]}}
-  const j=JSON.stringify({l:Math.round(r.left*100)/100,t:top,w:Math.round(r.width*100)/100,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,gc:S.cols,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
+  const j=JSON.stringify({vw:window.innerWidth,dpr:window.devicePixelRatio||1,l:Math.round(r.left*100)/100,t:top,w:Math.round(r.width*100)/100,h:H,v:!full,o:holes,hd:hd,dm:Math.round(dm*100)/100,ps:ps,sq:(S.q||document.body.classList.contains('srch'))?1:0,gc:S.cols,cp:S.view==='compact'?1:0,lg:S.view==='list'&&S.thumb==='l'?1:0});
   if(force||j!==NLLAY){NLLAY=j;NL.nlLayout(j)}}
 /* Instant folder entry is done in Kotlin (NlModel + NativeList.tapRow): it builds the next folder's rows itself and shows them on tap;
    go() below still runs as usual and its rows replace them only if they differ. Nothing to do here but send nlCfg() with every render. */
@@ -2198,7 +2199,7 @@ function nlSrPush(){if(!NLSR)return;
   const vis=x=>{if(!x)return false;const c=getComputedStyle(x);return c.display!=='none'&&c.visibility!=='hidden'};
   let hid=0;['#sheet','#dlg','#pcs','#pq','#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))hid=1});
   const sc=$('#dscrim');if(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0)hid=1;
-  const q=v=>Math.round(v*100)/100,o={r:[q(b.left),q(b.top),q(b.width),q(b.height)],h:hid,p:JSON.parse(nlPal())};
+  const q=v=>Math.round(v*100)/100,o={vw:window.innerWidth,dpr:window.devicePixelRatio||1,r:[q(b.left),q(b.top),q(b.width),q(b.height)],h:hid,p:JSON.parse(nlPal())};
   if(S.q!==NLSRQ)o.x=$('#sq').value;
   const j=JSON.stringify(o);if(j!==NLSRJ){NLSRJ=j;NL.nlSearch(j)}}
 // drawer / dialog fade (0.2 s): follow the scrim every frame instead of every 150 ms
@@ -2255,7 +2256,7 @@ function nlChPush(){if(!NLCH)return;
   ['#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))all=1});
   const sc=$('#dscrim');if((document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm'))||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
   if(all){document.documentElement.classList.remove('nlcbar');if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
-  const sel=document.body.classList.contains('selm'),o={p:nlChPal(),ic:{}};
+  const sel=document.body.classList.contains('selm'),o={vw:window.innerWidth,dpr:window.devicePixelRatio||1,p:nlChPal(),ic:{}};
   const need=k=>{if(k&&!(k in o.ic))o.ic[k]=nlIc(k)};
   if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
     const br=rc($(sel?'#top .selb':'#top .mainb'));
@@ -2331,7 +2332,7 @@ function nlDrBuild(){
     else{const b=c.querySelector(':scope>button');if(b)hs.push({k:'b',j:0,g:nlDrRel(b,c)})}
     f.hit=hs;return f});
   const F=nlDrFlat(ft);F.hit=[...ft.children].map((b,j)=>({k:'f',j,g:nlDrRel(b,ft)}));
-  return{w:dw.offsetWidth,pm:document.documentElement.classList.contains('dperm')?1:0,rx:parseFloat(cs.borderTopRightRadius)||0,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
+  return{vw:window.innerWidth,dpr:window.devicePixelRatio||1,w:dw.offsetWidth,pm:document.documentElement.classList.contains('dperm')?1:0,rx:parseFloat(cs.borderTopRightRadius)||0,pt:parseFloat(cs.paddingTop)||0,pb:parseFloat(cs.paddingBottom)||0,p:{card:nlRgb(cs.backgroundColor,1),hov},tabs:T,rows,foot:F}}
 function nlDrState(){const root=document.documentElement,perm=root.classList.contains('dperm');if(!document.body.classList.contains('dopen')){root.classList.remove('nldrh');return'0'}
   const vis=e=>{if(!e)return false;const c=getComputedStyle(e);return c.display!=='none'&&c.visibility!=='hidden'};
   const hid=vis($('#sheet'))||vis($('#dlg'))||(perm&&['#gal','#pv','#pcs','#pq'].some(q=>vis($(q))));   // permanent drawer: a full-screen page layer covers it too
@@ -2361,7 +2362,8 @@ window.nlDr=(k,i,j,v)=>{
   else if(k==='f'){const b=$('#dfoot').children[j];if(b)b.click()}};
 if(NL)setInterval(()=>{if(NLL)nlLay();nlSrPush();nlChPush();nlDrTick()},150);
 // app came back from the background: forget what the native side was last told and push everything again (drawer / bars can be out of step after a long pause)
-window.lsNlResync=()=>{try{NLCHJ='';NLDRJ='';NLDRK='?';NLDRQ=0;if(window.nlLay&&NLL)nlLay(true);nlChPush();nlDrTick()}catch(e){}};
+window.lsNlResync=()=>{try{NLCHJ='';NLSRJ='';NLDRJ='';NLDRK='?';NLDRQ=0;if(window.nlLay&&NLL)nlLay(true);nlSrPush();nlChPush();nlDrTick()}catch(e){}};
+if(NL&&window.visualViewport){let vpRaf=0;visualViewport.addEventListener('resize',()=>{if(!vpRaf)vpRaf=requestAnimationFrame(()=>{vpRaf=0;try{if(NLL)nlLay();nlSrPush();nlChPush()}catch(e){}})},{passive:true})}
 /* ---- gallery albums: the Pictures folder shows its sub-folders as big cover cards ---- */
 const galRoot=()=>/^\/@(gallery|videos)$/.test(S.path),galVid=()=>S.path==='/@videos';   // virtual locations (not folders): /@gallery = albums of pictures, /@videos = albums of videos; /Pictures and /Movies are plain folders again
 const GALC={};

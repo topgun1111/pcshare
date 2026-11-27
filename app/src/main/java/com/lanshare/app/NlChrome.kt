@@ -43,7 +43,7 @@ class NlCp(private val j: JSONObject) {
 }
 
 /** Base: custom-drawn view with tap targets. A touch that starts outside every target is NOT consumed (it falls through to the page). */
-abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
+abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     var pal: NlCp? = null
     var icons: Map<String, Path?> = emptyMap()
     var onTap: ((String) -> Unit)? = null
@@ -137,8 +137,20 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
         return n
     }
 
+    private val scaledPaints = ArrayList<Pair<TextPaint, Float>>()
+    private var textFactor = UiScale.tf
+    fun densityChanged(value: Float) {
+        if (kotlin.math.abs(value - d) < 0.001f && textFactor == UiScale.tf) return
+        val old = d
+        d = value; textFactor = UiScale.tf
+        for ((paint, size) in scaledPaints) paint.textSize = size * d * textFactor
+        if (old > 0f) elevation *= d / old
+        pressed = null; rpId = null
+        invalidateOutline(); invalidate()
+    }
     protected fun tp(sizeDp: Float, tf: Typeface): TextPaint =
         TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d * UiScale.tf }
+            .also { scaledPaints.add(it to sizeDp) }
 
     /** Baseline that centres the text vertically on [cy]. */
     protected fun ty(cy: Float, p: Paint): Float { val fm = p.fontMetrics; return cy - (fm.ascent + fm.descent) / 2f }
@@ -188,7 +200,7 @@ abstract class NlHitView(c: Context, protected val d: Float) : View(c) {
 }
 
 /** #top .mainb (menu, title, device name, search, view options, refresh, split screen, settings) and #top .selb (cancel, count, select all). 44 dp. */
-class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
+class NlBarView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity) {
     override fun labelOf(id: String): String? = when (id) {
         "menub" -> "Menu"; "cog" -> "Settings"; "dualb" -> "Split screen"; "scan" -> "Refresh"
         "tune" -> "View options"; "srch" -> "Search"; "xsel" -> "Cancel selection"; "allsel" -> "Select all"; else -> null
@@ -326,7 +338,7 @@ class NlBarView(c: Context, d: Float) : NlHitView(c, d) {
 }
 
 /** #fab: extended New folder FAB, or compact 72 x 48 dp Extract pill with a caption. */
-class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
+class NlFabView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity) {
     override fun labelOf(id: String): String? = if (id == "fab") lb.ifEmpty { "Add" } else null
     private var lb = ""
     private var ik = "newfolder"
@@ -405,7 +417,7 @@ class NlFabView(c: Context, d: Float) : NlHitView(c, d) {
  * #dock: optional clipboard strip (#clip) and the grid of action buttons (#bar, > 5 actions = two rows).
  * The view reaches [inset] px above the dock so the soft shadow (box-shadow 0 -2px 8px) has room; all geometry below is relative to the dock itself.
  */
-class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
+class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity) {
     override fun labelOf(id: String): String? = when {
         id == "clipx" -> "Dismiss"; id == "paste" -> "Paste here"
         id.startsWith("a") -> acts.getOrNull(id.substring(1).toIntOrNull() ?: -1)?.lb
@@ -595,7 +607,7 @@ class NlDockView(c: Context, d: Float) : NlHitView(c, d) {
 }
 
 /** #toast: message, optional Cancel and progress bar. Lumen snackbar (Part 8): surfaceHi pill with an edge hairline, ink text, primary action, same as the page. */
-class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
+class NlToastView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity) {
     override fun labelOf(id: String): String? = if (id == "tc") "Cancel" else null
     private var tx = ""
     private var pct = -1f
@@ -667,7 +679,7 @@ class NlToastView(c: Context, d: Float) : NlHitView(c, d) {
 }
 
 /** #dlw: one card per download (name, Cancel, progress bar, info line). Sits on the container's rect; each card's y/height come from the page. */
-class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
+class NlDlView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity) {
     override fun labelOf(id: String): String? = if (id.startsWith("dl:")) "Cancel" else null
     class Card(val key: String, val n: String, val cancel: Boolean, val w: Float, val ind: Boolean, val info: String, val y: Float, val h: Float)
     private var cards: List<Card> = emptyList()
@@ -745,7 +757,8 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
         @JvmField var onElev: ((Boolean) -> Unit)? = null
     }
 
-    private val d = UiScale.dens(act)
+    private var d = UiScale.dens(act)
+    private var textFactor = UiScale.tf
     val layer = FrameLayout(act)
     private val bar = NlBarView(act, d)
     private val dock = NlDockView(act, d)
@@ -799,11 +812,15 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
 
     /** json from ui.html nlChPush(): "0" = nothing (page dialog / drawer / viewer on top), else {p, ic, bar?, fab?, dock?, t?, dl?}. */
     fun set(json: String) {
-        if (!ENABLED || json == last) return
-        last = json
-        if (json == "0") { for (v in all) v.visibility = View.GONE; return }
-        layer.post { NlBackdrop.invalidateAll() }   // 4f: the page under the chrome changed
+        if (!ENABLED) return
+        if (json == "0") { last = json; for (v in all) v.visibility = View.GONE; return }
         val j = JSONObject(json)
+        val nextDensity = com.lanshare.app.core.LumenCoordinates.scale(layer.width, j.optDouble("vw", 0.0), UiScale.dens(act))
+        val changed = kotlin.math.abs(nextDensity - d) >= 0.001f || textFactor != UiScale.tf
+        if (json == last && !changed) return
+        last = json
+        if (changed) { d = nextDensity; textFactor = UiScale.tf; all.forEach { it.densityChanged(d) } }
+        layer.post { NlBackdrop.invalidateAll() }   // 4f: the page under the chrome changed
         j.optJSONObject("p")?.let { pj -> val cp = NlCp(pj); for (v in all) v.pal = cp }
         j.optJSONObject("ic")?.let { ic ->
             val ks = ic.keys()

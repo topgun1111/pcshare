@@ -42,7 +42,7 @@ data class NlHeadData(
     }
 }
 
-class NlHeadView(c: Context, private val d: Float) : View(c) {
+class NlHeadView(c: Context, private var d: Float) : View(c) {
     var pal: NlPal? = null
         set(v) { field = v; dirty = true; invalidate() }   // dirty: the laid-out bar caches its colours, so a theme switch must rebuild it
     var onAct: ((String, Int) -> Unit)? = null
@@ -104,6 +104,18 @@ class NlHeadView(c: Context, private val d: Float) : View(c) {
         data = dt
         if (chg) dirty = true
         if (toEnd || chg) { pendingEnd = true; scroller.forceFinished(true); invalidate() }
+    }
+
+    fun densityChanged(value: Float) {
+        d = value
+        crumbP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
+        curP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
+        sumBP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
+        sumSP.textSize = LumenTypography.snap(12f) * d * UiScale.tf
+        newP.textSize = LumenTypography.snap(12f) * d * UiScale.tf
+        sortP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
+        pillP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
+        dirty = true; requestLayout(); invalidate()
     }
 
     fun setGeom(a: Float, b: Float) { if (a != hA || b != hB) { hA = a; hB = b; dirty = true; invalidate() } }

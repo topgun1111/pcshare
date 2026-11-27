@@ -90,8 +90,12 @@ class MainActivity : Activity() {
         @JavascriptInterface fun perfGet(): String { val base = android.os.Process.getStartElapsedRealtime(); val o = JSONObject(); perfMarks.forEach { (k, v) -> o.put(k, v - base) }; return JSONObject().put("marks", o).toString() }
         /** ui.html tells whether the swipe-right (Main menu <-> file manager) may act now, and where the header ends (CSS px; [vw] = page width in CSS px). */
         @JavascriptInterface fun edgeOk(ok: Boolean, top: Double, vw: Double) {
-            swipeOk = ok
-            swipeTop = if (vw > 0 && ::web.isInitialized) (top * web.width / vw).toFloat() else 0f
+            runOnUiThread {
+                if (!::web.isInitialized || isDestroyed) return@runOnUiThread
+                val factor = com.lanshare.app.core.LumenCoordinates.scale(web.width, vw, UiScale.dens(this@MainActivity))
+                swipeOk = ok && vw.isFinite() && vw > 0 && web.width > 0
+                swipeTop = (top * factor).toFloat().takeIf { it.isFinite() } ?: 0f
+            }
         }
         @JavascriptInterface fun cancel(id: Int) { dlCancel.add(id) }
         /** Main menu > Google Drive > Sign in / Reconnect: [email] = "" lets the user pick the account. The page hears the result through lsGdriveDone(ok, message). */
@@ -717,7 +721,7 @@ class MainActivity : Activity() {
 
     // Configuration and layout notifications often arrive in bursts during fold/unfold.
     private val viewportSync = Runnable {
-        if (!isDestroyed && ::web.isInitialized) web.evaluateJavascript("window.lsFit&&lsFit()", null)
+        if (!isDestroyed && ::web.isInitialized) web.evaluateJavascript("window.lsFit&&lsFit();window.lsNlResync&&lsNlResync()", null)
     }
     private fun scheduleViewportSync() {
         if (!::web.isInitialized) return
@@ -728,7 +732,10 @@ class MainActivity : Activity() {
     override fun onConfigurationChanged(c: android.content.res.Configuration) {
         super.onConfigurationChanged(c)
         if (::web.isInitialized) {
+            UiScale.tf = UiScale.effectiveText(this) / 100f
             web.settings.textZoom = UiScale.effectiveText(this)
+            if (::chrome.isInitialized) chrome.resync()
+            if (::drawer.isInitialized) drawer.resync()
             scheduleViewportSync()
         }
     }
@@ -753,7 +760,10 @@ class MainActivity : Activity() {
             addJavascriptInterface(Bridge(), "LSAndroid")
             addOnLayoutChangeListener { _, l, t, r, btm, ol, ot, or2, ob ->
                 val widthChanged = r - l != or2 - ol
-                if (widthChanged && or2 > ol && r > l && ::nl.isInitialized) nl.beginViewportChange()
+                if (widthChanged && or2 > ol && r > l) {
+                    swOn = false
+                    if (::nl.isInitialized) nl.beginViewportChange()
+                }
                 if (widthChanged || btm - t != ob - ot) scheduleViewportSync()
             }
             webViewClient = object : WebViewClient() {
@@ -850,16 +860,18 @@ class MainActivity : Activity() {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 swDone = false
-                swEdge = ev.rawX <= 36f * d                                       // system Back-gesture zone: leave it alone
+                val origin = IntArray(2)
+                if (::web.isInitialized) web.getLocationInWindow(origin)
+                swEdge = ev.x - origin[0] <= 36f * d
                 swOn = swipeOk && ev.pointerCount == 1 && !swEdge
-                swTop = ev.rawY < swipeTop
-                swX = ev.rawX; swY = ev.rawY
+                swTop = ev.y - origin[1] < swipeTop
+                swX = ev.x; swY = ev.y
             }
             MotionEvent.ACTION_POINTER_DOWN -> swOn = false                  // pinch / two fingers: not a swipe
             MotionEvent.ACTION_MOVE -> {
                 if (swDone) return true
                 if (swOn && ev.pointerCount == 1) {
-                    val dx = ev.rawX - swX; val dy = ev.rawY - swY
+                    val dx = ev.x - swX; val dy = ev.y - swY
                     val ok = swEdge || !swTop                                // the header scrolls horizontally itself, except right at the edge
                     val need = if (swEdge) 40f * d else 72f * d
                     val slope = if (swEdge) 0.8f else 0.5f

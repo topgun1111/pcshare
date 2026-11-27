@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-28 - Native display and touch alignment
+
+### Changed
+- Refresh native file rows, gallery cells, header, chrome and drawer scaling when display density changes.
+- Align native overlays to the current WebView viewport and correct swipe coordinates in resized windows.
+- Keep the search field intact through keyboard resizing and cancel obsolete keyboard-show requests.
+
 ## 2026-11-27 - Foldable viewer and dialog stability
 
 ### Changed

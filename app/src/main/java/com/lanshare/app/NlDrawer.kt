@@ -58,7 +58,7 @@ private class DrHit(val k: String, val j: Int, val x: Float, val y: Float, val w
 private class DrReg(val h: Float, val its: List<DrIt>, val hits: List<DrHit>)
 
 /** One painted region: the tab strip, a body row or the footer. Taps on a hit rectangle go to [onHit]; a touch outside every hit is not consumed. */
-private class DrView(c: Context, private val d: Float) : View(c) {
+private class DrView(c: Context, var d: Float) : View(c) {
     var reg: DrReg? = null
         set(v) { field = v; rpl.reset(); rplHit = null; try { ebt.invalidateRoot() } catch (_: Throwable) { } }
     var idx = 0
@@ -246,7 +246,7 @@ private class DrView(c: Context, private val d: Float) : View(c) {
 }
 
 /** The drawer panel: swallows every touch inside it and turns a clear left swipe into "close". */
-private class DrPanel(c: Context, private val d: Float) : LinearLayout(c) {
+private class DrPanel(c: Context, var d: Float) : LinearLayout(c) {
     var onSwipe: (() -> Unit)? = null
     private var x0 = 0f
     private var y0 = 0f
@@ -303,7 +303,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         const val ENABLED = true
     }
 
-    private val d = UiScale.dens(act)
+    private var d = UiScale.dens(act)
     private val pathCache = HashMap<String, Path?>()
     private var hov = 0
     private var ver = 0
@@ -331,6 +331,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         }
         override fun onBindViewHolder(holder: DrVh, position: Int) {
             val v = holder.itemView as DrView
+            v.d = d
             v.idx = position
             v.hov = hov
             v.reg = rows[position]
@@ -430,6 +431,11 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
             return
         }
         val j = JSONObject(json)
+        val next = com.lanshare.app.core.LumenCoordinates.scale((dp.parent as? View)?.width ?: 0, j.optDouble("vw", 0.0), UiScale.dens(act))
+        if (kotlin.math.abs(next - d) >= 0.001f) {
+            d = next; dp.d = d; tabs.d = d; foot.d = d
+            list.recycledViewPool.clear()
+        }
         ver = j.optInt("v")
         val pm = j.optInt("pm") == 1   // Lumen 9.4: permanent drawer (>= 900 dp): no slide, no real blur (nothing scrolls under it), a small shadow only
         val p = j.getJSONObject("p")

@@ -21,7 +21,7 @@ import android.widget.LinearLayout
  * Typing never touches the WebView: text goes to NativeList (instant filter) and to the page (nlSr('q')).
  * Kill switch: NativeList.SEARCH=false or localStorage ls_nlq='0' -> the HTML input is used as before.
  */
-class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
+class NlSearchRow(c: Context, private var d: Float) : LinearLayout(c) {
     var onText: ((String) -> Unit)? = null
     var onBack: (() -> Unit)? = null
     var onClear: (() -> Unit)? = null
@@ -69,6 +69,22 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
         back.contentDescription = "Back"; clr.contentDescription = "Clear"
     }
 
+    private var lastTextScale = UiScale.tf
+    fun densityChanged(value: Float) {
+        if (kotlin.math.abs(value - d) < 0.001f && lastTextScale == UiScale.tf) return
+        d = value; lastTextScale = UiScale.tf
+        setPadding(dp(4f), 0, dp(4f), 0)
+        et.setPadding(dp(2f), 0, dp(2f), 0)
+        all.setPadding(dp(8f), 0, dp(8f), 0)
+        LumenTypography.fit(et, 16f); LumenTypography.fit(all, 12f)
+        back.layoutParams = LayoutParams(dp(40f), dp(40f))
+        et.layoutParams = LayoutParams(0, dp(40f), 1f)
+        all.layoutParams = LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40f))
+        clr.layoutParams = LayoutParams(dp(40f), dp(40f))
+        pal?.let { setPal(it) }
+        requestLayout()
+    }
+
     fun setPal(p: NlPal) {
         pal = p
         background = android.graphics.drawable.GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(24f).toFloat() }
@@ -86,15 +102,25 @@ class NlSearchRow(c: Context, private val d: Float) : LinearLayout(c) {
         silent = true; et.setText(t); et.setSelection(t.length); silent = false
     }
 
-    fun focusInput() {
-        val show = Runnable {
+    private val showKeyboard = Runnable {
+        if (isAttachedToWindow && isShown) {
             et.requestFocus()
             (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(et, InputMethodManager.SHOW_IMPLICIT)
         }
-        post(show); postDelayed(show, 150)      // the 2nd try covers a view that was not laid out yet
+    }
+
+    fun focusInput() {
+        removeCallbacks(showKeyboard)
+        post(showKeyboard); postDelayed(showKeyboard, 150)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(showKeyboard)
+        super.onDetachedFromWindow()
     }
 
     fun hideKeyboard() {
+        removeCallbacks(showKeyboard)
         (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(et.windowToken, 0)
         et.clearFocus()
     }

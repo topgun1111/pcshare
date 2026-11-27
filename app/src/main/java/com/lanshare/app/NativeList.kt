@@ -207,7 +207,7 @@ object NlClassicFolder {
 }
 
 /** One row, custom drawn (no child views: cheap to create, cheap to scroll). */
-class NlRowView(c: Context, private val d: Float) : View(c) {
+class NlRowView(c: Context, private var d: Float) : View(c) {
     var row: NlRow? = null
     var pal: NlPal? = null
     var isSel = false
@@ -235,6 +235,15 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
     /** Hidden items (dot-names, hidden flag, Hide button) are drawn faded so they stand out when "Show hidden files" is on. */
     override fun draw(cv: Canvas) {
         if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
+    }
+
+    fun densityChanged(value: Float) {
+        d = value
+        nameP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
+        smallP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
+        dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
+        dubP.textSize = LumenTypography.snap(10f) * d * UiScale.tf
+        requestLayout(); invalidate()
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, cp: Boolean, lg: Boolean, md: Boolean = false) {
@@ -397,7 +406,7 @@ class NlRowView(c: Context, private val d: Float) : View(c) {
  * corner and a white type badge); pictures / videos are rounded-square thumbnails. A card only gets a tint while selected.
  * Picture-only cards of an image folder (bare) keep their own frame.
  */
-class NlGridView(c: Context, private val d: Float) : View(c) {
+class NlGridView(c: Context, private var d: Float) : View(c) {
     /** Grid column count, set by NativeList at bind: thumbnail corner radius follows spec 8.2 (r.m up to 3 columns, r.s at 4-5, r.xs at 6-8; bare image cards +3). */
     var cols = 2
     private fun thumbCorner(): Float = (when { cols <= 3 -> 12f; cols <= 5 -> 8f; else -> 4f }) + (if (bare) 3f else 0f)
@@ -441,6 +450,14 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
     /** Hidden items (dot-names, hidden flag, Hide button) are drawn faded so they stand out when "Show hidden files" is on. */
     override fun draw(cv: Canvas) {
         if (row?.hid == true) { val n = cv.saveLayerAlpha(0f, 0f, width.toFloat(), height.toFloat(), 110); super.draw(cv); cv.restoreToCount(n) } else super.draw(cv)
+    }
+
+    fun densityChanged(value: Float) {
+        d = value
+        nameP.textSize = LumenTypography.snap(17f) * d * UiScale.tf
+        dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
+        dubP.textSize = LumenTypography.snap(10f) * d * UiScale.tf
+        requestLayout(); invalidate()
     }
 
     fun bind(r: NlRow, pl: NlPal, sel: Boolean, selm: Boolean, bare: Boolean = false) {
@@ -593,7 +610,7 @@ class NlGridView(c: Context, private val d: Float) : View(c) {
  * play dot bottom-left (22), duration pill bottom-right, select circle top-right (24, white ring) like the grid card.
  * Touches are handled here (several cells per view): onTap / onLong get the index in the combined row list.
  */
-class NlGalView(c: Context, private val d: Float) : View(c) {
+class NlGalView(c: Context, private var d: Float) : View(c) {
     var cells: List<NlRow> = emptyList()
     var first = 0
     var cols = 3
@@ -657,6 +674,13 @@ class NlGalView(c: Context, private val d: Float) : View(c) {
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+    }
+
+    fun densityChanged(value: Float) {
+        d = value
+        nameP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
+        dubP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
+        requestLayout(); invalidate()
     }
 
     fun bind(cs: List<NlRow>, firstIdx: Int, columns: Int, pl: NlPal, selected: Set<Int>, selm: Boolean, isLast: Boolean) {
@@ -798,7 +822,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         fun parseSel(json: String): Set<Int> { val a = JSONArray(json); val s = HashSet<Int>(); for (i in 0 until a.length()) s.add(a.getInt(i)); return s }
     }
 
-    private val d = UiScale.dens(act)
+    private var d = UiScale.dens(act)
     val overlay = NlOverlay(act, web)
     private val srl = NlPullLayout(act, UiScale.dens(act))   // Lumen 12.18 / 13.5: 70 dp trigger + tick when the pull passes it
     private val rv = RecyclerView(act)
@@ -828,6 +852,19 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private var curSig = 0
     private val states = LinkedHashMap<String, Parcelable>()
     private var lastLay = ""
+    private var lastTextScale = UiScale.tf
+    private fun updateDensity(value: Float): Boolean {
+        if (kotlin.math.abs(value - d) < 0.001f && lastTextScale == UiScale.tf) return false
+        d = value; lastTextScale = UiScale.tf
+        head.densityChanged(d)
+        search.densityChanged(d)
+        rv.recycledViewPool.clear()
+        val pd = if (gridOn) Math.round(2f * d) else 0
+        rv.setPadding(pd, pd, pd, pd + Math.round(88f * d))
+        rv.invalidateItemDecorations()
+        ad.notifyDataSetChanged()
+        return true
+    }
     private data class ReflowAnchor(val row: NlRow, val offset: Int)
     private var viewportAnchor: ReflowAnchor? = null
     private var viewportKey = ""
@@ -1309,8 +1346,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         }
         val j = JSONObject(json)
         val r = j.getJSONArray("r")
-        val l = Math.round((r.getDouble(0) * d).toFloat()); val t = Math.round((r.getDouble(1) * d).toFloat())
-        val w = Math.round((r.getDouble(2) * d).toFloat()); val h = Math.round((r.getDouble(3) * d).toFloat())
+        val factor = com.lanshare.app.core.LumenCoordinates.scale(web.width, j.optDouble("vw", 0.0), UiScale.dens(act))
+        search.densityChanged(factor)
+        val l = Math.round((r.getDouble(0) * factor).toFloat()); val t = Math.round((r.getDouble(1) * factor).toFloat())
+        val w = Math.round((r.getDouble(2) * factor).toFloat()); val h = Math.round((r.getDouble(3) * factor).toFloat())
         j.optJSONObject("p")?.let { search.setPal(NlPal(it)) }
         val lp = search.layoutParams as FrameLayout.LayoutParams
         if (lp.leftMargin != l || lp.topMargin != t || lp.width != w || lp.height != h) {
@@ -1470,9 +1509,13 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     /** json = {l,t,w,h (CSS px), v: visible, o: [[l,t,r,b]...] holes, dm: dim 0..1, ps: all touches to the page} */
     fun layout(json: String) {
-        if (json == lastLay) return
-        lastLay = json
         val j = JSONObject(json)
+        val nextDensity = com.lanshare.app.core.LumenCoordinates.scale(web.width, j.optDouble("vw", 0.0), UiScale.dens(act))
+        val densityChange = kotlin.math.abs(nextDensity - d) >= 0.001f || lastTextScale != UiScale.tf
+        if (json == lastLay && !densityChange) return
+        lastLay = json
+        val densityAnchor = if (densityChange) captureReflowAnchor() else null
+        updateDensity(nextDensity)
         val l = (j.getDouble("l") * d).toFloat(); val t = (j.getDouble("t") * d).toFloat()
         val w = (j.getDouble("w") * d).toFloat(); val h = (j.getDouble("h") * d).toFloat()
         val lp = srl.layoutParams as FrameLayout.LayoutParams
@@ -1508,7 +1551,8 @@ class NativeList(private val act: Activity, private val web: WebView) {
         if (j.has("gc")) { val gc = j.optInt("gc"); gcols = if (gc in 2..8) gc else 0 }   // (without this, every layout push - e.g. the selection bar appearing - reset 4 columns to the automatic 2 and the cards / folder icons jumped bigger)
         if (gridOn) ensureMgr(true)
         if (galSpan() != gs) { gs = galSpan(); ad.notifyDataSetChanged() }
-        if (widthChanged && (lm !== oldManager || gs != oldGallerySpan)) restoreReflowAnchor(anchor)
+        if (densityChange) restoreReflowAnchor(densityAnchor)
+        else if (widthChanged && (lm !== oldManager || gs != oldGallerySpan)) restoreReflowAnchor(anchor)
         val hd = j.optJSONArray("hd")
         if (HEAD && hd != null && hd.length() >= 5) {
             val hl = Math.round((hd.getDouble(0) * d).toFloat()); val ht = Math.round((hd.getDouble(1) * d).toFloat())
@@ -1654,6 +1698,11 @@ class NativeList(private val act: Activity, private val web: WebView) {
         override fun onBindViewHolder(h: VH, pos: Int) {
             val p = pal ?: return
             val hv = h.v
+            when (hv) {
+                is NlGalView -> hv.densityChanged(d)
+                is NlGridView -> hv.densityChanged(d)
+                is NlRowView -> hv.densityChanged(d)
+            }
             if (hv is NlGalView) { bindGal(h, hv, pos, p); return }
             val r = rows[pos]
             h.job?.cancel(false); h.job = null; h.key = null
