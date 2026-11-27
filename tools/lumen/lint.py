@@ -100,7 +100,7 @@ if 'LumenGlass.dialogFill(d.window, c, secure)' not in _app_pal:_sem.append('Sha
 if 'if (secure) d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)' not in _app_pal:_sem.append('Secure host flag not inherited by dialogs')
 if 'if (secure) null else diagnostic' not in _app_pal:_sem.append('Secure diagnostics not suppressed')
 if "o.altDanger?' alt-danger'" not in _raw:_sem.append('HTML destructive alternative is not quiet error text')
-if 'dismissPrimary -> styleButton(pos, 0, quiet, c)' not in _lm:_sem.append('Native dismissal is not a quiet action')
+if 'dismissPrimary -> styleButton(pos, 0, quiet, c, backdrop = dialogFill)' not in _lm:_sem.append('Native dismissal is not a quiet action')
 if 'kind("update")' not in open(os.path.join(_nat,'UpdateCheck.kt'),encoding='utf-8').read():_sem.append('Update hero not selected')
 print('A9 semantic dialog rules:', 'PASS' if not _sem else 'FAIL '+ '; '.join(_sem))
 
@@ -128,6 +128,17 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--button-regression' in sys.argv:
+    theme=open(os.path.join(_nat,'LumenNativeTheme.kt'),encoding='utf-8').read()
+    errs=[]
+    for marker in ('object LumenButtons', 'if (b is android.widget.CompoundButton) return', 'current === stock', 'LumenTypography.LABEL_L', '>= 4.5', 'LumenGrad.primary(lm)', 'LumenGrad.danger(lm)'):
+        if marker not in theme:errs.append('Missing native button invariant: '+marker)
+    if 'is Button -> LumenButtons.refresh(view, lm)' not in theme:errs.append('Global button role routing missing')
+    if 'LumenButtons.apply(b, role, label = text, backdrop = backdrop)' not in _lm:errs.append('Shared dialog button role routing missing')
+    for name in ('VaultActivity.kt','VaultImportActivity.kt','VaultText.kt','ErrorLogsActivity.kt','StorageActivity.kt','InboxActivity.kt','UsIndexActivity.kt','PrintLiveActivity.kt'):
+        if 'LumenButtons.apply(' not in open(os.path.join(_nat,name),encoding='utf-8').read():errs.append('Button role missing: '+name)
+    print('Native button regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--snackbar-regression' in sys.argv:
     # Only the central no-Activity fallback is allowed; report all native bypasses recursively.
     _toast_bypass=[]

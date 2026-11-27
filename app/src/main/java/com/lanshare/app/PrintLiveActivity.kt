@@ -131,20 +131,22 @@ class PrintLiveActivity : Activity() {
             isChecked = noAuto(this@PrintLiveActivity)
             setOnCheckedChangeListener { _, v -> try { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("noauto", v).apply() } catch (_: Throwable) {} }
         }
-        bot.addView(cb, LinearLayout.LayoutParams(0, -2, 1f))
-        bot.addView(btn("Copy") { copyDetails() })
-        bot.addView(btn("Log") { try { PrintLogActivity.open(this, "", dev) } catch (_: Throwable) {} })
-        bot.addView(btn("Close") { finish() })
+        bot.addView(cb, LinearLayout.LayoutParams(-1, -2))
+        bot.orientation = LinearLayout.VERTICAL
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        bot.addView(actions, LinearLayout.LayoutParams(-1, -2))
+        actions.addView(btn("Copy") { copyDetails() })
+        actions.addView(btn("Log") { try { PrintLogActivity.open(this, "", dev) } catch (_: Throwable) {} })
+        actions.addView(btn("Close") { finish() })
         root.addView(bot)
         setContentView(root)
     }
 
     private fun tv(t: String, sp: Float, c: Int, tf: Typeface) = TextView(this).apply { text = t; LumenTypography.fit(this, sp); setTextColor(c); typeface = tf }
     private fun btn(t: String, f: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; LumenTypography.fit(this, 12f); setTextColor(FG); typeface = Fnt.med(); minWidth = 0; minimumWidth = 0
-        background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(8).toFloat() }
-        setPadding(dp(12), 0, dp(12), 0); setOnClickListener { try { f() } catch (_: Throwable) {} }
-    }.also { it.layoutParams = LinearLayout.LayoutParams(-2, dp(36)).apply { leftMargin = dp(8) } }
+        text = t; LumenButtons.apply(this, LumenButtons.Role.TEXT, compact = true)
+        setOnClickListener { try { f() } catch (_: Throwable) {} }
+    }.also { it.layoutParams = LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(4) } }
 
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); i.getStringExtra(X_DEV)?.takeIf { it.isNotEmpty() }?.let { dev = it } }
 

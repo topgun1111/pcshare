@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - Shared native button styling
+
+### Fixed
+- Standardized native button roles, including gradient primary and danger actions, outlined alternatives, quiet dismissals and disabled states.
+- Prevented the global theme from overwriting custom ripple controls and compound buttons.
+- Updated Vault, messaging, error logs, storage, search indexing and live print controls; dialogs use the same button engine.
+- Added a native button regression check to release builds.
+
 ## 2026-11-27 - Shared Lumen snackbars
 
 ### Fixed

@@ -49,3 +49,7 @@
 - Replaced direct Vault Toast.makeText calls with Lm.snack; generic failure messages on screens that finish immediately keep no-Activity feedback. Secure Activity text cannot fall back to a platform toast. Dialogs/sheets tracked, Activity stop/destroy clears native snackbar.
 - WebView feedback preserves semantic/action/countdown DOM; native mirror limited to existing transfer progress, list holes keep other messages interactive. 3/5/8 second defaults, semantic inference, same-kind merge, action width and accessibility timeout improved. Native in-window pill remains solid for contrast; no claim of real in-window blur.
 - CI recursively scans Kotlin for platform toast bypasses; device testing of layout, overlay touch routing, and action timing remains open.
+
+## 2026-11-27 - Native button consistency
+- LumenButtons in LumenNativeTheme.kt applies explicit roles, 48 dp minimum touch height, 64 dp minimum width, Label L, focus/disabled states and primary/danger gradients with sampled 4.5:1 text contrast fallback. Custom ripple and compound controls are not treated as stock. Glass role uses a solid raised surface for native readability.
+- Migrated VaultActivity, VaultImportActivity, VaultText, ErrorLogsActivity, StorageActivity, InboxActivity, UsIndexActivity, PrintLiveActivity and shared Lm dialogs. Preserved click handlers, enabled state and viewer-specific controls. Added a source-level CI regression guard. Exhaustive legacy and custom-drawn icon/FAB/split button migration and real-device layout validation remain separate work.

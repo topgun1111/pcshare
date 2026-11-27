@@ -115,10 +115,8 @@ class VaultActivity : FragmentActivity() {
     }
 
     private fun btn(t: String, primary: Boolean, fn: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; LumenTypography.apply(this, LumenTypography.LABEL_L)
-        setTextColor(if (primary) lm.onPrimary else lm.ink)
-        background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(if (primary) lm.primary else lm.surfaceHi) }
-        setPadding(dp(18), 0, dp(18), 0)
+        text = t
+        LumenButtons.apply(this, if (primary) LumenButtons.Role.PRIMARY else LumenButtons.Role.TONAL)
         setOnClickListener { fn() }
     }
 

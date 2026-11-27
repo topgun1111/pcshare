@@ -39,7 +39,7 @@ class ErrorLogsActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         LumenNativeTheme.edgeToEdge(this, root)
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), dp(12), dp(8)) }
-        header.addView(button("Back") { finish() })
+        header.addView(button("Back", LumenButtons.Role.TEXT) { finish() })
         header.addView(TextView(this).apply {
             text = "Error Logs"; NlA11y.heading(this); LumenTypography.apply(this, LumenTypography.TITLE_L)
             setTextColor(pal.fg); setPadding(dp(10), 0, 0, 0)
@@ -52,8 +52,8 @@ class ErrorLogsActivity : Activity() {
         }
         root.addView(info)
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), 0, dp(8), dp(8)) }
-        bar.addView(button("Refresh") { refresh() })
-        bar.addView(button("Export to storage") { chooseExport() })
+        bar.addView(button("Refresh", LumenButtons.Role.OUTLINE) { refresh() })
+        bar.addView(button("Export to storage", LumenButtons.Role.PRIMARY) { chooseExport() })
         root.addView(bar)
         scroll = ScrollView(this).apply { isFillViewport = true }
         body = TextView(this).apply {
@@ -67,9 +67,9 @@ class ErrorLogsActivity : Activity() {
         refresh()
     }
 
-    private fun button(title: String, click: () -> Unit) = android.widget.Button(this).apply {
-        text = title; isAllCaps = false; setTextColor(pal.fg); LumenTypography.apply(this, LumenTypography.LABEL_L)
-        minHeight = dp(44); setOnClickListener { click() }
+    private fun button(title: String, role: LumenButtons.Role, click: () -> Unit) = android.widget.Button(this).apply {
+        text = title; LumenButtons.apply(this, role, compact = true)
+        setOnClickListener { click() }
     }
 
     private fun refresh() {

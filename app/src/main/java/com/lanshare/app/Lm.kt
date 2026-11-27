@@ -459,30 +459,16 @@ object Lm {
         return if (backgrounds.all { androidx.core.graphics.ColorUtils.calculateContrast(opq(t), it) >= 4.5 }) t else fb
     }
 
-    private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context, outline: Boolean = false) {
-        b.setAllCaps(false)
-        b.setTextColor(text)
-        // spec 12.1: filled 48 / 24 padding, text 40 / 16 padding, min width 64, Label L 14 sp
-        val h = 48f
-        val padH = if (fill != 0) 24f else 16f
-        b.minHeight = dp(c, h)
-        b.minimumHeight = dp(c, h)
-        b.minWidth = dp(c, 64f)
-        b.minimumWidth = dp(c, 64f)
-        LumenTypography.apply(b, LumenTypography.LABEL_L)   // spec 7 Label L
-        b.setPadding(dp(c, padH), 0, dp(c, padH), 0)
-        val rad = dp(c, 999f).toFloat()
-        if (fill != 0) {
-            // Lumen 5.2 gPrimary: 135 degrees, gradFrom -> gradTo slots; only the primary fill, tonal / danger stay flat
-            val face: android.graphics.drawable.Drawable = if (fill == Lumen.of(c).primary) {
-                val g = GradientDrawable(GradientDrawable.Orientation.TL_BR, LumenGrad.primary(Lumen.of(c)))
-                g.cornerRadius = rad; g
-            } else shape(fill, rad)
-            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), face, null)
-        } else {
-            val face = if (outline) GradientDrawable().apply { setColor(Color.TRANSPARENT); cornerRadius = rad; setStroke(dp(c, 1.5f).coerceAtLeast(1), Lumen.of(c).edge) } else null
-            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.12f)), face, shape(0xFFFFFFFF.toInt(), rad))
+    private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context, outline: Boolean = false, backdrop: Int? = null, danger: Boolean = false) {
+        val lm = Lumen.of(c)
+        val role = when {
+            danger -> LumenButtons.Role.DANGER
+            fill == 0 && outline -> LumenButtons.Role.OUTLINE
+            fill == 0 -> LumenButtons.Role.TEXT
+            fill == lm.primary -> LumenButtons.Role.PRIMARY
+            else -> LumenButtons.Role.TONAL
         }
+        LumenButtons.apply(b, role, label = text, backdrop = backdrop)
     }
 
     /** Called by AppPal.dlg from the dialog's OnShowListener: everything is optional, any failure leaves the stock dialog as it was. */
@@ -519,8 +505,8 @@ object Lm {
         try {
             if (pos != null && pos.visibility == View.VISIBLE) {
                 when {
-                    danger -> styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
-                    dismissPrimary -> styleButton(pos, 0, quiet, c)
+                    danger -> styleButton(pos, lm.error, lm.onError, c, danger = true)
+                    dismissPrimary -> styleButton(pos, 0, quiet, c, backdrop = dialogFill)
                     else -> styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
                 }
             }
@@ -528,7 +514,7 @@ object Lm {
             fun secondary(b: android.widget.Button) {
                 val destructive = isDanger(b.text, title)
                 val dismiss = isDismissAction(b.text, o?.kind)
-                styleButton(b, 0, if (destructive) destructiveText else quiet, c, outline = !dismiss && !destructive)
+                styleButton(b, 0, if (destructive) destructiveText else quiet, c, outline = !dismiss && !destructive, backdrop = dialogFill)
             }
             if (neu != null && neu.visibility == View.VISIBLE) secondary(neu)
             if (neg != null && neg.visibility == View.VISIBLE) secondary(neg)

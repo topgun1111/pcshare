@@ -207,8 +207,8 @@ class InboxActivity : Activity() {
             }
             setOnClickListener { chooseAttachmentFiles() }
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(4) })
-        row.addView(pill("Paste", false) { paste() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(4) })
-        row.addView(pill("Send", true) { sendTyped() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { leftMargin = dp(6) })
+        row.addView(pill("Paste", false) { paste() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(4) })
+        row.addView(pill("Send", true) { sendTyped() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(6) })
         root.addView(row)
 
         setContentView(root)
@@ -406,12 +406,8 @@ class InboxActivity : Activity() {
 
     /** Flat button of the input row: Paste = surface, Send = the theme's primary. */
     private fun pill(label: String, primary: Boolean, click: () -> Unit): Button = Button(this).apply {
-        text = label; isAllCaps = false; LumenTypography.fit(this, 14f)
-        setTextColor(if (primary) pal.onac else pal.fg)
-        background = GradientDrawable().apply { setColor(if (primary) pal.ac else pal.cont); cornerRadius = dp(10).toFloat() }
-        stateListAnimator = null
-        minWidth = dp(64); minimumWidth = dp(64); minHeight = dp(44); minimumHeight = dp(44)
-        setPadding(dp(14), 0, dp(14), 0)
+        text = label
+        LumenButtons.apply(this, if (primary) LumenButtons.Role.PRIMARY else LumenButtons.Role.TONAL, compact = true)
         setOnClickListener { click() }
     }
 

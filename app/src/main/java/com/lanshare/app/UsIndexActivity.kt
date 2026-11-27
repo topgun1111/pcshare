@@ -232,9 +232,8 @@ class UsIndexActivity : Activity() {
     }
 
     private fun button(label: String, filled: Boolean, click: () -> Unit) = TextView(this).apply {
-        text = label; gravity = Gravity.CENTER; LumenTypography.fit(this, 14.5f); typeface = Fnt.semi(); isSingleLine = true
-        setTextColor(if (filled) p.onac else p.ac)
-        background = if (filled) card(p.ac, 24f) else GradientDrawable().apply { setColor(Color.TRANSPARENT); cornerRadius = dp(24f).toFloat(); setStroke(dp(1.5f), p.ac) }
+        text = label
+        LumenButtons.apply(this, if (filled) LumenButtons.Role.PRIMARY else LumenButtons.Role.OUTLINE, compact = true)
         setOnClickListener { click() }
     }
 
@@ -270,11 +269,11 @@ class UsIndexActivity : Activity() {
         root.addView(sv, LinearLayout.LayoutParams(-1, 0, 1f))
         // bottom actions
         val act = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(14f), dp(8f), dp(14f), dp(10f)); setBackgroundColor(p.bg) }
-        act.addView(button("Run everything now", true) { kick(true) }, LinearLayout.LayoutParams(0, dp(48f), 1.3f))
+        act.addView(button("Run everything now", true) { kick(true) }, LinearLayout.LayoutParams(0, -2, 1.3f))
         act.addView(button("Full rescan", false) {
             AppPal.dlg(this).kind("info").setTitle("Rescan the whole phone?").setMessage("Re-reads every folder. It can take a few minutes; searching keeps working meanwhile.")
                 .setPositiveButton("Rescan") { _, _ -> IndexManager.rescan(); kick(false); toast("Rescanning the phone") }.setNegativeButton("Cancel", null).show()
-        }, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(10f) })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(10f) })
         root.addView(act)
         LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)

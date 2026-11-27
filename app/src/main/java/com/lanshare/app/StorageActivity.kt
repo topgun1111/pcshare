@@ -256,7 +256,7 @@ class StorageActivity : Activity() {
         subTv = TextView(this).apply { LumenTypography.fit(this, 13f); setTextColor(cDim); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
         tcol.addView(titleTv); tcol.addView(subTv)
         head.addView(tcol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        rescanBtn = Button(this).apply { text = "Rescan"; isAllCaps = false; setOnClickListener { attach(rescan = true) } }
+        rescanBtn = Button(this).apply { text = "Rescan"; LumenButtons.apply(this, LumenButtons.Role.OUTLINE); setOnClickListener { attach(rescan = true) } }
         head.addView(rescanBtn)
         // header (back / title / path / Rescan) is intentionally not attached: the screen starts with the volume chips / treemap (system Back still works)
 
@@ -521,7 +521,7 @@ class StorageActivity : Activity() {
         }
         col.addView(pHint)
         col.addView(Button(this).apply {
-            text = "Cancel"; isAllCaps = false
+            text = "Cancel"; LumenButtons.apply(this, LumenButtons.Role.OUTLINE)
             setOnClickListener { scan?.let { StorageScan.cancel(it.id) }; isEnabled = false; text = "Cancelling…"; ui.postDelayed({ update() }, 150) }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) })
         content.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
@@ -543,14 +543,14 @@ class StorageActivity : Activity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(24), dp(32), dp(24), dp(24)) }
         col.addView(TextView(this).apply { this.text = title; LumenTypography.fit(this, 18f); setTextColor(cFg); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
         col.addView(TextView(this).apply { this.text = text; LumenTypography.fit(this, 14f); setTextColor(cDim); gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) })
-        fun btn(t: String, fn: () -> Unit) = col.addView(Button(this).apply { this.text = t; isAllCaps = false; setOnClickListener { fn() } },
+        fun btn(t: String, role: LumenButtons.Role, fn: () -> Unit) = col.addView(Button(this).apply { this.text = t; LumenButtons.apply(this, role); setOnClickListener { fn() } },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
         // part 9b: after Cancel / an error the earlier finished result of this folder is still in memory: offer it instead of leaving nothing
         val st = scan?.state
         val prev = if (st == "cancel" || st == "error") try { StorageScan.latest(scanDir()) } catch (_: Throwable) { null } else null
-        if (prev != null) btn("Show the previous result" + ageText(prev).let { if (it.isEmpty()) "" else " ($it)" }) { scan = prev; shownState = ""; fillVolume(); update() }
-        if (canRetry) btn("Scan again") { attach(rescan = true) }
-        if (needAccess()) btn("Allow all files access") { openAccessSettings() }
+        if (prev != null) btn("Show the previous result" + ageText(prev).let { if (it.isEmpty()) "" else " ($it)" }, LumenButtons.Role.TONAL) { scan = prev; shownState = ""; fillVolume(); update() }
+        if (canRetry) btn("Scan again", if (needAccess()) LumenButtons.Role.TONAL else LumenButtons.Role.PRIMARY) { attach(rescan = true) }
+        if (needAccess()) btn("Allow all files access", LumenButtons.Role.PRIMARY) { openAccessSettings() }
         content.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
     }
 

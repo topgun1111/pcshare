@@ -94,9 +94,8 @@ class VaultImportActivity : Activity() {
     }
 
     private fun btn(t: String, fn: () -> Unit) = Button(this).apply {
-        text = t; isAllCaps = false; LumenTypography.apply(this, LumenTypography.LABEL_L); setTextColor(lm.onPrimary)
-        background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(lm.primary) }
-        setPadding(dp(18), 0, dp(18), 0); setOnClickListener { fn() }
+        text = t; LumenButtons.apply(this, LumenButtons.Role.OUTLINE)
+        setOnClickListener { fn() }
     }
 
     // ------------------------------------------------------------------ unlock + pickers
@@ -344,7 +343,7 @@ class VaultImportActivity : Activity() {
         else if (cancel) sb.append("\n").append(vt("Stopped."))
         status.text = if (t.fail == 0 && !t.locked && !cancel) vt("Done") else vt("Finished with problems")
         detail.text = sb.toString() + (if (t.problems.isEmpty()) "" else "\n\n" + t.problems.joinToString("\n"))
-        action.text = vt("Done"); action.isEnabled = true
+        action.text = vt("Done"); LumenButtons.apply(action, LumenButtons.Role.PRIMARY); action.isEnabled = true
     }
 
     companion object {
