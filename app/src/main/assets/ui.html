@@ -884,13 +884,6 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 #dlg .dcard.zdlg>*{flex:none}
 #dlg .dcard.zdlg>.zpan{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 #dlg .dcard.zdlg .dact{margin-top:var(--sp-3)}
-#dlg .dcard.zdlg .dact{flex-wrap:nowrap}
-#dlg .dcard.zdlg .dact .tbtn{flex:1 1 0!important;min-width:0!important;height:52px!important;min-height:52px!important;padding:0 var(--sp-4)!important;border-radius:var(--r-xl)!important;font-size:var(--fs-16)!important;font-weight:700!important;display:inline-flex!important;align-items:center;justify-content:center;border:2px solid var(--ac)!important;box-sizing:border-box}
-#dlg .dcard.zdlg .dact .tbtn.zc{background:color-mix(in srgb,var(--ac) 14%,transparent)!important;color:var(--ac)!important}
-#dlg .dcard.zdlg .dact .tbtn.zc:active{background:color-mix(in srgb,var(--ac) 28%,transparent)!important;transform:scale(.97)}
-#dlg .dcard.zdlg .dact .tbtn.zk{background:var(--ac)!important;color:var(--onac)!important;box-shadow:0 2px 8px #0005}
-#dlg .dcard.zdlg .dact .tbtn.zk:active{filter:brightness(.9);transform:scale(.97)}
-#dlg .dcard.zdlg .dact .tbtn.zk:disabled{opacity:.4}
 @media (max-width:360px){#sheet .card.pj{border-radius:var(--dr) var(--dr) 0 0}}
 /*LUMEN-UI:BEGIN*/
 /* Lumen Part 7: dialog, sheet, snackbar (hand-written; tokens only) */
@@ -945,9 +938,24 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 .tbtn.busy::after{content:'';position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:var(--r-full);border:2.5px solid var(--bc);border-right-color:transparent;animation:rot .8s linear infinite}
 .dact .tbtn.lmp,.dact .tbtn.dng{height:48px;padding:0 var(--sp-6)}
 .dact.stk .tbtn{height:48px}.dact.stk .tbtn.lmp,.dact.stk .tbtn.dng{height:56px}
-/* every dialog action is a real button: secondary / alt / cancel = tonal pill (primaryCont + onPrimaryCont), primary = .lmp fill, destructive = .dng fill */
-.dact .tbtn:where(:not(.lmp):not(.dng):not(.fill):not(.dngf):not(:disabled)){background:var(--primaryCont);color:var(--onPrimaryCont);height:48px;padding:0 var(--sp-6)}
-.dact .tbtn:where(:not(.lmp):not(.dng):not(.fill):not(.dngf):not(:disabled)):active{filter:brightness(.95)}
+/* Shared dialog actions: dismissals are quiet, alternatives outlined, danger alternatives error text. */
+#dlg .dact .tbtn{min-height:48px;height:auto;white-space:normal;overflow-wrap:anywhere;text-align:center;padding:var(--sp-2) var(--sp-4)}
+#dlg .dact .tbtn.lmp{background:var(--gPrimary,var(--primary));color:var(--onPrimary)}
+#dlg .dact .tbtn.dng{background:var(--errorCont);color:var(--onErrorCont)}
+#dlg .dact .tbtn.quiet{background:transparent;color:var(--primary)}
+#dlg .dact .tbtn.out{background:transparent;color:var(--primary);box-shadow:inset 0 0 0 1.5px var(--edge)}
+#dlg .dact .tbtn.alt-danger{background:transparent;color:var(--error)}
+#dlg .dact .tbtn.tonal{background:var(--primaryCont);color:var(--onPrimaryCont)}
+#dlg .dact .tbtn:disabled{opacity:var(--st-disabledFg)}
+#dlg .dact .tbtn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+#dlg .dact.stk .tbtn.lmp,#dlg .dact.stk .tbtn.dng{min-height:56px}
+@media(max-width:599px){
+  #dlg .dact.lm-stack{flex-direction:column;align-items:stretch}
+  #dlg .dact.lm-stack .tbtn{width:100%;min-height:48px}
+  #dlg .dact.lm-stack .tbtn.lmp,#dlg .dact.lm-stack .tbtn.dng{order:-2;min-height:56px}
+  #dlg .dact.lm-stack .tbtn.out,#dlg .dact.lm-stack .tbtn.alt-danger,#dlg .dact.lm-stack .tbtn.tonal{order:-1}
+}
+
 .ibtn.on{background:var(--primaryCont);color:var(--onPrimaryCont)}
 #fab{border-radius:var(--r-full)}
 .chip{height:32px;gap:var(--sp-2);padding:0 var(--sp-3);border:1px solid var(--edgeHi);background:transparent;color:var(--ink);border-radius:var(--r-full);font-size:var(--t-labelM-size);line-height:var(--t-labelM-lh);font-weight:var(--t-labelM-w);letter-spacing:var(--t-labelM-tr)}
@@ -1820,7 +1828,7 @@ function openSort(){
     const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',SORTS[k].t+(k==='none'?'':(asc?' \u25B2':' \u25BC'))));
     b.append(E('span','rd'),t);b.onclick=()=>{done();setPref({sort:k,asc:asc})};card.append(b)};
   opt('none',true);['name','size','date','type'].forEach(k=>{opt(k,true);opt(k,false)});
-  const row=E('div','dact'),c=E('button','tbtn','Cancel');c.onclick=done;row.append(c);card.append(row);d.append(card)}
+  const row=E('div','dact'),c=E('button','tbtn quiet','Cancel');c.onclick=done;row.append(c);card.append(row);d.append(card)}
 function openView(){
   if(NLSH){S.aa=false;NL.nlView(nlSheetState());return}
   const o=$('#sheet');o.textContent='';o.style.display='flex';S.aa=false;
@@ -1852,27 +1860,29 @@ function lmDismissAction(label,kind){const l=String(label||'').trim().toLowerCas
 function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o.input, o.ok, o.alt, o.danger, o.hero (icon name; auto trash for delete-like danger), o.kind (info|warn|perm|ok hero tile), o.details ([[label,value]]) */
   const d=$('#dlg');d.textContent='';d.style.display='flex';
   const dng=!!o.danger;
-  const rich=!!(o.kind||o.hero||(o.details&&o.details.length)||o.alt||o.input);
+  const rich=!!(o.kind||o.hero||(o.details&&o.details.length)||o.errorDetails||o.alt||o.input);
   const card=E('div','dcard'+(rich?' rich':' sd'));
   const KH={info:'info',warn:'warn',perm:'lock',ok:'check'};   // Lumen 12.12 hero kinds: o.kind = info | warn | perm | ok (tile colours = info / warning / primary / success slots)
   const kind=KH[o.kind]?o.kind:'';
   const hero=o.hero||(kind?KH[kind]:'')||(o.danger&&/delete|remove|erase/i.test((o.ok||'')+' '+(o.title||''))?'del':'');
   if(hero){const h=E('div','dhero'+(dng?' dng':'')+(kind&&!dng?' k-'+kind:''));h.append(ic(hero));card.append(h)}
   card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
-  if(o.details&&o.details.length){const dt=E('dl','ddet');o.details.forEach(x=>{dt.append(E('dt','',x[0]),E('dd','',x[1]))});card.append(dt)}   // o.details = [[label, value], ...]: small read-only rows under the message
+  if(o.details&&o.details.length){const dt=E('dl','ddet');o.details.forEach(x=>{dt.append(E('dt','',x[0]),E('dd','',x[1]))});card.append(dt)}
+  if(o.errorDetails){const dt=E('details','ddet'),sm=E('summary','','Details'),pre=E('pre','',String(o.errorDetails)),cp=E('button','tbtn out','Copy details');pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-family:monospace;font-size:var(--t-mono-size)';cp.onclick=async()=>{try{await navigator.clipboard.writeText(String(o.errorDetails));toast('Details copied')}catch(e){toast('Could not copy details')}};dt.append(sm,pre,cp);card.append(dt)}   // o.details = [[label, value], ...]: small read-only rows under the message
   let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.append(ic('close'));cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
-  const row=E('div','dact'),c=E('button','tbtn','Cancel'),k=E('button','tbtn'+(o.danger?' dng':(lmDismissAction(o.ok||'OK',o.kind)?'':' lmp')),o.ok||'OK');
-  let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' dng':''),o.alt);al.onclick=()=>{if(o.altDanger)hap('err');done('alt')}}   // optional middle choice, resolves 'alt'
+  const row=E('div','dact'),c=E('button','tbtn quiet','Cancel'),k=E('button','tbtn'+(dng?' dng':(lmDismissAction(o.ok||'OK',o.kind)?' quiet':' lmp')),o.ok||'OK');
+  let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' alt-danger':(dng&&/move to bin/i.test(o.alt)?' tonal':' out')),o.alt);al.onclick=()=>{if(o.altDanger)hap('err');done('alt')}}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>{if(o.danger)hap('err');done(inp?inp.value:true)};
   d.onclick=e=>{if(e.target===d)done(null)};
   if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
-  if(o.boxOk){k.className='tbtn dng'}   // boxOk: the OK button is a normal outlined button (red text) instead of the flat danger style
-  const stk=!o.altFirst&&innerWidth<600&&([c,k,al].filter(Boolean).length>=3||[c,k,al].some(x=>x&&x.textContent.length>16));   // phones: stacked full-width, primary on top
-  if(o.altFirst&&al){row.append(al,c,k)}else if(stk){row.classList.add('stk');row.append(k);if(al)row.append(al);row.append(c)}else{row.append(c);if(al)row.append(al);row.append(k)}   // altFirst: alt button on the far left
-  if(o.altFirst){row.style.flexWrap='nowrap';row.style.gap='6px';[...row.children].forEach(x=>{x.style.padding='0 12px';x.style.whiteSpace='nowrap'})}
+  // Keep DOM order logical; CSS stacks on narrow windows and reflows on fold/unfold.
+  if([c,k,al].filter(Boolean).length>=3||[c,k,al].some(x=>x&&x.textContent.length>16))row.classList.add('lm-stack');
+  if(o.altFirst&&al){row.append(al,c,k)}else{row.append(c);if(al)row.append(al);row.append(k)}
+  if(o.boxOk)k.className='tbtn dng';
+
   card.append(row);d.append(card);
-  if(inp)setTimeout(()=>{inp.focus();inp.select()},60);else if(dng)setTimeout(()=>c.focus(),60)})}
+  if(inp)setTimeout(()=>{inp.focus();inp.select()},60);else if(dng||o.boxOk||o.altDanger)setTimeout(()=>{if(d.contains(c))c.focus()},60)})}
 
 function agoTxt(sec){const d=Math.max(0,Math.round(Date.now()/1000-sec));if(d<45)return '';
   if(d<3600)return Math.max(1,Math.round(d/60))+' min ago';if(d<86400)return Math.round(d/3600)+' h ago';return Math.round(d/86400)+' d ago'}
@@ -1992,7 +2002,7 @@ async function spaceInfo(){
   const d=$('#dlg');d.textContent='';d.style.display='flex';
   const card=E('div','dcard'),box=E('div','det');card.append(E('h3','',S.dev==='local'?'Main storage':devName(S.dev)),box);
   const close=()=>{d.style.display='none';d.onclick=null};
-  const act=E('div','dact'),ok=E('button','tbtn','OK');ok.onclick=close;act.append(ok);card.append(act);d.append(card);d.onclick=e=>{if(e.target===d)close()};
+  const act=E('div','dact'),ok=E('button','tbtn quiet','OK');ok.onclick=close;act.append(ok);card.append(act);d.append(card);d.onclick=e=>{if(e.target===d)close()};
   const row=(a,b)=>{const r=E('div','dr');r.append(E('span','dk',a),E('span','dv',b));box.append(r)};
   const draw=v=>{box.textContent='';
     if(v&&v.total){const used=v.total-(v.free||0),pc=Math.round(used*100/v.total);
@@ -7143,7 +7153,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   const card=E('div','dcard zdlg');card.append(E('h3','','Create archive'),E('p','',msg));
   const sum=E('p','','Calculating size\u2026');sum.style.cssText='font-size:var(--fs-14);font-weight:600;margin:2px 2px var(--sp-2)';card.append(sum);
   const inp=E('input','tf');inp.value=base;inp.placeholder='File name';inp.autocomplete='off';card.append(inp);
-  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn zc','Cancel'),k=E('button','tbtn lmp zk','Create');
+  const chk=new Set(),row=E('div','dact'),c=E('button','tbtn quiet','Cancel'),k=E('button','tbtn lmp','Create');
   let alive=true,tot=null,fmt_=LD('ls_zipfmt','zip')==='xz'?'xz':'zip';const by={};
   const est=o=>fmt_==='xz'?(o.estx!=null?o.estx:o.est||0):(o.est||0);
   const upd=()=>{if(!tot)return;let s=tot.size,e=est(tot),f=tot.files;chk.forEach(p=>{const i=by[p];if(i){s-=i.size;e-=est(i);f-=i.files}});s=Math.max(s,0);e=Math.max(e,0);
@@ -7161,7 +7171,7 @@ function zipDlg(msg,base,hasDir,paths){return new Promise(res=>{
   let box=null,st=null,all=null;
   if(hasDir){
     const hd=E('div','');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:2px 0 2px';
-    const lb=E('b','','Hidden and build folders (tick):');lb.style.fontSize='13.5px';all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
+    const lb=E('b','','Hidden and build folders (tick):');lb.style.fontSize='var(--t-titleS-size)';all=E('button','tbtn','Tick all');all.style.display='none';hd.append(lb,all);
     box=E('div');box.style.cssText='overflow-x:hidden';
     st=E('p','','Looking for hidden and build folders\u2026');st.style.cssText='font-size:var(--fs-12);color:var(--mut);margin:var(--sp-1) 2px';box.append(st);
     p1.append(hd,box);k.disabled=true
@@ -7197,7 +7207,7 @@ async function doZip(){   // pack the selected files / folders into a new .zip /
   const paths=selPaths(),zdir=it[0].disp?(paths[0].replace(/\/[^\/]*$/,'')||'/'):S.path;S.sel.clear();GALT=0;render();
   let rep=false;   // same name already in the folder: ask instead of silently making "name (1).zip"
   try{const zn=zbase(n)+zext(zo.fmt),ls=await api('GET','/api/ls?dev='+enc(S.dev)+'&path='+enc(zdir));
-    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({kind:'warn',details:[['Name',zn],['Folder',zdir]],title:'"'+zn+'" already exists',msg:'Replace it with the new archive? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',altFirst:true,boxOk:true});
+    if((ls.items||[]).some(i=>i.name===zn)){const a=await dlg({kind:'warn',details:[['Name',zn],['Folder',zdir]],title:'"'+zn+'" already exists',msg:'Replace it with the new archive? The old file is only replaced once the new one is complete.',ok:'Replace',alt:'Keep both',danger:true});
       if(!a){S.sel.clear();render();return}rep=a===true}}catch(e){}
   try{const r=await api('POST','/api/zip',{dev:S.dev,paths,dir:zdir,name:n.trim(),replace:rep,exclude:zo.ex,format:zo.fmt});watchJob(r.job);await track(r.job)}catch(e){toast('\u26a0 '+e.message,6000)}}
 /* Extract: folder picker sheet. Starts at [start]; tap a folder to open it, back row goes up, "Extract here" confirms. Resolves the chosen folder path or null. */
@@ -7439,7 +7449,7 @@ const foc=r=>qa('button,[href],input:not([type=hidden]),select,textarea,[tabinde
 if(dl)new MutationObserver(()=>{const c=q('.dcard',dl);
   if(vis(dl)&&c){if(!dl._o){dl._o=1;opener=document.activeElement}
     if(!c.hasAttribute('role')){const h=q('h3',c),m=q('p',c);n++;if(h){h.id='lmdt'+n;c.setAttribute('aria-labelledby',h.id)}if(m){m.id='lmdm'+n;c.setAttribute('aria-describedby',m.id)}
-      c.setAttribute('role',q('.tbtn.dng',c)?'alertdialog':'dialog');c.setAttribute('aria-modal','true');
+      c.setAttribute('role',q('.tbtn.dng,.tbtn.alt-danger',c)?'alertdialog':'dialog');c.setAttribute('aria-modal','true');
       setTimeout(()=>{if(vis(dl)&&!dl.contains(document.activeElement)){const f=q('input',c)||q('.lmp',c)||foc(c)[0];if(f)f.focus()}},0)}}
   else if(!vis(dl)&&dl._o){dl._o=0;const o=opener;opener=null;try{if(o&&o.isConnected&&o.focus)o.focus()}catch(e){}}
  }).observe(dl,{childList:true,attributes:true,attributeFilter:['style']});

@@ -39,3 +39,8 @@
 - Generated `LumenTypography.apply` now resolves the selected `Fnt` family and semantic weight (MONO uses monospace), then calculates line height after setting the face. `fit` retains caller-selected font/weight and shares the same metrics code. Generator and generated Kotlin updated together.
 - Migrated VaultActivity, VaultImportActivity, VaultViewActivity, VaultText, ErrorLogsActivity and UpdateCheck text to named roles; native list runtime sizes snap to the existing scale and gallery captions use Fnt. Existing security behavior and editor input types preserved.
 - CI now checks generated Lumen files with `gen.py --check`. System font scale parity, full legacy-screen audit and real-device font scaling/clipping remain open; no physical-device validation performed.
+
+## 2026-11-27 - Shared dialog consistency
+- AppPal connects dialog windows to LumenGlass; inherits FLAG_SECURE and suppresses diagnostic copying for secure host windows. Opaque contrast fallback when translucent fill fails 4.5:1 against either backdrop extreme.
+- Lm and page dlg use quiet dismissals, outlined alternatives and quiet destructive alternatives; update hero uses application icon. Archive buttons use shared roles. Native diagnostics opt-in (update failures), no Vault diagnostic copying. Existing return values and callbacks kept.
+- CI runs dialog-regression lint and Node syntax checks. Broader lint findings remain reported, not release blockers. Real-device verification of glass, font scaling, folds and TalkBack is still needed.

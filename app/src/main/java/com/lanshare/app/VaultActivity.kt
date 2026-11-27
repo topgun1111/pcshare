@@ -385,7 +385,7 @@ class VaultActivity : FragmentActivity() {
             val codes = try { VaultRecovery.split(sec, 2, 3).map { VaultRecovery.shareToCode(it) } } catch (e: Throwable) { sec.fill(0); throw e }
             ui.post {
                 pendingRecoverySecret?.fill(0); pendingRecoverySecret = sec
-                AppPal.dlg(this).setTitle(vt("Your 3 shares"))
+                AppPal.dlg(this).kind("perm").setTitle(vt("Your 3 shares"))
                     .setMessage(codes.mapIndexed { i, c -> vt("Share %s").format(i + 1) + ":\n$c" }.joinToString("\n\n") + "\n\n" + vt("Any 2 shares open the vault. One alone reveals nothing. Give them to different people or places, away from this phone. Shown only once."))
                     .setCancelable(false)
                     .setPositiveButton(vt("I saved all 3")) { _, _ ->
@@ -481,14 +481,14 @@ class VaultActivity : FragmentActivity() {
                     m.append("\n\n").append(vt("Nothing was changed. Restore the vault folder (.lsv) from a backup if you have one."))
                 }
                 if (stop.get()) m.append("\n\n").append(vt("Stopped before the end."))
-                AppPal.dlg(this).setTitle(vt("Check vault integrity")).setMessage(m.toString()).setPositiveButton(vt("OK"), null).show()
+                AppPal.dlg(this).kind(if (rep.ok && !stop.get()) "ok" else "warn").setTitle(vt("Check vault integrity")).setMessage(m.toString()).setPositiveButton(vt("OK"), null).show()
             }
         }
     }
 
     private fun showCode(code: String, secret: ByteArray) {
         pendingRecoverySecret?.fill(0); pendingRecoverySecret = secret
-        AppPal.dlg(this).setTitle(vt("Your recovery code"))
+        AppPal.dlg(this).kind("perm").setTitle(vt("Your recovery code"))
             .setMessage("$code\n\n" + vt("Write it down and keep it away from this phone. It is shown only once. Anyone who has it can open your vault."))
             .setCancelable(false)
             .setPositiveButton(vt("I wrote it down")) { _, _ -> checkCode(code, secret) }

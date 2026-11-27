@@ -328,7 +328,7 @@ object Lm {
     }
 
     /** Dialog extras (Lumen A8): semantic hero kind and optional read-only detail rows. */
-    class Opts(val kind: String?, val details: List<Pair<String, String>>?)
+    class Opts(val kind: String?, val details: List<Pair<String, String>>?, val diagnostic: String? = null, val fill: Int? = null)
 
     /** Hero tile for info / warn / perm / ok: filled disc in the kind's slot colour, Lumen glyph (info / warn / lock / check) in its on-colour. */
     private class KindHero(c: Context, private val bg: Int, private val fg: Int, private val glyph: String) : View(c) {
@@ -337,7 +337,7 @@ object Lm {
             val w = width.toFloat(); val h = height.toFloat()
             if (w <= 0f || h <= 0f) return
             p.style = Paint.Style.FILL; p.color = bg
-            cv.drawCircle(w / 2f, h / 2f, Math.min(w, h) / 2f, p)
+            cv.drawRoundRect(0f, 0f, w, h, dp(context, 16f).toFloat(), dp(context, 16f).toFloat(), p)
             val s = Math.min(w, h) * 0.5f
             NlIcons.draw(cv, p, glyph, (w - s) / 2f, (h - s) / 2f, s, fg)
         }
@@ -375,6 +375,28 @@ object Lm {
         else host.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
+    /** Opt-in diagnostic text only. Never called for a secure host, and never added to the clipboard automatically. */
+    private fun addDiagnostic(d: AlertDialog, c: Context, lm: Lumen, o: Opts) {
+        val value = o.diagnostic?.takeIf { it.isNotBlank() } ?: return
+        val buttons = d.findViewById<View>(c.resources.getIdentifier("buttonPanel", "id", "android")) ?: return
+        val host = buttons.parent as? LinearLayout ?: return
+        val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(c, 24f), 0, dp(c, 24f), dp(c, 8f)) }
+        val toggle = android.widget.Button(c).apply { text = "Details" }
+        styleButton(toggle, 0, lm.ink, c, outline = true)
+        val content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val details = TextView(c).apply { text = value; setTextColor(lm.ink); LumenTypography.apply(this, LumenTypography.MONO); setTextIsSelectable(true) }
+        content.addView(android.widget.ScrollView(c).apply { addView(details); isFillViewport = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 120f)))
+        val copy = android.widget.Button(c).apply { text = "Copy details"; setOnClickListener {
+            val clipboard = c.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Error details", value))
+        } }
+        styleButton(copy, 0, lm.ink, c)
+        content.addView(copy)
+        toggle.setOnClickListener { val expand = content.visibility != View.VISIBLE; content.visibility = if (expand) View.VISIBLE else View.GONE; toggle.text = if (expand) "Hide details" else "Details" }
+        box.addView(toggle); box.addView(content)
+        host.addView(box, host.indexOfChild(buttons), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
     /** Trash tile for destructive dialogs: errorCont disc, onErrorCont glyph. */
     private class HeroView(c: Context, private val bg: Int, private val fg: Int) : View(c) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -409,15 +431,17 @@ object Lm {
         if (androidx.core.graphics.ColorUtils.calculateContrast(opq(t), f) >= 4.5) return t
         return if (androidx.core.graphics.ColorUtils.calculateContrast(0xFF000000.toInt(), f) >= androidx.core.graphics.ColorUtils.calculateContrast(0xFFFFFFFF.toInt(), f)) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
     }
-    /** Text colour on the dialog window: [t] when it reads on [bg] (3:1), else [fb]. */
-    private fun onWin(t: Int, bg: Int, fb: Int): Int =
-        if (androidx.core.graphics.ColorUtils.calculateContrast(opq(t), opq(bg)) >= 3.0) t else fb
+    /** Use a readable quiet label over both possible extremes of a translucent surface. */
+    private fun onWin(t: Int, bg: Int, fb: Int): Int {
+        val backgrounds = listOf(0xFF000000.toInt(), 0xFFFFFFFF.toInt()).map { androidx.core.graphics.ColorUtils.compositeColors(bg, it) }
+        return if (backgrounds.all { androidx.core.graphics.ColorUtils.calculateContrast(opq(t), it) >= 4.5 }) t else fb
+    }
 
-    private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context) {
+    private fun styleButton(b: android.widget.Button, fill: Int, text: Int, c: Context, outline: Boolean = false) {
         b.setAllCaps(false)
         b.setTextColor(text)
         // spec 12.1: filled 48 / 24 padding, text 40 / 16 padding, min width 64, Label L 14 sp
-        val h = if (fill != 0) 48f else 40f
+        val h = 48f
         val padH = if (fill != 0) 24f else 16f
         b.minHeight = dp(c, h)
         b.minimumHeight = dp(c, h)
@@ -434,7 +458,8 @@ object Lm {
             } else shape(fill, rad)
             b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.14f)), face, null)
         } else {
-            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.12f)), null, shape(0xFFFFFFFF.toInt(), rad))
+            val face = if (outline) GradientDrawable().apply { setColor(Color.TRANSPARENT); cornerRadius = rad; setStroke(dp(c, 1.5f).coerceAtLeast(1), Lumen.of(c).edge) } else null
+            b.background = RippleDrawable(ColorStateList.valueOf(withAlpha(text, 0.12f)), face, shape(0xFFFFFFFF.toInt(), rad))
         }
     }
 
@@ -465,29 +490,35 @@ object Lm {
         } catch (_: Throwable) { }
 
         val danger = o?.kind == "danger" || (pos != null && pos.visibility == View.VISIBLE && isDanger(pos.text, title))
+        val dialogFill = o?.fill ?: lm.surface
+        val quiet = onWin(lm.primary, dialogFill, lm.ink)
+        val destructiveText = onWin(lm.error, dialogFill, lm.ink)
         val dismissPrimary = pos != null && pos.visibility == View.VISIBLE && isDismissAction(pos.text, o?.kind) && !danger
         try {
             if (pos != null && pos.visibility == View.VISIBLE) {
                 when {
                     danger -> styleButton(pos, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
-                    dismissPrimary -> styleButton(pos, lm.primaryCont, onFill(lm.primaryCont, lm.onPrimaryCont), c)
+                    dismissPrimary -> styleButton(pos, 0, quiet, c)
                     else -> styleButton(pos, lm.primary, onFill(lm.primary, lm.onPrimary), c)
                 }
             }
-            // text buttons sit on the dialog window (page --bg): keep them readable on every theme, fall back to the page ink
-            // secondary actions are real (tonal) buttons too, not bare text: error tonal for destructive labels, primary tonal otherwise
-            fun tonal(b: android.widget.Button) {
-                if (isDanger(b.text, title)) styleButton(b, lm.errorCont, onFill(lm.errorCont, lm.onErrorCont), c)
-                else styleButton(b, lm.primaryCont, onFill(lm.primaryCont, lm.onPrimaryCont), c)
+            // Dismissals are quiet, alternatives outlined, destructive alternatives error text.
+            fun secondary(b: android.widget.Button) {
+                val destructive = isDanger(b.text, title)
+                val dismiss = isDismissAction(b.text, o?.kind)
+                styleButton(b, 0, if (destructive) destructiveText else quiet, c, outline = !dismiss && !destructive)
             }
-            if (neu != null && neu.visibility == View.VISIBLE) tonal(neu)
-            if (neg != null && neg.visibility == View.VISIBLE) tonal(neg)
-            if (danger && neg != null && neg.visibility == View.VISIBLE) neg.requestFocus()   // Cancel is the default in danger dialogs
+            if (neu != null && neu.visibility == View.VISIBLE) secondary(neu)
+            if (neg != null && neg.visibility == View.VISIBLE) secondary(neg)
+            if (danger) {
+                val safe = shown.firstOrNull { it !== pos && isDismissAction(it.text, o?.kind) }
+                safe?.requestFocus()
+            }
         } catch (_: Throwable) { }
 
         // phones: stacked, full width, primary on top when there are 3+ actions or a long label
         try {
-            val phone = c.resources.configuration.screenWidthDp < 600
+            val phone = c.resources.configuration.screenWidthDp < 600 || c.resources.configuration.fontScale >= 1.3f
             var longLabel = false
             for (b in shown) if (b.text.length > 16) longLabel = true
             if (phone && shown.size >= 2 && (shown.size >= 3 || longLabel)) {
@@ -509,16 +540,17 @@ object Lm {
         // destructive: hero tile above a centred title
         try {
             val k = o?.kind
-            if ((danger || k == "info" || k == "warn" || k == "perm" || k == "ok") && title != null && title.isNotEmpty()) {
+            if ((danger || k == "info" || k == "warn" || k == "perm" || k == "ok" || k == "update") && title != null && title.isNotEmpty()) {
                 val top = d.findViewById<View>(c.resources.getIdentifier("topPanel", "id", "android")) as? LinearLayout
                 val tid = c.resources.getIdentifier("alertTitle", "id", "android")
                 if (top != null && top.visibility == View.VISIBLE) {
                     val hero: View = when {
                         danger -> HeroView(c, lm.errorCont, lm.onErrorCont)
-                        k == "warn" -> KindHero(c, lm.warning, lm.onWarning, "warn")
-                        k == "perm" -> KindHero(c, lm.primary, lm.onPrimary, "lock")
-                        k == "ok" -> KindHero(c, lm.success, lm.onSuccess, "check")
-                        else -> KindHero(c, lm.info, lm.onInfo, "info")
+                        k == "warn" -> KindHero(c, lm.warningCont, lm.onWarningCont, "warn")
+                        k == "perm" -> KindHero(c, lm.primaryCont, lm.onPrimaryCont, "lock")
+                        k == "ok" -> KindHero(c, lm.successCont, lm.onSuccessCont, "check")
+                        k == "update" -> android.widget.ImageView(c).apply { setImageDrawable(c.packageManager.getApplicationIcon(c.applicationInfo)); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER }
+                        else -> KindHero(c, lm.infoCont, lm.onInfoCont, "info")
                     }
                     hero.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     val lp = LinearLayout.LayoutParams(dp(c, 56f), dp(c, 56f))
@@ -531,7 +563,7 @@ object Lm {
             }
         } catch (_: Throwable) { }
 
-        if (o != null) try { addExtras(d, c, lm, o) } catch (_: Throwable) { }
+        if (o != null) try { addExtras(d, c, lm, o); addDiagnostic(d, c, lm, o) } catch (_: Throwable) { }
 
         // M1 (native): dialog exit 140 ms accelerate (window exit animation; 120 ms fade with Reduce motion). A1: the window is announced with the dialog title.
         try {

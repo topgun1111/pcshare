@@ -87,7 +87,7 @@ object UpdateCheck {
                 val dl = apk.getString("browser_download_url"); val dlSize = apk.optLong("size", 0L)
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                    AppPal.dlg(a).kind("info")
+                    AppPal.dlg(a).kind("update")
                         .setTitle("Yeni sürüm: $tag")
                         .setView(changeView(a, cur, all))
                         .setPositiveButton("İndir") { _, _ ->
@@ -315,7 +315,7 @@ object UpdateCheck {
                         .setMessage("Tam APK (" + (if (expected > 0) mb(expected) else "boyut bilinmiyor") + ") gerekiyor. Wi-Fi'ye bağlanıp tekrar deneyebilir veya mobil veri kullanarak tam APK'yı indirebilirsin.")
                         .setPositiveButton("Tam APK indir") { _, _ -> download(a, url, expected, tag, apk, assets, lite, allowMobileFull = true) }
                         .setNegativeButton("Sonra", null).show()
-                    else -> AppPal.dlg(a).kind("warn").setTitle("İndirme başarısız").setMessage(e)
+                    else -> AppPal.dlg(a).kind("warn").errorDetails(e).setTitle("İndirme başarısız").setMessage("Güncelleme indirilemedi. Ayrıntıları inceleyebilir veya tarayıcıda açabilirsin.")
                         .setPositiveButton("Tarayıcıda aç") { _, _ -> openInBrowser(a, url) }
                         .setNegativeButton("Kapat", null).show()
                 }

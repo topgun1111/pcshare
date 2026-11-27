@@ -88,7 +88,7 @@ class ErrorLogsActivity : Activity() {
 
     private fun chooseExport() {
         if (busy || choosing || isDestroyed) return
-        AppPal.dlg(this).setTitle("Export error logs?")
+        AppPal.dlg(this).kind("warn").setTitle("Export error logs?")
             .setMessage("The file may include filenames and technical error details. Review it before sharing. Nothing is uploaded automatically.")
             .setPositiveButton("Choose location") { _, _ ->
                 try {

@@ -95,6 +95,13 @@ for _f in sorted(os.listdir(_nat)):
     if not _f.endswith('.kt') or _f=='AppPal.kt':continue
     _src=open(os.path.join(_nat,_f),encoding='utf-8').read()
     if re.search(r'AlertDialog\.Builder\s*\(',_src):_sem.append(f'{_f}: raw AlertDialog.Builder bypasses AppPal')
+_app_pal=open(os.path.join(_nat,'AppPal.kt'),encoding='utf-8').read()
+if 'LumenGlass.dialogFill(d.window, c, secure)' not in _app_pal:_sem.append('Shared native dialog glass is not connected')
+if 'if (secure) d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)' not in _app_pal:_sem.append('Secure host flag not inherited by dialogs')
+if 'if (secure) null else diagnostic' not in _app_pal:_sem.append('Secure diagnostics not suppressed')
+if "o.altDanger?' alt-danger'" not in _raw:_sem.append('HTML destructive alternative is not quiet error text')
+if 'dismissPrimary -> styleButton(pos, 0, quiet, c)' not in _lm:_sem.append('Native dismissal is not a quiet action')
+if 'kind("update")' not in open(os.path.join(_nat,'UpdateCheck.kt'),encoding='utf-8').read():_sem.append('Update hero not selected')
 print('A9 semantic dialog rules:', 'PASS' if not _sem else 'FAIL '+ '; '.join(_sem))
 
 # D1: ONE light / dark rule everywhere (gamma-space canvas luma < 0.4: ui.html lmDarkCanvas, derive.is_dark, AppPal.isDark).
@@ -121,4 +128,7 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--dialog-regression' in sys.argv:
+    # Gate shared dialog invariants and raw browser alerts; other pre-existing lint findings remain visible in the report.
+    sys.exit(1 if bad or _sem else 0)
 sys.exit(1 if bad or _x else 0)

@@ -74,26 +74,29 @@ object AppPal {
     class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
         var kind: String? = null
         var detailRows: List<Pair<String, String>>? = null
+        private var diagnostic: String? = null
+        fun errorDetails(value: String?): Dlg { diagnostic = value; return this }
         fun kind(k: String?): Dlg { kind = k; return this }
         fun details(rows: List<Pair<String, String>>): Dlg { detailRows = rows; return this }
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
-            val r = 32f * c.resources.displayMetrics.density
-            val sf = surf(c)
-            d.window?.setBackgroundDrawable(if (sf != null) NlTex.card(sf[0], sf[1], r, p.bd, Math.max(1, Math.round(c.resources.displayMetrics.density)))
-                else android.graphics.drawable.GradientDrawable().apply { setColor(p.bg); cornerRadius = r })
             val act = actOf(c)
-            if (act != null) fit(d, act, kind != null || !detailRows.isNullOrEmpty())   // 360 dp simple / 560 dp rich, always constrained to the current window
+            val secure = ((act?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
+            // Dialogs are separate windows: explicitly inherit the host security policy before showing.
+            if (secure) d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            val fill = LumenGlass.dialogFill(d.window, c, secure)
+            d.window?.setBackgroundDrawable(LumenGlass.panel(c, fill, 32f, false))
+            if (act != null) fit(d, act, kind != null || !detailRows.isNullOrEmpty() || !diagnostic.isNullOrEmpty())   // 360 dp simple / 560 dp rich, always constrained to the current window
             d.setOnShowListener {
-                if (act != null) trackFold(d, act, kind != null || !detailRows.isNullOrEmpty())
+                if (act != null) trackFold(d, act, kind != null || !detailRows.isNullOrEmpty() || !diagnostic.isNullOrEmpty())
                 try {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)
-                    d.findViewById<android.widget.TextView>(android.R.id.message)?.setTextColor(p.fg)
+                    d.findViewById<android.widget.TextView>(android.R.id.message)?.setTextColor(Lumen.of(c).inkMut)
                     val t = c.resources.getIdentifier("alertTitle", "id", "android")
                     if (t != 0) d.findViewById<android.widget.TextView>(t)?.let { it.setTextColor(p.fg); NlA11y.heading(it) }
                 } catch (_: Throwable) { }
-                Lm.restyle(d, c, Lm.Opts(kind, detailRows))   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
+                Lm.restyle(d, c, Lm.Opts(kind, detailRows, if (secure) null else diagnostic, fill))   // Lumen Part 8: filled / tonal buttons, stacked on phones, hero tile, scrim, scale-in
             }
             return d
         }

@@ -99,7 +99,7 @@ class VaultTextActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (!changed()) { super.onBackPressed(); return }
-        AppPal.dlg(this).setTitle(vt("Unsaved changes")).setMessage(vt("Save before closing?"))
+        AppPal.dlg(this).kind("warn").setTitle(vt("Unsaved changes")).setMessage(vt("Save before closing?"))
             .setPositiveButton(vt("Save")) { _, _ -> save(true) }
             .setNegativeButton(vt("Discard")) { _, _ -> base = et.text.toString(); finish() }
             .setNeutralButton(vt("Cancel"), null).show()

@@ -139,7 +139,7 @@ class VaultImportActivity : Activity() {
     }
 
     private fun askMove(go: (Boolean) -> Unit) {
-        AppPal.dlg(this).setTitle(vt("Add to vault"))
+        AppPal.dlg(this).kind("warn").setTitle(vt("Add to vault"))
             .setMessage(vt("Copy keeps the originals. Move deletes each original only after its encrypted copy was checked."))
             .setCancelable(false)
             .setPositiveButton(vt("Move")) { _, _ -> go(true) }

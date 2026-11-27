@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - Shared Lumen dialogs
+
+### Fixed
+- Native dialogs use the glass-quality settings with readable opaque fallbacks; secure screens remain opaque and screenshot-protected.
+- Dialog actions use clearer dismissal, alternative and destructive styles on both native and page screens.
+- Archive dialogs use shared buttons and responsive wrapping; update prompts use the app icon and offer expandable error details.
+- Vault and Error Logs notices have meaningful semantic icons.
+
 ## 2026-11-27 - Consistent Lumen typography
 
 ### Fixed

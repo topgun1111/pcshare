@@ -52,6 +52,20 @@ object LumenGlass {
         return (Math.round(255f * alpha) shl 24) or (lm.glassTint and 0x00FFFFFF)
     }
 
+    /** Modal G3: preserve readable text over either extreme of the backdrop; secure windows never blur. */
+    fun dialogFill(w: Window?, c: Context, secure: Boolean): Int {
+        val lm = Lumen.of(c)
+        if (secure) return lm.surface or 0xFF000000.toInt()
+        val fill = apply(w, c)
+        val readable = listOf(0xFF000000.toInt(), 0xFFFFFFFF.toInt()).all { behind ->
+            val bg = androidx.core.graphics.ColorUtils.compositeColors(fill, behind)
+            listOf(lm.ink, lm.inkMut).all { fg -> androidx.core.graphics.ColorUtils.calculateContrast(fg or 0xFF000000.toInt(), bg) >= 4.5 }
+        }
+        if (readable) return fill
+        w?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        return lm.surface or 0xFF000000.toInt()
+    }
+
     /** Rounded panel: [fill] + edge hairline. [top] = only the top corners round (bottom sheet). */
     fun panel(c: Context, fill: Int, radiusDp: Float, top: Boolean): GradientDrawable {
         val d = c.resources.displayMetrics.density
