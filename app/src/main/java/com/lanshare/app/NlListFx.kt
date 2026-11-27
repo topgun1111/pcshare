@@ -101,7 +101,7 @@ class NlSkelView(c: Context, private val d: Float) : View(c) {
 
     override fun onDraw(cv: Canvas) {
         val lm = Lumen.of(context)
-        val rm = LumenPrefs.reduceMotion(context)
+        val rm = LumenPrefs.reduceMotion(context) || LumenPrefs.saver(context)
         val w = width.toFloat(); val h = height.toFloat()
         val rowH = (if (compact) 44f else 60f) * d
         val ph = if (rm) 0.5f else ((SystemClock.uptimeMillis() - t0) % 1200L) / 1200f
@@ -126,7 +126,7 @@ class NlSkelView(c: Context, private val d: Float) : View(c) {
             y += rowH; i++
         }
         p.shader = null
-        if (!rm) postInvalidateOnAnimation()
+        if (!rm && isShown && windowVisibility == View.VISIBLE) postInvalidateDelayed(33L)
     }
 }
 

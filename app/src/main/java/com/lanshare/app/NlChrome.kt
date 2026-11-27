@@ -729,7 +729,7 @@ class NlDlView(c: Context, d: Float) : NlHitView(c, d) {
             infoP.color = lm.inkMut
             cv.drawText(fit(k.info, infoP, r - l), l, ty(bt + 4f * d + 6f * d + 8.4f * d, infoP), infoP)
         }
-        if (anim) postInvalidateOnAnimation()
+        if (anim && isShown && windowVisibility == View.VISIBLE && !LumenPrefs.reduceMotion(context) && !LumenPrefs.saver(context)) postInvalidateDelayed(33L)
     }
 }
 
@@ -779,7 +779,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
     fun resync() { last = "" }
 
     /** Activity destroyed: drop the static scroll callback so this chrome (and its views) is not kept alive; a newer chrome's callback is left alone. */
-    fun release() { if (onElev === elevCb) onElev = null }
+    fun release() { if (onElev === elevCb) onElev = null; NlBackdrop.setScrolling(layer, false); NlBackdrop.unregister(bar); NlBackdrop.unregister(dock) }
 
     private fun px(v: Double): Int = Math.round((v * d).toFloat())
 

@@ -956,6 +956,9 @@ class NativeList(private val act: Activity, private val web: WebView) {
         srl.setOnRefreshListener { srl.armWatchdog(); emit("refresh", 0) }
         // header shadow (#top.el) follows the list scroll: the page itself never scrolls while the native list is shown
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(r: RecyclerView, newState: Int) {
+                NlBackdrop.setScrolling(r, newState != RecyclerView.SCROLL_STATE_IDLE)
+            }
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) { run { val sy = r.computeVerticalScrollOffset(); val q = if (sy > 400) 999 else sy; if (q != lastSy) { lastSy = q; emit("sy", q) } }; val e = r.canScrollVertically(-1); if (e != elev) { elev = e; emit("el", if (e) 1 else 0); NlChrome.onElev?.invoke(e) }; if (dy != 0) NlBackdrop.invalidateAll(); if (dy != 0) preload(dy > 0); syncScroller(r, dy); syncSticky(r, dy) }
         })
         sb.onDrag = { f -> scrollerTo(f) }
@@ -1518,7 +1521,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return NlSnap(curKey, palJson, lastLay, overlay.listRect.top.toInt(), overlay.listRect.bottom.toInt())
     }
 
-    fun hide() { srl.isRefreshing = false; skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
+    fun hide() { rv.stopScroll(); NlBackdrop.setScrolling(rv, false); srl.isRefreshing = false; skelOff(); sticky.hideNow(); headData = null; headGeom = false; head.set(null, false); updateHeadVis(); navUntil = 0L; navKey = null; elev = false; lastSy = -1; NlChrome.onElev?.invoke(true); lastLay = ""; overlay.visibility = View.GONE; rows = emptyList(); galStart = 0; curKey = ""; curSig = 0; sel = emptySet(); ad.notifyDataSetChanged() }
     fun done() { srl.isRefreshing = false }
 
     private fun fmtDur(ms: Long): String {

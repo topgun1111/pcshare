@@ -134,7 +134,11 @@ object PIc {
 /** Round frosted button with one icon (the circles of the control rows). */
 class RoundBtn(c: Context, private val kind: Int) : View(c) {
     var pal: PlayerPal = PlayerPal(c); set(v) { field = v; invalidate() }
-    var iconKind = kind; set(v) { field = v; invalidate() }
+    var iconKind = kind; set(v) { if (field != v) { field = v; invalidate() } }
+    private var playShader: android.graphics.Shader? = null
+    private var shaderPal: PlayerPal? = null
+    private var shaderWidth = 0
+    private var shaderHeight = 0
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ic = Paint(Paint.ANTI_ALIAS_FLAG)
     private val d = resources.displayMetrics.density
@@ -147,7 +151,13 @@ class RoundBtn(c: Context, private val kind: Int) : View(c) {
         val primary = kind == PIc.PLAY
         bg.style = Paint.Style.FILL
         bg.color = if (primary) android.graphics.Color.WHITE else pal.panel
-        if (primary) bg.shader = LumenGrad.diag(pal.playColors, 0f, 0f, w, h)
+        if (primary) {
+            if (shaderPal !== pal || shaderWidth != width || shaderHeight != height) {
+                playShader = LumenGrad.diag(pal.playColors, 0f, 0f, w, h)
+                shaderPal = pal; shaderWidth = width; shaderHeight = height
+            }
+            bg.shader = playShader
+        }
         c.drawCircle(w / 2f, h / 2f, r - d, bg)
         bg.shader = null
         bg.style = Paint.Style.STROKE; bg.strokeWidth = if (isFocused) 2f * d else d

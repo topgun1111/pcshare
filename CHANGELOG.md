@@ -6,6 +6,15 @@
 
 
 
+## 2026-11-27 - Adaptive rendering performance
+
+### Improved
+- Suspend live native backdrop capture during list drag/fling; restore glass on idle.
+- Reuse blur effects, player gradients and scrim shaders; avoid redundant icon invalidations.
+- Limit cosmetic loading animation redraws and honor battery saver and reduced motion.
+- Disable animated blur kernels in WebView transitions; extend scroll fallback to dock and gallery chrome.
+- Add CI performance source guards.
+
 ## 2026-11-27 - Accessibility foundation
 
 ### Improved

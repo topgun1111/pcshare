@@ -21,7 +21,7 @@ import java.util.WeakHashMap
  * is re-recorded into a small RenderNode (1/4 scale, only the rect under the chrome view), the node gets a RenderEffect blur, and the node is drawn
  * scaled back up in the chrome view's own onDraw. GPU only, no bitmap read-back. API 31+.
  *
- * When it is used (the owner decision "cost on low devices"): F0 always (the user chose Full), F1 only on a device the glass hint does not call low-end and
+ * When it is used (the owner decision "cost on low devices"): F0 while idle and not in battery saver (the user chose Full), F1 only on a device the glass hint does not call low-end and
  * not in battery saver. F2 / F3, API < 31, hardware-accelerated off, or any exception => draw() returns false and the caller keeps the 4b tint-raised stand-in.
  * Radius F0 24 dp, F1 12 dp (plan 4b). Kill switch: ENABLED.
  * The chrome views are invalidated by NativeList (scroll), NlChrome.set (page push) and the bar / dock enter animations: [invalidateAll].
@@ -31,25 +31,50 @@ object NlBackdrop {
     private const val SCALE = 0.25f
     @Volatile private var broken = false
     private val nodes = WeakHashMap<View, Any>()
+    private val scrolling = WeakHashMap<View, Boolean>()
+    private val effectRadius = WeakHashMap<View, Float>()
     private val clip = Path()
     private val rf = RectF()
     /** Views that repaint when the backdrop moves (set by NlChrome / NlDrawer). */
     private val users = ArrayList<java.lang.ref.WeakReference<View>>()
 
-    fun register(v: View) { users.add(java.lang.ref.WeakReference(v)) }
-    @Volatile private var busy = false   // a blur being recorded must not start another one (the drawer's backdrop contains the bar and the dock)
-
-    fun invalidateAll() {
-        val c0 = users.firstOrNull()?.get()?.context
-        if (c0 == null || !wanted(c0)) return   // F2 / F3, API < 31, low-end F1: nothing to repaint, scrolling costs what it did before 4f
-        val it = users.iterator()
-        while (it.hasNext()) { val v = it.next().get(); if (v == null) it.remove() else if (v.visibility == View.VISIBLE && v.isAttachedToWindow) v.invalidate() }
+    fun register(v: View) {
+        users.removeAll { it.get() == null || it.get() === v }
+        users.add(java.lang.ref.WeakReference(v))
     }
+
+    fun unregister(v: View) {
+        users.removeAll { it.get() == null || it.get() === v }
+        nodes.remove(v)
+        effectRadius.remove(v)
+    }
+
+    @Volatile private var busy = false
+
+    /** The scroll state belongs to this activity's root, not to another window. */
+    fun setScrolling(view: View, active: Boolean) {
+        val root = view.rootView
+        val was = scrolling[root] == true
+        if (active) scrolling[root] = true else scrolling.remove(root)
+        if (was != active) repaint(root, force = true)
+    }
+
+    private fun repaint(root: View? = null, force: Boolean = false) {
+        val it = users.iterator()
+        while (it.hasNext()) {
+            val v = it.next().get()
+            if (v == null) { it.remove(); continue }
+            if (!v.isAttachedToWindow || !v.isShown || (root != null && v.rootView !== root)) continue
+            if (force || (scrolling[v.rootView] != true && wanted(v.context))) v.postInvalidateOnAnimation()
+        }
+    }
+
+    fun invalidateAll() = repaint()
 
     fun wanted(c: Context): Boolean {
         if (!ENABLED || broken || Build.VERSION.SDK_INT < 31) return false
         val st = LumenGlass.step(c)
-        return st == 0 || (st == 1 && !LumenPrefs.lowEnd(c) && !LumenPrefs.saver(c))
+        return !LumenPrefs.saver(c) && (st == 0 || (st == 1 && !LumenPrefs.lowEnd(c)))
     }
 
     fun radiusDp(c: Context): Float = if (LumenGlass.step(c) == 0) 24f else 12f
@@ -59,7 +84,7 @@ object NlBackdrop {
      * [below] = the child of the root FrameLayout that the chrome sits in (everything before it is the backdrop). [round] = corner radius px to clip to (0 = rectangle).
      */
     fun draw(cv: Canvas, target: View, below: View?, round: Float): Boolean {
-        if (busy || below == null || !wanted(target.context) || !cv.isHardwareAccelerated) return false
+        if (busy || below == null || scrolling[target.rootView] == true || !wanted(target.context) || !cv.isHardwareAccelerated) return false
         val w = target.width; val h = target.height
         if (w <= 0 || h <= 0) return false
         if (Build.VERSION.SDK_INT < 31) return false
@@ -91,7 +116,10 @@ object NlBackdrop {
                 }
             } finally { node.endRecording() }
             val r = Math.max(1f, radiusDp(target.context) * target.resources.displayMetrics.density * SCALE)
-            node.setRenderEffect(RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
+            if (effectRadius[target] != r) {
+                node.setRenderEffect(RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
+                effectRadius[target] = r
+            }
             cv.save()
             if (round > 0f) { rf.set(0f, 0f, w.toFloat(), h.toFloat()); clip.reset(); clip.addRoundRect(rf, round, round, Path.Direction.CW); cv.clipPath(clip) }
             cv.scale(w.toFloat() / sw, h.toFloat() / sh)

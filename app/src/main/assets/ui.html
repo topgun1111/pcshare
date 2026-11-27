@@ -1122,11 +1122,11 @@ html.dlo #sheet .card,html.dlo .dmn{-webkit-backdrop-filter:none;backdrop-filter
 @supports(background:color-mix(in srgb,red,blue)){
 .sk::after{background:linear-gradient(60deg,transparent 30%,color-mix(in srgb,var(--inkDim) 20%,transparent) 50%,transparent 70%)}
 }
-/* glass frosts in: blur grows from 0 while the surface appears (f0 / f1 only) */
+/* Glass opens with the final blur radius; animate opacity/transform, not the blur kernel. */
 @supports((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) #dlg .dcard:not(.sd){animation:lmpop var(--d-base) var(--ease-decel),lmfrost var(--d-med) var(--ease-decel)}
-:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) .dmn{animation:lmmenu var(--d-fast) var(--ease-decel),lmfrost var(--d-med) var(--ease-decel)}
-:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) #toast{animation:lmsnack var(--d-base) var(--ease-decel),lmfrost var(--d-med) var(--ease-decel)}
+:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) #dlg .dcard:not(.sd){animation:lmpop var(--d-base) var(--ease-decel)}
+:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) .dmn{animation:lmmenu var(--d-fast) var(--ease-decel)}
+:root:not([data-glass=f2]):not([data-glass=f3]):not([data-rm]) #toast{animation:lmsnack var(--d-base) var(--ease-decel)}
 }
 /* Reduce motion */
 :root[data-rm] #dlg,:root[data-rm] #sheet{animation:fade var(--d-rm) linear}
@@ -1309,7 +1309,11 @@ html.nldr #dwr{opacity:0}
 :root[data-glass=f3] :where(a,button,input:not(.tf),select,textarea,summary,[tabindex],.row,.opt,.vrow,.seg button):focus-visible{outline-width:3px}
 .lmvh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 #dlg .dcard{max-height:90%;overflow-y:auto;overscroll-behavior:contain}
-@supports(background:color-mix(in srgb,red 50%,blue)){html.lm-fling .g1,html.lm-fling .g2,html.lm-fling .dmn,html.lm-fling #toast,html.lm-fling #jp{backdrop-filter:none;-webkit-backdrop-filter:none;background-color:color-mix(in srgb,var(--surface) 94%,transparent)}}
+/* Scrolling glass uses a tinted fallback, including high-specificity native-mirror bars. */
+@supports(background:color-mix(in srgb,red 50%,blue)){
+:root.lm-fling:is([data-glass=f0],[data-glass=f1]) :is(.g1,.g2,.dmn,#toast,#jp,#dock,#gal .gb,.tbtn.glass){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:color-mix(in srgb,var(--glassTint,var(--surface)) 94%,transparent)!important}
+:root.lm-fling:is([data-glass=f0],[data-glass=f1]) #top.el{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:color-mix(in srgb,var(--bar,var(--surface)) 94%,transparent)!important}
+}
 @media(forced-colors:active){.tbtn.fill,.tbtn.dngf,.chip.on,.seg .on{border:1px solid ButtonText}}
 /*LUMEN-UI9:END*/
 /*LUMEN-UI10:BEGIN*/
@@ -1682,9 +1686,9 @@ function glassPick(){const h=lmHint(),q=LD('ls_glassq','auto'),mm=x=>{try{return
   if(mm('(prefers-contrast:more)')||mm('(forced-colors:active)')||h.hc===1||/^hc[ld]$/.test(document.documentElement.dataset.theme||''))return{step:'f3',why:'high contrast'};
   if(!cm)return{step:'f3',why:'no color-mix in this WebView'};
   if(!bf)return{step:'f2',why:'no backdrop blur in this WebView'};
+  if(h.saver===1)return{step:'f2',why:'battery saver'};
   if(q==='light')return{step:'f1',why:'Glass quality: Light'};
   if(q==='full')return{step:'f0',why:'Glass quality: Full'};
-  if(h.saver===1)return{step:'f1',why:'battery saver'};
   if(h.low===1)return{step:'f1',why:'low-end device'};
   return{step:'f0',why:'full glass'}}
 function glassApply(){const r=glassPick(),el=document.documentElement;
@@ -7517,7 +7521,10 @@ addEventListener('keydown',e=>{
     if(x&&x.matches('[role=button]:not(button):not(a):not(input)')&&!x.closest('[aria-disabled="true"]')){e.preventDefault();x.click()}}
 });
 /* fling: glass bars go solid while a list scrolls (CSS html.lm-fling), back after 140 ms */
-let ft=0;addEventListener('scroll',()=>{if(!H.classList.contains('lm-fling'))H.classList.add('lm-fling');clearTimeout(ft);ft=setTimeout(()=>H.classList.remove('lm-fling'),140)},{passive:true,capture:true});
+let ft=0,lastScroll=0;
+const endFling=()=>{const left=140-(performance.now()-lastScroll);if(left>0){ft=setTimeout(endFling,left);return}ft=0;H.classList.remove('lm-fling')};
+addEventListener('scroll',()=>{lastScroll=performance.now();if(!ft){H.classList.add('lm-fling');ft=setTimeout(endFling,140)}},{passive:true,capture:true});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(ft);ft=0;H.classList.remove('lm-fling')}});
 /* spec 18 Measure: lmFrameTest(5000) in the console while scrolling the gallery or file browser */
 window.lmFrameTest=(ms=5000)=>new Promise(r=>{const t=[];let l=0;const s=performance.now();const f=x=>{if(l)t.push(x-l);l=x;if(x-s<ms)requestAnimationFrame(f);else{const m=[...t].sort((a,b)=>a-b)[t.length>>1]||16.7,d=t.filter(v=>v>m*1.5).length,o={frames:t.length,medianMs:+m.toFixed(1),dropped:d,pct:+(100*d/Math.max(1,t.length)).toFixed(1),glass:H.dataset.glass||''};console.log('[lumen] frame test',JSON.stringify(o));r(o)}};requestAnimationFrame(f)});
 }catch(e){console.log('[lumen] a11y init failed',e)}})();

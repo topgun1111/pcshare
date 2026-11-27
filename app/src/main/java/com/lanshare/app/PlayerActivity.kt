@@ -98,10 +98,15 @@ import java.util.Locale
 /** Theme-independent black fade at the bottom of video; uses the shared Lumen gScrimBottom shader. */
 private class PlayerBottomScrim : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var shader: android.graphics.Shader? = null
+    override fun onBoundsChange(bounds: android.graphics.Rect) {
+        super.onBoundsChange(bounds)
+        shader = if (bounds.isEmpty) null else LumenGrad.scrimBottom(bounds.top.toFloat(), bounds.bottom.toFloat())
+    }
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
-        paint.shader = LumenGrad.scrimBottom(b.top.toFloat(), b.bottom.toFloat())
+        paint.shader = shader
         canvas.drawRect(b, paint)
         paint.shader = null
     }
