@@ -10,11 +10,10 @@ import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 
 class ApkDeltaTest {
-    @Test fun networkPolicy() {
-        assertFalse(ApkDelta.preferDelta(onWifi = true))
-        assertTrue(ApkDelta.preferDelta(onWifi = false))
-        assertFalse(ApkDelta.preferDelta(onWifi = false, allowMobileFull = true))
-        assertFalse(ApkDelta.preferDelta(onWifi = true, allowMobileFull = true))
+    @Test fun partialFirstPolicy() {
+        assertTrue(ApkDelta.preferDelta())
+        assertTrue(ApkDelta.preferDelta(allowFull = false))
+        assertFalse(ApkDelta.preferDelta(allowFull = true))
     }
 
     @Test fun roundTripAndRejectInvalid() {

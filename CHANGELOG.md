@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Partial-first updates on every connection
+
+### Changed
+- Prefer partial updates on Wi-Fi, mobile data and other networks.
+- Ask before downloading the full APK if a compatible partial update cannot be used.
+- Show the partial package size separately from the reconstructed installation APK size.
+
 ## 2026-11-27 - Rendering performance diagnostics
 
 ### Added

@@ -8,9 +8,6 @@ import android.content.pm.PackageManager
 import com.lanshare.app.core.ApkDelta
 import android.graphics.Typeface
 import android.net.Uri
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings
 import android.text.SpannableStringBuilder
@@ -195,18 +192,8 @@ object UpdateCheck {
 
     private fun mb(n: Long) = String.format("%.1f MB", n / 1048576.0)
 
-    // Use the active network, not merely whether Wi-Fi is enabled. A VPN or unknown
-    // transport is treated conservatively unless Android reports Wi-Fi transport.
-    private fun wifiNetwork(c: Context): Network? {
-        val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val active = cm.activeNetwork ?: return null
-        val caps = cm.getNetworkCapabilities(active) ?: return null
-        return active.takeIf { caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-            !caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
-    }
-
-    /** Wi-Fi uses the full APK; other networks prefer an exact-base delta. */
-    private fun download(a: Activity, url: String, expected: Long, tag: String, apk: JSONObject, assets: JSONArray?, lite: Boolean, allowMobileFull: Boolean = false) {
+    /** Every connection prefers an exact-base delta; a full APK requires explicit consent. */
+    private fun download(a: Activity, url: String, expected: Long, tag: String, apk: JSONObject, assets: JSONArray?, lite: Boolean, allowFull: Boolean = false) {
         if (!downloading.compareAndSet(false, true)) {
             Lm.snack(a, "Güncelleme zaten indiriliyor", Toast.LENGTH_SHORT)
             return
@@ -225,14 +212,15 @@ object UpdateCheck {
             val rebuilt = File(dir, "update-rebuild.apk")
             var err: String? = null
             var usedDelta = false
+            var payloadBytes = 0L
             var needsFullConsent = false
             val digest = apk.optString("digest").removePrefix("sha256:").takeIf { it.matches(Regex("[0-9a-f]{64}")) }
             fun status(message: String) = a.runOnUiThread { tv.text = message; pb.isIndeterminate = true }
-            fun fetch(assetUrl: String, size: Long, label: String, network: Network? = null): File {
+            fun fetch(assetUrl: String, size: Long, label: String): File {
                 // URL uniquely identifies the immutable release asset; partials cannot mix editions or releases.
                 val key = java.security.MessageDigest.getInstance("SHA-256").digest(assetUrl.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
                 val f = File(dir, "pcshare-update-$key.part")
-                fetchUpdate(assetUrl, size, f, cancel, network) { got, total ->
+                fetchUpdate(assetUrl, size, f, cancel) { got, total ->
                     a.runOnUiThread {
                         pb.isIndeterminate = total <= 0
                         if (total > 0) pb.progress = (got * 100 / total).coerceIn(0, 100).toInt()
@@ -246,7 +234,7 @@ object UpdateCheck {
                 // Retain recent partials for a retry, but avoid accumulating old releases indefinitely.
                 dir.listFiles()?.filter { it.name.startsWith("pcshare-update-") && it.name.endsWith(".part") &&
                     System.currentTimeMillis() - it.lastModified() > 7L * 24 * 60 * 60 * 1000 }?.forEach { it.delete() }
-                if (ApkDelta.preferDelta(wifiNetwork(a) != null, allowMobileFull)) try {
+                if (ApkDelta.preferDelta(allowFull)) try {
                     val base = File(a.applicationInfo.sourceDir)
                     val baseHash = ApkDelta.sha256(base) { cancel.get() }
                     val edition = if (lite) "lite" else "full"
@@ -271,24 +259,24 @@ object UpdateCheck {
                             verifyUpdate(a, rebuilt)
                             if (!rebuilt.renameTo(out)) throw IOException("Dosya kaydedilemedi")
                             usedDelta = true
+                            payloadBytes = patch.length()
                         } finally { patch.delete() }
                     }
                 } catch (e: Exception) {
                     if (cancel.get()) throw e
                     rebuilt.delete()
                     com.lanshare.app.core.ErrorLog.exception("Delta update fallback", e)
-                    status("Güncelleme bağlantısı kontrol ediliyor…")
+                    status("Parça güncelleme kullanılamıyor…")
                 }
                 if (!usedDelta) {
                     if (cancel.get()) throw IOException("cancel")
-                    val wifi = wifiNetwork(a)
-                    if (ApkDelta.preferDelta(wifi != null, allowMobileFull)) {
+                    if (ApkDelta.preferDelta(allowFull)) {
                         needsFullConsent = true
                         throw IOException("Bu sürüm için uygun parça güncelleme yok veya indirilemedi.")
                     }
-                    // Bind normal full downloads to Wi-Fi so they cannot silently
-                    // migrate to mobile data if Wi-Fi disconnects mid-download.
-                    val part = fetch(url, expected, "Tam APK", if (allowMobileFull) null else wifi)
+                    // The user explicitly accepted the full download on the active connection.
+                    val part = fetch(url, expected, "Tam APK")
+                    payloadBytes = part.length()
                     try {
                         status("APK doğrulanıyor…")
                         if (digest != null && ApkDelta.sha256(part) { cancel.get() } != digest) throw IOException("APK checksum mismatch")
@@ -308,12 +296,12 @@ object UpdateCheck {
                 if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                 val e = err
                 when {
-                    e == null -> offerInstall(a, out, tag, usedDelta)
+                    e == null -> offerInstall(a, out, tag, usedDelta, payloadBytes)
                     e == "cancel" -> { }
                     needsFullConsent -> AppPal.dlg(a).kind("warn")
                         .setTitle("Parça güncelleme kullanılamıyor")
-                        .setMessage("Tam APK (" + (if (expected > 0) mb(expected) else "boyut bilinmiyor") + ") gerekiyor. Wi-Fi'ye bağlanıp tekrar deneyebilir veya mobil veri kullanarak tam APK'yı indirebilirsin.")
-                        .setPositiveButton("Tam APK indir") { _, _ -> download(a, url, expected, tag, apk, assets, lite, allowMobileFull = true) }
+                        .setMessage("Bu sürüm için uygun parça güncelleme bulunamadı veya doğrulanamadı. Tam APK (" + (if (expected > 0) mb(expected) else "boyut bilinmiyor") + ") yalnızca onayınla indirilecek.")
+                        .setPositiveButton("Tam APK indir") { _, _ -> download(a, url, expected, tag, apk, assets, lite, allowFull = true) }
                         .setNegativeButton("Sonra", null).show()
                     else -> AppPal.dlg(a).kind("warn").errorDetails(e).setTitle("İndirme başarısız").setMessage("Güncelleme indirilemedi. Ayrıntıları inceleyebilir veya tarayıcıda açabilirsin.")
                         .setPositiveButton("Tarayıcıda aç") { _, _ -> openInBrowser(a, url) }
@@ -324,13 +312,13 @@ object UpdateCheck {
     }
 
     /** Retry resumes the same release asset if the server supports ranges; a 200 response restarts cleanly. */
-    private fun fetchUpdate(url: String, expected: Long, part: File, cancel: AtomicBoolean, network: Network?, progress: (Long, Long) -> Unit) {
+    private fun fetchUpdate(url: String, expected: Long, part: File, cancel: AtomicBoolean, progress: (Long, Long) -> Unit) {
         if (cancel.get()) throw IOException("cancel")
         if (expected <= 0 || part.length() > expected) part.delete()
         var got = part.length()
         if (expected > 0 && got == expected) { progress(got, expected); return }
         val address = URL(url)
-        val c = (network?.openConnection(address) ?: address.openConnection()) as HttpURLConnection
+        val c = address.openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 30000
         c.setRequestProperty("Accept-Encoding", "identity")
         if (got > 0) c.setRequestProperty("Range", "bytes=$got-")
@@ -379,19 +367,21 @@ object UpdateCheck {
             installedSigners.isNullOrEmpty() || installedSigners != nextSigners) throw IOException("APK kimliği, sürümü veya imzası uyuşmuyor")
     }
 
-    private fun offerInstall(a: Activity, f: File, tag: String, usedDelta: Boolean = false) {
+    private fun offerInstall(a: Activity, f: File, tag: String, usedDelta: Boolean, payloadBytes: Long) {
         AppPal.dlg(a).kind("ok").setTitle("İndirme tamamlandı")
-            .setMessage("$tag ${if (usedDelta) "parça güncelleme ile hazırlandı" else "indirildi"} (${mb(f.length())}). Kurulumu başlatmak için Kur'a bas.")
-            .setPositiveButton("Kur") { _, _ -> install(a, f, tag) }
+            .setMessage(if (usedDelta)
+                "$tag parça güncelleme ile hazırlandı.\nParça paketi: ${mb(payloadBytes)}\nKurulum APK'sı: ${mb(f.length())}\nKurulumu başlatmak için Kur'a bas."
+            else "$tag tam APK olarak indirildi (${mb(payloadBytes)}). Kurulumu başlatmak için Kur'a bas.")
+            .setPositiveButton("Kur") { _, _ -> install(a, f, tag, usedDelta, payloadBytes) }
             .setNegativeButton("Kapat", null).show()
     }
 
-    private fun install(a: Activity, f: File, tag: String) {
+    private fun install(a: Activity, f: File, tag: String, usedDelta: Boolean, payloadBytes: Long) {
         try {
             if (Build.VERSION.SDK_INT >= 26 && !a.packageManager.canRequestPackageInstalls()) {
                 Lm.snack(a, "Bu uygulamaya 'bilinmeyen kaynaklardan yükleme' izni ver, sonra geri dönüp Kur'a bas", Toast.LENGTH_LONG)
                 a.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${a.packageName}")))
-                offerInstall(a, f, tag)   // still on screen when the user comes back
+                offerInstall(a, f, tag, usedDelta, payloadBytes)   // still on screen when the user comes back
                 return
             }
             val uri = com.lanshare.app.core.vault.VaultIntents.uri(a, "${a.packageName}.fileprovider", f)

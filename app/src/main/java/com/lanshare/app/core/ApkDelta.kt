@@ -9,8 +9,8 @@ import java.util.zip.GZIPInputStream
 
 /** PCShare delta v1: gzip, magic, source/target SHA-256, target length, copy/literal records, end. */
 object ApkDelta {
-    /** Unknown/non-Wi-Fi transport uses delta unless the user explicitly allows a full download. */
-    fun preferDelta(onWifi: Boolean, allowMobileFull: Boolean = false): Boolean = !onWifi && !allowMobileFull
+    /** Every network uses delta unless the user explicitly allows a full download. */
+    fun preferDelta(allowFull: Boolean = false): Boolean = !allowFull
 
     private val magic = "PCDELTA1".toByteArray(Charsets.US_ASCII)
     private const val MAX_APK = 512L * 1024 * 1024
