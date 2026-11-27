@@ -2574,7 +2574,7 @@ function galView(a){
         else if(k==='vid')playVid(m);else viewImg(m)};
       holdMenu(c,m,()=>{GS.add(m.name);c.classList.add('sel');upd()});
       return c};
-    let n=0,sent=null,io=null,mk0='',tierKey='';const CH=300;
+    let n=0,sent=null,io=null,mk0='',tierKey='',tierGen=-1;const CH=300;
     const mlab=t=>{const d=new Date((t||0)*1000),now=new Date(),k=d.getFullYear()*12+d.getMonth();
       if(!t)return['0','Older'];
       if(galGrp()==='day'){const dk=d.getFullYear()*10000+d.getMonth()*100+d.getDate(),dd=Math.round((new Date(now.getFullYear(),now.getMonth(),now.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);
@@ -2598,13 +2598,13 @@ function galView(a){
       if(o._for!==tok||!gg.isConnected)return;
       const nextTier=vidTier(gg)+'|'+vidTier(gg,1);
       // CSS reflows existing cells for most width changes. Only refresh their images if the decode tier changes.
-      if(resize&&nextTier===tierKey)return;
+      if(resize&&nextTier===tierKey&&tierGen===S.rg)return;
       let anchor=null,offset=0,keep=0,oldScroll=0;
       if(resize){
         const top=sc.getBoundingClientRect().top;oldScroll=sc.scrollTop;keep=n;
         for(const [name,cell] of els){const r=cell.getBoundingClientRect();if(r.bottom>top){anchor=name;offset=r.top-top;break}}
       }
-      tierKey=nextTier;
+      tierKey=nextTier;tierGen=S.rg;
       if(io){io.disconnect();io=null}
       if(typeof thIO!=='undefined'&&thIO)els.forEach(cell=>thIO.unobserve(cell));
       gg.textContent='';els.clear();hds.clear();mem.clear();n=0;mk0='';galSortList(it);
