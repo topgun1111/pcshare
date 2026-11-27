@@ -1246,10 +1246,15 @@ html[data-rm] #list.lm-selst .row{animation:none}
 #lmsb.dr b{display:block}
 .tfw .eye{position:absolute;right:48px;top:8px;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:grid;place-items:center}
 .tfw .eye svg{width:20px;height:20px}.tfw.pw .tf{padding-right:calc(var(--sp-10) * 2 + var(--sp-2))}
-.sbtn{display:inline-flex;gap:2px;vertical-align:middle}
-.sbtn>.tbtn:first-child{border-radius:var(--r-full) var(--r-xs) var(--r-xs) var(--r-full)}
-.sbtn>.tbtn:last-child{border-radius:var(--r-xs) var(--r-full) var(--r-full) var(--r-xs);padding:0 var(--sp-3);min-width:40px}
-.sbtn>.tbtn:last-child svg{width:20px;height:20px}
+.sbtn{display:inline-flex;gap:2px;vertical-align:middle;max-width:100%;min-width:0;align-items:stretch}
+.sbtn>.tbtn:first-child{border-radius:var(--r-full) var(--r-xs) var(--r-xs) var(--r-full);flex:1;min-width:0;min-height:48px;height:auto;white-space:normal;overflow-wrap:anywhere;padding:var(--sp-3) var(--sp-5)}
+.sbtn>.tbtn:last-child{border-radius:var(--r-xs) var(--r-full) var(--r-full) var(--r-xs);padding:0 var(--sp-3);min-width:48px;min-height:48px;height:auto;flex:none}
+.sbtn>.tbtn:last-child svg{width:20px;height:20px;transform:rotate(90deg)}
+.sbtn>.tbtn:focus-visible,.lm-split-menu .dmb:focus-visible{outline:2px solid var(--focus);outline-offset:-3px}
+.sbtn.lm-split-wide{display:flex;width:100%;margin:var(--sp-2) 0}
+.lm-split-menu .dmn{box-sizing:border-box;min-width:0;max-width:none;overflow-y:auto;overscroll-behavior:contain}
+.lm-split-menu .dmb{min-height:48px;white-space:normal;overflow-wrap:anywhere;font-size:var(--fs-14);font-weight:500;line-height:1.4}
+.lm-split-menu .dmb:disabled{opacity:var(--st-disabledFg,.38);pointer-events:none}
 .g0{background:rgb(0 0 0/.36);color:white;border-radius:var(--r-full);padding:var(--sp-1) var(--sp-2);font-size:var(--fs-12)}
 @supports((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
 :root:not([data-glass=f2]):not([data-glass=f3]) .g0{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);background:rgb(0 0 0/.28)}
@@ -4008,7 +4013,7 @@ function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above
   m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(128px + env(safe-area-inset-bottom))'}
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
-  if(!S.sel.size)document.querySelectorAll('.dsc').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
+  if(!S.sel.size)document.querySelectorAll('.dsc:not(.lm-split-menu)').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
   const moreActions=[];   // actions that always live in More, never in the primary dock
   const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',zipf:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
@@ -5066,8 +5071,12 @@ function psLayout(ids){   /* ids: the pictures picked in the Print space grid = 
   function presetRow(){
     const r=E('div','lyr'),c=E('div','lyc'),a=psPresets();r.append(E('small','','Saved layouts'),c);
     a.forEach(q=>{const b=E('button','',(pDel?'\u2715 ':'')+q.name);b.onclick=()=>pDel?delPreset(q):usePreset(q);c.append(b)});
-    const sv=E('button','','+ Save this layout');sv.onclick=savePreset;c.append(sv);
-    if(a.length){const ed=E('button',pDel?'on':'',pDel?'Done':'Remove\u2026');ed.onclick=()=>{pDel=!pDel;dSet()};c.append(ed)}
+    if(window.lmSplit&&a.length&&!pDel){
+      const split=lmSplit('Save this layout',savePreset,[{l:'Manage saved layouts',k:'edit',f:()=>{pDel=true;dSet()}}]);split.classList.add('lm-split-wide');r.append(split);
+    }else{
+      const sv=E('button','','+ Save this layout');sv.onclick=savePreset;c.append(sv);
+      if(a.length){const ed=E('button',pDel?'on':'',pDel?'Done':'Remove\u2026');ed.onclick=()=>{pDel=!pDel;dSet()};c.append(ed)}
+    }
     return r}
   function dSet(){bxSet.style.display=setOpen?'':'none';if(!setOpen)return;
     const cur=PSL_PER.find(a=>a[1]===+SP.cols&&a[2]===+SP.rows),f=document.createDocumentFragment();
@@ -6292,7 +6301,7 @@ window.addEventListener('scroll',()=>$('#top').classList.toggle('el',(window.scr
   if(window.ResizeObserver)new ResizeObserver(upd).observe(dk);window.addEventListener('resize',upd);window.addEventListener('orientationchange',()=>setTimeout(upd,300))})();
 // Android back: close the top-most overlay / search / selection; returns true when it handled the press
 function lsBack(){
-  {const dm=document.querySelector('.dsc');if(dm){dm.remove();return true}}   // the dock "More" popup closes first on Back (it used to stay open over the next screen)
+  {const dm=document.querySelector('.dsc.lm-split-menu')||document.querySelector('.dsc');if(dm){if(dm._close)dm._close();else dm.remove();return true}}   // the dock "More" popup closes first on Back (it used to stay open over the next screen)
   {const rs=$('#rsh');if(rs){const c=rs.querySelector('.rshc');if(c)c.onclick({target:c});else rs._close();return true}}
   if($('#hmfav')){hmFavClose();return true}
   if(document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm')){drawerClose();return true}
@@ -7270,17 +7279,26 @@ function doNew(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Create new'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
-  opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);if(window.LSAndroid&&LSAndroid.newOffice){opt('doc','Word document',()=>doNewOffice('docx'));opt('doc','Excel workbook',()=>doNewOffice('xlsx'))}
+  if(window.lmSplit){
+    const options=[{l:'Text note',k:'doc',f:()=>fin(doNewNote)}];
+    if(window.LSAndroid&&LSAndroid.newOffice)options.push({l:'Word document',k:'doc',f:()=>fin(()=>doNewOffice('docx'))},{l:'Excel workbook',k:'doc',f:()=>fin(()=>doNewOffice('xlsx'))});
+    const split=lmSplit('New folder',()=>fin(doMkdir),options);split.classList.add('lm-split-wide');card.append(split);
+  }else{opt('newfolder','Folder',doMkdir);opt('doc','Text note',doNewNote);if(window.LSAndroid&&LSAndroid.newOffice){opt('doc','Word document',()=>doNewOffice('docx'));opt('doc','Excel workbook',()=>doNewOffice('xlsx'))}}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
 /* editable archive on this phone is open: Add files / New folder / Paste / Extract all */
 function doZipMenu(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';const card=E('div','card');card.append(E('div','handle'),E('h3','','Edit archive'));
   const fin=f=>{o.style.display='none';o.onclick=null;if(f)f()};o.onclick=e=>{if(e.target===o)fin()};
   const opt=(k,t,f)=>{const b=E('button','li'),ld=E('div','lead'),lt=E('div','lt');ld.append(ic(k));lt.append(E('span','',t));b.append(ld,lt);b.onclick=()=>fin(f);card.append(b)};
-  opt('newfolder','Add files or folders\u2026',doAddToZip);
-  opt('newfolder','New folder',doMkdir);
-  if(S.clip&&S.clip.paths&&S.clip.paths.length)opt('paste','Paste '+S.clip.paths.length+' copied item'+(S.clip.paths.length>1?'s':'')+' here',doPaste);
-  opt('extract','Extract all',()=>doExtract(2));
+  if(window.lmSplit){
+    const options=[{l:'New folder',k:'newfolder',f:()=>fin(doMkdir)}];
+    if(S.clip&&S.clip.paths&&S.clip.paths.length)options.push({l:'Paste '+S.clip.paths.length+' copied item'+(S.clip.paths.length>1?'s':'')+' here',k:'paste',f:()=>fin(doPaste)});
+    options.push({l:'Extract all',k:'extract',f:()=>fin(()=>doExtract(2))});
+    const split=lmSplit('Add files or folders…',()=>fin(doAddToZip),options);split.classList.add('lm-split-wide');card.append(split);
+  }else{opt('newfolder','Add files or folders\u2026',doAddToZip);
+    opt('newfolder','New folder',doMkdir);
+    if(S.clip&&S.clip.paths&&S.clip.paths.length)opt('paste','Paste '+S.clip.paths.length+' copied item'+(S.clip.paths.length>1?'s':'')+' here',doPaste);
+    opt('extract','Extract all',()=>doExtract(2))}
   const c=E('button','tbtn','Cancel');c.style.alignSelf='flex-end';c.onclick=()=>fin();card.append(c);o.append(card)}
 function pickAddFiles(){return new Promise(res=>{   // browse this phone, tick files / folders, "Add N"
   const o=$('#sheet');o.style.display='flex';let cur='/',tk=0;const pick=new Set();
@@ -7568,10 +7586,70 @@ function fw(i){if(i._lmf||i.closest('.tfw')||!i.classList.contains('tf')||!OK.te
     ey.onclick=ev=>{ev.preventDefault();const sh=i.type==='password';i.type=sh?'text':'password';ey.setAttribute('aria-pressed',sh?'true':'false');ey.setAttribute('aria-label',sh?'Hide password':'Show password')};w.append(ey)}}
 const scan=r=>{if(r.nodeType!==1)return;(r.matches&&r.matches('input.tf')?[r]:[]).concat(qa('input.tf',r)).forEach(fw)};
 ['#sheet','#pv','#dual'].forEach(id=>{const el=q(id);if(el){new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(el,{childList:true,subtree:true});scan(el)}});
-/* P3: split button helper: lmSplit('Save',fn,[{l:'Save as...',k:'save',f:fn}]) -> element */
-window.lmSplit=(label,main,items)=>{const w=E('div','sbtn'),a=E('button','tbtn fill',label),d=E('button','tbtn fill');d.append(ic('more'));d.setAttribute('aria-label','More options');d.setAttribute('aria-haspopup','menu');a.onclick=main;
-  d.onclick=()=>{const sc=E('div','dsc'),m=E('div','dmn'),done=()=>sc.remove();items.forEach(o=>{const b=E('button','dmb'+(o.danger?' dng':'')),ii=E('span','dmi');if(o.k){const g=ic(o.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g)}b.append(ii,E('span','',o.l));b.onclick=()=>{done();o.f()};m.append(b)});
-    sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);const r=d.getBoundingClientRect();m.style.right=Math.max(8,innerWidth-r.right)+'px';m.style.top=Math.round(r.bottom+8)+'px'};w.append(a,d);return w};
+/* LUMEN-SPLIT:BEGIN — primary action + anchored related actions, shared by creation and archive sheets. */
+function lmSplitPlacement(r,v,w,h){
+  const gap=8,left=v.left+gap,top=v.top+gap,right=v.left+v.width-gap,bottom=v.top+v.height-gap;
+  const width=Math.max(1,Math.min(w,right-left)),availableBelow=Math.max(0,bottom-r.bottom-gap),availableAbove=Math.max(0,r.top-top-gap);
+  const above=availableBelow<h&&availableAbove>availableBelow;
+  const height=Math.max(1,Math.min(h,Math.max(availableAbove,availableBelow)));
+  return {left:Math.max(left,Math.min(r.right-width,right-width)),top:Math.max(top,Math.min(above?r.top-gap-height:r.bottom+gap,bottom-height)),width,height};
+}
+let splitOpen=null,splitSerial=0;
+window.lmSplit=(label,main,items)=>{
+  const w=E('div','sbtn'),a=E('button','tbtn fill',label),d=E('button','tbtn fill');
+  w.setAttribute('role','group');w.setAttribute('aria-label',label);a.type=d.type='button';
+  d.append(ic('chev'));d.setAttribute('aria-label',label+' — more options');d.setAttribute('aria-haspopup','menu');d.setAttribute('aria-expanded','false');
+  a.onclick=()=>{if(!a.disabled){if(splitOpen)splitOpen(false);main()}};
+  d.disabled=!items.length;
+  d.onclick=()=>{
+    if(d.disabled)return;
+    if(splitOpen){const wasOpen=d.getAttribute('aria-expanded')==='true';splitOpen(false);if(wasOpen){d.focus({preventScroll:true});return}}
+    const sc=E('div','dsc lm-split-menu'),m=E('div','dmn'),id='lm-split-'+(++splitSerial);
+    sc.dataset.lmx='1';m.id=id;m.setAttribute('role','menu');m.setAttribute('aria-label',label+' options');d.setAttribute('aria-controls',id);d.setAttribute('aria-expanded','true');
+    const owner=w.closest('#sheet,#dlg,#pv,#gal'),vv=window.visualViewport;
+    let closed=false,observer=null;
+    const sync=()=>{try{if(typeof nlLay==='function')nlLay(true);if(typeof nlChPush==='function')nlChPush()}catch(_){}};
+    const done=(focus=true)=>{
+      if(closed)return;closed=true;if(splitOpen===done)splitOpen=null;
+      if(observer)observer.disconnect();
+      window.removeEventListener('keydown',keys,true);window.removeEventListener('resize',resize);window.removeEventListener('scroll',scroll,true);
+      if(vv){vv.removeEventListener('resize',resize);vv.removeEventListener('scroll',resize)}
+      d.setAttribute('aria-expanded','false');d.removeAttribute('aria-controls');sc.remove();sync();
+      if(focus&&d.isConnected&&d.getClientRects().length)d.focus({preventScroll:true});
+    };
+    const options=[];
+    items.forEach(o=>{
+      const b=E('button','dmb'+(o.danger?' dng':'')),ii=E('span','dmi');b.type='button';b.setAttribute('role','menuitem');b.tabIndex=-1;b.disabled=!!o.disabled;
+      if(o.k){const g=ic(o.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g)}
+      ii.setAttribute('aria-hidden','true');b.append(ii,E('span','',o.l));b.onclick=()=>{if(closed||b.disabled)return;done(false);o.f()};
+      options.push(b);m.append(b);
+    });
+    const enabled=()=>options.filter(b=>!b.disabled);
+    const keys=e=>{
+      if(closed)return;
+      const f=enabled(),i=f.indexOf(document.activeElement);let next=-1;
+      if(e.key==='Escape'||e.key==='Tab'){e.preventDefault();e.stopImmediatePropagation();done();return}
+      if(e.key==='ArrowDown')next=(i+1)%f.length;
+      else if(e.key==='ArrowUp')next=(i<0?f.length-1:(i+f.length-1)%f.length);
+      else if(e.key==='Home')next=0;else if(e.key==='End')next=f.length-1;else return;
+      e.preventDefault();e.stopImmediatePropagation();if(f[next])f[next].focus({preventScroll:true});
+    };
+    const resize=()=>done(),scroll=e=>{if(!m.contains(e.target))done()};
+    sc._close=done;sc.onclick=e=>{if(e.target===sc)done()};
+    sc.append(m);document.body.append(sc);splitOpen=done;
+    const vp=vv?{left:vv.offsetLeft,top:vv.offsetTop,width:vv.width,height:vv.height}:{left:0,top:0,width:innerWidth,height:innerHeight};
+    m.style.width=Math.max(1,Math.min(300,vp.width-16))+'px';
+    const pos=lmSplitPlacement(d.getBoundingClientRect(),vp,m.offsetWidth,m.scrollHeight);
+    Object.assign(m.style,{left:pos.left+'px',top:pos.top+'px',width:pos.width+'px',maxHeight:pos.height+'px'});
+    window.addEventListener('keydown',keys,true);window.addEventListener('resize',resize);window.addEventListener('scroll',scroll,true);
+    if(vv){vv.addEventListener('resize',resize);vv.addEventListener('scroll',resize)}
+    observer=new MutationObserver(()=>{if(!sc.isConnected||!d.isConnected||(owner&&getComputedStyle(owner).display==='none'))done(false)});
+    observer.observe(document.body,{childList:true,subtree:true});if(owner)observer.observe(owner,{attributes:true,attributeFilter:['style','class']});
+    const first=enabled()[0];if(first)first.focus({preventScroll:true});sync();
+  };
+  w.append(a,d);return w;
+};
+/* LUMEN-SPLIT:END */
 }catch(e){console.log('[lumen] ui14 init failed',e)}})();
 /*LUMEN-UI14-JS:END*/</script>
 <style>

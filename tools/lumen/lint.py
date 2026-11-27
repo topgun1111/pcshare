@@ -128,6 +128,12 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--split-button-regression' in sys.argv:
+    errs=[]
+    for marker in ('LUMEN-SPLIT:BEGIN','aria-expanded','aria-haspopup','lmSplitPlacement','sc._close=done','window.removeEventListener','lmSplit(\'New folder\'','lmSplit(\'Add files or folders…\'','lmSplit(\'Save this layout\''):
+        if marker not in _raw:errs.append('Missing split button invariant: '+marker)
+    print('Split button regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--player-regression' in sys.argv:
     widgets=open(os.path.join(_nat,'PlayerWidgets.kt'),encoding='utf-8').read()
     player=open(os.path.join(_nat,'PlayerActivity.kt'),encoding='utf-8').read()

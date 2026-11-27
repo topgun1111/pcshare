@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Lumen split buttons
+
+### Added
+- Split actions in Create new, Edit archive and saved Print space layouts.
+- Accessible dropdowns that fit the current window, open above the button when needed and close with Back, Escape or outside taps.
+- Automatic layout regression checks for narrow, folded and wide viewports.
+
 ## 2026-11-27 - Lumen video player chrome
 
 ### Fixed
