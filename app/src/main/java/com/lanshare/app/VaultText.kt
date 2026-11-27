@@ -43,7 +43,7 @@ class VaultTextActivity : Activity() {
         val txt = try {
             val raw = st.open(node.id).use { it.readBytes() }
             Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(raw)).toString()
-        } catch (_: Throwable) { Toast.makeText(this, vt("This file is not UTF-8 text"), Toast.LENGTH_LONG).show(); finish(); return }
+        } catch (_: Throwable) { Lm.snack(applicationContext, vt("This file is not UTF-8 text"), Toast.LENGTH_LONG); finish(); return }
         base = txt
         val pal = AppPal.pal(this)
         val d = resources.displayMetrics.density
@@ -76,7 +76,7 @@ class VaultTextActivity : Activity() {
     /** [thenClose] = leave after a successful save. */
     private fun save(thenClose: Boolean) {
         if (saving) return
-        if (!changed()) { if (thenClose) finish() else Toast.makeText(this, vt("No changes to save"), Toast.LENGTH_SHORT).show(); return }
+        if (!changed()) { if (thenClose) finish() else Lm.snack(this, vt("No changes to save"), Toast.LENGTH_SHORT); return }
         val bytes = et.text.toString().toByteArray(Charsets.UTF_8)
         saving = true
         Thread {
@@ -90,8 +90,8 @@ class VaultTextActivity : Activity() {
             } catch (_: Throwable) { false }
             runOnUiThread {
                 saving = false
-                if (ok) { base = String(bytes, Charsets.UTF_8); if (thenClose) finish() else Toast.makeText(this, vt("Saved"), Toast.LENGTH_SHORT).show() }
-                else Toast.makeText(this, vt("Could not save"), Toast.LENGTH_LONG).show()
+                if (ok) { base = String(bytes, Charsets.UTF_8); if (thenClose) finish() else Lm.snack(this, vt("Saved"), Toast.LENGTH_SHORT) }
+                else Lm.snack(this, vt("Could not save"), Toast.LENGTH_LONG)
             }
         }.also { it.isDaemon = true }.start()
     }

@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - Shared Lumen snackbars
+
+### Fixed
+- Vault feedback uses the shared snackbar; only safe generic notices from closing screens or background actions use the Android fallback.
+- File-browser feedback keeps its Undo and other actions, semantic icons and countdown instead of being replaced by a text-only overlay.
+- Native snackbars respect accessibility timeout, dismiss with their host screen, appear in tracked dialogs and use contrast-aware semantic glyphs.
+- Added a build-time check for direct platform-toast regressions.
+
 ## 2026-11-27 - Shared Lumen dialogs
 
 ### Fixed

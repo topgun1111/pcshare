@@ -101,7 +101,7 @@ class VaultPlayActivity : Activity() {
         val p = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(factory)).setHandleAudioBecomingNoisy(true).build()
         p.addListener(object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
-                Toast.makeText(this@VaultPlayActivity, vt("Could not play this file"), Toast.LENGTH_SHORT).show(); finish()
+                Lm.snack(applicationContext, vt("Could not play this file"), Toast.LENGTH_SHORT); finish()
             }
         })
         player = p

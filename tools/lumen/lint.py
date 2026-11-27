@@ -128,6 +128,21 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--snackbar-regression' in sys.argv:
+    # Only the central no-Activity fallback is allowed; report all native bypasses recursively.
+    _toast_bypass=[]
+    for _root,_dirs,_files in os.walk(_nat):
+        for _file in _files:
+            if not _file.endswith('.kt'):continue
+            _path=os.path.join(_root,_file)
+            _source=open(_path,encoding='utf-8').read()
+            for _i,_line in enumerate(_source.splitlines(),1):
+                if re.search(r'\bToast\s*\.\s*makeText\s*\(',_line) and os.path.relpath(_path,_nat)!='Lm.kt':
+                    _toast_bypass.append(f'{os.path.relpath(_path,_nat)}:{_i}')
+    if len(re.findall(r'\bToast\s*\.\s*makeText\s*\(',_lm))!=1:_toast_bypass.append('Lm must contain exactly one platform fallback')
+    if "if(tr&&vis($('#tp')))" not in _raw:_toast_bypass.append('Native mirror must not replace interactive snackbars')
+    print('Shared snackbar regression:', 'PASS' if not _toast_bypass else 'FAIL '+ '; '.join(_toast_bypass))
+    sys.exit(1 if _toast_bypass else 0)
 if '--dialog-regression' in sys.argv:
     # Gate shared dialog invariants and raw browser alerts; other pre-existing lint findings remain visible in the report.
     sys.exit(1 if bad or _sem else 0)

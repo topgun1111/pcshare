@@ -911,7 +911,8 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 @media(min-width:600px){#sheet{align-items:center;justify-content:center}#sheet .card:not(.fu):not(.pfull):not(.pfx){max-width:640px;max-height:80vh;border-radius:var(--r-xxl);animation:lmpop var(--d-base) cubic-bezier(.2,0,0,1)}}
 #toast{left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:min(560px,calc(100% - 32px));box-sizing:border-box;background:var(--cont);color:var(--fg);border:1px solid var(--bd);border-radius:var(--r-xl);padding:var(--sp-3) var(--sp-4);font-size:var(--t-bodyM-size);line-height:var(--t-bodyM-lh)}
 #tc,#toast .ta{color:var(--ac)}#tp{background:var(--bd)}#tp i{background:var(--ac)}
-#toast .ta{float:right;margin:-4px -6px 0 var(--sp-3);padding:var(--sp-1) var(--sp-3);border-radius:var(--r-m);background:transparent;font:inherit;font-weight:600}
+#toast .ta{float:right;max-width:48%;min-height:48px;margin:-4px -6px 0 var(--sp-3);padding:var(--sp-1) var(--sp-3);border-radius:var(--r-m);background:transparent;font:inherit;font-weight:600;white-space:normal;overflow-wrap:anywhere}
+#toast{bottom:calc(var(--dockh,0px) + 12px + env(safe-area-inset-bottom));overflow-wrap:anywhere} #toast .tk{flex:none} #toast.ok .tk{color:var(--success)} #toast.warn .tk{color:var(--warning)} #toast.err .tk{color:var(--error)}
 #toast .tk{width:20px;height:20px;fill:currentColor;vertical-align:-5px;margin-right:var(--sp-2)}
 #toast.ok .tk{color:var(--ok)}#toast.warn .tk{color:var(--warn)}#toast.err .tk{color:var(--err)}
 @media(prefers-reduced-motion:reduce){#dlg .dcard,#sheet .card{animation:none!important}}
@@ -1766,11 +1767,12 @@ async function api(m,u,b,ms){
 let tt;
 /* M5: "3 files" then "4 files" = same pill, number changes (no second announcement / haptic), text after the number identical */
 function lmMerge(a,b){const x=/^(\d+)\s+(.+)$/.exec(a||''),y=/^(\d+)\s+(.+)$/.exec(b||'');return !!(x&&y&&x[2]===y[2]&&x[1]!==y[1])}
+function lmSnackKind(m){const s=m.toLowerCase();if(/cannot|can't|could not|couldn't|failed|error|başarısız|başlatılamadı|yapılamadı/.test(s))return 'err';if(/^\s*⚠/.test(m))return 'warn';if(/^(copied|saved|deleted|restored|✅)|saved$/.test(s))return 'ok';return ''}
 function lmToastX(t,o,ms){o=o||{};t.className=o.kind||'';t.querySelectorAll('.tk,.ta,.tu').forEach(x=>x.remove());   /* snackbar extras: o.kind ok|warn|err (glyph), o.action {label,fn} (Text action); 5 s with action, 8 s for errors */
-  const g={ok:'check',warn:'info',err:'close'}[o.kind];if(g){const k=ic(g,'tk');t.insertBefore(k,t.firstChild);if(o.kind==='ok')lmPulse(k);else if(o.kind==='err')lmShake(k)}
-  if(o.action){const a=E('button','ta',o.action.label);a.onclick=e=>{e.stopPropagation();t.style.display='none';o.action.fn()};t.append(a);if(ms===2800)ms=5000;if(/undo/i.test(o.action.label)){const u=E('i','tu');u.style.animationDuration=ms+'ms';t.append(u)}}
-  else if(o.kind==='err'&&ms===2800)ms=8000;return ms}
-function toast(msg,ms=2800,pct,o){if((o&&o.kind==='err')||String(msg||'').startsWith('⚠'))appError('toast','ui.html',0);const t=$('#toast'),b=$('#tp');const _pv=t.style.display==='block'?$('#tx').textContent:'',_mg=pct==null&&!(o&&o.action)&&lmMerge(_pv,msg);if(pct==null&&!_mg)try{toastHp(msg,o&&o.kind)}catch(_){}$('#tx').textContent=msg;if(_mg)lmPulse($('#tx'));ms=lmToastX(t,o,ms);
+  const g={ok:'check',warn:'warn',err:'close'}[o.kind];if(g){const k=ic(g,'tk');t.insertBefore(k,t.firstChild);if(o.kind==='ok')lmPulse(k);else if(o.kind==='err')lmShake(k)}
+  if(o.action){const a=E('button','ta',o.action.label);a.onclick=e=>{e.stopPropagation();if(!a.isConnected||t.style.display==='none')return;clearTimeout(tt);t.style.display='none';o.action.fn()};t.append(a);if(ms===2800||ms===3000)ms=o.kind==='err'?8000:5000;if(/undo|restore|geri al/i.test(o.action.label)){const u=E('i','tu');u.style.animationDuration=ms+'ms';t.append(u)}}
+  else if(o.kind==='err'&&(ms===2800||ms===3000))ms=8000;return ms}
+function toast(msg,ms=3000,pct,o){msg=String(msg??'');if(!msg)return;const explicit=o&&o.kind;const kind=explicit||(pct==null?lmSnackKind(msg):'');o=Object.assign({},o||{},{kind});if(kind==='err'||msg.startsWith('⚠'))appError('toast','ui.html',0);const t=$('#toast'),b=$('#tp');const _pv=t.style.display==='block'?$('#tx').textContent:'',_mg=pct==null&&b.style.display==='none'&&!o.action&&!t.querySelector('.ta')&&t.className===(kind||'')&&(_pv===msg||lmMerge(_pv,msg));if(pct==null&&!_mg)try{toastHp(msg,kind)}catch(_){}$('#tx').textContent=msg;if(_mg&&_pv!==msg)lmPulse($('#tx'));ms=lmToastX(t,o,ms);
   b.style.display=pct==null?'none':'block';$('#tc').style.display=pct==null?'none':'inline-block';if(pct!=null)b.firstChild.style.width=pct+'%';
   t.style.display='block';clearTimeout(tt);if(ms)tt=setTimeout(()=>t.style.display='none',ms)}
 function banner(m){const b=$('#banner');b.textContent=m||'';b.style.display=m?'block':'none'}
@@ -2149,7 +2151,7 @@ function nlLay(force){if(!NL||!NLL)return;
   const top=Math.max(0,Math.round(r.top)),H=window.innerHeight-dh-top;
   const full=vis($('#pv'))||vis($('#dual'))||vis($('#gal'))||vis($('#home'));                       // full-screen viewers: hide the native list
   const holes=[];let dm=0,ps=0;
-  ['#fab','#toast','#dlw','#jb','#jp','#ubn'].forEach(q=>{if(NLCH&&NLCHJ!=='0'&&(q==='#fab'||q==='#toast'||q==='#dlw'))return;const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
+  ['#fab','#toast','#dlw','#jb','#jp','#ubn'].forEach(q=>{if(NLCH&&NLCHJ!=='0'&&(q==='#fab'||(q==='#toast'&&vis($('#tp')))||q==='#dlw'))return;const e=$(q);if(!vis(e))return;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])});
   ['#sheet','#dlg','#pcs','#pq'].forEach(q=>{const e=$(q);if(vis(e)){dm=Math.max(dm,0.42);ps=1;const c=e.firstElementChild;if(c){const b=c.getBoundingClientRect();holes.push([b.left,b.top,b.right,b.bottom])}}});
   {const dc=$('.dsc'),dmn=dc&&vis(dc)?dc.querySelector('.dmn'):null;if(dc&&vis(dc)){dm=Math.max(dm,0.18);ps=1}   /* popup scrim lives in the page: send ALL touches to it, or a tap outside the menu lands on the native list and the menu never closes */
     if(dmn){const b=dmn.getBoundingClientRect();if(b.width>0&&b.height>0)holes.push([b.left-8,b.top-8,b.right+8,b.bottom+8])}}   // dock "More" popup: the native list would otherwise cover it
@@ -2247,7 +2249,7 @@ function nlChPush(){if(!NLCH)return;
       o.dock={r:dr,a:NLACL,bg:dbg,rx:drx,cl:vis($('#clip'))?{t:(($('#clip span')||{}).textContent)||'',p:$('#clip .tbtn')?1:0}:null}}
   }
   const tr=rc($('#toast'));
-  if(tr){const tp=$('#tp');o.t={r:tr,x:$('#tx').textContent,p:vis(tp)?(parseFloat(tp.firstChild.style.width)||0):-1,c:vis($('#tc'))?1:0}}
+  if(tr&&vis($('#tp'))){const tp=$('#tp');o.t={r:tr,x:$('#tx').textContent,p:parseFloat(tp.firstChild.style.width)||0,c:vis($('#tc'))?1:0}}   // interactive feedback stays in the WebView; only transfer progress is mirrored
   const dk=Object.keys(DLS);
   if(dk.length){const dw=$('#dlw'),wr=rc(dw);
     if(wr){const w0=dw.getBoundingClientRect().top;

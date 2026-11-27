@@ -19,9 +19,9 @@ class App : Application() {
                 activity.window.decorView.post { try { LumenNativeTheme.apply(activity) } catch (_: Throwable) { } }
             }
             override fun onActivityPaused(activity: Activity) { }
-            override fun onActivityStopped(activity: Activity) { }
+            override fun onActivityStopped(activity: Activity) { Lm.stop(activity) }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) { }
-            override fun onActivityDestroyed(activity: Activity) { }
+            override fun onActivityDestroyed(activity: Activity) { Lm.stop(activity) }
         })                       // :pdfbuild only renders PDF pages: no clipboard sync, no FileInfo
         com.lanshare.app.core.FileInfo.ctx = applicationContext
         com.lanshare.app.core.vault.VaultGuard.cacheRoot = cacheDir.path // initialize before any exported activity / intent guard can run

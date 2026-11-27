@@ -57,7 +57,7 @@ class VaultViewActivity : Activity() {
                     runOnUiThread { if (isFinishing) bm.recycle() else { bmp = bm; showImage(root, bm) } }
                 }
             } catch (e: Throwable) {
-                runOnUiThread { Toast.makeText(this, vt("Could not open this file"), Toast.LENGTH_SHORT).show(); finish() }
+                runOnUiThread { Lm.snack(applicationContext, vt("Could not open this file"), Toast.LENGTH_SHORT); finish() }
             }
         }.start()
     }

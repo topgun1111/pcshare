@@ -44,3 +44,8 @@
 - AppPal connects dialog windows to LumenGlass; inherits FLAG_SECURE and suppresses diagnostic copying for secure host windows. Opaque contrast fallback when translucent fill fails 4.5:1 against either backdrop extreme.
 - Lm and page dlg use quiet dismissals, outlined alternatives and quiet destructive alternatives; update hero uses application icon. Archive buttons use shared roles. Native diagnostics opt-in (update failures), no Vault diagnostic copying. Existing return values and callbacks kept.
 - CI runs dialog-regression lint and Node syntax checks. Broader lint findings remain reported, not release blockers. Real-device verification of glass, font scaling, folds and TalkBack is still needed.
+
+## 2026-11-27 - Shared snackbar consistency
+- Replaced direct Vault Toast.makeText calls with Lm.snack; generic failure messages on screens that finish immediately keep no-Activity feedback. Secure Activity text cannot fall back to a platform toast. Dialogs/sheets tracked, Activity stop/destroy clears native snackbar.
+- WebView feedback preserves semantic/action/countdown DOM; native mirror limited to existing transfer progress, list holes keep other messages interactive. 3/5/8 second defaults, semantic inference, same-kind merge, action width and accessibility timeout improved. Native in-window pill remains solid for contrast; no claim of real in-window blur.
+- CI recursively scans Kotlin for platform toast bypasses; device testing of layout, overlay touch routing, and action timing remains open.

@@ -86,7 +86,7 @@ class VaultPdfActivity : Activity() {
 
     private fun fail() {
         if (isFinishing) return
-        Toast.makeText(this, vt("Could not open this file"), Toast.LENGTH_SHORT).show(); finish()
+        Lm.snack(applicationContext, vt("Could not open this file"), Toast.LENGTH_SHORT); finish()
     }
 
     private fun show(root: FrameLayout, r: PdfRenderer) {

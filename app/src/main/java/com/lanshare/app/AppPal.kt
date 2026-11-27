@@ -89,6 +89,7 @@ object AppPal {
             d.window?.setBackgroundDrawable(LumenGlass.panel(c, fill, 32f, false))
             if (act != null) fit(d, act, kind != null || !detailRows.isNullOrEmpty() || !diagnostic.isNullOrEmpty())   // 360 dp simple / 560 dp rich, always constrained to the current window
             d.setOnShowListener {
+                Lm.track(d)
                 if (act != null) trackFold(d, act, kind != null || !detailRows.isNullOrEmpty() || !diagnostic.isNullOrEmpty())
                 try {
                     for (b in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL)) d.getButton(b)?.setTextColor(p.ac)

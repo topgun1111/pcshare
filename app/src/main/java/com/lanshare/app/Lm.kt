@@ -40,6 +40,7 @@ object Lm {
 
     /** Full-screen Dialogs (PDF page overview ...) cover the activity: register them so the snackbar is drawn inside the one on top. */
     fun track(d: android.app.Dialog) {
+        overlays.removeAll { it.get() == null || it.get() === d }
         overlays.add(java.lang.ref.WeakReference(d))
         while (overlays.size > 8) overlays.removeAt(0)
     }
@@ -96,6 +97,8 @@ object Lm {
     }
 
     private fun fallback(c: Context, text: String, len: Int) {
+        // Never move private text from a secure Activity to an OS-rendered window.
+        if (((actOf(c)?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0) return
         try { Toast.makeText(c.applicationContext, text, if (len == Toast.LENGTH_LONG) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() } catch (_: Throwable) { }
     }
 
@@ -105,8 +108,9 @@ object Lm {
         val v = cur
         val h = curHost
         curBarAnim?.cancel(); curBarAnim = null
-        cur = null; curHost = null; curMsg = ""; curTv = null; curHasAction = false
+        cur = null; curHost = null; curMsg = ""; curTv = null; curHasAction = false; curKind = null; curOwner = null
         if (v == null || h == null) return
+        v.animate().cancel()
         if (!animate || v.parent == null) { try { h.removeView(v) } catch (_: Throwable) { }; return }
         // M1 (native): exit = t.exit (0.7 x base = 140 ms), accelerate, slide down 16 dp + fade; Reduce motion = 120 ms fade
         v.isClickable = false
@@ -127,6 +131,11 @@ object Lm {
     private var liftPx = 0
     private var curTv: TextView? = null
     private var curHasAction = false
+    private var curKind: String? = null
+    private var curOwner: java.lang.ref.WeakReference<Activity>? = null
+
+    /** Drop the view, timers and callbacks when its Activity leaves the screen. */
+    fun stop(a: Activity) { if (curOwner?.get() === a) dismissNow() }
     private var curBarAnim: android.animation.ObjectAnimator? = null
 
     private fun liftFor(a: Activity, host: ViewGroup): Int =
@@ -158,9 +167,14 @@ object Lm {
         if (host == null) { fallback(c, text, len); return }
 
         val hasAction = actionLabel != null && action != null
-        val ms = if (kind == "err") 8000L else if (hasAction || len == Toast.LENGTH_LONG) 5000L else 3000L
+        val baseMs = if (kind == "err") 8000L else if (hasAction || len == Toast.LENGTH_LONG) 5000L else 3000L
+        val ms = if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val am = act.getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+            val flags = android.view.accessibility.AccessibilityManager.FLAG_CONTENT_TEXT or (if (hasAction) android.view.accessibility.AccessibilityManager.FLAG_CONTENT_CONTROLS else 0)
+            am.getRecommendedTimeoutMillis(baseMs.toInt(), flags).toLong()
+        } else baseMs
 
-        if (cur != null && curHost === host && !hasAction && !curHasAction) {
+        if (cur != null && curHost === host && curKind == kind && !hasAction && !curHasAction) {
             val same = curMsg == text
             if (same || mergeable(curMsg, text)) {
                 // identical message: keep the pill, restart the timer; changed number: same pill, new number, a small pulse and a polite re-announce
@@ -186,8 +200,8 @@ object Lm {
         row.gravity = Gravity.CENTER_VERTICAL
         row.setPadding(dp(act, 16f), dp(act, 12f), dp(act, 16f), dp(act, 12f))
         pill.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        val bg = shape(lm.surfaceHi, dp(act, 24f).toFloat())
-        bg.setStroke(Math.max(1, dp(act, 1f)), lm.edge)
+        // In-window blur is not a window blur: use a readable raised tint (F2/F3 stay solid).
+        val bg = LumenGlass.panel(act, lm.surfaceHi, 24f, false)
         pill.background = bg
         pill.elevation = dp(act, 6f).toFloat()
         pill.clipToOutline = true   // the Undo countdown bar is clipped to the pill
@@ -195,16 +209,17 @@ object Lm {
             override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, Math.min(dp(act, 24f).toFloat(), v.height / 2f)) }
         }
         pill.isClickable = true
-        pill.setOnClickListener { dismissNow(true) }
+        pill.setOnClickListener { if (!hasAction) dismissNow(true) }
         // A1: the snackbar is a polite live region ("Error: ..." / "Warning: ..." prefix), the countdown bar and glyph are decoration
         pill.contentDescription = prefix(kind) + text
-        pill.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        pill.accessibilityLiveRegion = if (kind == "err") View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE else View.ACCESSIBILITY_LIVE_REGION_POLITE
         pill.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
 
         var used = dp(act, 32f)
         if (kind == "ok" || kind == "warn" || kind == "err") {
             val col = if (kind == "ok") lm.success else if (kind == "warn") lm.warning else lm.error
-            val gv = GlyphView(act, kind ?: "ok", col)
+            val fg = when (kind) { "ok" -> lm.onSuccess; "warn" -> lm.onWarning; else -> lm.onError }
+            val gv = GlyphView(act, kind ?: "ok", col, onFill(col, fg))
             gv.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             val lp = LinearLayout.LayoutParams(dp(act, 20f), dp(act, 20f))
             lp.rightMargin = dp(act, 8f)
@@ -220,20 +235,23 @@ object Lm {
         tv.ellipsize = android.text.TextUtils.TruncateAt.END
         tv.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO   // the pill carries the text
         val hostW = if (host.width > 0) host.width else act.resources.displayMetrics.widthPixels
-        val avail = Math.min(dp(act, 560f), hostW - dp(act, 32f))
-        if (hasAction) used += dp(act, 96f)
-        tv.maxWidth = Math.max(dp(act, 120f), avail - used)
+        val avail = Math.min(dp(act, 560f), (hostW - dp(act, 32f)).coerceAtLeast(1))
+        val actionSpace = if (hasAction) minOf(dp(act, 144f), avail / 2) else 0
+        if (hasAction) used += actionSpace + dp(act, 12f)
+        tv.maxWidth = (avail - used).coerceAtLeast(1)
         row.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         if (hasAction) {
             val ta = TextView(act)
             ta.text = actionLabel
-            ta.setTextColor(lm.primary)
+            ta.setTextColor(onFill(lm.surfaceHi, lm.primary))
             LumenTypography.apply(ta, LumenTypography.LABEL_L)   // spec 7 Label L (semi-bold)
             ta.gravity = Gravity.CENTER
             ta.minimumHeight = dp(act, 48f)
+            ta.maxWidth = actionSpace.coerceAtLeast(1)
+            ta.isFocusable = true
             ta.setPadding(dp(act, 12f), 0, dp(act, 12f), 0)
-            ta.setOnClickListener { dismissNow(true); try { action?.invoke() } catch (_: Throwable) { } }
+            ta.setOnClickListener { if (cur === pill) { dismissNow(true); try { action?.invoke() } catch (_: Throwable) { } } }
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.leftMargin = dp(act, 12f)
             lp.topMargin = -dp(act, 12f)
@@ -243,7 +261,7 @@ object Lm {
         }
 
         // M5: Undo snackbars show a 3 dp countdown bar along the bottom edge that shrinks over the visible time
-        if (hasAction && Regex("undo", RegexOption.IGNORE_CASE).containsMatchIn(actionLabel ?: "")) {
+        if (hasAction && Regex("undo|restore|geri al", RegexOption.IGNORE_CASE).containsMatchIn(actionLabel ?: "")) {
             val bar = View(act)
             bar.setBackgroundColor(withAlpha(lm.primary, 0.6f))
             bar.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -262,7 +280,11 @@ object Lm {
         flp.rightMargin = dp(act, 16f)
         host.addView(pill, flp)
         pill.bringToFront()
-        cur = pill; curHost = host; curMsg = text; curTv = tv; curHasAction = hasAction
+        cur = pill; curHost = host; curMsg = text; curTv = tv; curHasAction = hasAction; curKind = kind; curOwner = java.lang.ref.WeakReference(act)
+        pill.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) { if (cur === v) dismissNow() }
+        })
 
         if (reduceMotion(act)) {   // spec 13.4: no transform, 120 ms fade
             pill.alpha = 0f
@@ -280,7 +302,7 @@ object Lm {
     private fun prefix(kind: String?): String = if (kind == "err") "Error: " else if (kind == "warn") "Warning: " else ""
 
     /** 20 dp semantic glyph: filled disc in the semantic colour with a check (ok), an exclamation mark (warn) or a cross (err). */
-    private class GlyphView(c: Context, private val kind: String, private val col: Int) : View(c) {
+    private class GlyphView(c: Context, private val kind: String, private val col: Int, private val fg: Int) : View(c) {
         private val p = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
         override fun onDraw(cv: Canvas) {
@@ -288,7 +310,7 @@ object Lm {
             if (w <= 0f || h <= 0f) return
             p.style = Paint.Style.FILL; p.color = col
             cv.drawCircle(w / 2f, h / 2f, Math.min(w, h) / 2f, p)
-            p.style = Paint.Style.STROKE; p.color = 0xFFFFFFFF.toInt()
+            p.style = Paint.Style.STROKE; p.color = fg
             p.strokeWidth = w * 0.11f; p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND
             path.reset()
             if (kind == "ok") {

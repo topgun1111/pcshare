@@ -198,7 +198,7 @@ class VaultActivity : FragmentActivity() {
         }
     }
 
-    private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
+    private fun toast(t: String) = Lm.snack(this, t, Toast.LENGTH_SHORT)
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {

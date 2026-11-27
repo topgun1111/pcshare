@@ -169,6 +169,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
 
     private fun newDialog(bottom: Boolean): Dialog {
         val dl = Dialog(act)
+        Lm.track(dl)
         dl.requestWindowFeature(Window.FEATURE_NO_TITLE)
         fill = LumenGlass.apply(dl.window, act)
         val wideSheet = bottom && act.resources.configuration.screenWidthDp >= 600
