@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-27 - Lumen video player chrome
+
+### Fixed
+- The video stage stays black; the control panels follow the selected Lumen palette and glass fallback.
+- Playback uses a 56 dp gradient play button, canonical icons and 48 dp action targets; narrow windows scroll the action row rather than shrink controls.
+- Seek bar shows buffering and current position, supports accessibility and directional keys, and uses theme typography.
+- Respect reduced motion and screen-reader settings when hiding playback controls.
+
 ## 2026-11-27 - System bar consistency
 
 ### Fixed

@@ -74,6 +74,7 @@ jobs:
           python3 tools/lumen/lint.py --snackbar-regression
           python3 tools/lumen/lint.py --button-regression
           python3 tools/lumen/lint.py --system-bars-regression
+          python3 tools/lumen/lint.py --player-regression
           python3 - <<'PY'
           import pathlib, re, subprocess, tempfile
           page = pathlib.Path('app/src/main/assets/ui.html').read_text(encoding='utf-8')

@@ -9,17 +9,29 @@ import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 
-/** Colours of the player screen. Light = white page with dark text (like the system gallery), dark = black page. */
-class PlayerPal(val light: Boolean, primary: Int = 0xFFC25100.toInt()) {
-    val bg = if (light) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
-    val text = if (light) 0xFF111111.toInt() else 0xFFFFFFFF.toInt()
-    val icon = if (light) 0xFF1B1B1B.toInt() else 0xFFFFFFFF.toInt()
-    val panel = if (light) 0xB8FFFFFF.toInt() else 0x99262626.toInt()      // frosted pill / round buttons
-    val edge = if (light) 0x30000000 else 0x33FFFFFF                        // thin outline of the panels
-    val track = if (light) 0x33000000 else 0x44FFFFFF
-    val fill = primary                                                      // played part of the seek bar = theme primary (Lumen)
-    val scrimTop = if (light) 0xA6FFFFFF.toInt() else 0xB3000000.toInt()    // header gradient start
-    val scrimEnd = if (light) 0x00FFFFFF else 0x00000000
+/** L7 black stage; control panels use Lumen slots and a contrast-safe G2 tint stand-in. */
+class PlayerPal(c: Context) {
+    private val lm = Lumen.of(c)
+    val bg = android.graphics.Color.BLACK
+    val text = android.graphics.Color.WHITE
+    private val white = android.graphics.Color.WHITE
+    private val black = android.graphics.Color.BLACK
+    private fun contrast(f: Int, b: Int) = androidx.core.graphics.ColorUtils.calculateContrast(f or black, b or black)
+    private fun readable(f: Int, colors: List<Int>): Int? =
+        listOf(f, black, white).distinct().firstOrNull { fg -> colors.all { contrast(fg, it) >= 4.5 } }
+    private fun extremes(fill: Int) = listOf(black, white).map { androidx.core.graphics.ColorUtils.compositeColors(fill, it) }
+    private val tinted = LumenGlass.chromeFill(c, lm.surfaceHi or black)
+    val panel = if (readable(lm.ink, extremes(tinted)) != null) tinted else lm.surfaceHi or black
+    val icon = readable(lm.ink, extremes(panel)) ?: lm.ink
+    val edge = lm.edge
+    val focus = lm.focus
+    val track = androidx.core.graphics.ColorUtils.blendARGB(lm.surfaceHi or black, icon or black, 0.35f)
+    val fill = readable(lm.primary, extremes(panel)) ?: icon
+    val buffered = androidx.core.graphics.ColorUtils.blendARGB(track, icon or black, 0.38f)
+    private val grad = LumenGrad.primary(lm)
+    private val gradInk = readable(lm.onPrimary, (0..16).map { androidx.core.graphics.ColorUtils.blendARGB(grad[0], grad[1], it / 16f) })
+    val playColors = if (gradInk != null) grad else intArrayOf(lm.primary, lm.primary)
+    val playInk = gradInk ?: readable(lm.onPrimary, playColors.toList()) ?: white
 }
 
 /** Icons are painted with canvas primitives (no drawable resources, no font glyphs that differ per device). */
@@ -30,12 +42,24 @@ object PIc {
 
     private val path = Path()
     private val rf = RectF()
+    private val canonical = mapOf(PLAY to "play", PAUSE to "pause", PREV to "prev", NEXT to "prev",
+        BACK to "back", ROT_L to "rotr", ROT_R to "rotr", SHARE to "share", TRASH to "del", MORE to "more")
+    private val canonicalPaths = canonical.values.distinct().mapNotNull { key ->
+        LumenIcons.D[key]?.let { data -> try { androidx.core.graphics.PathParser.createPathFromPathData(data)?.let { key to it } } catch (_: Throwable) { null } }
+    }.toMap()
 
     /** Draws icon [k] centred at (cx, cy), fitting a box of [s] px. [p] is a stroke/fill paint already coloured. */
     fun draw(c: Canvas, k: Int, cx: Float, cy: Float, s: Float, p: Paint) {
         val u = s / 24f                       // 24 x 24 design grid
         c.save(); c.translate(cx - s / 2f, cy - s / 2f)
-        p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.strokeWidth = 2f * u
+        p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND; p.strokeWidth = LumenIcons.SW * u
+        val shared = canonicalPaths[canonical[k]]
+        if (shared != null) {
+            c.scale(u, u)
+            if (k == NEXT || k == ROT_L) c.scale(-1f, 1f, 12f, 12f)
+            p.style = Paint.Style.STROKE; p.strokeWidth = LumenIcons.SW
+            c.drawPath(shared, p); c.restore(); return
+        }
         when (k) {
             PLAY -> { fill(p); path.reset(); path.moveTo(8*u, 5*u); path.lineTo(19*u, 12*u); path.lineTo(8*u, 19*u); path.close(); c.drawPath(path, p) }
             PAUSE -> { fill(p); rf.set(6*u, 5*u, 10.2f*u, 19*u); c.drawRoundRect(rf, u, u, p); rf.set(13.8f*u, 5*u, 18*u, 19*u); c.drawRoundRect(rf, u, u, p) }
@@ -109,7 +133,7 @@ object PIc {
 
 /** Round frosted button with one icon (the circles of the control rows). */
 class RoundBtn(c: Context, private val kind: Int) : View(c) {
-    var pal: PlayerPal = PlayerPal(false); set(v) { field = v; invalidate() }
+    var pal: PlayerPal = PlayerPal(c); set(v) { field = v; invalidate() }
     var iconKind = kind; set(v) { field = v; invalidate() }
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ic = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -119,10 +143,18 @@ class RoundBtn(c: Context, private val kind: Int) : View(c) {
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat(); val r = Math.min(w, h) / 2f
-        bg.style = Paint.Style.FILL; bg.color = pal.panel; c.drawCircle(w / 2f, h / 2f, r - d, bg)
-        bg.style = Paint.Style.STROKE; bg.strokeWidth = d; bg.color = pal.edge; c.drawCircle(w / 2f, h / 2f, r - d, bg)
-        ic.color = pal.icon
-        PIc.draw(c, iconKind, w / 2f, h / 2f, r * 1.0f, ic)
+        if (r <= d) return
+        val primary = kind == PIc.PLAY
+        bg.style = Paint.Style.FILL
+        bg.color = if (primary) android.graphics.Color.WHITE else pal.panel
+        if (primary) bg.shader = LumenGrad.diag(pal.playColors, 0f, 0f, w, h)
+        c.drawCircle(w / 2f, h / 2f, r - d, bg)
+        bg.shader = null
+        bg.style = Paint.Style.STROKE; bg.strokeWidth = if (isFocused) 2f * d else d
+        bg.color = if (isFocused) pal.focus else pal.edge
+        c.drawCircle(w / 2f, h / 2f, r - d, bg)
+        ic.color = if (primary) pal.playInk else pal.icon
+        PIc.draw(c, iconKind, w / 2f, h / 2f, minOf(24f * d, r), ic)
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -134,6 +166,8 @@ class RoundBtn(c: Context, private val kind: Int) : View(c) {
     }
 
     override fun setEnabled(enabled: Boolean) { super.setEnabled(enabled); alpha = if (enabled) 1f else 0.4f }
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) { super.onFocusChanged(gainFocus, direction, previouslyFocusedRect); invalidate() }
+    override fun getAccessibilityClassName(): CharSequence = android.widget.Button::class.java.name
 }
 
 /**
@@ -141,17 +175,19 @@ class RoundBtn(c: Context, private val kind: Int) : View(c) {
  * [onSeek] gets the new position while dragging (preview = true) and when the finger is lifted (preview = false).
  */
 class SeekPill(c: Context) : View(c) {
-    var pal: PlayerPal = PlayerPal(false); set(v) { field = v; invalidate() }
+    var pal: PlayerPal = PlayerPal(c); set(v) { field = v; invalidate() }
     var onSeek: ((fraction: Float, preview: Boolean) -> Unit)? = null
     var onTouching: ((Boolean) -> Unit)? = null
     var posMs = 0L; var durMs = 0L; var bufMs = 0L
 
     private val d = resources.displayMetrics.density
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL); fontFeatureSettings = "tnum" }   // times: tabular figures (spec 7)
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum" }   // times: tabular figures (spec 7)
     private val rf = RectF()
     private var drag = false
     private var dragFrac = 0f
+
+    init { isFocusable = true; isClickable = true; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES; contentDescription = "Playback position" }
 
     fun set(pos: Long, dur: Long, buf: Long = 0L) {
         if (drag) return
@@ -166,31 +202,85 @@ class SeekPill(c: Context) : View(c) {
         val w = width.toFloat(); val h = height.toFloat(); val r = h / 2f
         rf.set(d, d, w - d, h - d)
         p.style = Paint.Style.FILL; p.color = pal.panel; c.drawRoundRect(rf, r, r, p)
-        p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pal.edge; c.drawRoundRect(rf, r, r, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = if (isFocused) 2f * d else d; p.color = if (isFocused) pal.focus else pal.edge; c.drawRoundRect(rf, r, r, p)
 
-        tp.color = pal.text; tp.textSize = Math.min(15f * d * UiScale.tf, h * 0.30f)
+        tp.color = pal.icon; tp.typeface = Fnt.semi()
+        tp.textSize = minOf(LumenTypography.LABEL_M.sp * resources.displayMetrics.scaledDensity, h * 0.34f)
         val shown = if (drag) (dragFrac * durMs).toLong() else posMs
-        val ty = h * 0.40f + tp.textSize * 0.35f
-        tp.textAlign = Paint.Align.LEFT; c.drawText(fmt(shown), padX(), ty, tp)
-        tp.textAlign = Paint.Align.RIGHT; c.drawText(fmt(durMs), w - padX(), ty, tp)
+        val left = fmt(shown); val right = fmt(durMs)
+        val room = (w - 2 * padX() - 8f * d).coerceAtLeast(1f)
+        val total = tp.measureText(left) + tp.measureText(right)
+        if (total > room) tp.textSize *= room / total
+        val ty = h * 0.36f - (tp.ascent() + tp.descent()) / 2f
+        tp.textAlign = Paint.Align.LEFT; c.drawText(left, padX(), ty, tp)
+        tp.textAlign = Paint.Align.RIGHT; c.drawText(right, w - padX(), ty, tp)
 
         val bh = 4f * d; val by = h * 0.72f
         val x0 = padX(); val x1 = w - padX()
         p.style = Paint.Style.FILL; p.color = pal.track; rf.set(x0, by - bh / 2, x1, by + bh / 2); c.drawRoundRect(rf, bh / 2, bh / 2, p)
+        if (x1 <= x0) return
+        val buffered = if (durMs > 0) (bufMs.toDouble() / durMs).coerceIn(0.0, 1.0).toFloat() else 0f
+        val bx = x0 + (x1 - x0) * buffered
+        p.color = pal.buffered; rf.set(x0, by - bh / 2, bx, by + bh / 2); if (bx > x0) c.drawRoundRect(rf, bh / 2, bh / 2, p)
         val fx = x0 + (x1 - x0) * frac()
-        p.color = pal.fill; rf.set(x0, by - bh / 2, Math.max(fx, x0 + bh), by + bh / 2); c.drawRoundRect(rf, bh / 2, bh / 2, p)
-        if (drag) { p.color = pal.fill; c.drawCircle(fx, by, 7f * d, p) }
+        p.color = pal.fill; rf.set(x0, by - bh / 2, fx, by + bh / 2); if (fx > x0) c.drawRoundRect(rf, bh / 2, bh / 2, p)
+        if (durMs > 0) c.drawCircle(fx, by, (if (drag) 8f else 6f) * d, p)
     }
 
+    override fun getAccessibilityClassName(): CharSequence = android.widget.SeekBar::class.java.name
+    override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.contentDescription = "Playback position, " + fmt(posMs) + " of " + fmt(durMs)
+        if (durMs > 0) {
+            info.rangeInfo = android.view.accessibility.AccessibilityNodeInfo.RangeInfo.obtain(
+                android.view.accessibility.AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_FLOAT, 0f, 100f, frac() * 100f)
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
+        }
+    }
+
+    private fun seekAccessible(fraction: Float): Boolean {
+        if (durMs <= 0 || !fraction.isFinite()) return false
+        val f = fraction.coerceIn(0f, 1f)
+        posMs = (f * durMs).toLong()
+        onSeek?.invoke(f, false)
+        invalidate()
+        sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_SELECTED)
+        return true
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: android.os.Bundle?): Boolean {
+        val info = android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS
+        return when (action) {
+            info.id -> if (arguments?.containsKey(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE) == true)
+                seekAccessible(arguments.getFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE) / 100f) else false
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> seekAccessible(frac() + 0.05f)
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> seekAccessible(frac() - 0.05f)
+            else -> super.performAccessibilityAction(action, arguments)
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        return when (keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> seekAccessible(frac() + 0.05f)
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> seekAccessible(frac() - 0.05f)
+            else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    override fun performClick(): Boolean { super.performClick(); return true }
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) { super.onFocusChanged(gainFocus, direction, previouslyFocusedRect); invalidate() }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (durMs <= 0) return true
+        if (durMs <= 0) { if (drag && (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL)) { drag = false; onTouching?.invoke(false); parent?.requestDisallowInterceptTouchEvent(false) }; return true }
         val x0 = padX(); val x1 = width - padX()
         val f = ((e.x - x0) / Math.max(x1 - x0, 1f)).coerceIn(0f, 1f)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { parent?.requestDisallowInterceptTouchEvent(true); drag = true; dragFrac = f; onTouching?.invoke(true); onSeek?.invoke(f, true); invalidate() }
             MotionEvent.ACTION_MOVE -> { if (drag) { dragFrac = f; onSeek?.invoke(f, true); invalidate() } }
-            MotionEvent.ACTION_UP -> { if (drag) { drag = false; posMs = (f * durMs).toLong(); onSeek?.invoke(f, false); onTouching?.invoke(false); invalidate() } }
-            MotionEvent.ACTION_CANCEL -> { if (drag) { drag = false; onTouching?.invoke(false); invalidate() } }
+            MotionEvent.ACTION_UP -> { if (drag) { drag = false; posMs = (f * durMs).toLong(); onSeek?.invoke(f, false); onTouching?.invoke(false); parent?.requestDisallowInterceptTouchEvent(false); performClick(); invalidate() } }
+            MotionEvent.ACTION_CANCEL -> { if (drag) { drag = false; onTouching?.invoke(false); parent?.requestDisallowInterceptTouchEvent(false); invalidate() } }
         }
         return true
     }
@@ -206,7 +296,7 @@ class SeekPill(c: Context) : View(c) {
 
 /** A bare icon (e.g. the little calendar in the header). */
 class IconView(c: Context, private val kind: Int) : View(c) {
-    var pal: PlayerPal = PlayerPal(false); set(v) { field = v; invalidate() }
+    var pal: PlayerPal = PlayerPal(c); set(v) { field = v; invalidate() }
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun onDraw(c: Canvas) {
         p.color = pal.text

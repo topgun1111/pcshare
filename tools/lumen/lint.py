@@ -128,6 +128,16 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--player-regression' in sys.argv:
+    widgets=open(os.path.join(_nat,'PlayerWidgets.kt'),encoding='utf-8').read()
+    player=open(os.path.join(_nat,'PlayerActivity.kt'),encoding='utf-8').read()
+    errs=[]
+    for marker in ('LumenGlass.chromeFill','LumenGrad.primary','LumenIcons.SW','LumenTypography.LABEL_M','ACTION_SET_PROGRESS','KEYCODE_DPAD_RIGHT','pal.buffered','val bg = android.graphics.Color.BLACK'):
+        if marker not in widgets:errs.append('Missing player widget invariant: '+marker)
+    for marker in ('NlViewerBar.scrim()','LumenTypography.TITLE_M','LumenPrefs.reduceMotion(this)','isTouchExplorationEnabled','HorizontalScrollView','lp(dp(56), dp(56), gap)','val bs = dp(48)'):
+        if marker not in player:errs.append('Missing player chrome invariant: '+marker)
+    print('Player design regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--system-bars-regression' in sys.argv:
     theme=open(os.path.join(_nat,'LumenNativeTheme.kt'),encoding='utf-8').read()
     errs=[]

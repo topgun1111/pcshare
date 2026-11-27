@@ -158,7 +158,9 @@ class PlayerActivity : Activity() {
     private lateinit var hud: TextView
     private lateinit var errTv: TextView
     private lateinit var spin: ProgressBar
-    private var pal = PlayerPal(false)
+    private val initialPal by lazy { PlayerPal(this) }
+    private var themedPal: PlayerPal? = null
+    private val pal get() = themedPal ?: initialPal
 
     private var player: ExoPlayer? = null
     private var items: List<Item> = emptyList()
@@ -231,21 +233,15 @@ class PlayerActivity : Activity() {
     }
 
     // ---------------------------------------------------------------- theme
-    /** The app's own theme (light / dark) when the page has sent one, otherwise the system day / night mode. */
-    private fun isLight(): Boolean {
-        AppPal.load(this)?.let { return AppPal.isLight(it.bg) }
-        return (Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
-    }
-
     private fun applyTheme() {
-        pal = PlayerPal(isLight(), Lumen.of(this).primary)
+        themedPal = PlayerPal(this)
         root.setBackgroundColor(pal.bg)
         window.setBackgroundDrawable(ColorDrawable(pal.bg))
         LumenNativeTheme.bars(this, pal.bg, transparent = true, overMedia = true)
-        header.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(pal.scrimTop, pal.scrimEnd))
+        header.background = NlViewerBar.scrim()
         titleTv.setTextColor(pal.text); dateTv.setTextColor(pal.text); resTv.setTextColor(pal.text)
         calIcon.pal = pal; pill.pal = pal
-        spin.indeterminateTintList = android.content.res.ColorStateList.valueOf(pal.fill)
+        spin.indeterminateTintList = android.content.res.ColorStateList.valueOf(LumenGrad.onDark(Lumen.of(this)))
         for (b in listOf(backBtn, playBtn, prevBtn, nextBtn, rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) b.pal = pal
     }
 
@@ -264,25 +260,26 @@ class PlayerActivity : Activity() {
         touch = View(this)
         root.addView(touch, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
-        fun label(sp: Float, bold: Boolean) = TextView(this).apply {
-            LumenTypography.fit(this, sp); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            if (bold) typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        Fnt.init(applicationContext)
+        fun label(style: LumenTypography.Style) = TextView(this).apply {
+            LumenTypography.apply(this, style); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), Color.BLACK)
             includeFontPadding = false
         }
 
         // ---- header: back, "n/total . name", date + size
         header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         backBtn = RoundBtn(this, PIc.BACK).apply { contentDescription = "Back"; setOnClickListener { finish() } }
-        header.addView(backBtn, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) })
+        header.addView(backBtn, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(8) })
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleTv = NlA11y.heading(label(17f, true))
+        titleTv = NlA11y.heading(label(LumenTypography.TITLE_M))
         texts.addView(titleTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val sub = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         calIcon = IconView(this, PIc.CAL)
         sub.addView(calIcon, LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginEnd = dp(8) })
-        dateTv = label(14f, false)
+        dateTv = label(LumenTypography.LABEL_M)
         sub.addView(dateTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        resTv = label(14f, false)
+        resTv = label(LumenTypography.LABEL_M)
         sub.addView(resTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12) })
         texts.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         header.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -311,7 +308,14 @@ class PlayerActivity : Activity() {
         row2.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         for (b in listOf(rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) row2.addView(b)
         bottom.addView(row1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        bottom.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        // All controls keep a 48 dp target. Compact/folded windows scroll the action row instead of shrinking it.
+        val actionScroll = android.widget.HorizontalScrollView(this).apply {
+            isFillViewport = true
+            isHorizontalScrollBarEnabled = true
+            addView(row2, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        bottom.addView(actionScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        bottom.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) subtitlePadding() }
         root.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         pill.onSeek = { f, preview ->
             val d = player?.duration ?: C.TIME_UNSET
@@ -357,16 +361,16 @@ class PlayerActivity : Activity() {
 
     /** Paddings from the system bars, and the size of the round buttons (48 dp, smaller when the row would not fit). */
     private fun layoutBars() {
-        val m = dp(8); val gap = dp(8)
+        val m = dp(8); val gap = dp(4)
         header.setPadding(insL + dp(12), insT + dp(8), insR + dp(12), dp(24))
         bottom.setPadding(insL + m, 0, insR + m, insB + dp(12))
-        val innerW = root.width - insL - insR - 2 * m
-        val bs = if (innerW <= 0) dp(48) else minOf(dp(48), (innerW - 6 * gap) / 7).coerceAtLeast(dp(30))
-        if (bs != lastBs) {
-            lastBs = bs
+        val bs = dp(48)
+        val seekH = maxOf(dp(56), (resources.displayMetrics.scaledDensity * 32f).toInt())
+        if (seekH != lastBs) {
+            lastBs = seekH
             fun lp(w: Int, h: Int, start: Int) = LinearLayout.LayoutParams(w, h).apply { marginStart = start }
-            pill.layoutParams = LinearLayout.LayoutParams(0, bs, 1f)
-            playBtn.layoutParams = lp(bs, bs, gap)
+            pill.layoutParams = LinearLayout.LayoutParams(0, seekH, 1f)
+            playBtn.layoutParams = lp(dp(56), dp(56), gap)
             prevBtn.layoutParams = lp(bs, bs, 0)
             nextBtn.layoutParams = lp(bs, bs, gap)
             for (b in listOf(rotLBtn, rotRBtn, shareBtn, delBtn, moreBtn)) b.layoutParams = lp(bs, bs, gap)
@@ -409,12 +413,13 @@ class PlayerActivity : Activity() {
     // ---------------------------------------------------------------- controls show / hide
     private fun setControls(on: Boolean, animate: Boolean = true) {
         controlsOn = on
+        val animateChrome = animate && !LumenPrefs.reduceMotion(this)
         for (v in listOf(header, bottom)) {
             v.animate().cancel()
             if (on) {
                 v.visibility = View.VISIBLE
-                if (animate) v.animate().alpha(1f).setDuration(NlViewerBar.FADE_MS).start() else v.alpha = 1f
-            } else if (animate) {
+                if (animateChrome) v.animate().alpha(1f).setDuration(NlViewerBar.FADE_MS).start() else v.alpha = 1f
+            } else if (animateChrome) {
                 v.animate().alpha(0f).setDuration(NlViewerBar.FADE_MS).withEndAction { if (!controlsOn) v.visibility = View.GONE }.start()
             } else { v.alpha = 0f; v.visibility = View.GONE }
         }
@@ -425,8 +430,12 @@ class PlayerActivity : Activity() {
 
     private fun scheduleHide() {
         ui.removeCallbacks(autoHide)
+        val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as? android.view.accessibility.AccessibilityManager
+        if (am?.isTouchExplorationEnabled == true) return
         if (controlsOn && holds == 0 && player?.playWhenReady == true) ui.postDelayed(autoHide, HIDE_MS)
     }
+
+    override fun onUserInteraction() { super.onUserInteraction(); if (controlsOn) scheduleHide() }
 
     private fun togglePlay() {
         val p = player ?: return
@@ -437,7 +446,9 @@ class PlayerActivity : Activity() {
 
     private fun updatePlayIcon() {
         val p = player
-        playBtn.iconKind = if (p == null || Util.shouldShowPlayButton(p)) PIc.PLAY else PIc.PAUSE
+        val play = p == null || Util.shouldShowPlayButton(p)
+        playBtn.iconKind = if (play) PIc.PLAY else PIc.PAUSE
+        playBtn.contentDescription = if (play) "Play" else "Pause"
     }
 
     private fun updateProgress() {
@@ -919,7 +930,7 @@ class PlayerActivity : Activity() {
         if (Math.floorMod(rotTarget, 360) != 0) { labels += "Reset video rotation"; acts += { zoom = 1f; panX = 0f; panY = 0f; rotTarget = 0; saveRot(); applyVideoTransform(true); subtitlePadding() } }
         if (zoom > 1.001f) { labels += "Reset zoom"; acts += { resetZoom() } }
         labels += "Details"; acts += { showDetails() }
-        dlg(AppPal.dlg(this).setItems(labels.toTypedArray()) { _, i -> acts[i]() })
+        dlg(AppPal.dlg(this).setTitle("Playback options").setItems(labels.toTypedArray()) { _, i -> acts[i]() })
     }
 
     private fun speedText(s: Float) = (if (s == Math.floor(s.toDouble()).toFloat()) s.toInt().toString() else s.toString()) + "x"
