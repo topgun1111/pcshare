@@ -65,7 +65,9 @@ class VaultViewActivity : Activity() {
 
     private fun showText(root: FrameLayout, txt: String) {
         val tv = TextView(this).apply {
-            text = txt; LumenTypography.apply(this, LumenTypography.MONO); setTextColor(Color.WHITE); setPadding(32, 48, 32, 48)
+            text = txt; LumenTypography.apply(this, LumenTypography.MONO); setTextColor(Color.WHITE)
+            val d = resources.displayMetrics.density
+            setPadding(Math.round(16 * d), Math.round(24 * d), Math.round(16 * d), Math.round(24 * d))
             setTextIsSelectable(false)
         }
         root.addView(ScrollView(this).apply { addView(tv) })

@@ -196,7 +196,7 @@ class UsActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(24f).toFloat() }
         }
-        box.addView(iconBtn("back", "Back") { finish() }, LinearLayout.LayoutParams(dp(44f), dp(52f)))
+        box.addView(iconBtn("back", "Back") { finish() }, LinearLayout.LayoutParams(dp(48f), dp(52f)))
         et = EditText(this).apply {
             background = null; setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_SEARCH; hint = if (scope.isEmpty()) "Search this phone" else "Search in " + File(scope).name
@@ -209,13 +209,13 @@ class UsActivity : Activity() {
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEARCH) { hideKb(); true } else false }
         }
         box.addView(et, LinearLayout.LayoutParams(0, dp(52f), 1f))
-        box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(44f), dp(52f)))
+        box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(48f), dp(52f)))
         bar.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val menuBtn = object : View(this) {   // three dots drawn here: no dependency on a font glyph
             private val pt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.fg }
             override fun onDraw(cv: Canvas) { val cx = width / 2f; val cy = height / 2f; val g = dp(6f).toFloat(); for (k in -1..1) cv.drawCircle(cx, cy + k * g, dp(2f).toFloat(), pt) }
         }.apply { contentDescription = "Sort and options"; setOnClickListener { menu() } }
-        bar.addView(menuBtn, LinearLayout.LayoutParams(dp(44f), dp(52f)))
+        bar.addView(menuBtn, LinearLayout.LayoutParams(dp(48f), dp(52f)))
         NlViewerBar.styleSearchBar(this, bar, p.bg)   // Lumen N7: Search variant = 64 dp + G1 chrome fill
         root.addView(bar)
         // chips
@@ -227,11 +227,11 @@ class UsActivity : Activity() {
                 setOnClickListener { kind = k; markChips(); endSel(false); runQuery(true, 0) }
             }
             chips.add(k to c)
-            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36f)).apply { rightMargin = dp(8f) })
+            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48f)).apply { rightMargin = dp(8f) })
         }
         hs.addView(cr); root.addView(hs)
         scopeTv = tv(13f, p.ac, true).apply {
-            setPadding(dp(14f), dp(6f), dp(14f), dp(6f)); visibility = View.GONE
+            setPadding(dp(14f), dp(6f), dp(14f), dp(6f)); minimumHeight = dp(48f); gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
             background = GradientDrawable().apply { setColor(p.cont); cornerRadius = dp(16f).toFloat() }
             setOnClickListener { scope = ""; paintScope(); endSel(false); runQuery(true, 0) }
         }
@@ -244,8 +244,8 @@ class UsActivity : Activity() {
         }
         root.addView(banner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12f), dp(2f), dp(12f), dp(4f)) })
         info = tv(12.5f, p.mut).apply { setPadding(dp(16f), dp(4f), dp(8f), dp(4f)) }
-        sortBtn = tv(13f, p.ac, true).apply { setPadding(dp(10f), dp(8f), dp(10f), dp(8f)); setOnClickListener { sortDlg() } }
-        viewBtn = tv(13f, p.ac, true).apply { setPadding(dp(10f), dp(8f), dp(14f), dp(8f)); setOnClickListener { viewDlg() } }
+        sortBtn = tv(13f, p.ac, true).apply { minimumHeight = dp(48f); gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(10f), dp(8f)); setOnClickListener { sortDlg() } }
+        viewBtn = tv(13f, p.ac, true).apply { minimumHeight = dp(48f); gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(14f), dp(8f)); setOnClickListener { viewDlg() } }
         val infoRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         infoRow.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); infoRow.addView(sortBtn); infoRow.addView(viewBtn)
         root.addView(infoRow)
@@ -270,8 +270,8 @@ class UsActivity : Activity() {
         }
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         selTv = tv(14f, p.fg, true)
-        head.addView(selTv, LinearLayout.LayoutParams(0, dp(40f), 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
-        head.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(44f), dp(40f)))
+        head.addView(selTv, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
+        head.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(48f), dp(48f)))
         selBar.addView(head)
         val line = View(this).apply { setBackgroundColor(p.bd) }
         selBar.addView(line, LinearLayout.LayoutParams(-1, 1).apply { setMargins(dp(8f), 0, dp(8f), dp(2f)) })
@@ -293,9 +293,9 @@ class UsActivity : Activity() {
             }
             cell.addView(NlGlyph(this, NlGlyph.parse(a[1] as String), a[2] as Int, dp(26f)), LinearLayout.LayoutParams(-2, -2))
             cell.addView(tv(11f, if (a[0] == "Delete") (a[2] as Int) else p.fg, true).apply { text = a[0] as String; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3f) })
-            row.addView(cell, LinearLayout.LayoutParams(0, dp(58f), 1f).apply { setMargins(dp(1f), 0, dp(1f), 0) })
+            row.addView(cell, LinearLayout.LayoutParams(dp(64f), dp(64f), 1f).apply { setMargins(dp(1f), 0, dp(1f), 0) })
         }
-        selBar.addView(row)
+        selBar.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; isFillViewport = true; addView(row) })
         root.addView(selBar)
         LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
@@ -304,8 +304,12 @@ class UsActivity : Activity() {
     private fun markChips() {
         for ((k, c) in chips) {
             val on = k == kind
-            c.setTextColor(if (on) p.onac else p.fg)
-            c.background = GradientDrawable().apply { cornerRadius = dp(18f).toFloat(); setColor(if (on) p.ac else p.cont) }
+            val fill = if (on) p.ac else p.cont
+            LumenNativeTheme.preserveFeatureColors(c)
+            c.setTextColor(LumenNativeTheme.readableInk(if (on) p.onac else p.fg, fill))
+            c.isSelected = on
+            androidx.core.view.ViewCompat.setStateDescription(c, if (on) "Selected" else null)
+            c.background = GradientDrawable().apply { cornerRadius = dp(24f).toFloat(); setColor(fill) }
         }
     }
 

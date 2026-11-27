@@ -136,12 +136,18 @@ if '--theme-consistency-regression' in sys.argv:
         'StorageActivity.kt':('LumenNativeTheme.preserveFeatureColors(b)', 'LumenNativeTheme.readableInk(if (on)', 'minimumHeight = dp(48)'),
         'PrintLogActivity.kt':('LumenButtons.Role.OUTLINE', 'isFillViewport = true; addView(bar)'),
         'ImageEditActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY'),
-        'PdfViewerActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY', 'LumenButtons.Role.TEXT')
+        'PdfViewerActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY', 'LumenButtons.Role.TEXT'),
+        'UsActivity.kt':('LumenNativeTheme.preserveFeatureColors(c)', 'c.isSelected = on', 'dp(64f), dp(64f), 1f', 'isFillViewport = true; addView(row)'),
+        'OfficeViewerActivity.kt':('glyphBtn("search", "Find")', 'glyphBtn("back", "Back")'),
+        'VaultViewActivity.kt':('Math.round(16 * d)', 'setTextIsSelectable(false)'),
+        'VaultText.kt':('LumenNativeTheme.bars(this, pal.bg)', 'IME_FLAG_NO_PERSONALIZED_LEARNING', 'customSelectionActionModeCallback = none')
     }
     for name,markers in checks.items():
         source=open(os.path.join(_nat,name),encoding='utf-8').read()
         for marker in markers:
             if marker not in source:errs.append(name+': '+marker)
+    for marker in ("cb.setAttribute('role','switch')", "cb.setAttribute('aria-labelledby',id)", "h.setAttribute('role','heading')"):
+        if marker not in _raw:errs.append('Settings accessibility: '+marker)
     print('Theme consistency regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
     sys.exit(1 if errs else 0)
 if '--performance-regression' in sys.argv:

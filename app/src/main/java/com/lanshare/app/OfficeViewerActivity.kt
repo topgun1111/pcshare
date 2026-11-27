@@ -141,16 +141,25 @@ class OfficeViewerActivity : Activity() {
             val tv = android.util.TypedValue(); if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)) setBackgroundResource(tv.resourceId)
         }
         val top = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), 0, dp(4), 0); elevation = 4 * d; setBackgroundColor(pal.bg) }
-        top.addView(btn("\u2190", "Back") { finish() })
+        fun glyphBtn(key: String, desc: String, click: (android.view.View) -> Unit) = android.widget.FrameLayout(this).apply {
+            contentDescription = desc; isFocusable = true
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48))
+            addView(NlGlyph(context, NlIcons.path(key), pal.fg, dp(24), NlIcons.stroke(key)), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER))
+            val tv = android.util.TypedValue()
+            if (theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true)) setBackgroundResource(tv.resourceId)
+            setOnClickListener(click)
+        }
+        top.addView(glyphBtn("back", "Back") { finish() })
         top.addView(android.widget.TextView(this).apply {
             id = android.R.id.title; com.lanshare.app.NlA11y.heading(this); text = title; LumenTypography.fit(this, 16f); setTextColor(pal.fg); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        top.addView(btn("\uD83D\uDD0D", "Find") { toggleFind() })
+        top.addView(glyphBtn("search", "Find") { toggleFind() })
         top.addView(btn("\u22EE", "More") { v -> showMore(v) })
         bar = top
         val fr = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0); visibility = android.view.View.GONE; setBackgroundColor(pal.cont) }
         val et = android.widget.EditText(this).apply {
+            LumenTypography.apply(this, LumenTypography.BODY_L)
             hint = "Find in document"; setTextColor(pal.fg); setHintTextColor(pal.mut); setSingleLine(); imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
             layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(48), 1f)
             addTextChangedListener(object : android.text.TextWatcher {

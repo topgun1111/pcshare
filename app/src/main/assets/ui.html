@@ -3342,8 +3342,8 @@ function openSettings(){
   const sb=E('div','sxs'),si=E('input');si.type='search';si.placeholder='Search settings';si.setAttribute('aria-label','Search settings');sb.append(ic('search'),si);
   const body=E('div','fb'),none=lmEmpty('neutral','No settings match','Try a different word.',null,null,'search',null,true);none.style.display='none';
   card.append(hd,sb,body);
-  const secs=[];let cur=null;
-  const sec=(title,color)=>{const h=E('div','sxh',title),g=E('div','sxg');g.style.setProperty('--sc',color);body.append(h,g);cur={h,g,rows:[]};secs.push(cur)};
+  const secs=[];let cur=null,settingId=0;
+  const sec=(title,color)=>{const h=E('div','sxh',title),g=E('div','sxg');h.setAttribute('role','heading');h.setAttribute('aria-level','3');g.style.setProperty('--sc',color);body.append(h,g);cur={h,g,rows:[]};secs.push(cur)};
   const filter=()=>{const q=si.value.trim().toLowerCase();let any=false;
     secs.forEach(s=>{let n=0,first=true;
       s.rows.forEach(r=>{const vis=!r.hidden&&(!q||r.el.textContent.toLowerCase().indexOf(q)>=0);
@@ -3356,10 +3356,11 @@ function openSettings(){
   /* one row: icon chip, title, grey subtitle, then a chevron (opens a screen), a switch (opt.sw) or nothing (fn = null) */
   const row=(i,title,sub,fn,opt)=>{opt=opt||{};
     const el=E(opt.sw?'label':fn?'button':'div','sxr'),ch=E('span','sxi'),t=E('div','t'),sm=E('small','');
-    ch.append(ic(i));t.append(E('b','',title),sm);el.append(ch,t);
+    const label=E('b','',title),id='ls-setting-'+(++settingId);label.id=id;sm.id=id+'-detail';
+    ch.setAttribute('aria-hidden','true');ch.append(ic(i));t.append(label,sm);el.append(ch,t);
     const r={el,hidden:!!opt.hidden,open:false,set:x=>{sm.textContent=x||'';sm.style.display=x?'':'none'}};r.set(sub);
-    if(opt.sw){const w=E('span','sw'),cb=E('input');cb.type='checkbox';w.append(cb,E('i'));el.append(w);r.cb=cb;cb.onchange=()=>fn(cb.checked)}
-    else if(fn){el.append(ic('chev','sxc'));el.onclick=fn}
+    if(opt.sw){const w=E('span','sw'),cb=E('input');cb.type='checkbox';cb.setAttribute('role','switch');cb.setAttribute('aria-labelledby',id);cb.setAttribute('aria-describedby',sm.id);w.append(cb,E('i'));el.append(w);r.cb=cb;cb.onchange=()=>fn(cb.checked)}
+    else if(fn){el.setAttribute('aria-labelledby',id);el.setAttribute('aria-describedby',sm.id);el.append(ic('chev','sxc'));el.onclick=fn}
     cur.g.append(el);cur.rows.push(r);return r};
   const IMGS=api('GET','/api/imgs');   // one request feeds the three picture-search rows
 

@@ -47,9 +47,10 @@ class VaultTextActivity : Activity() {
         base = txt
         val pal = AppPal.pal(this)
         val d = resources.displayMetrics.density
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg); setPadding(0, (24 * d).toInt(), 0, 0) }
+        LumenNativeTheme.bars(this, pal.bg)
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0) }
-        val ttl = TextView(this).apply { text = vt("Edit text"); LumenTypography.apply(this, LumenTypography.TITLE_M); setTextColor(pal.fg) }
+        val ttl = TextView(this).apply { NlA11y.heading(this); text = vt("Edit text"); LumenTypography.apply(this, LumenTypography.TITLE_M); setTextColor(pal.fg) }
         val save = Button(this).apply { text = vt("Save"); LumenButtons.apply(this, LumenButtons.Role.PRIMARY, compact = true); setOnClickListener { save(false) } }
         bar.addView(ttl, LinearLayout.LayoutParams(0, -2, 1f)); bar.addView(save)
         et = EditText(this).apply {

@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-28 - Search, Office and secure viewer consistency
+
+### Fixed
+- Increase search filter and toolbar touch targets and keep selection actions reachable on narrow screens.
+- Preserve selected search filter colors and expose their selected state.
+- Use shared icons for Office back and search actions.
+- Correct secure text viewer spacing and improve settings switch and section labels.
+
 ## 2026-11-28 - Native theme consistency
 
 ### Fixed
