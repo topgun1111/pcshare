@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-27 - Wi-Fi and mobile update policy
+
+### Changed
+- Wi-Fi downloads the complete APK; mobile data and other connections prefer smaller matching patches.
+- If a patch is unavailable or fails, the app asks before downloading a complete APK using mobile data.
+- Normal full APK downloads stay on Wi-Fi, preventing automatic mobile-data fallback if Wi-Fi disconnects.
+
 ## 2026-11-27 - Partial updates
 
 ### Added

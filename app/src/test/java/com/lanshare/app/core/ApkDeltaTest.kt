@@ -10,6 +10,13 @@ import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 
 class ApkDeltaTest {
+    @Test fun networkPolicy() {
+        assertFalse(ApkDelta.preferDelta(onWifi = true))
+        assertTrue(ApkDelta.preferDelta(onWifi = false))
+        assertFalse(ApkDelta.preferDelta(onWifi = false, allowMobileFull = true))
+        assertFalse(ApkDelta.preferDelta(onWifi = true, allowMobileFull = true))
+    }
+
     @Test fun roundTripAndRejectInvalid() {
         val dir = Files.createTempDirectory("apk-delta").toFile()
         try {
