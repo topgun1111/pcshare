@@ -49,7 +49,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 
 ---
 
-> **Current release checkpoint — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality. Both theme consistency phases shipped in this release; the intermediate run 46070392392 was cancelled, not failed. Historical "not compiled" labels in chapters refer to their original sessions, not the current Android build. For new Lumen work read the current status in `docs/handover/LUMEN.md` and chapter 22 first. Next: accessibility refinement, performance/memory audit, then physical-device acceptance. No device acceptance result is recorded for the new work.
+> **Current release checkpoint — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), app commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431) passed full/lite APK compilation, existing Lumen checks, selected JVM tests, delta verification and release publication. A later detailed source audit found remaining conformance gaps, including strict contrast gate weaknesses. **For Lumen tasks start at [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28), phase R01 (contrast correction).** It is the single current plan; chapter 22 is history. No physical-device acceptance is recorded.
 
 ## 1. Project at a glance
 
@@ -109,7 +109,7 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 
 ## 3. Open work (prioritised)
 
-**L. Current Lumen roadmap** — accessibility refinement (large text, custom touch targets, keyboard/focus, TalkBack); final performance and memory audit; physical-device acceptance (V2/V3, folded and unfolded, full and lite). Source-level theme consistency passes 1–2 are shipped, but exhaustive visual audit remains open. Do not restart completed stages or reintroduce first-run coach marks (owner skipped them). Use the current release and checklist in LUMEN.md §3.6–3.8.
+**L. Current Lumen roadmap** — canonical [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28) contains F01–F22 audit findings, R01–R17 sequential phases, phase acceptance criteria and Work execution rules. Next R01: contrast correctness and strict CI enforcement; then R02 adaptive typography. All 17 phases are open at this audit baseline. Preserve completed foundations and owner-approved exclusions. No competing roadmap file.
 
 **U. Universal Search** - plan in chapter 16. Parts 1, 2, 3 and 4 are coded but never compiled / run: read the result of CI job `usearch-selftest` AND the APK build (Part 3 touched `LocalFs`, `Bin`, `Jobs`, `Core`, `Cfg`, `Routes`, `MainActivity`, `ui.html`), fix, record the measured numbers (the `info` lines) in the Part 1 / 2 / 3 notes, then do Part 4. Part 0 (green CI + image-search device check 11.1) is still open.
 

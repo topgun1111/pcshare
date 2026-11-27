@@ -1,6 +1,6 @@
 # Handover chapter file - ch22-lumen-completion-pass
 
-> **CURRENT STATE — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality. Both source theme consistency passes included. The preceding run was cancelled by the newer push. Implemented phases are described below; accessibility refinement is next, then performance/memory audit and device acceptance. Historical status and "not compiled" notes below describe their original sessions. Do not repeat completed work or claim device testing.
+> **CURRENT STATE — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), app commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431) passed existing CI, full/lite APK and patch/release checks. This chapter records shipped implementation history only. A subsequent detailed source audit reopened conformance gaps. **Current tasks and Work continuation: [LUMEN.md §3.9](LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28), starting R01 contrast correction.** Device acceptance is outstanding; earlier session status notes are historical.
 
 > Part of `HANDOVER_READ_BEFORE_CODE.md` (slim index at the project root). Split out 2026-11-13; content unchanged. Read only what the task needs (grep / `sed -n`).
 
@@ -113,4 +113,4 @@
 
 - v2.534 publishes 2 APKs and 6 patches (3 per edition); full APK 36,309,407 bytes; v2.533 full-to-full patch 4,631,783 bytes. Intermediate `d7c3c24` build 46070392392 cancelled; no independent version was published for it. Both phases are present in the final source; the release body uses only the most recent CHANGELOG section.
 - Baseline verified: generated typography/tokens, Lumen regression checks including strict contrast and Python/JS parity, selected JVM tests, both APK builds, patch generation/verification and release publication. Not verified: physical installation, fold/IME/gesture behavior, rendering performance, comprehensive visual or TalkBack acceptance.
-- Next task: accessibility refinement. Then final performance/memory audit and physical-device acceptance. Use LUMEN.md §3.6–3.8. No coach marks unless owner changes decision.
+- Subsequent audit supersedes the earlier next-task decision: see LUMEN.md §3.9 for the current 17-phase queue, starting R01 contrast/test correctness, then R02 adaptive typography. Keep this chapter as implementation history.
