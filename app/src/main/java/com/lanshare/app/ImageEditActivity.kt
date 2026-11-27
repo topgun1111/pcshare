@@ -119,17 +119,17 @@ class ImageEditActivity : Activity() {
     private fun buildUi() {
         fun btn(txt: String, sp: Float) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48); minimumHeight = dp(48)
         }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
 
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)) }
-        val close = btn("✕", 20f).apply { setOnClickListener { finish() } }
+        val close = btn("✕", 20f).apply { contentDescription = "Close"; setOnClickListener { finish() } }
         val titleTv = TextView(this).apply { NlA11y.heading(this); text = name; setTextColor(Color.WHITE); LumenTypography.fit(this, 16f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
         subTv = TextView(this).apply { setTextColor(0xCCFFFFFF.toInt()); LumenTypography.fit(this, 12f); maxLines = 1 }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(titleTv); addView(subTv) }
         val save = btn("Save", 15f).apply {
-            setTextColor(accent); setTypeface(typeface, android.graphics.Typeface.BOLD)
+            LumenButtons.apply(this, LumenButtons.Role.PRIMARY, compact = true)
             setOnClickListener { askSave() }
         }
         top.addView(close)

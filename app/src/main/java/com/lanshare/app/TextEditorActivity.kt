@@ -423,6 +423,7 @@ class TextEditorActivity : Activity() {
             addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        LumenNativeTheme.preserveFeatureColors(root)
         LumenNativeTheme.edgeToEdge(this, root)
         setContentView(root)
         com.lanshare.app.ops.JobOverlay.install(this)   // progress bubble for background jobs (copy / zip / print ...) while this screen is open
@@ -669,7 +670,7 @@ class TextEditorActivity : Activity() {
         val p = PALS[color]
         val lmE = Lumen.of(this)
         val bg = if (color == 0) lmE.canvas else if (night) p.dark else p.light   // note colour 0 = no colour = the app theme canvas
-        textColor = lmE.ink
+        textColor = LumenNativeTheme.readableInk(lmE.ink, bg)
         bgColor = bg
         val sub = ColorUtils.setAlphaComponent(textColor, 150)
         val hint = ColorUtils.setAlphaComponent(textColor, 110)

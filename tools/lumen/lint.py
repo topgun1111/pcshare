@@ -128,6 +128,22 @@ for _f in sorted(os.listdir(_nat)):
 print('D1 one light/dark rule:', 'PASS' if not _dmis else 'FAIL '+'; '.join(_dmis))
 
 _x=[b for b in (_bad,_nb,_sem,_dmis) if b]
+if '--theme-consistency-regression' in sys.argv:
+    errs=[]
+    checks={
+        'LumenNativeTheme.kt':('fun preserveFeatureColors(', 'if (featureColors.containsKey(view)) return', 'fun readableInk('),
+        'TextEditorActivity.kt':('LumenNativeTheme.preserveFeatureColors(root)', 'LumenNativeTheme.readableInk(lmE.ink, bg)'),
+        'StorageActivity.kt':('LumenNativeTheme.preserveFeatureColors(b)', 'LumenNativeTheme.readableInk(if (on)', 'minimumHeight = dp(48)'),
+        'PrintLogActivity.kt':('LumenButtons.Role.OUTLINE', 'isFillViewport = true; addView(bar)'),
+        'ImageEditActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY'),
+        'PdfViewerActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY', 'LumenButtons.Role.TEXT')
+    }
+    for name,markers in checks.items():
+        source=open(os.path.join(_nat,name),encoding='utf-8').read()
+        for marker in markers:
+            if marker not in source:errs.append(name+': '+marker)
+    print('Theme consistency regression:', 'PASS' if not errs else 'FAIL '+'; '.join(errs))
+    sys.exit(1 if errs else 0)
 if '--performance-regression' in sys.argv:
     errs=[]
     for marker in ("h.saver===1)return{step:'f2'",'const endFling=','lm-fling:is([data-glass=f0],[data-glass=f1])'):

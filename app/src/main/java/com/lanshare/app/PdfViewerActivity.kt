@@ -282,7 +282,7 @@ class PdfViewerActivity : Activity() {
 
         fun tv(txt: String, sp: Float) = TextView(this).apply {
             text = txt; setTextColor(Color.WHITE); LumenTypography.fit(this, sp)
-            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48)
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(8), dp(12), dp(8)); minWidth = dp(48); minimumHeight = dp(48)
         }
         top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -335,8 +335,14 @@ class PdfViewerActivity : Activity() {
             setTextColor(Color.WHITE); LumenTypography.fit(this, 15f); gravity = Gravity.CENTER; setPadding(dp(24), dp(8), dp(24), dp(12))
         }
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; isIndeterminate = true }
-        btnOpen = Button(this).apply { text = "Open with\u2026"; setOnClickListener { openWith() } }
-        val btnClose = Button(this).apply { text = "Close"; setOnClickListener { finish() } }
+        btnOpen = Button(this).apply {
+            text = "Open with\u2026"; LumenButtons.apply(this, LumenButtons.Role.PRIMARY, compact = true)
+            setOnClickListener { openWith() }
+        }
+        val btnClose = Button(this).apply {
+            text = "Close"; LumenButtons.apply(this, LumenButtons.Role.TEXT, compact = true, label = Color.WHITE, backdrop = Color.BLACK)
+            setOnClickListener { finish() }
+        }
         btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; addView(btnOpen); addView(btnClose) }
         stateBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL

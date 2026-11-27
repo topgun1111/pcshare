@@ -150,7 +150,20 @@ object LumenNativeTheme {
         return color == Color.WHITE || color == Color.BLACK || color == 0xFFF5F5F5.toInt()
     }
 
+    // Explicit feature palettes own their foregrounds, including monochrome labels on selected fills.
+    private val featureColors = java.util.WeakHashMap<View, Boolean>()
+    fun preserveFeatureColors(view: View) { featureColors[view] = true }
+
+    fun readableInk(preferred: Int, background: Int, minimum: Double = 4.5): Int {
+        val bg = background or Color.BLACK
+        val fg = preferred or Color.BLACK
+        if (ColorUtils.calculateContrast(fg, bg) >= minimum) return fg
+        return if (ColorUtils.calculateContrast(Color.BLACK, bg) >=
+            ColorUtils.calculateContrast(Color.WHITE, bg)) Color.BLACK else Color.WHITE
+    }
+
     private fun styleTree(view: View, lm: Lumen) {
+        if (featureColors.containsKey(view)) return
         when (view) {
             is EditText -> {
                 view.setTextColor(lm.ink)

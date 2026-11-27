@@ -295,7 +295,9 @@ class StorageActivity : Activity() {
             text = label; LumenTypography.fit(this, 14f); maxLines = 1; isClickable = true; gravity = Gravity.CENTER
             setPadding(dp(16), dp(8), dp(16), dp(8))
             background = rounded(if (on) cAcc else cCard, 16f)
-            setTextColor(if (on) cOnAcc else cFg)
+            LumenNativeTheme.preserveFeatureColors(this)
+            minimumHeight = dp(48)
+            setTextColor(LumenNativeTheme.readableInk(if (on) cOnAcc else cFg, if (on) cAcc else cCard))
             setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
             setOnClickListener { fn() }
         }
@@ -805,7 +807,9 @@ class StorageActivity : Activity() {
                 text = sp; LumenTypography.fit(this, 13f); maxLines = 1; isClickable = true
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 background = if (on) rounded(col, 12f) else rounded(cCard, 12f)
-                setTextColor(if (on) (if (lumOf(col) > 0.6) 0xFF111111.toInt() else Color.WHITE) else cFg)
+                LumenNativeTheme.preserveFeatureColors(this)
+                minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL
+                setTextColor(LumenNativeTheme.readableInk(if (on) Color.WHITE else cFg, if (on) col else cCard))
                 setOnClickListener { setHl(c) }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
         }
@@ -1183,13 +1187,14 @@ class StorageActivity : Activity() {
 
     /** Segment button of the Pie / List switch. */
     private fun segButton(t: String) = TextView(this).apply {
-        text = t; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(40)
+        text = t; LumenTypography.fit(this, 14f); gravity = Gravity.CENTER; isClickable = true; minimumHeight = dp(48)
         setPadding(dp(12), dp(8), dp(12), dp(8))
     }
 
     private fun paintSeg(b: TextView, on: Boolean) {
         b.background = rounded(if (on) cAcc else cCard, 16f)
-        b.setTextColor(if (on) cOnAcc else cFg)
+        LumenNativeTheme.preserveFeatureColors(b)
+        b.setTextColor(LumenNativeTheme.readableInk(if (on) cOnAcc else cFg, if (on) cAcc else cCard))
         b.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
     }
 

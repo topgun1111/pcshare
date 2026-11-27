@@ -78,6 +78,9 @@ jobs:
           python3 tools/lumen/lint.py --split-button-regression
           python3 tools/lumen/lint.py --accessibility-regression
           python3 tools/lumen/lint.py --performance-regression
+          python3 tools/lumen/lint.py --theme-consistency-regression
+          python3 tools/lumen/contrast.py --strict
+          python3 tools/lumen/parity.py
           node tools/lumen/test_split.js
           python3 - <<'PY'
           import pathlib, re, subprocess, tempfile

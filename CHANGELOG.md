@@ -6,6 +6,13 @@
 
 
 
+## 2026-11-28 - Native theme consistency
+
+### Fixed
+- Preserve readable note and storage selection colors instead of overriding them on resume.
+- Align image editor and PDF viewer actions with shared button styles and minimum touch heights.
+- Unify print-log action buttons and keep the action row scrollable on narrow screens.
+
 ## 2026-11-28 - Native display and touch alignment
 
 ### Changed

@@ -116,7 +116,7 @@ class PrintLogActivity : Activity() {
             }
         }
         bar.addView(adv)
-        root.addView(bar)
+        root.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; isFillViewport = true; addView(bar) })
 
         if (jids.isNotEmpty()) root.addView(android.widget.CheckBox(this).apply {
             text = "Only this job (" + jids.joinToString(" ") + ")"; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg)
@@ -157,9 +157,8 @@ class PrintLogActivity : Activity() {
     override fun onDestroy() { super.onDestroy(); exec.shutdownNow() }
 
     private fun chip(t: String, f: () -> Unit) = TextView(this).apply {
-        text = t; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg); gravity = Gravity.CENTER
-        setPadding(dp(16), dp(8), dp(16), dp(8))
-        background = GradientDrawable().apply { setColor(pal.cont); cornerRadius = dp(16).toFloat(); setStroke(dp(1), pal.bd) }
+        text = t
+        LumenButtons.apply(this, LumenButtons.Role.OUTLINE, compact = true, backdrop = pal.bg)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
         setOnClickListener { try { f() } catch (e: Throwable) { toast("Failed: " + (e.message ?: e.javaClass.simpleName)) } }
     }
