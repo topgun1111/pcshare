@@ -79,3 +79,43 @@ function checkAccessibleNavigation(errors) {
   for(const key of ['role','aria-labelledby','aria-modal','tabindex'])card.removeAttribute(key);
   opener.remove();
 }
+
+
+function checkDevicesPicker(errors) {
+  const sheet=document.createElement('div');
+  document.body.append(sheet);
+  const state={dev:'local',peers:[]};
+  const element=(tag,cls,text='')=>{
+    const el=document.createElement(tag);
+    el.className=cls;
+    el.textContent=text;
+    return el;
+  };
+  let scans=0,opened='',smb=false;
+  const picker=new Function('$','E','S','devsOnly','peerSub','batTxt','connTxt','agoTxt','ic','openDev','addIp','openSmb','api','pollPeers',
+    document.getElementById('devices-picker-source').textContent+
+    ';return {open:devPicker,poll:ok=>updateDevicePicker?.(ok)};')(
+      ()=>sheet,element,state,()=>state.peers,p=>({t:p.ok?'online':'offline'}),()=>'',p=>p.via,()=>'',()=>element('i',''),
+      id=>opened=id,()=>{},()=>smb=true,()=>{scans++;return Promise.resolve()},()=>{});
+  const status=()=>sheet.querySelector('[role=status]');
+  picker.open(true);
+  if(scans!==1||!status().textContent.includes('Searching'))errors.push('Devices: opening did not start a scan');
+  picker.poll(false);
+  if(!status().textContent.includes('Could not load'))errors.push('Devices: failed poll looks like an empty scan');
+  picker.poll(true);
+  if(!status().textContent.includes('No devices found yet'))errors.push('Devices: empty polling result did not stop searching');
+  state.peers=[{id:'smb:pc',name:'Windows PC',via:'Tailscale',kind:'SMB',ok:true}];
+  picker.poll(true);
+  const peer=()=>sheet.querySelector('[data-peer="smb:pc"]');
+  if(!status().hidden||!peer()?.textContent.includes('Windows PC'))errors.push('Devices: a late Tailscale peer is absent from the open sheet');
+  peer()?.focus();
+  state.peers[0].ok=false;
+  picker.poll(true);
+  if(document.activeElement!==peer()||!peer()?.textContent.includes('offline'))errors.push('Devices: reachability refresh lost focus or status');
+  peer()?.click();
+  if(opened!=='smb:pc'||sheet.style.display!=='none')errors.push('Devices: a discovered PC cannot be opened');
+  picker.open(true);
+  Array.from(sheet.querySelectorAll('button')).find(b=>b.textContent==='SMB Shares')?.click();
+  if(!smb)errors.push('Devices: Windows setup is not reachable');
+  sheet.remove();
+}

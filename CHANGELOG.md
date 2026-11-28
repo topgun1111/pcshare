@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Device discovery sheet
+
+### Fixed
+- Show newly found devices while the Devices sheet stays open.
+- Retry a scan or open Windows SMB setup directly from the Devices sheet.
+
 ## 2026-11-28 - Viewer transitions and list memory
 
 ### Fixed

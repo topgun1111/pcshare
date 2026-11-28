@@ -182,6 +182,8 @@ def browser_errors(page, themes):
     start = page.index("/*LUMEN-MODAL-FOCUS:BEGIN*/")
     end = page.index("/*LUMEN-MODAL-FOCUS:END*/")
     modal_focus_source = page[start:end]
+    start, end = page.index("let updateDevicePicker=null;"), page.index("/* Main menu tiles")
+    picker_source = page[start:end]
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):
@@ -204,6 +206,7 @@ def browser_errors(page, themes):
                         + '</script><script type="text/plain" id="row-a11y-source">' + row_a11y_source
                         + '</script><script type="text/plain" id="job-a11y-source">' + job_a11y_source
                         + '</script><script type="text/plain" id="modal-focus-source">' + modal_focus_source
+                        + '</script><script type="text/plain" id="devices-picker-source">' + picker_source
                         + "</script><script>" + script + "</script>")
             fixture.write_text(document, encoding="utf-8")
             args = [chrome, "--no-sandbox", "--headless", "--disable-gpu", "--no-first-run",

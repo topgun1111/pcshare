@@ -79,6 +79,7 @@ if (scheme === 'light') {
   checkNotices(errors);
   checkMotion(errors);
   checkAccessibleNavigation(errors);
+  checkDevicesPicker(errors);
   checkSegments(errors);
 }
 output.textContent = errors.length ? JSON.stringify(errors.slice(0,50)) : 'PASS';

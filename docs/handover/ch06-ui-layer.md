@@ -89,3 +89,8 @@ Select folders -> bottom bar **Style** (palette icon; not inside archives) -> sh
 ### Current Lumen UI checkpoint — 2026-11-28
 
 Native and WebView remain a single hybrid architecture. Foldable phases preserve visible native row anchors and album range/selection on reflow, coalesce viewport sync and permanent drawer updates, and refresh native density/paint/geometry using current WebView viewport width. Search keyboard retries are cancelled when hidden or detached; visualViewport resizes clamp list geometry. Shared dialog/snackbar/button, system bars, split buttons, settings switch labels and accessibility foundation are described in [chapter 22](ch22-lumen-completion-pass.md). Test deep gallery scroll, fold/unfold, drawer, split-screen, selection, dialogs, keyboard, custom hits and a running transfer. [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), source commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431): full and lite APKs, Lumen source/contrast/parity gates, selected JVM regression suites, delta generation and release publication passed. This confirms compilation and CI checks, not physical-device functionality.
+
+
+### Devices sheet refresh
+
+The Devices sheet starts a scan and redraws its peer rows on each current polling result. It keeps keyboard focus on the same device when reachability changes and offers Scan again and SMB Shares. Add by IP remains for LANShare peers. Windows file browsing uses SMB Shares with the PC's Tailscale address or hostname. Browser regression checks cover late peer arrival, an empty or failed poll, focus and the SMB shortcut. A real tailnet connection remains a device acceptance check.
