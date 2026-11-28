@@ -110,6 +110,23 @@ private fun nlDot(cv: Canvas, p: Paint, cx: Float, cy: Float, r: Float, ring: In
     p.color = col; cv.drawCircle(cx, cy, r, p)
 }
 
+internal fun ellipsizeFileName(name: String, directory: Boolean, paint: TextPaint, width: Float): String {
+    val available = maxOf(0f, width)
+    val dot = name.lastIndexOf('.')
+    if (directory || dot <= 0 || dot == name.lastIndex) {
+        return TextUtils.ellipsize(name, paint, available, TextUtils.TruncateAt.END).toString()
+    }
+    if (paint.measureText(name) <= available) return name
+
+    val extension = name.substring(dot)
+    val stemWidth = available - paint.measureText(extension)
+    if (stemWidth < paint.measureText("…")) {
+        return TextUtils.ellipsize(name, paint, available, TextUtils.TruncateAt.START).toString()
+    }
+    val stem = TextUtils.ellipsize(name.substring(0, dot), paint, stemWidth, TextUtils.TruncateAt.END)
+    return stem.toString() + extension
+}
+
 class NlRow(
     val nm: String, val dir: Boolean, val k: String, var a: String, val b: String,
     val badge: String?, val badgeCol: Int, val dup: Boolean,
@@ -261,7 +278,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
     override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
     override fun onMeasure(w: Int, h: Int) {
-        val base = if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f
+        val base = if (row?.k == "hdr") 38f else if (compact) 48f else if (large) 84f else if (medium) 72f else 60f
         val nameLine = LumenTypography.linePx(nameP, LumenTypography.TITLE_M, d)
         val details = LumenTypography.linePx(smallP, LumenTypography.BODY_M, d)
         val textBlock = when {
@@ -370,7 +387,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
             val aTxt = TextUtils.ellipsize(r.a, smallP, Math.max(0f, (xr - x0) * 0.45f), TextUtils.TruncateAt.END).toString()
             val sw = smallP.measureText(aTxt)
             val avail = xr - x0 - sw - 10f * d - (if (r.dup) dupW + 6f * d else 0f)
-            if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, maxOf(0f, avail), TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
+            if (ell == null || ellFor !== r || ellW != avail) { ell = ellipsizeFileName(r.nm, r.dir, nameP, avail); ellFor = r; ellW = avail }
             cv.drawText(ell!!, x0, cy - (fn.ascent + fn.descent) / 2f, nameP)
             if (r.dup) {
                 val bx = x0 + nameP.measureText(ell!!) + 6f * d
@@ -386,7 +403,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         val detailsLine = LumenTypography.linePx(smallP, LumenTypography.BODY_M, d)
         val top = cy - (nameLine + detailsLine) / 2f
         val avail = xr - x0 - (if (r.dup) dupW + 6f * d else 0f)
-        if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, maxOf(0f, avail), TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
+        if (ell == null || ellFor !== r || ellW != avail) { ell = ellipsizeFileName(r.nm, r.dir, nameP, avail); ellFor = r; ellW = avail }
         val base1 = top + (nameLine - (fn.descent - fn.ascent)) / 2f - fn.ascent
         cv.drawText(ell!!, x0, base1, nameP)
         if (r.dup) {
@@ -488,7 +505,7 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
         val out = ArrayList<String>()
         for (i in 0 until n) {
             val st = sl.getLineStart(i); val en = sl.getLineEnd(i)
-            out.add(if (i == n - 1 && sl.lineCount > n) TextUtils.ellipsize(r.nm.substring(st), nameP, tw, TextUtils.TruncateAt.END).toString()
+            out.add(if (i == n - 1 && sl.lineCount > n) ellipsizeFileName(r.nm.substring(st), r.dir, nameP, tw)
                     else r.nm.substring(st, en).trimEnd('\n', ' '))
         }
         if (out.isEmpty()) out.add("")
@@ -537,13 +554,15 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
         val r = row ?: return
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
+        val bareRadius = if (bare) LumenRadius.l(context) * d else 0f
         if (bare) {
-            p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 16f * d, 16f * d, p)
-            p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, 15.5f * d, 15.5f * d, p)
+            p.style = Paint.Style.FILL; p.color = pl.bg; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, bareRadius, bareRadius, p)
+            val borderRadius = maxOf(0f, bareRadius - d / 2f)
+            p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = pl.bd; rf.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f); cv.drawRoundRect(rf, borderRadius, borderRadius, p)
         } else if (isSel) {
             p.style = Paint.Style.FILL; p.color = pl.sel; rf.set(0f, 0f, w, h); cv.drawRoundRect(rf, 12f * d, 12f * d, p)
         }
-        rf.set(0f, 0f, w, h); rpl.draw(cv, rf, if (bare) 16f * d else 12f * d, if (isSel) pl.onsel else pl.fg)
+        rf.set(0f, 0f, w, h); rpl.draw(cv, rf, if (bare) bareRadius else 12f * d, if (isSel) pl.onsel else pl.fg)
         p.style = Paint.Style.FILL
         val s = if (bare) w - 2f * d else w - 6f * d; val lx = if (bare) d else 3f * d; val ly = if (bare) d else 3f * d
         val sh = if (bare) h - 2f * d else s * tall
@@ -753,13 +772,14 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
         val pl = pal ?: return
         val w = width.toFloat(); val h = height.toFloat()
         val cs = cell(w)
+        val cardRadius = LumenRadius.l(context) * d
         for (k in cells.indices) {
             val r = cells[k]
             val x = 4f * d + k * (cs + 4f * d); val y = 4f * d
             val on = (first + k) in sel
             rf.set(x, y, x + cs, y + cs)
             if (r.hid) cv.saveLayerAlpha(rf, 110) else cv.save()
-            clip.reset(); clip.addRoundRect(rf, 14f * d, 14f * d, Path.Direction.CW); cv.clipPath(clip)
+            clip.reset(); clip.addRoundRect(rf, cardRadius, cardRadius, Path.Direction.CW); cv.clipPath(clip)
             p.style = Paint.Style.FILL
             p.color = pl.kb["vid"] ?: pl.kb["file"] ?: 0; p.shader = null; cv.drawRect(rf, p)
             val bm = th[k]
@@ -781,7 +801,7 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
             nameP.color = Color.WHITE
             val tw = cs - (if (r.fresh) 18f else 6f) * d - (if (selMode) 34f else 6f) * d
             val fm = nameP.fontMetrics
-            val txt = TextUtils.ellipsize(r.nm, nameP, Math.max(0f, tw), TextUtils.TruncateAt.END).toString()
+            val txt = ellipsizeFileName(r.nm, r.dir, nameP, tw)
             cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + titleHeight / 2f - (fm.ascent + fm.descent) / 2f, nameP)
             if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d, nlErr(context))
             // play dot
@@ -798,7 +818,7 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
                 val f2 = dubP.fontMetrics
                 cv.drawText(t, right - tw2 + 6f * d, bottom - badgeHeight / 2f - (f2.ascent + f2.descent) / 2f, dubP)
             }
-            if (rplCell == k) { rf.set(x, y, x + cs, y + cs); rpl.draw(cv, rf, 14f * d, Color.WHITE) }   // Lumen 4e N9
+            if (rplCell == k) { rf.set(x, y, x + cs, y + cs); rpl.draw(cv, rf, cardRadius, Color.WHITE) }   // Lumen 4e N9
             cv.restore()
             // select circle (same as the grid card): top 5, right 5, 24
             val kx = x + cs - 5f * d - 12f * d; val ky = y + 5f * d + 12f * d

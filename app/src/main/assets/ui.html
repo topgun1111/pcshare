@@ -220,7 +220,7 @@ body.inarc #arcrow{display:flex}body.galm #arcrow{display:none}
 .opt .t{flex:1}.opt .t b{display:block;font-weight:500;font-size:var(--fs-16)}.opt .t small{color:var(--mut);font-size:var(--fs-12)}.opt.on .t b{color:var(--ac);font-weight:600}
 #sheet hr{border:0;border-top:1px solid var(--bd);margin:var(--sp-2) 0;width:100%}
 /* view: compact */
-#list.v-compact .row{min-height:44px;padding:2px var(--sp-3) 2px var(--sp-2);gap:var(--sp-2)}
+#list.v-compact .row{min-height:var(--sp-12);padding:var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-2);gap:var(--sp-2)}
 #list.v-compact .lead{width:36px;height:36px}
 #list.v-compact .fold svg{width:34px;height:29px}
 #list.v-compact .row .lead .kd,#list.v-compact .lead .ck{width:30px;height:30px;padding:var(--sp-1)}
@@ -229,8 +229,8 @@ body.inarc #arcrow{display:flex}body.galm #arcrow{display:none}
 #list.v-compact .nm b{flex:1;min-width:0;font-size:var(--fs-14)}
 #list.v-compact .nm small{flex:none;font-size:var(--fs-12)}
 /* view: grid */
-#list.v-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--sp-2);padding:var(--sp-2);align-items:start}
-@media(min-width:600px){#list.v-grid{grid-template-columns:repeat(4,1fr)}}
+#list.v-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2);padding:var(--sp-2);align-items:start}
+@media(min-width:600px){#list.v-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 #list.v-grid #empty,#list.v-grid .gal{grid-column:1/-1}
 #list.v-grid .row{flex-direction:column;justify-content:flex-start;gap:var(--sp-1);min-height:0;padding:var(--sp-1) var(--sp-1) var(--sp-2);border:1px solid var(--bd);border-radius:var(--r-l);background:var(--bg);text-align:center}
 #list.v-grid .row.sel{background:var(--bg);color:inherit}
@@ -392,6 +392,13 @@ body.selm #list.v-grid .row:not(.sel) .lead::after{content:'';position:absolute;
 .row.sel .lead .ck{display:block}#list:not(.v-grid) .row.sel .lead .kd,#list:not(.v-grid) .row.sel .lead .fold,#list:not(.v-grid) .row.sel .lead .bdg{display:none}
 .k-folder{--c:var(--k-folder-c);--b:var(--k-folder-b)}.k-img{--c:var(--cat-pic-t);--b:var(--cat-pic)}.k-vid{--c:var(--cat-vid-t);--b:var(--cat-vid)}.k-aud{--c:var(--cat-aud-t);--b:var(--cat-aud)}.k-pdf{--c:var(--cat-pdf-t);--b:var(--cat-pdf)}.k-zip{--c:var(--cat-zip-t);--b:var(--cat-zip)}.k-apk{--c:var(--cat-apk-t);--b:var(--cat-apk)}.k-doc,.k-office{--c:var(--cat-doc-t);--b:var(--cat-doc)}.k-file{--c:var(--cat-other-t);--b:var(--cat-other)}
 .nm{flex:1;min-width:0}.nm b{display:block;font-size:var(--fs-16);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm b.file-name,.vc .vn.file-name{display:flex;align-items:baseline}
+.file-name .file-stem,.file-name .file-extension{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-name .file-stem{min-width:0}
+.file-name .file-extension{flex:none;max-width:100%;direction:ltr}
+.file-name .dupb{flex:0 1 auto;min-width:0;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list.v-grid .nm b.file-name{display:flex;justify-content:center;align-items:flex-end}
+#list.v-grid .file-name .file-stem{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:anywhere}
 .nm small{display:flex;justify-content:space-between;gap:var(--sp-3);color:var(--mut);font-size:var(--fs-14)}.row.sel .nm small{color:inherit}
 #empty{padding:var(--sp-12) var(--sp-6);text-align:center;color:var(--mut)}
 #empty svg{width:72px;height:72px;margin:0 auto var(--sp-3);padding:var(--sp-4);border-radius:var(--r-full);background:var(--cont)}#empty p{margin:0}
@@ -1568,6 +1575,17 @@ try{navigator.vibrate=function(p){try{const n=Array.isArray(p)?(p.length===1?p[0
   document.addEventListener('change',e=>{const t=e.target;if(t&&t.type==='checkbox'&&t.closest&&t.closest('.sw'))hp('select')},true)}
 const $=s=>document.querySelector(s);
 const E=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+/*LUMEN-FILENAME:BEGIN*/
+function lmFileName(name,directory,tag='b',cls=''){
+  const label=E(tag,cls?cls+' file-name':'file-name');
+  const dot=directory?-1:name.lastIndexOf('.');
+  const hasExtension=dot>0&&dot<name.length-1;
+  label.append(E('span','file-stem',hasExtension?name.slice(0,dot):name));
+  if(hasExtension)label.append(E('span','file-extension',name.slice(dot)));
+  label.title=name;
+  return label;
+}
+/*LUMEN-FILENAME:END*/
 function lmPressed(button,active,marker='on'){
   button.classList.toggle(marker,active);button.setAttribute('aria-pressed',String(active));
 }
@@ -3112,7 +3130,7 @@ function render(){
     const nm=E('div','nm'),sub=E('small'),dt=i.mtime?new Date(i.mtime*1000).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+(S.view==='compact'?'':', '+new Date(i.mtime*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})):'';
     const sz=i.dir?(i.n==null?'Folder':i.n+(i.n===1?' item':' items')):fmt(i.size);
     if(S.view==='compact'){const sp=E('span','',S.sort==='date'&&dt?dt:sz);if(i.dir&&!(S.sort==='date'&&dt))i._sz=sp;sub.append(sp)}else{const sp=E('span','',sz);if(i.dir)i._sz=sp;sub.append(sp,E('span','',dt+(binRoot()&&i.bid&&i.mtime?' \u00b7 '+Math.max(0,30-Math.floor((Date.now()/1000-i.mtime)/86400))+'d left':'')))}
-    const nb=E('b','',i.name);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
+    const nb=lmFileName(i.name,i.dir);if(!i.dir&&DUPS.has(i.name))nb.append(E('span','dupb','duplicate?'));
     nm.append(nb,sub);r.append(lead,nm);
     r.onclick=()=>{if(r._lp){r._lp=false;return}
       if(S.sel.size){S.sel.has(i.name)?S.sel.delete(i.name):S.sel.add(i.name);r.classList.toggle('sel',S.sel.has(i.name));renderBar()}else if(i.dir)go(jn(P0,i.name));else if(isArcF(i))go(jn(P0,i.name)+'!');else if(k==='vid')playVid(i);else if(k==='img'&&!/\.(svg|heic|heif)$/i.test(i.name))viewImg(i);else if(k==='pdf')viewPdf(i);else if(k==='office'&&nativeOffice(i));else if(isEd(i))editFile(i);else openFile(i)};
@@ -3150,7 +3168,7 @@ function render(){
     GV.forEach(i=>{
       const c=E('div','vc'+(S.sel.has(i.name)?' sel':'')+(isHid(i)?' hdn':'')),pth=jn(S.path,i.name),key=thKey(i);
       const ph=E('div','ph');ph.append(ic('vid'));c.append(ph);
-      c.append(E('div','vn',i.name));
+      c.append(lmFileName(i.name,i.dir,'div','vn'));
       const pl=E('span','pl g0');pl.append(ic('play'));c.append(pl);
       const du=E('span','du g0');du.style.display='none';c.append(du);
       const ck=ic('check','ck');c.append(ck);
@@ -4179,7 +4197,7 @@ function renderSR(l){
           if(k==='vid'&&t.d>0&&!lead.querySelector('.dub'))lead.append(E('span','dub',fmtDur(t.d)))};
         const hit=thGet(key);if(hit)showR(hit);else thWatch(r,()=>({gen:S.rg,key:key,k:k,url:'/api/dl?dev='+enc(S.dev)+'&path='+enc(i.path),done:showR}))}}
     const nm=E('div','nm'),sub=E('small');sub.append(E('span','',par(i.path)));
-    nm.append(E('b','',i.name),sub);r.append(lead,nm);
+    nm.append(lmFileName(i.name,i.dir),sub);r.append(lead,nm);
     r.onclick=()=>i.dir?go(i.path):goFind(par(i.path),i.name);
     l.append(r)})}
 async function goFind(dir,name){S.path=dir;S.sel.clear();clearQ();await load();

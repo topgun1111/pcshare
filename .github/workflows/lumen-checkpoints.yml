@@ -34,4 +34,4 @@ jobs:
           python3 tools/lumen/lint.py --accessibility-regression
           node tools/lumen/test_split.js
       - name: Compile Android and test native Lumen controls
-        run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.LumenSelectionTest
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.lanshare.app.Lumen*Test'
