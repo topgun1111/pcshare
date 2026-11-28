@@ -137,7 +137,7 @@ if '--theme-consistency-regression' in sys.argv:
         'PrintLogActivity.kt':('LumenButtons.Role.OUTLINE', 'isFillViewport = true; addView(bar)'),
         'ImageEditActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY'),
         'PdfViewerActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY', 'LumenButtons.Role.TEXT'),
-        'UsActivity.kt':('LumenNativeTheme.preserveFeatureColors(c)', 'c.isSelected = on', 'dp(64f), dp(64f), 1f', 'isFillViewport = true; addView(row)'),
+        'UsActivity.kt':('LumenNativeTheme.preserveFeatureColors(c)', 'c.isSelected = on', 'cell.minimumHeight = dp(64f)', 'cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT, 1f', 'isFillViewport = true; addView(row)'),
         'OfficeViewerActivity.kt':('glyphBtn("search", "Find")', 'glyphBtn("back", "Back")'),
         'VaultViewActivity.kt':('Math.round(16 * d)', 'setTextIsSelectable(false)'),
         'VaultText.kt':('LumenNativeTheme.bars(this, pal.bg)', 'IME_FLAG_NO_PERSONALIZED_LEARNING', 'customSelectionActionModeCallback = none')
