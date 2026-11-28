@@ -7,6 +7,18 @@
 
 
 
+## 2026-11-28 - File browser and accessibility refinements
+
+### Changed
+- Keep filename extensions visible in narrow rows and grid captions.
+- Put extra file actions in More and keep them reachable on narrow screens or with larger text.
+- Honor Android's haptics setting and use short fades with Reduce motion.
+
+### Fixed
+- Keep notice actions available when several notices are grouped together.
+- Keep refresh and scrubber gestures consistent when screen density changes.
+- Announce file selection and transfer progress to screen readers and restore focus after dialogs.
+
 ## 2026-11-28 - Accessible fields and selection controls
 
 ### Fixed
