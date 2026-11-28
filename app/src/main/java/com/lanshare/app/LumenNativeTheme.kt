@@ -268,7 +268,10 @@ object LumenButtons {
             addState(intArrayOf(), face(false))
         }
         v.backgroundTintList = null
-        v.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(opq(on), 36)), states, shape(intArrayOf(Color.WHITE)))
+        // A filled role uses an overlay that moves its surface away from the label's luminance.
+        val rippleInk = if (transparent) opq(on) else
+            if (ColorUtils.calculateLuminance(opq(on)) > ColorUtils.calculateLuminance(opq(fills[0]))) Color.BLACK else Color.WHITE
+        v.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(rippleInk, 36)), states, shape(intArrayOf(Color.WHITE)))
         v.setTextColor(android.content.res.ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(disabledOn, on)))
         if (v is Button) {
             v.isAllCaps = false

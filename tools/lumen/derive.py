@@ -122,6 +122,78 @@ def grad_stops(prim, lab, dark):
         out.append(e)
     return out
 
+BLACK = "#000000"
+WHITE = "#ffffff"
+
+
+def text_on(background, foreground, minimum):
+    """Contrast on the same side of the foreground's luminance as the solid fill."""
+    light_text = lum(foreground) >= lum(background)
+    return lambda bg: (lum(foreground) >= lum(bg)) == light_text and cr(foreground, bg) >= minimum
+
+
+def readable_stop(start, foreground, background, minimum):
+    ok = text_on(background, foreground, minimum)
+    limit = BLACK if lum(foreground) >= lum(background) else WHITE
+    for percent in range(101):
+        candidate = mix(start, limit, percent / 100)
+        if ok(candidate):
+            return candidate
+    return limit  # The strict gate rejects an impossible foreground.
+
+
+def glass_passes(tint, alpha, foregrounds, minimum):
+    # Test the full black-to-white backdrop envelope. Requiring the same
+    # polarity prevents accepting two individually readable extremes with an unreadable middle.
+    extremes = [mix(bg, tint, alpha) for bg in (BLACK, WHITE)]
+    # Dialog grain can shift the composite towards mid-grey by up to 3%.
+    samples = extremes + [mix(bg, "#808080", .03) for bg in extremes]
+    return all(all(text_on(tint, fg, minimum)(bg) for bg in samples) for fg in foregrounds)
+
+
+def finish(d, high_contrast=False):
+    """Derived material colours, based on the final palette (including preset overrides)."""
+    dark = is_dark(d["canvas"])
+    minimum = 7 if high_contrast else 4.5
+    # Preserve curated palette entries and derive a distinct selection material from them.
+    rest = [d[key] for key in ("canvas", "surface", "surfaceHi", "surfaceLo")]
+    target = WHITE if dark else BLACK
+    result = {}
+    for percent in range(101):
+        selected = mix(d["primaryCont"], target, percent / 100)
+        end = mix(selected, d["primary"], .10)
+        if not all(cr(bg, base) >= 1.5 and (lum(bg) > lum(base)) == dark
+                   for base in rest for bg in (selected, end)):
+            continue
+        for fg in (d["onPrimaryCont"], BLACK, WHITE):
+            if all(text_on(selected, fg, minimum)(bg) for bg in (selected, end)):
+                result.update(selection=selected, selectionTo=end, onSelection=fg)
+                break
+        if result:
+            break
+    # Extremely light/dark accent colours can pull the second stop back toward
+    # the resting surface. A solid selection still gives a visible state.
+    if not result:
+        result.update(selection=target, selectionTo=target, onSelection=BLACK if dark else WHITE)
+    for key, label, base, starts in (
+        ("grad", "onPrimary", "primary", (d["gradFrom"], d["gradTo"])),
+        ("tonal", "onPrimaryCont", "primaryCont", (d["primaryCont"], mix(d["primaryCont"], d["primary"], .10))),
+        ("danger", "onError", "error", (mix(d["error"], WHITE, .06), mix(d["error"], BLACK, .14))),
+        ("success", "onSuccess", "success", (mix(d["success"], WHITE, .08), mix(d["success"], BLACK, .15))),
+    ):
+        for suffix, start in zip(("From", "To"), starts):
+            result[key + suffix] = readable_stop(start, d[label], d[base], minimum)
+    foregrounds = (d["ink"], d["inkMut"])
+    tint = d["glassTint"]
+    # High contrast uses the solid surface. Grain is disabled in that mode.
+    if not high_contrast:
+        for percent in range(30, 100):
+            # Reserve a percentage point for alpha / RGB rounding differences.
+            if glass_passes(tint, (percent - 1) / 100, foregrounds, minimum):
+                return {**result, "glassColor": tint, "glassFloor": f"{percent}%", "glassSafe": hexa(tint, percent / 100)}
+    return {**result, "glassColor": d["surface"], "glassFloor": "100%", "glassSafe": hexa(d["surface"], 1)}
+
+
 def fresh(d, over=None):
     """The 8 slots a preset does not list, derived from its own slots."""
     dark = is_dark(d["canvas"])
@@ -207,4 +279,5 @@ def from_inputs(hue, tint, mode):
     d.update(SEM_DARK if dark else SEM_LIGHT)
     d.update(fresh(d))
     d["scrim"] = "#0000008f" if dark else hexa(N(.06), .32)
+    d.update(finish(d))
     return d, sn

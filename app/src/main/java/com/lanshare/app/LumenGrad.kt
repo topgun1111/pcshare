@@ -31,8 +31,8 @@ object LumenGrad {
     /** gPrimary stops (spec 5.2): the theme's gradFrom -> gradTo slots (Ember = the spec's #D2590A -> #A93F00 light, #FFB77C -> #FF9A4D dark, derived for the other themes). */
     fun primary(lm: Lumen): IntArray = intArrayOf(lm.gradFrom, lm.gradTo)
     fun fab(fab: Int): IntArray = intArrayOf(LumenCategory.mix(fab, WHITE, 0.06f), LumenCategory.mix(fab, BLACK, 0.10f))
-    fun danger(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.error, WHITE, 0.06f), LumenCategory.mix(lm.error, BLACK, 0.14f))
-    fun success(lm: Lumen): IntArray = intArrayOf(LumenCategory.mix(lm.success, WHITE, 0.08f), LumenCategory.mix(lm.success, BLACK, 0.15f))
+    fun danger(lm: Lumen): IntArray = intArrayOf(lm.dangerFrom, lm.dangerTo)
+    fun success(lm: Lumen): IntArray = intArrayOf(lm.successFrom, lm.successTo)
 
     /** 135 degrees: top-left to bottom-right of the rectangle. */
     fun diag(c: IntArray, l: Float, t: Float, r: Float, b: Float): Shader = LinearGradient(l, t, r, b, c[0], c[1], Shader.TileMode.CLAMP)

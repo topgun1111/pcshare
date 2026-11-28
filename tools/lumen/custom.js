@@ -37,6 +37,44 @@ function lmGradStops(prim,lab,dark){prim=prim.slice(0,7);lab=lab.slice(0,7);var 
   if(prim.toLowerCase()===sp[0])ends=sp[1].slice();else{var q=lmToHsl(prim);ends=dark?[prim,lmHsl(q[0],q[1],q[2]-0.09)]:[lmHsl(q[0],q[1],q[2]+0.05),lmHsl(q[0],q[1],q[2]-0.05)]}
   var lighter=lmLum(lab)<0.5;
   return ends.map(function(e){var q=lmToHsl(e),l=q[2];for(var i=0;i<100;i++){if(lmCr(lab,e)>=4.5)break;l+=lighter?0.01:-0.01;if(l<=0||l>=1)break;e=lmHsl(q[0],q[1],l)}return e})}
+function lmTextOn(background, foreground, minimum){
+  var lightText=lmLum(foreground)>=lmLum(background);
+  return function(bg){return (lmLum(foreground)>=lmLum(bg))===lightText&&lmCr(foreground,bg)>=minimum};
+}
+function lmReadableStop(start,foreground,background,minimum){
+  var ok=lmTextOn(background,foreground,minimum),limit=lmLum(foreground)>=lmLum(background)?'#000000':'#ffffff';
+  for(var i=0;i<=100;i++){var candidate=lmMix(start,limit,i/100);if(ok(candidate))return candidate}
+  return limit;
+}
+function lmFinish(d,highContrast){
+  var black='#000000',white='#ffffff',dark=lmDarkCanvas(d.canvas),minimum=highContrast?7:4.5;
+  var rest=[d.canvas,d.surface,d.surfaceHi,d.surfaceLo],target=dark?white:black,result={};
+  for(var i=0;i<=100;i++){
+    var selected=lmMix(d.primaryCont,target,i/100),end=lmMix(selected,d.primary,.10),stops=[selected,end];
+    if(!rest.every(function(base){return stops.every(function(bg){return lmCr(bg,base)>=1.5&&(lmLum(bg)>lmLum(base))===dark})}))continue;
+    var on=[d.onPrimaryCont,black,white].find(function(fg){return stops.every(lmTextOn(selected,fg,minimum))});
+    if(on){result={selection:selected,selectionTo:end,onSelection:on};break}
+  }
+  if(!result.selection)result={selection:target,selectionTo:target,onSelection:dark?black:white};
+  var gradients=[
+    ['grad',d.onPrimary,d.primary,d.gradFrom,d.gradTo],
+    ['tonal',d.onPrimaryCont,d.primaryCont,d.primaryCont,lmMix(d.primaryCont,d.primary,.10)],
+    ['danger',d.onError,d.error,lmMix(d.error,white,.06),lmMix(d.error,black,.14)],
+    ['success',d.onSuccess,d.success,lmMix(d.success,white,.08),lmMix(d.success,black,.15)]
+  ];
+  gradients.forEach(function(g){result[g[0]+'From']=lmReadableStop(g[3],g[1],g[2],minimum);
+    result[g[0]+'To']=lmReadableStop(g[4],g[1],g[2],minimum)});
+  if(!highContrast){
+    for(var percent=30;percent<100;percent++){
+      var extremes=[black,white].map(function(bg){return lmMix(bg,d.glassTint,(percent-1)/100)});
+      var samples=extremes.concat(extremes.map(function(bg){return lmMix(bg,'#808080',.03)}));
+      if([d.ink,d.inkMut].every(function(fg){return samples.every(lmTextOn(d.glassTint,fg,minimum))})){
+        result.glassColor=d.glassTint;result.glassFloor=percent+'%';result.glassSafe=lmHexa(d.glassTint,percent/100);return result;
+      }
+    }
+  }
+  result.glassColor=d.surface;result.glassFloor='100%';result.glassSafe=lmHexa(d.surface,1);return result;
+}
 function lmFresh(d){var dark=lmDarkCanvas(d.canvas),p=lmToHsl(d.primary),sat=p[1]<0.1?0.08:0.28,L=dark?0.78:0.40,o={};
   o.surfaceLo=dark?lmMix(d.canvas,'#000000',0.35):lmMix(d.canvas,d.ink,0.06);
   o.edgeHi=dark?'#ffffff29':'#ffffffb3';
@@ -78,6 +116,7 @@ function lmFromInputs(hue,tint,mode){hue=lmMod(+hue,360);tint=Math.max(0,Math.mi
   var sem=lmSem(dark);for(var k in sem)d[k]=sem[k];
   var fr=lmFresh(d);for(var k2 in fr)d[k2]=fr[k2];
   d.scrim=dark?'#0000008f':lmHexa(N(0.06),0.32);
+  Object.assign(d,lmFinish(d,false));
   return{d:d,sn:sn}}
 /* vars the 42 presets declare by hand and the slots do not cover: FAB, bars, file-type colours, home tiles (Custom derives them) */
 function lmCustExtras(d,hue,dark){var o={},K={img:340,vid:265,aud:205,pdf:5,zip:45,apk:95,doc:30};

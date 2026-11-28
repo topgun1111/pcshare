@@ -271,23 +271,19 @@ class NlBarView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity
         fillP.shader = null
         fillP.style = Paint.Style.FILL
         val sliding = sel && selAt != 0L && SystemClock.uptimeMillis() - selAt < 200L
-        // Part 4b (N1 b): G1 chrome fill by glass step (tint-raised stand-in, opaque at F3)
-        // transparent only where the page twin (#top) is transparent too: glass steps F0 / F1; F2 / F3 stay filled
+        // Keep the native header opaque over its WebView twin.
         val goal = 1f   // 4d fix: the page's own #top bar (title + glyphs) sits under this view, so the fill must stay opaque or both get drawn on top of each other (garbled title)
         // The fill is always opaque (goal = 1), so the elevation fade must not run: it restarted from 0 on every top <-> scrolled toggle (fast scrolling) and the bar flashed see-through over the page twin.
         elevAt = 0L; elevK = goal
         val ek = elevK
         // text / glyph colour: the bar's own (on a filled bar) fades to the theme ink (on the transparent bar)
         val ob = if (sel) p.onbar else LumenCategory.mix(lumen().ink, p.onbar, ek)
-        // 4f N1 (c): real backdrop blur under the bar (F0 / F1, API 31+); otherwise the 4b tint-raised stand-in
         val barBase = if (sel && !sliding) p.sel else p.bar
-        val live = ek > 0.01f && NlBackdrop.draw(cv, this, parent as? View, 0f)
-        val cf = if (live) LumenGlass.blurFill(context, barBase) else LumenGlass.chromeFill(context, barBase)
-        fillP.color = LumenGlass.withAlpha(cf or 0xFF000000.toInt(), ek)
+        fillP.color = LumenGlass.withAlpha(barBase, ek)
         cv.drawRect(0f, 0f, bw, bh, fillP)
         // gChrome: the top feels lighter (white 8 % on light bars / 5 % on dark bars, fading out by the bottom edge); flat at F3
         val dark = AppPal.night(context)
-        if (LumenGlass.chromeGradient(context)) {
+        if ((!sel || sliding) && LumenGlass.chromeGradient(context)) {
             fillP.alpha = Math.round(255f * ek)
             fillP.shader = LinearGradient(0f, 0f, 0f, bh, if (dark) 0x0DFFFFFF else 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
             cv.drawRect(0f, 0f, bw, bh, fillP)
@@ -533,11 +529,11 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
         // N1 (b): the page's own tint (or glassTint) by glass step. No backdrop blur is possible under a native view, so F0-F2 are tint-raised (see LumenGlass.chromeFill); F3 = opaque
         val base = if (bg != 0) bg else lm.glassTint
         val live = NlBackdrop.draw(cv, this, parent as? View, rad)   // 4f N1 (c): real blur under the dock pill (F0 / F1, API 31+)
-        val raised = if (live) Math.max(0xD2, LumenGlass.blurFill(context, base) ushr 24)   // blurred rows: never less than 82 %
-                     else Math.max(0xEB, LumenGlass.chromeFill(context, base) ushr 24)   // list rows run under the dock: never less than 92 %
+        val tint = if (live) LumenGlass.blurFill(context, base, lm) else LumenGlass.chromeFill(context, base, lm)
+        val raised = maxOf(if (live) 0xD2 else 0xEB, tint ushr 24)
         val f3 = !LumenGlass.chromeGradient(context)
         fillP.shader = null; fillP.style = Paint.Style.FILL
-        fillP.color = if (f3) ((base and 0x00FFFFFF) or 0xFF000000.toInt()) else ((base and 0x00FFFFFF) or (raised shl 24))
+        fillP.color = if (f3) ((base and 0x00FFFFFF) or 0xFF000000.toInt()) else ((tint and 0x00FFFFFF) or (raised shl 24))
         rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
         // gChrome light from the top (not at F3) + edge: highlight from the top-left (edgeHi) over a 0.5 dp outer hairline (spec 6.1 items 4-6); F3 = 1 dp edge
         if (!f3) { fillP.shader = LinearGradient(0f, 0f, 0f, bh, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP); cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null }

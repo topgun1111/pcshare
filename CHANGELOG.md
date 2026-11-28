@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Lumen contrast
+
+### Fixed
+- Keep text readable on translucent panels, including over very bright or very dark content.
+- Make selected files and filters easier to distinguish and improve text contrast on colored buttons.
+
 ## 2026-11-28 - Search, Office and secure viewer consistency
 
 ### Fixed

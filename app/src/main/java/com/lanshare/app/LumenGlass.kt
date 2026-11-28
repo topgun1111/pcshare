@@ -5,6 +5,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.Window
 import android.view.WindowManager
+import androidx.core.graphics.ColorUtils
 
 /**
  * Lumen Part 4a (N1 a): native glass for dialogs and sheets, same F0-F3 ladder as the page (spec 6.5).
@@ -49,21 +50,38 @@ object LumenGlass {
             } catch (_: Throwable) { }
         }
         val alpha = if (blurred) (if (st == 0) 0.72f else 0.82f) else 0.94f
-        return (Math.round(255f * alpha) shl 24) or (lm.glassTint and 0x00FFFFFF)
+        return raisedAlpha(lm.glassSafe, alpha)
     }
 
     /** Modal G3: preserve readable text over either extreme of the backdrop; secure windows never blur. */
     fun dialogFill(w: Window?, c: Context, secure: Boolean): Int {
         val lm = Lumen.of(c)
         if (secure) return lm.surface or 0xFF000000.toInt()
-        val fill = apply(w, c)
-        val readable = listOf(0xFF000000.toInt(), 0xFFFFFFFF.toInt()).all { behind ->
-            val bg = androidx.core.graphics.ColorUtils.compositeColors(fill, behind)
-            listOf(lm.ink, lm.inkMut).all { fg -> androidx.core.graphics.ColorUtils.calculateContrast(fg or 0xFF000000.toInt(), bg) >= 4.5 }
+        return apply(w, c)
+    }
+
+    private fun raisedAlpha(base: Int, alpha: Float): Int =
+        (maxOf(base ushr 24, Math.round(255f * alpha)) shl 24) or (base and 0x00FFFFFF)
+
+    /** Keep a themed chrome tint only when both text roles read over either backdrop extreme. */
+    private fun readableChrome(lm: Lumen, fill: Int): Int {
+        if (fill ushr 24 == 255) return fill
+        if ((fill and 0x00FFFFFF) == (lm.glassSafe and 0x00FFFFFF)) {
+            return raisedAlpha(lm.glassSafe, (fill ushr 24) / 255f)
         }
-        if (readable) return fill
-        w?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-        return lm.surface or 0xFF000000.toInt()
+        val low = ColorUtils.compositeColors(fill, android.graphics.Color.BLACK)
+        val high = ColorUtils.compositeColors(fill, android.graphics.Color.WHITE)
+        for (foreground in intArrayOf(lm.ink, lm.inkMut)) {
+            val text = foreground or 0xFF000000.toInt()
+            val min = ColorUtils.calculateContrast(text, low)
+            val max = ColorUtils.calculateContrast(text, high)
+            val luminance = ColorUtils.calculateLuminance(text)
+            if (min < 4.5 || max < 4.5 || luminance in
+                ColorUtils.calculateLuminance(low)..ColorUtils.calculateLuminance(high)) {
+                return raisedAlpha(lm.glassSafe, (fill ushr 24) / 255f)
+            }
+        }
+        return fill
     }
 
     /** Rounded panel: [fill] + edge hairline. [top] = only the top corners round (bottom sheet). */
@@ -85,24 +103,24 @@ object LumenGlass {
      * the tier alpha 72 % / 62 % would show unblurred page content, so it is lifted to 88 / 84 % (F0) and 92 / 88 % (F1) light / dark; F2 = 94 / 92 %; F3 = opaque.
      * Real backdrop blur for this chrome is task N1 (c), Part 4d. [base] = the colour the page uses for that surface (its own bar / card colour).
      */
-    fun chromeFill(c: Context, base: Int): Int {
-        if ((base ushr 24) < 0xFF) return base   // the page already chose a translucent colour: keep it
+    fun chromeFill(c: Context, base: Int, lm: Lumen = Lumen.of(c)): Int {
+        val material = step(c)
+        if (material >= 3) return base or 0xFF000000.toInt()
         val night = AppPal.night(c)
-        val a = when (step(c)) {
+        val a = when (material) {
             0 -> if (night) 0.84f else 0.88f
             1 -> if (night) 0.88f else 0.92f
             2 -> if (night) 0.92f else 0.94f
             else -> 1f
         }
-        return withAlpha(base, a)
+        return readableChrome(lm, withAlpha(base, a))
     }
 
     /** Lumen 4f (N1 c): fill when the real backdrop blur is painted under the chrome (spec 6.2 G1 tier alpha, F0 lower than F1 because it is blurrier). */
-    fun blurFill(c: Context, base: Int): Int {
-        if ((base ushr 24) < 0xFF) return base
+    fun blurFill(c: Context, base: Int, lm: Lumen = Lumen.of(c)): Int {
         val night = AppPal.night(c)
         val a = if (step(c) == 0) (if (night) 0.66f else 0.72f) else (if (night) 0.72f else 0.78f)
-        return withAlpha(base, a)
+        return readableChrome(lm, withAlpha(base, a))
     }
 
     /** gChrome (top light from above) is only drawn for F0-F2; F3 is flat (spec 6.5). */

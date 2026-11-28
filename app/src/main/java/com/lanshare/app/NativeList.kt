@@ -353,7 +353,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         nameP.textSize = LumenTypography.snap(if (c) 15f else 16f) * d * UiScale.tf
         smallP.textSize = LumenTypography.snap(if (c) 12f else 13f) * d * UiScale.tf
         nameP.color = if (isSel) pl.onsel else pl.fg
-        smallP.color = if (isSel) Color.argb(0xCC, Color.red(pl.onsel), Color.green(pl.onsel), Color.blue(pl.onsel)) else pl.mut
+        smallP.color = if (isSel) pl.onsel else pl.mut
         var dupW = 0f
         if (r.dup) { dupP.color = nlLm(context).onWarning; dupW = dupP.measureText("duplicate?") + 12f * d }   // text on the warning pill (contrast-tested slot; was a fixed brown)
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
