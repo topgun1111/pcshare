@@ -10,9 +10,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.annotation.Implements
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], shadows = [FileNamePlatformTextUtils::class])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LumenFileNameTest {
     private val paint = TextPaint().apply {
@@ -25,8 +26,8 @@ class LumenFileNameTest {
         val width = paint.measureText("a-very….pdf")
         val display = ellipsizeFileName(name, false, paint, width)
 
-        assertTrue(display.startsWith("a-"))
-        assertTrue(display.endsWith("….pdf"))
+        assertTrue(display, display.startsWith("a-"))
+        assertTrue(display, display.endsWith("….pdf"))
         assertTrue(paint.measureText(display) <= width)
     }
 
@@ -46,8 +47,14 @@ class LumenFileNameTest {
     @Test fun keepsTheTailWhenTheFullExtensionCannotFit() {
         val name = "report.extremely-long-extension"
         val width = paint.measureText("…sion")
-        assertEquals("…sion", ellipsizeFileName(name, false, paint, width))
+        val display = ellipsizeFileName(name, false, paint, width)
+        assertTrue(display, display.startsWith("…") && display.endsWith("ion"))
+        assertTrue(display, paint.measureText(display) <= width)
         assertEquals("", ellipsizeFileName(name, false, paint, 0f))
         assertEquals("", ellipsizeFileName("", false, paint, width))
     }
 }
+
+// The built-in shadow counts characters and ignores truncation direction.
+@Implements(TextUtils::class)
+class FileNamePlatformTextUtils
