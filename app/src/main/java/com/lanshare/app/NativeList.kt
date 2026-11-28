@@ -219,10 +219,10 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
     var medium = false     // medium thumbnails (ui.html #list.t-md): row 72, lead 62x56
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(16f) * d * UiScale.tf }
-    private val smallP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(13f) * d * UiScale.tf }   // sizes / dates / counts: tabular figures (spec 7)
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(10f) * d * UiScale.tf }
+    private val nameP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med() }, LumenTypography.TITLE_M, d)
+    private val smallP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg() }, LumenTypography.BODY_M, d, digits = true)   // sizes / dates / counts: tabular figures (spec 7)
+    private val dupP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_S, d)
+    private val dubP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_S, d, digits = true)
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -241,10 +241,11 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
     fun densityChanged(value: Float) {
         if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
         d = value; paintTextScale = UiScale.tf
-        nameP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
-        smallP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
-        dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
-        dubP.textSize = LumenTypography.snap(10f) * d * UiScale.tf
+        LumenTypography.paint(nameP, LumenTypography.TITLE_M, d)
+        LumenTypography.paint(smallP, LumenTypography.BODY_M, d)
+        LumenTypography.paint(dupP, LumenTypography.LABEL_S, d)
+        LumenTypography.paint(dubP, LumenTypography.LABEL_S, d)
+        ell = null
         requestLayout(); invalidate()
     }
 
@@ -261,8 +262,14 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
 
     override fun onMeasure(w: Int, h: Int) {
         val base = if (row?.k == "hdr") 38f else if (compact) 44f else if (large) 84f else if (medium) 72f else 60f
-        val extra = if (UiScale.tf > 1f) (UiScale.tf - 1f) * (if (compact || row?.k == "hdr") 24f else 42f) else 0f
-        setMeasuredDimension(MeasureSpec.getSize(w), Math.round(maxOf(48f, base + extra) * d))
+        val nameLine = LumenTypography.linePx(nameP, LumenTypography.TITLE_M, d)
+        val details = LumenTypography.linePx(smallP, LumenTypography.BODY_M, d)
+        val textBlock = when {
+            row?.k == "hdr" -> details
+            compact && UiScale.tf < 1.3f -> maxOf(nameLine, details)
+            else -> nameLine + details
+        }
+        setMeasuredDimension(MeasureSpec.getSize(w), Math.round(maxOf(48f * d, base * d, textBlock + 12f * d)))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
@@ -275,10 +282,10 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         val w = width.toFloat(); val h = height.toFloat()
         p.style = Paint.Style.FILL
         if (r.k == "hdr") {   // "In subfolders (N)" search header: text only, padding 14/16/6, 13px muted
-            smallP.textSize = LumenTypography.snap(13f) * d * UiScale.tf; smallP.color = pl.mut
+            smallP.color = pl.mut
             val f = smallP.fontMetrics
-            val t = TextUtils.ellipsize(r.nm, smallP, w - 32f * d, TextUtils.TruncateAt.END).toString()
-            cv.drawText(t, 16f * d, 14f * d + (18.2f * d - (f.descent - f.ascent)) / 2f - f.ascent, smallP)
+            val t = TextUtils.ellipsize(r.nm, smallP, maxOf(0f, w - 32f * d), TextUtils.TruncateAt.END).toString()
+            cv.drawText(t, 16f * d, (h - f.descent - f.ascent) / 2f, smallP)
             return
         }
         if (isSel) {
@@ -298,7 +305,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         val lg = large && !c
         val md = medium && !c && !lg
         // list: row 60, lead 48x44 from x=10, tile/circle 40, icon 24 | compact: row 44, lead 36x36 from x=8, tile/circle 30, icon 20
-        val cy = (if (c) 21.5f else if (lg) 41.5f else if (md) 35.5f else 29.5f) * d                      // (pad + (row-2*pad-1)/2) dp
+        val cy = (h - d) / 2f
         val lcx = (if (c) 26f else if (lg) 48f else if (md) 41f else 34f) * d
         val tile = (if (c) 15f else if (lg) 32f else if (md) 26f else 20f) * d                        // half of the 40 / 30 tile
         val ico = (if (c) 20f else if (lg) 36f else if (md) 30f else 24f) * d
@@ -337,10 +344,11 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
                     val right = lcx + leadR - 3f * d; val bottom = cy + leadB - 3f * d
-                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
+                    val badgeHeight = LumenTypography.linePx(dubP, LumenTypography.LABEL_S, d)
+                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - badgeHeight, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
                     dubP.color = Color.WHITE
                     val fm = dubP.fontMetrics
-                    cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
+                    cv.drawText(t, right - tw + 4f * d, bottom - badgeHeight / 2f - (fm.ascent + fm.descent) / 2f, dubP)
                 }
             } else {
                 NlFileIcons.draw(cv, r.nm, r.k, lcx - tile, cy - tile, tile * 2f, LumenCategory.of(context), d)   // Lumen 11.6: category gradient tile + glyph (+ extension from 64 dp)
@@ -350,45 +358,46 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
         if (r.fresh && !isSel) { val o = (if (c) 2f else 3f) * d; nlDot(cv, p, lcx - tile + o, cy - tile + o, (if (c) 4f else 5f) * d, pl.bg, d, nlErr(context)) }
         // ---- texts ----
         val xr = w - 14f * d
-        nameP.textSize = LumenTypography.snap(if (c) 15f else 16f) * d * UiScale.tf
-        smallP.textSize = LumenTypography.snap(if (c) 12f else 13f) * d * UiScale.tf
         nameP.color = if (isSel) pl.onsel else pl.fg
         smallP.color = if (isSel) pl.onsel else pl.mut
         var dupW = 0f
         if (r.dup) { dupP.color = nlLm(context).onWarning; dupW = dupP.measureText("duplicate?") + 12f * d }   // text on the warning pill (contrast-tested slot; was a fixed brown)
         val fn = nameP.fontMetrics; val fs = smallP.fontMetrics
-        if (c) {
+        val duplicateHalf = maxOf(7.7f * d, (dupP.descent() - dupP.ascent()) / 2f + 2f * d)
+        if (c && UiScale.tf < 1.3f) {
             // compact: one line  [name .......... small]   (name flex 1, small flex none, gap 10)
             val x0 = 54f * d
-            val aTxt = TextUtils.ellipsize(r.a, smallP, Math.max(40f * d, (xr - x0) * 0.45f), TextUtils.TruncateAt.END).toString()
+            val aTxt = TextUtils.ellipsize(r.a, smallP, Math.max(0f, (xr - x0) * 0.45f), TextUtils.TruncateAt.END).toString()
             val sw = smallP.measureText(aTxt)
             val avail = xr - x0 - sw - 10f * d - (if (r.dup) dupW + 6f * d else 0f)
-            if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, avail, TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
+            if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, maxOf(0f, avail), TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
             cv.drawText(ell!!, x0, cy - (fn.ascent + fn.descent) / 2f, nameP)
             if (r.dup) {
                 val bx = x0 + nameP.measureText(ell!!) + 6f * d
-                p.color = pl.warn; rf.set(bx, cy - 7.7f * d, bx + dupW, cy + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
+                p.color = pl.warn; rf.set(bx, cy - duplicateHalf, bx + dupW, cy + duplicateHalf); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
                 val fd = dupP.fontMetrics
                 cv.drawText("duplicate?", bx + 6f * d, cy - (fd.ascent + fd.descent) / 2f, dupP)
             }
             cv.drawText(aTxt, xr - sw, cy - (fs.ascent + fs.descent) / 2f, smallP)
             return
         }
-        val x0 = (if (lg) 98f else if (md) 84f else 70f) * d
-        val top = cy - 20.3f * d                                    // block = 22.4 + 18.2 line heights, centred
+        val x0 = (if (c) 54f else if (lg) 98f else if (md) 84f else 70f) * d
+        val nameLine = LumenTypography.linePx(nameP, LumenTypography.TITLE_M, d)
+        val detailsLine = LumenTypography.linePx(smallP, LumenTypography.BODY_M, d)
+        val top = cy - (nameLine + detailsLine) / 2f
         val avail = xr - x0 - (if (r.dup) dupW + 6f * d else 0f)
-        if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, avail, TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
-        val base1 = top + (22.4f * d - (fn.descent - fn.ascent)) / 2f - fn.ascent
+        if (ell == null || ellFor !== r || ellW != avail) { ell = TextUtils.ellipsize(r.nm, nameP, maxOf(0f, avail), TextUtils.TruncateAt.END).toString(); ellFor = r; ellW = avail }
+        val base1 = top + (nameLine - (fn.descent - fn.ascent)) / 2f - fn.ascent
         cv.drawText(ell!!, x0, base1, nameP)
         if (r.dup) {
-            val bx = x0 + nameP.measureText(ell!!) + 6f * d; val mid = top + 11.2f * d
-            p.color = pl.warn; rf.set(bx, mid - 7.7f * d, bx + dupW, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
+            val bx = x0 + nameP.measureText(ell!!) + 6f * d; val mid = top + nameLine / 2f
+            p.color = pl.warn; rf.set(bx, mid - duplicateHalf, bx + dupW, mid + duplicateHalf); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
             val fd = dupP.fontMetrics
             cv.drawText("duplicate?", bx + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
-        val base2 = top + 22.4f * d + (18.2f * d - (fs.descent - fs.ascent)) / 2f - fs.ascent
+        val base2 = top + nameLine + (detailsLine - (fs.descent - fs.ascent)) / 2f - fs.ascent
         val line = xr - x0
-        val aTxt = TextUtils.ellipsize(r.a, smallP, line, TextUtils.TruncateAt.END).toString()
+        val aTxt = TextUtils.ellipsize(r.a, smallP, maxOf(0f, line), TextUtils.TruncateAt.END).toString()
         cv.drawText(aTxt, x0, base2, smallP)
         if (r.b.isNotEmpty()) {
             // narrow window: drop the time ("May 12, 2026, 06:54 PM" -> "May 12, 2026"), then ellipsize, then hide
@@ -423,9 +432,9 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
     override fun onTouchEvent(e: MotionEvent): Boolean { rpl.touch(e); return super.onTouchEvent(e) }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med(); textSize = LumenTypography.snap(17f) * d * UiScale.tf }
-    private val dupP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(10f) * d * UiScale.tf }
+    private val nameP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.med() }, LumenTypography.TITLE_M, d)
+    private val dupP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_S, d)
+    private val dubP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_S, d, digits = true)
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -440,7 +449,6 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
     var bare = false       // picture-only card of an image folder: no padding, no caption (ui.html #list.imgf .row.im)
 
     private companion object {
-        const val LH = 20f   // name line height, dp
         // file page (100 x 127.7 unit box) with the folded top-right corner
         val PAGE = Path().apply {
             moveTo(7.4f, 0f); lineTo(70.3f, 0f); lineTo(100f, 29.7f); lineTo(100f, 120.3f); quadTo(100f, 127.7f, 92.6f, 127.7f)
@@ -458,9 +466,10 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
     fun densityChanged(value: Float) {
         if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
         d = value; paintTextScale = UiScale.tf
-        nameP.textSize = LumenTypography.snap(17f) * d * UiScale.tf
-        dupP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
-        dubP.textSize = LumenTypography.snap(10f) * d * UiScale.tf
+        LumenTypography.paint(nameP, LumenTypography.TITLE_M, d)
+        LumenTypography.paint(dupP, LumenTypography.LABEL_S, d)
+        LumenTypography.paint(dubP, LumenTypography.LABEL_S, d)
+        layRow = null
         requestLayout(); invalidate()
     }
 
@@ -496,7 +505,7 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
         if (bare) { setMeasuredDimension(w, Math.round(w * tall)); return }
         prep(w)
         // every card has the same height: 3 dp + square icon area + 2 dp + two name lines + 2 dp
-        setMeasuredDimension(w, Math.round(3f * d + (w - 6f * d) * tall + 2f * d + 2f * LH * d + 2f * d))
+        setMeasuredDimension(w, Math.round(3f * d + (w - 6f * d) * tall + 2f * d + 2f * LumenTypography.linePx(nameP, LumenTypography.TITLE_M, d) + 2f * d))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
@@ -557,10 +566,11 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
                 dur?.let { t ->
                     val tw = dubP.measureText(t) + 8f * d
                     val right = lx + s - 3f * d; val bottom = ly + sh - 3f * d
-                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - 14f * d, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
+                    val badgeHeight = LumenTypography.linePx(dubP, LumenTypography.LABEL_S, d)
+                    p.color = LumenScrim.CAPTION; rf.set(right - tw, bottom - badgeHeight, right, bottom); cv.drawRoundRect(rf, 7f * d, 7f * d, p)
                     dubP.color = Color.WHITE
                     val fm = dubP.fontMetrics
-                    cv.drawText(t, right - tw + 4f * d, bottom - 7f * d - (fm.ascent + fm.descent) / 2f, dubP)
+                    cv.drawText(t, right - tw + 4f * d, bottom - badgeHeight / 2f - (fm.ascent + fm.descent) / 2f, dubP)
                 }
             } else {
                 val k = 0.93f * s / 120.3f
@@ -587,13 +597,15 @@ class NlGridView(c: Context, private var d: Float) : View(c) {
         val fn = nameP.fontMetrics
         nameP.color = if (isSel) pl.onsel else pl.fg
         var y = ly + sh + 2f * d
-        val lh = LH * d
-        val dw = dupP.measureText("duplicate?") + 12f * d
+        val lh = LumenTypography.linePx(nameP, LumenTypography.TITLE_M, d)
+        val badge = TextUtils.ellipsize("duplicate?", dupP, maxOf(0f, w - 12f * d), TextUtils.TruncateAt.END).toString()
+        val dw = dupP.measureText(badge) + 12f * d
         fun pill(x: Float, mid: Float) {
-            p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - 7.7f * d, x + dw, mid + 7.7f * d); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
-            dupP.color = nlLm(context).onWarning   // text on the warning pill (contrast-tested slot; was a fixed brown)
+            val half = LumenTypography.linePx(dupP, LumenTypography.LABEL_S, d) / 2f
+            p.style = Paint.Style.FILL; p.color = pl.warn; rf.set(x, mid - half, x + dw, mid + half); cv.drawRoundRect(rf, 8f * d, 8f * d, p)
+            dupP.color = nlLm(context).onWarning
             val fd = dupP.fontMetrics
-            cv.drawText("duplicate?", x + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
+            cv.drawText(badge, x + 6f * d, mid - (fd.ascent + fd.descent) / 2f, dupP)
         }
         for ((i, ln) in lines.withIndex()) {
             val base = y + (lh - (fn.descent - fn.ascent)) / 2f - fn.ascent
@@ -629,8 +641,8 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
     private val du = arrayOfNulls<String>(5)
     private var pressed = -1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val nameP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg(); textSize = LumenTypography.snap(11f) * d * UiScale.tf }
-    private val dubP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); fontFeatureSettings = "tnum"; textSize = LumenTypography.snap(11f) * d * UiScale.tf }
+    private val nameP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.reg() }, LumenTypography.BODY_S, d)
+    private val dubP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_S, d, digits = true)
     private val rf = RectF()
     private val src = Rect()
     private val clip = Path()
@@ -684,8 +696,8 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
     fun densityChanged(value: Float) {
         if (kotlin.math.abs(value - d) < 0.001f && paintTextScale == UiScale.tf) return
         d = value; paintTextScale = UiScale.tf
-        nameP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
-        dubP.textSize = LumenTypography.snap(11f) * d * UiScale.tf
+        LumenTypography.paint(nameP, LumenTypography.BODY_S, d)
+        LumenTypography.paint(dubP, LumenTypography.LABEL_S, d)
         requestLayout(); invalidate()
     }
 
@@ -762,14 +774,15 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
                 val col = Color.argb(a, Color.red(kc), Color.green(kc), Color.blue(kc))
                 icon("vid", x + cs / 2f - 18f * d, y + cs / 2f - 18f * d, 36f * d, col, cv)
             }
-            // name on a top gradient: padding 14 6 4, line 14
-            p.shader = LinearGradient(0f, y, 0f, y + 32f * d, LumenScrim.CAPTION, 0x00000000, Shader.TileMode.CLAMP)
-            rf.set(x, y, x + cs, y + 32f * d); cv.drawRect(rf, p); p.shader = null
+            val titleHeight = LumenTypography.linePx(nameP, LumenTypography.BODY_S, d)
+            val shadeHeight = maxOf(32f * d, titleHeight + 18f * d)
+            p.shader = LinearGradient(0f, y, 0f, y + shadeHeight, LumenScrim.CAPTION, 0x00000000, Shader.TileMode.CLAMP)
+            rf.set(x, y, x + cs, y + shadeHeight); cv.drawRect(rf, p); p.shader = null
             nameP.color = Color.WHITE
             val tw = cs - (if (r.fresh) 18f else 6f) * d - (if (selMode) 34f else 6f) * d
             val fm = nameP.fontMetrics
             val txt = TextUtils.ellipsize(r.nm, nameP, Math.max(0f, tw), TextUtils.TruncateAt.END).toString()
-            cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + 7f * d - (fm.ascent + fm.descent) / 2f, nameP)
+            cv.drawText(txt, x + (if (r.fresh) 18f else 6f) * d, y + 14f * d + titleHeight / 2f - (fm.ascent + fm.descent) / 2f, nameP)
             if (r.fresh) nlDot(cv, p, x + 11f * d, y + 21f * d, 4.5f * d, Color.WHITE, d, nlErr(context))
             // play dot
             p.style = Paint.Style.FILL; p.color = LumenScrim.CAPTION
@@ -779,10 +792,11 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
             du[k]?.let { t ->
                 val tw2 = dubP.measureText(t) + 12f * d
                 val right = x + cs - 6f * d; val bottom = y + cs - 6f * d
-                p.color = LumenScrim.CAPTION; rf.set(right - tw2, bottom - 15f * d, right, bottom); cv.drawRoundRect(rf, 10f * d, 10f * d, p)
+                val badgeHeight = LumenTypography.linePx(dubP, LumenTypography.LABEL_S, d)
+                p.color = LumenScrim.CAPTION; rf.set(right - tw2, bottom - badgeHeight, right, bottom); cv.drawRoundRect(rf, 10f * d, 10f * d, p)
                 dubP.color = Color.WHITE
                 val f2 = dubP.fontMetrics
-                cv.drawText(t, right - tw2 + 6f * d, bottom - 7.5f * d - (f2.ascent + f2.descent) / 2f, dubP)
+                cv.drawText(t, right - tw2 + 6f * d, bottom - badgeHeight / 2f - (f2.ascent + f2.descent) / 2f, dubP)
             }
             if (rplCell == k) { rf.set(x, y, x + cs, y + cs); rpl.draw(cv, rf, 14f * d, Color.WHITE) }   // Lumen 4e N9
             cv.restore()

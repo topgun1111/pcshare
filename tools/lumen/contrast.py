@@ -144,7 +144,8 @@ def browser_errors(page, themes):
     <div class="seg"><button class="on"></button></div>
     <button class="tbtn fill"></button><button class="tbtn tonal"></button>
     <button class="tbtn dngf"></button><pre id="contrast-results"></pre>"""
-    script = (gen.here / "custom.js").read_text(encoding="utf-8") + "\n" + (gen.here / "test_contrast_browser.js").read_text(encoding="utf-8")
+    script = "\n".join((gen.here / name).read_text(encoding="utf-8") for name in
+                       ("custom.js", "test_large_text_browser.js", "test_contrast_browser.js"))
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):

@@ -382,12 +382,18 @@ object Lm {
             tile.setPadding(dp(c, 16f), dp(c, 12f), dp(c, 16f), dp(c, 12f))
             for ((i, r) in rows!!.withIndex()) {
                 val row = LinearLayout(c)
-                row.orientation = LinearLayout.HORIZONTAL
+                val stacked = c.resources.configuration.fontScale >= 1.3f
+                row.orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
                 val l = TextView(c); l.text = r.first; l.setTextColor(lm.inkMut); LumenTypography.apply(l, LumenTypography.BODY_S)
                 val v = TextView(c); v.text = r.second; v.setTextColor(lm.ink); LumenTypography.apply(v, LumenTypography.BODY_M)
-                v.maxLines = 2; v.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; v.gravity = Gravity.END
-                row.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.38f))
-                row.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.62f))
+                if (stacked) {
+                    row.addView(l, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    row.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                } else {
+                    v.maxLines = 2; v.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; v.gravity = Gravity.END
+                    row.addView(l, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.38f))
+                    row.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.62f))
+                }
                 tile.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also { if (i > 0) it.topMargin = dp(c, 8f) })
             }
             box.addView(tile, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

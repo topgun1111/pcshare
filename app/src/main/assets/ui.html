@@ -1457,10 +1457,46 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
   color:var(--onfab);box-shadow:var(--sh)
 }
 </style><style>
-/* Large text: wrap modal action labels and expand only the shared dialog/sheet controls. */
-html.lm-large-text #dlg .dact{flex-direction:column;align-items:stretch}
-html.lm-large-text #dlg .dact .tbtn,html.lm-large-text #sheet .dact .tbtn{height:auto;min-height:48px;white-space:normal;overflow-wrap:anywhere;line-height:1.4;padding-block:var(--sp-3)}
+/* Large text follows the Android preference. Keep the existing action nodes and give their labels room to reflow. */
+html.lm-large-text :is(#dlg,#sheet) .dact{flex-direction:column;align-items:stretch}
+html.lm-large-text :is(#dlg,#sheet) .dact .tbtn,
+html.lm-large-text #sheet .set .tbtn{height:auto;min-height:48px;white-space:normal;overflow-wrap:anywhere;line-height:1.4;padding-block:var(--sp-2)}
 html.lm-large-text #dlg .dcard,html.lm-large-text #sheet .card{overflow-wrap:anywhere}
+html.lm-large-text #sheet .set :is(b,small){word-break:normal}
+html.lm-large-text #sheet .set:has(.tbtn){flex-wrap:wrap}
+html.lm-large-text #sheet .set:has(.tbtn) .t{flex:1 1 100%}
+html.lm-large-text #sheet .set:has(select) select{min-width:0;max-width:100%;min-height:48px}
+html.lm-large-text #dlg .ddet{grid-template-columns:minmax(0,1fr)}
+html.lm-large-text #dlg .ddet dd{text-align:start}
+html.lm-large-text :is(.bar.mainb,.bar.selb,#srow,#home .hb){height:auto;min-height:56px}
+html.lm-large-text :is(.bar.mainb,#srow,#toolrow){flex-wrap:wrap}
+html.lm-large-text :is(#toolrow #sum,#srow #sq){flex:1 1 12em;max-width:100%}
+html.lm-large-text #toolrow #sum{white-space:normal;overflow:visible;overflow-wrap:anywhere}
+html.lm-large-text :is(#newb,#sortb,.crumb,#sq,.selb h2){height:auto;min-height:48px;line-height:1.35}
+html.lm-large-text .selb h2{min-width:0;overflow-wrap:anywhere;align-content:center}
+html.lm-large-text #arcrow{height:auto;min-height:48px}
+html.lm-large-text #arcrow .ac{height:auto;min-height:40px}
+html.lm-large-text :is(#sortb,#newb){max-width:100%;white-space:normal;overflow-wrap:anywhere}
+html.lm-large-text :is(#sortb,.crumb) svg{flex:none}
+html.lm-large-text #home .hb h1{white-space:normal;overflow-wrap:anywhere;line-height:1.3}
+html.lm-large-text #home .hbd{min-height:0}
+html.lm-large-text #home :is(.ht,.hero) :is(b,small,.tt,.ts,.row){line-height:1.3;overflow-wrap:anywhere}
+html.lm-large-text #gal :is(.gmh,.gb){overflow-wrap:anywhere}
+html.lm-large-text #dock #bar{grid-auto-flow:column;grid-auto-columns:minmax(104px,1fr);grid-template-columns:none;overflow:auto}
+html.lm-large-text #gal .gb{overflow-x:auto}
+html.lm-large-text :is(#dock #bar,#gal .gb) .ib{
+  height:auto;min-height:96px;min-width:0;padding:var(--sp-2) var(--sp-1);white-space:normal;line-height:1.25;overflow-wrap:anywhere
+}
+html.lm-large-text #gal .gb .ib{flex:1 0 104px}
+html.lm-large-text #fab{max-width:calc(100% - 32px);height:auto;min-height:56px;white-space:normal;overflow-wrap:anywhere}
+html.lm-large-text #fab.extract-action{width:auto;min-width:72px;padding-inline:var(--sp-2)}
+html.lm-large-text #toast .ta{float:none;max-width:100%;margin:0}
+@media(max-width:480px){
+  html.lm-large-text .bar.mainb .ttl{order:-1;flex-basis:100%;min-height:48px}
+  html.lm-large-text .bar.mainb .ttl h1{white-space:normal;overflow-wrap:anywhere}
+  html.lm-large-text #home .hrow{flex-direction:column;min-height:0}
+  html.lm-large-text #home .hrow .hero{flex:auto}
+}
 </style>
 </head><body>
 <header id=top>
@@ -2130,7 +2166,9 @@ let NLL=null,NLP0='',NLPAL='',NLLAY='',NLSEL='',NLGN=0;
 const NLON=(()=>{try{return localStorage.getItem('ls_nl')!=='0'}catch(e){return true}})();
 /* native Sort / View sheets (Kotlin: NlSheets.kt) and native search box (NlSearch.kt). Kill switches: localStorage ls_nls='0' / ls_nlq='0', NativeList.SHEETS / NativeList.SEARCH = false. */
 const NLSH=(()=>{try{return !!NL&&!KID&&!!NL.nlSort&&!!NL.nlSheets&&NL.nlSheets()&&localStorage.getItem('ls_nls')!=='0'}catch(e){return false}})();
-const NLSR=(()=>{try{return !!NL&&!KID&&!!NL.nlSearch&&!!NL.nlSearchOk&&NL.nlSearchOk()&&localStorage.getItem('ls_nlq')!=='0'}catch(e){return false}})();
+const LMLARGE=(()=>{try{return (window.LSAndroid&&LSAndroid.uiEffectiveText&&LSAndroid.uiEffectiveText())>=130}catch(_){return false}})();
+document.documentElement.classList.toggle('lm-large-text',LMLARGE);
+const NLSR=(()=>{try{return !LMLARGE&&!!NL&&!KID&&!!NL.nlSearch&&!!NL.nlSearchOk&&NL.nlSearchOk()&&localStorage.getItem('ls_nlq')!=='0'}catch(e){return false}})();
 function nlSheetState(){const W=window.innerWidth,o={cols:S.cols,gal:galRoot()?1:0,ec:galRoot()?(W>=900?4:W>=600?3:2):(W>=600?4:5),view:S.view,thumb:S.thumb,sort:S.sort,asc:S.asc?1:0,hid:showHid()?1:0,p:JSON.parse(nlPal()),lb:{},ic:{vlist:IC.vlist,vcomp:IC.vcomp,vgrid:IC.vgrid,img:IC.img}};
   Object.keys(SORTS).forEach(k=>o.lb[k]=SORTS[k].t);return JSON.stringify(o)}
 // a choice made in a native sheet: {sort,asc} / {view} / {thumb} / {aa} / {hid}. Kotlin has already shown the re-built rows when it could; this applies the same preference (and persists it).
@@ -2201,7 +2239,7 @@ function nlRender(LIST,P0,GN){
   window.scrollTo(0,0);nlLay(true)}
 /* native path bar + tool row (Kotlin: NlHead.kt). Same texts as render() / renderTools(); the HTML rows stay underneath unchanged.
    Kill switches: localStorage ls_nlh='0' or NativeList.HEAD=false. */
-const NLHEAD=(()=>{try{return localStorage.getItem('ls_nlh')!=='0'}catch(e){return true}})();
+const NLHEAD=(()=>{try{return !LMLARGE&&localStorage.getItem('ls_nlh')!=='0'}catch(e){return true}})();
 function nlHeadPush(V){
   if(!NL||!NL.nlHead||!NLHEAD)return;
   let fo=0,fi=0,sz=0;V.forEach(i=>{if(i.dir)fo++;else{fi++;sz+=i.size||0}});
@@ -2276,7 +2314,7 @@ window.nlOn=(ev,x)=>{
 /* native app chrome (Kotlin: NlChrome.kt): top bar / selection bar, New-folder button, bottom dock + clipboard strip, snackbar, download cards.
    Same scheme as the path bar: the HTML elements stay underneath and keep all behaviour; Kotlin draws on top of their exact rects and a tap comes back as nlCh() which clicks the HTML twin.
    Hidden (so the page's own look shows) while a dialog / sheet / drawer / viewer / split screen is up. Kill switches: localStorage ls_nlc='0' or NlChrome.ENABLED=false. */
-const NLCH=(()=>{try{return !!NL&&!KID&&!!NL.nlChrome&&!!NL.nlChromeOk&&NL.nlChromeOk()&&localStorage.getItem('ls_nlc')!=='0'}catch(e){return false}})();
+const NLCH=(()=>{try{return !LMLARGE&&!!NL&&!KID&&!!NL.nlChrome&&!!NL.nlChromeOk&&NL.nlChromeOk()&&localStorage.getItem('ls_nlc')!=='0'}catch(e){return false}})();
 let NLCHJ='0';const NLICN={};
 // SVG path with arc flags written out with spaces ("a1 1 0 001 1" -> "a 1 1 0 0 0 1 1") so Android's PathParser reads every icon the same way the browser does
 function nlNormPath(d){const out=[];let i=0,cmd='';
@@ -2334,7 +2372,7 @@ window.nlCh=(ev,x)=>{
 /* ---- native side drawer (Kotlin NlDrawer.kt). The HTML drawer (#dwr) stays UNCHANGED: drawerRender() still builds every row and owns every handler.
    Each region (#dtabs, every #dbody child, #dfoot) is MIRRORED here into flat draw lists (rects, svg paths, text with the browser's own computed geometry / colours / opacity);
    Kotlin only paints them and sends a tap back as nlDr(kind,row,j,ver), which click()s the same HTML element.  Kill switches: localStorage ls_nld='0' or NlDrawer.ENABLED=false. */
-const NLDR=(()=>{try{return !!NL&&!KID&&!!NL.nlDrawer&&!!NL.nlDrawerOk&&NL.nlDrawerOk()&&localStorage.getItem('ls_nld')!=='0'}catch(e){return false}})();
+const NLDR=(()=>{try{return !LMLARGE&&!!NL&&!KID&&!!NL.nlDrawer&&!!NL.nlDrawerOk&&NL.nlDrawerOk()&&localStorage.getItem('ls_nld')!=='0'}catch(e){return false}})();
 if(NLDR)document.documentElement.classList.add('nldr');   // Lumen 4b (N1 b): CSS UI16 makes the page's own #dwr invisible (it keeps its layout and click targets) so the native panel can be see-through
 let NLDRJ='',NLDRV=0,NLDRQ=0,NLDRK='0';
 const nlQ2=v=>Math.round(v*100)/100;
@@ -6482,8 +6520,6 @@ function homeShow(){if(window.RSH_X)RSH_X();
   const hb=E('div','hb'),mb=E('button');mb.setAttribute('aria-label','Menu');mb.append(ic('menu'));mb.onclick=drawerOpen;
   const mo=E('button');mo.setAttribute('aria-label','Settings');mo.append(ic('settings'));mo.onclick=openSettings;
   const h1=E('h1','','LANShare');
-  {let tz=1;try{tz=(+LSAndroid.uiGet().split(',')[1])/100||1}catch(e){}   // the native file manager bar ignores Settings -> Text size, the WebView applies it as textZoom: cancel it so the title is the same size
-   if(tz!==1)h1.style.fontSize=(18/tz)+'px'}
   hb.append(mb,h1,mo);
   const bd=E('div','hbd');
   /* storage card: percent from the last known value at once, exact numbers once /api/space answers */
@@ -7571,7 +7607,7 @@ const modalSync=host=>{
 };
 [sh,dl].filter(Boolean).forEach(host=>new MutationObserver(()=>modalSync(host)).observe(host,{childList:true,attributes:true,attributeFilter:['style','class']}));
 /* LUMEN-A11Y-MODALS */
-try{if(window.LSAndroid&&LSAndroid.uiEffectiveText&&LSAndroid.uiEffectiveText()>=130)H.classList.add('lm-large-text')}catch(_){} 
+
 /* toast text + progress (10 % steps) and selection count go to the live regions */
 const tx=q('#tx'),tp=q('#tp'),tt=q('#toast');let lastP=-1;
 if(tx&&tt)new MutationObserver(()=>{const t=tx.textContent;if(!t||(tp&&tp.style.display!=='none'))return;say(t,tt.className==='err')}).observe(tx,{childList:true,characterData:true,subtree:true});

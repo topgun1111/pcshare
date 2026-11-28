@@ -57,13 +57,13 @@ class NlHeadView(c: Context, private var d: Float) : View(c) {
     private val med: Typeface = Fnt.med()
     private val w600: Typeface = Fnt.semi()
     private val fillP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val crumbP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = LumenTypography.snap(16f) * d * UiScale.tf }
-    private val curP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(16f) * d * UiScale.tf }
-    private val sumBP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = LumenTypography.snap(13f) * d * UiScale.tf }
-    private val sumSP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = LumenTypography.snap(12f) * d * UiScale.tf }
-    private val newP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med; textSize = LumenTypography.snap(12f) * d * UiScale.tf }
-    private val sortP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600; textSize = LumenTypography.snap(13f) * d * UiScale.tf }
-    private val pillP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(13f) * d * UiScale.tf; letterSpacing = 0.2f / 14f }
+    private val crumbP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med }, LumenTypography.TITLE_M, d)
+    private val curP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.TITLE_M, d)
+    private val sumBP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600 }, LumenTypography.LABEL_L, d, digits = true)
+    private val sumSP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med }, LumenTypography.BODY_S, d, digits = true)
+    private val newP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = med }, LumenTypography.LABEL_M, d)
+    private val sortP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = w600 }, LumenTypography.LABEL_L, d)
+    private val pillP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_L, d, digits = true)
     private val rf = RectF()
 
     // ---- icons (ui.html IC / HOME / DRIVE; arc flags written with spaces) ----
@@ -108,13 +108,13 @@ class NlHeadView(c: Context, private var d: Float) : View(c) {
 
     fun densityChanged(value: Float) {
         d = value
-        crumbP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
-        curP.textSize = LumenTypography.snap(16f) * d * UiScale.tf
-        sumBP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
-        sumSP.textSize = LumenTypography.snap(12f) * d * UiScale.tf
-        newP.textSize = LumenTypography.snap(12f) * d * UiScale.tf
-        sortP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
-        pillP.textSize = LumenTypography.snap(13f) * d * UiScale.tf
+        LumenTypography.paint(crumbP, LumenTypography.TITLE_M, d)
+        LumenTypography.paint(curP, LumenTypography.TITLE_M, d)
+        LumenTypography.paint(sumBP, LumenTypography.LABEL_L, d)
+        LumenTypography.paint(sumSP, LumenTypography.BODY_S, d)
+        LumenTypography.paint(newP, LumenTypography.LABEL_M, d)
+        LumenTypography.paint(sortP, LumenTypography.LABEL_L, d)
+        LumenTypography.paint(pillP, LumenTypography.LABEL_L, d)
         dirty = true; requestLayout(); invalidate()
     }
 

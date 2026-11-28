@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Large text layout
+
+### Fixed
+- Give larger text room to wrap in the file browser, gallery, Universal Search and Settings.
+- Keep action labels and dialog details readable when the phone or app enlarges text.
+
 ## 2026-11-28 - Lumen contrast
 
 ### Fixed

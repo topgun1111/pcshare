@@ -208,7 +208,8 @@ class UsActivity : Activity() {
             })
             setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEARCH) { hideKb(); true } else false }
         }
-        box.addView(et, LinearLayout.LayoutParams(0, dp(52f), 1f))
+        et.minimumHeight = dp(52f)
+        box.addView(et, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         box.addView(iconBtn("close", "Clear") { et.setText(""); et.requestFocus() }, LinearLayout.LayoutParams(dp(48f), dp(52f)))
         bar.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val menuBtn = object : View(this) {   // three dots drawn here: no dependency on a font glyph
@@ -223,11 +224,11 @@ class UsActivity : Activity() {
         val cr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12f), dp(4f), dp(12f), dp(6f)) }
         for ((k, t) in listOf("" to "All", "file" to "Files", "folder" to "Folders", "image" to "Images", "doc" to "Docs", "video" to "Video", "audio" to "Audio")) {
             val c = tv(14f, p.fg).apply {
-                text = t; gravity = Gravity.CENTER; setPadding(dp(16f), 0, dp(16f), 0)
+                text = t; gravity = Gravity.CENTER; minimumHeight = dp(48f); setPadding(dp(16f), dp(4f), dp(16f), dp(4f))
                 setOnClickListener { kind = k; markChips(); endSel(false); runQuery(true, 0) }
             }
             chips.add(k to c)
-            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48f)).apply { rightMargin = dp(8f) })
+            cr.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8f) })
         }
         hs.addView(cr); root.addView(hs)
         scopeTv = tv(13f, p.ac, true).apply {
@@ -247,7 +248,16 @@ class UsActivity : Activity() {
         sortBtn = tv(13f, p.ac, true).apply { minimumHeight = dp(48f); gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(10f), dp(8f)); setOnClickListener { sortDlg() } }
         viewBtn = tv(13f, p.ac, true).apply { minimumHeight = dp(48f); gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10f), dp(8f), dp(14f), dp(8f)); setOnClickListener { viewDlg() } }
         val infoRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        infoRow.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); infoRow.addView(sortBtn); infoRow.addView(viewBtn)
+        if (UiScale.tf >= 1.3f) {
+            root.addView(info, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            for (control in listOf(sortBtn, viewBtn)) {
+                infoRow.addView(control, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+        } else {
+            infoRow.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            infoRow.addView(sortBtn)
+            infoRow.addView(viewBtn)
+        }
         root.addView(infoRow)
         paintBar()
         // list
@@ -270,7 +280,9 @@ class UsActivity : Activity() {
         }
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         selTv = tv(14f, p.fg, true)
-        head.addView(selTv, LinearLayout.LayoutParams(0, dp(48f), 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
+        selTv.minimumHeight = dp(48f)
+        selTv.gravity = Gravity.CENTER_VERTICAL
+        head.addView(selTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(14f) }.also { it.gravity = Gravity.CENTER_VERTICAL })
         head.addView(iconBtn("close", "Cancel selection") { endSel() }, LinearLayout.LayoutParams(dp(48f), dp(48f)))
         selBar.addView(head)
         val line = View(this).apply { setBackgroundColor(p.bd) }
@@ -292,8 +304,12 @@ class UsActivity : Activity() {
                 contentDescription = a[0] as String; setOnClickListener { fn() }
             }
             cell.addView(NlGlyph(this, NlGlyph.parse(a[1] as String), a[2] as Int, dp(26f)), LinearLayout.LayoutParams(-2, -2))
-            cell.addView(tv(11f, if (a[0] == "Delete") (a[2] as Int) else p.fg, true).apply { text = a[0] as String; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(3f) })
-            row.addView(cell, LinearLayout.LayoutParams(dp(64f), dp(64f), 1f).apply { setMargins(dp(1f), 0, dp(1f), 0) })
+            cell.minimumHeight = dp(64f)
+            cell.addView(tv(11f, if (a[0] == "Delete") (a[2] as Int) else p.fg, true).apply {
+                text = a[0] as String; gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3f) })
+            val cellWidth = dp(64f * UiScale.tf.coerceAtLeast(1f))
+            row.addView(cell, LinearLayout.LayoutParams(cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(1f), 0, dp(1f), 0) })
         }
         selBar.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; isFillViewport = true; addView(row) })
         root.addView(selBar)

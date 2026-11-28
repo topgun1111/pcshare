@@ -137,20 +137,20 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
         return n
     }
 
-    private val scaledPaints = ArrayList<Pair<TextPaint, Float>>()
+    private val scaledPaints = ArrayList<Pair<TextPaint, LumenTypography.Style>>()
     private var textFactor = UiScale.tf
     fun densityChanged(value: Float) {
         if (kotlin.math.abs(value - d) < 0.001f && textFactor == UiScale.tf) return
         val old = d
         d = value; textFactor = UiScale.tf
-        for ((paint, size) in scaledPaints) paint.textSize = size * d * textFactor
+        for ((paint, style) in scaledPaints) LumenTypography.paint(paint, style, d)
         if (old > 0f) elevation *= d / old
         pressed = null; rpId = null
         invalidateOutline(); invalidate()
     }
-    protected fun tp(sizeDp: Float, tf: Typeface): TextPaint =
-        TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = tf; textSize = sizeDp * d * UiScale.tf }
-            .also { scaledPaints.add(it to sizeDp) }
+    protected fun tp(style: LumenTypography.Style, face: Typeface, digits: Boolean = false): TextPaint =
+        LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = face }, style, d, digits)
+            .also { scaledPaints.add(it to style) }
 
     /** Baseline that centres the text vertically on [cy]. */
     protected fun ty(cy: Float, p: Paint): Float { val fm = p.fontMetrics; return cy - (fm.ascent + fm.descent) / 2f }
@@ -224,9 +224,9 @@ class NlBarView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity
     }
     private val btn = LinkedHashMap<String, RectF>()
     private var tX = 0f; private var tW = 0f; private var nX = 0f; private var nW = 0f
-    private val ttlP = tp(18f, semi)
-    private val nmP = tp(12f, med)
-    private val cntP = tp(20f, semi)
+    private val ttlP = tp(LumenTypography.TITLE_L, semi)
+    private val nmP = tp(LumenTypography.BODY_S, med)
+    private val cntP = tp(LumenTypography.TITLE_L, semi, digits = true)
 
     var perm = false             // Lumen 9.4: permanent drawer (>= 900 dp) = no menu button, the title starts at the left margin
     fun setData(sel: Boolean, ttl: String, nm: String, dual: Boolean, cnt: String, w: Float, h: Float) {
@@ -340,7 +340,7 @@ class NlFabView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity
     private var ik = "newfolder"
     private var bw = 0f
     private var bh = 0f
-    private val lbP = tp(14f, semi)
+    private val lbP = tp(LumenTypography.LABEL_L, semi)
 
     init {
         elevation = 6f * d
@@ -433,7 +433,7 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
-    private val lbP = tp(16f, semi)
+    private val lbP = tp(LumenTypography.TITLE_M, semi)
     private var shownAt = 0L
 
     init {
@@ -463,8 +463,8 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
         if (cat != null) return LumenCategory.of(context)[cat].base
         return when (k) { "info" -> lm.info; "hide" -> lm.inkMut; else -> fallback }
     }
-    private val clipP = tp(14f, med)
-    private val pasteP = tp(14f, semi)
+    private val clipP = tp(LumenTypography.BODY_M, med)
+    private val pasteP = tp(LumenTypography.LABEL_L, semi)
 
     /** [bg] = the page dock's computed background (ARGB, 0 = unknown), [rx] = its corner radius in CSS px. */
     fun setData(acts: List<Act>, clipTx: String?, clipPaste: Boolean, w: Float, h: Float, bg: Int, rx: Float) {
@@ -610,8 +610,8 @@ class NlToastView(c: Context, initialDensity: Float) : NlHitView(c, initialDensi
     private var cancel = false
     private var bw = 0f
     private var bh = 0f
-    private val txP = tp(14f, med)
-    private val cxP = tp(14f, semi)
+    private val txP = tp(LumenTypography.BODY_M, med)
+    private val cxP = tp(LumenTypography.LABEL_L, semi)
     private var lay: StaticLayout? = null
     private var layY = 0f
     private val cancelR = RectF()
@@ -681,9 +681,9 @@ class NlDlView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity)
     private var cards: List<Card> = emptyList()
     private var bw = 0f
     private var bh = 0f
-    private val nmP = tp(14f, semi)
-    private val cxP = tp(13f, med)
-    private val infoP = tp(12f, med)
+    private val nmP = tp(LumenTypography.LABEL_L, semi)
+    private val cxP = tp(LumenTypography.BODY_M, med)
+    private val infoP = tp(LumenTypography.BODY_S, med)
     private val btnR = HashMap<String, RectF>()
 
     fun setData(cards: List<Card>, w: Float, h: Float) {
