@@ -16,11 +16,13 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -55,6 +57,7 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     // TalkBack (Lumen Round 2 Part C): every hit rectangle with a label becomes a virtual button.
     /** Spoken name of the button [id]; null = not announced. Subclasses override. */
     protected open fun labelOf(id: String): String? = null
+    protected open fun tooltipOf(id: String): String? = null
     private val ebt = object : androidx.customview.widget.ExploreByTouchHelper(this) {
         override fun getVirtualViewAt(x: Float, y: Float): Int {
             for (i in hits.indices.reversed()) if (hits[i].r.contains(x, y) && labelOf(hits[i].id) != null) return i
@@ -77,7 +80,18 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     private val a11yInv = Runnable { ebt.invalidateRoot() }
     private var a11yReady = false   // View's constructor may call invalidate() before the fields above exist
     init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt); a11yReady = true }
-    override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
+    override fun dispatchHoverEvent(e: MotionEvent): Boolean {
+        if (ebt.dispatchHoverEvent(e)) return true
+        when (e.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                val target = hitAt(e.x, e.y)
+                if (!tipTouch && target != tipTarget) queueTip(target, touch = false)
+                if (target != null && tooltipOf(target) != null) return true
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> if (!tipTouch) clearTip()
+        }
+        return super.dispatchHoverEvent(e)
+    }
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
@@ -91,6 +105,100 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     private var downX = 0f
     private var downY = 0f
     private val slop = ViewConfiguration.get(c).scaledTouchSlop
+
+    private var tipTarget: String? = null
+    private var tipTouch = false
+    private var tipConsumed = false
+    private var tipView: TextView? = null
+    private val tipHide = Runnable { removeTipView() }
+    private val tipShow = Runnable {
+        val target = tipTarget
+        if (target != null && (!tipTouch || pressed == target) && showTip(target)) {
+            if (tipTouch) {
+                tipConsumed = true
+                rpRelease()
+            }
+            postDelayed(tipHide, 2_000)
+        }
+    }
+
+    private fun queueTip(id: String?, touch: Boolean) {
+        clearTip()
+        if (id == null || tooltipOf(id).isNullOrEmpty()) return
+        tipTarget = id
+        tipTouch = touch
+        postDelayed(tipShow, 500)
+    }
+
+    private fun removeTipView() {
+        val view = tipView ?: return
+        tipView = null
+        (view.parent as? FrameLayout)?.removeView(view)
+    }
+
+    private fun clearTip(keepVisible: Boolean = false) {
+        removeCallbacks(tipShow)
+        tipTarget = null
+        tipTouch = false
+        if (!keepVisible) {
+            removeCallbacks(tipHide)
+            removeTipView()
+        }
+    }
+
+    private fun showTip(id: String): Boolean {
+        if (!isShown || !isAttachedToWindow) return false
+        val text = tooltipOf(id) ?: return false
+        val anchor = hits.firstOrNull { it.id == id }?.r ?: return false
+        // Keep the tooltip in the same window and retain its security flags.
+        val host = rootView.findViewById<View>(android.R.id.content) as? FrameLayout ?: return false
+        val edge = (8f * d).toInt()
+        val maxWidth = minOf((240f * d).toInt(), host.width - 2 * edge)
+        if (maxWidth <= 0 || host.height <= 2 * edge) return false
+        val lm = lumen()
+        val label = TextView(context).apply {
+            this.text = text
+            LumenTypography.apply(this, LumenTypography.LABEL_M)
+            setTextColor(lm.ink)
+            setPadding((12f * d).toInt(), (4f * d).toInt(), (12f * d).toInt(), (4f * d).toInt())
+            background = LumenGlass.panel(context, lm.surfaceHi, 8f, false)
+            elevation = 8f * d
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        label.measure(MeasureSpec.makeMeasureSpec(maxWidth, MeasureSpec.AT_MOST),
+            MeasureSpec.makeMeasureSpec(host.height - 2 * edge, MeasureSpec.AT_MOST))
+        val from = IntArray(2)
+        val to = IntArray(2)
+        getLocationInWindow(from)
+        host.getLocationInWindow(to)
+        val x = from[0] - to[0]
+        val y = from[1] - to[1]
+        val below = (y + anchor.bottom).toInt() + edge
+        val above = (y + anchor.top).toInt() - edge - label.measuredHeight
+        val bottomLimit = host.height - label.measuredHeight - edge
+        val lp = FrameLayout.LayoutParams(label.measuredWidth, label.measuredHeight, Gravity.TOP or Gravity.LEFT)
+        lp.leftMargin = (x + anchor.centerX() - label.measuredWidth / 2f).toInt()
+            .coerceIn(edge, host.width - label.measuredWidth - edge)
+        lp.topMargin = (if (below <= bottomLimit) below else above).coerceIn(edge, bottomLimit)
+        host.addView(label, lp)
+        tipView = label
+        return true
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (a11yReady && changedView === this && visibility != VISIBLE) clearTip()
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus && a11yReady) clearTip()
+    }
+
+    override fun onDetachedFromWindow() {
+        clearTip()
+        super.onDetachedFromWindow()
+    }
 
     // Lumen 12 press ripple, drawn natively: from the touch point to the farthest corner in 280 ms (decelerate), 14 % ink, fades 160 ms after release.
     private var rpId: String? = null
@@ -182,18 +290,22 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
             MotionEvent.ACTION_DOWN -> {
                 val h = hitAt(e.x, e.y) ?: return false      // not on a button: let the page have it
                 pressed = h; downX = e.x; downY = e.y; rpStart(h, e.x, e.y); invalidate()
+                tipConsumed = false
+                queueTip(h, touch = true)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (pressed != null && (Math.abs(e.x - downX) > slop || Math.abs(e.y - downY) > slop)) { pressed = null; rpRelease(); invalidate() }
+                if (pressed != null && (Math.abs(e.x - downX) > slop || Math.abs(e.y - downY) > slop)) { pressed = null; rpRelease(); clearTip(); invalidate() }
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 val p = pressed; pressed = null; rpRelease(); invalidate()
-                if (p != null) onTap?.invoke(p)
+                clearTip(keepVisible = tipConsumed)
+                if (p != null && !tipConsumed) onTap?.invoke(p)
+                tipConsumed = false
                 return true
             }
-            MotionEvent.ACTION_CANCEL -> { pressed = null; rpRelease(); invalidate(); return true }
+            MotionEvent.ACTION_CANCEL -> { pressed = null; tipConsumed = false; clearTip(); rpRelease(); invalidate(); return true }
         }
         return true
     }
@@ -205,6 +317,7 @@ class NlBarView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity
         "menub" -> "Menu"; "cog" -> "Settings"; "dualb" -> "Split screen"; "scan" -> "Refresh"
         "tune" -> "View options"; "srch" -> "Search"; "xsel" -> "Cancel selection"; "allsel" -> "Select all"; else -> null
     }
+    override fun tooltipOf(id: String): String? = labelOf(id)
     private var sel = false
     private var ttl = ""
     private var nm = ""

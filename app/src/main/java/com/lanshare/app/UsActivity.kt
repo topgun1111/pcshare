@@ -289,16 +289,16 @@ class UsActivity : Activity() {
         selBar.addView(line, LinearLayout.LayoutParams(-1, 1).apply { setMargins(dp(8f), 0, dp(8f), dp(2f)) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val lmUs = Lumen.of(this); val catUs = LumenCategory.of(this)   // selection-bar icon colours = dock mapping (NlChrome.iconColor)
-        data class SelectionAction(val label: String, val path: String, val color: Int, val run: () -> Unit)
+        data class SelectionAction(val label: String, val glyph: String, val color: Int, val run: () -> Unit)
         val acts = listOf(
-            SelectionAction("Copy", "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z", catUs["aud"].base, { actCopy() }),
-            SelectionAction("Share", "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z", catUs["doc"].base, { actShare() }),
-            SelectionAction("Details", "M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z", lmUs.info, { actDetails() }),
-            SelectionAction("Select all", "M3 5h2V3c-1.1 0-2 .9-2 2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2c0-1.1-.9-2-2-2zM5 21v-2H3c0 1.1.9 2 2 2zm-2-4h2v-2H3v2zM9 3H7v2h2V3zm2 18h2v-2h-2v2zm8-8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2zm0-12h2V7h-2v2zm0 8h2v-2h-2v2zm-4 4h2v-2h-2v2zm0-16h2V3h-2v2zM7 17h10V7H7v10zm2-8h6v6H9V9z", catUs["vid"].base, { selectAll() }),
-            SelectionAction("Folder", "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z", catUs["zip"].base, { actFolder() }),
-            SelectionAction("Delete", "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z", lmUs.error, { actDelete() })
+            SelectionAction("Copy", "copy", catUs["aud"].base, { actCopy() }),
+            SelectionAction("Share", "share", catUs["doc"].base, { actShare() }),
+            SelectionAction("Details", "info", lmUs.info, { actDetails() }),
+            SelectionAction("Select all", "selall", catUs["vid"].base, { selectAll() }),
+            SelectionAction("Folder", "folder", catUs["zip"].base, { actFolder() }),
+            SelectionAction("Delete", "del", lmUs.error, { actDelete() })
         )
-        fun cell(action: SelectionAction, stroke: Boolean = false): LinearLayout = LinearLayout(this).apply {
+        fun cell(action: SelectionAction): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             background = pressBg(dp(12f))
@@ -307,7 +307,7 @@ class UsActivity : Activity() {
             minimumHeight = dp(72f)
             isFocusable = true
             setOnClickListener { action.run() }
-            addView(NlGlyph(context, NlGlyph.parse(action.path), action.color, dp(24f), stroke), LinearLayout.LayoutParams(-2, -2))
+            addView(NlGlyph(context, NlIcons.path(action.glyph), action.color, dp(24f), NlIcons.stroke(action.glyph)), LinearLayout.LayoutParams(-2, -2))
             val label = TextView(context).apply {
                 LumenTypography.apply(this, LumenTypography.LABEL_M)
                 setTextColor(if (action.label == "Delete") action.color else p.fg)
@@ -327,11 +327,11 @@ class UsActivity : Activity() {
             fun append(view: View) = row.addView(view, LinearLayout.LayoutParams(0, -1, 1f))
             for (action in acts.take(slots - 2)) append(cell(action))
             val overflow = acts.subList(slots - 2, acts.lastIndex)
-            append(cell(SelectionAction("More", LumenIcons.D.getValue("more"), p.fg) {
+            append(cell(SelectionAction("More", "more", p.fg) {
                 AppPal.dlg(this).setTitle("More").setItems(overflow.map { it.label }.toTypedArray()) { _, index ->
                     overflow[index].run()
                 }.show()
-            }, stroke = true))
+            }))
             append(cell(acts.last()))
         }
         layoutActions(resources.displayMetrics.widthPixels)

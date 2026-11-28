@@ -39,7 +39,9 @@ function checkDock(errors) {
     more.click();
     const popup=document.querySelector('.lm-dock-menu');
     if(!popup||document.activeElement!==popup.querySelector('button')) fail('opening More did not focus the menu');
-    const transferButton=Array.from(popup?.querySelectorAll('button')||[]).find(button=>button.textContent==='send');
+    const items=Array.from(popup?.querySelectorAll('button')||[]);
+    if(items.some(button=>button.offsetHeight<48)) fail('popup action target is too small');
+    const transferButton=items.find(button=>button.textContent==='send');
     transferButton?.click();
     if(selected!=='send'||popup?.isConnected||document.activeElement!==more) fail('overflow lost its callback or focus return');
   }

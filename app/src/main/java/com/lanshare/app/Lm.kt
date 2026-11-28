@@ -98,12 +98,22 @@ object Lm {
     }
 
     private fun fallback(c: Context, text: String, len: Int) {
-        // Never move private text from a secure Activity to an OS-rendered window.
-        if (((actOf(c)?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0) return
+        // Activity feedback stays inside its window, including when that window is closing.
+        if (actOf(c) != null) return
         try { Toast.makeText(c.applicationContext, text, if (len == Toast.LENGTH_LONG) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() } catch (_: Throwable) { }
     }
 
-    private fun dismissNow(animate: Boolean = false) {
+    private var retiring: View? = null
+
+    private fun clearRetiring() {
+        val gone = retiring ?: return
+        retiring = null
+        gone.animate().cancel()
+        (gone.parent as? ViewGroup)?.removeView(gone)
+    }
+
+    private fun dismissNow(animate: Boolean = false, replace: Boolean = false) {
+        clearRetiring()
         hideJob?.let { main.removeCallbacks(it) }
         hideJob = null
         val v = cur
@@ -113,18 +123,24 @@ object Lm {
         if (v == null || h == null) return
         v.animate().cancel()
         if (!animate || v.parent == null) { try { h.removeView(v) } catch (_: Throwable) { }; return }
-        // M1 (native): exit = t.exit (0.7 x base = 140 ms), accelerate, slide down 16 dp + fade; Reduce motion = 120 ms fade
+        // Dismiss in place so tall messages never sweep over the dock.
         v.isClickable = false
-        val end = Runnable { try { h.removeView(v) } catch (_: Throwable) { } }
-        if (reduceMotion(v.context)) v.animate().alpha(0f).setDuration(LumenMotion.REDUCE_FADE).withEndAction(end).start()
-        else v.animate().alpha(0f).translationY(dp(v.context, 16f).toFloat()).setDuration(LumenMotion.exit(LumenMotion.BASE)).setInterpolator(LumenMotion.ACCEL).withEndAction(end).start()
+        retiring = v
+        val end = Runnable {
+            if (retiring === v) retiring = null
+            try { h.removeView(v) } catch (_: Throwable) { }
+        }
+        v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        val duration = if (replace || reduceMotion(v.context)) LumenMotion.REDUCE_FADE else LumenMotion.exit(LumenMotion.BASE)
+        v.animate().alpha(0f).setDuration(duration).setInterpolator(LumenMotion.ACCEL).withEndAction(end).start()
     }
 
     // M5 (native): "3 files" then "4 files" = same pill, only the number changes (text after the number identical)
-    private val MERGE = Regex("^(\\d+)\\s+(.+)$", RegexOption.DOT_MATCHES_ALL)
+    private val MERGE = Regex("^((?:(?:Copied|Moved|Deleted|Saved|Restored) )?)(\\d+)(\\s+.+)$", RegexOption.DOT_MATCHES_ALL)
     private fun mergeable(a: String, b: String): Boolean {
         val x = MERGE.matchEntire(a); val y = MERGE.matchEntire(b)
-        return x != null && y != null && x.groupValues[2] == y.groupValues[2] && x.groupValues[1] != y.groupValues[1]
+        return x != null && y != null && x.groupValues[1] == y.groupValues[1] &&
+            x.groupValues[3] == y.groupValues[3] && x.groupValues[2] != y.groupValues[2]
     }
 
     // N12 (native): the main screen reports how high its bottom dock is, so a snackbar sits above it instead of covering it
@@ -158,14 +174,15 @@ object Lm {
 
     private fun show(c: Context, text: String, len: Int, kind: String?, actionLabel: String?, action: (() -> Unit)?) {
         val act = actOf(c)
-        if (act == null || act.isFinishing || act.isDestroyed) { fallback(c, text, len); return }
+        if (act == null) { fallback(c, text, len); return }
+        if (act.isFinishing || act.isDestroyed) return
         var host: ViewGroup? = null
         for (i in overlays.indices.reversed()) {
             val od = overlays[i].get() ?: continue
             if (od.isShowing && actOf(od.context) === act) { host = od.window?.decorView?.findViewById<ViewGroup>(android.R.id.content); if (host != null) break }
         }
         if (host == null) host = act.findViewById<ViewGroup>(android.R.id.content)
-        if (host == null) { fallback(c, text, len); return }
+        if (host == null) return
 
         val hasAction = actionLabel != null && action != null
         val baseMs = if (kind == "err") 8000L else if (hasAction || len == Toast.LENGTH_LONG) 5000L else 3000L
@@ -192,7 +209,8 @@ object Lm {
                 return
             }
         }
-        dismissNow()
+        val replacing = cur != null && curHost === host
+        dismissNow(animate = replacing, replace = replacing)
 
         val lm = Lumen.of(act)
         val pill = FrameLayout(act)
@@ -287,7 +305,7 @@ object Lm {
             override fun onViewDetachedFromWindow(v: View) { if (cur === v) dismissNow() }
         })
 
-        if (reduceMotion(act)) {   // spec 13.4: no transform, 120 ms fade
+        if (replacing || reduceMotion(act)) {   // Replace in place, or honour Reduce motion.
             pill.alpha = 0f
             pill.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start()
         } else {   // spec 13.3 Snackbar: slides up 16 dp + fade (t.base, decelerate)
