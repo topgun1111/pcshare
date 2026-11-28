@@ -92,6 +92,7 @@ jobs:
           python3 tools/lumen/lint.py --theme-consistency-regression
           python3 tools/lumen/contrast.py --strict
           python3 tools/lumen/parity.py
+          python3 tools/lumen/lint.py --strict-tokens
           node tools/lumen/test_split.js
           python3 - <<'PY'
           import pathlib, re, subprocess, tempfile

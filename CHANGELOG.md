@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Consistent Lumen spacing and dialogs
+
+### Changed
+- Use shared Lumen spacing in the home screen and media preview.
+- Apply the shared warning and information styles to Restore and Rendering performance dialogs.
+
 ## 2026-11-28 - Terminal readability and notifications
 
 ### Changed

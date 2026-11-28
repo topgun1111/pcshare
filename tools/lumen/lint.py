@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lumen T2 (token lint) + T3 (dialog audit) report for ui.html. Usage: python3 tools/lumen/lint.py [--max-raw N]
 Counts raw values in the page CSS outside the generated /*LUMEN:BEGIN*/ block and the theme-flavour rules.
-Report only: exit 1 only when native alert / confirm / prompt calls exist (T3) or --max-raw is exceeded."""
+Use --strict-tokens to enforce the existing web and native token baseline."""
 import re,sys,os
+from pathlib import Path
 P=os.path.join(os.path.dirname(__file__),'..','..','app','src','main','assets','ui.html')
 s=open(P,encoding='utf-8').read()
 s=re.sub(r'/\*LUMEN:BEGIN\*/.*?/\*LUMEN:END\*/','',s,flags=re.S)
@@ -82,6 +83,46 @@ for _f in sorted(os.listdir(_nat)):
     for _i,_l in enumerate(open(os.path.join(_nat,_f),encoding='utf-8').read().split('\n')):
         if re.search(r'(?<![\w.])(?:\w+\.)?textSize\s*=\s*[0-9.]+f(?!\s*\*)|setTextSize\(\s*(?:android\.util\.)?TypedValue\.COMPLEX_UNIT_SP\s*,\s*[0-9.]+f',_l) and 'Paint' not in _l and 'sizeSp' not in _l:_hand.append(f'{_f}:{_i+1}')
 print('P8 native TextViews with a hand-set literal size:',len(_hand),_hand)
+
+if '--strict-tokens' in sys.argv:
+    web_limits = {
+        'radius px (not var)': 1,
+        'spacing px >=3 (not var/calc)': 18,
+        'font-size px (not var)': 0,
+        'duration ms/s (not var)': 15,
+        'hex colours': 193,
+    }
+    # Fixed stages and scrims intentionally keep their ink independent from document and theme colors.
+    native_color_limits = {
+        'ClipPush.kt': 2,
+        'ImageEditActivity.kt': 1,
+        'ImageViewerActivity.kt': 2,
+        'NlViewerBar.kt': 1,
+        'PdfViewerActivity.kt': 2,
+    }
+    native_checks = (
+        ('direct color', r'\b(?:setTextColor|setBackgroundColor|setColorFilter|setTint)\(\s*(?:0x[0-9a-fA-F]{6,8}|Color\.(?:rgb|argb|parseColor)\()', native_color_limits),
+        ('animator duration', r'\b(?:duration|startDelay)\s*=\s*[1-9][0-9]*L\b', {}),
+        ('inline icon path', r'\bcreatePathFromPathData\(\s*"[Mm][0-9 .,-]', {}),
+    )
+    errors = [
+        f'ui.html {name}: {rep[name]} exceeds {limit}'
+        for name, limit in web_limits.items() if rep[name] > limit
+    ]
+    errors.extend(f'{entry}: use LumenTypography for literal TextView sizes' for entry in _hand)
+    native_root = Path(_nat)
+    for source in sorted(native_root.rglob('*.kt')):
+        name = source.relative_to(native_root).as_posix()
+        code = source.read_text(encoding='utf-8')
+        for label, pattern, limits in native_checks:
+            count = len(re.findall(pattern, code))
+            limit = limits.get(name, 0)
+            if count > limit:
+                errors.append(f'{name} {label}: {count} exceeds {limit}')
+    for error in errors:
+        print(error)
+    print('Strict Lumen token baseline:', 'FAIL' if errors else 'PASS')
+    sys.exit(1 if errors else 0)
 
 # A9: semantic dialog action hierarchy. Alternative-danger styling must never promote the primary action to danger;
 # notice acknowledgements must have a quiet-action classifier in both implementations; Vault must not bypass AppPal.
@@ -235,5 +276,5 @@ if '--snackbar-regression' in sys.argv:
     sys.exit(1 if _toast_bypass else 0)
 if '--dialog-regression' in sys.argv:
     # Gate shared dialog invariants and raw browser alerts; other pre-existing lint findings remain visible in the report.
-    sys.exit(1 if bad or _sem else 0)
+    sys.exit(1 if bad or _sem or _bad or _nb else 0)
 sys.exit(1 if bad or _x else 0)

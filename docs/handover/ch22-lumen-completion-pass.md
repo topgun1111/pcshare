@@ -160,3 +160,9 @@
 
 - Existing terminal schemes use xterm's 4.5:1 contrast floor. Chromium rendered black, blue, magenta and a true-color sample in each scheme, with minimum ratios of 4.95, 4.82 and 4.55 respectively. Terminal options and text-size buttons gain explicit labels and the colour buttons expose their selected state.
 - PC transfer notifications reuse the edition accent and classify active versus finished jobs. Main and foreground-service notification categories follow the work state. Device notification rendering and TalkBack remain pending.
+
+
+## 2026-11-28 - R15 token baseline
+
+- Branch and release CI now reject growth in raw page CSS categories, new unapproved direct native color or fixed animation literals, inline vector paths and literal TextView sizes. Document/media colors, functional loops and existing theme exceptions are recorded in the ledger.
+- Moved four spacing values onto equivalent shared tokens. Restore and Rendering performance use shared dialog roles and both dialog audits now gate CI. The strict-mode pass and two negative cases were exercised locally.

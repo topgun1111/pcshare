@@ -74,7 +74,7 @@ class ErrorLogsActivity : Activity() {
     }
 
     private fun showPerformance() {
-        AppPal.dlg(this).setTitle("Rendering performance")
+        AppPal.dlg(this).kind("info").setTitle("Rendering performance")
             .setMessage(LumenFrameProbe.report() + "\n\nStart a five-second test and return to the file browser. Open a folder or gallery and scroll continuously after two seconds. Reopen Error Logs to see the result. No data is uploaded.")
             .setPositiveButton("Start test") { _, _ ->
                 LumenFrameProbe.arm()
