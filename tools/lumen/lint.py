@@ -161,7 +161,7 @@ if '--performance-regression' in sys.argv:
     for marker in ("h.saver===1)return{step:'f2'",'const endFling=','lm-fling:is([data-glass=f0],[data-glass=f1])'):
         if marker not in _raw:errs.append('Missing web performance invariant: '+marker)
     if ',lmfrost var(' in _raw:errs.append('Animated blur kernel reintroduced')
-    checks={'NlBackdrop.kt':('scrolling[target.rootView] == true','fun setScrolling','effectRadius[target] != r','!LumenPrefs.saver(c)','postInvalidateOnAnimation()'),'NativeList.kt':('override fun onScrollStateChanged','SCROLL_STATE_IDLE','NlBackdrop.setScrolling(rv, false)'),'NlChrome.kt':('NlBackdrop.unregister(bar)','postInvalidateDelayed(33L)'),'PlayerWidgets.kt':('shaderPal !== pal','if (field != v)'),'PlayerActivity.kt':('override fun onBoundsChange','paint.shader = shader'),'NlListFx.kt':('postInvalidateDelayed(33L)','windowVisibility == View.VISIBLE')}
+    checks={'NlBackdrop.kt':('scrolling[target.rootView] == true','fun setScrolling','effectMaterial[target] != material','!LumenPrefs.saver(c)','postInvalidateOnAnimation()'),'NativeList.kt':('override fun onScrollStateChanged','SCROLL_STATE_IDLE','NlBackdrop.setScrolling(rv, false)'),'NlChrome.kt':('NlBackdrop.unregister(dock)','postInvalidateDelayed(33L)'),'PlayerWidgets.kt':('shaderPal !== pal','if (field != v)'),'PlayerActivity.kt':('override fun onBoundsChange','paint.shader = shader'),'NlListFx.kt':('postInvalidateDelayed(33L)','windowVisibility == View.VISIBLE')}
     for name,markers in checks.items():
         source=open(os.path.join(_nat,name),encoding='utf-8').read()
         for marker in markers:

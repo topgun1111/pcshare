@@ -351,12 +351,17 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         dp.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         dp.addView(foot, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dp.visibility = View.GONE
+        NlBackdrop.register(dp)
         dp.elevation = 8f * d
         dp.onSwipe = { fire("close", 0, 0, ver) }
     }
 
     /** Add this once to the activity root: FrameLayout.LayoutParams(1, MATCH_PARENT); the width is set from the page's drawer width. */
     fun layoutParams(): FrameLayout.LayoutParams = FrameLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT)
+
+    fun release() {
+        NlBackdrop.unregister(dp)
+    }
 
     /** App returned from the background: forget the last state so the page's next push is never skipped as "unchanged"; a drawer that is not meant to be open is hidden. */
     fun resync() {
@@ -449,7 +454,7 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (ct == 0) { ct = p.optLong("ct").toInt(); cb = p.optLong("cb").toInt() }
         if (card == 0) card = AppPal.pal(act).bg
         // Lumen Part 4b (N1 b): G1 panel by glass step (tint-raised stand-in, opaque at F3); textured / gradient themes keep their texture. The page hides its own #dwr (html.nldr) so the panel can be see-through.
-        if (ct != 0) { dp.background = NlTex.layered(dp.context, ct, cb); dp.blurFill = 0 }
+        if (ct != 0 && LumenGlass.step(act) < 3) { dp.background = NlTex.layered(dp.context, ct, cb); dp.blurFill = 0 }
         else if (!pm && NlBackdrop.wanted(act) && (card ushr 24) == 0xFF) {   // 4f N1 (c): real blur under the panel (F0 / F1)
             dp.setBackgroundColor(Color.TRANSPARENT); dp.blurFill = LumenGlass.blurFill(act, card); dp.fallback = LumenGlass.chromeFill(act, card); dp.invalidate()
         } else { dp.blurFill = 0; dp.setBackgroundColor(LumenGlass.chromeFill(act, card)) }

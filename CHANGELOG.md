@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Glass and transparency
+
+### Fixed
+- Keep panels opaque when Reduce transparency is enabled or a secure window is active.
+- Reduce unnecessary blur when dialogs open and use the appropriate blur strength for each panel.
+
 ## 2026-11-28 - Responsive Sort dialog
 
 ### Fixed

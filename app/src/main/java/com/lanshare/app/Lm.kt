@@ -40,6 +40,7 @@ object Lm {
 
     /** Full-screen Dialogs (PDF page overview ...) cover the activity: register them so the snackbar is drawn inside the one on top. */
     fun track(d: android.app.Dialog) {
+        LumenGlass.trackModal(d)
         overlays.removeAll { it.get() == null || it.get() === d }
         overlays.add(java.lang.ref.WeakReference(d))
         while (overlays.size > 8) overlays.removeAt(0)

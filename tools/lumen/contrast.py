@@ -69,7 +69,9 @@ def glass_errors(d, minimum, levels):
     argb_tint = d["glassSafe"]
     alpha = int(argb_tint[7:], 16) / 255
     # Native 8-bit alpha. Include both modal defaults and the generated floor.
-    for name, nominal in (("native F0", .72), ("native F1", .82), ("native F2", .94)):
+    dark = derive.is_dark(d["canvas"])
+    for name, nominal in (("native G1", .62 if dark else .72), ("native G2", .70 if dark else .78),
+                          ("native G3", .76 if dark else .84), ("native F2", .92 if dark else .94)):
         if not derive.glass_passes(argb_tint[:7], max(nominal, alpha), fg, minimum):
             yield f"{name} glass / ink or inkMut below {minimum}"
     if not all(cr(f, d["surface"]) >= minimum for f in fg):
@@ -145,9 +147,11 @@ def browser_errors(page, themes):
     <button class="tbtn fill"></button><button class="tbtn tonal"></button>
     <button class="tbtn dngf"></button><pre id="contrast-results"></pre>"""
     script = "\n".join((gen.here / name).read_text(encoding="utf-8") for name in
-                       ("custom.js", "test_large_text_browser.js", "test_sort_browser.js", "test_contrast_browser.js"))
+                       ("custom.js", "test_large_text_browser.js", "test_sort_browser.js", "test_glass_browser.js", "test_contrast_browser.js"))
     start, end = page.index("function openSort(){"), page.index("function openView(){")
     sort_source = page[start:end]
+    start, end = page.index("function glassPick(){"), page.index("function glassApply(){")
+    glass_source = page[start:end]
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):
@@ -159,6 +163,7 @@ def browser_errors(page, themes):
                         + "<style>*{transition:none!important;animation:none!important}</style>" + fixtures
                         + '<script type="application/json" id="contrast-themes">' + json.dumps(themes)
                         + '</script><script type="text/plain" id="sort-source">' + sort_source
+                        + '</script><script type="text/plain" id="glass-source">' + glass_source
                         + "</script><script>" + script + "</script>")
             fixture.write_text(document, encoding="utf-8")
             args = [chrome, "--no-sandbox", "--headless", "--disable-gpu", "--no-first-run",

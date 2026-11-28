@@ -52,7 +52,7 @@ object LumenPrefs {
     } catch (_: Throwable) { false }
     fun saver(c: Context): Boolean = try { (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode } catch (_: Throwable) { false }
 
-    /** {"low":0|1,"saver":0|1,"hc":0|1,"rm":0|1}. low = low-RAM flag, small app heap or 4 cores or fewer (a guess, not measured on the reference devices). */
+    /** {"low":0|1,"saver":0|1,"hc":0|1,"rm":0|1,"secure":0|1}. low = low-RAM flag, small app heap or 4 cores or fewer (a guess, not measured on the reference devices). */
     fun glassHint(c: Context): String {
         val low = try {
             val am = c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -61,6 +61,6 @@ object LumenPrefs {
         val saver = try { (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode } catch (_: Throwable) { false }
         val hc = try { Settings.Secure.getInt(c.contentResolver, "high_text_contrast_enabled", 0) == 1 } catch (_: Throwable) { false }
         fun b(x: Boolean) = if (x) 1 else 0
-        return "{\"low\":${b(low)},\"saver\":${b(saver)},\"hc\":${b(hc)},\"rm\":${b(sysNoAnim(c))}}"
+        return "{\"low\":${b(low)},\"saver\":${b(saver)},\"hc\":${b(hc)},\"rm\":${b(sysNoAnim(c))},\"secure\":${b(AppPal.secureHost(c))}}"
     }
 }

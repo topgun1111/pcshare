@@ -52,6 +52,11 @@ class MainActivity : Activity() {
         const val X_SHOW_OPEN = "show_open"   // ... and the file name to open in that folder
     }
     private lateinit var web: WebView
+
+    internal fun setModalGlassFallback(active: Boolean) {
+        if (!::web.isInitialized || isDestroyed) return
+        web.evaluateJavascript("document.documentElement?.classList.toggle('lm-native-modal', $active)", null)
+    }
     private lateinit var nl: NativeList
     private lateinit var chrome: NlChrome
     private lateinit var drawer: NlDrawer
@@ -79,7 +84,15 @@ class MainActivity : Activity() {
         @JavascriptInterface fun glassHint(): String = LumenPrefs.glassHint(this@MainActivity)
         @JavascriptInterface fun folderColor(): String = ""   // default folder colour = theme primary (spec 4.5); kept for old pages
         /** Lumen Part 4a (N1 a): the glass step the page picked (f0..f3), so native dialogs / sheets use the same blur / tint step. */
-        @JavascriptInterface fun glassStepSet(step: String) { LumenGlass.setStep(this@MainActivity, step) }
+        @JavascriptInterface fun glassStepSet(step: String) {
+            LumenGlass.setStep(this@MainActivity, step)
+            runOnUiThread {
+                if (!::web.isInitialized || isDestroyed) return@runOnUiThread
+                if (::drawer.isInitialized) drawer.resync()
+                web.evaluateJavascript("if(typeof NLDRJ!=='undefined'){NLDRJ='';nlDrPush()}", null)
+                NlBackdrop.invalidateAll(force = true)
+            }
+        }
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
         @JavascriptInterface fun reduceMotionSet(on: Boolean) { LumenPrefs.setReduceMotion(this@MainActivity, on) }
         @JavascriptInterface fun hapticsGet(): Boolean = LumenPrefs.hapticsOn(this@MainActivity)
@@ -352,7 +365,14 @@ class MainActivity : Activity() {
         }
         /** Vault mode of the file manager on / off: no screenshots, hidden in the recent-apps list (same as the Vault screen). */
         @JavascriptInterface fun vaultMode(on: Boolean) {
-            runOnUiThread { try { if (on) this@MainActivity.window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE) else this@MainActivity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) } catch (_: Throwable) { } }
+            runOnUiThread {
+                try {
+                    val flag = android.view.WindowManager.LayoutParams.FLAG_SECURE
+                    if (on) window.setFlags(flag, flag) else window.clearFlags(flag)
+                } catch (_: Throwable) { }
+                if (::web.isInitialized && !isDestroyed) web.evaluateJavascript("window.lmFx&&lmFx()", null)
+                NlBackdrop.invalidateAll(force = true)
+            }
         }
         /** Vault mode tap on a file. [json] = {dir, name, order:[file names as shown]}. Returns "ok" | "locked" | "missing" | "other" (no vault viewer for that type yet) | "bad". */
         @JavascriptInterface fun vaultOpenFile(json: String): String {
@@ -947,6 +967,7 @@ class MainActivity : Activity() {
         dirWatch.stop(); mediaWatch.pause(); MediaWatch.cur = null
         if (::web.isInitialized) web.removeCallbacks(viewportSync)
         if (::chrome.isInitialized) chrome.release()
+        if (::drawer.isInitialized) drawer.release()
         super.onDestroy()
     }
 

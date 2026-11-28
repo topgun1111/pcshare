@@ -2,6 +2,8 @@ package com.lanshare.app
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.RenderEffect
@@ -23,7 +25,7 @@ import java.util.WeakHashMap
  *
  * When it is used (the owner decision "cost on low devices"): F0 while idle and not in battery saver (the user chose Full), F1 only on a device the glass hint does not call low-end and
  * not in battery saver. F2 / F3, API < 31, hardware-accelerated off, or any exception => draw() returns false and the caller keeps the 4b tint-raised stand-in.
- * Radius F0 24 dp, F1 12 dp (plan 4b). Kill switch: ENABLED.
+ * G1 uses 24 / 12 dp; floating G2 uses 32 / 16 dp. F0 also saturates the blurred native content.
  * The chrome views are invalidated by NativeList (scroll), NlChrome.set (page push) and the bar / dock enter animations: [invalidateAll].
  */
 object NlBackdrop {
@@ -32,7 +34,8 @@ object NlBackdrop {
     @Volatile private var broken = false
     private val nodes = WeakHashMap<View, Any>()
     private val scrolling = WeakHashMap<View, Boolean>()
-    private val effectRadius = WeakHashMap<View, Float>()
+    private data class Material(val radius: Float, val saturation: Float)
+    private val effectMaterial = WeakHashMap<View, Material>()
     private val clip = Path()
     private val rf = RectF()
     /** Views that repaint when the backdrop moves (set by NlChrome / NlDrawer). */
@@ -46,7 +49,7 @@ object NlBackdrop {
     fun unregister(v: View) {
         users.removeAll { it.get() == null || it.get() === v }
         nodes.remove(v)
-        effectRadius.remove(v)
+        effectMaterial.remove(v)
     }
 
     @Volatile private var busy = false
@@ -69,31 +72,40 @@ object NlBackdrop {
         }
     }
 
-    fun invalidateAll() = repaint()
+    fun invalidateAll(force: Boolean = false) = repaint(force = force)
 
     fun wanted(c: Context): Boolean {
-        if (!ENABLED || broken || Build.VERSION.SDK_INT < 31) return false
+        if (!ENABLED || broken || Build.VERSION.SDK_INT < 31 || LumenGlass.modalOpen(c)) return false
         val st = LumenGlass.step(c)
         return !LumenPrefs.saver(c) && (st == 0 || (st == 1 && !LumenPrefs.lowEnd(c)))
     }
 
-    fun radiusDp(c: Context): Float = if (LumenGlass.step(c) == 0) 24f else 12f
+    private fun ownsSlot(target: View): Boolean {
+        var above = 0
+        for (ref in users.asReversed()) {
+            val view = ref.get() ?: continue
+            if (!view.isShown || view.rootView !== target.rootView) continue
+            if (view === target) return above < 2
+            above++
+        }
+        return false
+    }
 
     /**
      * Paints the blurred backdrop of [target] into [cv] (the target's own canvas, origin = the target's top-left).
      * [below] = the child of the root FrameLayout that the chrome sits in (everything before it is the backdrop). [round] = corner radius px to clip to (0 = rectangle).
      */
-    fun draw(cv: Canvas, target: View, below: View?, round: Float): Boolean {
-        if (busy || below == null || scrolling[target.rootView] == true || !wanted(target.context) || !cv.isHardwareAccelerated) return false
+    fun draw(cv: Canvas, target: View, below: View?, round: Float, floating: Boolean = false): Boolean {
+        if (busy || below == null || scrolling[target.rootView] == true || !wanted(target.context) || !cv.isHardwareAccelerated || !ownsSlot(target)) return false
         val w = target.width; val h = target.height
         if (w <= 0 || h <= 0) return false
         if (Build.VERSION.SDK_INT < 31) return false
         busy = true
-        return try { drawImpl(cv, target, below, round) } catch (_: Throwable) { broken = true; false } finally { busy = false }
+        return try { drawImpl(cv, target, below, round, floating) } catch (_: Throwable) { broken = true; false } finally { busy = false }
     }
 
     @RequiresApi(31)
-    private fun drawImpl(cv: Canvas, target: View, below: View, round: Float): Boolean {
+    private fun drawImpl(cv: Canvas, target: View, below: View, round: Float, floating: Boolean): Boolean {
         val w = target.width; val h = target.height
         val root = below.parent as? ViewGroup ?: return false
         run {
@@ -115,10 +127,19 @@ object NlBackdrop {
                     rc.save(); rc.translate(ch.left.toFloat(), ch.top.toFloat()); ch.draw(rc); rc.restore()
                 }
             } finally { node.endRecording() }
-            val r = Math.max(1f, radiusDp(target.context) * target.resources.displayMetrics.density * SCALE)
-            if (effectRadius[target] != r) {
-                node.setRenderEffect(RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
-                effectRadius[target] = r
+            val full = LumenGlass.step(target.context) == 0
+            val radiusDp = (if (floating) 32f else 24f) * (if (full) 1f else 0.5f)
+            val radius = Math.max(1f, radiusDp * target.resources.displayMetrics.density * SCALE)
+            val saturation = if (!full) 1f else if (floating) 1.45f else 1.4f
+            val material = Material(radius, saturation)
+            if (effectMaterial[target] != material) {
+                val blur = RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
+                val effect = if (saturation == 1f) blur else {
+                    val matrix = ColorMatrix().apply { setSaturation(saturation) }
+                    RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(matrix), blur)
+                }
+                node.setRenderEffect(effect)
+                effectMaterial[target] = material
             }
             cv.save()
             if (round > 0f) { rf.set(0f, 0f, w.toFloat(), h.toFloat()); clip.reset(); clip.addRoundRect(rf, round, round, Path.Direction.CW); cv.clipPath(clip) }

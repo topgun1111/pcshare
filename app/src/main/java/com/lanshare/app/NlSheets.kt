@@ -176,8 +176,8 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
 
     private fun newSheetDialog(): Dialog {
         val dl = Dialog(act)
-        Lm.track(dl)
         dl.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        Lm.track(dl)
         val secure = AppPal.prepareDialogWindow(dl.window, act)
         fill = LumenGlass.dialogFill(dl.window, act, secure)
         val wideSheet = act.resources.configuration.screenWidthDp >= 600
@@ -288,12 +288,13 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         val p = s.pal
         val dl = newSheetDialog()
         val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12f), 0, dp(12f), dp(8f)) }
-        val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
+        val textured = p.ct != 0 && LumenGlass.step(act) < 3
+        val scroll = ScrollView(act).apply { if (textured) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
         // Lumen sheet: glass panel with r-xxl top corners + edge hairline, drag handle, swipe-to-dismiss (textured themes keep their own texture)
         val sheet = SwipeSheet(act, scroll) { dl.window?.setWindowAnimations(0); dl.dismiss() }
         val wideSheet = act.resources.configuration.screenWidthDp >= 600
         sheet.floating = wideSheet
-        if (p.ct == 0) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), !wideSheet)   // wide windows float with all corners; phones keep top-only corners
+        if (!textured) sheet.background = LumenGlass.panel(act, fill, LumenRadius.xxl(act), !wideSheet)   // wide windows float with all corners; phones keep top-only corners
         val handle = View(act).apply { background = round(LumenGlass.withAlpha(p.mut, 0.5f), 2f); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         sheet.addView(handle, LinearLayout.LayoutParams(dp(32f), dp(4f)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12f); bottomMargin = dp(4f) })
         sheet.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -383,6 +384,6 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         dlg = dl
         dl.setOnShowListener { sheet.post { sheet.enter() } }
         dl.show()
-        trackSheet(dl, sheet, p.ct != 0) { draw() }
+        trackSheet(dl, sheet, textured) { draw() }
     }
 }

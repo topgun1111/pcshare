@@ -1082,7 +1082,11 @@ input.lmr:active::-webkit-slider-thumb{box-shadow:0 0 0 12px color-mix(in srgb,v
 :root[data-glass=f2] .g2,:root[data-glass=f2] .dmn,:root[data-glass=f2] #toast,:root[data-glass=f2] #jp{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassColor) max(var(--gF),var(--glassFloor)),transparent);box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e3)}
 :root[data-glass=f2] .g3,:root[data-glass=f2] #dlg .dcard,:root[data-glass=f2] #sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs){-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassColor) max(var(--gF),var(--glassFloor)),transparent);box-shadow:inset 1px 1px 0 color-mix(in srgb,var(--edgeHi) 80%,transparent),0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e4)}
 /* max two blurred surfaces (6.4): while a dialog is open, a sheet / menu under it drops to its f2 look */
-html.dlo:not([data-glass=f3]) #sheet .card,html.dlo:not([data-glass=f3]) .dmn{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassColor) max(94%,var(--glassFloor)),transparent)}
+html:is(.dlo,.lm-native-modal):not([data-glass=f3]) #sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs),
+html.lm-native-modal:not([data-glass=f3]) #dlg .dcard{
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+  background:color-mix(in srgb,var(--glassColor) max(94%,var(--glassFloor)),transparent)
+}
 }
 :root[data-glass=f3] .g1,:root[data-glass=f3] .g2,:root[data-glass=f3] .dmn,:root[data-glass=f3] #toast,:root[data-glass=f3] #jp,:root[data-glass=f3] .g3,:root[data-glass=f3] #dlg .dcard,:root[data-glass=f3] #sheet .card:not(.fu):not(.pfull):not(.pfx):not(.vs){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface);box-shadow:0 0 0 1px var(--edge),var(--e3,0 0 0 0 transparent)}
 :root[data-glass=f3] #home{background:var(--canvas)}
@@ -1275,6 +1279,18 @@ html[data-rm] #list.lm-selst .row{animation:none}
 :root[data-glass=f0] #top:not(.el),:root[data-glass=f1] #top:not(.el){background:transparent;box-shadow:none;border-color:transparent}
 :root[data-glass=f0] #top.el,:root[data-glass=f1] #top.el{-webkit-backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));backdrop-filter:blur(var(--gb1,24px)) saturate(var(--gs1,1.4));background:color-mix(in srgb,var(--glassColor) max(var(--gA1),var(--glassFloor)),transparent)}
 }
+/* Demote chrome while a top-level sheet, dialog or native modal owns the blur. */
+@supports(background:color-mix(in srgb,red,blue)){
+:root:is(.dlo,.lm-sheet-open,.lm-native-modal):is([data-glass=f0],[data-glass=f1])
+  :is(#top.el,.g1,.g2,#dock,#gal .gb,#toast,#jp,.dmn,.tbtn.glass:not(.on-pic)){
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+  background:color-mix(in srgb,var(--glassColor) max(94%,var(--glassFloor)),transparent)!important
+}}
+html.nlcbar #top.el,html.lm-native-dock #dock{
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important
+}
+:root:root[data-glass=f3] #dwr{background:var(--surface);backdrop-filter:none;-webkit-backdrop-filter:none}
+:root[data-glass=f3] .g0{background:#000;backdrop-filter:none;-webkit-backdrop-filter:none}
 /*LUMEN-UI14:END*/
 /*LUMEN-UI15:BEGIN*/
 /* Part 19 (T2 / T3 / T4 / T5): high contrast rings, OS font switch, theme preview card, mode row */
@@ -1769,6 +1785,7 @@ const lmHint=()=>{try{return JSON.parse(LSAndroid.glassHint())||{}}catch(e){retu
 function glassPick(){const h=lmHint(),q=LD('ls_glassq','auto'),mm=x=>{try{return matchMedia(x).matches}catch(e){return false}},
   sup=(a,b)=>{try{return CSS.supports(a,b)}catch(e){return false}},
   bf=sup('backdrop-filter','blur(1px)')||sup('-webkit-backdrop-filter','blur(1px)'),cm=sup('background','color-mix(in srgb,red,blue)');
+  if(h.secure===1)return{step:'f3',why:'secure window'};
   if(LD('ls_reduceT','0')==='1')return{step:'f3',why:'Reduce transparency'};
   if(mm('(prefers-contrast:more)')||mm('(forced-colors:active)')||h.hc===1||/^hc[ld]$/.test(document.documentElement.dataset.theme||''))return{step:'f3',why:'high contrast'};
   if(!cm)return{step:'f3',why:'no color-mix in this WebView'};
@@ -1807,8 +1824,12 @@ const HAP={hold:'click',sel:'select',tog:'select',snap:'tick',ok:'success',err:'
 const hap=e=>{const k=HAP[e];if(k)try{window.LSAndroid&&LSAndroid.haptic&&LSAndroid.haptic(k)}catch(_){}};
 document.addEventListener('click',e=>{const t=e.target&&e.target.closest&&e.target.closest('.chip.flt,.chip.inp,.ck');if(t)hap('tog')},true);
 document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('lmr')){const at=(+t.value<=+t.min)||(+t.value>=+t.max);if(at&&!t._end)hap('snap');t._end=at}},true);
-/* html.dlo = the dialog layer is open (every dialog, however it is closed): a sheet / menu under it drops its blur, so at most two surfaces blur at once (6.4) */
-try{const d=document.getElementById('dlg');if(d)new MutationObserver(()=>document.documentElement.classList.toggle('dlo',d.style.display==='flex')).observe(d,{attributes:true,attributeFilter:['style']})}catch(e){}
+/* Modals own their backdrop; demote the lower page glass until they close. */
+for(const [id,cls] of [['dlg','dlo'],['sheet','lm-sheet-open']]){
+  const layer=document.getElementById(id);
+  if(layer)new MutationObserver(()=>document.documentElement.classList.toggle(cls,layer.style.display==='flex'))
+    .observe(layer,{attributes:true,attributeFilter:['style']});
+}
 /*LUMEN-FX:END*/
 function sysBars(){try{if(!(window.LSAndroid&&LSAndroid.bars))return;const b=getComputedStyle(document.documentElement).getPropertyValue('--bar').trim(),m=/^#([0-9a-f]{6})$/i.exec(b);if(!m)return;const n=parseInt(m[1],16);LSAndroid.bars(b,(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))>150)}catch(e){}}
 setTimeout(sysBars,0);try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(()=>nlTheme(),50))}catch(e){}
@@ -2361,7 +2382,7 @@ function nlChPush(){if(!NLCH)return;
   ['#sheet','#dlg','#pcs','#pq','.dsc'].forEach(q=>{if(vis($(q)))modal=1});
   ['#pv','#dual','#gal','#home'].forEach(q=>{if(vis($(q)))all=1});
   const sc=$('#dscrim');if((document.body.classList.contains('dopen')&&!document.documentElement.classList.contains('dperm'))||(sc&&vis(sc)&&(parseFloat(getComputedStyle(sc).opacity)||0)>0))all=1;
-  if(all){document.documentElement.classList.remove('nlcbar');if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
+  if(all){document.documentElement.classList.remove('nlcbar','lm-native-dock');if(NLCHJ!=='0'){NLCHJ='0';NL.nlChrome('0')}return}
   const sel=document.body.classList.contains('selm'),o={vw:window.innerWidth,dpr:window.devicePixelRatio||1,p:nlChPal(),ic:{}};
   const need=k=>{if(k&&!(k in o.ic))o.ic[k]=nlIc(k)};
   if(!modal){                                                // a dialog / bottom sheet dims these in the page: show the page's own copy
@@ -2381,6 +2402,7 @@ function nlChPush(){if(!NLCH)return;
     if(wr){const w0=dw.getBoundingClientRect().top;
       o.dl={r:wr,k:dk.map(k=>{const c=DLS[k],b=c.el.getBoundingClientRect();
         return{k:k,n:c.nm.textContent,x:(c.cx.style.display!=='none'&&!c.cx.disabled)?1:0,w:parseFloat(c.fill.style.width)||0,i:c.el.classList.contains('ind')?1:0,s:c.info.textContent,y:q2(b.top-w0),h:q2(b.height)}})}}}
+  document.documentElement.classList.toggle('lm-native-dock',!!o.dock);
   document.documentElement.classList.toggle('nlcbar',!!o.bar);   // the native bar draws title + icons: the page's own copy goes invisible (opacity only, so layout and click targets stay) instead of ghosting through the see-through / glass bar
   const j=JSON.stringify(o);if(j!==NLCHJ){NLCHJ=j;NL.nlChrome(j)}}
 // a tap on a native chrome control: click the HTML twin so the page's own handler runs

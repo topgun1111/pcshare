@@ -1,15 +1,20 @@
 package com.lanshare.app
 
+import android.app.Activity
+import android.app.Dialog
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import androidx.core.graphics.ColorUtils
+import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 
 /**
  * Lumen Part 4a (N1 a): native glass for dialogs and sheets, same F0-F3 ladder as the page (spec 6.5).
- *  F0 / F1 = real backdrop blur (API 31+ blur-behind, radius 32 / 16 dp) under a translucent tint
+ *  F0 / F1 = real backdrop blur (API 31+ blur-behind, radius 40 / 20 dp) under a translucent tint
  *  F2      = no blur, tint raised to 94 % (what NlChrome already does)
  *  F3      = opaque surface + hairline
  * The page picks the step (glassApply in ui.html, including Battery saver / low RAM / high contrast) and reports it through LSAndroid.glassStepSet().
@@ -29,35 +34,71 @@ object LumenGlass {
 
     /** Effective step 0..3 for this device right now. */
     fun step(c: Context): Int {
+        if (AppPal.secureHost(c)) return 3
         val s = p(c).getInt("glass", 1)
-        return if (s <= 1 && !blurOk(c)) 2 else s
+        return if (s <= 1 && (!blurOk(c) || LumenPrefs.saver(c))) 2 else s
     }
 
-    private fun radiusDp(step: Int) = if (step == 0) 32f else if (step == 1) 16f else 0f
+    private val observed = WeakHashMap<View, Boolean>()
+    private val visibleModals = WeakHashMap<View, WeakReference<Activity>>()
 
-    /** Turns on blur-behind for [w] when the step asks for it. Returns the panel fill (ARGB) to paint over it. */
-    fun apply(w: Window?, c: Context): Int {
-        val lm = Lumen.of(c)
-        val st = step(c)
-        if (st >= 3) return lm.surface or 0xFF000000.toInt()
-        var blurred = false
-        if (w != null && st <= 1 && Build.VERSION.SDK_INT >= 31) {
-            try {
-                val px = Math.round(radiusDp(st) * c.resources.displayMetrics.density)
-                w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                val a = w.attributes; a.blurBehindRadius = px; w.attributes = a
-                blurred = true
-            } catch (_: Throwable) { }
+    fun modalOpen(c: Context): Boolean {
+        val act = AppPal.hostActivity(c) ?: return false
+        return visibleModals.values.any { it.get() === act }
+    }
+
+    /** Each native modal demotes the page and native chrome beneath it before the next drawing pass. */
+    fun trackModal(dialog: Dialog) {
+        val act = AppPal.hostActivity(dialog.context) ?: return
+        val decor = dialog.window?.decorView ?: return
+        if (observed.put(decor, true) == true) return
+        fun update(v: View, attached: Boolean) {
+            val before = modalOpen(act)
+            if (attached) visibleModals[v] = WeakReference(act) else visibleModals.remove(v)
+            val after = modalOpen(act)
+            if (before != after) {
+                if (act is MainActivity) act.setModalGlassFallback(after)
+                NlBackdrop.invalidateAll(force = true)
+            }
         }
-        val alpha = if (blurred) (if (st == 0) 0.72f else 0.82f) else 0.94f
+        decor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = update(v, true)
+            override fun onViewDetachedFromWindow(v: View) = update(v, false)
+        })
+        if (decor.isAttachedToWindow) update(decor, true)
+    }
+
+    /** G3 native modal glass. Nested windows stay frosted and secure windows stay opaque. */
+    fun dialogFill(w: Window?, c: Context, secure: Boolean): Int {
+        val lm = Lumen.of(c)
+        val windowSecure = (w?.attributes?.flags ?: 0) and WindowManager.LayoutParams.FLAG_SECURE != 0
+        val material = if (secure || windowSecure) 3 else step(c)
+        val blurred = w != null && material <= 1 && !modalOpen(c) &&
+            setWindowBlur(w, Math.round((if (material == 0) 40f else 20f) * c.resources.displayMetrics.density))
+        if (!blurred && w != null) setWindowBlur(w, 0)
+        if (material >= 3) return lm.surface or 0xFF000000.toInt()
+        val night = AppPal.night(c)
+        val alpha = if (blurred) {
+            if (night) 0.76f else 0.84f
+        } else {
+            if (night) 0.92f else 0.94f
+        }
         return raisedAlpha(lm.glassSafe, alpha)
     }
 
-    /** Modal G3: preserve readable text over either extreme of the backdrop; secure windows never blur. */
-    fun dialogFill(w: Window?, c: Context, secure: Boolean): Int {
-        val lm = Lumen.of(c)
-        if (secure) return lm.surface or 0xFF000000.toInt()
-        return apply(w, c)
+    private fun setWindowBlur(window: Window, radius: Int): Boolean {
+        if (Build.VERSION.SDK_INT < 31) return false
+        return try {
+            val a = window.attributes
+            a.blurBehindRadius = radius
+            window.attributes = a
+            if (radius > 0) window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            radius > 0
+        } catch (_: RuntimeException) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            false
+        }
     }
 
     private fun raisedAlpha(base: Int, alpha: Float): Int =
@@ -105,7 +146,7 @@ object LumenGlass {
      */
     fun chromeFill(c: Context, base: Int, lm: Lumen = Lumen.of(c)): Int {
         val material = step(c)
-        if (material >= 3) return base or 0xFF000000.toInt()
+        if (material >= 3) return lm.surface or 0xFF000000.toInt()
         val night = AppPal.night(c)
         val a = when (material) {
             0 -> if (night) 0.84f else 0.88f
@@ -117,9 +158,15 @@ object LumenGlass {
     }
 
     /** Lumen 4f (N1 c): fill when the real backdrop blur is painted under the chrome (spec 6.2 G1 tier alpha, F0 lower than F1 because it is blurrier). */
-    fun blurFill(c: Context, base: Int, lm: Lumen = Lumen.of(c)): Int {
+    fun blurFill(c: Context, base: Int, lm: Lumen = Lumen.of(c), floating: Boolean = false): Int {
+        val material = step(c)
+        if (material >= 2) return chromeFill(c, base, lm)
         val night = AppPal.night(c)
-        val a = if (step(c) == 0) (if (night) 0.66f else 0.72f) else (if (night) 0.72f else 0.78f)
+        val a = if (floating) {
+            if (night) 0.70f else 0.78f
+        } else {
+            if (night) 0.62f else 0.72f
+        }
         return readableChrome(lm, withAlpha(base, a))
     }
 

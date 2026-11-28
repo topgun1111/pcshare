@@ -78,10 +78,14 @@ object AppPal {
     /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours and 360 / 560 dp responsive width caps. */
     fun dlg(c: Context): Dlg = Dlg(c)
 
+    internal fun secureHost(c: Context): Boolean {
+        val flags = hostActivity(c)?.window?.attributes?.flags ?: 0
+        return flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+    }
+
     /** Prepare a separate dialog window before showing it. Secure hosts always keep their capture restrictions. */
     fun prepareDialogWindow(window: Window?, c: Context): Boolean {
-        val flags = actOf(c)?.window?.attributes?.flags ?: 0
-        val secure = flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+        val secure = secureHost(c)
         if (secure) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window?.let {
             val mode = it.attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()
@@ -131,7 +135,7 @@ object AppPal {
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
-            val act = actOf(c)
+            val act = hostActivity(c)
             val secure = prepareDialogWindow(d.window, c)
             val fill = LumenGlass.dialogFill(d.window, c, secure)
             d.window?.setBackgroundDrawable(LumenGlass.panel(c, fill, 32f, false))
@@ -151,7 +155,7 @@ object AppPal {
         }
     }
 
-    private fun actOf(c: Context): Activity? {
+    internal fun hostActivity(c: Context): Activity? {
         var x: Context? = c
         while (x is ContextWrapper) { if (x is Activity) return x; x = x.baseContext }
         return null

@@ -528,12 +528,12 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
         val rl = LumenRadius.l(context) * d   // N6: strip / pills follow the theme's r-l (Windows 11 = 12)
         // N1 (b): the page's own tint (or glassTint) by glass step. No backdrop blur is possible under a native view, so F0-F2 are tint-raised (see LumenGlass.chromeFill); F3 = opaque
         val base = if (bg != 0) bg else lm.glassTint
-        val live = NlBackdrop.draw(cv, this, parent as? View, rad)   // 4f N1 (c): real blur under the dock pill (F0 / F1, API 31+)
-        val tint = if (live) LumenGlass.blurFill(context, base, lm) else LumenGlass.chromeFill(context, base, lm)
+        val live = NlBackdrop.draw(cv, this, parent as? View, rad, floating = true)   // 4f N1 (c): real blur under the dock pill (F0 / F1, API 31+)
+        val tint = if (live) LumenGlass.blurFill(context, base, lm, floating = true) else LumenGlass.chromeFill(context, base, lm)
         val raised = maxOf(if (live) 0xD2 else 0xEB, tint ushr 24)
         val f3 = !LumenGlass.chromeGradient(context)
         fillP.shader = null; fillP.style = Paint.Style.FILL
-        fillP.color = if (f3) ((base and 0x00FFFFFF) or 0xFF000000.toInt()) else ((tint and 0x00FFFFFF) or (raised shl 24))
+        fillP.color = if (f3) (lm.surface or 0xFF000000.toInt()) else ((tint and 0x00FFFFFF) or (raised shl 24))
         rf.set(0f, 0f, bw, bh); cv.drawRoundRect(rf, rad, rad, fillP)
         // gChrome light from the top (not at F3) + edge: highlight from the top-left (edgeHi) over a 0.5 dp outer hairline (spec 6.1 items 4-6); F3 = 1 dp edge
         if (!f3) { fillP.shader = LinearGradient(0f, 0f, 0f, bh, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP); cv.drawRoundRect(rf, rad, rad, fillP); fillP.shader = null }
@@ -768,7 +768,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
 
     init {
         onElev = elevCb
-        NlBackdrop.register(bar); NlBackdrop.register(dock)
+        NlBackdrop.register(dock)
         for (v in all) { v.visibility = View.GONE; v.icons = icons; layer.addView(v, FrameLayout.LayoutParams(1, 1)) }
         bar.onTap = { id -> if (id == "scan") bar.spin(); fire("btn", id) }
         fab.onTap = { _ -> fire("btn", "fab") }
@@ -788,7 +788,7 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
     fun resync() { last = "" }
 
     /** Activity destroyed: drop the static scroll callback so this chrome (and its views) is not kept alive; a newer chrome's callback is left alone. */
-    fun release() { if (onElev === elevCb) onElev = null; NlBackdrop.setScrolling(layer, false); NlBackdrop.unregister(bar); NlBackdrop.unregister(dock) }
+    fun release() { if (onElev === elevCb) onElev = null; NlBackdrop.setScrolling(layer, false); NlBackdrop.unregister(dock) }
 
     private fun px(v: Double): Int = Math.round((v * d).toFloat())
 
