@@ -1,6 +1,6 @@
 # Handover chapter file - ch22-lumen-completion-pass
 
-> **CURRENT STATE — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), app commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431) passed existing CI, full/lite APK and patch/release checks. This chapter records shipped implementation history only. A subsequent detailed source audit reopened conformance gaps. **Current tasks and Work continuation: [LUMEN.md §3.9](LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28), starting R01 contrast correction.** Device acceptance is outstanding; earlier session status notes are historical.
+> **CURRENT STATE — 2026-11-28:** [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), app commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431) passed existing CI, full/lite APK and patch/release checks. This chapter records shipped implementation history only. A subsequent detailed source audit reopened conformance gaps. **Current tasks and Work continuation: [LUMEN.md §3.9](LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28), starting at R17 physical-device acceptance.** Device acceptance is outstanding; earlier session status notes are historical.
 
 > Part of `HANDOVER_READ_BEFORE_CODE.md` (slim index at the project root). Split out 2026-11-13; content unchanged. Read only what the task needs (grep / `sed -n`).
 
