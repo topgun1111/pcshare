@@ -31,6 +31,7 @@ object LumenGrad {
     /** gPrimary stops (spec 5.2): the theme's gradFrom -> gradTo slots (Ember = the spec's #D2590A -> #A93F00 light, #FFB77C -> #FF9A4D dark, derived for the other themes). */
     fun primary(lm: Lumen): IntArray = intArrayOf(lm.gradFrom, lm.gradTo)
     fun fab(fab: Int): IntArray = intArrayOf(LumenCategory.mix(fab, WHITE, 0.06f), LumenCategory.mix(fab, BLACK, 0.10f))
+    fun tonal(lm: Lumen): IntArray = intArrayOf(lm.tonalFrom, lm.tonalTo)
     fun danger(lm: Lumen): IntArray = intArrayOf(lm.dangerFrom, lm.dangerTo)
     fun success(lm: Lumen): IntArray = intArrayOf(lm.successFrom, lm.successTo)
 

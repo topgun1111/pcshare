@@ -231,10 +231,10 @@ class UsIndexActivity : Activity() {
         }
     }
 
-    private fun button(label: String, filled: Boolean, click: () -> Unit) = TextView(this).apply {
+    private fun button(label: String, filled: Boolean, click: (TextView) -> Unit) = TextView(this).apply {
         text = label
         LumenButtons.apply(this, if (filled) LumenButtons.Role.PRIMARY else LumenButtons.Role.OUTLINE, compact = true)
-        setOnClickListener { click() }
+        setOnClickListener { click(this) }
     }
 
     private fun build() {
@@ -269,7 +269,7 @@ class UsIndexActivity : Activity() {
         root.addView(sv, LinearLayout.LayoutParams(-1, 0, 1f))
         // bottom actions
         val act = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(14f), dp(8f), dp(14f), dp(10f)); setBackgroundColor(p.bg) }
-        act.addView(button("Run everything now", true) { kick(true) }, LinearLayout.LayoutParams(0, -2, 1.3f))
+        act.addView(button("Run everything now", true) { kick(true, it) }, LinearLayout.LayoutParams(0, -2, 1.3f))
         act.addView(button("Full rescan", false) {
             AppPal.dlg(this).kind("info").setTitle("Rescan the whole phone?").setMessage("Re-reads every folder. It can take a few minutes; searching keeps working meanwhile.")
                 .setPositiveButton("Rescan") { _, _ -> IndexManager.rescan(); kick(false); toast("Rescanning the phone") }.setNegativeButton("Cancel", null).show()
@@ -314,11 +314,15 @@ class UsIndexActivity : Activity() {
     // ------------------------------------------------------------------ life cycle
 
     /** Starts every job. Safe to call again and again: running jobs are left alone, finished ones only do a cheap check. */
-    private fun kick(manual: Boolean) {
+    private fun kick(manual: Boolean, action: TextView? = null) {
+        action?.let { LumenButtons.setBusy(it, true) }
         exec.execute {
             try { IndexManager.kickAll() } catch (_: Throwable) {}
             try { ImgSearch.kickAll(manual) } catch (_: Throwable) {}
-            if (manual) ui.post { toast("Started: names, texts, picture meaning and picture text") }
+            if (manual) ui.post {
+                action?.let { LumenButtons.setBusy(it, false) }
+                if (!isFinishing && !isDestroyed) toast("Started: names, texts, picture meaning and picture text")
+            }
             ui.post { poll() }
         }
     }

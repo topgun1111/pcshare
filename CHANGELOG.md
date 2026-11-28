@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Button feedback
+
+### Fixed
+- Use consistent button colors and feedback for keyboard focus, hovering, pressing and disabled actions.
+- Show progress while selected actions are starting without moving their labels or changing the layout.
+
 ## 2026-11-28 - Glass and transparency
 
 ### Fixed

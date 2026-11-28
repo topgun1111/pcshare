@@ -936,9 +936,19 @@ body.galm #fab,body.galm #peers,body.galm #free,body.galm #pathrow,body.galm #nm
 .tbtn:focus-visible,.ibtn:focus-visible,.chip:focus-visible,.sw input:focus-visible+i{outline:2px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 4px color-mix(in srgb,var(--focus) calc(var(--st-focus)*100%),transparent)}
 .tbtn:disabled,.tbtn[aria-disabled=true],.ibtn:disabled,.chip:disabled{opacity:var(--st-disabledFg);background-color:color-mix(in srgb,var(--ink) calc(var(--st-disabledBg)*100%),transparent);pointer-events:none;filter:none}
 .tbtn.fill:disabled,.tbtn.tonal:disabled,.tbtn.dngf:disabled{background:color-mix(in srgb,var(--ink) 12%,transparent);color:color-mix(in srgb,var(--ink) 38%,transparent);opacity:1}
-.tbtn.busy{color:transparent!important;pointer-events:none}
-.tbtn.busy>*{visibility:hidden}
-.tbtn.busy::after{content:'';position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:var(--r-full);border:2.5px solid var(--bc);border-right-color:transparent;animation:rot .8s linear infinite}
+:root .tbtn.busy{pointer-events:none;opacity:1}
+:root .tbtn.busy::after{
+  content:'';position:absolute;inset:auto calc(50% - 10px) 3px;height:2px;
+  border-radius:var(--r-full);background:var(--bc,currentColor);animation:lmButtonWait 1s ease-in-out infinite
+}
+@keyframes lmButtonWait{50%{transform:scaleX(.4);opacity:.65}}
+:root[data-rm] .tbtn.busy::after{animation:none}
+@media(prefers-reduced-motion:reduce){:root .tbtn.busy::after{animation:none}}
+:root .tbtn[data-lm-error]{box-shadow:inset 0 0 0 1.5px var(--error)}
+@media(hover:hover) and (pointer:fine){
+  .tbtn:is(.fill,.tonal,.dngf,.lmp):hover:not(:disabled){outline:2px solid var(--edge);outline-offset:2px}
+  .tbtn:is(.fill,.tonal,.dngf,.lmp):focus-visible{outline-color:var(--focus)}
+}
 .dact .tbtn.lmp,.dact .tbtn.dng{height:48px;padding:0 var(--sp-6)}
 .dact.stk .tbtn{height:48px}.dact.stk .tbtn.lmp,.dact.stk .tbtn.dng{height:56px}
 /* Shared dialog actions: dismissals are quiet, alternatives outlined, danger alternatives error text. */
@@ -1477,6 +1487,13 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
 .dcard.sd .sort-choices{min-height:0;overflow:auto;overscroll-behavior:contain}
 .dcard.sd .opt{min-height:48px;height:auto}
 .dcard.sd .opt .t{min-width:0;overflow-wrap:anywhere}
+html:root .tbtn:is(.fill,.tonal,.dngf):disabled,
+html:root #dlg .dact .tbtn:is(.lmp,.dng,.tonal):disabled{
+  background:color-mix(in srgb,var(--ink) 12%,var(--surface));
+  color:color-mix(in srgb,var(--ink) 38%,var(--surface));opacity:1
+}
+html:root .tbtn.busy:disabled{background:var(--surface);color:var(--ink)}
+html:root .tbtn.busy::after{background:var(--primary)}
 /* Large text follows the Android preference. Keep the existing action nodes and give their labels room to reflow. */
 html.lm-large-text :is(#dlg,#sheet) .dact{flex-direction:column;align-items:stretch}
 html.lm-large-text :is(#dlg,#sheet) .dact .tbtn,
@@ -3615,6 +3632,21 @@ function openSettings(){
   if(window.LSAndroid&&LSAndroid.exitApp){const rx=E('button','tbtn dng sxe','Exit app');
     rx.onclick=async()=>{if(await dlg({kind:'warn',title:'Exit LANShare?',msg:'This stops sharing on your network and closes the app. Open it again to start sharing.',ok:'Exit',danger:true}))try{LSAndroid.exitApp()}catch(e){toast('\u26a0 '+e.message,4000)}};body.append(rx)}
   filter()}
+/*LUMEN-BUTTON-STATE:BEGIN*/
+const lmButtonPrior=new WeakMap();
+function lmButtonBusy(button, active, indicator=true){
+  if(active){
+    if(lmButtonPrior.has(button))return false;
+    lmButtonPrior.set(button,button.disabled);button.disabled=true;
+    if(indicator){button.classList.add('busy');button.setAttribute('aria-busy','true')}
+    return true;
+  }
+  if(!lmButtonPrior.has(button))return false;
+  button.disabled=lmButtonPrior.get(button);lmButtonPrior.delete(button);
+  button.classList.remove('busy');button.removeAttribute('aria-busy');
+  return true;
+}
+/*LUMEN-BUTTON-STATE:END*/
 /* Settings > Export / import settings: a file on the phone (the Google Drive screen has the cloud copy). Uses the same native callbacks as the Drive backup. */
 function openSettingsFile(){
   const o=$('#sheet');o.textContent='';o.style.display='flex';
@@ -3624,21 +3656,25 @@ function openSettingsFile(){
   const tw=E('label','smf'),cb=E('input'),tx=E('b','','Include saved-server passwords and the Phone Explorer PIN');cb.type='checkbox';
   tw.style.cssText='display:flex;align-items:center;gap:var(--sp-3);margin:0 var(--sp-2) var(--sp-3)';cb.style.cssText='width:22px;height:22px;flex:none';tx.style.fontWeight='500';tw.append(cb,tx);card.append(tw);
   card.append(E('p','smn','The file is plain text: anyone who gets it can read the passwords. Leave this off unless you keep the file safe.'));
-  const err=E('div','smerr');err.style.display='none';card.append(err);
+  const err=E('div','smerr');err.style.display='none';err.setAttribute('role','alert');card.append(err);
   const bar=E('div','dact'),bx=E('button','tbtn','Export'),bi=E('button','tbtn','Import'),bd=E('button','tbtn fill','Back');
-  const busy=b=>{bx.disabled=bi.disabled=b};
+  let action=null;
+  const busy=(on,trigger)=>{if(on)action=trigger;for(const b of [bx,bi]){
+    if(on)b.removeAttribute('data-lm-error');lmButtonBusy(b,on,b===trigger)}};
+  const failure=message=>{if(action)action.setAttribute('data-lm-error','');err.textContent=message;err.style.display=''};
+
   const webSnap=()=>{const w={};try{JSON.parse(LSAndroid.settingsWebKeys()).forEach(k=>{let v=null;try{v=localStorage.getItem(k)}catch(e){}w[k]=v})}catch(e){}return JSON.stringify(w)};
-  window.lsSettingsCloudDone=(ok,msg)=>{busy(false);if(ok){toast(msg,3500);err.style.display='none'}else{err.textContent=msg;err.style.display=''}};
+  window.lsSettingsCloudDone=(ok,msg)=>{busy(false);if(ok){toast(msg,3500);err.style.display='none'}else failure(msg)};
   window.lsSettingsCloudAsk=async t=>{busy(false);
     const v=await dlg({kind:'warn',title:'Import settings',msg:t,ok:'Import',danger:true});
     if(!v){try{LSAndroid.settingsCloudDrop()}catch(e){}return}
     try{const r=JSON.parse(LSAndroid.settingsCloudApply());
-      if(r.error){err.textContent=r.error;err.style.display='';return}
+      if(r.error){failure(r.error);return}
       Object.keys(r.web||{}).forEach(k=>{try{if(r.web[k]===null)localStorage.removeItem(k);else localStorage.setItem(k,r.web[k])}catch(e){}});
       toast('Settings imported ('+r.count+')',2500);setTimeout(()=>location.reload(),900)}
-    catch(e){err.textContent=e.message;err.style.display=''}};
-  bx.onclick=()=>{err.style.display='none';busy(true);try{LSAndroid.settingsExport(webSnap(),cb.checked)}catch(e){busy(false);err.textContent=e.message;err.style.display=''}};
-  bi.onclick=()=>{err.style.display='none';busy(true);try{LSAndroid.settingsImport()}catch(e){busy(false);err.textContent=e.message;err.style.display=''}};
+    catch(e){failure(e.message)}};
+  bx.onclick=()=>{err.style.display='none';busy(true,bx);try{LSAndroid.settingsExport(webSnap(),cb.checked)}catch(e){busy(false);failure(e.message)}};
+  bi.onclick=()=>{err.style.display='none';busy(true,bi);try{LSAndroid.settingsImport()}catch(e){busy(false);failure(e.message)}};
   bd.onclick=()=>{close();openSettings()};
   bar.append(bx,bi,bd);card.append(bar);o.append(card)}
 function openTextSettings(){

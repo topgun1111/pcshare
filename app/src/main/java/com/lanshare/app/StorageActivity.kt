@@ -480,7 +480,10 @@ class StorageActivity : Activity() {
     private fun update() {
         val s = scan ?: return
         val st = s.state
-        rescanBtn?.visibility = if (st == "run") View.GONE else View.VISIBLE      // Cancel is in the content while it runs
+        rescanBtn?.let { button ->
+            button.visibility = if (st == "run") View.GONE else View.VISIBLE
+            LumenButtons.setError(button, when (st) { "run", "done", "cancel" -> null; else -> "Scan failed" })
+        }
         if (st != shownState) {
             shownState = st
             when (st) {

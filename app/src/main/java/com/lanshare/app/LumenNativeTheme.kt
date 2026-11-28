@@ -1,5 +1,8 @@
 package com.lanshare.app
 
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.StateListAnimator
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -192,6 +195,9 @@ object LumenButtons {
     enum class Role { PRIMARY, TONAL, OUTLINE, TEXT, DANGER, GLASS }
     private data class Spec(val role: Role, val compact: Boolean, val label: Int?, val backdrop: Int?)
     private val managed = java.util.WeakHashMap<TextView, Spec>()
+    private data class Busy(val enabled: Boolean, val description: CharSequence?)
+    private val busy = java.util.WeakHashMap<TextView, Busy>()
+    private val errors = java.util.WeakHashMap<TextView, CharSequence?>()
     private fun dp(v: TextView, n: Float) = Math.round(n * v.resources.displayMetrics.density)
     private fun opq(c: Int) = c or 0xFF000000.toInt()
     private fun contrast(a: Int, b: Int) = ColorUtils.calculateContrast(opq(a), opq(b))
@@ -203,6 +209,35 @@ object LumenButtons {
     fun apply(v: TextView, role: Role, compact: Boolean = false, label: Int? = null, backdrop: Int? = null) {
         val spec = Spec(role, compact, label, backdrop)
         managed[v] = spec
+        render(v, spec, Lumen.of(v.context))
+    }
+
+    /** Changes state in place, keeping the layout, label and action installed by the caller. */
+    fun setBusy(v: TextView, active: Boolean, status: CharSequence = "In progress") {
+        val spec = managed[v] ?: return
+        if (active) {
+            if (busy.containsKey(v)) return
+            busy[v] = Busy(v.isEnabled, ViewCompat.getStateDescription(v))
+            v.isEnabled = false
+            ViewCompat.setStateDescription(v, status)
+        } else {
+            val prior = busy.remove(v) ?: return
+            v.isEnabled = prior.enabled
+            ViewCompat.setStateDescription(v, prior.description)
+        }
+        render(v, spec, Lumen.of(v.context))
+    }
+
+    fun setError(v: TextView, status: CharSequence?) {
+        val spec = managed[v] ?: return
+        if (status == null) {
+            if (!errors.containsKey(v)) return
+            ViewCompat.setStateDescription(v, errors.remove(v))
+        } else {
+            if (errors.containsKey(v) && ViewCompat.getStateDescription(v) == status) return
+            if (!errors.containsKey(v)) errors[v] = ViewCompat.getStateDescription(v)
+            ViewCompat.setStateDescription(v, status)
+        }
         render(v, spec, Lumen.of(v.context))
     }
 
@@ -235,6 +270,7 @@ object LumenButtons {
         }
         var fills = when (role) {
             Role.PRIMARY -> LumenGrad.primary(lm)
+            Role.TONAL -> LumenGrad.tonal(lm)
             Role.DANGER -> LumenGrad.danger(lm)
             else -> intArrayOf(flat)
         }
@@ -260,24 +296,43 @@ object LumenButtons {
             if (stroke != null) g.setStroke(dp(v, 1.5f).coerceAtLeast(1), stroke)
             return g
         }
-        fun face(focused: Boolean) = shape(if (transparent) intArrayOf(Color.TRANSPARENT) else fills,
-            if (focused) lm.focus else if (role == Role.OUTLINE || role == Role.GLASS) lm.edge else null)
-        val states = android.graphics.drawable.StateListDrawable().apply {
-            addState(intArrayOf(-android.R.attr.state_enabled), shape(if (transparent) intArrayOf(Color.TRANSPARENT) else intArrayOf(disabledFill)))
-            addState(intArrayOf(android.R.attr.state_focused), face(true))
-            addState(intArrayOf(), face(false))
-        }
-        v.backgroundTintList = null
-        // A filled role uses an overlay that moves its surface away from the label's luminance.
         val rippleInk = if (transparent) opq(on) else
             if (ColorUtils.calculateLuminance(opq(on)) > ColorUtils.calculateLuminance(opq(fills[0]))) Color.BLACK else Color.WHITE
+        val loading = busy.containsKey(v)
+        val hoverFills = if (transparent) intArrayOf(Color.TRANSPARENT)
+                         else fills.map { ColorUtils.blendARGB(it, rippleInk, 0.08f) }.toIntArray()
+        fun face(stroke: Int? = null, hovered: Boolean = false) = shape(
+            if (hovered) hoverFills else if (transparent) intArrayOf(Color.TRANSPARENT) else fills,
+            stroke ?: if (errors.containsKey(v)) lm.error else if (role == Role.OUTLINE || role == Role.GLASS) lm.edge else null
+        )
+        fun busyFace() = android.graphics.drawable.LayerDrawable(arrayOf(face(stroke = lm.focus), shape(intArrayOf(on)))).apply {
+            setLayerSize(1, dp(v, 20f), dp(v, 2f).coerceAtLeast(1))
+            setLayerGravity(1, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+            setLayerInset(1, 0, 0, 0, dp(v, 3f))
+        }
+        val states = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(-android.R.attr.state_enabled), if (loading) busyFace()
+                else shape(if (transparent) intArrayOf(Color.TRANSPARENT) else intArrayOf(disabledFill)))
+            addState(intArrayOf(android.R.attr.state_focused), face(stroke = lm.focus))
+            addState(intArrayOf(android.R.attr.state_hovered), face(stroke = lm.focus, hovered = true))
+            addState(intArrayOf(), face())
+        }
+        v.backgroundTintList = null
         v.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ColorUtils.setAlphaComponent(rippleInk, 36)), states, shape(intArrayOf(Color.WHITE)))
-        v.setTextColor(android.content.res.ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(disabledOn, on)))
+        v.setTextColor(android.content.res.ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(if (loading) on else disabledOn, on)))
         if (v is Button) {
             v.isAllCaps = false
-            v.stateListAnimator = null
             v.minHeight = dp(v, 48f)
             v.minWidth = dp(v, 64f)
+        }
+        // The platform animator observes pressed state without replacing touch or click listeners.
+        v.stateListAnimator = if (LumenPrefs.reduceMotion(v.context)) null else StateListAnimator().apply {
+            fun scale(value: Float) = ObjectAnimator.ofPropertyValuesHolder(v,
+                PropertyValuesHolder.ofFloat(View.SCALE_X, value), PropertyValuesHolder.ofFloat(View.SCALE_Y, value)).apply {
+                duration = LumenMotion.FAST
+            }
+            addState(intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed), scale(0.98f))
+            addState(intArrayOf(), scale(1f))
         }
         v.minimumHeight = dp(v, 48f)
         v.minimumWidth = dp(v, 64f)
