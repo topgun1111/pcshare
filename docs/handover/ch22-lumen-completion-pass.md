@@ -142,3 +142,9 @@
 - Source `7174e40`, [release v2.538](https://github.com/topgun1111/pcshare/releases/tag/v2.538), [CI 46094167718](https://github.com/topgun1111/pcshare/actions/runs/46094167718). Full/lite builds, selected JVM tests and six verified delta patches passed.
 - Native G1/G2 use quarter-scale recording with distinct blur radii and F0 saturation. G3 window blur uses 40/20 dp and the generated contrast floor. Secure windows and F3 use opaque panel colors and clear the modal blur flag. Native chrome skips backdrop rendering behind native modals and limits registered blur surfaces per activity.
 - Page sheets and dialogs demote lower glass. Page copies of native chrome suppress duplicate effects. Chromium ran the ladder, secure/saver selection, modal stacking and fling fixtures. Native window blur, opacity and performance remain physical-device tests.
+
+## 2026-11-28 - R05 shared button interaction states
+
+- Source `14bc9fc`, [release v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). Both APK editions, selected JVM tests and six verified delta patches passed.
+- Native managed buttons use the generated tonal stops and platform hover, focus and press states. Busy and error feedback reuse the original view, action, label and layout. The manual indexing action and the storage scan retry display state feedback without changing their callbacks.
+- Chromium exercised loading transitions, restoring prior disabled state and the existing listener, button layout, keyboard focus and Reduce motion. The local execution environment became unavailable during the build; GitHub Actions completed verification. Native touch, keyboard and button rendering remain physical-device checks.
