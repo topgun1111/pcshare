@@ -42,55 +42,103 @@ object NlHero {
     private class Ret(val owner: Activity, val s: Src, val launchKey: String?, val resolve: ((String) -> Target?)?) { var busy = false }
     @Volatile private var ret: Ret? = null
 
-    private fun take(): Src? {
-        val s = src; src = null
-        if (s == null) return null
-        if (SystemClock.uptimeMillis() - s.at < 4000L) return s
-        try { s.snap?.recycle() } catch (_: Throwable) {}
-        return null
+    private const val TRANSITION = "com.lanshare.app.HERO_TRANSITION"
+    private const val SNAPSHOT_TTL_MS = 4000L
+    private var ticket = 0L
+    private var copying = false
+
+    private fun clearPending() {
+        val old = src
+        src = null
+        old?.snap?.recycle()
+    }
+
+    private fun take(ctx: Context): Src? {
+        val activity = ctx as? Activity ?: return null
+        if (activity.intent.getLongExtra(TRANSITION, 0L) != ticket) return null
+        val s = src ?: return null
+        if (SystemClock.uptimeMillis() - s.at >= SNAPSHOT_TTL_MS) {
+            clearPending()
+            return null
+        }
+        src = null
+        return s
     }
 
     /** [tr] = the thumbnail rect in [v]'s own coordinates, [radius] px. */
     fun launch(act: Activity, v: View, tr: RectF, radius: Float, thumb: Bitmap, it: Intent,
                returnKey: String? = null, resolve: ((String) -> Target?)? = null) {
-        if (Build.VERSION.SDK_INT < 26 || LumenPrefs.reduceMotion(act) || tr.isEmpty || thumb.isRecycled) { act.startActivity(it, LumenPrefs.growFrom(act)); return }
+        val launchTicket = ++ticket
+        clearPending()
+        it.removeExtra(TRANSITION)
+        val secure = AppPal.secureHost(act)
+        fun alive() = !act.isFinishing && !act.isDestroyed && launchTicket == ticket
+        fun fallback() {
+            if (alive()) act.startActivity(it, LumenPrefs.growFrom(act))
+        }
+
+        if (Build.VERSION.SDK_INT < 26 || secure || copying || LumenPrefs.reduceMotion(act) || tr.isEmpty || thumb.isRecycled) {
+            fallback()
+            return
+        }
+        val decor = act.window.decorView
+        if (decor.width <= 0 || decor.height <= 0) {
+            fallback()
+            return
+        }
+        val loc = IntArray(2)
+        v.getLocationOnScreen(loc)
+        val rect = RectF(tr).apply { offset(loc[0].toFloat(), loc[1].toFloat()) }
+        val snap = try {
+            Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+        } catch (_: Throwable) {
+            fallback()
+            return
+        }
+        var finished = false
+        val handler = Handler(Looper.getMainLooper())
         try {
-            val loc = IntArray(2); v.getLocationOnScreen(loc)
-            val rect = RectF(tr); rect.offset(loc[0].toFloat(), loc[1].toFloat())
-            val dv = act.window.decorView
-            if (dv.width <= 0 || dv.height <= 0) { act.startActivity(it, LumenPrefs.growFrom(act)); return }
-            val snap = Bitmap.createBitmap(dv.width, dv.height, Bitmap.Config.ARGB_8888)
-            var done = false
-            var timedOut = false
-            val h = Handler(Looper.getMainLooper())
-            PixelCopy.request(act.window, snap, { res ->
-                if (!done) {
-                    done = true
-                    if (res == PixelCopy.SUCCESS && !LumenPrefs.reduceMotion(act)) {
+            copying = true
+            PixelCopy.request(act.window, snap, { result ->
+                copying = false
+                if (finished || !alive()) {
+                    snap.recycle()
+                } else {
+                    finished = true
+                    if (result == PixelCopy.SUCCESS && !LumenPrefs.reduceMotion(act)) {
                         src = Src(rect, radius, thumb, snap, SystemClock.uptimeMillis(), returnKey, resolve)
-                        act.startActivity(it, ActivityOptions.makeCustomAnimation(act, 0, 0).toBundle())
+                        handler.postDelayed({ if (ticket == launchTicket) clearPending() }, SNAPSHOT_TTL_MS)
+                        it.putExtra(TRANSITION, launchTicket)
+                        try {
+                            act.startActivity(it, ActivityOptions.makeCustomAnimation(act, 0, 0).toBundle())
+                        } catch (_: Exception) {
+                            clearPending()
+                            it.removeExtra(TRANSITION)
+                            fallback()
+                        }
                     } else {
-                        src = null
-                        try { snap.recycle() } catch (_: Throwable) {}
-                        act.startActivity(it, LumenPrefs.growFrom(act))
+                        snap.recycle()
+                        fallback()
                     }
-                } else if (timedOut) {
-                    // PixelCopy answered after the 250 ms launch fallback; release its now-unused bitmap.
-                    try { snap.recycle() } catch (_: Throwable) {}
                 }
-            }, h)
-            h.postDelayed({
-                if (!done) {
-                    done = true; timedOut = true; src = null
-                    act.startActivity(it, LumenPrefs.growFrom(act))
-                }
-            }, 250L)   // if PixelCopy stalls, start with the normal platform scale-up; late callback frees the bitmap
-        } catch (_: Throwable) { src = null; act.startActivity(it, LumenPrefs.growFrom(act)) }
+            }, handler)
+        } catch (_: Exception) {
+            copying = false
+            snap.recycle()
+            fallback()
+            return
+        }
+        handler.postDelayed({
+            if (!finished) {
+                finished = true
+                fallback()
+            }
+        }, 250L)
     }
 
     /** Called by the viewer / player in onCreate after setContentView. [chrome] = bars that fade in after 120 ms; [ready] = true once the real picture is on screen. No-op when [launch] did not prepare a transition. */
     fun play(ctx: Context, root: FrameLayout, chrome: List<View>, ready: () -> Boolean) {
-        val s = take() ?: return
+        val s = take(ctx) ?: return
         if (LumenPrefs.reduceMotion(ctx)) {
             s.snap?.recycle()
             return

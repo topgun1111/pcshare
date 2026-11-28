@@ -986,6 +986,7 @@ class MainActivity : Activity() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
         dirWatch.stop(); mediaWatch.pause(); MediaWatch.cur = null
         if (::web.isInitialized) web.removeCallbacks(viewportSync)
+        if (::nl.isInitialized) nl.release()
         if (::chrome.isInitialized) chrome.release()
         if (::drawer.isInitialized) drawer.release()
         super.onDestroy()

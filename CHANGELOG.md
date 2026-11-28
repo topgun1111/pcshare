@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Viewer transitions and list memory
+
+### Fixed
+- Release inactive blur buffers and clean up thumbnails when the file browser closes.
+- Discard unused viewer transition snapshots and use the standard animation when a secure window opens a viewer.
+
 ## 2026-11-28 - Consistent Lumen spacing and dialogs
 
 ### Changed

@@ -38,18 +38,32 @@ object NlBackdrop {
     private val effectMaterial = WeakHashMap<View, Material>()
     private val clip = Path()
     private val rf = RectF()
+    private val backdropLocation = IntArray(2)
+    private val targetLocation = IntArray(2)
     /** Views that repaint when the backdrop moves (set by NlChrome / NlDrawer). */
     private val users = ArrayList<java.lang.ref.WeakReference<View>>()
+    private val attachListener = object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) = Unit
+        override fun onViewDetachedFromWindow(v: View) = releaseNode(v)
+    }
 
     fun register(v: View) {
         users.removeAll { it.get() == null || it.get() === v }
         users.add(java.lang.ref.WeakReference(v))
+        v.removeOnAttachStateChangeListener(attachListener)
+        v.addOnAttachStateChangeListener(attachListener)
     }
 
     fun unregister(v: View) {
         users.removeAll { it.get() == null || it.get() === v }
-        nodes.remove(v)
+        v.removeOnAttachStateChangeListener(attachListener)
+        releaseNode(v)
+    }
+
+    private fun releaseNode(v: View) {
+        val node = nodes.remove(v)
         effectMaterial.remove(v)
+        if (Build.VERSION.SDK_INT >= 29) (node as? RenderNode)?.discardDisplayList()
     }
 
     @Volatile private var busy = false
@@ -67,7 +81,11 @@ object NlBackdrop {
         while (it.hasNext()) {
             val v = it.next().get()
             if (v == null) { it.remove(); continue }
-            if (!v.isAttachedToWindow || !v.isShown || (root != null && v.rootView !== root)) continue
+            if (root != null && v.rootView !== root) continue
+            if (!v.isAttachedToWindow || !v.isShown || v.windowVisibility != View.VISIBLE) {
+                releaseNode(v)
+                continue
+            }
             if (force || (scrolling[v.rootView] != true && wanted(v.context))) v.postInvalidateOnAnimation()
         }
     }
@@ -96,12 +114,20 @@ object NlBackdrop {
      * [below] = the child of the root FrameLayout that the chrome sits in (everything before it is the backdrop). [round] = corner radius px to clip to (0 = rectangle).
      */
     fun draw(cv: Canvas, target: View, below: View?, round: Float, floating: Boolean = false): Boolean {
-        if (busy || below == null || scrolling[target.rootView] == true || !wanted(target.context) || !cv.isHardwareAccelerated || !ownsSlot(target)) return false
+        if (busy || below == null || scrolling[target.rootView] == true || !cv.isHardwareAccelerated) return false
+        if (!wanted(target.context) || !ownsSlot(target)) {
+            releaseNode(target)
+            return false
+        }
         val w = target.width; val h = target.height
         if (w <= 0 || h <= 0) return false
         if (Build.VERSION.SDK_INT < 31) return false
         busy = true
-        return try { drawImpl(cv, target, below, round, floating) } catch (_: Throwable) { broken = true; false } finally { busy = false }
+        return try { drawImpl(cv, target, below, round, floating) } catch (_: Throwable) {
+            broken = true
+            releaseNode(target)
+            false
+        } finally { busy = false }
     }
 
     @RequiresApi(31)
@@ -110,9 +136,10 @@ object NlBackdrop {
         val root = below.parent as? ViewGroup ?: return false
         run {
             val sw = Math.max(1, Math.round(w * SCALE)); val sh = Math.max(1, Math.round(h * SCALE))
-            val a = IntArray(2); val b = IntArray(2)
-            root.getLocationInWindow(a); target.getLocationInWindow(b)
-            val ox = (b[0] - a[0]).toFloat(); val oy = (b[1] - a[1]).toFloat()
+            root.getLocationInWindow(backdropLocation)
+            target.getLocationInWindow(targetLocation)
+            val ox = (targetLocation[0] - backdropLocation[0]).toFloat()
+            val oy = (targetLocation[1] - backdropLocation[1]).toFloat()
             val node = nodes.getOrPut(target) { RenderNode("lmblur") } as RenderNode
             node.setPosition(0, 0, sw, sh)
             val rc = node.beginRecording(sw, sh)

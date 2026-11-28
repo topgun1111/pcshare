@@ -998,16 +998,33 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val thumbs = object : android.util.LruCache<String, Th>((Runtime.getRuntime().maxMemory() / 8L).toInt()) {
         override fun sizeOf(k: String, v: Th) = v.bm.byteCount
     }
-    private val failed = HashSet<String>()
+    private val failed = LinkedHashSet<String>()
     private val pool = Executors.newFixedThreadPool(3)
-    init {   // vault mode (dev "vault"): thumbnails live only in this memory cache and are dropped the moment the vault locks
-        val me = java.lang.ref.WeakReference(this)
-        com.lanshare.app.core.vault.VaultSession.onLock { me.get()?.dropVaultThumbs() }
-    }
+    @Volatile private var released = false
+    private val vaultLockListener: () -> Unit = { dropVaultThumbs() }
+    init { com.lanshare.app.core.vault.VaultSession.onLock(vaultLockListener) }
+
     private fun dropVaultThumbs() {
-        thumbs.snapshot().keys.filter { it.startsWith("vault|") }.forEach { thumbs.remove(it) }
+        synchronized(thumbs) {
+            thumbs.snapshot().keys.filter { it.startsWith("vault|") }.forEach { thumbs.remove(it) }
+        }
         synchronized(failed) { failed.removeAll { it.startsWith("vault|") } }
         act.runOnUiThread { preloading.clear() }
+    }
+
+    fun release() {
+        released = true
+        com.lanshare.app.core.vault.VaultSession.removeOnLock(vaultLockListener)
+        rv.removeCallbacks(idleWarm)
+        rv.removeCallbacks(noAnim)
+        skelOff()
+        rv.stopScroll()
+        rv.adapter = null
+        buildNow.shutdownNow()
+        buildIdle.shutdownNow()
+        pool.shutdownNow()
+        synchronized(thumbs) { thumbs.evictAll() }
+        synchronized(failed) { failed.clear() }
     }
     private val ad = Ad()
     // ---- Lumen M3 / M2 (native twins of the page effects, which are invisible while this list is shown) ----
@@ -1316,13 +1333,14 @@ class NativeList(private val act: Activity, private val web: WebView) {
 
     /** Build the rows of a folder in the background (NlModel). [urgent] = finger down / tap, otherwise idle pre-build. */
     private fun warm(key: String, path: String, urgent: Boolean) {
-        if (fresh(built[key]) || key in pending || (!urgent && key in tooBig)) return
+        if (released || fresh(built[key]) || key in pending || (!urgent && key in tooBig)) return
         pending.add(key)
         val cfg = curCfg
         (if (urgent) buildNow else buildIdle).execute {
             val res = NlModel.build(path, cfg, if (urgent) Int.MAX_VALUE else 2000)
             val list = res.rows; val sg = if (list != null) NlModel.sig(list) else 0
             act.runOnUiThread {
+                if (released) return@runOnUiThread
                 pending.remove(key)
                 if (list != null) {
                     built.remove(key); built[key] = Built(list, sg, cfg, android.os.SystemClock.uptimeMillis(), res.sum?.first, res.sum?.second)
@@ -1473,6 +1491,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     private fun instantPref(o: JSONObject) {
+        if (released) return
         if (!o.has("sort") && !o.has("view") && !o.has("thumb") && !o.has("ff")) return
         val c = curCfg.split(',')
         val kp = curKey.split('|', limit = 3)
@@ -1494,7 +1513,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             val res = NlModel.build(path, newCfg, Int.MAX_VALUE)
             val list = res.rows; val sg = if (list != null) NlModel.sig(list) else 0
             act.runOnUiThread {
-                if (gen != prefGen || list == null || curKey != oldKey || sel.isNotEmpty()) return@runOnUiThread
+                if (released || gen != prefGen || list == null || curKey != oldKey || sel.isNotEmpty()) return@runOnUiThread
                 built.clear(); baseRows = null
                 curCfg = newCfg
                 compact = view == "compact"; large = view == "list" && thumb == "l"; medium = view == "list" && thumb == "m"
@@ -1537,7 +1556,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     fun setItems(key: String, list: List<NlRow>, selected: Set<Int>, sig: Int) {
-        if (searchOn && pageQ != curQ) return          // stale answer: the box already holds a newer query, the page answers that one next
+        if (released || (searchOn && pageQ != curQ)) return
         navUntil = 0L; navKey = null
         if (pageQ.isEmpty()) { baseRows = if (list.none { it.hit || it.k == "hdr" || it.gal }) list else null; baseKey = key }
         applyItems(key, list, selected, sig)
@@ -1709,6 +1728,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
     // ---- thumbnails of the rows just beyond the screen (in the scroll direction) are decoded ahead into the memory cache ----
     private val preloading = HashSet<String>()      // UI thread only
     private fun preload(down: Boolean) {
+        if (released) return
         if (preloading.size > 24) { preloading.removeAll { k -> thumbs.get(k) != null || synchronized(failed) { failed.contains(k) } }; if (preloading.size > 24) return }   // failed decodes never call back: drop them here
         val first = lm.findFirstVisibleItemPosition(); val last = lm.findLastVisibleItemPosition()
         if (first < 0 || last < 0 || galStart == 0) return
@@ -1727,8 +1747,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
     }
 
     private fun loadTh(r: NlRow, key: String, ok: () -> Boolean, done: (Th) -> Unit): Future<*> = pool.submit(Runnable {
+        val vault = r.dev == "vault"
+        val vaultStore = if (vault) com.lanshare.app.core.vault.VaultSession.store else null
+        fun current() = !released && (!vault || (vaultStore != null && com.lanshare.app.core.vault.VaultSession.store === vaultStore))
+        if (!current()) return@Runnable
         val th: Th? = try {
-            if (r.dev == "vault") {   // decrypted in memory only (VaultThumbs): never RemoteThumbs / Thumbs / VideoThumbs (those write a disk cache)
+            if (vault) {   // decrypted in memory only (VaultThumbs): never use the disk thumbnail caches
                 val n = com.lanshare.app.core.VaultFs().nodeAtOrNull(r.path!!)
                 if (n == null || n.dir || (r.k != "img" && r.k != "vid")) null
                 else VaultThumbs.make(n, 384)?.let { Th(it, null) }
@@ -1743,9 +1767,14 @@ class NativeList(private val act: Activity, private val web: WebView) {
             else { val data = Thumbs.make(Core.local.real(r.path!!)); BitmapFactory.decodeByteArray(data, 0, data.size)?.let { Th(it, null) } }
         } catch (_: Throwable) { null }
         if (th != null) {
-            thumbs.put(key, th)
-            act.runOnUiThread { if (ok()) done(th) }
-        } else synchronized(failed) { failed.add(key) }
+            synchronized(thumbs) {
+                if (!current()) return@Runnable
+                thumbs.put(key, th)
+            }
+            act.runOnUiThread { if (current() && ok()) done(th) }
+        } else synchronized(failed) {
+            if (current() && failed.add(key) && failed.size > 4096) failed.remove(failed.first())
+        }
     })
 
     private inner class Ad : RecyclerView.Adapter<VH>() {

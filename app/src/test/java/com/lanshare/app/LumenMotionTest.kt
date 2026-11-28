@@ -3,9 +3,13 @@ package com.lanshare.app
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.RectF
 import android.os.VibratorManager
 import android.provider.Settings
 import android.view.View
+import android.view.WindowManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -20,6 +24,28 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class LumenMotionTest {
+    @Test fun secureViewerLaunchUsesTheImmediateFallback() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val activity = controller.get()
+        val thumbnail = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        try {
+            Settings.Global.putFloat(activity.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+            LumenPrefs.setReduceMotion(activity, false)
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            val decor = activity.window.decorView
+            decor.layout(0, 0, 320, 480)
+            NlHero.launch(activity, decor, RectF(0f, 0f, 16f, 16f), 0f, thumbnail, Intent(activity, ImageViewerActivity::class.java))
+
+            val started = requireNotNull(shadowOf(activity).nextStartedActivity)
+            assertEquals(ImageViewerActivity::class.java.name, started.component?.className)
+            assertFalse(started.hasExtra("com.lanshare.app.HERO_TRANSITION"))
+            assertFalse(thumbnail.isRecycled)
+        } finally {
+            thumbnail.recycle()
+            controller.pause().stop().destroy()
+        }
+    }
+
     @Test fun hapticEffectsAndPatternsFollowBothSettings() {
         val context = RuntimeEnvironment.getApplication()
         val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager

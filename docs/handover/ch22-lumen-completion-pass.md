@@ -166,3 +166,9 @@
 
 - Branch and release CI now reject growth in raw page CSS categories, new unapproved direct native color or fixed animation literals, inline vector paths and literal TextView sizes. Document/media colors, functional loops and existing theme exceptions are recorded in the ledger.
 - Moved four spacing values onto equivalent shared tokens. Restore and Rendering performance use shared dialog roles and both dialog audits now gate CI. The strict-mode pass and two negative cases were exercised locally.
+
+
+## 2026-11-28 - R16 backdrop, snapshots and list lifecycle
+
+- Discard inactive RenderNode recordings, reuse draw coordinates, scope each pending viewer snapshot to the launching intent and expire unused captures. Secure windows use the immediate fallback. List destruction now cancels workers and drops retained thumbnails. The previous Vault session's worker results are ignored after locking or unlocking.
+- R17 still needs native Android device evidence for memory, frame timing, foldable handling, TalkBack, secure rendering and APK installation. Start with both APK editions and the supported update bases in chapter 5.10.
