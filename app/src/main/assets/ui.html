@@ -1182,20 +1182,18 @@ html.lm-native-modal:not([data-glass=f3]) #dlg .dcard{
 :root:root[data-glass=f2] #dock{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassColor) max(var(--gF),var(--glassFloor)),transparent)}
 :root:root[data-glass=f3] #dock{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}}
 #dock #bar{gap:0}
-#dock #bar .ib{height:112px;justify-content:center;gap:var(--sp-2);padding:0;border:0!important;border-radius:0;font-size:var(--fs-16)}
-#dock #bar .ib .ii{width:72px;height:48px;border-radius:var(--r-full)}
-#dock #bar .ib .ii svg{width:36px;height:36px;min-height:0;padding:0}   /* svg.li also matches the list-row class .li (min-height 56): reset */
+#dock #bar .ib,#gal .gb .ib{min-height:72px;justify-content:center;gap:var(--sp-1);padding:var(--sp-1);border:0!important;border-radius:0;font-size:var(--t-labelM-size);line-height:var(--t-labelM-lh)}
+:is(#dock #bar,#gal .gb) .ib small{font-size:inherit;white-space:normal;overflow-wrap:anywhere}
+#dock #bar .ib .ii,#gal .gb .ib .ii{width:min(56px,100%);height:32px;border-radius:var(--r-full)}
+#dock #bar .ib .ii svg,#gal .gb .ib .ii svg{width:24px;height:24px;min-height:0;padding:0}   /* svg.li also matches the list-row class .li (min-height 56): reset */
 #dock #clip{margin:var(--sp-2) var(--sp-2) 0}
-/* selection bars of Print space and the galleries = the same anatomy as the file-browser dock: 96 px cells, 64 x 40 pill, 30 px glyph, Label 14, glass fill */
+/* Print space and the galleries use the file-browser dock geometry and a G2 fill. */
 #gal .gb{margin:var(--sp-3) var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-bottom));padding:0;gap:0;overflow:hidden;border:0;border-radius:var(--r-xl);background:var(--cont);box-shadow:0 0 0 .5px color-mix(in srgb,var(--edge) 60%,transparent),var(--e3)}
 @supports(background:color-mix(in srgb,red 50%,blue)){
 #gal .gb{-webkit-backdrop-filter:blur(var(--gb2,32px)) saturate(var(--gs2,1.45));backdrop-filter:blur(var(--gb2,32px)) saturate(var(--gs2,1.45));background:color-mix(in srgb,var(--glassColor) max(var(--gA2),var(--glassFloor)),transparent)}
 :root[data-glass=f2] #gal .gb{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--glassColor) max(var(--gF),var(--glassFloor)),transparent)}
 :root[data-glass=f3] #gal .gb{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}}
-#gal .gb .ib{height:112px;justify-content:center;gap:var(--sp-2);padding:0;border:0;border-radius:0;font-size:var(--fs-16)}
-#gal .gb .ib .ii{width:72px;height:48px;border-radius:var(--r-full);background:transparent}
 #gal .gb .ib:active .ii{background:var(--hov)}
-#gal .gb .ib .ii svg{width:36px;height:36px;min-height:0;padding:0}
 @keyframes lmdock{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 #dock.lm-in{animation:lmdock var(--d-med,var(--d-base)) var(--ease-decel,cubic-bezier(.2,0,0,1)) both}
 :root[data-rm] #dock.lm-in{animation:lmrmfade var(--d-rm,var(--d-fast)) linear}
@@ -1527,12 +1525,9 @@ html.lm-large-text #home .hb h1{white-space:normal;overflow-wrap:anywhere;line-h
 html.lm-large-text #home .hbd{min-height:0}
 html.lm-large-text #home :is(.ht,.hero) :is(b,small,.tt,.ts,.row){line-height:1.3;overflow-wrap:anywhere}
 html.lm-large-text #gal :is(.gmh,.gb){overflow-wrap:anywhere}
-html.lm-large-text #dock #bar{grid-auto-flow:column;grid-auto-columns:minmax(104px,1fr);grid-template-columns:none;overflow:auto}
-html.lm-large-text #gal .gb{overflow-x:auto}
 html.lm-large-text :is(#dock #bar,#gal .gb) .ib{
-  height:auto;min-height:96px;min-width:0;padding:var(--sp-2) var(--sp-1);white-space:normal;line-height:1.25;overflow-wrap:anywhere
+  min-height:96px;font-size:var(--fs-12);line-height:1.25
 }
-html.lm-large-text #gal .gb .ib{flex:1 0 104px}
 html.lm-large-text #fab{max-width:calc(100% - 32px);height:auto;min-height:56px;white-space:normal;overflow-wrap:anywhere}
 html.lm-large-text #fab.extract-action{width:auto;min-width:72px;padding-inline:var(--sp-2)}
 html.lm-large-text #toast .ta{float:none;max-width:100%;margin:0}
@@ -1890,6 +1885,9 @@ let LSW=wideScr(),lswT=0;window._gw=window.innerWidth;window.addEventListener('r
   const w=window.innerWidth;if(w<=0)return;
   if(wideScr()!==LSW){LSW=wideScr();try{render()}catch(e){}}
   try{const g=$('#gal');if(g&&g._redraw&&g.style.display!=='none'&&window._gw!==w)g._redraw(true);window._gw=w}catch(e){}
+  if(S.sel.size)renderBar();
+  const gb=$('#gal .gb');
+  if(gb?._dockActions&&gb.offsetWidth)lmGalleryDock(gb,gb._dockActions,gb._dockKeepOrder);
   try{nlLay();nlChPush();nlSrPush();nlDrPush()}catch(e){}
 },300)});
 function applyPrefs(){const o0=Object.assign({},G,PF[pfKey()]||{}),o=wideScr()?Object.assign({},o0,PF[pfKey()]?PF[pfKey()].W||{}:G.W||{}):o0;   // unfolded / tablet screen keeps its own view, sort and thumbnail size (stored under W); until chosen there it follows the folded one
@@ -2456,7 +2454,7 @@ function nlChPush(){if(!NLCH)return;
       o.bar={r:br,pm:document.documentElement.classList.contains('dperm')?1:0,sel:sel?1:0,t:(window.lgBig&&lgBig())?'':$('#ht').textContent,nm:'',du:vis($('#dualb'))?1:0,c:$('#selcount').textContent}}
     const fr=rc($('#fab'));if(fr){const ik=inArc()&&!zipEd()?'extract':'newfolder';need(ik);o.fab={r:fr,l:$('#fab').textContent,k:ik}}
     const dr=rc($('#dock'));
-    if(dr){NLACL.forEach(a=>need(a.k));need('close');
+    if(dr&&!document.documentElement.classList.contains('lm-large-text')){NLACL.forEach(a=>need(a.k));need('close');
       let dbg=0,drx=0;try{const dcs=getComputedStyle($('#dock'));dbg=nlRgb(dcs.backgroundColor,1);drx=parseFloat(dcs.borderTopLeftRadius)||0}catch(e){}
       o.dock={r:dr,a:NLACL,bg:dbg,rx:drx,cl:vis($('#clip'))?{t:(($('#clip span')||{}).textContent)||'',p:$('#clip .tbtn')?1:0}:null}}
   }
@@ -2692,10 +2690,10 @@ function galView(a){
   const reload=()=>{GALP=null;GALPK=null;galFetch();galView(a)};
   pullBind(sc,pb,reload,()=>!GS.size);   // pull down = rescan the album (also video albums)
   const upd=()=>{if(o._hu)o._hu();gNum(GS,els);
-    o.classList.toggle('selm',GS.size>0);gb.textContent='';
+    o.classList.toggle('selm',GS.size>0);gb.textContent='';gb._dockActions=null;
     const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' \u00b7 '+fmt(ssz):'');
     if(!GS.size)return;
-    const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+    const actions=[],btn=(k,lb,f,c)=>actions.push({f,l:{k,l:lb,c:c||''}});
     const clip=async op=>{try{S.clip=await api('POST','/api/clip',{op,dev:D,paths:gp()});toast((op==='cut'?'Cut ':'Copied ')+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}};
     if(rem){   // other phone: copy to THIS phone (album picker -> paste), clipboard copy, share, details. Nothing that changes the other phone.
       btn('download','To this phone',async()=>{if(galleryCopyBusy)return;galleryCopyBusy=true;
@@ -2708,7 +2706,7 @@ function galView(a){
       btn('copy','Copy',()=>clip('copy'));
       btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:m.size||0,url:location.origin+'/api/dl?dev='+enc(D)+'&path='+enc(jn(a.path,m.name))}))}));clr()}else toast('Sharing works in the Android app',3000)});
       if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails(m,jn(a.path,m.name)))}
-      gb.style.setProperty('--cols',gb.children.length);return}
+      lmGalleryDock(gb,actions);return}
     btn('copy','Copy',()=>clip('copy'));
     btn('cut','Move',async()=>{const ps=gp(),n=ps.length,dir=await galPick(a);if(!dir)return;
       try{const cf=await askConflicts('local',dir,ps,'local',true);if(!cf)return;
@@ -2735,7 +2733,7 @@ function galView(a){
       if(!ch)return;
       try{const r=await api('POST','/api/rm',{dev:'local',paths:gp(),perm:ch==='alt'});clr();toast('Deleting\u2026',0,0);watchJob(r.job);await track(r.job);GALT=0;if(o._for===tok)reload()}
       catch(e){toast('\u26a0 '+e.message,9000)}},'dng');
-    gb.style.setProperty('--cols',gb.children.length<=5?gb.children.length:Math.ceil(gb.children.length/2))};
+    lmGalleryDock(gb,actions)};
   // copied / cut something and opened this album: a "Paste here" bar (the file browser's own paste bar sits behind this screen); hidden while selecting
   const pasteUpd=()=>{pst.textContent='';const has=!rem&&S.clip&&S.clip.paths&&S.clip.paths.length;if(!has){pst.style.display='none';return}
     pst.style.display='flex';
@@ -2827,15 +2825,15 @@ function isView(sdir,sname,m0){
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}
     LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
-  const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
-    const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+  const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';gb._dockActions=null;sn.textContent=GS.size+' selected';if(!GS.size)return;
+    const actions=[],btn=(k,lb,f,c)=>actions.push({f,l:{k,l:lb,c:c||''}});
     btn('copy','Copy',async()=>{try{S.clip=await api('POST','/api/clip',{op:'copy',dev:'local',paths:gp()});toast('Copied '+GS.size+' item(s) - open a folder and tap Paste');clr();renderBar()}catch(e){toast('\u26a0 '+e.message,4000)}});
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev=local&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(mode!=='n')btn('search','Find similar',()=>similar(gp()));   // few-shot: rank the other pictures against the average of the selected ones
     if(gi().some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint(null,{items:gi(),dev:'local',full:1,path:'/',done:clr}));
     if(psOK(gi().map(m=>m.name)))btn('add','To Print space',()=>psAdd('local',gi().filter(m=>psPic(m.name)).map(m=>m.p),clr));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
-    gb.style.setProperty('--cols',gb.children.length)};
+    lmGalleryDock(gb,actions)};
   // --- status card (model download / scan progress) ---
   const card=E('div','isc'),sq=E('div','isq'),inp=E('input'),go=E('button','','Search'),tabs=E('div','ist'),chips=E('div','isr'),hint=E('small','');
   inp.type='search';inp.enterKeyHint='search';inp.autocomplete='off';inp.setAttribute('autocapitalize','off');sq.append(inp,go);
@@ -2944,8 +2942,8 @@ function risView(D,dn,sdir,sname){
   const live=()=>o._for===tok&&o.style.display==='flex',key=m=>m.p,gi=()=>{const mp=new Map(LIST.map(m=>[m.p,m]));return [...GS].map(k=>mp.get(k)).filter(Boolean)},gp=()=>gi().map(m=>m.p);
   const clr=()=>{if(!GS.size)return false;GS.clear();els.forEach(e=>e.classList.remove('sel'));upd();return true};o._sel=clr;
   sx.onclick=clr;sa.onclick=()=>{if(GS.size&&GS.size>=LIST.length){clr();return}LIST.forEach(m=>{GS.add(key(m));const e=els.get(key(m));if(e)e.classList.add('sel')});upd()};
-  const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';sn.textContent=GS.size+' selected';if(!GS.size)return;
-    const btn=(k,lb,f)=>{const x=E('button','ib'),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+  const upd=()=>{gNum(GS,els);o.classList.toggle('selm',GS.size>0);gb.textContent='';gb._dockActions=null;sn.textContent=GS.size+' selected';if(!GS.size)return;
+    const actions=[],btn=(k,lb,f,c)=>actions.push({f,l:{k,l:lb,c:c||''}});
     btn('download','To this phone',async()=>{if(galleryCopyBusy)return;galleryCopyBusy=true;
       try{const ps=gp(),dir=await galPick({v:false,path:'\u0000'},'Copy to album on this phone');if(!dir)return;const cf=await askConflicts('local',dir,ps,D,true);if(!cf)return;
         const r=await api('POST','/api/gallerycopy',{dev:D,paths:ps,dir,conflict:cf});
@@ -2956,7 +2954,7 @@ function risView(D,dn,sdir,sname){
     btn('share','Share',()=>{if(window.LSAndroid&&LSAndroid.shareFiles){LSAndroid.shareFiles(JSON.stringify({items:gi().map(m=>({name:m.name,size:0,url:location.origin+'/api/dl?dev='+enc(D)+'&path='+enc(m.p)}))}));clr()}else toast('Sharing works in the Android app',3000)});
     if(gi().some(pvOK)&&(CAN_PRINT||S.peers.length))btn('print','Print',()=>doPrint(null,{items:gi(),dev:D,full:1,path:'/',done:clr}));
     if(GS.size===1){const m=gi()[0];btn('info','Details',()=>doDetails({name:m.name,size:0,mtime:0},m.p))}
-    gb.style.setProperty('--cols',gb.children.length)};
+    lmGalleryDock(gb,actions)};
   const card=E('div','isc'),sq=E('div','isq'),inp=E('input'),go=E('button','','Search'),tabs=E('div','ist'),chips=E('div','isr'),hint=E('small','');
   inp.type='search';inp.enterKeyHint='search';inp.autocomplete='off';inp.setAttribute('autocapitalize','off');sq.append(inp,go);
   const tv=E('button','','Visual'),tx=E('button','','Text in pictures');tabs.append(tv,tx);
@@ -4251,22 +4249,74 @@ window.lsPcSendDone=(success,message)=>{
 };
 
 const selItems=()=>{const mp=new Map(S.items.map(i=>[i.name,i]));return [...S.sel].map(k=>XM[k]||mp.get(k)).filter(Boolean)};   // tap order
-function lmDockMore(ex){   // popup of the collapsed dock actions (G2 menu above the bar, right aligned)
-  const sc=E('div','dsc'),m=E('div','dmn'),done=()=>sc.remove();
-  ex.forEach(o=>{const c=o.l.c||'',b=E('button','dmb'+(c.indexOf('dng')>=0?' dng':'')+(c.indexOf('pri')>=0?' pri':'')),ii=E('span','dmi');
-    const g=ic(o.l.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';ii.append(g);b.append(ii,E('span','',o.l.l));b.onclick=()=>{done();o.f()};m.append(b)});
+/*LUMEN-DOCK:BEGIN*/
+function lmDockPlan(actions, secondary, width, large, keepOrder=false){
+  const slots=Math.max(2,Math.min(5,Math.floor(width/(large?88:56))));
+  const rank=o=>{
+    if(o.l.c.includes('dng'))return 20;
+    if(o.l.c.includes('pri'))return -1;
+    return ({copy:0,cut:1,print:2,add:3,share:4,info:5})[o.l.k]??10;
+  };
+  const ordered=actions.slice();
+  if(!keepOrder)ordered.sort((a,b)=>rank(a)-rank(b));
+  if(ordered.length<=slots&&!secondary.length)return {visible:ordered,overflow:[]};
+  const last=ordered[ordered.length-1], keepLast=last&&last.l.c.includes('dng');
+  const end=ordered.length-(keepLast?1:0), count=Math.min(end,slots-(keepLast?2:1));
+  return {visible:ordered.slice(0,count),overflow:[...ordered.slice(count,end),...secondary],last:keepLast?last:null};
+}
+function lmDockWidth(bar){
+  if(bar.classList.contains('gb')&&bar.offsetWidth)return bar.offsetWidth;
+  const drawer=document.documentElement.classList.contains('dperm')?$('#dwr').offsetWidth:0;
+  return innerWidth-24-drawer;
+}
+function lmDockButton(o,tints){
+  const {k,l,c}=o.l,x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');
+  ii.append(ic(k));x.append(ii,E('small','',l));x.onclick=o.f;x.title=l;
+  if(tints?.[k])x.style.setProperty('--ic',tints[k]);
+  return x;
+}
+function lmDockMore(ex,bar,trigger){
+  const sc=E('div','dsc lm-dock-menu'),m=E('div','dmn');
+  const done=()=>{sc.remove();if(trigger.isConnected)trigger.focus({preventScroll:true})};
+  sc._close=done;sc.dataset.dock=bar.id==='bar'?'files':'gallery';
+  ex.forEach(o=>{const c=o.l.c,b=E('button','dmb'+(c.includes('dng')?' dng':'')+(c.includes('pri')?' pri':'')),ii=E('span','dmi');
+    const g=ic(o.l.k);g.style.cssText='width:24px;height:24px;min-height:0;padding:0';
+    ii.append(g);b.append(ii,E('span','',o.l.l));b.onclick=()=>{done();o.f()};m.append(b)});
   sc.onclick=e=>{if(e.target===sc)done()};sc.append(m);document.body.append(sc);
-  const dr=$('#dock').getBoundingClientRect();m.style.right='12px';
-  /* native dock: the page #dock is hidden (0 x 0), so the menu would sit below the screen; use the native dock height (about 96 px + inset) instead */
-  m.style.bottom=dr.height>20&&dr.top>0?Math.round(innerHeight-dr.top+8)+'px':'calc(128px + env(safe-area-inset-bottom))'}
+  const dr=(bar.id==='bar'?$('#dock'):bar).getBoundingClientRect();
+  m.style.right=Math.max(12,Math.round(innerWidth-dr.right))+'px';
+  m.style.bottom=Math.max(12,Math.round(innerHeight-dr.top+8))+'px';
+  m.style.maxHeight=Math.max(48,Math.round(dr.top-24))+'px';
+  m.style.overflowY='auto';
+  m.querySelector('button')?.focus({preventScroll:true});
+}
+function lmRenderDock(bar,actions,secondary=[],tints,keepOrder=false){
+  const plan=lmDockPlan(actions,secondary,lmDockWidth(bar),document.documentElement.classList.contains('lm-large-text'),keepOrder);
+  const visible=plan.visible;
+  if(plan.overflow.length){
+    const more={l:{k:'more',l:'More',c:''},f:()=>lmDockMore(plan.overflow,bar,more.button)};
+    visible.push(more);
+    if(plan.last)visible.push(plan.last);
+  }
+  bar.textContent='';
+  for(const o of visible){const button=lmDockButton(o,tints);if(o.l.k==='more')o.button=button;bar.append(button)}
+  bar.style.setProperty('--cols',Math.max(1,visible.length));
+  return visible;
+}
+function lmGalleryDock(bar,actions,keepOrder=false){
+  bar._dockActions=actions;
+  bar._dockKeepOrder=keepOrder;
+  lmRenderDock(bar,actions,[],null,keepOrder);
+}
+/*LUMEN-DOCK:END*/
 var NLACT=[],NLACL=[];   // dock actions as drawn: handlers + {k,l,c} for the native dock (NlChrome.kt)
 function renderBar(){if(window.nlSyncSel)nlSyncSel();
-  if(!S.sel.size)document.querySelectorAll('.dsc:not(.lm-split-menu)').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
+  if(!S.sel.size)document.querySelectorAll('.lm-dock-menu[data-dock=files]').forEach(e=>e.remove());   // selection gone (back gesture, Esc, navigation): a leftover More popup must go too
   const b=$('#bar');b.textContent='';NLACT=[];NLACL=[];
-  const moreActions=[];   // actions that always live in More, never in the primary dock
+  const actions=[],moreActions=[];   // secondary actions always live in More
   const AIC={copy:'#1E88E5',cut:'#FB8C00',zip:'#F4B400',zipf:'#F4B400',edit:'#43A047',info:'#00ACC1',dup:'#8E24AA',palette:'#E91E63',search:'#5C6BC0',hide:'#78909C',extract:'#00897B',paste:'#7CB342',print:'#6D4C41',add:'#26A69A',openw:'#29B6F6',share:'#039BE5',merge:'#AB47BC',fwd:'#1E88E5',back:'#1E88E5',send:'#1E88E5'};
   const btn=(k,lb,f,c)=>{if(S.dev==='vault'&&/^(print|add|openw|share|zipf|extract|dup|palette|search|merge|hide)$/.test(k))return;   /* vault mode: nothing that hands decrypted data to another app or writes it to disk */
-    const x=E('button','ib'+(c?' '+c:''));const ii=E('span','ii');ii.append(ic(k));if(AIC[k])x.style.setProperty('--ic',AIC[k]);x.append(ii,E('small','',lb));x.onclick=f;b.append(x);NLACT.push(f);NLACL.push({k:k,l:lb,c:c||''})};
+    actions.push({f,l:{k,l:lb,c:c||''}})};
   const has=S.clip&&S.clip.paths.length;
   document.body.classList.toggle('selm',S.sel.size>0);
   const ssz=selItems().reduce((a,i)=>a+(i.dir?0:i.size||0),0);
@@ -4311,15 +4361,8 @@ function renderBar(){if(window.nlSyncSel)nlSyncSel();
     const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=async()=>{await api('POST','/api/clip',{op:'clear'});S.clip=null;renderBar()};c.append(xb)}
   else if(S.vimp&&S.dev==='local'){c.style.display='flex';c.textContent='';c.append(E('span','','Importing into the Vault \u2014 select files or folders'));const xb=E('button','ibtn');xb.append(ic('close'));xb.onclick=()=>{S.vimp=null;renderBar()};c.append(xb)}
   else c.style.display='none';
-  if(b.children.length>5||moreActions.length){   // Always expose More for secondary actions, even when the dock has room
-    const n=b.children.length,hasD=NLACL[n-1].c.indexOf('dng')>=0,from=hasD?Math.min(3,n-1):Math.min(4,n),to=hasD?n-1:n,kids=[...b.children],ex=[];
-    for(let i=from;i<to;i++){ex.push({f:NLACT[i],l:NLACL[i]});kids[i].remove()}
-    NLACT.splice(from,to-from);NLACL.splice(from,to-from);
-    ex.push(...moreActions);   // File/folder transfer follows the original overflow actions
-    btn('more','More',()=>lmDockMore(ex));
-    if(hasD){b.insertBefore(b.lastChild,b.lastChild.previousSibling);NLACT.splice(-1,0,NLACT.pop());NLACL.splice(-1,0,NLACL.pop())}}
-  {const n=b.children.length,cl=n<=5?Math.max(n,1):Math.ceil(n/2);b.style.setProperty('--cols',cl);   // more than 5 actions: two rows
-    [...b.children].forEach((x,i)=>{x.classList.toggle('eol',i%cl===cl-1||i===n-1);x.classList.toggle('r1',i<cl&&i+cl<n)})}
+  const shown=lmRenderDock(b,actions,moreActions,AIC);
+  NLACT=shown.map(o=>o.f);NLACL=shown.map(o=>o.l);
   const dk=$('#dock'),dockWas=dk.style.display!=='none';dk.style.display=(b.children.length||has)?'':'none';
   document.documentElement.style.setProperty('--dockh',(dk.style.display==='none'?0:dk.offsetHeight+12)+'px');   // floating bar: 12 px gap under it (Lumen 12.8)
   if(!dockWas&&dk.style.display!=='none'){dk.classList.remove('lm-in');void dk.offsetWidth;dk.classList.add('lm-in');setTimeout(()=>dk.classList.remove('lm-in'),320)}
@@ -5160,12 +5203,12 @@ function openPrintSpace(){
     draw();upd()};
   const post=async b=>{if(busy)return;busy=true;try{const r=await api('POST','/api/ps',b);if(live())apply(r);return r}catch(e){toast('⚠ '+e.message,5000)}finally{busy=false}};
   const upd=()=>{gNum(GS,els);
-    o.classList.toggle('selm',GS.size>0);gb.textContent='';
+    o.classList.toggle('selm',GS.size>0);gb.textContent='';gb._dockActions=null;
     sb.textContent=LIST.length?plural(LIST.length)+' · '+fmt(BYTES):'Empty';
     pa.style.display=ca.style.display=la.style.display=LIST.length?'':'none';
     const ssz=gi().reduce((t,m)=>t+(m.size||0),0);sn.textContent=GS.size+' selected'+(ssz?' · '+fmt(ssz):'');
     if(!GS.size)return;
-    const btn=(k,lb,f,c)=>{const x=E('button','ib'+(c?' '+c:'')),ii=E('span','ii');ii.append(ic(k));x.append(ii,E('small','',lb));x.onclick=f;gb.append(x)};
+    const actions=[],btn=(k,lb,f,c)=>actions.push({f,l:{k,l:lb,c:c||''}});
     btn('print','Print',()=>doIt(gi()));
     btn('vgrid','Layout',()=>psLayout([...GS]));   // only the selected pictures go to the layout editor
     btn('copy','Copies',async()=>{const ids=[...GS],one=gi()[0],v0=ids.length===1&&one?one.copies||1:1;
@@ -5177,7 +5220,7 @@ function openPrintSpace(){
     btn('del','Remove',async()=>{const ids=[...GS],n=ids.length;
       if(!await dlg({title:'Remove '+plural(n)+' from Print space?',msg:'Only the copies held here are deleted. The original pictures stay where they are.',ok:'Remove',danger:true}))return;
       clr();const r=await post({op:'rm',ids});if(r&&r.removed&&r.undo)ubShow(r.removed)},'dng');
-    gb.style.setProperty('--cols',gb.children.length)};
+    lmGalleryDock(gb,actions,true)};
   /* part 8: clean-up settings (kept by core/PrintSpace.kt in settings.json): age limit removes copies when the list is read / added to; the storage limit only stops NEW copies */
   function psSettings(){
     const sh=$('#sheet');sh.textContent='';sh.style.display='flex';

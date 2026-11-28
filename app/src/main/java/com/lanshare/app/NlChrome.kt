@@ -433,7 +433,7 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
     private val strip = RectF()
     private val closeR = RectF()
     private val pasteR = RectF()
-    private val lbP = tp(LumenTypography.TITLE_M, semi)
+    private val lbP = tp(LumenTypography.LABEL_M, semi)
     private var shownAt = 0L
 
     init {
@@ -582,20 +582,19 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
             val pri = a2.c.contains("pri"); val dng = a2.c.contains("dng")
             val col = if (dng) lm.error else p.fg
             val icol = if (dng) lm.error else iconColor(a2.k, p.fg, lm)   // colourful icon; label keeps the theme colour
-            val top = r.top + Math.max(0f, (r.height() - (48f + 6f + 20f) * d) / 2f)
-            val pill = RectF(r.centerX() - 36f * d, top, r.centerX() + 36f * d, top + 48f * d)
+            val labelHeight = LumenTypography.linePx(lbP, LumenTypography.LABEL_M, d)
+            val top = r.top + maxOf(0f, (r.height() - 36f * d - labelHeight) / 2f)
+            val halfWidth = minOf(28f * d, r.width() / 2f - 4f * d).coerceAtLeast(0f)
+            val pill = RectF(r.centerX() - halfWidth, top, r.centerX() + halfWidth, top + 32f * d)
             if (pri) {
-                // gPrimary: 135 degrees, 2 % white start to 12 % black end (same as Lm.styleButton)
                 fillP.shader = LumenGrad.diag(LumenGrad.primary(lm), pill.left, pill.top, pill.right, pill.bottom)
                 cv.drawRoundRect(pill, rl, rl, fillP); fillP.shader = null
             }
             ripple(cv, "a$i", pill, rl, if (pri) p.onac else col)
-            // The extract glyph has a visually heavy frame; optical compensation makes
-            // it match the other 36 dp action icons without enlarging its button.
-            glyph(cv, a2.k, pill.centerX(), pill.centerY(), if (a2.k == "extract") 28f else 36f, if (pri) p.onac else icol)
+            glyph(cv, a2.k, pill.centerX(), pill.centerY(), if (a2.k == "extract") 20f else 24f, if (pri) p.onac else icol)
             lbP.color = col
-            val t = fit(a2.lb, lbP, r.width() - 2f * d)
-            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 6f * d + 10f * d, lbP), lbP)
+            val t = fit(a2.lb, lbP, r.width() - 8f * d)
+            cv.drawText(t, r.centerX() - lbP.measureText(t) / 2f, ty(pill.bottom + 4f * d + labelHeight / 2f, lbP), lbP)
             if (lay >= 0) cv.restoreToCount(lay)
         }
         if (moving) postInvalidateOnAnimation() else shownAt = 0L
