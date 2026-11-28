@@ -1,0 +1,37 @@
+name: Verify Lumen checkpoint
+
+on:
+  push:
+    branches: [work/lumen-checkpoints]
+    paths:
+      - '.github/workflows/lumen-checkpoints.yml'
+      - 'app/**'
+      - 'tools/lumen/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-lumen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Check Lumen behavior and generated tokens
+        run: |
+          python3 tools/lumen/gen.py --check
+          python3 tools/lumen/contrast.py --strict
+          python3 tools/lumen/parity.py
+          python3 tools/lumen/lint.py --accessibility-regression
+          node tools/lumen/test_split.js
+      - name: Compile Android and test native Lumen controls
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.LumenSelectionTest
