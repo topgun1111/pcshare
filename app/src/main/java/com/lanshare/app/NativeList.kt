@@ -1037,9 +1037,24 @@ class NativeList(private val act: Activity, private val web: WebView) {
         return try { Bitmap.createBitmap(rv.width, rv.height, Bitmap.Config.ARGB_8888).also { rv.draw(Canvas(it)) } } catch (_: Throwable) { null }
     }
 
+    private var pushEnd: Runnable? = null
+
+    fun motionChanged(reduced: Boolean) {
+        if (!reduced) return
+        rv.removeCallbacks(noAnim)
+        rv.itemAnimator?.endAnimations()
+        rv.itemAnimator = null
+        rv.animate().cancel()
+        rv.translationX = 0f
+        rv.alpha = 1f
+        pushEnd?.run()
+        skel.invalidate()
+    }
+
     private fun push(prev: String, next: String, out: Bitmap? = null) {
         if (!pushWanted(prev, next)) { out?.recycle(); return }
         val a = depthOf(prev); val b = depthOf(next)
+        pushEnd?.run()
         rv.animate().cancel()
         rv.translationX = (if (b > a) 24f else -24f) * d; rv.alpha = 0f
         rv.animate().translationX(0f).alpha(1f).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.EMPH).start()
@@ -1051,7 +1066,14 @@ class NativeList(private val act: Activity, private val web: WebView) {
             overlay.addView(iv, overlay.indexOfChild(srl), FrameLayout.LayoutParams(slp.width, slp.height).apply { leftMargin = slp.leftMargin; topMargin = slp.topMargin })
             val dim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply { duration = LumenMotion.MED; interpolator = LumenMotion.EMPH }
             dim.addUpdateListener { x -> iv.setColorFilter(android.graphics.PorterDuffColorFilter(((x.animatedValue as Float) * 0.08f * 255f).toInt() shl 24, android.graphics.PorterDuff.Mode.SRC_ATOP)) }
-            val end = Runnable { try { overlay.removeView(iv) } catch (_: Throwable) { }; out.recycle() }
+            val end = Runnable {
+                pushEnd = null
+                iv.animate().cancel()
+                dim.cancel()
+                overlay.removeView(iv)
+                out.recycle()
+            }
+            pushEnd = end
             iv.animate().translationX((if (b > a) -8f else 8f) * d).setDuration(LumenMotion.MED).setInterpolator(LumenMotion.EMPH).withEndAction(end).start()
             dim.start()
         } catch (_: Throwable) { out.recycle() }

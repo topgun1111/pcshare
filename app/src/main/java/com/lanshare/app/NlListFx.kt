@@ -84,6 +84,7 @@ class NlFlip(private val v: View) {
 
     private fun f(): Float {
         if (t0 == 0L) return 1f
+        if (LumenPrefs.reduceMotion(v.context)) { cancel(); return 1f }
         val k = (SystemClock.uptimeMillis() - t0) / 160f
         if (k >= 1f) { t0 = 0L; return 1f }
         return k

@@ -66,7 +66,7 @@ object NlHero {
             PixelCopy.request(act.window, snap, { res ->
                 if (!done) {
                     done = true
-                    if (res == PixelCopy.SUCCESS) {
+                    if (res == PixelCopy.SUCCESS && !LumenPrefs.reduceMotion(act)) {
                         src = Src(rect, radius, thumb, snap, SystemClock.uptimeMillis(), returnKey, resolve)
                         act.startActivity(it, ActivityOptions.makeCustomAnimation(act, 0, 0).toBundle())
                     } else {
@@ -91,6 +91,10 @@ object NlHero {
     /** Called by the viewer / player in onCreate after setContentView. [chrome] = bars that fade in after 120 ms; [ready] = true once the real picture is on screen. No-op when [launch] did not prepare a transition. */
     fun play(ctx: Context, root: FrameLayout, chrome: List<View>, ready: () -> Boolean) {
         val s = take() ?: return
+        if (LumenPrefs.reduceMotion(ctx)) {
+            s.snap?.recycle()
+            return
+        }
         try {
             for (v in chrome) v.alpha = 0f
             val ov = FrameLayout(ctx)

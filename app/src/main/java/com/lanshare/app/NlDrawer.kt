@@ -418,6 +418,14 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         return DrReg(j.optDouble("h", 0.0).toFloat(), its, hits)
     }
 
+    fun motionChanged(reduced: Boolean) {
+        if (!reduced) return
+        dp.animate().cancel()
+        dp.translationX = 0f
+        dp.alpha = 1f
+        if (!open || last == "h") dp.visibility = View.GONE
+    }
+
     /** "0" = closed, "h" = hidden behind a page dialog, else the JSON model from ui.html nlDrPush(). */
     fun set(json: String) {
         if (!ENABLED || json == last) return
@@ -425,13 +433,20 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         if (json == "0") {
             open = false
             dp.animate().cancel()
-            if (dp.visibility == View.VISIBLE)
+            if (dp.visibility == View.VISIBLE && LumenPrefs.reduceMotion(act)) {
+                dp.translationX = 0f
+                dp.animate().alpha(0f).setDuration(LumenMotion.REDUCE_FADE).withEndAction {
+                    if (!open) dp.visibility = View.GONE
+                    dp.alpha = 1f
+                }.start()
+            } else if (dp.visibility == View.VISIBLE)
                 dp.animate().translationX(-wpx.toFloat()).setDuration(LumenMotion.BASE).setInterpolator(DecelerateInterpolator())
                     .withEndAction { if (!open) dp.visibility = View.GONE }.start()
             return
         }
         if (json == "h") {
             dp.animate().cancel()
+            dp.alpha = 1f
             dp.visibility = View.GONE
             return
         }
@@ -486,11 +501,19 @@ class NlDrawer(private val act: Activity, private val fire: (String, Int, Int, I
         val wasOpen = open
         open = true
         dp.animate().cancel()
+        val reduced = LumenPrefs.reduceMotion(act)
         if (dp.visibility != View.VISIBLE) {
-            dp.translationX = if (!wasOpen && !pm) -wpx.toFloat() else 0f
+            dp.translationX = if (!wasOpen && !pm && !reduced) -wpx.toFloat() else 0f
+            dp.alpha = if (!wasOpen && !pm && reduced) 0f else 1f
             dp.visibility = View.VISIBLE
         }
-        if (pm) { dp.translationX = 0f; return }
+        if (pm || reduced) {
+            dp.translationX = 0f
+            if (!pm && dp.alpha < 1f) dp.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start()
+            else dp.alpha = 1f
+            return
+        }
+        dp.alpha = 1f
         if (dp.translationX != 0f)
             dp.animate().translationX(0f).setDuration(LumenMotion.BASE).setInterpolator(DecelerateInterpolator()).start()
     }

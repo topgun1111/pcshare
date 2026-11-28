@@ -27,23 +27,30 @@ object LumenPrefs {
 
     /** Lumen Part 16 (13.3 "open from thumbnail"): ActivityOptions so a viewer / player grows out of the thumbnail that was just touched (platform scale-up from a
      *  64 dp square at the last touch-down, see NlOverlay.downX). Not a shared-element transform: the image is not continuous and the chrome does not fade in after 120 ms.
-     *  null = default animation (Reduce motion, or no touch seen yet). */
+     *  Reduce motion uses a fade. No touch defaults to the platform transition. */
     fun growFrom(act: android.app.Activity): android.os.Bundle? = try {
-        if (NlOverlay.downX < 0f || reduceMotion(act)) null else {
+        if (reduceMotion(act)) fadeIn(act)
+        else if (NlOverlay.downX < 0f) null else {
             val dv = act.window.decorView; val loc = IntArray(2); dv.getLocationOnScreen(loc)
             val half = (32 * act.resources.displayMetrics.density).toInt()
             android.app.ActivityOptions.makeScaleUpAnimation(dv, NlOverlay.downX.toInt() - loc[0] - half, NlOverlay.downY.toInt() - loc[1] - half, half * 2, half * 2).toBundle()
         }
     } catch (_: Throwable) { null }
 
-    /** Lumen M7: ActivityOptions for screens that have no thumbnail to grow from (PDF reader): fade + 94 % scale in, the old screen holds. null = platform default (Reduce motion). */
+    /** Viewer transition from its origin, with a 120 ms fade for Reduce motion. */
     fun fadeIn(act: android.app.Activity): android.os.Bundle? = try {
-        if (reduceMotion(act)) null else android.app.ActivityOptions.makeCustomAnimation(act, R.anim.lm_open_in, R.anim.lm_open_hold).toBundle()
+        val enter = if (reduceMotion(act)) R.anim.lm_fade_in else R.anim.lm_open_in
+        android.app.ActivityOptions.makeCustomAnimation(act, enter, R.anim.lm_open_hold).toBundle()
     } catch (_: Throwable) { null }
 
     /** Lumen M7 return transition, call after super.finish() in a viewer: it fades and shrinks to 94 % in 200 ms (accelerate) over the list that is already there. Not under Reduce motion. */
     @Suppress("DEPRECATION")
-    fun closeAnim(act: android.app.Activity) { try { if (!reduceMotion(act)) act.overridePendingTransition(R.anim.lm_close_in, R.anim.lm_close_out) } catch (_: Throwable) { } }
+    fun closeAnim(act: android.app.Activity) {
+        try {
+            if (reduceMotion(act)) act.overridePendingTransition(0, R.anim.lm_fade_out)
+            else act.overridePendingTransition(R.anim.lm_close_in, R.anim.lm_close_out)
+        } catch (_: Throwable) { }
+    }
 
     /** Lumen 4f: same "low-end device" guess as glassHint (used to keep the real backdrop blur off F1 on weak phones). */
     fun lowEnd(c: Context): Boolean = try {

@@ -9,10 +9,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.*
@@ -94,7 +97,10 @@ class MainActivity : Activity() {
             }
         }
         @JavascriptInterface fun reduceMotionGet(): Boolean = LumenPrefs.reduceMotionApp(this@MainActivity)
-        @JavascriptInterface fun reduceMotionSet(on: Boolean) { LumenPrefs.setReduceMotion(this@MainActivity, on) }
+        @JavascriptInterface fun reduceMotionSet(on: Boolean) {
+            LumenPrefs.setReduceMotion(this@MainActivity, on)
+            runOnUiThread { syncMotion() }
+        }
         @JavascriptInterface fun hapticsGet(): Boolean = LumenPrefs.hapticsOn(this@MainActivity)
         @JavascriptInterface fun hapticsSet(on: Boolean) { LumenPrefs.setHaptics(this@MainActivity, on) }
         /** Start menu is shown on a fresh launch only: not after a rotation / recreate and not when started by a share / print / open-with intent. */
@@ -961,6 +967,20 @@ class MainActivity : Activity() {
         h.postDelayed(wakeR, 150); h.postDelayed(wakeR, 500)
     }
 
+    private val motionObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) { syncMotion() }
+    }
+    private var observingMotion = false
+
+    private fun syncMotion() {
+        if (isDestroyed) return
+        val reduced = LumenPrefs.reduceMotion(this)
+        if (::chrome.isInitialized) chrome.motionChanged(reduced)
+        if (::drawer.isInitialized) drawer.motionChanged(reduced)
+        if (::nl.isInitialized) nl.motionChanged(reduced)
+        if (::web.isInitialized) web.evaluateJavascript("window.motionApply&&motionApply()", null)
+    }
+
     /** The app is really being closed (Back at the top level, swiped away from Recents), not just turned or sent to the background: end the Remote shell on the PC. */
     override fun onDestroy() {
         if (isFinishing) try { com.lanshare.app.pe.PePc.endLiveShell() } catch (_: Throwable) { }
@@ -971,7 +991,17 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    override fun onPause() { super.onPause(); dirWatch.pause(); mediaWatch.pause(); if (ClipPush.front === this) ClipPush.front = null; if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { } }
+    override fun onPause() {
+        if (observingMotion) {
+            contentResolver.unregisterContentObserver(motionObserver)
+            observingMotion = false
+        }
+        super.onPause()
+        dirWatch.pause()
+        mediaWatch.pause()
+        if (ClipPush.front === this) ClipPush.front = null
+        if (::splash.isInitialized) try { splash.save() } catch (_: Throwable) { }
+    }
 
     private var wasStopped = false
     /** The app went fully to the background (minimized / another app in front): on return the WebView's compositor can stay stalled = white screen until a touch. [wakeWeb] fixes that. */
@@ -979,6 +1009,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (!observingMotion) try {
+            contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, motionObserver)
+            observingMotion = true
+        } catch (_: SecurityException) { }
+        syncMotion()
         ClipPush.front = this
         repaintSoon()
         mediaWatch.resume()   // gallery live updates (MediaStore + album folders)

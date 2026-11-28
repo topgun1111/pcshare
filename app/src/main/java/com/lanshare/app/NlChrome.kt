@@ -206,7 +206,6 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     private var rpT0 = 0L
     private var rpEnd = 0L
     private val rpClip = Path()
-    private val rpReduce = LumenPrefs.reduceMotion(c)
 
     private fun rpStart(id: String, x: Float, y: Float) { rpId = id; rpX = x; rpY = y; rpT0 = SystemClock.uptimeMillis(); rpEnd = 0L }
     private fun rpRelease() { if (rpId != null && rpEnd == 0L) { rpEnd = SystemClock.uptimeMillis(); invalidate() } }
@@ -215,11 +214,12 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     protected fun ripple(cv: Canvas, id: String, shape: RectF, rad: Float, color: Int) {
         if (rpId != id) return
         val now = SystemClock.uptimeMillis()
-        val grow = if (rpReduce) 1f else Math.min(1f, (now - rpT0) / 280f)
+        val reduced = LumenPrefs.reduceMotion(context)
+        val grow = if (reduced) 1f else Math.min(1f, (now - rpT0) / 280f)
         val e = 1f - (1f - grow) * (1f - grow)
         var a = 1f
         if (rpEnd != 0L) { a = 1f - (now - rpEnd) / 160f; if (a <= 0f) { rpId = null; return } }
-        else if (rpReduce) a = 0.6f
+        else if (reduced) a = 0.6f
         val far = Math.hypot(Math.max(rpX - shape.left, shape.right - rpX).toDouble(), Math.max(rpY - shape.top, shape.bottom - rpY).toDouble()).toFloat()
         cv.save()
         rpClip.reset(); rpClip.addRoundRect(shape, rad, rad, Path.Direction.CW); cv.clipPath(rpClip)
@@ -228,6 +228,13 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
         cv.drawCircle(rpX, rpY, far * e, fillP)
         cv.restore()
         if (rpEnd != 0L || grow < 1f) postInvalidateOnAnimation()   // held and fully grown: no redraw loop
+    }
+
+    open fun motionChanged(reduced: Boolean) {
+        if (reduced) {
+            rpId = null
+            invalidate()
+        }
     }
 
     protected val med: Typeface = Fnt.med()
@@ -330,6 +337,11 @@ class NlBarView(c: Context, initialDensity: Float) : NlHitView(c, initialDensity
     private var elev = true          // N7: false = list at its top, the bar is transparent (ink on canvas)
     private var elevK = 1f           // 0..1 fill amount, eased over 160 ms
     private var elevAt = 0L
+    override fun motionChanged(reduced: Boolean) {
+        if (reduced) selAt = 0L
+        super.motionChanged(reduced)
+    }
+
     fun setElevated(e: Boolean) {
         if (e == elev) return
         elev = e   // no fade: the bar stays opaque in both states (see onDraw)
@@ -587,6 +599,18 @@ class NlDockView(c: Context, initialDensity: Float) : NlHitView(c, initialDensit
     }
 
     private var leaving = false
+    override fun motionChanged(reduced: Boolean) {
+        if (reduced) {
+            animate().cancel()
+            shownAt = 0L
+            translationY = 0f
+            alpha = 1f
+            if (leaving) visibility = GONE
+            leaving = false
+        }
+        super.motionChanged(reduced)
+    }
+
     /** Spec 13.3 bar slide, exit half: slides down 24 dp + fades (140 ms accelerate) instead of vanishing; [NlChrome.set] calls it when the page drops the dock. */
     fun leave() {
         if (visibility != VISIBLE || leaving) return
@@ -898,6 +922,8 @@ class NlChrome(private val act: Activity, private val fire: (String, String) -> 
 
     /** App returned from the background: the page's next push must not be skipped as "unchanged". */
     fun resync() { last = "" }
+
+    fun motionChanged(reduced: Boolean) { all.forEach { it.motionChanged(reduced) } }
 
     /** Activity destroyed: drop the static scroll callback so this chrome (and its views) is not kept alive; a newer chrome's callback is left alone. */
     fun release() { if (onElev === elevCb) onElev = null; NlBackdrop.setScrolling(layer, false); NlBackdrop.unregister(dock) }
