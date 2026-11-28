@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="vault_import_label">Add to Vault</string>
+    <string name="lumen_a11y_folder">folder</string>
+    <string name="lumen_a11y_file">file</string>
+    <string name="lumen_a11y_hidden">hidden</string>
+    <string name="lumen_a11y_duplicate">duplicate</string>
+    <string name="lumen_a11y_selected">Selected</string>
+    <string name="lumen_a11y_selection_actions">Show selection actions</string>
 </resources>

@@ -147,7 +147,7 @@ def browser_errors(page, themes):
     <button class="tbtn fill"></button><button class="tbtn tonal"></button>
     <button class="tbtn dngf"></button><pre id="contrast-results"></pre>"""
     script = "\n".join((gen.here / name).read_text(encoding="utf-8") for name in
-                       ("custom.js", "test_large_text_browser.js", "test_sort_browser.js", "test_glass_browser.js", "test_buttons_browser.js", "test_fields_browser.js", "test_filenames_browser.js", "test_dock_browser.js", "test_motion_browser.js", "test_contrast_browser.js"))
+                       ("custom.js", "test_large_text_browser.js", "test_sort_browser.js", "test_glass_browser.js", "test_buttons_browser.js", "test_fields_browser.js", "test_filenames_browser.js", "test_dock_browser.js", "test_motion_browser.js", "test_navigation_browser.js", "test_contrast_browser.js"))
     start, end = page.index("function openSort(){"), page.index("function openView(){")
     sort_source = page[start:end]
     start, end = page.index("function glassPick(){"), page.index("function glassApply(){")
@@ -173,6 +173,15 @@ def browser_errors(page, themes):
     start = page.index("/*LUMEN-MOTION-PREF:BEGIN*/")
     end = page.index("/*LUMEN-MOTION-PREF:END*/")
     motion_source = page[start:end]
+    start = page.index("/*LUMEN-ROW-A11Y:BEGIN*/")
+    end = page.index("/*LUMEN-ROW-A11Y:END*/")
+    row_a11y_source = page[start:end]
+    start = page.index("/*LUMEN-JOB-A11Y:BEGIN*/")
+    end = page.index("/*LUMEN-JOB-A11Y:END*/")
+    job_a11y_source = page[start:end]
+    start = page.index("/*LUMEN-MODAL-FOCUS:BEGIN*/")
+    end = page.index("/*LUMEN-MODAL-FOCUS:END*/")
+    modal_focus_source = page[start:end]
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):
@@ -192,6 +201,9 @@ def browser_errors(page, themes):
                         + '</script><script type="text/plain" id="dock-source">' + dock_source
                         + '</script><script type="text/plain" id="banner-source">' + banner_source
                         + '</script><script type="text/plain" id="motion-source">' + motion_source
+                        + '</script><script type="text/plain" id="row-a11y-source">' + row_a11y_source
+                        + '</script><script type="text/plain" id="job-a11y-source">' + job_a11y_source
+                        + '</script><script type="text/plain" id="modal-focus-source">' + modal_focus_source
                         + "</script><script>" + script + "</script>")
             fixture.write_text(document, encoding="utf-8")
             args = [chrome, "--no-sandbox", "--headless", "--disable-gpu", "--no-first-run",

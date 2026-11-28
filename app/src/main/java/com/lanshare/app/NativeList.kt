@@ -684,14 +684,17 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
         override fun onPopulateNodeForVirtualView(i: Int, n: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
             val r = cells.getOrNull(i) ?: return
             val cs = cell(width.toFloat()); val x = 4f * d + i * (cs + 4f * d); val y = 4f * d
-            n.contentDescription = NlA11y.describe(r)
+            n.contentDescription = NlA11y.describe(context, r)
             n.className = "android.widget.Button"
             n.isSelected = (first + i) in sel
             n.isClickable = true
             n.isLongClickable = true
-            n.stateDescription = if (n.isSelected) "Selected" else null
+            n.stateDescription = if (n.isSelected) context.getString(R.string.lumen_a11y_selected) else null
             n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK)
-            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
+            n.addAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat(
+                androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK,
+                context.getString(R.string.lumen_a11y_selection_actions)
+            ))
             n.setBoundsInParent(Rect(x.toInt(), y.toInt(), Math.max(x.toInt() + 1, (x + cs).toInt()), Math.max(y.toInt() + 1, (y + cs).toInt())))   // never empty (TalkBack throws)
         }
         override fun onPerformActionForVirtualView(i: Int, action: Int, args: android.os.Bundle?): Boolean {
@@ -705,7 +708,14 @@ class NlGalView(c: Context, private var d: Float) : View(c) {
     }
     init { androidx.core.view.ViewCompat.setAccessibilityDelegate(this, ebt) }
     override fun dispatchHoverEvent(e: MotionEvent): Boolean = ebt.dispatchHoverEvent(e) || super.dispatchHoverEvent(e)
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val index = ebt.keyboardFocusedVirtualViewId
+        if (NlA11y.optionsKey(event) && index in cells.indices && onLong != null) {
+            onLong?.invoke(first + index)
+            return true
+        }
+        return ebt.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+    }
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         ebt.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
@@ -1753,6 +1763,7 @@ class NativeList(private val act: Activity, private val web: WebView) {
             v.layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             v.isClickable = true; v.isLongClickable = true
             val h = VH(v)
+            NlA11y.attachFileRow(v)
             v.setOnClickListener { val i = h.bindingAdapterPosition; if (i >= 0) tapRow(i) }
             v.setOnLongClickListener {
                 val i = h.bindingAdapterPosition

@@ -1,5 +1,7 @@
 package com.lanshare.app
 
+import android.content.Context
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -16,21 +18,49 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
  * "name, folder|file, details, hidden, duplicate"; a selected row says "Selected" through stateDescription; day headings are announced as headings.
  */
 object NlA11y {
-    fun describe(r: NlRow): String {
+    fun describe(c: Context, r: NlRow): String {
         if (r.k == "hdr") return r.nm
         val sb = StringBuilder(r.nm)
-        sb.append(if (r.dir) ", folder" else ", file")
+        sb.append(", ").append(c.getString(if (r.dir) R.string.lumen_a11y_folder else R.string.lumen_a11y_file))
         if (r.a.isNotBlank()) sb.append(", ").append(r.a.trim())
         if (r.b.isNotBlank()) sb.append(", ").append(r.b.trim())
-        if (r.hid) sb.append(", hidden")
-        if (r.dup) sb.append(", duplicate")
+        if (r.hid) sb.append(", ").append(c.getString(R.string.lumen_a11y_hidden))
+        if (r.dup) sb.append(", ").append(c.getString(R.string.lumen_a11y_duplicate))
         return sb.toString()
     }
 
+    internal fun optionsKey(event: KeyEvent): Boolean =
+        event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            (event.keyCode == KeyEvent.KEYCODE_MENU || event.keyCode == KeyEvent.KEYCODE_F10 && event.isShiftPressed)
+
+    internal fun attachFileRow(row: View) {
+        ViewCompat.setAccessibilityDelegate(row, object : AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = if (ViewCompat.isAccessibilityHeading(host)) TextView::class.java.name else Button::class.java.name
+                if (host.isLongClickable) {
+                    info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_LONG_CLICK)
+                    info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(
+                        AccessibilityNodeInfoCompat.ACTION_LONG_CLICK,
+                        host.context.getString(R.string.lumen_a11y_selection_actions)
+                    ))
+                }
+            }
+        })
+        row.setOnKeyListener { view, _, event ->
+            view.isLongClickable && optionsKey(event) && view.performLongClick()
+        }
+    }
+
     fun apply(v: View, r: NlRow, selected: Boolean) {
-        v.contentDescription = describe(r)
-        ViewCompat.setStateDescription(v, if (selected) "Selected" else null)
-        ViewCompat.setAccessibilityHeading(v, r.k == "hdr")
+        val heading = r.k == "hdr"
+        v.contentDescription = describe(v.context, r)
+        v.isSelected = selected && !heading
+        v.isClickable = !heading
+        v.isLongClickable = !heading && !r.hit
+        v.isFocusable = !heading
+        ViewCompat.setStateDescription(v, if (v.isSelected) v.context.getString(R.string.lumen_a11y_selected) else null)
+        ViewCompat.setAccessibilityHeading(v, heading)
     }
 
     /** Marks a screen / section title so TalkBack can jump between headings. */

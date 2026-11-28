@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="vault_import_label">Kasaya ekle</string>
+    <string name="lumen_a11y_folder">klasör</string>
+    <string name="lumen_a11y_file">dosya</string>
+    <string name="lumen_a11y_hidden">gizli</string>
+    <string name="lumen_a11y_duplicate">yinelenen</string>
+    <string name="lumen_a11y_selected">Seçili</string>
+    <string name="lumen_a11y_selection_actions">Seçim işlemlerini göster</string>
 </resources>
