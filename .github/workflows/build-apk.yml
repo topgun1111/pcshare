@@ -1,7 +1,7 @@
 name: Build APK
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, work/lumen-preview]
   workflow_dispatch:
 
 permissions:
@@ -9,18 +9,20 @@ permissions:
   actions: write   # needed by the cleanup job (delete old run logs)
 
 concurrency:
-  group: build-${{ github.ref }}
-  # A newer commit supersedes incomplete APKs; only the latest version is published.
-  cancel-in-progress: true
+  # Both channels install over the same packages and use the same minute-based versionCode.
+  group: publish-android-release
+  cancel-in-progress: false
 
 jobs:
   # Job 1: version + shared versionCode (one value for both editions)
   prep:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/work/lumen-preview'
     runs-on: ubuntu-latest
     outputs:
       ver: ${{ steps.ver.outputs.ver }}
       tag: ${{ steps.ver.outputs.tag }}
       code: ${{ steps.ver.outputs.code }}
+      preview: ${{ steps.ver.outputs.preview }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -32,10 +34,19 @@ jobs:
           MAJOR=${MAJOR%%.*}
           git fetch --tags --force -q || true
           LAST=$(git tag -l "v${MAJOR}.*" | sed -E "s/^v${MAJOR}\.//" | grep -E '^[0-9]+$' | sort -n | tail -1)
-          if [ -z "$LAST" ]; then MINOR=0; else MINOR=$((LAST+1)); fi
-          VER="$MAJOR.$MINOR"
+          if [ "$GITHUB_REF" = "refs/heads/work/lumen-preview" ]; then
+            PREVIEW=true
+            TAG="preview-v$MAJOR.${LAST:-0}-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
+            VER="$TAG"
+          else
+            PREVIEW=false
+            if [ -z "$LAST" ]; then MINOR=0; else MINOR=$((LAST+1)); fi
+            VER="$MAJOR.$MINOR"
+            TAG="v$VER"
+          fi
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "preview=$PREVIEW" >> "$GITHUB_OUTPUT"
           echo "code=$(( ($(date -u +%s) - 1767225600) / 60 ))" >> "$GITHUB_OUTPUT"
 
   # Build both editions on one runner so the release can use the APKs directly.
@@ -93,11 +104,12 @@ jobs:
           PY
 
       - name: Test Android transfers and gallery planning
-        run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.core.TransferInteropTest --tests com.lanshare.app.core.GalleryCopyPlanTest --tests com.lanshare.app.core.ErrorLogStoreTest --tests com.lanshare.app.core.ApkDeltaTest --tests com.lanshare.app.core.LumenFrameStatsTest --tests com.lanshare.app.core.LumenReflowTest --tests com.lanshare.app.core.LumenViewportTest --tests com.lanshare.app.core.LumenCoordinatesTest
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.lanshare.app.core.TransferInteropTest --tests com.lanshare.app.core.GalleryCopyPlanTest --tests com.lanshare.app.core.ErrorLogStoreTest --tests com.lanshare.app.core.ApkDeltaTest --tests com.lanshare.app.core.UpdateVersionTest --tests 'com.lanshare.app.Lumen*Test' --tests 'com.lanshare.app.core.Lumen*Test'
 
       - name: Build Main and Lite APKs
         env:
           APP_VERSION: ${{ needs.prep.outputs.ver }}
+          TAG: ${{ needs.prep.outputs.tag }}
           VERSION_CODE: ${{ needs.prep.outputs.code }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -106,7 +118,8 @@ jobs:
           mkdir -p apks
           for EDITION in full lite; do
             rm -rf app/build
-            if [ "$EDITION" = lite ]; then OUT="LANShare-v$APP_VERSION-lite.apk"; else OUT="LANShare-v$APP_VERSION.apk"; fi
+            if [ "$EDITION" = lite ]; then SUFFIX="-lite"; else SUFFIX=""; fi
+            OUT="LANShare-$TAG$SUFFIX.apk"
             set +e
             gradle --no-daemon --stacktrace -PappVersion="$APP_VERSION" -Pedition="$EDITION" :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
             rc=${PIPESTATUS[0]}
@@ -141,26 +154,38 @@ jobs:
       - name: Generate and verify partial APK updates
         env:
           GH_TOKEN: ${{ github.token }}
-          VER: ${{ needs.prep.outputs.ver }}
+          TAG: ${{ needs.prep.outputs.tag }}
+          PREVIEW: ${{ needs.prep.outputs.preview }}
         run: |
           python3 tools/apk_delta.py --self-test
           mkdir -p patches
           TMP=$(mktemp -d)
           trap 'rm -rf "$TMP"' EXIT
-          BASES=$(gh release list --limit 15 --json tagName,isDraft,isPrerelease -q '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName' | grep -E '^v[0-9]+\.[0-9]+$' | head -3 || true)
+          STABLE_BASES=$(gh release list --exclude-drafts --exclude-pre-releases --limit 10 --json tagName |
+            jq -r '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+$"))] | .[:3][]')
+          PREVIEW_BASES=$(gh release list --exclude-drafts --limit 30 --json tagName,isPrerelease |
+            jq -r '[.[] | select(.isPrerelease) | .tagName | select(test("^preview-v[0-9]+\\.[0-9]+-[0-9]+-[0-9]+$"))] | .[:3][]')
+          BASES="$STABLE_BASES $PREVIEW_BASES"
           for BASE in $BASES; do
             for EDITION in full lite; do
               SUFFIX=""
               if [ "$EDITION" = lite ]; then SUFFIX="-lite"; fi
               OLD="LANShare-$BASE$SUFFIX.apk"
               if gh release download "$BASE" --pattern "$OLD" --dir "$TMP" --clobber; then
-                python3 tools/apk_delta.py "$TMP/$OLD" "apks/LANShare-v$VER$SUFFIX.apk" "$EDITION" patches
+                python3 tools/apk_delta.py "$TMP/$OLD" "apks/LANShare-$TAG$SUFFIX.apk" "$EDITION" patches
                 rm -f "$TMP/$OLD"
               else
                 echo "::warning::No $EDITION base APK for $BASE; full download remains available"
               fi
             done
           done
+          if [ "$PREVIEW" = true ]; then
+            for EDITION in full lite; do
+              if ! compgen -G "patches/*-$EDITION.patch" > /dev/null; then
+                echo "::error::No verified $EDITION patch for $TAG"; exit 1
+              fi
+            done
+          fi
           ls -lh patches
 
       # Release notes = TOP "## " section of CHANGELOG.md (shown by the app's update dialog before the download button).
@@ -187,13 +212,14 @@ jobs:
         with:
           body_path: release-notes.md
           draft: true   # invisible to the app until BOTH APKs are attached (published by the next step)
+          prerelease: ${{ needs.prep.outputs.preview }}
           tag_name: ${{ needs.prep.outputs.tag }}
           name: LANShare ${{ needs.prep.outputs.tag }}
           target_commitish: ${{ github.sha }}
           fail_on_unmatched_files: true
           files: |
-            apks/LANShare-v${{ needs.prep.outputs.ver }}.apk
-            apks/LANShare-v${{ needs.prep.outputs.ver }}-lite.apk
+            apks/LANShare-${{ needs.prep.outputs.tag }}.apk
+            apks/LANShare-${{ needs.prep.outputs.tag }}-lite.apk
 
       - name: Attach verified delta patches
         env:
@@ -210,16 +236,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prep.outputs.tag }}
-          VER: ${{ needs.prep.outputs.ver }}
+          PREVIEW: ${{ needs.prep.outputs.preview }}
         run: |
-          N=$(gh release view "$TAG" --json assets -q '[.assets[].name | select(. == "LANShare-v'"$VER"'.apk" or . == "LANShare-v'"$VER"'-lite.apk")] | length')
+          N=$(gh release view "$TAG" --json assets -q '[.assets[].name | select(. == "LANShare-'"$TAG"'.apk" or . == "LANShare-'"$TAG"'-lite.apk")] | length')
           if [ "$N" != "2" ]; then echo "::error::release $TAG has $N of 2 APKs - not publishing"; exit 1; fi
-          gh release edit "$TAG" --draft=false --latest
+          if [ "$PREVIEW" = true ]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
 
   # Cleanup deletes run logs and any leftover artifacts older than 7 days
   cleanup:
-    needs: build
-    if: always()
+    needs: [prep, build]
+    if: always() && needs.prep.outputs.preview == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Delete logs and artifacts older than 7 days

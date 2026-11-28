@@ -148,3 +148,9 @@
 - Source `14bc9fc`, [release v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). Both APK editions, selected JVM tests and six verified delta patches passed.
 - Native managed buttons use the generated tonal stops and platform hover, focus and press states. Busy and error feedback reuse the original view, action, label and layout. The manual indexing action and the storage scan retry display state feedback without changing their callbacks.
 - Chromium exercised loading transitions, restoring prior disabled state and the existing listener, button layout, keyboard focus and Reduce motion. The local execution environment became unavailable during the build; GitHub Actions completed verification. Native touch, keyboard and button rendering remain physical-device checks.
+
+
+## 2026-11-28 - R13 secure viewer checkpoint
+
+- Vault player maps Media3's seek accent and time labels to Lumen. Vault PDF keeps its rendered pages on a black stage with density-aware spacing. The changes leave the secure window flags, playback and Vault document streams in place.
+- Next, verify the branch compile and audit the standard viewers, Storage Analyzer, Print and Inbox before advancing to R14. See the canonical ledger for remaining device acceptance.

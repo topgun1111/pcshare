@@ -4,8 +4,10 @@ import android.app.Activity
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -18,6 +20,7 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import com.lanshare.app.core.vault.VaultReader
 import com.lanshare.app.core.vault.VaultSession
@@ -107,7 +110,20 @@ class VaultPlayActivity : Activity() {
         player = p
         LumenNativeTheme.bars(this, Color.BLACK)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        root.addView(PlayerView(this).apply { this.player = p; setShowNextButton(items.size > 1); setShowPreviousButton(items.size > 1) }, FrameLayout.LayoutParams(-1, -1))
+        val view = PlayerView(this).apply {
+            val accent = LumenGrad.onDark(Lumen.of(this@VaultPlayActivity))
+            (findViewById<View>(androidx.media3.ui.R.id.exo_progress) as? DefaultTimeBar)?.apply {
+                setPlayedColor(accent)
+                setScrubberColor(accent)
+            }
+            for (id in intArrayOf(androidx.media3.ui.R.id.exo_position, androidx.media3.ui.R.id.exo_duration)) {
+                findViewById<TextView>(id)?.let { LumenTypography.apply(it, LumenTypography.LABEL_M).fontFeatureSettings = "tnum" }
+            }
+            this.player = p
+            setShowNextButton(items.size > 1)
+            setShowPreviousButton(items.size > 1)
+        }
+        root.addView(view, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         p.setMediaItems(items, start, C.TIME_UNSET); p.prepare(); p.playWhenReady = true
     }

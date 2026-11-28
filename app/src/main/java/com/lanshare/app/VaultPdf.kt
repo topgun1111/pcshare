@@ -67,8 +67,8 @@ class VaultPdfActivity : Activity() {
         val me = WeakReference(this)
         registeredLock = { me.get()?.let { a -> a.runOnUiThread { a.finish() } } }
         VaultSession.onLock(registeredLock!!)
-        LumenNativeTheme.bars(this, Color.DKGRAY)
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.DKGRAY) }
+        LumenNativeTheme.bars(this, Color.BLACK)
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
         try {
             val t = HandlerThread("vault-pdf-io").also { it.start() }; ioThread = t
@@ -92,14 +92,20 @@ class VaultPdfActivity : Activity() {
 
     private fun show(root: FrameLayout, r: PdfRenderer) {
         val w = minOf(resources.displayMetrics.widthPixels, 1600)
-        val rv = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@VaultPdfActivity); setItemViewCacheSize(1); clipToPadding = false; setPadding(0, 8, 0, 8) }
+        val spacing = (8 * resources.displayMetrics.density).toInt()
+        val rv = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@VaultPdfActivity)
+            setItemViewCacheSize(1)
+            clipToPadding = false
+            setPadding(0, spacing, 0, spacing)
+        }
         val n = r.pageCount
         rv.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             override fun getItemCount() = n
             override fun onCreateViewHolder(p: ViewGroup, t: Int): RecyclerView.ViewHolder {
                 val iv = ImageView(p.context).apply {
                     setBackgroundColor(Color.WHITE); scaleType = ImageView.ScaleType.FIT_CENTER; adjustViewBounds = true
-                    layoutParams = RecyclerView.LayoutParams(-1, (w * 1.414f).toInt()).also { it.bottomMargin = 8 }
+                    layoutParams = RecyclerView.LayoutParams(-1, (w * 1.414f).toInt()).also { it.bottomMargin = spacing }
                 }
                 return object : RecyclerView.ViewHolder(iv) {}
             }

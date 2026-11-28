@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import com.lanshare.app.core.ApkDelta
+import com.lanshare.app.core.UpdateVersion
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -36,7 +37,10 @@ object UpdateCheck {
     private const val MIN_INTERVAL_MS = 6L * 60 * 60 * 1000
 
     /** [onMsg] (manual check only) gets a short status when no dialog is shown: up to date / failed. */
-    fun run(a: Activity, force: Boolean = false, onMsg: ((String) -> Unit)? = null) {
+    fun run(a: Activity, force: Boolean = false, onMsg: ((String) -> Unit)? = null) =
+        check(a, force, checkPreviews = false, onMsg = onMsg)
+
+    private fun check(a: Activity, force: Boolean, checkPreviews: Boolean, onMsg: ((String) -> Unit)?) {
         val sp = a.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (!force && now - sp.getLong("last", 0L) < MIN_INTERVAL_MS) return
@@ -47,26 +51,17 @@ object UpdateCheck {
                 c.connectTimeout = 8000; c.readTimeout = 8000
                 val txt = try { c.inputStream.bufferedReader().readText() } finally { c.disconnect() }
                 val arr = JSONArray(txt)
-                val lite = isLite(a)   // this install's edition; a release only counts when it carries THIS edition's APK (never the other one)
-                var best: JSONObject? = null
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
-                    val bt = best?.getString("tag_name")
-                    if (bt == null || isNewer(o.getString("tag_name"), bt)) best = o
-                }
-                val j = best ?: throw IOException("Release yok")
-                sp.edit().putLong("last", now).apply()
-                val tag = j.getString("tag_name")
                 val cur = a.packageManager.getPackageInfo(a.packageName, 0).versionName ?: return@Thread
-                val all = ArrayList<JSONObject>()   // EVERY release of this edition, newest first: the dialog always shows the full change log
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft") || !hasApk(o, lite)) continue
-                    all.add(o)
-                }
-                all.sortWith { x, y -> if (isNewer(x.optString("tag_name"), y.optString("tag_name"))) -1 else if (isNewer(y.optString("tag_name"), x.optString("tag_name"))) 1 else 0 }
-                if (!isNewer(tag, cur)) {   // same or older release: automatic check stays silent; a manual check shows the change log with no download button
+                val includePreviews = checkPreviews || UpdateVersion.isPreview(cur)
+                val lite = isLite(a)
+                val all = (0 until arr.length()).map { arr.getJSONObject(it) }.filter { release ->
+                    UpdateVersion.accepts(release.optString("tag_name"), release.optBoolean("draft"),
+                        release.optBoolean("prerelease"), includePreviews) && hasApk(release, lite)
+                }.sortedWith { x, y -> UpdateVersion.compare(y.optString("tag_name"), x.optString("tag_name")) }
+                val j = all.firstOrNull() ?: throw IOException("Release yok")
+                if (!checkPreviews) sp.edit().putLong("last", now).apply()
+                val tag = j.getString("tag_name")
+                if (UpdateVersion.compare(tag, cur) <= 0) {   // same or older release: automatic check stays silent; a manual check shows the change log with no download button
                     if (!force) return@Thread
                     a.runOnUiThread {
                         if (a.isFinishing || a.isDestroyed) return@runOnUiThread
@@ -74,6 +69,11 @@ object UpdateCheck {
                             .setTitle("Güncel: $cur")
                             .setView(changeView(a, cur, all))
                             .setPositiveButton("Kapat", null)
+                            .apply {
+                                if (!includePreviews) setNeutralButton("Ön sürümleri kontrol et") { _, _ ->
+                                    check(a, force = true, checkPreviews = true, onMsg = onMsg)
+                                }
+                            }
                             .show()
                     }
                     return@Thread
@@ -85,7 +85,7 @@ object UpdateCheck {
                 a.runOnUiThread {
                     if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                     AppPal.dlg(a).kind("update")
-                        .setTitle("Yeni sürüm: $tag")
+                        .setTitle(if (j.optBoolean("prerelease")) "Ön sürüm: $tag" else "Yeni sürüm: $tag")
                         .setView(changeView(a, cur, all))
                         .setPositiveButton("İndir") { _, _ ->
                             download(a, dl, dlSize, tag, apk, assets, lite)
@@ -93,7 +93,8 @@ object UpdateCheck {
                         .setNegativeButton("Sonra", null)
                         .setNeutralButton("Bu sürümü atla") { _, _ ->
                             sp.edit().putString("skip", tag).apply()
-                            Lm.snack(a, "$tag atlandı (Ayarlar > Check for updates ile yine de indirilebilir)", Toast.LENGTH_LONG)
+                            val action = if (checkPreviews && !UpdateVersion.isPreview(cur)) "Check for updates > Ön sürümleri kontrol et" else "Check for updates"
+                            Lm.snack(a, "$tag atlandı (Ayarlar > $action)", Toast.LENGTH_LONG)
                         }
                         .show()
                 }
@@ -132,7 +133,7 @@ object UpdateCheck {
         for ((i, o) in rels.withIndex()) {
             val tag = o.optString("tag_name")
             val latest = i == 0
-            val installed = !isNewer(tag, cur) && !isNewer(cur, tag)
+            val installed = UpdateVersion.compare(tag, cur) == 0
             val card = LinearLayout(a).apply {
                 orientation = LinearLayout.VERTICAL
                 val q = (12 * d).toInt(); setPadding(q, q, q, q)
@@ -145,6 +146,7 @@ object UpdateCheck {
                 val date = o.optString("published_at").take(10)
                 text = buildString {
                     append(tag)
+                    if (o.optBoolean("prerelease")) append("  ·  Ön sürüm")
                     if (latest) append("  ·  Son güncelleme")
                     if (installed) append("  ·  Kurulu")
                     if (date.isNotEmpty()) append("\n").append(date)
@@ -390,16 +392,5 @@ object UpdateCheck {
             com.lanshare.app.core.ErrorLog.exception("Update installation", e)
             Lm.snack(a, "Kurulum başlatılamadı: ${e.message}", Toast.LENGTH_LONG)
         }
-    }
-
-    /** "v1.0.134" vs "1.0.133-abc1234": compares dotted numeric parts, ignores the "-sha" suffix. */
-    fun isNewer(tag: String, cur: String): Boolean {
-        fun parts(s: String) = s.removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-        val x = parts(tag); val y = parts(cur)
-        for (i in 0 until maxOf(x.size, y.size)) {
-            val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }
-            if (d != 0) return d > 0
-        }
-        return false
     }
 }

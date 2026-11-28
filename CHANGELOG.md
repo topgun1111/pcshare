@@ -7,6 +7,16 @@
 
 
 
+## 2026-11-28 - Prerelease updates and secure viewer polish
+
+### Added
+- Check for prereleases from the update dialog. Installed previews check for newer builds automatically.
+- Download matching partial updates for Full and Lite previews on Wi-Fi and mobile data.
+
+### Changed
+- Match the secure player's seek bar and time labels to Lumen.
+- Use a black stage and consistent page spacing in the secure PDF reader.
+
 ## 2026-11-28 - File browser and accessibility refinements
 
 ### Changed
