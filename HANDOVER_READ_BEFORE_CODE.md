@@ -49,7 +49,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 
 ---
 
-> **Current release checkpoint — 2026-11-28:** [v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), app commit `14bc9fc`, [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). R01–R05 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R06 (selection controls, fields, chips and sliders) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded.
+> **Current release checkpoint — 2026-11-28:** [v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), app commit `14bc9fc`, [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). R01–R05 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R06 (selection controls, fields, chips and sliders) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded. Active work continues on [`work/lumen-checkpoints`](https://github.com/topgun1111/pcshare/tree/work/lumen-checkpoints). Check out its latest remote tip and follow §3.9. Push checkpoints there at least every 15 minutes while changes exist. Keep release workflows off this branch.
 
 ## 1. Project at a glance
 
