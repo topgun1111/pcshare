@@ -76,6 +76,7 @@ if (scheme === 'light') {
   checkFields(errors);
   checkFileNames(errors);
   checkDock(errors);
+  checkNotices(errors);
   checkSegments(errors);
 }
 output.textContent = errors.length ? JSON.stringify(errors.slice(0,50)) : 'PASS';

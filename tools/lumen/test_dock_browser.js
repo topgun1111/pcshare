@@ -50,3 +50,26 @@ function checkDock(errors) {
   bar.style.removeProperty('width');
   bar.textContent='';
 }
+
+function checkNotices(errors) {
+  const scope = {};
+  const banner = document.createElement('div');
+  const source = document.getElementById('banner-source').textContent;
+  const make = (tag, cls, label) => Object.assign(document.createElement(tag), {
+    className: cls || '', textContent: label || ''
+  });
+  new Function('window', 'E', 'ic', '$', source)(scope, make, () => make('span'), () => banner);
+  const fail = reason => errors.push('Notices: '+reason);
+  let retried = 0;
+  scope.banner('Unavailable', {kind:'err',act:'Retry',fn:()=>retried++});
+  scope.banner('Finishing task');
+  const toggle = banner.querySelector('button');
+  if(!toggle || banner.getAttribute('role')!=='alert' || toggle.getAttribute('aria-expanded')!=='false')
+    fail('collapsed notices lost error or disclosure semantics');
+  toggle?.click();
+  if(toggle?.getAttribute('aria-expanded')!=='true') fail('expansion state did not update');
+  banner.querySelector('li button')?.click();
+  if(retried!==1) fail('collapsed notices dropped their original actions');
+  scope.banner('');
+  if(banner.children.length || banner.style.display!=='none') fail('clearing notices left stale content');
+}

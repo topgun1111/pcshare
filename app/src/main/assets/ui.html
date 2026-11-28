@@ -8031,6 +8031,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
 #banner .bn-n{flex:1;min-width:0}
 #banner .bn-l{display:none;flex-basis:100%;margin:0;padding:0 0 0 calc(var(--sp-8) + var(--sp-1));list-style:none;font-size:var(--fs-12)}
 #banner.open .bn-l{display:block}
+#banner .bn-l li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);overflow-wrap:anywhere}
 #banner{flex-wrap:wrap}
 /* 12.16 job cards: gradient bars, success on completion, check pop */
 .pj .pjb{height:8px;border-radius:var(--r-full);background:var(--surfaceLo,var(--bd))}
@@ -8083,6 +8084,7 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     return e};
   /* banner(text, opts): opts = {kind:'err'|'warn'|'info', act:'Retry', fn:()=>{}}; a leading warning sign is dropped (the glyph replaces it).
      Several different notices at once collapse into one "N notices" row that opens on tap (max one banner per screen, 12.15). */
+  /*LUMEN-BANNER:BEGIN*/
   let BN=[];
   window.banner=function(m,o){const b=$('#banner');o=o||{};
     if(!m){BN=[];b.textContent='';b.className='';b.style.display='none';return}
@@ -8095,9 +8097,24 @@ html.lgbar:not(.nlcbar) body:not(.selm):not(.srch):not(.lg0) #top .mainb .ttl{op
     const k=BN.some(x=>x.kind==='err')?'err':BN[BN.length-1].kind;if(k!=='err')b.classList.add('bn-'+k);
     b.setAttribute('role',k==='err'?'alert':'status');
     b.append(ic(k==='info'?'info':'warn'));
-    if(BN.length===1){b.append(E('span','bn-x',BN[0].txt));if(BN[0].act&&BN[0].fn){const a=E('button','bn-a',BN[0].act);a.onclick=BN[0].fn;b.append(a)}}
-    else{const n=E('span','bn-n',BN.length+' notices'),a=E('button','bn-a',open?'Hide':'Show');a.onclick=()=>{b.classList.toggle('open');a.textContent=b.classList.contains('open')?'Hide':'Show'};
-      const ul=E('ul','bn-l');BN.forEach(x=>ul.append(E('li','',x.txt)));b.append(n,a,ul);if(open){b.classList.add('open');a.textContent='Hide'}}};
+    const action=x=>{const a=E('button','bn-a',x.act);a.onclick=x.fn;return a};
+    if(BN.length===1){
+      b.append(E('span','bn-x',BN[0].txt));
+      if(BN[0].act&&BN[0].fn)b.append(action(BN[0]));
+    }else{
+      const n=E('span','bn-n',BN.length+' notices'),a=E('button','bn-a',open?'Hide':'Show'),ul=E('ul','bn-l');
+      const sync=()=>{const expanded=b.classList.contains('open');a.textContent=expanded?'Hide':'Show';a.setAttribute('aria-expanded',String(expanded))};
+      a.onclick=()=>{b.classList.toggle('open');sync()};
+      BN.forEach(x=>{
+        const li=E('li');li.append(E('span','',x.txt));
+        if(x.act&&x.fn)li.append(action(x));
+        ul.append(li);
+      });
+      if(open)b.classList.add('open');
+      sync();b.append(n,a,ul);
+    }
+  };
+  /*LUMEN-BANNER:END*/
   /* large top bar: a title row under the small bar; --lg goes 1 to 0 over the first 34 px of scroll */
   (function(){const top=$('#top'),mainb=top&&top.querySelector('.mainb'),ht=$('#ht');if(!top||!mainb||!ht)return;
     const row=E('div');row.id='lgrow';row.setAttribute('aria-hidden','true');const h=E('h1');row.append(h);mainb.after(row);
