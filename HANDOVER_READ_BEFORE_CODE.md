@@ -49,7 +49,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 
 ---
 
-> **Current release checkpoint — 2026-11-28:** [v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), app commit `14bc9fc`, [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). R01–R05 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R10 (secondary native density and foldables) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded. Active work continues on [`work/lumen-checkpoints`](https://github.com/topgun1111/pcshare/tree/work/lumen-checkpoints). Check out its latest remote tip and follow §3.9. Push checkpoints there at least every 15 minutes while changes exist. Keep release workflows off this branch.
+> **Current release checkpoint — 2026-11-28:** [v2.539](https://github.com/topgun1111/pcshare/releases/tag/v2.539), app commit `14bc9fc`, [CI 46095426193](https://github.com/topgun1111/pcshare/actions/runs/46095426193). R01–R05 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R11 (motion and haptics preferences) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded. Active work continues on [`work/lumen-checkpoints`](https://github.com/topgun1111/pcshare/tree/work/lumen-checkpoints). Check out its latest remote tip and follow §3.9. Push checkpoints there at least every 15 minutes while changes exist. Keep release workflows off this branch.
 
 ## 1. Project at a glance
 
@@ -109,7 +109,7 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 
 ## 3. Open work (prioritised)
 
-**L. Current Lumen roadmap** — canonical [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28) contains F01–F22 audit findings, R01–R17 sequential phases, phase acceptance criteria and Work execution rules. R01–R05 passed release CI. R06–R09 passed branch CI, most recently at [69d7015](https://github.com/topgun1111/pcshare/actions/runs/46119897193). R10 covers secondary native density and foldables. Preserve completed foundations and owner-approved exclusions. No competing roadmap file.
+**L. Current Lumen roadmap** — canonical [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28) contains F01–F22 audit findings, R01–R17 sequential phases, phase acceptance criteria and Work execution rules. R01–R05 passed release CI. R06–R10 passed branch CI, most recently at [dea86b8](https://github.com/topgun1111/pcshare/actions/runs/46120828995). R11 covers motion and haptics preferences. Preserve completed foundations and owner-approved exclusions. No competing roadmap file.
 
 **U. Universal Search** - plan in chapter 16. Parts 1, 2, 3 and 4 are coded but never compiled / run: read the result of CI job `usearch-selftest` AND the APK build (Part 3 touched `LocalFs`, `Bin`, `Jobs`, `Core`, `Cfg`, `Routes`, `MainActivity`, `ui.html`), fix, record the measured numbers (the `info` lines) in the Part 1 / 2 / 3 notes, then do Part 4. Part 0 (green CI + image-search device check 11.1) is still open.
 
