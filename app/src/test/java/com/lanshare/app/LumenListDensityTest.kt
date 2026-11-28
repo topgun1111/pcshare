@@ -22,9 +22,10 @@ class LumenListDensityTest {
         val pull = NlPullLayout(context, 1f)
         val child = FrameLayout(context).apply { isClickable = true }
         pull.addView(child, FrameLayout.LayoutParams(-1, -1))
-        pull.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
+        val parent = FrameLayout(context).apply { addView(pull, FrameLayout.LayoutParams(-1, -1)) }
+        parent.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY))
-        pull.layout(0, 0, 360, 600)
+        parent.layout(0, 0, 360, 600)
         var ticks = 0
         pull.onThreshold = { ticks++ }
 
