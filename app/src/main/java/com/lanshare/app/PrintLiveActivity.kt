@@ -126,7 +126,7 @@ class PrintLiveActivity : Activity() {
         // bottom row: tick box left, buttons right
         val bot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), 0, dp(16), dp(12)) }
         val cb = CheckBox(this).apply {
-            text = "Don't open automatically"; setTextColor(FG); LumenTypography.fit(this, 12f); typeface = Fnt.med(); buttonTintList = ColorStateList.valueOf(DIM)
+            text = "Don't open automatically"; setTextColor(FG); LumenTypography.fit(this, 12f); typeface = Fnt.med(); LumenSelection.style(this)
             isChecked = noAuto(this@PrintLiveActivity)
             setOnCheckedChangeListener { _, v -> try { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("noauto", v).apply() } catch (_: Throwable) {} }
         }

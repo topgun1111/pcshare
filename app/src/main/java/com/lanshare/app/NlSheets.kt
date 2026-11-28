@@ -3,7 +3,6 @@ package com.lanshare.app
 import android.app.Activity
 import android.app.Dialog
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -308,10 +307,19 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         fun cbRow(label: String, on: Boolean, f: (Boolean) -> Unit) {
             val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(56f); setPadding(dp(4f), dp(6f), dp(4f), dp(6f)) }
             ripple(row)
-            row.addView(tv(label, 18f, p.fg), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val cb = CheckBox(act).apply { isChecked = on; buttonTintList = ColorStateList.valueOf(p.tl); isClickable = false; isFocusable = false }
+            val caption = tv(label, 18f, p.fg).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+            row.addView(caption, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val cb = CheckBox(act).apply {
+                isChecked = on
+                isClickable = false
+                isFocusable = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                LumenSelection.style(this)
+            }
             row.addView(cb)
             row.setOnClickListener { f(!on) }
+            LumenSelection.row(row, label, on)
+            row.tag = label
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
 
@@ -324,12 +332,14 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
                     val n = start + k
                     if (n >= items.size) { row.addView(View(act), LinearLayout.LayoutParams(0, dp(56f), 1f)); continue }
                     val item = items[n]
-                    val cell = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), 0, dp(4f), 0); contentDescription = item.first }
+                    val cell = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4f), 0, dp(4f), 0) }
                     ripple(cell)
                     cell.addView(NlRadio(act, item.second, p.mut, p.tl, d))
                     cell.addView(iconOf(n), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(14f), 0, 0, 0) })
                     val act1 = item.third
                     cell.setOnClickListener { act1() }
+                    LumenSelection.row(cell, item.first, item.second, radio = true)
+                    cell.tag = item.first
                     row.addView(cell, LinearLayout.LayoutParams(0, dp(56f), 1f))
                 }
                 col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -339,7 +349,11 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         fun colsPerRow() = if (minOf(windowWidth() / d, 560f) >= 480f) 7 else 4
 
         fun draw() {
+            val focusedChoice = col.findFocus()?.tag as? String
             col.removeAllViews()
+            fun restoreFocus() {
+                if (focusedChoice != null) col.findViewWithTag<View>(focusedChoice)?.requestFocus()
+            }
             cbRow("Apply to all folders", s.aa) { v -> s.aa = v; onPref(JSONObject().put("aa", if (v) 1 else 0)); draw() }
             if (s.gal) {   // album cards have no list / compact view, thumbnail size, sorting or folders-first: show the one thing that works
                 hr(); head("Albums")
@@ -348,6 +362,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
                 radioRow(gcols.map { n -> Triple("$n columns", gshown == n, { s.cols = n; onPref(JSONObject().put("cols", n)); draw() }) }, colsPerRow()) { n ->
                     tv("${gcols[n]}", 16f, p.fg)
                 }
+                restoreFocus()
                 return
             }
             hr(); head("View")
@@ -378,6 +393,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
             cbRow("Folders first", s.ff) { v -> s.ff = v; onPref(JSONObject().put("ff", if (v) 1 else 0)); draw() }
             hr(); head("Others")
             cbRow("Show hidden files", s.hid) { v -> s.hid = v; onPref(JSONObject().put("hid", if (v) 1 else 0)); draw() }
+            restoreFocus()
         }
         draw()
         dl.setContentView(sheet)

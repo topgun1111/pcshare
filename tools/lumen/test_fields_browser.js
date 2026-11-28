@@ -40,3 +40,35 @@ function checkFields(errors) {
       getComputedStyle(clear).display !== 'none') fail('clear did not restore focus and emit exactly one input event');
   container.remove();
 }
+
+function checkSegments(errors) {
+  const source = document.getElementById('segment-source').textContent;
+  const {segSync, segMove} = new Function(source+';return {segSync,segMove};')();
+  const group = document.createElement('div');
+  group.className = 'seg';
+  const buttons = ['First', 'Disabled', 'Last'].map(label => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    group.append(button);
+    return button;
+  });
+  document.body.append(group);
+  const [first, disabled, last] = buttons;
+  disabled.disabled = true;
+  first.classList.add('on');
+  let actions = 0;
+  for (const button of buttons) button.onclick = () => {
+    actions++;
+    for (const other of buttons) other.classList.toggle('on', other === button);
+    segSync(group);
+  };
+  group.addEventListener('keydown', segMove);
+  segSync(group);
+  first.focus();
+  first.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowRight',bubbles:true,cancelable:true}));
+  if (actions !== 1 || document.activeElement !== last || last.getAttribute('aria-pressed') !== 'true' ||
+      first.getAttribute('aria-pressed') !== 'false') errors.push('Segment arrow navigation did not skip a disabled choice or update the state');
+  last.dispatchEvent(new KeyboardEvent('keydown', {key:'Home',bubbles:true,cancelable:true}));
+  if (actions !== 2 || document.activeElement !== first) errors.push('Segment Home did not activate the first option');
+  group.remove();
+}

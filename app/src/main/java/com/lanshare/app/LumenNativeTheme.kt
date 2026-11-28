@@ -190,6 +190,41 @@ object LumenNativeTheme {
     }
 }
 
+/** Keep native choice behavior while applying Lumen colors and checkable row semantics. */
+internal object LumenSelection {
+    private fun tint(on: Int, off: Int) = android.content.res.ColorStateList(
+        arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf(android.R.attr.state_checked), intArrayOf()),
+        intArrayOf(ColorUtils.setAlphaComponent(off, 97), on, off)
+    )
+
+    fun style(box: android.widget.CheckBox) {
+        val lm = Lumen.of(box.context)
+        box.buttonTintList = tint(lm.primary, lm.inkMut)
+        box.minimumHeight = maxOf(box.minimumHeight, Math.round(48f * box.resources.displayMetrics.density))
+    }
+
+    fun style(toggle: android.widget.Switch) {
+        val lm = Lumen.of(toggle.context)
+        toggle.thumbTintList = tint(lm.onPrimary, lm.inkMut)
+        toggle.trackTintList = tint(lm.primary, lm.edge)
+        toggle.minimumHeight = maxOf(toggle.minimumHeight, Math.round(48f * toggle.resources.displayMetrics.density))
+    }
+
+    fun row(view: View, label: String, checked: Boolean, radio: Boolean = false) {
+        view.isFocusable = true
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        ViewCompat.setAccessibilityDelegate(view, object : androidx.core.view.AccessibilityDelegateCompat() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, node: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host, node)
+                node.className = if (radio) android.widget.RadioButton::class.java.name else android.widget.CheckBox::class.java.name
+                node.text = label
+                node.isCheckable = true
+                node.isChecked = checked
+            }
+        })
+    }
+}
+
 /** Explicit button roles from Lumen 12.1; never replace listeners or enabled/selected state. */
 object LumenButtons {
     enum class Role { PRIMARY, TONAL, OUTLINE, TEXT, DANGER, GLASS }

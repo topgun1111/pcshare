@@ -2759,9 +2759,11 @@ function galView(a){
       if(k===now.getFullYear()*12+now.getMonth())return[k,'This month'];
       const nm=d.toLocaleString(undefined,{month:'long'});return[k,d.getFullYear()===now.getFullYear()?nm:nm+' '+d.getFullYear()]};
     const mem=new Map(),hds=new Map();   // month key -> names of its pictures / its heading element (tap a month heading = select or unselect the whole month)
-    const hdUpd=()=>hds.forEach((h,k)=>{const a=mem.get(k)||[];let c=0;for(const nm of a)if(GS.has(nm))c++;h.classList.toggle('sel',c>0&&c===a.length);h.classList.toggle('part',c>0&&c<a.length)});
+    const hdUpd=()=>hds.forEach((h,k)=>{const a=mem.get(k)||[];let c=0;for(const nm of a)if(GS.has(nm))c++;const all=c>0&&c===a.length,part=c>0&&c<a.length;h.classList.toggle('sel',all);h.classList.toggle('part',part);h.setAttribute('aria-checked',part?'mixed':String(all))});
     o._hu=hdUpd;
     const mkH=(k,lb)=>{const h=E('div','gmh'+(galGrp()==='day'?' gdh':''),lb);hds.set(k,h);
+      h.tabIndex=0;h.setAttribute('role','checkbox');h.setAttribute('aria-checked','false');
+      h.onkeydown=e=>{if(!e.repeat&&(e.key===' '||e.key==='Enter')){e.preventDefault();h.click()}};
       h.onclick=()=>{const a=mem.get(k)||[];if(!a.length)return;const all=a.every(nm=>GS.has(nm));
         for(const nm of a){if(all)GS.delete(nm);else GS.add(nm);const e=els.get(nm);if(e)e.classList.toggle('sel',!all)}upd()};
       return h};
@@ -7745,7 +7747,37 @@ window.lmFrameTest=(ms=5000)=>new Promise(r=>{const t=[];let l=0;const s=perform
 (function(){try{
 const $$=(q,r=document)=>[...r.querySelectorAll(q)];
 /* sliding pill of .seg: --sx / --sw follow the button with class on */
-function segSync(g){const b=g.querySelector('button.on');if(!b||!b.offsetWidth)return;if(!g.classList.contains('sl'))g.classList.add('sl');const x=b.offsetLeft+'px',w=b.offsetWidth+'px';if(g.style.getPropertyValue('--sx')!==x)g.style.setProperty('--sx',x);if(g.style.getPropertyValue('--sw')!==w)g.style.setProperty('--sw',w)}
+/*LUMEN-SEGMENT:BEGIN*/
+function segSync(g){
+  const buttons=[...g.querySelectorAll(':scope > button')];
+  for(const button of buttons)button.setAttribute('aria-pressed',String(button.classList.contains('on')));
+  const b=buttons.find(button=>button.classList.contains('on'));
+  if(!b||!b.offsetWidth)return;
+  if(!g.classList.contains('sl'))g.classList.add('sl');
+  const x=b.offsetLeft+'px',w=b.offsetWidth+'px';
+  if(g.style.getPropertyValue('--sx')!==x)g.style.setProperty('--sx',x);
+  if(g.style.getPropertyValue('--sw')!==w)g.style.setProperty('--sw',w);
+}
+function segMove(e){
+  if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;
+  const button=e.target;
+  if(!button?.matches?.('.seg > button'))return;
+  const group=button.parentElement,buttons=[...group.querySelectorAll(':scope > button:not(:disabled):not([aria-disabled=true])')].filter(b=>b.getClientRects().length);
+  const current=buttons.indexOf(button);
+  if(current<0||buttons.length<2)return;
+  const rtl=getComputedStyle(group).direction==='rtl';
+  let next;
+  if(e.key==='Home')next=0;
+  else if(e.key==='End')next=buttons.length-1;
+  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+    const forward=(e.key==='ArrowRight')!==rtl;
+    next=(current+(forward?1:-1)+buttons.length)%buttons.length;
+  }else return;
+  e.preventDefault();
+  buttons[next].focus();if(next!==current)buttons[next].click();
+}
+/*LUMEN-SEGMENT:END*/
+document.addEventListener('keydown',segMove);
 window.lmSegSync=segSync;
 const mo=new MutationObserver(ms=>{const seen=new Set();for(const m of ms){const g=m.target.closest&&m.target.closest('.seg');if(g&&!seen.has(g)){seen.add(g);segSync(g)}}});
 mo.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
@@ -7753,7 +7785,7 @@ const mo2=new MutationObserver(()=>$$('.seg:not(.sl)').forEach(segSync));mo2.obs
 addEventListener('resize',()=>$$('.seg.sl').forEach(segSync));
 /* slider value bubble on input.lmr (shows while dragging, 700 ms after) */
 const bb=document.createElement('div');bb.id='lmbub';bb.setAttribute('aria-hidden','true');document.body.appendChild(bb);let bt=0;
-function bub(e){const i=e.target;if(!(i&&i.classList&&i.classList.contains('lmr')))return;const r=i.getBoundingClientRect(),mn=+i.min||0,mx=+i.max||100,f=(i.value-mn)/Math.max(1e-9,mx-mn);
+function bub(e){const i=e.target;if(!(i&&i.classList&&i.classList.contains('lmr')))return;const r=i.getBoundingClientRect(),mn=Number(i.min||0),mx=Number(i.max||100),f=Math.max(0,Math.min(1,(i.value-mn)/Math.max(1e-9,mx-mn)));
  bb.textContent=i.dataset.unit?i.value+i.dataset.unit:i.value;bb.style.left=(r.left+10+(r.width-20)*f)+'px';bb.style.top=(r.top-4)+'px';bb.classList.add('on');clearTimeout(bt);bt=setTimeout(()=>bb.classList.remove('on'),700)}
 document.addEventListener('input',bub,true);document.addEventListener('pointerdown',bub,true);
 /* A2 (Part 4a): chips have a real 48 px touch box (a chip is 28 / 38 px tall, the box grows by half of the missing height above and below, 4 px sideways).

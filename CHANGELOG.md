@@ -7,11 +7,12 @@
 
 
 
-## 2026-11-28 - Accessible field controls
+## 2026-11-28 - Accessible fields and selection controls
 
 ### Fixed
 - Use the keyboard to clear fields or show and hide passwords, with larger touch targets.
 - Keep the checked switch marker readable across themes and avoid submitting a dialog during text composition.
+- Enable arrow-key selection in segmented controls and expose checked states in View Options and gallery groups.
 
 ## 2026-11-28 - Button feedback
 

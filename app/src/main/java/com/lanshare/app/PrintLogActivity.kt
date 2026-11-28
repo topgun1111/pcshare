@@ -108,6 +108,7 @@ class PrintLogActivity : Activity() {
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val adv = android.widget.CheckBox(this).apply {
             text = "Advanced"; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg)
+            LumenSelection.style(this)
             isChecked = !simple
             setOnCheckedChangeListener { _, v ->
                 simple = !v
@@ -120,6 +121,7 @@ class PrintLogActivity : Activity() {
 
         if (jids.isNotEmpty()) root.addView(android.widget.CheckBox(this).apply {
             text = "Only this job (" + jids.joinToString(" ") + ")"; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg)
+            LumenSelection.style(this)
             isChecked = onlyJobs; setPadding(dp(12), 0, dp(12), dp(8))
             setOnCheckedChangeListener { _, v -> onlyJobs = v; render() }
         })
@@ -133,6 +135,7 @@ class PrintLogActivity : Activity() {
         extra.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(ex) })
         extra.addView(Switch(this).apply {
             text = "Full detail (long texts and stack traces are kept in full)"; typeface = Fnt.med(); LumenTypography.fit(this, 13f); setTextColor(pal.fg)
+            LumenSelection.style(this)
             isChecked = try { Cfg.printVerbose() } catch (_: Throwable) { true }
             setPadding(dp(16), dp(4), dp(16), dp(8))
             setOnCheckedChangeListener { _, v -> try { Cfg.setPrintVerbose(v) } catch (_: Throwable) {} }

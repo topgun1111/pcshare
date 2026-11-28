@@ -158,6 +158,9 @@ def browser_errors(page, themes):
     start = page.index("/*LUMEN-FIELD:BEGIN*/")
     end = page.index("/*LUMEN-FIELD:END*/")
     field_source = page[start:end]
+    start = page.index("/*LUMEN-SEGMENT:BEGIN*/")
+    end = page.index("/*LUMEN-SEGMENT:END*/")
+    segment_source = page[start:end]
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):
@@ -172,6 +175,7 @@ def browser_errors(page, themes):
                         + '</script><script type="text/plain" id="glass-source">' + glass_source
                         + '</script><script type="text/plain" id="button-state-source">' + button_source
                         + '</script><script type="text/plain" id="field-source">' + field_source
+                        + '</script><script type="text/plain" id="segment-source">' + segment_source
                         + "</script><script>" + script + "</script>")
             fixture.write_text(document, encoding="utf-8")
             args = [chrome, "--no-sandbox", "--headless", "--disable-gpu", "--no-first-run",
