@@ -31,7 +31,9 @@ jobs:
           python3 tools/lumen/gen.py --check
           python3 tools/lumen/contrast.py --strict
           python3 tools/lumen/parity.py
-          python3 tools/lumen/lint.py --accessibility-regression
+          for check in dialog snackbar button system-bars player split-button accessibility performance theme-consistency; do
+            python3 tools/lumen/lint.py --"$check"-regression
+          done
           node tools/lumen/test_split.js
       - name: Compile Android and test native Lumen controls
         run: |

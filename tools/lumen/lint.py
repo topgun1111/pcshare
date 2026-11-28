@@ -143,7 +143,7 @@ if '--theme-consistency-regression' in sys.argv:
         'PrintLogActivity.kt':('LumenButtons.Role.OUTLINE', 'isFillViewport = true; addView(bar)'),
         'ImageEditActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY'),
         'PdfViewerActivity.kt':('minimumHeight = dp(48)', 'LumenButtons.Role.PRIMARY', 'LumenButtons.Role.TEXT'),
-        'UsActivity.kt':('LumenNativeTheme.preserveFeatureColors(c)', 'c.isSelected = on', 'cell.minimumHeight = dp(64f)', 'cellWidth, ViewGroup.LayoutParams.WRAP_CONTENT, 1f', 'isFillViewport = true; addView(row)'),
+        'UsActivity.kt':('LumenNativeTheme.preserveFeatureColors(c)', 'c.isSelected = on', 'minimumHeight = dp(72f)', 'layoutActions(right - left)', 'overflow[index].run()'),
         'OfficeViewerActivity.kt':('glyphBtn("search", "Find")', 'glyphBtn("back", "Back")'),
         'VaultViewActivity.kt':('Math.round(16 * d)', 'setTextIsSelectable(false)'),
         'VaultText.kt':('LumenNativeTheme.bars(this, pal.bg)', 'IME_FLAG_NO_PERSONALIZED_LEARNING', 'customSelectionActionModeCallback = none')
@@ -172,7 +172,7 @@ if '--accessibility-regression' in sys.argv:
     errs=[]
     for marker in ('LUMEN-A11Y-MODALS','const modalState=new WeakMap()','const topModal=','aria-labelledby','lm-large-text','uiEffectiveText()','tx0,200','const sayTimers=[0,0]'):
         if marker not in _raw:errs.append('Missing web accessibility invariant: '+marker)
-    checks={'UiScale.kt':('MAX_TEXT = 200','fun effectiveText('),'MainActivity.kt':('settings.textZoom = UiScale.effectiveText','fun uiEffectiveText()'),'NlA11y.kt':('IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS','!ViewCompat.hasAccessibilityDelegate(root)'),'NlChrome.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NlDrawer.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NativeList.kt':('ebt.dispatchKeyEvent(event)','maxOf(48f * d, base * d, textBlock + 12f * d)','n.stateDescription'),'Lm.kt':('NlA11y.heading(tv)','fontScale >= 1.3f'),'NlViewerBar.kt':('!exploring()','if (exploring()) return')}
+    checks={'UiScale.kt':('MAX_TEXT = 200','fun effectiveText('),'MainActivity.kt':('settings.textZoom = UiScale.effectiveText','fun uiEffectiveText()'),'NlA11y.kt':('IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS','!ViewCompat.hasAccessibilityDelegate(root)'),'NlChrome.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NlDrawer.kt':('ebt.dispatchKeyEvent(event)','ebt.onFocusChanged('),'NativeList.kt':('ebt.dispatchKeyEvent(event)','nlRowHeight(base, textBlock, d)','n.stateDescription'),'NlListFx.kt':('maxOf(48f * density, baseDp * density, textHeight + 12f * density)',),'Lm.kt':('NlA11y.heading(tv)','fontScale >= 1.3f'),'NlViewerBar.kt':('!exploring()','if (exploring()) return')}
     for name,markers in checks.items():
         source=open(os.path.join(_nat,name),encoding='utf-8').read()
         for marker in markers:
