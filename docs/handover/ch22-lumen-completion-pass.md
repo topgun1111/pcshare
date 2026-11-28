@@ -135,3 +135,10 @@
 - Source `5925068`, [release v2.537](https://github.com/topgun1111/pcshare/releases/tag/v2.537), [CI 46092917781](https://github.com/topgun1111/pcshare/actions/runs/46092917781). Both APKs, selected JVM tests and six verified delta patches passed.
 - File-browser Sort and Universal Search Sort share a scrollable native choice adapter. All nine file-browser sort and direction values and the existing preference callback remain intact. Native sheet and dialog windows share secure host flag inheritance and IME resize behavior. Destructive dialogs restore safe focus after restacking.
 - Chromium at 320 px and 200% exercised the page Sort's nine choices and callbacks, checked state, scrolling, keyboard End and Cancel. Android IME, fold changes, TalkBack and secure rendering still need a device.
+
+
+## 2026-11-28 - R04 glass material and fallback
+
+- Source `7174e40`, [release v2.538](https://github.com/topgun1111/pcshare/releases/tag/v2.538), [CI 46094167718](https://github.com/topgun1111/pcshare/actions/runs/46094167718). Full/lite builds, selected JVM tests and six verified delta patches passed.
+- Native G1/G2 use quarter-scale recording with distinct blur radii and F0 saturation. G3 window blur uses 40/20 dp and the generated contrast floor. Secure windows and F3 use opaque panel colors and clear the modal blur flag. Native chrome skips backdrop rendering behind native modals and limits registered blur surfaces per activity.
+- Page sheets and dialogs demote lower glass. Page copies of native chrome suppress duplicate effects. Chromium ran the ladder, secure/saver selection, modal stacking and fling fixtures. Native window blur, opacity and performance remain physical-device tests.

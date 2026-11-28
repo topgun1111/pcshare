@@ -49,7 +49,7 @@ One handover for the whole project (Android app + PC helper tools). It replaces 
 
 ---
 
-> **Current release checkpoint — 2026-11-28:** [v2.537](https://github.com/topgun1111/pcshare/releases/tag/v2.537), app commit `5925068`, [CI 46092917781](https://github.com/topgun1111/pcshare/actions/runs/46092917781). R01–R03 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R04 (glass material and fallback) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded.
+> **Current release checkpoint — 2026-11-28:** [v2.538](https://github.com/topgun1111/pcshare/releases/tag/v2.538), app commit `7174e40`, [CI 46094167718](https://github.com/topgun1111/pcshare/actions/runs/46094167718). R01–R04 passed automated checks. Both APK editions and six verified delta patches shipped. **Resume at R05 (shared button states) in [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28).** No physical-device acceptance is recorded.
 
 ## 1. Project at a glance
 
@@ -109,7 +109,7 @@ Legend: **C** = compiled by CI as recorded, **D** = device-tested as recorded, *
 
 ## 3. Open work (prioritised)
 
-**L. Current Lumen roadmap** — canonical [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28) contains F01–F22 audit findings, R01–R17 sequential phases, phase acceptance criteria and Work execution rules. R01–R03 passed CI. Next R04: glass material and fallback. Preserve completed foundations and owner-approved exclusions. No competing roadmap file.
+**L. Current Lumen roadmap** — canonical [LUMEN.md §3.9](docs/handover/LUMEN.md#39-canonical-remaining-work-ledger--detailed-source-audit-and-work-handover-2026-11-28) contains F01–F22 audit findings, R01–R17 sequential phases, phase acceptance criteria and Work execution rules. R01–R04 passed CI. Next R05: shared button interaction states. Preserve completed foundations and owner-approved exclusions. No competing roadmap file.
 
 **U. Universal Search** - plan in chapter 16. Parts 1, 2, 3 and 4 are coded but never compiled / run: read the result of CI job `usearch-selftest` AND the APK build (Part 3 touched `LocalFs`, `Bin`, `Jobs`, `Core`, `Cfg`, `Routes`, `MainActivity`, `ui.html`), fix, record the measured numbers (the `info` lines) in the Part 1 / 2 / 3 notes, then do Part 4. Part 0 (green CI + image-search device check 11.1) is still open.
 
