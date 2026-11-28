@@ -121,3 +121,10 @@
 - Source `3dc0237`, [release v2.535](https://github.com/topgun1111/pcshare/releases/tag/v2.535), [CI 46090073240](https://github.com/topgun1111/pcshare/actions/runs/46090073240). Both APKs compiled, selected JVM tests passed, and the release published three SHA-verified delta patches per edition.
 - Reproduced 123 glass tier/foreground failures and 21 selection/surface failures across 42 presets using the current source colours. Derived glass floors for ink and inkMut over black and white, strengthened selected fills and validated named text-bearing gradients. Chromium coverage found stale selected-chip overrides and an Ubuntu snackbar background that bypassed the corrected palette.
 - Strict numerical checks covered 42 presets and 1,080 Custom samples. Rendered Chromium fixtures exercised F0–F3, both Auto treatments and representative light, dark and AMOLED Custom palettes. Physical Android rendering and update installation remain pending.
+
+
+## 2026-11-28 - R02 adaptive typography
+
+- Source `252b036`, [release v2.536](https://github.com/topgun1111/pcshare/releases/tag/v2.536), [CI 46091664454](https://github.com/topgun1111/pcshare/actions/runs/46091664454). Selected JVM tests, both APK editions and six SHA-verified delta patches passed. Commit `0ba45f2` was superseded after updating the old fixed-height lint invariant.
+- Native file rows measure their scaled text block, compact rows stack at large sizes, grid captions reserve two scaled lines and native chrome uses semantic typography with the existing font family. Universal Search controls and native dialog detail rows also grow with the label content.
+- At 130% and above, the header, path bar, search, dock and drawer use their existing WebView controls so their labels can reflow. Chromium verified long labels and controls at 320, 600 and 960 px and at 100%, 130%, 160% and 200%. Actual Android textZoom, custom fonts, foldable reflow and TalkBack remain device checks.
