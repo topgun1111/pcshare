@@ -114,3 +114,10 @@
 - v2.534 publishes 2 APKs and 6 patches (3 per edition); full APK 36,309,407 bytes; v2.533 full-to-full patch 4,631,783 bytes. Intermediate `d7c3c24` build 46070392392 cancelled; no independent version was published for it. Both phases are present in the final source; the release body uses only the most recent CHANGELOG section.
 - Baseline verified: generated typography/tokens, Lumen regression checks including strict contrast and Python/JS parity, selected JVM tests, both APK builds, patch generation/verification and release publication. Not verified: physical installation, fold/IME/gesture behavior, rendering performance, comprehensive visual or TalkBack acceptance.
 - Subsequent audit supersedes the earlier next-task decision: see LUMEN.md §3.9 for the current 17-phase queue, starting R01 contrast/test correctness, then R02 adaptive typography. Keep this chapter as implementation history.
+
+
+## 2026-11-28 - R01 contrast and strict CI
+
+- Source `3dc0237`, [release v2.535](https://github.com/topgun1111/pcshare/releases/tag/v2.535), [CI 46090073240](https://github.com/topgun1111/pcshare/actions/runs/46090073240). Both APKs compiled, selected JVM tests passed, and the release published three SHA-verified delta patches per edition.
+- Reproduced 123 glass tier/foreground failures and 21 selection/surface failures across 42 presets using the current source colours. Derived glass floors for ink and inkMut over black and white, strengthened selected fills and validated named text-bearing gradients. Chromium coverage found stale selected-chip overrides and an Ubuntu snackbar background that bypassed the corrected palette.
+- Strict numerical checks covered 42 presets and 1,080 Custom samples. Rendered Chromium fixtures exercised F0–F3, both Auto treatments and representative light, dark and AMOLED Custom palettes. Physical Android rendering and update installation remain pending.
