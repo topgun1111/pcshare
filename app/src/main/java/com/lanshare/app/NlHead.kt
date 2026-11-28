@@ -91,7 +91,7 @@ class NlHeadView(c: Context, private var d: Float) : View(c) {
     private val scroller = OverScroller(c)
 
     // ---- touch ----
-    private val slop = ViewConfiguration.get(c).scaledTouchSlop
+    private var slop = 0f
     private var vt: VelocityTracker? = null
     private var downX = 0f; private var downY = 0f; private var lastX = 0f
     private var moved = false
@@ -107,6 +107,10 @@ class NlHeadView(c: Context, private var d: Float) : View(c) {
     }
 
     fun densityChanged(value: Float) {
+        if (value != d) {
+            scroller.forceFinished(true)
+            sx *= value / d
+        }
         d = value
         LumenTypography.paint(crumbP, LumenTypography.TITLE_M, d)
         LumenTypography.paint(curP, LumenTypography.TITLE_M, d)
@@ -288,6 +292,7 @@ class NlHeadView(c: Context, private var d: Float) : View(c) {
         ensure()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                slop = nlTouchSlop(context, d)
                 scroller.forceFinished(true)
                 downX = e.x; downY = e.y; lastX = e.x; moved = false
                 vt?.recycle(); vt = VelocityTracker.obtain(); vt?.addMovement(e)

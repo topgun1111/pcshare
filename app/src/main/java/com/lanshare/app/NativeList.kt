@@ -286,7 +286,7 @@ class NlRowView(c: Context, private var d: Float) : View(c) {
             compact && UiScale.tf < 1.3f -> maxOf(nameLine, details)
             else -> nameLine + details
         }
-        setMeasuredDimension(MeasureSpec.getSize(w), Math.round(maxOf(48f * d, base * d, textBlock + 12f * d)))
+        setMeasuredDimension(MeasureSpec.getSize(w), Math.round(nlRowHeight(base, textBlock, d)))
     }
 
     private fun icon(k: String, x: Float, y: Float, size: Float, color: Int, cv: Canvas) {
@@ -867,12 +867,12 @@ class NativeList(private val act: Activity, private val web: WebView) {
     private val srl = NlPullLayout(act, UiScale.dens(act))   // Lumen 12.18 / 13.5: 70 dp trigger + tick when the pull passes it
     private val rv = RecyclerView(act)
     private val skel = NlSkelView(act, UiScale.dens(act))   // Lumen 4d M7 a: placeholder rows while a tapped folder is still being built
-    private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.visibility = View.VISIBLE; skel.invalidate(); skel.removeCallbacks(skelOffRun); skel.postDelayed(skelOffRun, 4000) } }
+    private val skelRun = Runnable { if (navKey != null) { pal?.let { skel.setBackgroundColor(it.card) }; skel.compact = compact; skel.medium = medium; skel.large = large; skel.visibility = View.VISIBLE; skel.invalidate(); skel.removeCallbacks(skelOffRun); skel.postDelayed(skelOffRun, 4000) } }
     private val skelOffRun = Runnable { skelOff() }   // one removable 4 s timeout: an old one must not hide the skeleton of a later folder
     private fun skelArm() { rv.removeCallbacks(skelRun); rv.postDelayed(skelRun, 180) }      // instant entries never flash it
     private fun skelOff() { rv.removeCallbacks(skelRun); skel.removeCallbacks(skelOffRun); if (skel.visibility != View.GONE) skel.visibility = View.GONE }
     private val sticky = NlStickyView(act, UiScale.dens(act))   // Lumen 4e N11: sticky heading strip (group of the first visible row while scrolling)
-    private val sb = PdfScrollBar(act)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
+    private val sb = PdfScrollBar(act, d)      // fast scroller (drag the thumb that shows while scrolling; the bubble names where you are)
     private var lm: LinearLayoutManager = LinearLayoutManager(act)
     private var gridOn = false
     private var spanN = 1
@@ -898,6 +898,10 @@ class NativeList(private val act: Activity, private val web: WebView) {
         d = value; lastTextScale = UiScale.tf
         head.densityChanged(d)
         search.densityChanged(d)
+        skel.densityChanged(d)
+        sticky.densityChanged(d)
+        srl.densityChanged(d)
+        sb.densityChanged(d)
         rv.recycledViewPool.clear()
         val pd = if (gridOn) Math.round(2f * d) else 0
         rv.setPadding(pd, pd, pd, pd + Math.round(88f * d))

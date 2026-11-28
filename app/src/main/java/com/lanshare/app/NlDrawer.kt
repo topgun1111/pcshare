@@ -14,7 +14,6 @@ import android.text.TextPaint
 import android.text.TextUtils
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -71,7 +70,7 @@ private class DrView(c: Context, var d: Float) : View(c) {
     private var tracking = false
     private var dx0 = 0f
     private var dy0 = 0f
-    private val slop = ViewConfiguration.get(c).scaledTouchSlop
+    private var slop = 0f
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val med: Typeface = Fnt.med()
     private val bold: Typeface = Fnt.semi()
@@ -208,6 +207,7 @@ private class DrView(c: Context, var d: Float) : View(c) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                slop = nlTouchSlop(context, d)
                 dx0 = e.x
                 dy0 = e.y
                 val h = find(e.x / d, e.y / d)

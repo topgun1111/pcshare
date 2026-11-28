@@ -19,7 +19,6 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -104,7 +103,7 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
     protected val rf = RectF()
     private var downX = 0f
     private var downY = 0f
-    private val slop = ViewConfiguration.get(c).scaledTouchSlop
+    private var slop = 0f
 
     private var tipTarget: String? = null
     private var tipTouch = false
@@ -253,7 +252,7 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
         d = value; textFactor = UiScale.tf
         for ((paint, style) in scaledPaints) LumenTypography.paint(paint, style, d)
         if (old > 0f) elevation *= d / old
-        pressed = null; rpId = null
+        pressed = null; rpId = null; clearTip()
         invalidateOutline(); invalidate()
     }
     protected fun tp(style: LumenTypography.Style, face: Typeface, digits: Boolean = false): TextPaint =
@@ -290,6 +289,7 @@ abstract class NlHitView(c: Context, protected var d: Float) : View(c) {
             MotionEvent.ACTION_DOWN -> {
                 val h = hitAt(e.x, e.y) ?: return false      // not on a button: let the page have it
                 pressed = h; downX = e.x; downY = e.y; rpStart(h, e.x, e.y); invalidate()
+                slop = nlTouchSlop(context, d)
                 tipConsumed = false
                 queueTip(h, touch = true)
                 return true

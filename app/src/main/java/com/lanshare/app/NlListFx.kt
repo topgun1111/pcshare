@@ -11,7 +11,19 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.text.TextPaint
+import android.text.TextUtils
 import androidx.recyclerview.widget.RecyclerView
+
+/** Touch tolerance in the current overlay's pixels, sampled when a gesture starts. */
+internal fun nlTouchSlop(c: Context, density: Float): Float {
+    val platform = ViewConfiguration.get(c).scaledTouchSlop
+    val systemDensity = c.resources.displayMetrics.density
+    return if (systemDensity > 0f) platform * density / systemDensity else platform.toFloat()
+}
+
+internal fun nlRowHeight(baseDp: Float, textHeight: Float, density: Float): Float =
+    maxOf(48f * density, baseDp * density, textHeight + 12f * density)
+
 
 /**
  * Lumen Part 4d (N9): press ripple for the native list views (row, grid card). Same look as `NlHitView.ripple()`:
@@ -93,17 +105,28 @@ class NlFlip(private val v: View) {
  * Lumen Part 4d (M7 a): loading placeholder for the native list. Rows of a round tile and two bars, shimmer 1.2 s at the page's pace
  * (`LumenGrad.skeleton` = gSkeleton). Shown by NativeList while a tapped folder is still being built; static with Reduce motion.
  */
-class NlSkelView(c: Context, private val d: Float) : View(c) {
+class NlSkelView(c: Context, private var d: Float) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rf = RectF()
     private val t0 = SystemClock.uptimeMillis()
     var compact = false
+    var medium = false
+    var large = false
+
+    fun densityChanged(value: Float) {
+        if (!value.isFinite() || value <= 0f) return
+        d = value
+        invalidate()
+    }
 
     override fun onDraw(cv: Canvas) {
         val lm = Lumen.of(context)
         val rm = LumenPrefs.reduceMotion(context) || LumenPrefs.saver(context)
         val w = width.toFloat(); val h = height.toFloat()
-        val rowH = (if (compact) 44f else 60f) * d
+        val singleLine = compact && UiScale.tf < 1.3f
+        val base = if (compact) 48f else if (large) 84f else if (medium) 72f else 60f
+        val textDp = LumenTypography.TITLE_M.lineSp + if (singleLine) 0f else LumenTypography.BODY_M.lineSp
+        val rowH = nlRowHeight(base, textDp * d * UiScale.tf, d)
         val ph = if (rm) 0.5f else ((SystemClock.uptimeMillis() - t0) % 1200L) / 1200f
         p.style = Paint.Style.FILL
         p.shader = LumenGrad.skeleton(lm, 0f, w, ph)
@@ -114,10 +137,10 @@ class NlSkelView(c: Context, private val d: Float) : View(c) {
             val tile = (if (compact) 15f else 20f) * d
             val lx = (if (compact) 26f else 34f) * d
             cv.drawRoundRect(rf.apply { set(lx - tile, cy - tile, lx + tile, cy + tile) }, 12f * d, 12f * d, p)
-            val x0 = (if (compact) 54f else 70f) * d
-            val wide = w - x0 - 14f * d
+            val x0 = (if (compact) 54f else if (large) 98f else if (medium) 84f else 70f) * d
+            val wide = maxOf(0f, w - x0 - 14f * d)
             val nameW = wide * (0.45f + 0.35f * ((i * 37) % 5) / 4f)
-            if (compact) {
+            if (singleLine) {
                 cv.drawRoundRect(rf.apply { set(x0, cy - 5f * d, x0 + nameW, cy + 5f * d) }, 5f * d, 5f * d, p)
             } else {
                 cv.drawRoundRect(rf.apply { set(x0, cy - 13f * d, x0 + nameW, cy - 3f * d) }, 5f * d, 5f * d, p)
@@ -135,17 +158,24 @@ class NlSkelView(c: Context, private val d: Float) : View(c) {
  * names the group of the first visible row (initial / size / month, same text as the fast scroller) while the list scrolls, fades out 900 ms
  * after it stops. Never takes touches. Reduce motion = no fade (appears and disappears at once).
  */
-class NlStickyView(c: Context, private val d: Float) : View(c) {
+class NlStickyView(c: Context, private var d: Float) : View(c) {
     var fill = 0
     var ink = 0
     var edge = 0
     private var text = ""
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi(); textSize = LumenTypography.snap(12f) * d * UiScale.tf }
+    private val tp = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fnt.semi() }, LumenTypography.LABEL_M, d)
     private val rf = RectF()
     private val hideRun = Runnable { fade(0f) }
 
     init { alpha = 0f; isClickable = false; isFocusable = false; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+
+    fun densityChanged(value: Float) {
+        if (!value.isFinite() || value <= 0f) return
+        d = value
+        LumenTypography.paint(tp, LumenTypography.LABEL_M, d)
+        invalidate()
+    }
 
     private fun fade(to: Float) {
         animate().cancel()
@@ -166,14 +196,16 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
 
     override fun onDraw(cv: Canvas) {
         if (text.isEmpty()) return
-        val tw = tp.measureText(text)
-        val h = 28f * d
+        val label = TextUtils.ellipsize(text, tp, maxOf(0f, width - 48f * d), TextUtils.TruncateAt.END)
+        if (label.isEmpty()) return
+        val tw = tp.measureText(label.toString())
+        val h = maxOf(28f * d, LumenTypography.linePx(tp, LumenTypography.LABEL_M, d) + 8f * d)
         rf.set(12f * d, 8f * d, 12f * d + tw + 24f * d, 8f * d + h)
         p.style = Paint.Style.FILL; p.color = (fill and 0x00FFFFFF) or (0xEB shl 24); cv.drawRoundRect(rf, h / 2f, h / 2f, p)
         p.style = Paint.Style.STROKE; p.strokeWidth = Math.max(1f, d * 0.5f); p.color = edge; cv.drawRoundRect(rf, h / 2f, h / 2f, p)
         tp.color = ink
         val fm = tp.fontMetrics
-        cv.drawText(text, rf.left + 12f * d, rf.centerY() - (fm.ascent + fm.descent) / 2f, tp)
+        cv.drawText(label, 0, label.length, rf.left + 12f * d, rf.centerY() - (fm.ascent + fm.descent) / 2f, tp)
     }
 }
 
@@ -184,8 +216,10 @@ class NlStickyView(c: Context, private val d: Float) : View(c) {
  * same maths is applied to the raw touches here. One tick per crossing; a pull that goes back under the threshold re-arms it.
  * NOT compiled in the Lumen environment (owner compile).
  */
-class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.swiperefreshlayout.widget.SwipeRefreshLayout(c) {
-    private val trigger = 70f * d
+class NlPullLayout(c: android.content.Context, private var d: Float) : androidx.swiperefreshlayout.widget.SwipeRefreshLayout(c) {
+    private var trigger = maxOf(1, Math.round(70f * d)).toFloat()
+    private var gestureActive = false
+    private val pullSlop = ViewConfiguration.get(c).scaledTouchSlop
     private var y0 = 0f
     private var armed = false
     private var crossed = false
@@ -203,7 +237,15 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
     private var wdArmed = false
     /** Kept for the listener; the real arming happens in dispatchDraw so it works even if the listener never runs. */
     fun armWatchdog() { removeCallbacks(watchdog); wdArmed = true; postDelayed(watchdog, 12_000L) }
-    override fun onDetachedFromWindow() { removeCallbacks(watchdog); super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() {
+        removeCallbacks(watchdog)
+        wdArmed = false
+        gestureActive = false
+        armed = false
+        pull = 0f
+        syncTrigger()
+        super.onDetachedFromWindow()
+    }
     private var stockCircle: android.view.View? = null   // must be declared before init (property initialisers run in order)
 
     init {
@@ -217,6 +259,21 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
         // The stock CircleImageView is child 0 (added by the SwipeRefreshLayout constructor); it keeps driving the gesture but is never painted.
         stockCircle = getChildAt(0)
         stockCircle?.apply { alpha = 0f; elevation = 0f; translationZ = 0f; outlineProvider = null }
+    }
+
+    fun densityChanged(value: Float) {
+        if (!value.isFinite() || value <= 0f) return
+        d = value
+        if (!gestureActive) syncTrigger()
+        invalidate()
+    }
+
+    private fun syncTrigger() {
+        val next = maxOf(1, Math.round(70f * d))
+        if (trigger != next.toFloat()) {
+            trigger = next.toFloat()
+            setDistanceToTriggerSync(next)
+        }
     }
 
     /** The stock circle is never drawn (no shadow, no arc); only the Lumen ring from dispatchDraw shows. */
@@ -239,11 +296,18 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> { y0 = ev.y; armed = !isRefreshing && !canChildScrollUp(); crossed = false; pull = 0f }
+            android.view.MotionEvent.ACTION_DOWN -> {
+                syncTrigger()
+                gestureActive = true
+                y0 = ev.y
+                armed = !isRefreshing && !canChildScrollUp()
+                crossed = false
+                pull = 0f
+            }
             android.view.MotionEvent.ACTION_MOVE -> if (armed && ev.pointerCount == 1) {
                 if (canChildScrollUp() || isRefreshing) { armed = false; pull = 0f }
                 else {
-                    val over = Math.max(0f, (ev.y - y0) * 0.5f)
+                    val over = Math.max(0f, (ev.y - y0 - pullSlop) * 0.5f)
                     pull = Math.min(trigger, over)
                     if (!crossed && over >= trigger) { crossed = true; onThreshold?.invoke() }
                     else if (crossed && over < trigger * 0.9f) crossed = false   // small hysteresis so a jittering finger does not tick twice
@@ -252,7 +316,14 @@ class NlPullLayout(c: android.content.Context, private val d: Float) : androidx.
             }
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { armed = false; crossed = false; pull = 0f; invalidate() }
         }
-        return super.dispatchTouchEvent(ev)
+        val consumed = super.dispatchTouchEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL ||
+            ev.actionMasked == MotionEvent.ACTION_DOWN && !consumed) {
+            gestureActive = false
+            armed = false
+            syncTrigger()
+        }
+        return consumed
     }
 
     override fun dispatchDraw(canvas: Canvas) {

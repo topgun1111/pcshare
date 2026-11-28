@@ -10,6 +10,7 @@ import android.content.ClipData
 import android.content.ContentValues
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -35,6 +36,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.text.InputType
+import android.text.TextPaint
+import android.text.TextUtils
 import android.os.SystemClock
 import android.content.pm.ApplicationInfo
 import android.util.Log
@@ -1515,7 +1518,7 @@ internal class PdfZoomFrame(c: Context) : FrameLayout(c) {
  * Fast scroller on the right edge: a slim thumb that fades in while the list scrolls; dragging it jumps through the document and shows
  * a bubble with the page number. Touches that do not start on the thumb fall through to the page list.
  */
-internal class PdfScrollBar(c: Context) : View(c) {
+internal class PdfScrollBar(c: Context, private val overlayDensity: Float? = null) : View(c) {
     var onDrag: ((Float) -> Unit)? = null
     var padT = 0
         set(v) { field = v; invalidate() }
@@ -1526,16 +1529,31 @@ internal class PdfScrollBar(c: Context) : View(c) {
     var label = ""
     var dragging = false
         private set
-    private val d = resources.displayMetrics.density
-    private val th = 52f * d
+    private var d = overlayDensity ?: resources.displayMetrics.density
+    private val th get() = 52f * d
     private val thumbP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (LumenGrad.onDark(Lumen.of(c)) and 0x00FFFFFF) or 0xE6000000.toInt() }   // primary while actively dragging
     private val idleP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66808080 }   // Lumen 12.19: inkDim at 40% while scrolling
     private val bubP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2000000.toInt() }
-    private val txtP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 14f * d; textAlign = Paint.Align.CENTER }
+    private val txtP = LumenTypography.paint(TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+    }, LumenTypography.LABEL_L, d)
     private val rect = RectF()
     private val hide = Runnable { if (!dragging) animate().alpha(0f).setDuration(140).start() }
 
     init { alpha = 0f }
+
+    fun densityChanged(value: Float) {
+        if (!value.isFinite() || value <= 0f) return
+        d = value
+        LumenTypography.paint(txtP, LumenTypography.LABEL_L, d)
+        invalidate()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (overlayDensity == null) densityChanged(resources.displayMetrics.density)
+    }
 
     /** Thumb colour (ARGB; the alpha is forced to ~90 %). */
     fun setThumbColor(c: Int) { thumbP.color = (c and 0x00FFFFFF) or 0xE6000000.toInt(); invalidate() }
@@ -1556,13 +1574,16 @@ internal class PdfScrollBar(c: Context) : View(c) {
         rect.set(width - w - 3f * d, t, width - 3f * d, t + th)
         canvas.drawRoundRect(rect, w / 2, w / 2, if (dragging) thumbP else idleP)
         if (dragging && label.isNotEmpty()) {
-            val bw = txtP.measureText(label) + 28f * d
-            val bh = 34f * d
             val r = width - 16f * d
+            val caption = TextUtils.ellipsize(label, txtP, maxOf(0f, r - 32f * d), TextUtils.TruncateAt.END)
+            if (caption.isEmpty()) return
+            val bw = txtP.measureText(caption.toString()) + 28f * d
+            val bh = maxOf(34f * d, LumenTypography.linePx(txtP, LumenTypography.LABEL_L, d) + 8f * d)
             val cy = t + th / 2
             rect.set(r - bw, cy - bh / 2, r, cy + bh / 2)
             canvas.drawRoundRect(rect, bh / 2, bh / 2, bubP)
-            canvas.drawText(label, rect.centerX(), rect.centerY() + txtP.textSize / 3f, txtP)
+            val fm = txtP.fontMetrics
+            canvas.drawText(caption, 0, caption.length, rect.centerX(), rect.centerY() - (fm.ascent + fm.descent) / 2f, txtP)
         }
     }
 
