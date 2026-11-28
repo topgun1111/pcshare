@@ -1415,7 +1415,7 @@ Use §3.9 first for the current plan. The original notes below are retained for 
 
 ## 3.9 Canonical remaining-work ledger — detailed source audit and Work handover (2026-11-28)
 
-**Start here in a new ChatGPT Work session.** This section replaces the older abbreviated remaining roadmap. Do not create another Lumen roadmap file. Original requirements are in Part 1; chapter 22 holds implementation history. R01 and R02 passed CI. R03 is next. Update the phase ledger here after each verified change. Existing code is not to be rewritten merely to match a stylistic ideal.
+**Start here in a new ChatGPT Work session.** This section replaces the older abbreviated remaining roadmap. Do not create another Lumen roadmap file. Original requirements are in Part 1; chapter 22 holds implementation history. R01–R03 passed CI. R04 is next. Update the phase ledger here after each verified change. Existing code is not to be rewritten merely to match a stylistic ideal.
 
 ### Baseline, evidence and interpretation
 
@@ -1457,8 +1457,8 @@ Use §3.9 first for the current plan. The original notes below are retained for 
 |---|---|---|---|
 | R01 | Contrast and CI correctness — Critical | F01/F02; tokens.json, derive.py/custom.js/gen.py, contrast.py, UI actual glass CSS, LumenGlass/LumenButtons. Reproduce failures; test ink/inkMut, worst-case black/white alpha and actual stop/state pairs; selection ratio, all named gradients and high contrast 7:1 where required. Include glass failures in strict exit. Add known-failing and known-passing fixtures, ensure JS/Python parity; generator check, strict tests and CI green. If palette/floor constraints conflict, raise tint/use solid or adjust safe generated tones without destroying presets. | CI PASSED (v2.535) — DEVICE REQUIRED |
 | R02 | Adaptive typography and large text — Critical | F06; UiScale, LumenTypography, NativeList/NlHead/NlChrome, UsActivity, Lm, Settings. Audit 100/130/160/200%, measured heights, wrappers, long labels and native canvas roles; avoid hidden/truncated controls; verify narrow/folded/expanded. | CI PASSED (v2.536) — DEVICE REQUIRED |
-| R03 | Native dialog and sheet unification — High | F13/F14; NlSheets/AppPal/Lm, UI dlg/sheet. Replace fixed Sort with shared responsive choice layout, preserve all nine choices and callbacks; scroll at 200%, fit/reflow with IME, safe destructive focus, secure flag propagation. | OPEN — NEXT |
-| R04 | Glass material and fallback — High | F04/F05; LumenGlass/NlBackdrop, native chrome/drawer and CSS. Implement safe tier recipes within platform capabilities, contrast/opaque F3, blur flag cleanup, global surface budget, no unsafe WebView capture. Verify F0–F3, saver, secure windows, scroll behavior. | OPEN |
+| R03 | Native dialog and sheet unification — High | F13/F14; NlSheets/AppPal/Lm, UI dlg/sheet. Replace fixed Sort with shared responsive choice layout, preserve all nine choices and callbacks; scroll at 200%, fit/reflow with IME, safe destructive focus, secure flag propagation. | CI PASSED (v2.537) — DEVICE REQUIRED |
+| R04 | Glass material and fallback — High | F04/F05; LumenGlass/NlBackdrop, native chrome/drawer and CSS. Implement safe tier recipes within platform capabilities, contrast/opaque F3, blur flag cleanup, global surface budget, no unsafe WebView capture. Verify F0–F3, saver, secure windows, scroll behavior. | OPEN — NEXT |
 | R05 | Shared button interaction states — High | F03/F10; LumenButtons/Lm/UI. Tonal gradient, icon semantics, hover/focus/pressed/loading/disabled/error behavior, no layout jump, shared role coverage; retain callbacks and split actions. | OPEN |
 | R06 | Selection, fields, chips and sliders — High | F11; native/page controls. Inventory and fix only uncovered roles/states; add check/indeterminate, keyboard/clear/error/IME, sliders, segment/tab transitions as required. | OPEN |
 | R07 | File names, geometry and spacing — Medium | F07/F08; NativeList, UI filename layout, spacing/radius/elevation tokens. Preserve extensions, filenames and accessibility labels; consistent dimensions or record justified exceptions. | OPEN |
@@ -1479,7 +1479,7 @@ Use §3.9 first for the current plan. The original notes below are retained for 
 |---|---|---|
 | T1 | CI passed (v2.535) | Strict preset and Custom matrix, Python/JS parity, failing fixtures and rendered Chromium contrast checks. Physical WebView and native rendering still need R17. |
 | T2 | Partial marker/report checks | Strict token/component gate with reasoned exception inventory. |
-| T3 | Partial, Sort exception | Shared modal inventory, responsive/secure/action tests. |
+| T3 | Shared Sort paths compiled, browser fixture passed in v2.537 | Native sort/sheet IME, fold, keyboard, TalkBack and secure window checks remain device acceptance. |
 | T4 | Partial shared icons | All applicable glyphs verified, documented exceptions. |
 | T5 | Device required | Same-theme page/native screenshots, 20 corresponding color points, light/dark/high contrast. |
 | T6 | Device required + code gaps | F0–F3 each tested, actual opaque F3 and accessible text; nested modals and scrolling. |
@@ -1516,4 +1516,5 @@ Home/menu and wallpaper; file browser (compact/list/grid); gallery album home, d
 | 2026-11-28 | Baseline audit only | [v2.534](https://github.com/topgun1111/pcshare/releases/tag/v2.534), app commit `178e488`, [CI 46070636431](https://github.com/topgun1111/pcshare/actions/runs/46070636431) | Prior CI passed; exploratory source audit and contrast arithmetic; no new app change | R01–R17 open; begin R01 |
 | 2026-11-28 | R01 — contrast and strict CI | `3dc0237`, [v2.535](https://github.com/topgun1111/pcshare/releases/tag/v2.535), [CI 46090073240](https://github.com/topgun1111/pcshare/actions/runs/46090073240) | 42 presets, both Auto treatments, 1,080 Custom palettes, negative fixtures and Chromium F0–F3 checks passed. Python/JS parity, selected JVM tests, both APKs and six delta assets passed. | R02 next. Physical-device rendering and partial installation pending R17. |
 | 2026-11-28 | R02 — adaptive typography | `252b036`, [v2.536](https://github.com/topgun1111/pcshare/releases/tag/v2.536), [CI 46091664454](https://github.com/topgun1111/pcshare/actions/runs/46091664454) | Shared Canvas roles, measured file rows and wrapping controls. Chromium 320/600/960 px × 100/130/160/200%, selected JVM tests, full/lite builds and six delta assets passed. | R03 next. Native font scaling, focus and foldable testing remain pending. |
+| 2026-11-28 | R03 — native dialogs and sheets | `5925068`, [v2.537](https://github.com/topgun1111/pcshare/releases/tag/v2.537), [CI 46092917781](https://github.com/topgun1111/pcshare/actions/runs/46092917781) | Shared scrollable Sort, nine callbacks and Cancel verified in Chromium at 320 px/200%; updated native window policy compiled. Selected JVM tests and six delta assets passed. | R04 next. Native sort/IME/fold and secure behavior pending on device. |
 

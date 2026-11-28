@@ -128,3 +128,10 @@
 - Source `252b036`, [release v2.536](https://github.com/topgun1111/pcshare/releases/tag/v2.536), [CI 46091664454](https://github.com/topgun1111/pcshare/actions/runs/46091664454). Selected JVM tests, both APK editions and six SHA-verified delta patches passed. Commit `0ba45f2` was superseded after updating the old fixed-height lint invariant.
 - Native file rows measure their scaled text block, compact rows stack at large sizes, grid captions reserve two scaled lines and native chrome uses semantic typography with the existing font family. Universal Search controls and native dialog detail rows also grow with the label content.
 - At 130% and above, the header, path bar, search, dock and drawer use their existing WebView controls so their labels can reflow. Chromium verified long labels and controls at 320, 600 and 960 px and at 100%, 130%, 160% and 200%. Actual Android textZoom, custom fonts, foldable reflow and TalkBack remain device checks.
+
+
+## 2026-11-28 - R03 native dialogs and sheets
+
+- Source `5925068`, [release v2.537](https://github.com/topgun1111/pcshare/releases/tag/v2.537), [CI 46092917781](https://github.com/topgun1111/pcshare/actions/runs/46092917781). Both APKs, selected JVM tests and six verified delta patches passed.
+- File-browser Sort and Universal Search Sort share a scrollable native choice adapter. All nine file-browser sort and direction values and the existing preference callback remain intact. Native sheet and dialog windows share secure host flag inheritance and IME resize behavior. Destructive dialogs restore safe focus after restacking.
+- Chromium at 320 px and 200% exercised the page Sort's nine choices and callbacks, checked state, scrolling, keyboard End and Cancel. Android IME, fold changes, TalkBack and secure rendering still need a device.
