@@ -97,7 +97,13 @@ for _f in sorted(os.listdir(_nat)):
     if re.search(r'AlertDialog\.Builder\s*\(',_src):_sem.append(f'{_f}: raw AlertDialog.Builder bypasses AppPal')
 _app_pal=open(os.path.join(_nat,'AppPal.kt'),encoding='utf-8').read()
 if 'LumenGlass.dialogFill(d.window, c, secure)' not in _app_pal:_sem.append('Shared native dialog glass is not connected')
-if 'if (secure) d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)' not in _app_pal:_sem.append('Secure host flag not inherited by dialogs')
+_nl_sheets=open(os.path.join(_nat,'NlSheets.kt'),encoding='utf-8').read()
+if any(marker not in _app_pal for marker in ('flags and WindowManager.LayoutParams.FLAG_SECURE != 0',
+        'if (secure) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)', 'prepareDialogWindow(d.window, c)')):
+    _sem.append('Secure host flag not inherited by shared dialogs')
+if any(marker not in _nl_sheets for marker in ('AppPal.prepareDialogWindow(dl.window, act)',
+        'LumenGlass.dialogFill(dl.window, act, secure)')):
+    _sem.append('Native sheets bypass the secure dialog policy')
 if 'if (secure) null else diagnostic' not in _app_pal:_sem.append('Secure diagnostics not suppressed')
 if "o.altDanger?' alt-danger'" not in _raw:_sem.append('HTML destructive alternative is not quiet error text')
 if 'dismissPrimary -> styleButton(pos, 0, quiet, c, backdrop = dialogFill)' not in _lm:_sem.append('Native dismissal is not a quiet action')

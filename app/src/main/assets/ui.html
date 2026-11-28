@@ -1457,6 +1457,10 @@ html.nldr.dperm.nldrh #dwr{opacity:1}
   color:var(--onfab);box-shadow:var(--sh)
 }
 </style><style>
+.dcard.sd{display:flex;flex-direction:column;overflow:hidden}
+.dcard.sd .sort-choices{min-height:0;overflow:auto;overscroll-behavior:contain}
+.dcard.sd .opt{min-height:48px;height:auto}
+.dcard.sd .opt .t{min-width:0;overflow-wrap:anywhere}
 /* Large text follows the Android preference. Keep the existing action nodes and give their labels room to reflow. */
 html.lm-large-text :is(#dlg,#sheet) .dact{flex-direction:column;align-items:stretch}
 html.lm-large-text :is(#dlg,#sheet) .dact .tbtn,
@@ -1927,12 +1931,29 @@ function openSort(){
   if(NLSH){NL.nlSort(nlSheetState());return}
   const d=$('#dlg');d.textContent='';d.style.display='flex';
   const done=()=>{d.style.display='none';d.onclick=null};d.onclick=e=>{if(e.target===d)done()};
-  const card=E('div','dcard sd');card.append(E('h3','','Sort By'));
+  const card=E('div','dcard sd'),title=E('h3','','Sort by'),choices=E('div','sort-choices');
+  title.id='lm-sort-heading';choices.setAttribute('role','radiogroup');choices.setAttribute('aria-labelledby',title.id);
+  card.append(title,choices);
   const opt=(k,asc)=>{const on=S.sort===k&&(k==='none'||S.asc===asc);
-    const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',SORTS[k].t+(k==='none'?'':(asc?' \u25B2':' \u25BC'))));
-    b.append(E('span','rd'),t);b.onclick=()=>{done();setPref({sort:k,asc:asc})};card.append(b)};
+    const b=E('button','opt'+(on?' on':'')),t=E('span','t');t.append(E('b','',SORTS[k].t+(k==='none'?'':(asc?' ▲':' ▼'))));
+    b.setAttribute('role','radio');b.setAttribute('aria-checked',String(on));
+    b.append(E('span','rd'),t);b.onclick=()=>{done();setPref({sort:k,asc:asc})};choices.append(b)};
   opt('none',true);['name','size','date','type'].forEach(k=>{opt(k,true);opt(k,false)});
-  const row=E('div','dact'),c=E('button','tbtn quiet','Cancel');c.onclick=done;row.append(c);card.append(row);d.append(card)}
+  choices.onkeydown=e=>{
+    const btn=[...choices.children],from=btn.indexOf(e.target);
+    if(from<0)return;
+    let to;
+    if(e.key==='ArrowDown'||e.key==='ArrowRight')to=(from+1)%btn.length;
+    else if(e.key==='ArrowUp'||e.key==='ArrowLeft')to=(from+btn.length-1)%btn.length;
+    else if(e.key==='Home')to=0;
+    else if(e.key==='End')to=btn.length-1;
+    else return;
+    e.preventDefault();btn[to].focus();
+  };
+  const row=E('div','dact'),cancel=E('button','tbtn quiet','Cancel');cancel.onclick=done;row.append(cancel);card.append(row);d.append(card);
+  const selected=choices.querySelector('[aria-checked=true]');
+  if(selected)requestAnimationFrame(()=>{if(card.isConnected&&d.style.display==='flex')selected.scrollIntoView({block:'nearest'})});
+}
 function openView(){
   if(NLSH){S.aa=false;NL.nlView(nlSheetState());return}
   const o=$('#sheet');o.textContent='';o.style.display='flex';S.aa=false;

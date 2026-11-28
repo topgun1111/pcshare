@@ -524,10 +524,6 @@ object Lm {
             }
             if (neu != null && neu.visibility == View.VISIBLE) secondary(neu)
             if (neg != null && neg.visibility == View.VISIBLE) secondary(neg)
-            if (danger) {
-                val safe = shown.firstOrNull { it !== pos && isDismissAction(it.text, o?.kind) }
-                safe?.requestFocus()
-            }
         } catch (_: Throwable) { }
 
         // phones: stacked, full width, primary on top when there are 3+ actions or a long label
@@ -550,6 +546,9 @@ object Lm {
                 }
             }
         } catch (_: Throwable) { }
+
+        // Restack first so removing and reattaching the action views cannot lose safe focus.
+        if (danger) shown.firstOrNull { it !== pos && isDismissAction(it.text, o?.kind) }?.requestFocus()
 
         // destructive: hero tile above a centred title
         try {

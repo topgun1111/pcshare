@@ -955,9 +955,9 @@ class UsActivity : Activity() {
     private fun sortLabel() = sortKeys.firstOrNull { it.first == sortKey }?.second ?: "Best match"
 
     private fun sortDlg() {
-        AppPal.dlg(this).setTitle("Sort by").setSingleChoiceItems(sortKeys.map { it.second }.toTypedArray(), sortKeys.indexOfFirst { it.first == sortKey }) { dlg, w ->
+        AppPal.dlg(this).choices(sortKeys.map { it.second }, sortKeys.indexOfFirst { it.first == sortKey }) { dlg, w ->
             sortKey = sortKeys[w].first; saveOpts(); dlg.dismiss(); endSel(false); runQuery(true, 0)
-        }.show()
+        }.setTitle("Sort by").show()
     }
 
     private fun optDlg() {

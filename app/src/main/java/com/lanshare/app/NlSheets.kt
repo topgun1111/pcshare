@@ -174,20 +174,21 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
     /** Panel fill chosen by [LumenGlass] for the last dialog made (blur-behind is switched on in its window when the F-step allows it). */
     private var fill = 0
 
-    private fun newDialog(bottom: Boolean): Dialog {
+    private fun newSheetDialog(): Dialog {
         val dl = Dialog(act)
         Lm.track(dl)
         dl.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        fill = LumenGlass.apply(dl.window, act)
-        val wideSheet = bottom && act.resources.configuration.screenWidthDp >= 600
+        val secure = AppPal.prepareDialogWindow(dl.window, act)
+        fill = LumenGlass.dialogFill(dl.window, act, secure)
+        val wideSheet = act.resources.configuration.screenWidthDp >= 600
         val windowDp = act.resources.configuration.screenWidthDp.coerceAtLeast(1)
         val sheetWidth = dp(minOf(560f, windowDp * 0.9f))
         dl.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setDimAmount(if (AppPal.night(act)) 0.56f else 0.32f)   // Lumen scrim: 32 % light / 56 % dark (same as Lm.restyle)
-            setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (bottom && !wideSheet) R.style.LmSheetExit else R.style.LmDialogExit)
-            setGravity(if (bottom && !wideSheet) Gravity.BOTTOM else Gravity.CENTER)
-            setLayout(if (bottom && !wideSheet) ViewGroup.LayoutParams.MATCH_PARENT else if (bottom) sheetWidth else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setWindowAnimations(if (LumenPrefs.reduceMotion(act)) R.style.LmDialogExitReduced else if (!wideSheet) R.style.LmSheetExit else R.style.LmDialogExit)
+            setGravity(if (!wideSheet) Gravity.BOTTOM else Gravity.CENTER)
+            setLayout(if (wideSheet) sheetWidth else ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         dl.setCanceledOnTouchOutside(true)
         return dl
@@ -254,44 +255,29 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
 
     private fun sortFor(s: St) {
         close()
-        val p = s.pal
-        val dl = newDialog(false)
-        val card = LinearLayout(act).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(24f), 0, dp(8f))
-            background = if (p.ct != 0) NlTex.card(p.ct, p.cb, 28f * d, p.bd, Math.max(1, Math.round(d))) else LumenGlass.panel(act, fill, 28f, false)   // Lumen: glass panel, r-xxl, edge hairline
-        }
-        card.addView(tv("Sort By", 20f, p.fg, true).apply { setPadding(dp(24f), 0, dp(24f), dp(8f)) })
-        fun opt(k: String, asc: Boolean) {
-            val on = s.sort == k && (k == "none" || s.asc == asc)
-            val row = LinearLayout(act).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(54f); setPadding(dp(24f), dp(6f), dp(24f), dp(6f))
+        val orders = buildList {
+            add("none" to true)
+            for (key in listOf("name", "size", "date", "type")) {
+                add(key to true)
+                add(key to false)
             }
-            ripple(row)
-            row.addView(NlRadio(act, on, p.mut, p.tl, d))
-            val lab = s.label(k) + (if (k == "none") "" else if (asc) " \u25B2" else " \u25BC")
-            row.addView(tv(lab, 20f, p.fg, on).apply { setPadding(dp(16f), 0, 0, 0) })
-            row.setOnClickListener { dl.dismiss(); onPref(JSONObject().put("sort", k).put("asc", if (asc) 1 else 0)) }
-            card.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-        opt("none", true)
-        for (k in listOf("name", "size", "date", "type")) { opt(k, true); opt(k, false) }
-        val cancel = tv("CANCEL", 14f, p.tl, true).apply {
-            letterSpacing = 0.08f; setPadding(dp(16f), dp(12f), dp(16f), dp(12f)); ripple(this)
-            setOnClickListener { dl.dismiss() }
+        val selected = orders.indexOfFirst { (key, asc) -> s.sort == key && (key == "none" || s.asc == asc) }
+        val labels = orders.map { (key, asc) -> s.label(key) + when {
+            key == "none" -> ""
+            asc -> " ▲"
+            else -> " ▼"
+        } }
+        val builder = AppPal.dlg(act).choices(labels, selected) { dialog, index ->
+            val (key, asc) = orders[index]
+            dialog.dismiss()
+            onPref(JSONObject().put("sort", key).put("asc", if (asc) 1 else 0))
         }
-        card.addView(cancel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.END; setMargins(0, dp(8f), dp(16f), 0) })
-        val wrap = LinearLayout(act).apply { setPadding(dp(24f), 0, dp(24f), 0) }
-        wrap.addView(card, LinearLayout.LayoutParams(dp(360f), ViewGroup.LayoutParams.WRAP_CONTENT))
-        dl.setContentView(wrap)
-        dlg = dl
-        ViewCompat.setAccessibilityPaneTitle(wrap, "Sort by")
-        dl.setOnShowListener {   // scale 0.92 -> 1 + fade, t.base decelerate (Reduce motion: 120 ms fade)
-            if (LumenPrefs.reduceMotion(act)) { card.alpha = 0f; card.animate().alpha(1f).setDuration(LumenMotion.REDUCE_FADE).start() }
-            else { card.alpha = 0f; card.scaleX = 0.92f; card.scaleY = 0.92f; card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(LumenMotion.BASE).setInterpolator(LumenMotion.DECEL).start() }
-        }
-        dl.show()
+        builder.setTitle("Sort by").setNegativeButton("Cancel", null)
+        val dialog = builder.create()
+        dlg = dialog
+        dialog.setOnDismissListener { if (dlg === dialog) dlg = null }
+        dialog.show()
     }
 
     // ---------------------------------------------------------------- View options sheet
@@ -300,7 +286,7 @@ class NlSheets(private val act: Activity, private val onPref: (JSONObject) -> Un
         labels = s.lb
         close()
         val p = s.pal
-        val dl = newDialog(true)
+        val dl = newSheetDialog()
         val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12f), 0, dp(12f), dp(8f)) }
         val scroll = ScrollView(act).apply { if (p.ct != 0) background = NlTex.layered(act, p.ct, p.cb); addView(col) }
         // Lumen sheet: glass panel with r-xxl top corners + edge hairline, drag handle, swipe-to-dismiss (textured themes keep their own texture)

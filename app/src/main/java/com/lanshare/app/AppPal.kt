@@ -5,8 +5,16 @@ import android.content.ComponentCallbacks
 import android.content.ContextWrapper
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.DialogInterface
+import android.content.res.ColorStateList
 import android.os.Build
 import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
+import android.widget.AbsListView
+import android.widget.ArrayAdapter
+import android.widget.CheckedTextView
 import android.content.res.Configuration
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
@@ -70,6 +78,18 @@ object AppPal {
     /** AlertDialog.Builder that follows the app theme: palette window colour, 32 dp corners, palette text / button colours and 360 / 560 dp responsive width caps. */
     fun dlg(c: Context): Dlg = Dlg(c)
 
+    /** Prepare a separate dialog window before showing it. Secure hosts always keep their capture restrictions. */
+    fun prepareDialogWindow(window: Window?, c: Context): Boolean {
+        val flags = actOf(c)?.window?.attributes?.flags ?: 0
+        val secure = flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+        if (secure) window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        window?.let {
+            val mode = it.attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()
+            it.setSoftInputMode(mode or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
+        return secure
+    }
+
     /** Dialog with the page `dlg()` kinds (Lumen A8): kind = info / warn / perm / ok / danger, optional read-only details rows. */
     class Dlg(val c: Context) : AlertDialog.Builder(c, if (night(c)) R.style.Theme_LANShare_Dialog_Dark else R.style.Theme_LANShare_Dialog) {
         var kind: String? = null
@@ -78,13 +98,41 @@ object AppPal {
         fun errorDetails(value: String?): Dlg { diagnostic = value; return this }
         fun kind(k: String?): Dlg { kind = k; return this }
         fun details(rows: List<Pair<String, String>>): Dlg { detailRows = rows; return this }
+        /** The platform list provides bounded scrolling, checked state and focus for large or long choice labels. */
+        fun choices(labels: List<String>, selected: Int, click: (DialogInterface, Int) -> Unit): Dlg {
+            val lm = Lumen.of(c)
+            val tint = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(lm.primary, lm.inkMut)
+            )
+            val adapter = object : ArrayAdapter<String>(context, android.R.layout.simple_list_item_single_choice, labels) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val row = super.getView(position, convertView, parent) as CheckedTextView
+                    if (row.layoutParams?.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                        row.layoutParams = AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    }
+                    row.setSingleLine(false)
+                    row.maxLines = Int.MAX_VALUE
+                    row.ellipsize = null
+                    val density = row.resources.displayMetrics.density
+                    row.minimumHeight = Math.round(48f * density)
+                    val vertical = Math.round(8f * density)
+                    row.setPaddingRelative(row.paddingStart, vertical, row.paddingEnd, vertical)
+                    row.setTextColor(lm.ink)
+                    row.checkMarkTintList = tint
+                    LumenTypography.apply(row, LumenTypography.BODY_L)
+                    return row
+                }
+            }
+            setSingleChoiceItems(adapter, selected) { dialog, which -> click(dialog, which) }
+            return this
+        }
+
         override fun create(): AlertDialog {
             val d = super.create()
             val p = pal(c)
             val act = actOf(c)
-            val secure = ((act?.window?.attributes?.flags ?: 0) and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
-            // Dialogs are separate windows: explicitly inherit the host security policy before showing.
-            if (secure) d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            val secure = prepareDialogWindow(d.window, c)
             val fill = LumenGlass.dialogFill(d.window, c, secure)
             d.window?.setBackgroundDrawable(LumenGlass.panel(c, fill, 32f, false))
             if (act != null) fit(d, act, kind != null || !detailRows.isNullOrEmpty() || !diagnostic.isNullOrEmpty())   // 360 dp simple / 560 dp rich, always constrained to the current window

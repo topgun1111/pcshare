@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Responsive Sort dialog
+
+### Fixed
+- Keep all nine sort options reachable at large text sizes and in small windows.
+- Use the same responsive dialog styling for Sort and preserve private-window restrictions in native sheets.
+
 ## 2026-11-28 - Large text layout
 
 ### Fixed

@@ -68,5 +68,8 @@ for (const [name, hue, tint, mode] of testThemes.map(name => [name]).concat(cust
     }
   }
 }
-if (scheme === 'light') checkLargeText(errors);
+if (scheme === 'light') {
+  checkLargeText(errors);
+  checkSort(errors);
+}
 output.textContent = errors.length ? JSON.stringify(errors.slice(0,50)) : 'PASS';

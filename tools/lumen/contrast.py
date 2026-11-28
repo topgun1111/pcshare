@@ -145,7 +145,9 @@ def browser_errors(page, themes):
     <button class="tbtn fill"></button><button class="tbtn tonal"></button>
     <button class="tbtn dngf"></button><pre id="contrast-results"></pre>"""
     script = "\n".join((gen.here / name).read_text(encoding="utf-8") for name in
-                       ("custom.js", "test_large_text_browser.js", "test_contrast_browser.js"))
+                       ("custom.js", "test_large_text_browser.js", "test_sort_browser.js", "test_contrast_browser.js"))
+    start, end = page.index("function openSort(){"), page.index("function openView(){")
+    sort_source = page[start:end]
     with tempfile.TemporaryDirectory() as directory:
         fixture = pathlib.Path(directory) / "contrast.html"
         for scheme in ("light", "dark"):
@@ -156,6 +158,7 @@ def browser_errors(page, themes):
             document = ("<!doctype html><meta charset=utf-8>" + css
                         + "<style>*{transition:none!important;animation:none!important}</style>" + fixtures
                         + '<script type="application/json" id="contrast-themes">' + json.dumps(themes)
+                        + '</script><script type="text/plain" id="sort-source">' + sort_source
                         + "</script><script>" + script + "</script>")
             fixture.write_text(document, encoding="utf-8")
             args = [chrome, "--no-sandbox", "--headless", "--disable-gpu", "--no-first-run",
