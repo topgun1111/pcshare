@@ -153,4 +153,4 @@
 ## 2026-11-28 - R13 secure viewer checkpoint
 
 - Vault player maps Media3's seek accent and time labels to Lumen. Vault PDF keeps its rendered pages on a black stage with density-aware spacing. The changes leave the secure window flags, playback and Vault document streams in place.
-- Next, verify the branch compile and audit the standard viewers, Storage Analyzer, Print and Inbox before advancing to R14. See the canonical ledger for remaining device acceptance.
+- The screen audit found the standard viewers, Storage Analyzer, Print Live and Inbox already use the shared UI roles. Print Log tabs now expose their selected state and focus, and the unused line above those tabs is removed. Branch compilation and physical-device checks are tracked in the canonical ledger.

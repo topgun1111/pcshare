@@ -16,6 +16,7 @@
 ### Changed
 - Match the secure player's seek bar and time labels to Lumen.
 - Use a black stage and consistent page spacing in the secure PDF reader.
+- Make the Phone log and PC log tabs focusable and announce which tab is selected.
 
 ## 2026-11-28 - File browser and accessibility refinements
 

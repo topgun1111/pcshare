@@ -18,6 +18,7 @@ import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -25,6 +26,9 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import androidx.core.view.AccessibilityDelegateCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.lanshare.app.core.Cfg
 import com.lanshare.app.core.Jobs
 import com.lanshare.app.core.PrintLog
@@ -51,6 +55,7 @@ class PrintLogActivity : Activity() {
     private lateinit var body: TextView
     private lateinit var scroll: ScrollView
     private lateinit var extra: LinearLayout      // Advanced-only tools (Full detail, Copy, Open folder, Clear)
+    private val tabViews = arrayOfNulls<View>(2)
     private val tabTxt = arrayOfNulls<TextView>(2)
     private val tabInd = arrayOfNulls<View>(2)
     private var tab = 0                           // 0 = Phone log, 1 = PC log
@@ -79,17 +84,31 @@ class PrintLogActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(pal.bg) }
         LumenNativeTheme.edgeToEdge(this, root)   // spec 9.4: transparent bars, drawn edge to edge
         root.addView(TextView(this).apply { NlA11y.heading(this); text = "Logs"; LumenTypography.fit(this, 20f); setTextColor(pal.fg); typeface = Fnt.semi(); setPadding(dp(16), dp(12), dp(16), dp(2)) })
-        info = TextView(this).apply { typeface = Fnt.reg(); LumenTypography.fit(this, 12f); setTextColor(pal.mut); setPadding(dp(16), 0, dp(16), dp(8)) }
-        root.addView(info)
-
         // --- tabs: Phone log | PC log
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(8), 0, dp(8), 0) }
         fun tabBtn(i: Int, label: String): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            val t = TextView(this@PrintLogActivity).apply { text = label; LumenTypography.fit(this, 15f); gravity = Gravity.CENTER; typeface = Fnt.semi(); setPadding(0, dp(12), 0, dp(12)) }
+            val t = TextView(this@PrintLogActivity).apply {
+                text = label
+                LumenTypography.apply(this, LumenTypography.LABEL_L)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(12), 0, dp(12))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
             val ind = View(this@PrintLogActivity)
+            tabViews[i] = this
             tabTxt[i] = t; tabInd[i] = ind
+            contentDescription = label
+            isFocusable = true
+            minimumHeight = dp(48)
+            ViewCompat.setAccessibilityDelegate(this, object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = Button::class.java.name
+                    info.isSelected = host.isSelected
+                }
+            })
             addView(t, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(ind, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
             setOnClickListener { selectTab(i) }
@@ -168,6 +187,7 @@ class PrintLogActivity : Activity() {
 
     private fun paintTabs() {
         for (i in 0..1) {
+            tabViews[i]?.isSelected = i == tab
             tabTxt[i]?.setTextColor(if (i == tab) pal.fg else pal.mut)
             tabInd[i]?.setBackgroundColor(if (i == tab) pal.ac else Color.TRANSPARENT)
         }

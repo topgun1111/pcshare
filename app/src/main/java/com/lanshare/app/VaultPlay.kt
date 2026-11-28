@@ -117,7 +117,7 @@ class VaultPlayActivity : Activity() {
                 setScrubberColor(accent)
             }
             for (id in intArrayOf(androidx.media3.ui.R.id.exo_position, androidx.media3.ui.R.id.exo_duration)) {
-                findViewById<TextView>(id)?.let { LumenTypography.apply(it, LumenTypography.LABEL_M).fontFeatureSettings = "tnum" }
+                findViewById<TextView>(id)?.let { LumenTypography.tabular(LumenTypography.apply(it, LumenTypography.LABEL_M)) }
             }
             this.player = p
             setShowNextButton(items.size > 1)

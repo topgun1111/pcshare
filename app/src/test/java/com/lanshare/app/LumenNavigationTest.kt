@@ -21,6 +21,28 @@ import java.util.Locale
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class LumenNavigationTest {
+    @Test fun printLogTabsExposeSelectionAndSwitchUsingTheirExistingAction() {
+        val controller = Robolectric.buildActivity(PrintLogActivity::class.java).setup()
+        try {
+            val root = controller.get().window.decorView
+            fun tab(label: String): View {
+                val matches = ArrayList<View>()
+                root.findViewsWithText(matches, label, View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
+                return matches.single()
+            }
+            val phone = tab("Phone log")
+            val pc = tab("PC log")
+            assertTrue(phone.createAccessibilityNodeInfo().isSelected)
+            assertEquals(Button::class.java.name, pc.createAccessibilityNodeInfo().className)
+            assertTrue(pc.isFocusable)
+            assertTrue(pc.performClick())
+            assertFalse(phone.createAccessibilityNodeInfo().isSelected)
+            assertTrue(pc.createAccessibilityNodeInfo().isSelected)
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
     @Test fun fileRoleUsesFullNameAndOffersTheExistingActionFromTheKeyboard() {
         val app = RuntimeEnvironment.getApplication()
         val cfg = Configuration(app.resources.configuration).apply { setLocale(Locale.forLanguageTag("tr")) }
