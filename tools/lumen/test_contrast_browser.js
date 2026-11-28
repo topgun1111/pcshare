@@ -73,5 +73,6 @@ if (scheme === 'light') {
   checkSort(errors);
   checkGlass(errors);
   checkButtons(errors);
+  checkFields(errors);
 }
 output.textContent = errors.length ? JSON.stringify(errors.slice(0,50)) : 'PASS';

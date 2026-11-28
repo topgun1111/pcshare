@@ -587,7 +587,7 @@ body.kid #list .row.sel{touch-action:none}
 .sw i{position:absolute;inset:0;border-radius:var(--r-l);border:2px solid var(--mut);background:var(--cont);transition:var(--d-base)}
 .sw i:after{content:'';position:absolute;left:4px;top:6px;width:16px;height:16px;border-radius:var(--r-full);background:var(--mut);transition:var(--d-base)}
 .sw input:checked+i{background:var(--ac);border-color:var(--ac)}
-.sw input:checked+i:after{left:20px;top:2px;width:24px;height:24px;background:var(--onac)}
+.sw input:checked+i:after{left:20px;top:2px;width:24px;height:24px;background:var(--onPrimary)}
 /* Settings: full-screen page, search box, grouped sections (openSettings) */
 #sheet .card.fu.sx{background:var(--bg)}
 .sx .sxs{display:flex;align-items:center;gap:var(--sp-2);margin:2px var(--sp-4) var(--sp-1);padding:0 var(--sp-4);height:48px;border-radius:var(--r-xl);background:var(--cont);flex:none}
@@ -1203,12 +1203,12 @@ html.lm-native-modal:not([data-glass=f3]) #dlg .dcard{
 /* Lumen Round 2 Part C (hand-written): search pill 52, floating label + clear on dialog fields, sliding segmented pill, slider value bubble, 48 px chip hit rows */
 #srow{height:52px;border-radius:var(--r-full);padding:0 var(--sp-2)}#srow .ibtn{width:44px;height:44px}#sq{height:44px}
 .tfw{position:relative;display:block}
-.tfw .tf{height:56px;padding:var(--sp-5) var(--sp-12) 0 var(--sp-4);box-sizing:border-box}
+.tfw .tf{height:56px;padding:var(--sp-5) calc(48px + var(--sp-2)) 0 var(--sp-4);box-sizing:border-box}
 .tfw .fl{position:absolute;left:var(--sp-4);top:17px;font-size:var(--fs-16);line-height:1.2;color:var(--inkMut,var(--mut));pointer-events:none;transition:top var(--d-fast,var(--d-fast)) var(--ease-standard,ease),font-size var(--d-fast,var(--d-fast)) var(--ease-standard,ease),color var(--d-fast,var(--d-fast)) linear}
 .tfw .tf:focus~.fl,.tfw .tf:not(:placeholder-shown)~.fl{top:8px;font-size:var(--fs-12)}
 .tfw .tf:focus~.fl{color:var(--primary)}
-.tfw .clr{position:absolute;right:var(--sp-2);top:8px;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:none;place-items:center}
-.tfw .tf:not(:placeholder-shown)~.clr{display:grid}.tfw .clr svg{width:20px;height:20px}
+.tfw .clr{position:absolute;right:var(--sp-1);top:50%;transform:translateY(-50%);width:48px;height:48px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:none;place-items:center}
+.tfw .tf:not(:placeholder-shown):not(:disabled):not([readonly])~.clr{display:grid}.tfw .clr svg{width:20px;height:20px}
 .seg{position:relative}
 .seg.sl::before{content:"";position:absolute;top:var(--sp-1);bottom:var(--sp-1);left:0;width:var(--sw,0);transform:translateX(var(--sx,0));border-radius:var(--r-full);background:var(--selection);transition:transform var(--d-base,var(--d-base)) var(--ease-emph,cubic-bezier(.2,0,0,1)),width var(--d-base,var(--d-base)) var(--ease-emph,cubic-bezier(.2,0,0,1))}
 .seg.sl button{position:relative;z-index:1}.seg.sl button.on{background:transparent}
@@ -1262,8 +1262,9 @@ html[data-rm] #list.lm-selst .row{animation:none}
 #lmsb.dr i{width:12px;opacity:.95;background:var(--primary)}
 #lmsb b{position:absolute;right:36px;min-width:64px;padding:var(--sp-2) var(--sp-4);border-radius:var(--r-l);background:var(--primaryCont);color:var(--onPrimaryCont);font-size:var(--fs-14);font-weight:600;text-align:center;box-shadow:var(--e3);display:none;white-space:nowrap}
 #lmsb.dr b{display:block}
-.tfw .eye{position:absolute;right:48px;top:8px;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:grid;place-items:center}
-.tfw .eye svg{width:20px;height:20px}.tfw.pw .tf{padding-right:calc(var(--sp-10) * 2 + var(--sp-2))}
+.tfw .eye{position:absolute;right:calc(48px + var(--sp-1));top:50%;transform:translateY(-50%);width:48px;height:48px;padding:0;border:0;border-radius:var(--r-full);background:transparent;color:var(--inkMut,var(--mut));display:grid;place-items:center}
+.tfw .eye svg{width:20px;height:20px}.tfw.pw .tf{padding-right:calc(96px + var(--sp-2))}
+.tfw .tf:disabled~.eye{display:none}
 .sbtn{display:inline-flex;gap:2px;vertical-align:middle;max-width:100%;min-width:0;align-items:stretch}
 .sbtn>.tbtn:first-child{border-radius:var(--r-full) var(--r-xs) var(--r-xs) var(--r-full);flex:1;min-width:0;min-height:48px;height:auto;white-space:normal;overflow-wrap:anywhere;padding:var(--sp-3) var(--sp-5)}
 .sbtn>.tbtn:last-child{border-radius:var(--r-xs) var(--r-full) var(--r-full) var(--r-xs);padding:0 var(--sp-3);min-width:48px;min-height:48px;height:auto;flex:none}
@@ -2020,6 +2021,31 @@ function kind(i){return i.dir?'folder':(EXT[i.name.split('.').pop().toLowerCase(
 function setName(n){$('#nmt').textContent=n;$('#nm').dataset.n=n}
 // themed dialog: returns true / the typed text, or null when cancelled
 function lmDismissAction(label,kind){const l=String(label||'').trim().toLowerCase();return ['close','dismiss','got it','kapat','fermer','cancel','iptal','vazgeç','back','go back','not now'].includes(l)||(['info','warn','perm','ok'].includes(kind)&&['ok','okay','tamam','done','understood'].includes(l))}
+/*LUMEN-FIELD:BEGIN*/
+function lmField(input, label){
+  const wrap=E('div','tfw'),caption=E('span','fl',label),clear=E('button','clr');
+  if(!input.hasAttribute('aria-label'))input.setAttribute('aria-label',label);
+  input.placeholder=' ';
+  clear.type='button';clear.setAttribute('aria-label','Clear');clear.append(ic('close'));
+  clear.onclick=()=>{
+    if(input.matches(':disabled')||input.readOnly||!input.value)return;
+    input.value='';input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+  if(input.parentNode)input.replaceWith(wrap);
+  wrap.append(input,caption,clear);
+  if(input.type==='password'){
+    wrap.classList.add('pw');
+    const eye=E('button','eye');eye.type='button';eye.setAttribute('aria-label','Show password');eye.setAttribute('aria-pressed','false');eye.append(ic('hide'));
+    eye.onclick=()=>{
+      if(input.matches(':disabled'))return;
+      const reveal=input.type==='password';input.type=reveal?'text':'password';
+      eye.setAttribute('aria-pressed',String(reveal));eye.setAttribute('aria-label',reveal?'Hide password':'Show password');
+    };
+    wrap.append(eye);
+  }
+  return wrap;
+}
+/*LUMEN-FIELD:END*/
 function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o.input, o.ok, o.alt, o.danger, o.hero (icon name; auto trash for delete-like danger), o.kind (info|warn|perm|ok hero tile), o.details ([[label,value]]) */
   const d=$('#dlg');d.textContent='';d.style.display='flex';
   const dng=!!o.danger;
@@ -2032,13 +2058,14 @@ function dlg(o){return new Promise(res=>{   /* the one dialog: o.title, o.msg, o
   card.append(E('h3','',o.title));if(o.msg)card.append(E('p','',o.msg));
   if(o.details&&o.details.length){const dt=E('dl','ddet');o.details.forEach(x=>{dt.append(E('dt','',x[0]),E('dd','',x[1]))});card.append(dt)}
   if(o.errorDetails){const dt=E('details','ddet'),sm=E('summary','','Details'),pre=E('pre','',String(o.errorDetails)),cp=E('button','tbtn out','Copy details');pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-family:monospace;font-size:var(--t-mono-size)';cp.onclick=async()=>{try{await navigator.clipboard.writeText(String(o.errorDetails));toast('Details copied')}catch(e){toast('Could not copy details')}};dt.append(sm,pre,cp);card.append(dt)}   // o.details = [[label, value], ...]: small read-only rows under the message
-  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.placeholder=' ';inp.autocomplete='off';inp.setAttribute('aria-label',o.input.label||'');const fw=E('div','tfw'),fl=E('span','fl'),cl=E('button','clr');fl.textContent=o.input.label||'';cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.append(ic('close'));cl.onclick=ev=>{ev.preventDefault();inp.value='';inp.focus();inp.dispatchEvent(new Event('input',{bubbles:true}))};fw.append(inp,fl,cl);card.append(fw)}
+  let inp=null;if(o.input){inp=E('input','tf');inp.value=o.input.value||'';inp.autocomplete='off';
+    card.append(lmField(inp,o.input.label||o.title||''))}
   const row=E('div','dact'),c=E('button','tbtn quiet','Cancel'),k=E('button','tbtn'+(dng?' dng':(lmDismissAction(o.ok||'OK',o.kind)?' quiet':' lmp')),o.ok||'OK');
   let al=null;if(o.alt){al=E('button','tbtn'+(o.altDanger?' alt-danger':(dng&&/move to bin/i.test(o.alt)?' tonal':' out')),o.alt);al.onclick=()=>{if(o.altDanger)hap('err');done('alt')}}   // optional middle choice, resolves 'alt'
   const done=v=>{d.style.display='none';d.onclick=null;res(v)};
   c.onclick=()=>done(null);k.onclick=()=>{if(o.danger)hap('err');done(inp?inp.value:true)};
   d.onclick=e=>{if(e.target===d)done(null)};
-  if(inp)inp.onkeydown=e=>{if(e.key==='Enter')k.click()};
+  if(inp)inp.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing&&e.keyCode!==229)k.click()};
   // Keep DOM order logical; CSS stacks on narrow windows and reflows on fold/unfold.
   if([c,k,al].filter(Boolean).length>=3||[c,k,al].some(x=>x&&x.textContent.length>16))row.classList.add('lm-stack');
   if(o.altFirst&&al){row.append(al,c,k)}else{row.append(c);if(al)row.append(al);row.append(k)}
@@ -7799,14 +7826,12 @@ const sbEnd=()=>{if(!drag)return;drag=false;sb.classList.remove('dr');hp('tick')
 sb.addEventListener('pointerup',sbEnd);sb.addEventListener('pointercancel',sbEnd);
 /* P2: floating label + clear (+ show / hide for passwords) for .tf inputs outside the dialog */
 const OK=/^(text|search|url|email|password|number|tel)$/;
-function fw(i){if(i._lmf||i.closest('.tfw')||!i.classList.contains('tf')||!OK.test(i.type||'text'))return;
-  const lab=i.getAttribute('aria-label')||(i.placeholder&&i.placeholder.trim())||'';if(!lab||!i.parentNode)return;i._lmf=1;
-  const w=E('div','tfw'),fl=E('span','fl',lab),cl=E('button','clr');if(!i.getAttribute('aria-label'))i.setAttribute('aria-label',lab);i.placeholder=' ';
-  const cs=getComputedStyle(i.parentNode);if(cs.display.indexOf('flex')>=0)w.style.cssText='flex:1 1 0;min-width:0';
-  cl.type='button';cl.tabIndex=-1;cl.setAttribute('aria-label','Clear');cl.append(ic('close'));cl.onclick=ev=>{ev.preventDefault();i.value='';i.focus();i.dispatchEvent(new Event('input',{bubbles:true}))};
-  i.replaceWith(w);w.append(i,fl,cl);
-  if(i.type==='password'){w.classList.add('pw');const ey=E('button','eye');ey.type='button';ey.tabIndex=-1;ey.setAttribute('aria-label','Show password');ey.setAttribute('aria-pressed','false');ey.append(ic('hide'));
-    ey.onclick=ev=>{ev.preventDefault();const sh=i.type==='password';i.type=sh?'text':'password';ey.setAttribute('aria-pressed',sh?'true':'false');ey.setAttribute('aria-label',sh?'Hide password':'Show password')};w.append(ey)}}
+function fw(i){if(i.closest('.tfw')||!i.classList.contains('tf')||!OK.test(i.type||'text'))return;
+  const lab=i.getAttribute('aria-label')||(i.placeholder&&i.placeholder.trim())||'';
+  if(!lab||!i.parentNode)return;
+  const parentDisplay=getComputedStyle(i.parentNode).display,wrap=lmField(i,lab);
+  if(parentDisplay.includes('flex'))wrap.style.cssText='flex:1 1 0;min-width:0';
+}
 const scan=r=>{if(r.nodeType!==1)return;(r.matches&&r.matches('input.tf')?[r]:[]).concat(qa('input.tf',r)).forEach(fw)};
 ['#sheet','#pv','#dual'].forEach(id=>{const el=q(id);if(el){new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(scan))).observe(el,{childList:true,subtree:true});scan(el)}});
 /* LUMEN-SPLIT:BEGIN — primary action + anchored related actions, shared by creation and archive sheets. */

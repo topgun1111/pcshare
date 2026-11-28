@@ -7,6 +7,12 @@
 
 
 
+## 2026-11-28 - Accessible field controls
+
+### Fixed
+- Use the keyboard to clear fields or show and hide passwords, with larger touch targets.
+- Keep the checked switch marker readable across themes and avoid submitting a dialog during text composition.
+
 ## 2026-11-28 - Button feedback
 
 ### Fixed
