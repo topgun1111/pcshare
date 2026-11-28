@@ -1,5 +1,6 @@
 package com.lanshare.app
 
+import android.app.Activity
 import android.app.Application
 import android.content.res.Configuration
 import android.view.KeyEvent
@@ -11,6 +12,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -23,6 +25,8 @@ class LumenNavigationTest {
         val app = RuntimeEnvironment.getApplication()
         val cfg = Configuration(app.resources.configuration).apply { setLocale(Locale.forLanguageTag("tr")) }
         val row = View(app.createConfigurationContext(cfg))
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        activity.setContentView(row)
         val name = "Çok uzun dosya adı.pdf"
         var actions = 0
         row.setOnLongClickListener { actions++; true }
@@ -34,9 +38,11 @@ class LumenNavigationTest {
         assertTrue(node.contentDescription.toString().startsWith("$name, dosya"))
         assertTrue(node.isSelected)
         assertEquals("Seçili", node.stateDescription)
+        assertTrue(node.actionList.any { it.label == "Seçim işlemlerini göster" })
         val options = KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F10, 0, KeyEvent.META_SHIFT_ON)
         assertTrue(row.dispatchKeyEvent(options))
         assertEquals(1, actions)
+        activity.finish()
     }
 
     @Test fun recycledSearchHeadingClearsSelectionAndDoesNotOfferFileActions() {

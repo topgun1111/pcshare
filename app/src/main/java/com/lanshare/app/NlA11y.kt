@@ -38,6 +38,8 @@ object NlA11y {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
                 info.className = if (ViewCompat.isAccessibilityHeading(host)) TextView::class.java.name else Button::class.java.name
+                info.contentDescription = host.contentDescription
+                info.isSelected = host.isSelected
                 if (host.isLongClickable) {
                     info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_LONG_CLICK)
                     info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(
