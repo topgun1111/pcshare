@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.res.Configuration
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import org.junit.Assert.assertEquals
@@ -25,13 +26,15 @@ class LumenNavigationTest {
         val controller = Robolectric.buildActivity(PrintLogActivity::class.java).setup()
         try {
             val root = controller.get().window.decorView
-            fun tab(label: String): View {
-                val matches = ArrayList<View>()
-                root.findViewsWithText(matches, label, View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION)
-                return matches.single()
+            fun findTab(view: View, label: String): View? {
+                if (view.contentDescription == label) return view
+                if (view is ViewGroup) {
+                    for (i in 0 until view.childCount) findTab(view.getChildAt(i), label)?.let { return it }
+                }
+                return null
             }
-            val phone = tab("Phone log")
-            val pc = tab("PC log")
+            val phone = requireNotNull(findTab(root, "Phone log"))
+            val pc = requireNotNull(findTab(root, "PC log"))
             assertTrue(phone.createAccessibilityNodeInfo().isSelected)
             assertEquals(Button::class.java.name, pc.createAccessibilityNodeInfo().className)
             assertTrue(pc.isFocusable)

@@ -132,6 +132,7 @@ class LanShareService : Service() {
         b.addAction(R.drawable.ic_notification, "Stop",
             PendingIntent.getService(this, 1, Intent(this, LanShareService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE))
         val jobs = try { com.lanshare.app.ops.JobView.running() } catch (_: Exception) { emptyList() }
+        b.setCategory(if (jobs.isNotEmpty() || scanning) NotificationCompat.CATEGORY_PROGRESS else NotificationCompat.CATEGORY_SERVICE)
         if (jobs.isNotEmpty()) {   // copy / zip / print ... running in the background: progress stays visible when the app is not on screen
             val pct = com.lanshare.app.ops.JobView.overallPct(jobs)
             b.setContentTitle(if (jobs.size == 1) jobs[0].label else "${jobs.size} tasks running")

@@ -154,3 +154,9 @@
 
 - Vault player maps Media3's seek accent and time labels to Lumen. Vault PDF keeps its rendered pages on a black stage with density-aware spacing. The changes leave the secure window flags, playback and Vault document streams in place.
 - The screen audit found the standard viewers, Storage Analyzer, Print Live and Inbox already use the shared UI roles. Print Log tabs now expose their selected state and focus, and the unused line above those tabs is removed. Branch compilation and physical-device checks are tracked in the canonical ledger.
+
+
+## 2026-11-28 - R14 notifications and terminal
+
+- Existing terminal schemes use xterm's 4.5:1 contrast floor. Chromium rendered black, blue, magenta and a true-color sample in each scheme, with minimum ratios of 4.95, 4.82 and 4.55 respectively. Terminal options and text-size buttons gain explicit labels and the colour buttons expose their selected state.
+- PC transfer notifications reuse the edition accent and classify active versus finished jobs. Main and foreground-service notification categories follow the work state. Device notification rendering and TalkBack remain pending.

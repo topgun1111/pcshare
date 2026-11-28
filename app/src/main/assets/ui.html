@@ -7108,7 +7108,7 @@ function openRemoteShell(){
       prev=n;if(!e.isComposing&&(n.length>40||/\s$/.test(n)))clr()},true);
     t.addEventListener('blur',clr)};
   const mkTerm=()=>{
-    xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,theme:curTheme()});
+    xt=new Terminal({cursorBlink:true,fontSize:fsv(),fontFamily:'Consolas,Menlo,"DejaVu Sans Mono",monospace',scrollback:10000,allowProposedApi:false,minimumContrastRatio:4.5,theme:curTheme()});
     fit=new FitAddon.FitAddon();xt.loadAddon(fit);xt.open(tw);try{fit.fit()}catch(e){}
     xt.onData(typed);
     xt.onResize(()=>{clearTimeout(rt);rt=setTimeout(syncSize,150)});
@@ -7261,16 +7261,16 @@ function openRemoteShell(){
     if(navigator.share){try{await navigator.share({title:'Remote shell',text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
     peCopy(t);toast('Sharing is not available here: the screen text is copied',4000)};
   /* the ⋮ menu */
-  const mb=E('button','tbtn','⋮');mb.style.cssText='height:36px;min-width:40px;font-size:var(--fs-20)';mb.setAttribute('aria-label','More');hd.append(mb);
+  const mb=E('button','tbtn','⋮');mb.style.cssText='height:36px;min-width:40px;font-size:var(--fs-20)';mb.setAttribute('aria-label','Terminal options');hd.append(mb);
   mb.onclick=()=>{const old=w.querySelector('.rshm');if(old){old.remove();return}
     const ov=E('div','rshm');ov.style.cssText='position:absolute;inset:0;background:#0007;z-index:7;display:flex;align-items:flex-start;justify-content:flex-end;padding:var(--sp-12) var(--sp-2) 0';
     const cd=E('div');cd.style.cssText='width:min(320px,100%);background:var(--bg);border-radius:var(--r-l);padding:var(--sp-2);box-shadow:0 6px 24px #0008';
     const it=(t,fn,keep)=>{const b=E('button','set',t);b.style.cssText='width:100%;text-align:left;margin:2px 0';b.onclick=()=>{if(!keep)ov.remove();fn()};return b};
     const sz=E('div');sz.style.cssText='display:flex;gap:var(--sp-1);align-items:center;margin:var(--sp-1) 0';const sv=E('small','',fsv()+' pt');sv.style.cssText='flex:1;text-align:center';
-    const mkz=(l,d)=>{const b=E('button','tbtn',l);b.style.cssText='flex:1;height:40px';b.onclick=()=>{setFs(fsv()+d);sv.textContent=fsv()+' pt'};return b};
+    const mkz=(l,d)=>{const b=E('button','tbtn',l);b.style.cssText='flex:1;height:var(--sp-12)';b.setAttribute('aria-label',d>0?'Increase terminal text size':'Decrease terminal text size');b.onclick=()=>{setFs(fsv()+d);sv.textContent=fsv()+' pt'};return b};
     sz.append(E('small','','Text size'),mkz('A−',-1),sv,mkz('A+',1));
     const th=E('div');th.style.cssText='display:flex;flex-direction:column;gap:2px;margin:var(--sp-1) 0';
-    const paintTh=()=>{th.textContent='';Object.keys(THEMES).forEach(n=>{const b=E('button','set',(curTheme()===THEMES[n]?'● ':'○ ')+n);b.style.cssText='width:100%;text-align:left;background:'+THEMES[n].background+';color:'+THEMES[n].foreground;b.onclick=()=>{setTheme(n);paintTh()};th.append(b)})};paintTh();
+    const paintTh=()=>{th.textContent='';Object.keys(THEMES).forEach(n=>{const selected=curTheme()===THEMES[n];const b=E('button','set',(selected?'● ':'○ ')+n);b.setAttribute('aria-label',n);b.setAttribute('aria-pressed',String(selected));b.style.cssText='width:100%;text-align:left;background:'+THEMES[n].background+';color:'+THEMES[n].foreground;b.onclick=()=>{setTheme(n);paintTh()};th.append(b)})};paintTh();
     cd.append(it('Find…',openFind),sz,E('small','','Colours'),th,it('Save screen as a file',saveText),it('Share screen text',shareText));
     ov.append(cd);ov.onclick=e=>{if(e.target===ov)ov.remove()};w.append(ov)};
   /* ---- Connect sheet: PC list (found on Wi-Fi + SMB devices incl. Tailscale), own address, password, Remember ---- */

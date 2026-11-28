@@ -7,6 +7,13 @@
 
 
 
+## 2026-11-28 - Terminal readability and notifications
+
+### Changed
+- Make terminal text easier to read in Campbell, Classic black, and PowerShell blue.
+- Announce the selected terminal colour scheme and give text-size controls clearer labels.
+- Use the app edition's notification accent for incoming PC files and distinguish progress from completed jobs.
+
 ## 2026-11-28 - Prerelease updates and secure viewer polish
 
 ### Added

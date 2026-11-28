@@ -1400,7 +1400,7 @@ class MainActivity : Activity() {
             val b = NotificationCompat.Builder(this, if (alert) "lanshare_results" else "lanshare_transfers")
                 .setSmallIcon(R.drawable.ic_notification).setContentTitle(safeTitle).setContentText(safeText)
                 .setContentIntent(open).setOnlyAlertOnce(!alert).setColor(NoteTint.lite(this))
-                .setCategory(if (alert) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
+                .setCategory(if (st == "run") NotificationCompat.CATEGORY_PROGRESS else NotificationCompat.CATEGORY_STATUS)
             if (com.lanshare.app.core.vault.VaultSession.unlocked) b.setVisibility(NotificationCompat.VISIBILITY_SECRET)   // Lockdown row 13: nothing on the lock screen while the vault is open
             if (alert) b.setStyle(NotificationCompat.BigTextStyle().bigText(safeText)).setPriority(NotificationCompat.PRIORITY_HIGH)
             if (st == "run") b.setOngoing(true).setProgress(100, if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0, total <= 0)

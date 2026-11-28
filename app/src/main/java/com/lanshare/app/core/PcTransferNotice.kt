@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.lanshare.app.MainActivity
+import com.lanshare.app.NoteTint
 import com.lanshare.app.R
 import java.io.FilterInputStream
 import java.io.InputStream
@@ -318,6 +319,8 @@ object PcTransferNotice {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notification = NotificationCompat.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
+                .setColor(NoteTint.lite(ctx))
+                .setCategory(if (done || error != null) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
                 .setContentTitle(title)
                 .setContentText(detail)
                 .setStyle(NotificationCompat.BigTextStyle().bigText("${state.fileName}\n$detail"))
